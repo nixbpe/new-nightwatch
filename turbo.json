@@ -3,7 +3,8 @@
   "tasks": {
     "dev": {
       "persistent": true,
-      "cache": false
+      "cache": false,
+      "env": ["PORT", "API_PORT", "WEB_PORT"]
     },
     "build": {
       "dependsOn": ["^build"],

@@ -10,12 +10,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "bun scripts/dev.mjs",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:coverage": "turbo run test:coverage",
+    "e2e": "bun run --cwd e2e test",
+    "e2e:setup": "cd e2e && bun install --frozen-lockfile && bun x playwright install chromium",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "validate": "bun run format:check && bun run lint && bun run typecheck && bun run test",

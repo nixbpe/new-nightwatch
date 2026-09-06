@@ -134,8 +134,12 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
+      - name: Install e2e dependencies
+        run: cd e2e && bun install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: cd e2e && bun x playwright install --with-deps chromium
       - name: e2e tests
-        run: bun run --cwd e2e test
+        run: bun run e2e
       - name: Install trivy
         run: |
           curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o /tmp/trivy.tar.gz
