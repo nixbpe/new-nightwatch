@@ -4,7 +4,7 @@
 
 Preserve component boundaries, tenant isolation, persistence, and asynchronous contracts. See [project instructions](../AGENTS.md), [technology](tech.md), and [design system](design-system.md).
 
-Keep Bun/Turbo, Hono modular-monolith API, React/Vite SPA, workers, PostgreSQL/Drizzle/RLS, and Redis/BullMQ. Deploy the public Astro site independently.
+Keep Bun/Turbo, Hono modular-monolith API, React/Vite SPA, workers, PostgreSQL/Drizzle/RLS, and Redis/BullMQ. Deploy the public Astro site independently. The scaffold phase delivers only the SPA + API: sections 3–6 (identity, tenant SQL, scans, persistence, queues) take effect when the persistence and auth features land; until then the API has no database, sessions, or tenant context.
 
 ## 2. System boundaries and dependency direction
 
@@ -50,7 +50,7 @@ POST /api/organizations/:orgId/projects/:projectId/scans
 
 ### Identity and cookies
 
-Use Better Auth/Drizzle PostgreSQL for users, sessions, provider accounts, verifications, memberships, and MFA. Disable self-service organization creation; use TOTP. Require Microsoft/Entra provider configuration, including `ENTRA_CLIENT_ID`, before enabling it.
+Use Better Auth/Drizzle PostgreSQL for users, sessions, provider accounts, verifications, memberships, and MFA (applies from the first auth feature). Disable self-service organization creation; use TOTP. Require Microsoft/Entra provider configuration, including `ENTRA_CLIENT_ID`, before enabling it.
 
 Resolve sessions with `auth.api.getSession({ headers })`. Keep `nw`, `HttpOnly`, `SameSite=Lax`, production `Secure`, and host-only cookies; verify staging. Align `CORS_ORIGIN`, `APP_URL`, and `trustedOrigins`. Never widen cookie scope for CORS or authenticate the landing site.
 
@@ -184,14 +184,14 @@ Separate AWS/GCP Prowler security, AWS SDK health, and HTTP/DNS/TCP monitoring. 
 - Apply SSRF helpers/wrappers to HTTP(S), embedded credentials, blocked headers, and private addresses. Cover redirects, DNS changes, and connection-time behavior.
 - Separate Redis sliding-window and auth throttling. Exercise errors and the 2-second limiter timeout; do not assume fail-closed.
 - Use Pino in production-like runtimes; redact each entrypoint. Never log whole jobs, credentials, or secret-bearing provider responses.
-- Keep `/health` liveness; `/health/ready` runs database `SELECT 1` plus Redis ping, returning 200/503. Verify RLS, migrations, partitions, SMTP, providers, and workers separately.
+- Keep `/health` liveness; `/health/ready` runs database `SELECT 1` plus Redis ping, returning 200/503. During the scaffold phase without infrastructure, `/health/ready` is a self-check only; the full dependency check applies when persistence lands. Verify RLS, migrations, partitions, SMTP, providers, and workers separately.
 - Validate config at consuming entrypoints. Check email before email-capable API/workers start; no SMTP requirement for scheduler/health-only processes.
 
 ## 8. Frontend data integration
 
-Put typed clients in `apps/web/src/lib/api`; use `/api` with credentials. Handle JSON, empty 204, and non-OK responses. Generics do not validate payloads; `ApiError(message, status)` does not automatically expose server `error.code`/`details`.
+Put typed clients in `apps/web/src/lib/api`; use `/api` with credentials. Handle JSON, empty 204, and non-OK responses. Validate responses against `@nightwatch/api-contract` schemas; TypeScript generics alone do not validate payloads, and `ApiError(message, status)` does not automatically expose server `error.code`/`details`.
 
-Load `/me/context`; select valid in-memory organization → valid `lastActiveTenantId` → first membership. Require `PATCH /me/active-org` success before switching; update synchronous router-guard snapshot, reset project, clear tenant-sensitive queries.
+Routing uses React Router 7; server state uses TanStack Query. Load `/me/context`; select valid in-memory organization → valid `lastActiveTenantId` → first membership. Require `PATCH /me/active-org` success before switching; update the router-facing active-tenant snapshot, reset project, clear tenant-sensitive queries. (Tenant context applies from the first auth feature.)
 
 Key queries by `organizationId`, `projectId`, filters, and selected IDs; await resolved scope. Keep `staleTime: 30_000`, `retry: 1`. Block in-flight responses from repopulating another tenant's view.
 

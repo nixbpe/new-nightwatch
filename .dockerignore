@@ -1,0 +1,31 @@
+# Docker build context exclusions (repo root).
+# The apps/api Dockerfile builds from a clean context; anything listed here
+# is never sent to the daemon and can never leak into an image layer.
+
+# Version control / local tooling
+.git
+.omp
+.turbo
+
+# Dependencies and build output (installed/compiled inside the image)
+**/node_modules
+**/dist
+
+# Test output and e2e artifacts
+**/coverage
+**/test-results
+**/playwright-report
+e2e/blob-report
+
+# Docs are not needed at runtime
+docs
+
+# Secrets and local environment files must never enter an image
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Docker-specific files
+**/Dockerfile
+.dockerignore

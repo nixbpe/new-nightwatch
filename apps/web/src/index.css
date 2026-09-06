@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/*
+ * NightWatch design tokens (docs/design-system.md): semantic roles only,
+ * light/dark via prefers-color-scheme. Not the full design system.
+ */
+:root {
+  --background: #f7f8fa;
+  --surface: #ffffff;
+  --foreground: #171a1f;
+  --foreground-secondary: #5b6470;
+  --primary: #087a55;
+  --on-primary: #ffffff;
+  --danger: #be123c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #111315;
+    --surface: #1b1e22;
+    --foreground: #f3f4f6;
+    --foreground-secondary: #adb5bf;
+    --primary: #3ecf8e;
+    --on-primary: #11251c;
+    --danger: #fb7185;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-danger: var(--danger);
+  --font-sans: Inter, "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+}

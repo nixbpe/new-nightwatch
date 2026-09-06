@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@nightwatch/typescript-config/bun.json",
+  "compilerOptions": {
+    "resolveJsonModule": true
+  },
+  "include": ["src", "vitest.config.ts"]
+}

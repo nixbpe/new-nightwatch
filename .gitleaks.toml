@@ -1,0 +1,20 @@
+# NightWatch gitleaks baseline.
+# Default ruleset extended; leaks or scanner errors exit non-zero
+# (root script: security:secrets → gitleaks git --exit-code 1).
+
+title = "NightWatch gitleaks baseline"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated and vendored content that is never a real secret."
+paths = [
+  '''bun\.lock''',
+  '''node_modules/''',
+  '''dist/''',
+  '''\.turbo/''',
+  '''coverage/''',
+  '''test-results/''',
+  '''playwright-report/''',
+]

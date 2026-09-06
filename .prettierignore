@@ -1,0 +1,13 @@
+# Owned by other waves/roles; the platform formatter must not rewrite them.
+docs/
+.omp/
+AGENTS.md
+
+# Lockfile and generated output.
+bun.lock
+node_modules/
+dist/
+.turbo/
+coverage/
+test-results/
+playwright-report/
