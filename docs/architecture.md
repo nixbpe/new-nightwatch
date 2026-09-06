@@ -2,59 +2,46 @@
 
 ## 1. Scope
 
-Preserve component boundaries, tenant isolation, persistence, and asynchronous contracts. See [project instructions](../AGENTS.md), [technology](tech.md), and [design system](design-system.md).
+Preserve component boundaries, tenant isolation, persistence, and asynchronous contracts across a Bun/Turbo monorepo: Hono modular-monolith API, React/Vite SPA, workers, PostgreSQL/Drizzle/RLS, Redis/BullMQ, independent Astro landing. Toolchain, environment, and verification policy live in `package.json`, `turbo.json`, CI, and `scripts/quality/README.md`.
+Scaffold phase ships only SPA + API; sections 3–6 take effect when persistence and auth land (until then the API has no database, sessions, or tenant context). `db`, `queue`, `worker`, `landing`, and auth are approved deferrals.
 
-Keep Bun/Turbo, Hono modular-monolith API, React/Vite SPA, workers, PostgreSQL/Drizzle/RLS, and Redis/BullMQ. Deploy the public Astro site independently. The scaffold phase delivers only the SPA + API: sections 3–6 (identity, tenant SQL, scans, persistence, queues) take effect when the persistence and auth features land; until then the API has no database, sessions, or tenant context.
-
-## 2. System boundaries and dependency direction
+## 2. Boundaries and dependency direction
 
 ```text
 Public visitor -> Astro landing (no internal auth/data)
 Browser SPA -> HTTP JSON + host-only cookie -> API routes -> services
 Services -> tenant SQL -> PostgreSQL; services -> typed producers -> Redis/BullMQ
-Workers <- Redis/BullMQ; workers -> PostgreSQL results + Prowler/SDK/HTTP/SMTP
-Workers -> AWS / GCP / destinations
-Schedulers -> SQL due-work lookup -> prod ucers
+Workers <- Redis/BullMQ; workers -> PostgreSQL + Prowler/SDK/HTTP/SMTP -> cloud/destinations
+Schedulers -> SQL due-work lookup -> producers
 Owner deployment/cron -> migrations + partition DDL -> PostgreSQL
 ```
 
-| Placement | Responsibility and dependency rule |
+| Placement | Responsibility and rule |
 |---|---|
-| `apps/api/src/<domain>` | `routes.ts`: HTTP/context; `schemas.ts`: inputs; `service.ts`: business operations. Import shared packages, not frontend modules. |
-| `apps/web/src` | Pages, components, auth/tenant contexts, typed clients. No direct PostgreSQL/Redis access. |
-| `apps/worker/src` | Consumers, schedulers, collection/evaluation, result writers, health, scan completion. No HTTP coupling. |
-| `packages/db` | Drizzle schema/client, tenant helpers, migrations, credentials, partitions. |
-| `packages/queue` | Job types/options/producers and SQL `queue_jobs` ledger; may depend on `db`. |
-| `packages/shared` | Permissions, limits, encryption, logging, SSRF/IP, scheduling, email configuration. No app imports. |
-| `packages/typescript-config` | Compiler configuration only. |
-| `apps/landing` | Independent build/deploy; no internal `workspace:*`, auth, or application API client. |
+| `apps/api/src/<domain>` | `routes.ts` HTTP/context; `schemas.ts` inputs; `service.ts` transport-independent business logic. No frontend imports. |
+| `apps/web` | Pages, components, auth/tenant contexts, typed clients. Browser-safe imports via `api-contract` only; never `shared`, `api`, PostgreSQL, or Redis. |
+| `apps/worker` (deferred) | Consumers, schedulers, collection/evaluation, result writers, health, scan completion. No HTTP coupling. |
+| `apps/landing` (deferred) | Independent build/deploy; no internal `workspace:*`, auth, or application API client. |
+| `packages/api-contract` | Browser-safe Zod schemas, types, error contract; package-root exports only. |
+| `packages/db` + `packages/queue` (deferred) | Drizzle schema/client, tenant helpers, migrations, partitions; job payloads/options/producers + SQL `queue_jobs` ledger. `queue` may depend on `db`. |
+| `packages/shared` | Server-only permissions, limits, encryption, logging, SSRF, email config. No app imports. |
+| `packages/*-config` | Compiler/lint configuration only; no runtime code, no application imports. |
 
-Compose functions with explicit inputs. Avoid circular imports and unneeded repositories, service splits, or DI containers. Check API-to-worker imports and image inputs before changing shared behavior.
+Direction: web -> `api-contract`; api -> `api-contract` + `shared`; queue -> `db`; config packages depend on nothing — enforced by ESLint boundary rules; never weaken rules to pass. Compose functions with explicit inputs; no circular imports or speculative repository layers, service splits, DI containers.
 
-## 3. Request, authentication, authorization and tenant SQL
+## 3. Request, authentication, tenant SQL
 
 ```text
 POST /api/organizations/:orgId/projects/:projectId/scans
-  -> request ID/context + logs/metrics -> rate limiter -> credentialed CORS
-  -> tenant middleware: session -> verified membership -> tenantId/userId/userRole/session
-  -> permission guard -> Zod parsing -> triggerScan(tenantId, projectId, input, userId)
-  -> tenant transaction: scoped project/accounts/active-scan checks -> queued scan -> COMMIT
-  -> enqueue scan-orchestrate -> audit/log -> 201 { scan }
+  -> request context + logs/metrics -> rate limiter -> credentialed CORS
+  -> tenant middleware (session -> verified membership -> tenantId/userId/userRole) -> permission guard -> Zod parsing
+  -> service(tenantId, ...) -> tenant transaction (scoped checks -> change -> COMMIT) -> enqueue + audit -> response
 ```
 
-- Use one organization boundary across URL `orgId`, service `tenantId`, SQL, and jobs. Trust verified membership, not browser selection or bodies.
-- Resolve route `orgId` → `X-Org-ID` → earliest membership by `created_at`; verify membership before data access.
-- Return 401 for invalid sessions, 403 for denied membership/permission. Audit denial without protected data.
-- Guard each operation; use `project:manage` for scan trigger/cancel and assess reads separately. Keep `requirePlatformAdminOr(action)` explicit/local, never a global tenant-context bypass.
-- Set Hono context in middleware and PostgreSQL context in service transactions.
+- One organization boundary across URL `orgId`, service `tenantId`, SQL, and job payloads. Resolve route `orgId` -> `X-Org-ID` -> earliest membership by `created_at`; trust verified membership, never browser selection or bodies; verify membership before data access. 401 invalid session; 403 denied membership/permission; audit denials without protected data. Guard each operation (`project:manage` for scan trigger/cancel); keep `requirePlatformAdminOr(action)` explicit and local — never a global tenant-context bypass.
+- Identity (from first auth feature): Better Auth on PostgreSQL for users, sessions, provider accounts, verifications, memberships, TOTP MFA; self-service organization creation disabled; Entra provider requires explicit configuration before enabling. Sessions via `auth.api.getSession({ headers })`; cookies host-only, `HttpOnly`, `SameSite=Lax`, production `Secure`. Align `CORS_ORIGIN`, `APP_URL`, `trustedOrigins`; never widen cookie scope for CORS; never authenticate landing.
 
-### Identity and cookies
-
-Use Better Auth/Drizzle PostgreSQL for users, sessions, provider accounts, verifications, memberships, and MFA (applies from the first auth feature). Disable self-service organization creation; use TOTP. Require Microsoft/Entra provider configuration, including `ENTRA_CLIENT_ID`, before enabling it.
-
-Resolve sessions with `auth.api.getSession({ headers })`. Keep `nw`, `HttpOnly`, `SameSite=Lax`, production `Secure`, and host-only cookies; verify staging. Align `CORS_ORIGIN`, `APP_URL`, and `trustedOrigins`. Never widen cookie scope for CORS or authenticate the landing site.
-
-### Tenant transactions and roles
+### Tenant transactions (load-bearing)
 
 | Caller | Helper |
 |---|---|
@@ -62,99 +49,56 @@ Resolve sessions with `auth.api.getSession({ headers })`. Keep `nw`, `HttpOnly`,
 | API raw SQL | `withTenantContextRaw(tenantId, async tx => ...)` |
 | Worker raw SQL | `withWorkerTenantContext(tenantId, async tx => ...)` |
 
-Open a transaction; set `set_config('app.tenant_id', tenantId, true)` locally. **Use the supplied `tx` for every query**, including `tx.unsafe`; never substitute a global/pooled handle.
-
-Bind values; retain tenant/project predicates with RLS. Allowlist identifiers/sort columns/directions and check parent scope, not foreign keys alone.
-
-Use non-owner, `NOBYPASSRLS` runtime credentials; reserve owner access for DDL. Apply table-specific `USING`, `WITH CHECK`, restrictive context guards, and FORCE RLS. Allow shared-rule (`tenant_id IS NULL`) catalog reads with valid context, never tenant writes.
-
-Verify intended roles for pre-tenant membership, scheduler discovery, cross-tenant maintenance, and ledger access. Scope privileged control-plane credentials narrowly; never grant runtime superuser.
+- Open a transaction; set `set_config('app.tenant_id', tenantId, true)` locally. Use the supplied `tx` for every query including `tx.unsafe`; never substitute a global/pooled handle.
+- Bind values; retain tenant/project predicates alongside RLS; allowlist identifiers and sort columns/directions; check parent scope, not foreign keys alone.
+- Runtime roles are non-owner, `NOBYPASSRLS`; owner access is reserved for DDL. Apply table-specific `USING`/`WITH CHECK`, restrictive context guards, FORCE RLS. Shared-catalog (`tenant_id IS NULL`) reads allowed with valid context; never tenant writes. Verify intended roles for pre-tenant membership lookup, scheduler discovery, cross-tenant maintenance, and ledger access; never grant runtime superuser.
 
 ## 4. Scan orchestration and completion gate
 
-Keep SQL domain state separate from BullMQ transport: PostgreSQL commit and Redis enqueue are not atomic.
+SQL domain state and BullMQ transport are separate: PostgreSQL commit and Redis enqueue are not atomic; commit first, then compensate failures.
 
 ```text
 API/scheduler -> queued scan -> COMMIT -> scan-orchestrate
-  -> running + scan_tasks(account, region) + total_tasks -> COMMIT -> scan-collect
-  -> AWS credentials/STS or GCP service account -> Prowler OCSF -> resources_current
-  -> claim rule_evaluate_dispatched_at
-  -> COMMIT whole total_rule_evaluate_jobs batch -> enqueue rule-evaluate(ruleSnapshot, output)
+  -> running + scan_tasks + total_tasks -> COMMIT -> scan-collect -> Prowler OCSF -> resources_current
+  -> claim rule_evaluate_dispatched_at -> COMMIT total_rule_evaluate_jobs -> enqueue rule-evaluate
   -> finding_occurrences + finding_current -> independent notify-deliver
-
-Collection terminal counters + evaluation terminal counters
-  -> tryFinalizeScan: both gates -> CAS running -> terminal status
+terminal counters -> tryFinalizeScan (both gates, CAS from running) -> terminal status
   -> reconcileStaleFindings -> refreshDailyAggregates
 ```
 
-### Trigger, collection and fan-out
+- Enforce one non-terminal scan per `(tenant_id, project_id)` via partial unique index; translate `23505` (including wrapped causes) to 409.
+- Commit queued state before enqueue; compensate reported enqueue failure to failed with an error summary. Schedulers poll every 60 s in batches of 10, claim `FOR UPDATE SKIP LOCKED`, commit, then enqueue with compensation.
+- Task identity `(scan_id, cloud_account_id, region)`; deduplicate with BullMQ `jobId`, not job names. Fallback region `us-east-1`; one `global` GCP task; carry scope/config snapshots.
+- Run Prowler via `Bun.spawn` argument array: 10-minute timeout, `json-ocsf`, `/tmp` output; accept exits 0/2; classify other exits/exceptions as retryable or terminal consistently with SQL state. Resolve credentials by `auth_mode`; write temporary GCP JSON as `0600`, remove in `finally`; never put decrypted credentials in jobs or ledger summaries.
+- Dispatch only check-ID matches of enabled project/provider rules; preserve `effective_ruleset` and dispatch-time `ruleSnapshot`. Claim `rule_evaluate_dispatched_at IS NULL` atomically; commit all `total_rule_evaluate_jobs += batch.length` before the first enqueue; recover claim-before-enqueue and partial batches. Insert occurrences retry-safely, unique `(scan_id, rule_id, resource_uid, observed_month)`; upsert current findings on `(tenant_id, project_id, provider, rule_id, resource_uid)`; handle retries between separately committed occurrence/current writes.
 
-- Require connected accounts. Enforce one non-terminal scan per `(tenant_id, project_id)` via partial unique index; translate relevant `23505`, including wrapped causes, to 409.
-- Commit queued state before enqueue; compensate reported enqueue failure to failed with an error summary.
-- Poll schedules every 60 seconds, batch 10. Claim with `FOR UPDATE SKIP LOCKED`, calculate cron/timezone scheduling, commit, then enqueue with compensation.
-- Scope accounts by tenant/project. Use configured AWS locations/regions, fallback `us-east-1`; one `global` GCP task. Carry scope/config snapshots.
-- Reuse `(scan_id, cloud_account_id, region)` task identity on retry. Deduplicate with BullMQ `jobId`, not job names.
+Completion gate — both conditions required for normal finalization:
 
-Run Prowler via `Bun.spawn` argument array: 10-minute timeout, `json-ocsf`, `/tmp/prowler-output`. Accept exits 0/2; classify others/exceptions as retryable or terminal consistently with SQL state. Resolve AWS organization credentials or STS AssumeRole by `auth_mode`. Write temporary GCP JSON as `0600`, remove in `finally`. Never put decrypted credentials in jobs/ledger summaries.
+1. `total_tasks > 0` and `completed_tasks + failed_tasks >= total_tasks`; cancelled collection tasks count as failed for this gate.
+2. `completed_rule_evaluate_jobs + failed_rule_evaluate_jobs >= total_rule_evaluate_jobs`; count evaluation completion or exhausted-attempt failure, never retryable failure.
+3. Select one finalizer with `UPDATE ... WHERE status = 'running' RETURNING id`; duplicate terminal events and collection retries must be safe. Status precedence: requested cancellation -> `cancelled`; else failed collection/evaluation -> `completed_with_errors`; else `completed`. Handle pre-task cancellation, no-account failure, and orchestration errors outside the task-required gate.
 
-Load enabled project/provider rules and framework mappings; dispatch only check-ID matches. Preserve `effective_ruleset` and dispatch-time `ruleSnapshot`. Claim `rule_evaluate_dispatched_at IS NULL` atomically; commit all `total_rule_evaluate_jobs += batch.length` before first enqueue. Recover claim-before-enqueue and partial batches.
+- Post-gate: `reconcileStaleFindings` covers only effective rules and covered provider/account/region/service slices (account for evaluation failures and rule-to-slice coverage); `refreshDailyAggregates` builds from current findings/framework mappings; keep periodic maintenance separate. Notifications are independent: terminal status does not establish notification, reconciliation, or aggregate success; expose failures and recovery separately. Sweep every 5 minutes for 30-minute inactivity; compare counters with waiting/active/delayed work before failing gaps; counter repair is not exactly-once recovery.
 
-Insert occurrences retry-safely, unique on `(scan_id, rule_id, resource_uid, observed_month)`; upsert current findings on `(tenant_id, project_id, provider, rule_id, resource_uid)`. Handle retries between separately committed occurrence/current writes.
-
-### Completion and recovery
-
-Require both gates for normal finalization:
-
-1. `total_tasks > 0` and `completed_tasks + failed_tasks >= total_tasks`; count cancelled collection tasks as failed for this gate.
-2. `completed_rule_evaluate_jobs + failed_rule_evaluate_jobs >= total_rule_evaluate_jobs`.
-
-Count evaluation completion or exhausted-attempt failure, never retryable failure. Handle duplicate terminal events and collection retries safely. Select one finalizer with `UPDATE ... WHERE status = 'running' RETURNING id`.
-
-Prioritize requested cancellation → `cancelled`; else failed collection/evaluation → `completed_with_errors`; else `completed`. Handle pre-task cancellation, no-account failure, and orchestration errors outside the task-required gate.
-
-Run `reconcileStaleFindings` and `refreshDailyAggregates` post-gate. Reconcile only effective rules and covered provider/account/region/service slices; account for evaluation failures and rule-to-slice coverage before passing stale failures. Build daily summaries from current findings/framework mappings; keep periodic maintenance separate.
-
-Keep notifications independent. Terminal status does not establish notification, reconciliation, or aggregate success; expose failures and recovery separately.
-
-Sweep every 5 minutes for 30-minute inactivity. Compare counters with waiting/active/delayed work before failing gaps. Cover missing/stale ledger, lost collection, partial fan-out, and status-before-refresh crashes; counter repair is not exactly-once recovery.
-
-## 5. Domain persistence model
+## 5. Persistence model
 
 ```text
-users -- memberships(role) -- organizations (= tenants)
-  +-- sessions/accounts/MFA      +-- teams -- team_memberships
-                                +-- projects
-                                |   +-- project_cloud_accounts
-                                |   +-- project_frameworks -- frameworks -- framework_mappings -- rules
-                                |   +-- scan_schedules -- scans -- scan_tasks
-                                |   +-- finding_occurrences -> finding_current -> daily aggregates
-                                |   +-- resources_current -- resource_edges
-                                |   +-- services -- owners/resources/dependencies
-                                |   +-- monitors -- targets/runs -- service_objectives
-                                |   +-- reports
-                                +-- org_credentials
-                                +-- notification_destinations -- notification_deliveries
-                                +-- employees / service_integrations -- integration_users
-                                +-- audit_events / queue_jobs
+organizations (= tenants) -- memberships(role) -- users -- sessions/accounts/MFA
+  +-- teams -- team_memberships; projects -- project_cloud_accounts / project_frameworks
+  +-- frameworks -- framework_mappings -- rules; scan_schedules -- scans -- scan_tasks
+  +-- finding_occurrences -> finding_current -> daily aggregates
+  +-- resources_current -- resource_edges; services -- owners/dependencies
+  +-- monitors -- targets/runs -- service_objectives; reports / org_credentials
+  +-- notification_destinations -- notification_deliveries; employees / service_integrations; audit_events / queue_jobs
 ```
 
-- Use text user IDs, UUID organization/project IDs, and roles `owner`, `admin`, `viewer`, `auditor`. Enforce tenant-safe relationships and valid membership for `last_active_tenant_id`.
-- Keep project teams, provider/auth/scope, and frameworks explicit. Persist schedules, task/evaluation totals/outcomes, cancellation, effective rulesets, and dispatch claims—not Redis-only progress.
-- Separate monthly history, current findings, and daily summaries; not event sourcing. Separate resources/edges, service ownership/mappings/dependencies, infrastructure health, and synthetic monitors/targets/runs/objectives.
-- Separate employee/provider inventory from login accounts and audit/`queue_jobs` from business state; the ledger is not the queue engine.
-- Store XLSX/CSV/JSON bytes in PostgreSQL `reports.content`, not PDF/object storage. Read in tenant transaction, serialize outside, persist in scoped transaction.
+- Text user IDs; UUID organization/project IDs; roles `owner`, `admin`, `viewer`, `auditor`. Enforce tenant-safe relationships and valid membership for `last_active_tenant_id`. Persist schedules, task/evaluation totals/outcomes, cancellation, effective rulesets, and dispatch claims — not Redis-only progress.
+- Separate monthly occurrence history, current findings, and daily summaries (not event sourcing); separate employee/provider inventory from login accounts; audit/`queue_jobs` are operational, not business state; the ledger is not the queue engine.
+- Store XLSX/CSV/JSON bytes in `reports.content` (no PDF/object storage); read in tenant transaction, serialize outside, persist in scoped transaction.
+- Migrations: ordered `NNNN_*.sql` via the custom runner with `__nightwatch_migrations` tracking, advisory locking, per-migration transactions; never `drizzle-kit push`/`migrate`; never rewrite applied migrations. Resolve owner URL before application URL; review generated SQL against ordered/applied migrations.
+- Bootstrap monthly `audit_events`, `monitor_runs`, `finding_occurrences` partitions 12 months ahead via owner-role scheduled DDL; no request-time or DML-worker partition creation.
 
-### Schema, migrations and partitions
-
-Maintain `packages/db/src/schema` and ordered `packages/db/src/migrations/NNNN_*.sql`. Use `bun run db:migrate` with `__nightwatch_migrations(id, filename, applied_at)`, advisory locking, and per-migration transactions; not `drizzle-kit migrate`/`push`.
-
-Resolve `DATABASE_OWNER_URL` before `DATABASE_URL`; verify targets/fallbacks explicitly. Review generated SQL against ordered/applied migrations, including schema, indexes, uniqueness, foreign keys, RLS, grants, and partitions.
-
-Bootstrap monthly `audit_events`, `monitor_runs`, and `finding_occurrences` partitions 12 months ahead; maintain via owner-role scheduled DDL. Verify parent/child policies and month boundaries. No request-time or DML-worker partition creation.
-
-## 6. Queue topology and integrations
-
-Use these per-worker-instance defaults:
+## 6. Queue topology
 
 | Queue | Concurrency | Attempts | Responsibility |
 |---|---:|---:|---|
@@ -168,76 +112,38 @@ Use these per-worker-instance defaults:
 | `health-check` | 10 | 3 | Synthetic monitors |
 | `slo-recalculate` | 5 | 3 | Service objectives |
 
-Back off exponentially from 5 seconds. Resolve `WORKER_CONCURRENCY_<QUEUE>` → `WORKER_DEFAULT_CONCURRENCY` → built-in. For `prowler-rule-sync`, allow only its explicit queue override, not the global override. Concurrency 1 is not a distributed singleton.
+- Per-worker-instance defaults; back off exponentially from 5 s. Resolve per-queue override -> worker default -> built-in; `prowler-rule-sync` accepts only its explicit queue override, never the global one. Concurrency 1 is not a distributed singleton. Carry `tenantId` in every job; authorize shared-catalog jobs separately via `requestedByTenantId`; payload identity is not SQL context. Distinguish retryable, delayed, and exhausted states; observe ledger/reconciliation and enqueue-to-ledger failures.
+- Scope notification destinations by tenant/project; apply policy/mute windows; record each outcome; never repeat successful sends on bookkeeping retries. Pin Prowler until an approved, compatibility-verified change; separate Prowler security collection, AWS SDK health, and HTTP/DNS/TCP monitoring; distinguish integration imports/credentials from live OAuth sync.
 
-Carry `tenantId`; separately authorize shared-catalog jobs using `requestedByTenantId`. Payload identity is not SQL context. Observe ledger/reconciliation and enqueue-to-ledger failures; distinguish retryable, delayed, and exhausted states.
+## 7. Cross-cutting contracts
 
-Scope notification destinations by tenant/project; apply policy/mute windows and record each outcome. Avoid repeating successful sends on bookkeeping retries.
-
-Separate AWS/GCP Prowler security, AWS SDK health, and HTTP/DNS/TCP monitoring. Pin Prowler `5.20.0` until an approved, compatibility-verified change. Use adapters for Atlassian, GitLab, Datadog, Figma, AWS Identity Center, and Claude Teams CSV; distinguish import/credentials from live OAuth sync.
-
-## 7. Cross-cutting concerns
-
-- Use Zod/shared validation and `AppError(status, code, message, details?)` → `{ error: { code, message, details? } }`. Return generic unknown errors in production-like environments; exclude secrets.
-- Carry request/actor context into audits; distinguish transactional from best-effort recording.
-- Use AES-256-GCM: random 12-byte IV, 16-byte tag, 32-byte base64url-decoded key. Active: `CREDENTIAL_ENCRYPTION_KEY`; retained: `CREDENTIAL_ENCRYPTION_KEY_V<n>`. Not KMS envelope encryption.
-- Apply SSRF helpers/wrappers to HTTP(S), embedded credentials, blocked headers, and private addresses. Cover redirects, DNS changes, and connection-time behavior.
-- Separate Redis sliding-window and auth throttling. Exercise errors and the 2-second limiter timeout; do not assume fail-closed.
-- Use Pino in production-like runtimes; redact each entrypoint. Never log whole jobs, credentials, or secret-bearing provider responses.
-- Keep `/health` liveness; `/health/ready` runs database `SELECT 1` plus Redis ping, returning 200/503. During the scaffold phase without infrastructure, `/health/ready` is a self-check only; the full dependency check applies when persistence lands. Verify RLS, migrations, partitions, SMTP, providers, and workers separately.
-- Validate config at consuming entrypoints. Check email before email-capable API/workers start; no SMTP requirement for scheduler/health-only processes.
+- Errors: Zod/shared validation; `AppError(status, code, message, details?)` -> `{ error: { code, message, details? } }`; generic unknown errors in production-like environments; audits carry request/actor context (transactional vs best-effort); never secrets in payloads.
+- Encryption: AES-256-GCM, random 12-byte IV, 16-byte tag, 32-byte base64url key; one active key plus retained versioned keys; not KMS envelope encryption.
+- SSRF: apply helpers to all outbound HTTP(S); cover embedded credentials, blocked headers, private addresses, redirects, DNS changes, connection-time behavior. Rate limiting: Redis sliding window separate from auth throttling; exercise errors and the 2-second limiter timeout; never assume fail-closed.
+- Logging: structured Pino in production-like runtimes; redact per entrypoint; never log whole jobs, credentials, or secret-bearing provider responses. Health: `/health` liveness; `/health/ready` = database `SELECT 1` + Redis ping -> 200/503 (self-check only during scaffold). Readiness is not proof of RLS, partitions, SMTP, or worker execution.
 
 ## 8. Frontend data integration
 
-Put typed clients in `apps/web/src/lib/api`; use `/api` with credentials. Handle JSON, empty 204, and non-OK responses. Validate responses against `@nightwatch/api-contract` schemas; TypeScript generics alone do not validate payloads, and `ApiError(message, status)` does not automatically expose server `error.code`/`details`.
-
-Routing uses React Router 7; server state uses TanStack Query. Load `/me/context`; select valid in-memory organization → valid `lastActiveTenantId` → first membership. Require `PATCH /me/active-org` success before switching; update the router-facing active-tenant snapshot, reset project, clear tenant-sensitive queries. (Tenant context applies from the first auth feature.)
-
-Key queries by `organizationId`, `projectId`, filters, and selected IDs; await resolved scope. Keep `staleTime: 30_000`, `retry: 1`. Block in-flight responses from repopulating another tenant's view.
-
-Poll active scans every 5 seconds; stop at terminal state via the shared active-scan predicate. This is polling, not WebSocket/SSE. Keep role/router helpers as UX only. Follow [design system](design-system.md) loading, empty, error, and permission states.
+- Typed clients in `apps/web/src/lib/api` against `/api` with credentials; handle JSON, empty 204, and non-OK responses. Validate responses against `api-contract` schemas; TypeScript generics do not validate payloads, and `ApiError` does not automatically expose server `error.code`/`details`.
+- Tenant selection: load `/me/context`; select valid in-memory organization -> valid `lastActiveTenantId` -> first membership. Require `PATCH /me/active-org` success before switching; update the router-facing snapshot, reset project, clear tenant-sensitive queries. Key queries by `organizationId`, `projectId`, filters, selected IDs; `staleTime: 30_000`, `retry: 1`; block in-flight responses from repopulating another tenant's view.
+- Poll active scans every 5 s; stop at terminal state via the shared active-scan predicate; polling, not WebSocket/SSE. Role/router helpers are UX only — authorization lives in the API.
 
 ## 9. Deployment topology
 
-Use [technology](tech.md) commands/configuration. Develop with PostgreSQL 17, Redis 7, Mailpit. Full Compose separates API, main worker, scheduler, health dispatcher, health worker, monitor dispatcher; run Vite on host. Keep dev credentials/ports local-only.
-
 ```text
-SPA / Astro landing: independent builds and deployments
-API image: owner-role pre-deploy migrations + partition bootstrap
-           application-role Hono runtime -> /health/ready
-Worker image: combined consumers + health worker + scheduler/dispatcher loops
-              OR explicitly configured separate process roles
+SPA and Astro landing: independent builds and deployments
+API image: owner-role pre-deploy migrations + partition bootstrap; application-role runtime -> /health/ready
+Worker image: combined consumers + scheduler/dispatcher loops, OR explicitly configured separate roles
 PostgreSQL + Redis; owner-role monthly partition-maintenance cron
 ```
 
-Use `dist/all.js` for Railway combined workers; `index.js` starts main consumers, not every role. Run non-root UID 1001 with Bun/Prowler dependencies.
+- Choose combined or split worker entrypoints deliberately; check consumers/schedulers before scaling replicas; the default entrypoint starts main consumers, not every role. Run containers non-root with pinned runtime dependencies; align build-time and runtime environment.
+- Exercise shutdown, interrupted/stalled jobs, and retry-safe effects; do not assume full drain. Maintain partitions between deploys. Verify TLS/origins, secrets, replicas, credentials, DB privileges in the target environment; require authorization for production credentials, migrations, deployment, release.
 
-Exercise shutdown, interrupted/stalled jobs, and retry-safe effects; do not assume full drain. Maintain partitions between deploys. Verify DNS/TLS, secrets, replicas, credentials, and DB privileges. Require authorization for production credentials, migrations, deployment, and release.
+## 10. Implementation and verification guidelines
 
-## 10. Implementation guidelines and testing boundaries
-
-Reuse domain patterns and explicit tenant/project/actor inputs. Keep network/CPU work outside SQL transactions. Enforce concurrent invariants in SQL; compensate external effects.
-
-### API operations
-
-Add domain schemas/routes/services; mount in `apps/api/src/app.ts`. Classify tenant-protected, pre-tenant, or narrow platform access. Keep HTTP translation in routes; apply permissions, validation, errors, audits, and tenant helpers. Update clients/consumers.
-
-### Persistence
-
-Update schema/exports and next ordered migration with scoped constraints, RLS, grants, partitions, and custom-runner compatibility. Bind values; reuse pagination/filter helpers. Verify isolation/missing context under non-owner roles on a dedicated DB.
-
-### Jobs
-
-Define `packages/queue/src/jobs.ts` payloads, `metadata.ts`/`queues.ts` options, producers/exports. Specify scope, identity, snapshots, retries, deduplication; register consumers/ledger monitoring in the correct entrypoint. Preserve scan claims, total-before-enqueue, exhausted counters, CAS, and process-specific dependencies.
-
-### Frontend features
-
-Extend domain clients and pages/components with scoped query keys/guards. Authorize on the API; update tenant snapshots/cache invalidation on selection changes. Exercise loading, empty, error, denied, and success states.
-
-## 11. Risks and verification
-
-- Verify real-role denial, tenant A/B, cross-project not-found, and missing context; mocks cannot prove RLS. Check pre-tenant lookup, schedulers, and ledger separately.
-- Cover active-scan races, partial writes/enqueues, dispatch-claim crashes, exhausted retries, cancellation, duplicates, and concurrent finalizers. SQL/Redis and send/bookkeeping remain non-atomic.
-- Verify independent delivery, report formats/content, reconciliation coverage, and post-status aggregate recovery. Distinguish stale/delayed ledger work.
-- Check month boundaries and owner/runtime privileges on dedicated databases. Inspect migration/seed/partition/Redis-flush hooks; use disposable destructive-setup targets.
-- Exercise browsers and actual process roles. Health 200/typechecking do not verify integrations, recovery, or delivery.
+- API: add domain schemas/routes/services; mount in `app.ts`; classify tenant-protected, pre-tenant, or narrow platform access; keep HTTP translation in routes; apply permissions, validation, errors, audits, tenant helpers; update clients/consumers.
+- Persistence: update schema/exports plus the next ordered migration with scoped constraints, RLS, grants, partitions; keep network/CPU work outside SQL transactions; enforce concurrent invariants in SQL; verify isolation and missing-context behavior under non-owner roles on a dedicated database.
+- Jobs: define payloads, options, producers in `packages/queue`; specify scope, identity, snapshots, retries, deduplication; register consumers and ledger monitoring in the correct entrypoint; preserve scan claims, total-before-enqueue, exhausted counters, CAS; compensate external effects.
+- Frontend: extend domain clients and pages with scoped query keys/guards; update tenant snapshots and cache invalidation on selection change; exercise loading, empty, error, denied, success states.
+- Verify real-role denial, tenant A/B isolation, cross-project not-found, missing tenant context — mocks cannot prove RLS; check pre-tenant lookup, schedulers, ledger separately. Cover active-scan races, partial writes/enqueues, dispatch-claim crashes, exhausted retries, cancellation, duplicates, concurrent finalizers; SQL/Redis and send/bookkeeping remain non-atomic. Verify independent notification delivery, report content, reconciliation coverage, post-status aggregate recovery, month boundaries, owner/runtime privileges on dedicated/disposable databases. Exercise real browsers and actual process roles; health 200 and typechecking do not verify integrations, recovery, or delivery.

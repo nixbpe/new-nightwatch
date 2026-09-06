@@ -13,7 +13,6 @@ Follow the applicable reference, including its verification requirements. Keep d
 
 | Work | Reference |
 | --- | --- |
-| Stack, dependencies, commands, environment and CI | [Technology](docs/tech.md) |
 | API, authorization, DB/RLS, queues and dataflow | [Architecture](docs/architecture.md) |
 | UI, fonts, themes, components and accessibility | [Design system](docs/design-system.md) |
 
