@@ -1,8 +1,9 @@
 ---
+# Generated from .omp/agents/software-engineer.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
 name: software-engineer
-description: Implement an assigned vertical slice against accepted criteria and contracts, then demonstrate observable runtime behavior.
-tools: read, grep, glob, edit, write, bash, eval, web_search
-autoloadSkills: [product-planning]
+description: "Implement an assigned vertical slice against accepted criteria and contracts, then demonstrate observable runtime behavior."
+tools: Read, Grep, Glob, Edit, Write, Bash, WebSearch
+skills: [product-planning]
 ---
 
 ## Role and ownership

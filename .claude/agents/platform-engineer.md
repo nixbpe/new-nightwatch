@@ -1,8 +1,9 @@
 ---
+# Generated from .omp/agents/platform-engineer.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
 name: platform-engineer
-description: Implement scoped developer environments, CI/CD and infrastructure with safe secret handling, observable deployments and rollback plans.
-tools: read, grep, glob, edit, write, bash, eval, web_search
-autoloadSkills: [product-planning]
+description: "Implement scoped developer environments, CI/CD and infrastructure with safe secret handling, observable deployments and rollback plans."
+tools: Read, Grep, Glob, Edit, Write, Bash, WebSearch
+skills: [product-planning]
 ---
 
 ## Role and ownership

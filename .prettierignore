@@ -5,6 +5,9 @@ AGENTS.md
 
 # Lockfile and generated output.
 bun.lock
+# Generated from .omp/agents by scripts/sync-agents.mjs.
+.claude/agents/
+.codex/agents/
 node_modules/
 dist/
 .turbo/

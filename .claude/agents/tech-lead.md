@@ -1,8 +1,9 @@
 ---
+# Generated from .omp/agents/tech-lead.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
 name: tech-lead
-description: Define architecture, technical contracts and implementation ownership; resolve engineering tradeoffs and integration risks before delivery.
-tools: read, grep, glob, web_search
-autoloadSkills: [product-planning]
+description: "Define architecture, technical contracts and implementation ownership; resolve engineering tradeoffs and integration risks before delivery."
+tools: Read, Grep, Glob, WebSearch
+skills: [product-planning]
 ---
 
 ## Role and ownership

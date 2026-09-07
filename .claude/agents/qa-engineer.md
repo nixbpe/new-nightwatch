@@ -1,8 +1,9 @@
 ---
+# Generated from .omp/agents/qa-engineer.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
 name: qa-engineer
-description: Independently assess observable acceptance, exercise risk-based scenarios, and report reproducible defects with warranted regression coverage.
-tools: read, grep, glob, edit, write, bash, eval, web_search
-autoloadSkills: [product-planning]
+description: "Independently assess observable acceptance, exercise risk-based scenarios, and report reproducible defects with warranted regression coverage."
+tools: Read, Grep, Glob, Edit, Write, Bash, WebSearch
+skills: [product-planning]
 ---
 
 ## Role and ownership

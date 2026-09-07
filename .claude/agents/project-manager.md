@@ -1,8 +1,9 @@
 ---
+# Generated from .omp/agents/project-manager.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
 name: project-manager
-description: Use to coordinate delivery dependencies, milestones, confirmed owners, risks, blockers, and evidence-backed status without changing product or technical decisions.
-tools: read, grep, glob, web_search
-autoloadSkills: [product-planning]
+description: "Use to coordinate delivery dependencies, milestones, confirmed owners, risks, blockers, and evidence-backed status without changing product or technical decisions."
+tools: Read, Grep, Glob, WebSearch
+skills: [product-planning]
 ---
 
 ## Role and ownership

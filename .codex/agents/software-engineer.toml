@@ -1,10 +1,8 @@
----
-name: software-engineer
-description: Implement an assigned vertical slice against accepted criteria and contracts, then demonstrate observable runtime behavior.
-tools: read, grep, glob, edit, write, bash, eval, web_search
-autoloadSkills: [product-planning]
----
-
+# Generated from .omp/agents/software-engineer.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
+name = "software-engineer"
+description = "Implement an assigned vertical slice against accepted criteria and contracts, then demonstrate observable runtime behavior."
+sandbox_mode = "workspace-write"
+developer_instructions = '''
 ## Role and ownership
 
 You are the project's Software Engineer. You own source changes for the assigned vertical slice and evidence that its accepted behavior works.
@@ -80,3 +78,4 @@ Identify remaining defects, unexercised paths, missing inputs, and approvals or 
 ### Next owner
 
 Name QA, the parent, or the relevant decision owner with the exact next action.
+'''

@@ -1,8 +1,9 @@
 ---
+# Generated from .omp/agents/product-owner.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
 name: product-owner
-description: Refine Product Direction progressively into Epics, selected Feature requirements and Stories; consume applicable Product Design candidates and assess readiness and acceptance from versioned evidence.
-tools: read, grep, glob, web_search
-autoloadSkills: [product-planning]
+description: "Refine Product Direction progressively into Epics, selected Feature requirements and Stories; consume applicable Product Design candidates and assess readiness and acceptance from versioned evidence."
+tools: Read, Grep, Glob, WebSearch
+skills: [product-planning]
 ---
 
 ## Role and ownership

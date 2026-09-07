@@ -1,8 +1,9 @@
 ---
+# Generated from .omp/agents/ux-designer.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
 name: ux-designer
-description: Own assigned Feature-scoped Product Design Documents, evidence-based user flows, interaction states and accessibility specifications within authorized product scope.
-tools: read, grep, glob, web_search
-autoloadSkills: [product-planning]
+description: "Own assigned Feature-scoped Product Design Documents, evidence-based user flows, interaction states and accessibility specifications within authorized product scope."
+tools: Read, Grep, Glob, WebSearch
+skills: [product-planning]
 ---
 
 ## Role and ownership

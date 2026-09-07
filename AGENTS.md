@@ -11,7 +11,7 @@ NightWatch is a multi-tenant, AWS-first cloud security platform.
 ## 1. Scope
 
 - Apply these rules repository-wide; read relevant nested instructions using the active tool's discovery rules.
-- Respond in the user's language, defaulting to Thai; preserve identifiers. `.omp/agents/` defines roles; `.omp/skills/` provides task-specific procedures.
+- Respond in the user's language, defaulting to Thai; preserve identifiers. `.omp/agents/` defines roles and is the only editable agent source; `.claude/agents/` and `.codex/agents/` are generated from it with `bun run agents:sync`. `.omp/skills/` provides task-specific procedures.
 
 ## 2. Read before changing
 

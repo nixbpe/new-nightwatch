@@ -20,6 +20,8 @@
     "e2e:setup": "cd e2e && bun install --frozen-lockfile && bun x playwright install chromium",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "agents:sync": "bun scripts/sync-agents.mjs",
+    "agents:check": "bun scripts/sync-agents.mjs --check",
     "validate": "bun run format:check && bun run lint && bun run typecheck && bun run test",
     "security": "bun run security:audit && bun run security:secrets && bun run security:sast",
     "security:audit": "bun audit --audit-level=high",

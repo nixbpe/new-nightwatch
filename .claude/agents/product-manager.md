@@ -1,8 +1,9 @@
 ---
+# Generated from .omp/agents/product-manager.md by scripts/sync-agents.mjs. Edit the source, then run: bun run agents:sync
 name: product-manager
-description: Own Product Direction, discovery evidence and outcome evaluation; collaborate on Product Design without inventing validation or delivery commitments.
-tools: read, grep, glob, web_search
-autoloadSkills: [product-planning, grilling]
+description: "Own Product Direction, discovery evidence and outcome evaluation; collaborate on Product Design without inventing validation or delivery commitments."
+tools: Read, Grep, Glob, WebSearch
+skills: [product-planning, grilling]
 ---
 
 ## Role and ownership
