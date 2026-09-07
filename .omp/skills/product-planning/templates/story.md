@@ -4,14 +4,15 @@ Apply the Entry protocol and Return contract in `skill://product-planning` befor
 
 # Story: [Small end-to-end observable behavior]
 
-A Story is a user-observable slice, not a technical layer or an implementation Task renamed as user value. Detail only selected near-term Stories. The parent Feature spec remains the single requirements source; reference its rules, flows and criteria instead of maintaining a duplicate spec.
+A Story is a user-observable slice, not a technical layer or an implementation Task renamed as user value. Detail only selected near-term Stories. The parent Feature spec remains the single requirements source; reference its rules, flows and criteria instead of maintaining a duplicate spec. Link the applicable PDD (Product Design Document) candidate for solution/experience design; PDD is a companion under Feature, never this Story's parent or a second requirements source.
 
 ## Controls and traceability
 
 - ID: [existing ID, otherwise draft convention S-001; not a tracker ID]
 - Current candidate / revision, when needed: [identity required by current approval/evidence; omit unnecessary revision lineage]
 - Parent Feature: [ID / actual path or supplied source, candidate when needed and relevant semantic rule/flow/acceptance refs]
-- Missing ancestor links: [None, or exact gaps in Feature → Epic → PDD traceability; never fabricate approved parents]
+- Missing ancestor links: [None, or exact gaps in Feature → Epic → Direction traceability; never fabricate approved parents]
+- Applicable PDD design candidate: [ID / actual path or supplied source, exact candidate and relevant design/Feature rule refs; actual approval scope if required; None with applicability reason or exact missing input, not an automatic new document request]
 - delivery_status: [Draft | Refining | Ready | In Progress | Blocked | Done | Stopped]
 - Owner: [named owner or Unknown / proposed owner, explicitly labeled]
 - Evidence / decision references: [current support, counterevidence, slice selection and scope decisions; not a Q&A/review timeline]
@@ -24,7 +25,7 @@ A Story is a user-observable slice, not a technical layer or an implementation T
 - Scope: [small complete slice through only the layers actually needed]
 - Non-goals: [adjacent behavior or technical work excluded]
 - Current scope acceptance: [decision owner, exact candidate/scope and reference; otherwise pending; editorial completion does not confer acceptance]
-- Needed UX / contracts: [current approved Feature/design/technical contract references or unresolved input and owner; do not invent technical decisions]
+- Needed UX / contracts: [applicable PDD/design candidate, current Feature requirements and engineer/Tech Lead-owned technical contract references; actual approvals where required, or unresolved input and owner; do not invent design or technical decisions]
 
 ## Acceptance and safe verification
 
@@ -49,7 +50,7 @@ Keep alternatives as labeled proposals/questions for the contract owner, even in
 | --- | --- | --- | --- |
 | [input, decision or item] | [why required] | [observable condition] | [who supplies it] |
 
-Parentage is containment, not an automatic blocking edge. This Story may start while its Feature is In Progress when actual inputs are ready; no role-order edges or cycles.
+Parentage is containment, not an automatic blocking edge. This Story may start while its Feature is In Progress when actual inputs are ready; no role-order edges or cycles. A PDD approval or high-fidelity design is not a universal start gate; establish which missing design input blocks this slice, if any.
 
 - Ready assessment: [evidence for accepted current scope, observable criteria, needed UX/contracts, resolved or explicitly accepted relevant risks, ownership and safe verification]
 - Missing readiness inputs: [None with evidence, or exact gap and ready condition; future work may remain Draft]

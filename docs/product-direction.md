@@ -1,23 +1,23 @@
-# NightWatch — Product Discovery & Definition Document
+# NightWatch — Product Direction
 
 ## 1. Document controls
 
 | Field | Value |
 | --- | --- |
-| ID / revision | PDD-001 / v2 |
-| document_status | Draft |
+| ID / revision | DIR-001 / v2 — retained direction source revision, not a new approval candidate |
+| document_status | Direction Approved |
 | outcome_status | Not measured |
 | Parent | None — root product direction |
 | Owner | Product Manager role proposed; accountable person not yet confirmed |
 | Direction decisions | User-selected boundaries D1–D9 below; the user authorized incorporating these decisions and the PM recommendations into this revision |
-| Approval boundary | Selected direction is recorded, not pending again. This complete revision, proposed research protocols and measurement definitions have not received separate approval; no implementation or release is authorized |
+| Approval boundary | Historical provenance: the unchanged direction scope was approved under the former discovery artifact identity PDD-001 v2 on 2026-09-07; that approval remains bounded to the same direction content now identified as DIR-001, not a new Product Design Document. E-001 v0 scope was approved on 2026-09-07; E001-A1 authorized F-001 drafting. F001-A1 approved F-001 v1. Subsequent F001-D2/D3 confirmed C1–C9/G1–G23; working F-001 v3 incorporates these answers and bounded read-only reviews F001-R3. Integrated v3 acceptance, exact proposed contract freeze and readiness evidence remain outstanding. No other planning artifacts, research execution, implementation or release are authorized; research protocols/measurement definitions remain proposals |
 | Revision purpose | Focus the new product on explainable technical-risk prioritization for service-provider Platform/SRE teams, across Projects within one customer |
 
-**PDD** means Product Discovery & Definition Document. NightWatch is a **new, multi-tenant, AWS-first cloud security platform**, using **Project** as the operational product term. Platform framing and terminology follow [Repository instructions](../AGENTS.md). This document defines product intent, not implemented capabilities or customer-validated demand.
+This **Product Direction** document retains the product why, discovery, boundaries and outcomes; it is not a Product Design Document (PDD). The former discovery artifact ID PDD-001 is retired and appears only as historical provenance; it must not be reused for a new design candidate. NightWatch is a **new, multi-tenant, AWS-first cloud security platform**, using **Project** as the operational product term. Platform framing and terminology follow [Repository instructions](../AGENTS.md). This document defines product intent, not implemented capabilities or customer-validated demand.
 
 ### Decision record
 
-Source: the user's nine answers to the PM-review grilling rounds in this conversation, followed by “ดำเนินการปรับ pdd ตามคำแนะนำได้เลย”. These local decision IDs preserve the answer-to-scope mapping; they are not tracker IDs or customer evidence. The precise answer timestamps are not recorded here. The source PDD was v1; this revision incorporates those decisions as v2.
+Source: the user's nine answers to the PM-review grilling rounds in this conversation, followed by the historical request “ดำเนินการปรับ pdd ตามคำแนะนำได้เลย”. These local decision IDs preserve the answer-to-scope mapping; they are not tracker IDs or customer evidence. The precise answer timestamps are not recorded here. In the former discovery artifact's history, the source was v1 and those decisions were incorporated as v2. This rename retains that direction content and source revision; it creates no new approval or Product Design candidate.
 
 | ID / source | User-selected direction | Consequence for the first scope |
 | --- | --- | --- |
@@ -167,7 +167,7 @@ H1, H2, H4, H5 and H6 retain their v1 identities with the selected audience and 
 
 These are proposed qualitative decision rules, not completed protocols or numerical thresholds. Agree task selection, cohort, reference rubric and aggregate support/reject/inconclusive criteria before running a study. Do not retrofit criteria to favorable answers.
 
-**First proposed learning step:** H1, followed by H2/H4 on relevant scenarios if separately authorized. The H1 exit is a documented decision to retain, revise or reject the problem hypothesis for the observed cohort, including contrary examples. It need not reopen the selected direction without new evidence. Named participants, consent, safe materials, study owner and execution authorization are prerequisites for participant research, not for this PDD update or desk research.
+**First proposed learning step:** H1, followed by H2/H4 on relevant scenarios if separately authorized. The H1 exit is a documented decision to retain, revise or reject the problem hypothesis for the observed cohort, including contrary examples. It need not reopen the selected direction without new evidence. Named participants, consent, safe materials, study owner and execution authorization are prerequisites for participant research, not for this Product Direction update or desk research.
 
 ## 7. Outcomes and measurement
 
@@ -198,4 +198,4 @@ The primary audience, provider context, main job, within-customer comparison sco
 
 Reporting, notifications, native lifecycle and adjacent modules require later selection, not resolution as prerequisites for this first loop. Unknown details block only the work that depends on them: participant studies need authorized access; affected implementation needs its agreed product/technical contracts. No blanket product blocker is declared.
 
-**Handoff:** PDD-001 v2 incorporates the PM review and all nine user decisions. The document remains Draft with the selected direction recorded and outcomes Not measured; no customer validation, delivery or release is claimed. Next owner is the user/product decision owner with PM input for review of this revision and selection of separately authorized research or refinement. No Epics, Features or implementation tasks are created by this update.
+**Handoff:** DIR-001 retains Direction Approved for the unchanged direction scope identified in the historical approval provenance in §1, outcomes Not measured. E-001 v0 scope approval (E001-A1) and F-001 v1 document approval (F001-A1) remain revision-bound. Current [F-001 v3](planning/F-001-workspace-onboarding.md) integrates user answers C1–C9/G1–G23 (F001-D2/D3) and bounded data/security/UX/QA reviews (F001-R3), not blanket v3 approval. QA confirmed the historical Ready/Done documentary correction in the reviewed v2 candidate; runtime acceptance remains unexercised. Exact T1/U2 contract freeze, integrated acceptance and ownership/environment evidence remain outstanding. No implementation, customer validation or release is claimed or authorized.

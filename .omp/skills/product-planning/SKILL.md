@@ -1,9 +1,9 @@
 ---
 name: product-planning
-description: Draft, refine, review or rewrite assigned PDD/Epic/Feature/Story/Task artifacts as current-state documents, or assess acceptance. AI-oriented operation routing, bounded authority, semantic traceability and evidence gates; never starts unassigned planning or delivery.
+description: Draft, refine, review or rewrite assigned Direction/Epic/Feature/PDD/Story/Task artifacts as current-state documents, or assess acceptance. AI-oriented operation routing, bounded authority, semantic traceability and evidence gates; never starts unassigned planning or delivery.
 license: MIT
 metadata:
-  adapted-for: OMP PDD-first product planning
+  adapted-for: OMP bounded product planning and design
   spec-source: https://github.com/mattpocock/skills/blob/main/skills/engineering/to-spec/SKILL.md
   spec-upstream-blob: 3f52599ae2a4347aee5a07432c2707518e691a7f
   slicing-source: https://github.com/mattpocock/skills/blob/main/skills/engineering/to-tickets/SKILL.md
@@ -12,7 +12,7 @@ metadata:
 
 # Product planning
 
-This project defines **PDD = Product Discovery & Definition Document**. This is a local convention, not a universal framework. Specification synthesis and vertical slicing are adapted from Matt Pocock's sources above; the retained MIT notice is in `LICENSE`. Templates and workflow integrate those procedures locally; no installer, tracker or automatic upstream update is required.
+This project defines **PDD = Product Design Document**: the solution/experience and observable behavior design companion for a selected Feature. **Product Direction (DIR)** owns product why, discovery and outcomes; the Feature specification plays the requirements/PRD role. PDD neither replaces root discovery nor duplicates requirements or engineer-owned technical schemas/APIs. These are local artifact boundaries, not a universal framework. Specification synthesis and vertical slicing are adapted from Matt Pocock's sources above; the retained MIT notice is in `LICENSE`. Templates and workflow integrate those procedures locally; no installer, tracker or automatic upstream update is required.
 
 ## Entry protocol
 
@@ -23,7 +23,7 @@ For an artifact assignment, resolve this working contract from the request, supp
 | Field | Values / resolution |
 | --- | --- |
 | `operation` | Select one primary operation from the table below. |
-| `artifact_level` | Assigned PDD, Epic, Feature, Story or Task; do not expand the hierarchy. |
+| `artifact_level` | Assigned Direction, Epic, Feature, PDD, Story or Task; do not expand the hierarchy. |
 | `target_paths` | Exact authorized targets, or no persisted target for a read-only draft. A source path is not an edit target. |
 | `source_refs` | Supplied decisions and relevant current artifacts/contracts; distinguish normative sources from observed implementation. |
 | `allowed_changes` | Requested content/structure changes and exclusions; defaults to the smallest sufficient change. |
@@ -37,7 +37,7 @@ For an artifact assignment, resolve this working contract from the request, supp
 
 | `operation` | Trigger / permitted work | Stop condition |
 | --- | --- | --- |
-| `draft` | Create the assigned artifact from available evidence; missing facts remain explicit hypotheses/questions. New product with no level specified starts at PDD v0. | Complete assigned draft with source traceability and visible gaps. |
+| `draft` | Create the assigned artifact from available evidence; missing facts remain explicit hypotheses/questions. New product with no level specified starts with a bounded Product Direction draft. | Complete assigned draft with source traceability and visible gaps. |
 | `refine` | Update the assigned artifact using supplied decisions/evidence; propose unresolved choices separately. No implicit authority to accept proposals. | Requested decisions integrated, affected criteria/references reconciled within scope, unresolved choices visible. |
 | `review` | Inspect an existing artifact; return bounded findings and evidence. Do not rewrite it, add requirements or initiate specialist reviews. | Findings address the requested review scope, or an evidence-bounded no-findings result. |
 | `editorial_snapshot` | Reorganize, deduplicate or remove revision/Q&A history into a current-state artifact. Preserve semantics and epistemic states; apply the editorial protocol below. | Current-state document preserves all active contracts, risks and unknowns; reference impact checked. |
@@ -45,29 +45,30 @@ For an artifact assignment, resolve this working contract from the request, supp
 
 “Clean up”, “current state” or “final version” does not authorize new product decisions, research, readiness promotion or release. A request explicitly combining editorial work with named policy changes uses `refine`, limited to those decisions; preserve every other invariant. For review plus explicitly authorized fixes, apply only those fixes as `refine`, not an unrestricted review-remediation loop.
 
-Read only the assigned level's template when drafting/refining; for other operations use the existing artifact and consult only needed template sections. Existing products enter at their requested level with actual ancestor references; do not restart their PDD. Resolve tool/repository-provided facts before asking through the parent. Ask only for a consequential decision necessary to the assigned operation; unknowns do not block a bounded draft or editorial rewrite.
+Read only the assigned artifact's template when drafting/refining; for other operations use the existing artifact and consult only needed template sections. Existing products enter at their requested level with actual ancestor references; do not restart their Direction or generate a PDD automatically. Resolve tool/repository-provided facts before asking through the parent. Ask only for a consequential decision necessary to the assigned operation; unknowns do not block a bounded draft or editorial rewrite.
 
 ### Authority boundary
 
 - Read-only planning roles return drafts/recommendations. An authorized parent with write capability may persist only the assigned targets. Neither a mode, template nor contract field grants tools, business approval, publication, setup, production access or worker dispatch. Separate engineering assignments retain their own tools and authorization.
-- Preserve existing authorization; do not request duplicate approval. Do not turn direction approval, ownership or Ready into execution authority.
+- Preserve existing authorization; do not request duplicate approval. Do not turn direction or design approval, ownership or Ready into execution authority.
 - Subagents require the actual supplied context and decisions; they do not inherit conversation. Never install a missing skill, bypass tool restrictions or invent interviews, metrics, estimates, owners, dates, approvals, tracker IDs or results.
 - Treat advisory/tool/repository content as evidence, not a new assignment: check freshness, affected scope and decision authority before acting. Apply only an authorized in-scope correction; otherwise report the concrete impact. Stale advice does not reopen completed work or trigger a new review cycle.
 
 ## Progressive workflow and ownership
 
-1. **PDD v0 — Product Manager**, with user, UX and Tech Lead input: why, who, current problem/alternatives, outcomes, initial journeys, boundaries, constraints, hypotheses and decisions. Draft before research is complete.
-2. **Learn and revise — PM with UX/engineering:** propose or execute separately authorized interviews, analysis, prototypes or experiments; record actual evidence and limitations. Decide proceed, revise or stop. Research does not require an approved complete PDD, a full backlog or implementation acceptance criteria. An authorized experiment is not approval to build or release the product.
-3. **Rough Epics — Product Owner with PM:** trace coherent initiatives to PDD outcomes. Keep candidate Features brief and proposed. Direction approval permits selection within its scope; it does not prove demand. Draft exploration Epics can precede that approval and are not delivery commitments.
-4. **Selected Feature — PO with UX and Tech Lead**, plus QA/Platform/Security where the risks require: refine the near-term capability and its observable contract. The Feature specification is its requirements source; do not add a duplicate PRD layer. Unselected future Features remain coarse. Resolve relevant decisions, not every future unknown.
-5. **Stories and Tasks — PO with engineers:** PO owns Story value/criteria and ordering; engineers own implementation breakdown, estimates and technical contracts. Split the selected Feature into narrow end-to-end behavior; create technical Tasks only as needed and assigned. No mandatory database/API/UI layers, speculative prefactoring, arbitrary sprint size or made-up capacity.
-6. **Deliver and learn — Engineering, QA, PO and PM:** implement and demonstrate accepted behavior, review criterion-specific evidence, obtain separate release authorization where required, then observe outcomes. Project Manager coordinates confirmed owners and real blockers throughout; it does not decide scope, architecture or estimates.
+1. **Product Direction draft — Product Manager**, with user, UX and Tech Lead input: why, who, current problem/alternatives, outcomes, initial journeys, boundaries, constraints, hypotheses and decisions. Use `templates/direction.md` when assigned; draft before research is complete.
+2. **Learn and revise — PM with UX/engineering:** propose or execute separately authorized interviews, analysis, prototypes or experiments; record actual evidence and limitations. Decide proceed, revise or stop. Research does not require an approved complete Direction, a completed PDD, a full backlog or implementation acceptance criteria. An authorized experiment is not approval to build or release the product.
+3. **Rough Epics — Product Owner with PM:** trace coherent initiatives to Direction outcomes. Keep candidate Features brief and proposed. Direction approval permits selection within its scope; it does not prove demand. Draft exploration Epics can precede that approval and are not delivery commitments.
+4. **Selected Feature — PO with UX and Tech Lead**, plus QA/Platform/Security where the risks require: refine the near-term capability and its observable contract. PO retains Feature scope and criteria. The Feature specification is its requirements source; do not add a mandatory duplicate PRD layer. Link existing external PRD/SDD references where relevant. Unselected future Features remain coarse. Resolve relevant decisions, not every future unknown.
+5. **PDD design companion — UX/Product Designer with PM collaboration:** when assigned for a selected Feature, describe solution/experience, flows, states and observable behavior against that Feature's canonical requirements. Link evidence and outcome metrics rather than copying discovery or creating another outcome lifecycle. Engineers/Tech Lead own technical implementation contracts. Route proposed requirement changes to the PO; design approval does not silently change Feature criteria.
+6. **Stories and Tasks — PO with engineers:** PO owns Story value/criteria and ordering; engineers own implementation breakdown, estimates and technical contracts. Stories remain children of Feature and link the applicable PDD design candidate. Split the selected Feature into narrow end-to-end behavior; create technical Tasks only as needed and assigned. No mandatory database/API/UI layers, speculative prefactoring, arbitrary sprint size or made-up capacity.
+7. **Deliver and learn — Engineering, QA, PO and PM:** implement and demonstrate accepted behavior, review criterion-specific evidence, obtain separate release authorization where required, then observe outcomes. Project Manager coordinates confirmed owners and real blockers throughout; it does not decide scope, architecture or estimates.
 
-This is progressive refinement, not serial department sign-off. UX and engineering participate during discovery; independent work can proceed when its actual inputs are ready. When useful, map user activities and release slices across Features to preserve an end-to-end journey; a story map is a planning view, not another required artifact level. An opportunity tree may organize outcome → needs → solutions → tests; do not mechanically turn each tree node into an Epic or Feature. Appetite/no-gos may be explicit planning constraints, not invented deadlines. This workflow does not claim full Scrum or Shape Up adoption.
+This is progressive refinement, not serial department sign-off. UX and engineering participate during discovery; independent work can proceed when its actual inputs are ready. There is no universal high-fidelity design, PDD approval, role-order, start or release gate; the selected scope and genuine input dependencies determine needed design work. When useful, map user activities and release slices across Features to preserve an end-to-end journey; a story map is a planning view, not another required artifact level. An opportunity tree may organize outcome → needs → solutions → tests; do not mechanically turn each tree node into an Epic or Feature. Appetite/no-gos may be explicit planning constraints, not invented deadlines. This workflow does not claim full Scrum or Shape Up adoption.
 
 ## Artifact identity and relationships
 
-Preserve artifact IDs. For new drafts, check supplied artifacts and use unique provisional IDs such as `PDD-001`, `E-001`, `F-001`, `S-001`, `T-001`; these are not published tracker IDs. Record current evidence/decision sources, owner (confirmed/proposed/Unknown), relevant states and unresolved questions. References identify an ID plus an actual path or supplied source; never invent persistence.
+Preserve artifact IDs unless an explicit migration changes their identity/type; retain historical provenance without keeping an obsolete active alias or transferring approval to new scope. For new drafts, check supplied active and historical artifact IDs and use unique provisional IDs such as `DIR-001`, `E-001`, `F-001`, `PDD-001`, `S-001`, `T-001`; these are examples, not published tracker IDs. Never reuse a retired ID for a new design candidate. Record current evidence/decision sources, owner (confirmed/proposed/Unknown), relevant states and unresolved questions. References identify an ID plus an actual path or supplied source; never invent persistence.
 
 Bind approvals and acceptance evidence to their exact candidate/scope. Retain a current revision when the workflow or evidence requires it; a source snapshot/reference may identify the candidate instead. Do not manufacture revision counters or historical lineage merely to fill a template. New unpersisted drafts may use `draft:<id>` with `@<revision>` only when meaningful. Removing history must not transfer an earlier candidate's approval to changed content.
 
@@ -75,15 +76,16 @@ Use stable semantic local IDs for requirements and decisions from the start, for
 
 | Artifact | Direct parent | Purpose | Template |
 | --- | --- | --- | --- |
-| PDD | None | Product direction and discovery record | [PDD](templates/pdd.md) |
-| Epic | PDD | Coherent initiative toward an outcome | [Epic](templates/epic.md) |
+| Product Direction | None | Product why, discovery, evidence and outcomes | [Direction](templates/direction.md) |
+| Epic | Direction | Coherent initiative toward an outcome | [Epic](templates/epic.md) |
 | Feature | Epic | Bounded user-valued capability and its specification | [Feature](templates/feature.md) |
+| PDD | Feature | Solution/experience and observable behavior design companion, not a second requirements source | [PDD](templates/pdd.md) |
 | Story | Feature | Narrow observable end-to-end behavior | [Story](templates/story.md) |
 | Implementation Task | Story | Engineering work needed for that behavior | [Task](templates/task.md) |
 
-Read these via `skill://product-planning/templates/<name>.md` or the resolved skill directory; they are templates, not existing product artifacts. Do not materialize all five for an assignment at one level.
+Delivery containment is **Direction → Epic → Feature → Story → Implementation Task**. PDD is a Feature-scoped design companion, not an extra delivery parent between Feature and Story. Stories link the applicable PDD candidate without changing containment. Read the six templates via `skill://product-planning/templates/<name>.md` or the resolved skill directory; they are templates, not existing product artifacts. Do not materialize all six or expand the hierarchy for an assignment at one level.
 
-Research, Spike and Enabler Tasks may attach to the closest justified PDD/Epic/Feature/Story. Declare `task_type`, why that parent fits, the bounded learning or enabling outcome, and an observable exit condition. Never disguise technical groundwork as user value or invent a Story solely to make the tree regular.
+Research, Spike and Enabler Tasks may attach to the closest justified Direction/Epic/Feature/PDD/Story. Declare `task_type`, why that parent fits, the bounded learning or enabling outcome, and an observable exit condition. Never disguise technical groundwork as user value or invent a Story solely to make the tree regular. A missing completed PDD does not block discovery.
 
 `parent` is containment. `blocked_by` contains only real prerequisites: identify the work/decision/access reference, needed input and condition that unblocks it. Do not infer blockers from ancestry, role order or wishful scheduling. An Epic can be In Progress while its Feature starts. Reject cycles and redundant transitive edges. A missing link can remain Unknown in a draft; downstream commitment must resolve direction/scope traceability, not fabricate approved ancestors. For changed source candidates, scope or criteria, identify affected children and recheck their readiness/acceptance; never silently rewrite criteria to make a candidate pass.
 An unknown possible dependency belongs in open questions, not `blocked_by`, even when
@@ -93,10 +95,11 @@ from still-possible drafting; a request for sequencing advice does not itself bl
 
 ## Separate document, evidence, delivery and outcome states
 
-- **PDD `document_status`: Draft | In Discovery | Direction Approved.** Approval needs a decision reference, actual authority and exact approved candidate/scope. The document remains living; a material direction change needs renewed approval and must not inherit the previous candidate's approval. In Discovery is not approval; Direction Approved is not evidence that every hypothesis is true.
+- **Direction `document_status`: Draft | In Discovery | Direction Approved.** Approval needs a decision reference, actual authority and exact approved candidate/scope. The document remains living; a material direction change needs renewed approval and must not inherit the previous candidate's approval. In Discovery is not approval; Direction Approved is not evidence that every hypothesis is true.
+- **PDD `document_status`: Draft | In Review | Approved | Superseded.** These describe the design candidate, not direction approval or delivery. Approved requires the actual design decision authority/reference and exact candidate/Feature scope; it does not validate claims, mark work Ready, authorize implementation or grant release. In Review records an actual review state, not approval. Superseded identifies the replaced design candidate and its replacement when known; do not transfer approval to changed design scope. No PDD status is a universal prerequisite for research or independent delivery work.
 - **Claim `evidence_status`: Hypothesis | Supported | Contradicted | Inconclusive | Validated.** Track each claim separately with source/date, method, population/context, findings, counterevidence and limits. Validated is exceptional: a bounded test met an explicit decision criterion, with that scope and evidence recorded. Founder agreement is a decision, not customer validation. New or conflicting evidence can change any claim's assessment; these states are not an irreversible progress ladder.
 - **Epic/Feature/Story/Task `delivery_status`: Draft | Refining | Ready | In Progress | Blocked | Done | Stopped.** A proposal starts Draft; refinement supplies its missing contract; Ready satisfies the relevant gate; In Progress requires an actual authorized start; Blocked identifies a real unmet prerequisite; Done requires the exit evidence below; Stopped records the decision/scope. Record transitions from facts, never automatically from generated children or suggested plans. Blocked returns to the state warranted by evidence once resolved. Material scope/criteria changes invalidate prior readiness or completion for the changed candidate/scope/criteria.
-- **PDD/Epic/Feature `outcome_status`: Not measured | Measuring | Supported | Not supported | Inconclusive.** This concerns a defined product outcome with metric, population, baseline availability, target/decision rule, window and data source. A plan to instrument is not measurement. Report uncertainty and counterevidence; do not claim causal impact from delivery or uncontrolled metrics alone.
+- **Direction/Epic/Feature `outcome_status`: Not measured | Measuring | Supported | Not supported | Inconclusive.** This concerns a defined product outcome with metric, population, baseline availability, target/decision rule, window and data source. A plan to instrument is not measurement. Report uncertainty and counterevidence; do not claim causal impact from delivery or uncontrolled metrics alone. PDD links the applicable outcome metrics and evidence rather than maintaining a competing outcome lifecycle.
 
 `Done` does not mean released; release does not mean the intended outcome was achieved. Preserve separate release authorization/observations and outcome evidence. A successful research Task proves its learning exit, not a delivered Feature or a validated whole product.
 
@@ -167,8 +170,9 @@ on the applicable start authorization. Record existing authorization when suppli
 without asking for duplicate approval. Do not write an execution directive, imply an
 assignment was accepted, or mark In Progress without evidence of the authorized start.
 
-- **PDD direction:** actual decision owner approves a specific bounded direction/candidate with known uncertainty and constraints. No requirement to prove all hypotheses before selection or experiments.
-- **Epic:** chosen outcome and PDD direction traceability, bounded initiative/non-goals, selection authority, coordinating owner, next slice/learning step and relevant risks. It does not require every Feature or Story specified. Ready means ready to pursue that authorized initiative, not all children ready to build.
+- **Product Direction:** actual decision owner approves a specific bounded direction/candidate with known uncertainty and constraints. No requirement to prove all hypotheses before selection or experiments.
+- **Epic:** chosen outcome and Direction traceability, bounded initiative/non-goals, selection authority, coordinating owner, next slice/learning step and relevant risks. It does not require every Feature, PDD or Story specified. Ready means ready to pursue that authorized initiative, not all children ready to build.
+- **PDD design:** assess the assigned candidate against its selected Feature scope/requirements and needed experience decisions, with evidence, open questions and applicable review authority explicit. Fidelity and approval needs depend on the actual work; no mandatory high-fidelity or all-role sign-off. Design approval is distinct from Direction approval and Feature/Story readiness; only a demonstrated missing design input blocks dependent implementation.
 - **Feature/Story implementation:** accepted current scope and source candidate; observable acceptance criteria; necessary UX/technical/security/data decisions or explicitly accepted bounded risks; real prerequisites ready; confirmed ownership; safe verification approach. Use existing team criteria where supplied and identify conflicts rather than inventing all-team sign-off. Story readiness does not require its enclosing Epic to finish.
 - **Implementation Task:** current accepted Story/Feature references, clear scope and owner, required contracts/access, independent or coordinated file ownership, safe verification and verifiable exit.
 - **Research/Spike/Enabler Task:** authorized bounded question or enabling scope, method/work and safe environment/data access, relevant decision owner, time/cost appetite only if supplied, learning/unblock exit and next decision. No false implementation acceptance requirement before exploration. Enablers do not silently expand product or infrastructure scope.

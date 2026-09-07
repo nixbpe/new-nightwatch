@@ -11,7 +11,7 @@ Use only sections relevant to the chosen type. An implementation Task is enginee
 - ID: [existing ID, otherwise draft convention T-001; not a tracker ID]
 - Current candidate / revision, when needed: [identity required by current approval/evidence; omit unnecessary revision lineage]
 - task_type: [Implementation | Research | Spike | Enabler]
-- Parent: [ID / actual path or supplied source, candidate when needed; Implementation → Story only; Research / Spike / Enabler → closest justified PDD, Epic, Feature or Story]
+- Parent: [ID / actual path or supplied source, candidate when needed; Implementation → Story only; Research / Spike / Enabler → closest justified Direction, Epic, Feature, PDD or Story]
 - Parent rationale: [for Research / Spike / Enabler, why this is the closest justified parent and the learning/unblock outcome; for Implementation, relevant Story acceptance refs]
 - Missing ancestor links: [None, or exact missing links; never fabricate approved parents]
 - delivery_status: [Draft | Refining | Ready | In Progress | Blocked | Done | Stopped]
@@ -23,7 +23,7 @@ Use only sections relevant to the chosen type. An implementation Task is enginee
 - Objective: [engineering result contributing to Story acceptance, or bounded learning/unblock outcome]
 - Scope: [included work and safe boundaries]
 - Non-goals: [excluded behavior, changes and adjacent questions]
-- Input / contract references: [current versions and acceptance refs; enclosing Feature is the requirements source when applicable]
+- Input / contract references: [current versions and acceptance refs; enclosing Feature is the requirements source when applicable; link applicable PDD design candidate without reparenting an Implementation Task, and engineer/Tech Lead-owned technical contracts where needed]
 - Unresolved decisions / risks: [impact, decision owner, resolution input or explicit risk-acceptance reference]
 
 ## Implementation ownership — Implementation only
@@ -48,7 +48,7 @@ Do not invent paths, assignments or technical contracts. Proposed ownership is n
 - Decision rules / stopping condition: [what supports, contradicts or leaves the question inconclusive; or proves the prerequisite usable]
 - Limits and next decision: [what this work cannot establish; decision owner and how the evidence will be used]
 
-Research readiness needs a bounded question, method and safe scope, not a finished PDD or implementation-ready Story. Research Done records observed learning evidence, including inconclusive findings against the exit condition; it does not mean a Feature was delivered.
+Research readiness needs a bounded question, method and safe scope, not a finished/approved Direction, completed PDD or implementation-ready Story. PDD is a selected Feature's design companion, not root discovery. Research Done records observed learning evidence, including inconclusive findings against the exit condition; it does not mean a Feature was delivered.
 
 ## Execution plan versus observations
 

@@ -4,15 +4,16 @@ Apply the Entry protocol and Return contract in `skill://product-planning` befor
 
 # Feature: [Observable capability]
 
-This Feature spec is the single requirements source for this Feature: link it from Stories and implementation Tasks; do not create a duplicate PRD layer. Detail selected near-term Features only. Keep conditional sections only when relevant, with a reason for material exclusions.
+This Feature spec is the single requirements source for this Feature and plays the requirements/PRD role: link it from Stories and implementation Tasks; do not create a mandatory duplicate PRD layer. Existing external PRD/SDD references may be linked where relevant. A PDD (Product Design Document) is this selected Feature's solution/experience and observable behavior design companion, not a second requirements source or technical contract. PO retains Feature scope/criteria; UX/Product Designer authors the PDD with PM collaboration, and engineers/Tech Lead own technical implementation contracts. Detail selected near-term Features only. Keep conditional sections only when relevant, with a reason for material exclusions.
 
 ## Controls and traceability
 
 - ID: [existing ID, otherwise draft convention F-001; not a tracker ID]
 - Current candidate / revision, when needed: [identity required by current approval/evidence; omit unnecessary revision lineage]
 - Parent Epic: [ID / actual path or supplied source; exact candidate when needed]
-- PDD direction: [ID / actual path or supplied source and exact approved scope/candidate with decision ref, or pending]
+- Product Direction: [DIR ID / actual path or supplied source and exact approved scope/candidate with decision ref, or pending]
 - Missing ancestor links: [None, or exact missing references; do not fabricate approved parents]
+- PDD design references, where applicable: [ID / actual path or supplied source, exact design candidate and applicable Feature requirement/flow refs; actual document status and decision source, or missing input explicitly identified; no automatic PDD generation or approval gate]
 - delivery_status: [Draft | Refining | Ready | In Progress | Blocked | Done | Stopped]
 - outcome_status: [Not measured | Measuring | Supported | Not supported | Inconclusive]
 - Owner: [named owner or Unknown / proposed owner, explicitly labeled]
@@ -45,7 +46,7 @@ Record supplied accepted requirements/invariants below; if none were supplied, s
 
 - States and transitions, if stateful: [state definitions, allowed/disallowed transitions, persistence/recovery expectations and rule refs]
 - Business rules: [canonical requirement refs; sourced decision logic, precedence and boundaries; do not duplicate the rule text]
-- UX / accessibility, where relevant: [approved design refs and interaction/content/accessibility requirements; unresolved needs and owner]
+- UX / accessibility, where relevant: [applicable PDD candidate/design refs, actual approval scope where required and canonical interaction/content/accessibility requirement refs; unresolved needs and owner]
 - Security / privacy / data constraints, where relevant: [access boundaries, sensitive data, consent/retention and safe fixtures; sources and review owner]
 - Non-functional / operational constraints, where relevant: [measurable limits and verification method; sourced or proposed, never arbitrary thresholds]
 - Technical contract references, where needed: [approved versioned API/schema/ADR/integration contracts and owning engineer or Tech Lead; do not invent technical decisions]
@@ -61,7 +62,7 @@ Record supplied accepted requirements/invariants below; if none were supplied, s
 | --- | --- | --- | --- | --- |
 | [definition linked to desired outcome] | [known baseline or Unknown + collection plan] | [desired change, not invented] | [events/signals and safe collection needed] | [Not measured or actual results] |
 
-Reference evidence statuses from the PDD/register separately from delivery and outcome. `Validated` requires source/date/population/method/limits and a bounded criterion actually met, never direction approval.
+Reference claim evidence statuses from the Direction or relevant evidence register separately from design, delivery and outcome states. `Validated` requires source/date/population/method/limits and a bounded criterion actually met, never direction or design approval. PDD links these outcome metrics and evidence rather than maintaining another outcome lifecycle.
 
 ## Questions, risks and dependencies
 
@@ -73,7 +74,7 @@ Reference evidence statuses from the PDD/register separately from delivery and o
 | --- | --- | --- | --- |
 | [input, decision or item] | [why this input is necessary] | [observable condition] | [who supplies it] |
 
-Parentage is containment, not a dependency. Children may start while a parent is In Progress when their inputs are ready. Do not create role-order edges or cycles.
+Parentage is containment, not a dependency. Stories remain direct children of this Feature and link applicable PDD design candidates. Children may start while a parent is In Progress when their inputs are ready. Do not create role-order edges or cycles, or require a completed/approved PDD when no actual input depends on it.
 
 ## Readiness, slicing and completion
 
