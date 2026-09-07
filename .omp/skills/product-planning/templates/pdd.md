@@ -1,22 +1,21 @@
 Template, not an approved product artifact
 
-Read `skill://product-planning` for canonical states, readiness and Definition of Done (DoD). Use `Unknown — [reason; how to resolve]` for missing facts. Replace or remove instructional placeholders; never copy unanswered prompts as final factual requirements. Return drafts to the parent; this template grants no authority to persist, approve, file or release anything.
+Apply the Entry protocol and Return contract in `skill://product-planning` before using this content shape; states, readiness and DoD also come from that skill. Template prompts do not authorize new work. Use `Unknown — [reason; how to resolve]` for missing facts; remove instructional placeholders and irrelevant optional fields. For review/editorial work, preserve the existing artifact rather than filling every section. Read-only roles return content to the parent; this template grants no persistence, approval or release authority.
 
 # PDD: [Product / direction]
 
-PDD means this project's **Product Discovery & Definition Document**, not a universal standard. Start with PDD v0 before research is complete; label unknown initial inputs as questions or hypotheses and refine with evidence. Do not generate the whole delivery hierarchy by default.
+PDD means this project's **Product Discovery & Definition Document**, not a universal standard. For initial drafting, start with PDD v0 before research is complete; label unknown inputs as questions or hypotheses. Other operations do not restart discovery or generate descendants.
 
 ## Document controls
 
 - ID: [existing ID, otherwise draft convention PDD-001; not a tracker ID]
-- Revision: [current revision; v0 for the initial draft]
+- Current candidate / revision, when needed: [identity required by current approval/evidence; v0 for an initial draft; no invented revision lineage]
 - Parent reference: [None — root direction document; link any existing upstream mandate]
 - document_status: [Draft | In Discovery | Direction Approved]
-- Direction approval: [decision owner, reference, date and approved revision/scope; required only for Direction Approved]
+- Direction approval: [decision owner, reference, date if supplied and exact approved candidate/scope; required only for Direction Approved]
 - outcome_status: [Not measured | Measuring | Supported | Not supported | Inconclusive]
 - Owner: [named owner or Unknown / proposed owner, explicitly labeled]
 - Evidence / decision references: [IDs, paths or URLs, relevant revisions/dates]
-- Revision changes: [what changed and which evidence/decision caused it]
 
 Direction approval is not evidence validation, delivery acceptance or release approval. Outcome status describes measured results, not confidence or document maturity.
 
@@ -31,6 +30,7 @@ Direction approval is not evidence validation, delivery acceptance or release ap
 ## Evidence and hypotheses
 
 Include counterevidence. `Validated` means a bounded criterion was actually met with source, date, population, method and limits recorded; founder or stakeholder approval never validates evidence. `Supported` is not automatically `Validated`.
+Use stable semantic claim/decision IDs, not question-round labels. Keep current supporting and contrary evidence; provenance dates and validation methods are not revision-change history.
 
 | Evidence ref / claim | evidence_status: Hypothesis / Supported / Contradicted / Inconclusive / Validated | Source and date | Population / context and method | Observation, counterevidence and limits | Bounded validation criterion and actual result, if claiming Validated |
 | --- | --- | --- | --- | --- | --- |
@@ -52,16 +52,16 @@ Do not invent baselines, targets or dates. Label targets as proposed unless acce
 
 - Current journey: [trigger → relevant steps → result; pain points and evidence refs]
 - Desired journey hypothesis: [possible changed experience; do not present an untested solution as settled]
-- Scope now: [problem, users and learning boundaries selected for this revision]
+- Scope now: [problem, users and learning boundaries selected for the current direction]
 - Non-goals: [explicit exclusions and why]
 - Constraints: [known business, accessibility, security, privacy, data, operational or technical constraints; sources and owners, only where relevant]
 - Risks: [uncertainty / impact / response / owner; unresolved versus explicitly accepted risk with decision reference]
 
-## Decisions, blockers and next research
+## Current decisions, blockers and assigned research
 
-| Decision / question | Evidence and alternatives | Recommendation / trade-off | Decision owner | Actual decision ref / revision, or pending |
+| Semantic decision ID / current question | Evidence and alternatives | Recommendation / trade-off | Decision owner | Applicable decision source / scope, or pending |
 | --- | --- | --- | --- | --- |
-| [decision needed] | [refs; include contrary evidence] | [proposal, not approval] | [name or Unknown] | [recorded decision or pending] |
+| [stable concept, not a Q&A round] | [refs; include contrary evidence] | [proposal, not approval] | [name or Unknown] | [current recorded decision or pending; not a review timeline] |
 
 | blocked_by reference, or None | Actual prerequisite / affected work | Ready condition | Input owner / next action |
 | --- | --- | --- | --- |
@@ -69,15 +69,17 @@ Do not invent baselines, targets or dates. Label targets as proposed unless acce
 
 Unknowns do not prevent drafting PDD v0. Block only work that truly needs the missing input; do not create role-order dependencies or cycles.
 
-- Next bounded research: [priority question, method, safe scope, learning exit condition and owner]
+- Next bounded research, only if assigned: [priority question, method, safe scope, learning exit condition and owner]
 - Discovery readiness: [whether that question/method/safe scope is defined; missing prerequisite if not]
 - Next refinement, only if assigned: [rough Epic candidates and rationale; no full Feature/Story/Task expansion]
 - Direction review, if requested: [evidence sufficiency and limits, unresolved decisions, exact approval sought; never self-approve]
 
 ## Handoff
 
+Response metadata, not a required persisted section. Select delivery using the skill's Return contract.
+
 - **Outcome:** [current discovery conclusion, document/outcome states and unapproved decisions]
-- **Deliverables:** [this revision and assigned draft artifacts only]
+- **Deliverables:** [complete assigned PDD for `full_artifact`; changed paths for `file_summary`; bounded findings for `assessment`; no automatic descendant drafts]
 - **Evidence:** [observed support, counterevidence and measurement/test limits; distinguish proposed work]
 - **Risks and blockers:** [remaining gaps, prerequisites and ready conditions]
 - **Next owner:** [named owner or Unknown / proposed; exact action or decision needed]

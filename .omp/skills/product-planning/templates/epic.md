@@ -1,18 +1,18 @@
 Template, not an approved product artifact
 
-Read `skill://product-planning` for canonical states, readiness and Definition of Done (DoD). Use `Unknown — [reason; how to resolve]` for missing facts. Replace or remove instructional placeholders; never copy unanswered prompts as final factual requirements. Return drafts to the parent; this template grants no authority to persist, approve, file or release anything.
+Apply the Entry protocol and Return contract in `skill://product-planning` before using this content shape; states, readiness and DoD also come from that skill. Template prompts do not authorize new work. Use `Unknown — [reason; how to resolve]` for missing facts; remove instructional placeholders and irrelevant optional fields. For review/editorial work, preserve the existing artifact rather than filling every section. Read-only roles return content to the parent; this template grants no persistence, approval or release authority.
 
 # Epic: [Outcome-oriented title]
 
 ## Controls and traceability
 
 - ID: [existing ID, otherwise draft convention E-001; not a tracker ID]
-- Revision: [current revision and material change]
-- Parent PDD: [ID / path / revision; missing link explicitly reported, never fabricated]
+- Current candidate / revision, when needed: [identity required by current approval/evidence; omit unnecessary revision lineage]
+- Parent PDD: [ID / actual path or supplied source; exact candidate when approval depends on it; missing link explicitly reported, never fabricated]
 - delivery_status: [Draft | Refining | Ready | In Progress | Blocked | Done | Stopped]
 - outcome_status: [Not measured | Measuring | Supported | Not supported | Inconclusive]
 - Owner: [named owner or Unknown / proposed owner, explicitly labeled]
-- Evidence / decision references: [claim and source refs, current direction decision and scope revision; pending approvals labeled]
+- Evidence / decision references: [semantic claim/decision IDs and current sources, direction decision and bounded scope; pending approvals labeled; not a Q&A/review timeline]
 
 Parentage is containment, not an automatic `blocked_by` edge. A child may start while its parent is In Progress when its actual inputs are ready. Missing ancestors remain visible gaps; do not invent approved parents or treat draft IDs as filed work.
 
@@ -58,8 +58,10 @@ Only claim Done against the canonical DoD with actual evidence, never from child
 
 ## Handoff
 
+Response metadata, not a required persisted section. Select delivery using the skill's Return contract.
+
 - **Outcome:** [recommendation, delivery/outcome states and unapproved decisions]
-- **Deliverables:** [Epic revision and rough candidates / selected Feature references only as assigned]
+- **Deliverables:** [complete assigned Epic for `full_artifact`; changed paths for `file_summary`; bounded findings for `assessment`; rough candidates / selected Feature references only as assigned]
 - **Evidence:** [sources, counterevidence, actual observations and limits versus proposed work]
 - **Risks and blockers:** [remaining gaps, prerequisites and ready conditions]
 - **Next owner:** [named owner or Unknown / proposed; exact selection, research or refinement action]

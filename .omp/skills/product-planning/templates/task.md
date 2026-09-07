@@ -1,6 +1,6 @@
 Template, not an approved product artifact
 
-Read `skill://product-planning` for canonical states, readiness and Definition of Done (DoD). Use `Unknown — [reason; how to resolve]` for missing facts. Replace or remove instructional placeholders; never copy unanswered prompts as final factual requirements. Return drafts to the parent; this template grants no authority to persist, approve, file or release anything.
+Apply the Entry protocol and Return contract in `skill://product-planning` before using this content shape; states, readiness and DoD also come from that skill. Template prompts do not authorize new work. Use `Unknown — [reason; how to resolve]` for missing facts; remove instructional placeholders and irrelevant optional fields. For review/editorial work, preserve the existing artifact rather than filling every section. Read-only roles return content to the parent; this template grants no persistence, approval or release authority.
 
 # Task: [Bounded engineering work or learning]
 
@@ -9,14 +9,14 @@ Use only sections relevant to the chosen type. An implementation Task is enginee
 ## Controls and traceability
 
 - ID: [existing ID, otherwise draft convention T-001; not a tracker ID]
-- Revision: [current revision and material change]
+- Current candidate / revision, when needed: [identity required by current approval/evidence; omit unnecessary revision lineage]
 - task_type: [Implementation | Research | Spike | Enabler]
-- Parent: [ID / path / revision; Implementation → Story only; Research / Spike / Enabler → closest justified PDD, Epic, Feature or Story]
+- Parent: [ID / actual path or supplied source, candidate when needed; Implementation → Story only; Research / Spike / Enabler → closest justified PDD, Epic, Feature or Story]
 - Parent rationale: [for Research / Spike / Enabler, why this is the closest justified parent and the learning/unblock outcome; for Implementation, relevant Story acceptance refs]
 - Missing ancestor links: [None, or exact missing links; never fabricate approved parents]
 - delivery_status: [Draft | Refining | Ready | In Progress | Blocked | Done | Stopped]
 - Owner: [named owner or Unknown / proposed owner, explicitly labeled]
-- Evidence / decision references: [input sources, current accepted scope, approved contracts and relevant decisions; pending items labeled]
+- Evidence / decision references: [current sources, accepted scope, contracts and semantic decision/criterion refs, not question-round labels or review history; pending items labeled]
 
 ## Scope and intended result
 
@@ -28,7 +28,7 @@ Use only sections relevant to the chosen type. An implementation Task is enginee
 
 ## Implementation ownership — Implementation only
 
-Do not invent paths, assignments or technical contracts. Proposed ownership is not permission to edit. Confirm the actual workspace, owned files and verification scope with the assigning parent before execution; route outside-scope changes back to that parent.
+Do not invent paths, assignments or technical contracts. Proposed ownership is not permission to edit. Ground the actual workspace, owned files and verification scope in the supplied assignment and inspected sources; ask the assigning parent only for genuinely missing execution authority or inputs. Preserve existing authorization without duplicate confirmation; report outside-scope needs rather than expanding edits.
 
 - Assigned workspace / safe environment: [confirmed location and authorization reference, or explicitly proposed / Unknown]
 - Approved behavior / technical decisions: [Story/Feature criterion refs and owner-approved versioned contracts; open decisions go to the owning engineer or Tech Lead]
@@ -56,7 +56,7 @@ Research readiness needs a bounded question, method and safe scope, not a finish
 | --- | --- | --- | --- |
 | [bounded step within assigned scope] | [repository-grounded proposal; not executed evidence] | [real prerequisite or None] | [criterion / learning result] |
 
-Do not invent dependencies, tools, services, credentials, deadlines or estimates. A proposed command is never a result and cannot override the role's tools or the parent's verification restrictions.
+Do not invent dependencies, tools, services, credentials, deadlines or estimates. A proposed command is never a result and cannot override the role's tools or the parent's verification restrictions. Preserve current execution evidence needed for exit assessment; an editorial rewrite is not a new execution, and an unavailable environment does not prevent drafting this Task.
 
 | Actually executed action / method | Safe context / date | Observed result / evidence ref | Limits, failures or unexercised paths |
 | --- | --- | --- | --- |
@@ -80,8 +80,10 @@ Evidence status remains separate from delivery; any `Validated` claim needs a bo
 
 ## Handoff
 
+Response metadata, not a required persisted section. Select delivery using the skill's Return contract.
+
 - **Outcome:** [delivery state and actual engineering result or observed learning, not an inferred release/outcome]
-- **Deliverables:** [assigned changes / evidence artifacts and affected caller or contract references]
+- **Deliverables:** [complete assigned Task for `full_artifact`; actual assigned changes/evidence paths for `file_summary`; bounded findings for `assessment`; relevant caller/contract impact without unauthorized edits]
 - **Evidence:** [executed actions and observed results with limits, separate from proposed steps/commands]
 - **Risks and blockers:** [remaining defects, unexercised paths, prerequisites and ready conditions]
 - **Next owner:** [parent, QA or relevant named decision owner / Unknown / proposed; exact acceptance, integration or decision action]
