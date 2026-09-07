@@ -13,6 +13,8 @@
  *   name, description  -> same in both targets
  *   tools              -> Claude Code PascalCase tool names; omp-only tools (eval, lsp, ...) are dropped
  *                      -> Codex sandbox_mode: read-only unless a mutating tool is listed
+ *   sandbox            -> optional Codex sandbox_mode override (read-only | workspace-write | danger-full-access),
+ *                         for roles that carry `bash` only for read-only inspection; ignored by omp
  *   autoloadSkills     -> Claude Code `skills` (preload); Codex has no per-agent skill preload
  *   body               -> Claude Code system prompt / Codex developer_instructions, unchanged
  */
@@ -43,6 +45,11 @@ const MUTATING_TOOLS = new Set([
   "ast_edit",
   "notebook",
   "python",
+]);
+const CODEX_SANDBOX_MODES = new Set([
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
 ]);
 
 const TARGETS = [
@@ -75,11 +82,16 @@ function parseAgent(text, file) {
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (!match) throw new Error(`${file}: frontmatter block not found`);
   const frontmatter = Bun.YAML.parse(match[1]) ?? {};
-  const { name, description } = frontmatter;
+  const { name, description, sandbox } = frontmatter;
   if (typeof name !== "string" || !name.trim())
     throw new Error(`${file}: frontmatter needs a string "name"`);
   if (typeof description !== "string" || !description.trim()) {
     throw new Error(`${file}: frontmatter needs a string "description"`);
+  }
+  if (sandbox !== undefined && !CODEX_SANDBOX_MODES.has(sandbox)) {
+    throw new Error(
+      `${file}: sandbox must be one of ${[...CODEX_SANDBOX_MODES].join(", ")}`,
+    );
   }
   return {
     file,
@@ -87,6 +99,7 @@ function parseAgent(text, file) {
     description: description.trim(),
     tools: asList(frontmatter.tools),
     skills: asList(frontmatter.autoloadSkills),
+    sandbox,
     body: `${match[2].trim()}\n`,
   };
 }
@@ -124,9 +137,10 @@ function renderCodex(agent) {
       `${agent.file}: body contains ''' and cannot be embedded in a TOML literal string`,
     );
   }
-  const sandbox = agent.tools.some((tool) => MUTATING_TOOLS.has(tool))
+  const inferred = agent.tools.some((tool) => MUTATING_TOOLS.has(tool))
     ? "workspace-write"
     : "read-only";
+  const sandbox = agent.sandbox ?? inferred;
   const text = [
     `# ${header(agent)}`,
     `name = ${JSON.stringify(agent.name)}`,
@@ -136,7 +150,11 @@ function renderCodex(agent) {
     `${agent.body}'''`,
     "",
   ].join("\n");
-  return { text, notes: [] };
+  const notes =
+    agent.sandbox && agent.sandbox !== inferred
+      ? [`Codex sandbox_mode overridden to ${sandbox} (inferred ${inferred})`]
+      : [];
+  return { text, notes };
 }
 
 async function loadAgents() {

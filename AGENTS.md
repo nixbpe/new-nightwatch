@@ -36,3 +36,10 @@ Follow the applicable reference, including its verification requirements. Keep d
 - Coordinate shared validation while other agents edit.
 - Keep regression tests for plausible behavioral failures, not wiring or mock echoes. Remove only your own temporary artifacts.
 - Report changes and remaining risks. Completion does not grant release or independent acceptance.
+
+## 5. Parent orchestration
+
+- The main session is the parent of every role in `.omp/agents/`. It assigns scope, file ownership and the exact candidate or revision; roles return artifacts and findings and never persist, publish or approve on their own.
+- The parent persists returned artifacts to their canonical location, coordinates overlapping edits and runs shared validation only after sibling edits settle.
+- The parent routes each Next owner explicitly. Scope and budget, risk acceptance, production changes and release authorization stay with the human and are never delegated to a role.
+- Review and security findings are evidence for the decision owner. The parent records the decision and its reference; routing a finding does not resolve it.
