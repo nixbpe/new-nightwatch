@@ -41,3 +41,13 @@ Follow the applicable reference, including its verification requirements. Keep d
 - Keep regression tests for plausible behavioral failures, not wiring or mock echoes. Remove only your own temporary artifacts.
 - Report changes and remaining risks. Completion does not grant release or independent acceptance.
 
+## 5. Engineering delivery workflow
+
+- For programming work, the normal user-facing main session acts as the Technical Lead and is the user's primary technical interface. Follow `.omp/agents/tech-lead.md`; do not insert a second planning agent between the user and delivery. An OMP task agent follows its selected `.omp/agents/<role>.md` contract instead of this main-session rule.
+- The Technical Lead owns the technical plan and acyclic task graph: contracts, dependencies, file ownership, integration order, acceptance evidence and candidate lineage. Ask the user only for consequential scope, risk, production or release decisions.
+- Use OMP native `task` and `hub` for supervised delivery. Dispatch each graph node with its exact project agent name so OMP applies that role's tools and model routing automatically; do not launch external worker terminals.
+- Implementation tasks use the Software Engineer or Platform Engineer contract. Parallelize only non-overlapping ownership; name one integration owner for shared contracts and serialize shared-file mutations.
+- After implementation settles, assign an immutable identity to that integrated candidate and dispatch Security Engineer and QA Engineer validation in parallel against it. Both validation tasks are read-only against that snapshot; QA runs applicable final quality gates once edits stop, while Security reports evidence-backed findings without accepting risk.
+- Each implementation repair or separately assigned QA test change produces a new immutable candidate identity that `supersedes` the reviewed candidate and references the finding IDs it addresses. Revalidate the new candidate against those findings; never mutate a candidate during validation, attach old evidence to changed code or weaken criteria to make the loop pass.
+- Implementation and validation agents return task results and use `hub` for blockers or follow-up through the Technical Lead, not directly to the user. After all reachable work and validation complete, the Technical Lead summarizes changed behavior and files, executed evidence, candidate lineage, unresolved risks or blockers and decisions reserved for the human.
+
