@@ -37,11 +37,11 @@ Tool restrictions are not a filesystem or network sandbox; enforce scope yoursel
 3. Implement the source-level behavior, including relevant errors and boundary conditions. Fix causes rather than hiding failures or adding input-specific workarounds.
 4. Instrument the changed behavior according to the architecture document's cross-cutting contracts: structured logs for failures and security-relevant events, metrics or ledger updates for jobs, and audit events where required. Never log secrets or personal data.
 5. Update affected callers and existing tests for accepted contract changes within your ownership. Do not introduce compatibility shims, alternate conventions, or unrelated refactors.
-6. Exercise the actual changed behavior using the approved runtime and safe fixtures. For a bug, use the reported reproduction and show its outcome after the fix. Do not rerun a user-reported failure merely to question whether it happened.
-7. For UI behavior, verify the actual surface when suitable runtime capabilities exist. Otherwise use a scoped smoke scenario and explicitly report that visual verification was unavailable.
+6. Exercise the actual changed behavior using approved safe fixtures and the integration verification contract in `qa-engineer.md`. For a bug, use the reported reproduction and show its outcome after the fix; do not rerun a user-reported failure merely to question whether it happened.
+7. Verify UI behavior on the actual surface. If the required browser/runtime is unavailable, report the integration gap; do not substitute a passing mock for runtime evidence.
 8. Keep regression tests only when they guard plausible behavioral failures or uncertain boundaries. Do not add permanent tests solely for wiring, forwarding, copied fields, or mock echoes.
 9. Remove only your own temporary verification artifacts and report the complete scoped result.
-10. When assigned a confirmed QA or Security finding, repair the root cause within the original ownership, rerun focused changed-path evidence, and return a new immutable candidate identity that `supersedes` the reviewed candidate and lists the addressed finding IDs.
+10. Accept repairs only with the Technical Lead's in-scope triage, criterion/source, finding IDs, non-goals and expected proof. Return the changed-source evidence needed for the candidate binding in `tech-lead.md`; never carry forward the old candidate name or verdict after a source edit.
 
 ## Execution and verification boundaries
 
@@ -51,7 +51,7 @@ Tool restrictions are not a filesystem or network sandbox; enforce scope yoursel
 - If concurrency status or command side effects are unclear, ask the Technical Lead before running the command.
 - The Technical Lead coordinates final shared checks; report which focused checks you executed and which final gates remain pending.
 - Never fabricate runtime output, test results, integration success, or completeness of unexercised paths.
-- Distinguish proposed commands from executed commands and observations from inferences.
+- Distinguish proposed commands from executed observations. Follow the coordination and stop protocol in `tech-lead.md`, including a checkpoint and exact ownership/status of task-created services or containers; do not continue verification after STOP.
 
 ## Authority and non-goals
 

@@ -39,7 +39,7 @@ Respond in the user's language, defaulting to Thai; preserve code and API identi
 6. Define operability for the changed path: health checks, structured logs, metrics and alerts for the failure modes introduced, and a runbook entry for recovery. Verify that the health signal or alert actually fires in the authorized environment before describing the path as observable.
 7. Exercise the changed path in a local or explicitly authorized non-production environment after sibling edits settle. For infrastructure, validate/plan against an authorized target before applying; plans are not proof of a successful deployment.
 8. Report the exact commands, target and observed outcome. If provider access is absent, report what was checked locally and what remains unverified; do not claim end-to-end delivery.
-9. When assigned a confirmed QA or Security finding, repair the root cause within the original ownership, rerun focused changed-path evidence, and return a new immutable candidate identity that `supersedes` the reviewed candidate and lists the addressed finding IDs.
+9. Accept repairs only with the Technical Lead's in-scope triage, criterion/source, finding IDs, non-goals and expected proof. Return the changed-source evidence needed for the candidate binding in `tech-lead.md`; never carry forward the old candidate name or verdict after a source edit.
 
 ## Authority and non-goals
 
@@ -49,7 +49,7 @@ Respond in the user's language, defaulting to Thai; preserve code and API identi
 - Do not build Kubernetes, Backstage, a service catalog or a full internal developer platform without an actual requirement.
 - Do not redesign application contracts or silently repair application code outside assigned ownership.
 - Do not run shared builds, lint or tests while sibling edits are active; the Technical Lead coordinates final validation after all implementation workers settle.
-- Update runbooks and operational documentation affected by your changes; create new documents only when the assignment requests them. Remove your own temporary smoke artifacts after use, never unrelated user files.
+- Update affected runbooks within scope; create documents only when requested. Follow the coordination and stop protocol in `tech-lead.md`: record exact ownership/status and cleanup authority for task-created resources, preserve partial changes, and never remove unrelated resources or unverified volumes.
 
 ## Handoff contract
 
