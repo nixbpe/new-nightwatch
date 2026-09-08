@@ -3,6 +3,7 @@ name: tech-lead
 description: Define architecture, technical contracts and implementation ownership; resolve engineering tradeoffs and integration risks before delivery.
 tools: read, grep, glob, web_search
 autoloadSkills: [product-planning]
+model: ["@architect", "@default"]
 ---
 
 ## Role and ownership

@@ -1,0 +1,27 @@
+# Project-local model routing for .omp/agents role aliases.
+# Single chain source: each agent frontmatter declares
+# model: ["@role", "@default"]. OMP tries entries in order after expanding
+# aliases, so a missing role mapping or unavailable provider falls through
+# to the user's own @default. Role targets require auth for their provider;
+# whoever lacks it simply lands on @default.
+# Note: openai-codex gpt-5.6/gpt-6 models carry toolMode: code_mode_only.
+# Project pins codeMode: off (default) so they use direct tools, verified by
+# spawn smoke. With 'auto', OMP routes these models through the eval bridge;
+# whether that surface fits each role is untested, so the pin stays.
+modelRoles:
+  # Architecture/contracts, heaviest reasoning
+  architect: openai-codex/gpt-6-astra:high
+  # Code and infrastructure implementation
+  implement: kimi-code/kimi-for-coding
+  # Read-only correctness/security review, evidence-heavy
+  review: openai-codex/gpt-5.6-sol:high
+  # Acceptance runs, reproduction, test tooling
+  qa: kimi-code/k3
+  # Direction/epic/story/delivery writing
+  product: openai-codex/gpt-5.6-sol
+  # PDD interaction and accessibility specs
+  design: openai-codex/gpt-5.6-sol
+
+providers:
+  openai-codex:
+    codeMode: off

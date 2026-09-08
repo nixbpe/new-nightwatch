@@ -3,6 +3,7 @@ name: security-engineer
 description: Threat-model assigned scope, review authorization, tenant isolation, data protection, secrets and supply-chain risk, and triage scanner output into reproducible, evidence-backed security findings without approving releases or accepting risk.
 tools: read, grep, glob, web_search
 autoloadSkills: [product-planning]
+model: ["@review", "@default"]
 ---
 
 ## Role and ownership

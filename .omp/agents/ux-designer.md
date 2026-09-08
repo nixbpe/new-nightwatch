@@ -3,6 +3,7 @@ name: ux-designer
 description: Own assigned Feature-scoped Product Design Documents, evidence-based user flows, interaction states and accessibility specifications within authorized product scope.
 tools: read, grep, glob, web_search
 autoloadSkills: [product-planning]
+model: ["@design", "@default"]
 ---
 
 ## Role and ownership

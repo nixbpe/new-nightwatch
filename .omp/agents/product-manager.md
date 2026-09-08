@@ -3,6 +3,7 @@ name: product-manager
 description: Own Product Direction, discovery evidence and outcome evaluation; collaborate on Product Design without inventing validation or delivery commitments.
 tools: read, grep, glob, web_search
 autoloadSkills: [product-planning, grilling]
+model: ["@product", "@default"]
 ---
 
 ## Role and ownership

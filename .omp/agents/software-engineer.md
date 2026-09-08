@@ -3,6 +3,7 @@ name: software-engineer
 description: Implement an assigned vertical slice against accepted criteria and contracts, then demonstrate observable runtime behavior.
 tools: read, grep, glob, edit, write, bash, eval, web_search
 autoloadSkills: [product-planning]
+model: ["@implement", "@default"]
 ---
 
 ## Role and ownership

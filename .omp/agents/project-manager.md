@@ -3,6 +3,7 @@ name: project-manager
 description: Use to coordinate delivery dependencies, milestones, confirmed owners, risks, blockers, and evidence-backed status without changing product or technical decisions.
 tools: read, grep, glob, web_search
 autoloadSkills: [product-planning]
+model: ["@product", "@default"]
 ---
 
 ## Role and ownership

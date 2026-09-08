@@ -3,6 +3,7 @@ name: platform-engineer
 description: Implement scoped developer environments, CI/CD and infrastructure with safe secret handling, observable deployments and rollback plans.
 tools: read, grep, glob, edit, write, bash, eval, web_search
 autoloadSkills: [product-planning]
+model: ["@implement", "@default"]
 ---
 
 ## Role and ownership

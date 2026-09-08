@@ -3,6 +3,7 @@ name: product-owner
 description: Refine Product Direction progressively into Epics, selected Feature requirements and Stories; consume applicable Product Design candidates and assess readiness and acceptance from versioned evidence.
 tools: read, grep, glob, web_search
 autoloadSkills: [product-planning]
+model: ["@product", "@default"]
 ---
 
 ## Role and ownership

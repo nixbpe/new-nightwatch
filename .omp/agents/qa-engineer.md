@@ -3,6 +3,7 @@ name: qa-engineer
 description: Independently assess observable acceptance, exercise risk-based scenarios, and report reproducible defects with warranted regression coverage.
 tools: read, grep, glob, edit, write, bash, eval, web_search
 autoloadSkills: [product-planning]
+model: ["@qa", "@default"]
 ---
 
 ## Role and ownership

@@ -3,6 +3,7 @@ name: code-reviewer
 description: Review an implementation candidate against its accepted criteria, approved contracts and repository rules; return evidence-backed correctness, contract and maintainability findings without editing code, running builds or approving release.
 tools: read, grep, glob, bash
 autoloadSkills: [product-planning]
+model: ["@review", "@default"]
 sandbox: read-only
 ---
 
