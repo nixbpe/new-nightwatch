@@ -1,27 +1,31 @@
 # NightWatch — Repository Instructions
 
-| Field | Value |
-| --- | --- |
-| Purpose | Repository-wide working rules for every agent and contributor |
-| Read when | Any change in this repository; domain rules live in the referenced documents |
-| Last updated | 2026-09-07 |
+
+| Field        | Value                                                                        |
+| ------------ | ---------------------------------------------------------------------------- |
+| Purpose      | Repository-wide working rules for every agent and contributor                |
+| Read when    | Any change in this repository; domain rules live in the referenced documents |
+| Last updated | 2026-09-08                                                                   |
+
 
 NightWatch is a multi-tenant, AWS-first cloud security platform.
 
 ## 1. Scope
 
 - Apply these rules repository-wide; read relevant nested instructions using the active tool's discovery rules.
-- Respond in the user's language, defaulting to Thai; preserve identifiers. `.omp/agents/` defines roles and is the only editable agent source; `.claude/agents/` and `.codex/agents/` are generated from it with `bun run agents:sync`. `.omp/skills/` provides task-specific procedures.
+- Respond in the user's language, defaulting to Thai; preserve identifiers. `.omp/agents/` defines roles and is the canonical source for project-scoped OMP roles, consumed by OMP directly. User-level Claude Code and Codex snapshots (`~/.claude/agents/`, `~/.codex/agents/`) are independent personal configs outside this repository — they are not generated from these sources; edit them in place. The repository carries no `.claude/` or `.codex/` artifacts. `.omp/skills/` provides task-specific procedures.
 
 ## 2. Read before changing
 
 Follow the applicable reference, including its verification requirements. Keep domain-specific rules in these documents, not duplicated here.
 
-| Work | Reference |
-| --- | --- |
-| API, authorization, DB/RLS, queues and dataflow | [Architecture](docs/architecture.md) |
-| UI, fonts, themes, components and accessibility | [Design system](docs/design-system.md) |
-| Quality gates and verification commands | [Quality scripts](scripts/quality/README.md) |
+
+| Work                                            | Reference                                    |
+| ----------------------------------------------- | -------------------------------------------- |
+| API, authorization, DB/RLS, queues and dataflow | [Architecture](docs/architecture.md)         |
+| UI, fonts, themes, components and accessibility | [Design system](docs/design-system.md)       |
+| Quality gates and verification commands         | [Quality scripts](scripts/quality/README.md) |
+
 
 ## 3. Working rules
 
@@ -32,14 +36,8 @@ Follow the applicable reference, including its verification requirements. Keep d
 
 ## 4. Verification and completion
 
-- Run the quality gates in [Quality scripts](scripts/quality/README.md) before reporting completion.
+- Run the applicable quality gates in [Quality scripts](scripts/quality/README.md) before reporting completion when source code changes. Documentation-only changes do not require those gates.
 - Coordinate shared validation while other agents edit.
 - Keep regression tests for plausible behavioral failures, not wiring or mock echoes. Remove only your own temporary artifacts.
 - Report changes and remaining risks. Completion does not grant release or independent acceptance.
 
-## 5. Parent orchestration
-
-- The main session is the parent of every role in `.omp/agents/`. It assigns scope, file ownership and the exact candidate or revision; roles return artifacts and findings and never persist, publish or approve on their own.
-- The parent persists returned artifacts to their canonical location, coordinates overlapping edits and runs shared validation only after sibling edits settle.
-- The parent routes each Next owner explicitly. Scope and budget, risk acceptance, production changes and release authorization stay with the human and are never delegated to a role.
-- Review and security findings are evidence for the decision owner. The parent records the decision and its reference; routing a finding does not resolve it.

@@ -14,16 +14,15 @@ Adapted from Matt Pocock's `grilling`; copyright and permission notice are in `L
 
 ## Activation and authority
 
-Use this procedure only when the assignment asks to clarify or challenge an idea, plan, assumptions or product decision. Being autoloaded makes the procedure available; it does not turn every Product Manager assignment into an interview. For evidence synthesis or reporting with settled decisions, continue the assigned work without reopening them.
+Use this procedure only when the assignment asks to clarify or challenge an idea, plan, assumptions or product decision. Being autoloaded makes the procedure available; it does not turn every Product Owner assignment into an interview. For evidence synthesis or reporting with settled decisions, continue the assigned work without reopening them.
 
 The parent must supply the relevant conversation, approved decisions and open questions. Do not assume access to earlier conversation turns. Read supplied context and relevant local facts before asking questions. External research is optional and only within the assignment's authorized scope; label sources and uncertainty.
 
-For project product work, use `skill://product-planning` as the canonical contract.
 Identify the assigned Product Direction (DIR) hypothesis or Product Design Document
 (PDD)/Epic/Feature decision and exact candidate/scope, not the entire future product.
-Product Direction owns why/discovery/outcomes under PM; UX/Product Designer owns
-Feature-scoped PDD experience design with PM collaboration, while PO owns Feature
-scope/criteria and engineers/Tech Lead own technical implementation contracts.
+Product Direction owns why/discovery/outcomes under the PO, who also owns Feature
+scope/criteria; UX/Product Designer owns Feature-scoped PDD experience design with PO
+collaboration, and engineers/Tech Lead own technical implementation contracts.
 PDD is a design companion directly under its selected Feature, not root discovery,
 a duplicate requirements source or an API/schema specification. Delivery containment
 is Direction → Epic → Feature → Story → Implementation Task; Stories link applicable

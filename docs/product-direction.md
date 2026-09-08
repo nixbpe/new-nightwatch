@@ -8,8 +8,8 @@
 | document_status | Direction Approved |
 | outcome_status | Not measured |
 | Parent | None — root product direction |
-| Owner | Product Manager role proposed; accountable person not yet confirmed |
-| Direction decisions | User-selected boundaries D1–D9 below; the user authorized incorporating these decisions and the PM recommendations into this revision |
+| Owner | Product Owner role proposed; accountable person not yet confirmed |
+| Direction decisions | User-selected boundaries D1–D9 below; the user authorized incorporating these decisions and the PO recommendations into this revision |
 | Approval boundary | Historical provenance: the unchanged direction scope was approved under the former discovery artifact identity PDD-001 v2 on 2026-09-07; that approval remains bounded to the same direction content now identified as DIR-001, not a new Product Design Document. E-001 v0 scope was approved on 2026-09-07; E001-A1 authorized F-001 drafting. F001-A1 approved F-001 v1. Subsequent F001-D2/D3 confirmed C1–C9/G1–G23; working F-001 v3 incorporates these answers and bounded read-only reviews F001-R3. Integrated v3 acceptance, exact proposed contract freeze and readiness evidence remain outstanding. No other planning artifacts, research execution, implementation or release are authorized; research protocols/measurement definitions remain proposals |
 | Revision purpose | Focus the new product on explainable technical-risk prioritization for service-provider Platform/SRE teams, across Projects within one customer |
 
@@ -17,7 +17,7 @@ This **Product Direction** document retains the product why, discovery, boundari
 
 ### Decision record
 
-Source: the user's nine answers to the PM-review grilling rounds in this conversation, followed by the historical request “ดำเนินการปรับ pdd ตามคำแนะนำได้เลย”. These local decision IDs preserve the answer-to-scope mapping; they are not tracker IDs or customer evidence. The precise answer timestamps are not recorded here. In the former discovery artifact's history, the source was v1 and those decisions were incorporated as v2. This rename retains that direction content and source revision; it creates no new approval or Product Design candidate.
+Source: the user's nine answers to the PO-review grilling rounds in this conversation, followed by the historical request “ดำเนินการปรับ pdd ตามคำแนะนำได้เลย”. These local decision IDs preserve the answer-to-scope mapping; they are not tracker IDs or customer evidence. The precise answer timestamps are not recorded here. In the former discovery artifact's history, the source was v1 and those decisions were incorporated as v2. This rename retains that direction content and source revision; it creates no new approval or Product Design candidate.
 
 | ID / source | User-selected direction | Consequence for the first scope |
 | --- | --- | --- |
@@ -138,12 +138,12 @@ This journey is a design to evaluate, not observed usage. The initial learning c
 
 | Risk | Consequence | Proposed response / owner |
 | --- | --- | --- |
-| Existing tools already solve prioritization adequately | Adoption adds cost without useful decision improvement | PM/UX: observe real decisions and alternative-tool strengths |
-| Technical ordering is mistaken for business importance | Operator makes an inappropriate customer-level decision | PM/UX with security input: test whether users understand the D8 boundary |
+| Existing tools already solve prioritization adequately | Adoption adds cost without useful decision improvement | PO/UX: observe real decisions and alternative-tool strengths |
+| Technical ordering is mistaken for business importance | Operator makes an inappropriate customer-level decision | PO/UX with security input: test whether users understand the D8 boundary |
 | Projects with fewer observations appear less risky | Incomplete coverage creates false reassurance | Technical/security and UX input: define and test incomplete-evidence comparisons under D4 |
 | Explanations sound convincing without sufficient evidence | Faster but less defensible decisions | Security/QA with UX input: evaluate rationale and action correctness, not speed alone |
 | Organization membership or scope is enforced incorrectly | Cross-customer disclosure or incorrect aggregation | Technical/security input: verify the established membership, permission and single-Organization boundaries in the affected implementation |
-| Onboarding effort, privileges or data constraints outweigh value | Provider cannot adopt the product safely or economically | PM with technical input: study actual buyer, approver and operator constraints |
+| Onboarding effort, privileges or data constraints outweigh value | Provider cannot adopt the product safely or economically | PO with technical input: study actual buyer, approver and operator constraints |
 
 Response roles are proposed; named owners and accepted risk decisions are not recorded. This document does not authorize collection of customer credentials or sensitive evidence.
 
@@ -151,7 +151,7 @@ Response roles are proposed; named owners and accepted risk decisions are not re
 
 ### Evidence state
 
-D1–D9 record user direction, not validation. No customer observations, empirical ranking evaluation or measured outcomes are recorded. For the active claims below, `evidence_status` is **Hypothesis**; empirical source/date, observed population and actual results are **Unknown / not collected**. PM review is document analysis, not market evidence.
+D1–D9 record user direction, not validation. No customer observations, empirical ranking evaluation or measured outcomes are recorded. For the active claims below, `evidence_status` is **Hypothesis**; empirical source/date, observed population and actual results are **Unknown / not collected**. PO review is document analysis, not market evidence.
 
 H1, H2, H4, H5 and H6 retain their v1 identities with the selected audience and scope made explicit. H3 concerned native action coordination; D5 defers that investment, so H3 is **not part of the initial study** and is neither validated nor rejected by this decision.
 
@@ -173,7 +173,7 @@ These are proposed qualitative decision rules, not completed protocols or numeri
 
 **Primary desired outcome:** provider Platform/SRE operators can choose a defensible next technical action across one customer's Projects with less decision effort, without being misled by incomplete data or treating technical order as business priority (D1–D9).
 
-Measurement definitions below are **proposals**, not approved targets or existing telemetry. Baselines, target values, cohort size and aggregate evaluation window are unknown. Proposed owner: Product Manager with UX/security input; the named owner is not confirmed.
+Measurement definitions below are **proposals**, not approved targets or existing telemetry. Baselines, target values, cohort size and aggregate evaluation window are unknown. Proposed owner: Product Owner with UX/security input; the named owner is not confirmed.
 
 | Measure | Proposed definition and unit | Baseline / collection plan | Interpretation and guardrail |
 | --- | --- | --- | --- |
@@ -190,11 +190,11 @@ The primary audience, provider context, main job, within-customer comparison sco
 
 | Open decision | Affected work and next input | Proposed owner |
 | --- | --- | --- |
-| Named pilot providers, buyer and access approver | Recruitment and adoption assumptions need real participants and responsibilities; the service-provider segment itself is already selected | User/product owner with PM |
+| Named pilot providers, buyer and access approver | Recruitment and adoption assumptions need real participants and responsibilities; the service-provider segment itself is already selected | User with PO |
 | Supported AWS scope and technical signals | Agree account/region/resource/check coverage and available evidence for the selected loop; do not promise complete AWS coverage | Product and technical/security input |
 | Ranking and explanation contract | Define evidence sources, comparison rules, signal precedence and behavior under unequal/incomplete coverage within D3/D4/D8/D9; no invented score formula | Product with technical/security and UX input |
 | Deployment, data control and operating boundaries | Resolve hosted/self-operated trade-offs, retention and cost expectations using buyer/operator constraints; not inferred from multi-tenancy | Product with technical/platform/security input |
-| Research protocol and outcome thresholds | Confirm safe scenarios, rubric, cohort, window, consent, named owner and authorization before studies | PM/UX with security input |
+| Research protocol and outcome thresholds | Confirm safe scenarios, rubric, cohort, window, consent, named owner and authorization before studies | PO/UX with security input |
 
 Reporting, notifications, native lifecycle and adjacent modules require later selection, not resolution as prerequisites for this first loop. Unknown details block only the work that depends on them: participant studies need authorized access; affected implementation needs its agreed product/technical contracts. No blanket product blocker is declared.
 
