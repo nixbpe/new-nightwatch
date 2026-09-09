@@ -5,22 +5,29 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
+    "provision-organization": "bun run src/operator/provision-organization.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@hono/zod-openapi": "0.19.10",
     "@nightwatch/api-contract": "workspace:*",
+    "@nightwatch/db": "workspace:*",
     "@nightwatch/shared": "workspace:*",
+    "better-auth": "1.6.23",
     "hono": "~4.12.0",
+    "nodemailer": "^10.0.1",
+    "pg": "^8.23.0",
     "zod": "~3.25.0"
   },
   "devDependencies": {
     "@nightwatch/eslint-config": "workspace:*",
     "@nightwatch/typescript-config": "workspace:*",
+    "@types/pg": "^8.11.10",
     "@vitest/coverage-v8": "^5.0.0",
     "vitest": "^5.0.0"
   }

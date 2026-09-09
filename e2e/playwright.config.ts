@@ -9,6 +9,39 @@ const { webPort, apiPort } = resolvePorts();
 const webUrl = `http://localhost:${webPort}`;
 const apiUrl = `http://localhost:${apiPort}`;
 
+// Auth-bearing environment is forwarded from the caller only — never
+// fabricated here. APP_URL/BETTER_AUTH_URL/CORS_ORIGIN fall back to the
+// resolved dev origins (same computation as scripts/dev.mjs) so the webServer
+// block is self-contained; DATABASE_URL and BETTER_AUTH_SECRET must come from
+// the caller's environment when the API requires a database.
+const AUTH_ENV_NAMES = [
+  "DATABASE_URL",
+  "DATABASE_OWNER_URL",
+  "BETTER_AUTH_SECRET",
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_SECURE",
+  "SMTP_USER",
+  "SMTP_PASSWORD",
+  "SMTP_FROM",
+] as const;
+
+function apiServerEnv(): Record<string, string> {
+  const env: Record<string, string> = {
+    PORT: String(apiPort),
+    APP_URL: process.env.APP_URL ?? webUrl,
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? apiUrl,
+    CORS_ORIGIN: process.env.CORS_ORIGIN ?? webUrl,
+  };
+  for (const name of AUTH_ENV_NAMES) {
+    const value = process.env[name];
+    if (value !== undefined && value !== "") {
+      env[name] = value;
+    }
+  }
+  return env;
+}
+
 export default defineConfig({
   testDir: "./tests",
   timeout: 30_000,
@@ -23,7 +56,7 @@ export default defineConfig({
       command: "bun run dev",
       cwd: "../apps/api",
       url: `${apiUrl}/health`,
-      env: { PORT: String(apiPort) },
+      env: apiServerEnv(),
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },

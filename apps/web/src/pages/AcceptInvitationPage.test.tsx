@@ -1,0 +1,233 @@
+import type { InvitationResponse } from "@nightwatch/api-contract";
+import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { RequireAnon } from "../components/guards";
+import { ApiError } from "../lib/api/client";
+import { fetchInvitation } from "../lib/api/invitations";
+import { readInvitation } from "../lib/auth/continuation";
+import { SessionQueryProvider } from "../lib/auth/SessionQueryProvider";
+import { AcceptInvitationPage } from "./AcceptInvitationPage";
+import { LoginPage } from "./LoginPage";
+import { OnboardingPage } from "./OnboardingPage";
+
+const { sessionState, signUpEmailMock, signInEmailMock, acceptInvitationMock } =
+  vi.hoisted(() => ({
+    sessionState: {
+      data: null as {
+        user: { id: string; email: string; emailVerified: boolean };
+      } | null,
+      isPending: false,
+    },
+    signUpEmailMock: vi.fn(),
+    signInEmailMock: vi.fn(),
+    acceptInvitationMock: vi.fn(),
+  }));
+
+vi.mock("better-auth/react", () => ({
+  createAuthClient: () => ({
+    useSession: () => sessionState,
+    signUp: { email: signUpEmailMock },
+    signIn: { email: signInEmailMock },
+    organization: { acceptInvitation: acceptInvitationMock },
+    signOut: vi.fn(),
+  }),
+}));
+
+vi.mock("better-auth/client/plugins", () => ({
+  organizationClient: () => ({}),
+  twoFactorClient: () => ({}),
+}));
+
+vi.mock("../lib/api/invitations", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return { ...original, fetchInvitation: vi.fn() };
+});
+
+const fetchInvitationMock = vi.mocked(fetchInvitation);
+
+const invitation: InvitationResponse = {
+  invitation: {
+    id: "inv-123",
+    email: "new@example.com",
+    organizationName: "Acme Corp",
+    role: "viewer",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  },
+};
+
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
+function InvitationHarness({ path }: { path: string }) {
+  return (
+    <MemoryRouter initialEntries={[path]}>
+      <SessionQueryProvider>
+        <Routes>
+          <Route
+            path="/accept-invitation/:invitationId"
+            element={<AcceptInvitationPage />}
+          />
+          <Route
+            path="/login"
+            element={
+              <RequireAnon>
+                <LoginPage />
+              </RequireAnon>
+            }
+          />
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="*" element={<LocationProbe />} />
+        </Routes>
+      </SessionQueryProvider>
+    </MemoryRouter>
+  );
+}
+
+function renderPage(path = "/accept-invitation/inv-123") {
+  const view = render(<InvitationHarness path={path} />);
+  return {
+    resolveSession() {
+      sessionState.data = {
+        user: {
+          id: "user-1",
+          email: "new@example.com",
+          emailVerified: true,
+        },
+      };
+      view.rerender(<InvitationHarness path={path} />);
+    },
+  };
+}
+
+describe("AcceptInvitationPage", () => {
+  beforeEach(() => {
+    sessionState.data = null;
+    sessionState.isPending = false;
+  });
+
+  afterEach(() => {
+    fetchInvitationMock.mockReset();
+    signUpEmailMock.mockReset();
+    signInEmailMock.mockReset();
+    acceptInvitationMock.mockReset();
+    sessionStorage.clear();
+  });
+
+  it("signup from invitation continues to verification", async () => {
+    fetchInvitationMock.mockResolvedValue(invitation);
+    signUpEmailMock.mockResolvedValue({ data: {}, error: null });
+    renderPage();
+
+    await screen.findByText("สร้างบัญชีจากคำเชิญ");
+    await userEvent.type(screen.getByLabelText("ชื่อที่แสดง"), "สมชาย ใจดี");
+    await userEvent.type(
+      screen.getByLabelText("รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)"),
+      "super-secret-1",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "สร้างบัญชีและรอการยืนยันอีเมล" }),
+    );
+
+    // Observable continuation: successful signup routes to the resend hub
+    // with the invitation remembered for post-verification acceptance.
+    expect(await screen.findByTestId("location")).toHaveTextContent(
+      "/verify-email",
+    );
+    expect(readInvitation()).toBe("inv-123");
+  });
+
+  it("returns from login automatically and keeps the invitation until explicit acceptance succeeds", async () => {
+    const signIn = Promise.withResolvers<{
+      data: typeof sessionState.data;
+      error: null;
+    }>();
+    const acceptance = Promise.withResolvers<{ data: object; error: null }>();
+    fetchInvitationMock.mockResolvedValue(invitation);
+    signInEmailMock.mockReturnValue(signIn.promise);
+    acceptInvitationMock.mockReturnValue(acceptance.promise);
+    const user = userEvent.setup();
+    const page = renderPage();
+
+    await user.click(
+      await screen.findByRole("link", { name: "เข้าสู่ระบบเพื่อรับคำเชิญ" }),
+    );
+    await screen.findByRole("heading", { name: "เข้าสู่ระบบ NightWatch" });
+
+    await user.type(screen.getByLabelText("อีเมล"), "new@example.com");
+    await user.type(screen.getByLabelText("รหัสผ่าน"), "super-secret-1");
+    await user.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+    page.resolveSession();
+
+    // No manual link recovery: the remounted anonymous guard must resume
+    // the invitation automatically while the original sign-in still awaits.
+    expect(
+      await screen.findByRole("heading", { name: "ยอมรับคำเชิญ" }),
+    ).toBeInTheDocument();
+    expect(readInvitation()).toBe("inv-123");
+    expect(acceptInvitationMock).not.toHaveBeenCalled();
+    await act(async () => {
+      signIn.resolve({ data: sessionState.data, error: null });
+      await signIn.promise;
+    });
+    expect(
+      screen.getByRole("heading", { name: "ยอมรับคำเชิญ" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "เข้าร่วมองค์กร" }));
+    expect(readInvitation()).toBe("inv-123");
+    expect(screen.queryByTestId("location")).toBeNull();
+    await act(async () => {
+      acceptance.resolve({ data: {}, error: null });
+      await acceptance.promise;
+    });
+
+    expect(await screen.findByTestId("location")).toHaveTextContent(
+      "/workspace",
+    );
+    // Acceptance consumed the pending invitation; nothing lingers.
+    expect(readInvitation()).toBeNull();
+  });
+
+  it("refuses an invitation addressed to a different email", async () => {
+    fetchInvitationMock.mockResolvedValue(invitation);
+    sessionState.data = {
+      user: {
+        id: "user-9",
+        email: "other@example.com",
+        emailVerified: true,
+      },
+    };
+    renderPage();
+
+    expect(
+      await screen.findByText("บัญชีนี้ไม่ตรงกับคำเชิญ"),
+    ).toBeInTheDocument();
+    // Denied: the acceptance form never renders for the wrong account.
+    expect(screen.queryByRole("button", { name: "เข้าร่วมองค์กร" })).toBeNull();
+  });
+
+  it("fails safely when the invitation preview cannot be loaded", async () => {
+    fetchInvitationMock.mockRejectedValue(
+      new ApiError("INVITATION_NOT_FOUND", "not found", 404),
+    );
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        "ไม่พบคำเชิญนี้ ตรวจสอบลิงก์จากอีเมลอีกครั้งหรือติดต่อผู้เชิญ",
+      ),
+    ).toBeInTheDocument();
+    // Safe state offers a way back to login, with no signup form exposed.
+    expect(
+      screen.getByRole("link", { name: "ไปที่หน้าเข้าสู่ระบบ" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "สร้างบัญชีและรอการยืนยันอีเมล" }),
+    ).toBeNull();
+  });
+});

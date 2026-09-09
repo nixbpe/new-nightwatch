@@ -5,3 +5,5 @@ coverage/
 test-results/
 playwright-report/
 .env*
+# The example file documents the contract and carries no secrets; keep it tracked.
+!.env.example

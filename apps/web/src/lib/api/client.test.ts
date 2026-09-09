@@ -1,6 +1,9 @@
+import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, fetchHello } from "./client";
+import { ApiError, request } from "./client";
+
+const payloadSchema = z.object({ ok: z.boolean() });
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -9,12 +12,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-const helloBody = {
-  message: "Hello from NightWatch",
-  timestamp: "2026-09-06T12:00:00.000Z",
-};
-
-describe("fetchHello", () => {
+describe("api request helper", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -22,9 +20,39 @@ describe("fetchHello", () => {
   it("returns the contract-parsed response", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(200, helloBody)),
+      vi.fn().mockResolvedValue(jsonResponse(200, { ok: true })),
     );
-    await expect(fetchHello()).resolves.toEqual(helloBody);
+    await expect(request("/api/v1/x", payloadSchema)).resolves.toEqual({
+      ok: true,
+    });
+  });
+
+  it("sends credentials and JSON bodies for writes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    await request("/api/me/active-org", payloadSchema, {
+      method: "PATCH",
+      body: { organizationId: "abc" },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ organizationId: "abc" }),
+      }),
+    );
+  });
+
+  it("resolves 204 No Content when no schema is expected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 204 })),
+    );
+    await expect(request("/api/v1/x", undefined)).resolves.toBeUndefined();
   });
 
   it("surfaces the server error envelope as ApiError", async () => {
@@ -32,14 +60,16 @@ describe("fetchHello", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         jsonResponse(403, {
-          error: { code: "HELLO_FORBIDDEN", message: "not allowed" },
+          error: { code: "FORBIDDEN", message: "not allowed" },
         }),
       ),
     );
-    const failure = await fetchHello().catch((error: unknown) => error);
+    const failure = await request("/api/v1/x", payloadSchema).catch(
+      (error: unknown) => error,
+    );
     expect(failure).toBeInstanceOf(ApiError);
     expect(failure).toMatchObject({
-      code: "HELLO_FORBIDDEN",
+      code: "FORBIDDEN",
       message: "not allowed",
       status: 403,
     });
@@ -50,7 +80,7 @@ describe("fetchHello", () => {
       "fetch",
       vi.fn().mockResolvedValue(jsonResponse(502, "<html>bad gateway</html>")),
     );
-    await expect(fetchHello()).rejects.toMatchObject({
+    await expect(request("/api/v1/x", payloadSchema)).rejects.toMatchObject({
       code: "HTTP_502",
       status: 502,
     });
@@ -61,7 +91,7 @@ describe("fetchHello", () => {
       "fetch",
       vi.fn().mockResolvedValue(jsonResponse(200, { unexpected: true })),
     );
-    await expect(fetchHello()).rejects.toMatchObject({
+    await expect(request("/api/v1/x", payloadSchema)).rejects.toMatchObject({
       code: "CONTRACT_MISMATCH",
     });
   });
@@ -71,7 +101,7 @@ describe("fetchHello", () => {
       "fetch",
       vi.fn().mockRejectedValue(new TypeError("fetch failed")),
     );
-    await expect(fetchHello()).rejects.toMatchObject({
+    await expect(request("/api/v1/x", payloadSchema)).rejects.toMatchObject({
       code: "NETWORK_ERROR",
       status: 0,
     });
