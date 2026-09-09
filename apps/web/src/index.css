@@ -12,6 +12,8 @@
   --primary: #087a55;
   --on-primary: #ffffff;
   --danger: #be123c;
+  --caution: #8a5a00;
+  --control-border: #7b8490;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +25,8 @@
     --primary: #3ecf8e;
     --on-primary: #11251c;
     --danger: #fb7185;
+    --caution: #f2be5c;
+    --control-border: #6b7582;
   }
 }
 
@@ -34,6 +38,8 @@
   --color-primary: var(--primary);
   --color-on-primary: var(--on-primary);
   --color-danger: var(--danger);
+  --color-caution: var(--caution);
+  --color-control-border: var(--control-border);
   --font-sans: Inter, "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif;
   --radius-md: 6px;
   --radius-lg: 12px;
