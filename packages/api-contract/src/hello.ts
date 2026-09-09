@@ -4,7 +4,7 @@ import { z } from "zod";
 export const helloResponseSchema = z.object({
   message: z.string().min(1),
   /** Server time when the greeting was produced, ISO 8601 UTC. */
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
 });
 
 export type HelloResponse = z.infer<typeof helloResponseSchema>;

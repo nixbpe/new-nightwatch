@@ -5,7 +5,7 @@ import { z } from "zod";
  * requests, which the Vite dev server proxies to the API.
  */
 const envSchema = z.object({
-  VITE_API_BASE_URL: z.string().url().or(z.literal("")).default(""),
+  VITE_API_BASE_URL: z.url().or(z.literal("")).default(""),
 });
 
 export const env = envSchema.parse({

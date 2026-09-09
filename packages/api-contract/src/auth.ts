@@ -23,17 +23,17 @@ export type OrganizationRole = z.infer<typeof organizationRoleSchema>;
 export const invitationResponseSchema = z.object({
   invitation: z.object({
     id: z.string().min(1),
-    email: z.string().email(),
+    email: z.email(),
     organizationName: z.string().min(1),
     role: organizationRoleSchema,
-    expiresAt: z.string().datetime(),
+    expiresAt: z.iso.datetime(),
   }),
 });
 
 export type InvitationResponse = z.infer<typeof invitationResponseSchema>;
 
 export const meContextOrganizationSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string().min(1),
   slug: z.string().min(1),
   role: organizationRoleSchema,
@@ -49,19 +49,19 @@ export const meContextResponseSchema = z.object({
   user: z.object({
     id: z.string().min(1),
     name: z.string(),
-    email: z.string().email(),
+    email: z.email(),
     emailVerified: z.boolean(),
     twoFactorEnabled: z.boolean(),
   }),
   organizations: z.array(meContextOrganizationSchema),
-  lastActiveTenantId: z.string().uuid().nullable(),
+  lastActiveTenantId: z.uuid().nullable(),
 });
 
 export type MeContextResponse = z.infer<typeof meContextResponseSchema>;
 
 /** Input for switching the active organization. */
 export const activeOrganizationInputSchema = z.object({
-  organizationId: z.string().uuid(),
+  organizationId: z.uuid(),
 });
 
 export type ActiveOrganizationInput = z.infer<

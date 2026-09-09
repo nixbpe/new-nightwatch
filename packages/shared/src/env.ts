@@ -44,11 +44,11 @@ export const authEnvSchema = z
     /** Better Auth signing/encryption secret; >= 32 chars. */
     BETTER_AUTH_SECRET: z.string().min(32).optional(),
     /** Frontend origin (browser app). */
-    APP_URL: z.string().url().default("http://localhost:5173"),
+    APP_URL: z.url().default("http://localhost:5173"),
     /** Public API origin where /api/auth is served. */
-    BETTER_AUTH_URL: z.string().url().default("http://localhost:4000"),
+    BETTER_AUTH_URL: z.url().default("http://localhost:4000"),
     /** Credentialed CORS origin; must exactly match APP_URL when set. */
-    CORS_ORIGIN: z.string().url().optional(),
+    CORS_ORIGIN: z.url().optional(),
     SMTP_HOST: z.string().min(1).default("127.0.0.1"),
     SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
     SMTP_SECURE: envBoolean.default(false),
@@ -59,21 +59,21 @@ export const authEnvSchema = z
   .superRefine((value, ctx) => {
     if (value.SMTP_USER && !value.SMTP_PASSWORD) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["SMTP_PASSWORD"],
         message: "SMTP_PASSWORD is required when SMTP_USER is set",
       });
     }
     if (value.SMTP_PASSWORD && !value.SMTP_USER) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["SMTP_USER"],
         message: "SMTP_USER is required when SMTP_PASSWORD is set",
       });
     }
     if (value.CORS_ORIGIN && value.CORS_ORIGIN !== value.APP_URL) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["CORS_ORIGIN"],
         message: "CORS_ORIGIN must exactly match APP_URL",
       });
@@ -91,9 +91,9 @@ const DEV_BETTER_AUTH_SECRET = "nightwatch-dev-only-secret-change-me-0123456";
 const DEV_SMTP_FROM = "NightWatch Dev <no-reply@nightwatch.dev.local>";
 
 export class EnvValidationError extends Error {
-  readonly issues: z.ZodIssue[];
+  readonly issues: z.core.$ZodIssue[];
 
-  constructor(issues: z.ZodIssue[]) {
+  constructor(issues: z.core.$ZodIssue[]) {
     const summary = issues
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
       .join("; ");
@@ -127,7 +127,7 @@ export function loadAuthEnv(source: NodeJS.ProcessEnv = process.env): AuthEnv {
     if (nodeEnv === "production") {
       throw new EnvValidationError([
         {
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["BETTER_AUTH_SECRET"],
           message: "BETTER_AUTH_SECRET (>= 32 chars) is required in production",
         },
@@ -139,7 +139,7 @@ export function loadAuthEnv(source: NodeJS.ProcessEnv = process.env): AuthEnv {
     if (nodeEnv === "production") {
       throw new EnvValidationError([
         {
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["SMTP_FROM"],
           message: "SMTP_FROM is required in production",
         },

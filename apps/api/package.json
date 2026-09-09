@@ -14,7 +14,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@hono/zod-openapi": "0.19.10",
+    "@hono/zod-openapi": "^1.0.0",
     "@nightwatch/api-contract": "workspace:*",
     "@nightwatch/db": "workspace:*",
     "@nightwatch/shared": "workspace:*",
@@ -22,7 +22,7 @@
     "hono": "~4.12.0",
     "nodemailer": "^10.0.1",
     "pg": "^8.23.0",
-    "zod": "~3.25.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@nightwatch/eslint-config": "workspace:*",

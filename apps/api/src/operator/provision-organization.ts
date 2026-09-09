@@ -48,7 +48,7 @@ const provisionArgsSchema = z.object({
   slug: z
     .string()
     .regex(SLUG_PATTERN, "slug must be lowercase alphanumeric with hyphens"),
-  ownerEmail: z.string().email(),
+  ownerEmail: z.email(),
 });
 
 export type ProvisionArgs = z.infer<typeof provisionArgsSchema>;
