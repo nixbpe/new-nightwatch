@@ -6,8 +6,8 @@ import {
   Alert,
   AuthPageShell,
   Field,
+  Input,
   SubmitButton,
-  textInputClass,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
@@ -136,7 +136,7 @@ export function VerifyEmailPage() {
             </Alert>
           ) : null}
           <Field label="อีเมลที่ใช้สมัครบัญชี">
-            <input
+            <Input
               type="email"
               name="email"
               autoComplete="email"
@@ -145,7 +145,6 @@ export function VerifyEmailPage() {
               onChange={(event) => {
                 setEmail(event.target.value);
               }}
-              className={textInputClass}
             />
           </Field>
           <SubmitButton

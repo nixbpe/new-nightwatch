@@ -7,8 +7,8 @@ import {
   AuthPageShell,
   Field,
   FullPageLoading,
+  Input,
   SubmitButton,
-  textInputClass,
 } from "../components/ui";
 import { authClient, authErrorMessage, sameEmail } from "../lib/auth-client";
 import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
@@ -284,17 +284,17 @@ function SignupGate({
         >
           {error === null ? null : <Alert tone="error">{error}</Alert>}
           <Field label="อีเมล (ตามคำเชิญ)">
-            <input
+            <Input
               type="email"
               name="email"
               value={email}
               readOnly
               aria-readonly="true"
-              className={`${textInputClass} opacity-70`}
+              className="opacity-70"
             />
           </Field>
           <Field label="ชื่อที่แสดง">
-            <input
+            <Input
               type="text"
               name="name"
               autoComplete="name"
@@ -304,11 +304,10 @@ function SignupGate({
               onChange={(event) => {
                 setName(event.target.value);
               }}
-              className={textInputClass}
             />
           </Field>
           <Field label="รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)">
-            <input
+            <Input
               type="password"
               name="password"
               autoComplete="new-password"
@@ -318,7 +317,6 @@ function SignupGate({
               onChange={(event) => {
                 setPassword(event.target.value);
               }}
-              className={textInputClass}
             />
           </Field>
           <SubmitButton pending={pending} pendingLabel="กำลังสร้างบัญชี…">

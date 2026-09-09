@@ -6,8 +6,8 @@ import {
   AuthPageShell,
   Field,
   FullPageLoading,
+  Input,
   SubmitButton,
-  textInputClass,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
@@ -114,7 +114,7 @@ export function TwoFactorPage() {
         <Field
           label={mode === "recovery" ? "รหัสกู้คืนบัญชี" : "รหัสยืนยัน 6 หลัก"}
         >
-          <input
+          <Input
             type="text"
             name="challenge-code"
             inputMode={mode === "recovery" ? "text" : "numeric"}
@@ -124,7 +124,6 @@ export function TwoFactorPage() {
             onChange={(event) => {
               setCode(event.target.value);
             }}
-            className={textInputClass}
           />
         </Field>
         <label className="flex items-center gap-2 text-sm">

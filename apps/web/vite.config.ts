@@ -12,10 +12,18 @@ export default defineConfig({
   // React Compiler (babel-plugin-react-compiler via plugin-react's
   // reactCompilerPreset) owns render-performance memoization;
   // apps/web/src intentionally carries no manual useMemo/useCallback.
-  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
+  plugins: [
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
+    tailwindcss(),
+  ],
   // Workspace contracts ship as TypeScript source; keep them out of
   // pre-bundling so Vite transforms them as regular source.
   optimizeDeps: { exclude: ["@nightwatch/api-contract"] },
+  resolve: {
+    // shadcn/ui alias (components.json); "@/*" -> src, mirroring tsconfig paths.
+    alias: { "@": new URL("./src", import.meta.url).pathname },
+  },
   server: {
     port: webPort,
     strictPort: true,

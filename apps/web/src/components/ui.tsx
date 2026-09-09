@@ -1,5 +1,25 @@
 import type { ReactNode } from "react";
 
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
+import { Label } from "./ui/label";
+
+/**
+ * NightWatch primitives, composed from shadcn/ui base components
+ * (src/components/ui/*, generated per components.json). Pages keep
+ * importing from this barrel; NODE-6+ may use the shadcn pieces directly.
+ */
+export { Input } from "./ui/input";
+
+/**
+ * Shared class for non-Input controls (e.g. the workspace role <select>)
+ * that take the same field styling; text inputs use <Input> instead.
+ */
+export const textInputClass =
+  "w-full rounded-md border border-control-border bg-surface px-3 py-2 text-foreground " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
+  "disabled:cursor-not-allowed disabled:opacity-60";
+
 /** Centered single-card page used by every auth form (docs/design-system.md). */
 export function AuthPageShell({
   title,
@@ -12,13 +32,13 @@ export function AuthPageShell({
 }) {
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-lg bg-surface p-6 shadow-sm sm:p-8">
+      <Card className="w-full max-w-md p-6 sm:p-8">
         <h1 className="text-2xl font-semibold">{title}</h1>
         {subtitle === undefined ? null : (
           <p className="mt-2 text-sm text-foreground-secondary">{subtitle}</p>
         )}
         <div className="mt-6">{children}</div>
-      </div>
+      </Card>
     </main>
   );
 }
@@ -33,22 +53,17 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium">{label}</span>
+    <Label className="block">
+      <span className="mb-1 block">{label}</span>
       {children}
       {error === undefined || error === null ? null : (
         <span role="alert" className="mt-1 block text-sm text-danger">
           {error}
         </span>
       )}
-    </label>
+    </Label>
   );
 }
-
-export const textInputClass =
-  "w-full rounded-md border border-control-border bg-surface px-3 py-2 text-foreground " +
-  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
-  "disabled:cursor-not-allowed disabled:opacity-60";
 
 export function SubmitButton({
   pending,
@@ -62,13 +77,13 @@ export function SubmitButton({
   children: ReactNode;
 }) {
   return (
-    <button
+    <Button
       type="submit"
       disabled={pending || disabled === true}
-      className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+      className="w-full"
     >
       {pending ? pendingLabel : children}
-    </button>
+    </Button>
   );
 }
 

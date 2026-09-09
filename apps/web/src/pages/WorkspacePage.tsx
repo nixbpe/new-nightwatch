@@ -5,6 +5,7 @@ import {
   Alert,
   Field,
   FullPageLoading,
+  Input,
   SubmitButton,
   textInputClass,
 } from "../components/ui";
@@ -233,7 +234,7 @@ function InviteMemberPanel({
           </Alert>
         )}
         <Field label="อีเมลของผู้ได้รับเชิญ">
-          <input
+          <Input
             type="email"
             name="invite-email"
             autoComplete="off"
@@ -242,7 +243,6 @@ function InviteMemberPanel({
             onChange={(event) => {
               setEmail(event.target.value);
             }}
-            className={textInputClass}
           />
         </Field>
         <Field label="บทบาท">

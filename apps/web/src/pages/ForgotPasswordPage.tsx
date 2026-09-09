@@ -5,8 +5,8 @@ import {
   Alert,
   AuthPageShell,
   Field,
+  Input,
   SubmitButton,
-  textInputClass,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
@@ -66,7 +66,7 @@ export function ForgotPasswordPage() {
         >
           {error === null ? null : <Alert tone="error">{error}</Alert>}
           <Field label="อีเมล">
-            <input
+            <Input
               type="email"
               name="email"
               autoComplete="email"
@@ -75,7 +75,6 @@ export function ForgotPasswordPage() {
               onChange={(event) => {
                 setEmail(event.target.value);
               }}
-              className={textInputClass}
             />
           </Field>
           <SubmitButton pending={pending} pendingLabel="กำลังส่ง…">

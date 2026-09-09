@@ -5,8 +5,8 @@ import {
   Alert,
   AuthPageShell,
   Field,
+  Input,
   SubmitButton,
-  textInputClass,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
@@ -92,7 +92,7 @@ export function ResetPasswordPage() {
           </Alert>
         )}
         <Field label="รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)">
-          <input
+          <Input
             type="password"
             name="new-password"
             autoComplete="new-password"
@@ -102,11 +102,10 @@ export function ResetPasswordPage() {
             onChange={(event) => {
               setPassword(event.target.value);
             }}
-            className={textInputClass}
           />
         </Field>
         <Field label="ยืนยันรหัสผ่านใหม่">
-          <input
+          <Input
             type="password"
             name="confirm-password"
             autoComplete="new-password"
@@ -116,7 +115,6 @@ export function ResetPasswordPage() {
             onChange={(event) => {
               setConfirm(event.target.value);
             }}
-            className={textInputClass}
           />
         </Field>
         <SubmitButton pending={pending} pendingLabel="กำลังบันทึก…">

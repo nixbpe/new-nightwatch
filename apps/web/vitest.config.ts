@@ -5,6 +5,10 @@ import { defineConfig } from "vitest/config";
 const gate = process.env.COVERAGE_GATE === "1";
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // Same "@/*" -> src alias as vite.config.ts and tsconfig paths.
+    alias: { "@": new URL("./src", import.meta.url).pathname },
+  },
   test: {
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],

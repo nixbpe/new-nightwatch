@@ -3,6 +3,10 @@
 /*
  * NightWatch design tokens (docs/design-system.md): semantic roles only,
  * light/dark via prefers-color-scheme. Not the full design system.
+ *
+ * shadcn/ui CSS variables are mapped onto the same NightWatch tokens
+ * (components.json cssVariables: true) — one source of truth for both
+ * themes; no shadcn default palette is imported.
  */
 :root {
   --background: #f7f8fa;
@@ -40,7 +44,24 @@
   --color-danger: var(--danger);
   --color-caution: var(--caution);
   --color-control-border: var(--control-border);
+  /* shadcn/ui semantic roles -> NightWatch tokens */
+  --color-card: var(--surface);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--foreground);
+  --color-primary-foreground: var(--on-primary);
+  --color-secondary: var(--surface);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--background);
+  --color-muted-foreground: var(--foreground-secondary);
+  --color-accent: var(--background);
+  --color-accent-foreground: var(--foreground);
+  --color-destructive: var(--danger);
+  --color-border: var(--control-border);
+  --color-input: var(--control-border);
+  --color-ring: var(--primary);
   --font-sans: Inter, "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif;
+  --radius: 6px;
   --radius-md: 6px;
   --radius-lg: 12px;
 }

@@ -7,8 +7,8 @@ import {
   AuthPageShell,
   Field,
   FullPageLoading,
+  Input,
   SubmitButton,
-  textInputClass,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
@@ -219,7 +219,7 @@ export function SecuritySettingsPage() {
             noValidate
           >
             <Field label="รหัสผ่านปัจจุบัน">
-              <input
+              <Input
                 type="password"
                 name="password"
                 autoComplete="current-password"
@@ -228,7 +228,6 @@ export function SecuritySettingsPage() {
                 onChange={(event) => {
                   setPassword(event.target.value);
                 }}
-                className={textInputClass}
               />
             </Field>
             <SubmitButton
@@ -296,7 +295,7 @@ function EnrollmentDraftPanel({
       </div>
       <form onSubmit={onConfirm} className="flex flex-col gap-4" noValidate>
         <Field label="รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน">
-          <input
+          <Input
             type="text"
             name="first-totp"
             inputMode="numeric"
@@ -306,7 +305,6 @@ function EnrollmentDraftPanel({
             onChange={(event) => {
               onVerifyCodeChange(event.target.value);
             }}
-            className={textInputClass}
           />
         </Field>
         <SubmitButton pending={pending} pendingLabel="กำลังยืนยัน…">
@@ -334,7 +332,7 @@ function RecoveryCodesPanel({
     <div className="flex flex-col gap-4">
       <form onSubmit={onRegenerate} className="flex flex-col gap-4" noValidate>
         <Field label="รหัสผ่านปัจจุบัน (จำเป็นสำหรับสร้างรหัสกู้คืนชุดใหม่)">
-          <input
+          <Input
             type="password"
             name="regenerate-password"
             autoComplete="current-password"
@@ -343,7 +341,6 @@ function RecoveryCodesPanel({
             onChange={(event) => {
               onPasswordChange(event.target.value);
             }}
-            className={textInputClass}
           />
         </Field>
         <SubmitButton pending={pending} pendingLabel="กำลังสร้าง…">

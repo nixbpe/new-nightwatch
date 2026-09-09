@@ -5,8 +5,8 @@ import {
   Alert,
   AuthPageShell,
   Field,
+  Input,
   SubmitButton,
-  textInputClass,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { rememberReturnTo } from "../lib/auth/continuation";
@@ -76,7 +76,7 @@ export function LoginPage() {
           </Alert>
         )}
         <Field label="อีเมล">
-          <input
+          <Input
             type="email"
             name="email"
             autoComplete="email"
@@ -85,11 +85,10 @@ export function LoginPage() {
             onChange={(event) => {
               setEmail(event.target.value);
             }}
-            className={textInputClass}
           />
         </Field>
         <Field label="รหัสผ่าน">
-          <input
+          <Input
             type="password"
             name="password"
             autoComplete="current-password"
@@ -98,7 +97,6 @@ export function LoginPage() {
             onChange={(event) => {
               setPassword(event.target.value);
             }}
-            className={textInputClass}
           />
         </Field>
         <div className="flex items-center justify-between text-sm">
