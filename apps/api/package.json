@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
+    "provision-organization": "bun run src/operator/provision-organization.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {

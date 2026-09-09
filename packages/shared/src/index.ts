@@ -1,5 +1,13 @@
 export { AppError } from "./errors";
-export { envSchema, EnvValidationError, loadEnv, type Env } from "./env";
+export {
+  authEnvSchema,
+  envSchema,
+  EnvValidationError,
+  loadAuthEnv,
+  loadEnv,
+  type AuthEnv,
+  type Env,
+} from "./env";
 export {
   createLogger,
   REDACT_PATHS,

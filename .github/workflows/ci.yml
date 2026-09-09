@@ -55,17 +55,64 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
 
-  # Coverage is measured and uploaded on every run, but thresholds only fail
-  # the build when COVERAGE_GATE=1 (turned on at the first domain feature).
+  # Coverage is measured and uploaded on every run; thresholds fail the build
+  # because COVERAGE_GATE=1 is set (first domain feature: auth/onboarding).
+  # The job runs against real PostgreSQL + Mailpit services with the
+  # least-privilege runtime role — no mocks for DB-backed checks.
   test:
     name: unit tests + coverage
     runs-on: ubuntu-latest
+    env:
+      COVERAGE_GATE: "1"
+      APP_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:4000
+      CORS_ORIGIN: http://localhost:3000
+      DATABASE_URL: postgres://nightwatch:nightwatch_ci@localhost:5432/nightwatch
+      DATABASE_OWNER_URL: postgres://nightwatch_owner:nightwatch_owner_ci@localhost:5432/nightwatch
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      SMTP_SECURE: "false"
+      SMTP_FROM: NightWatch CI <ci@nightwatch.local>
+    services: &db_services
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: nightwatch_owner
+          POSTGRES_PASSWORD: nightwatch_owner_ci
+          POSTGRES_DB: nightwatch
+          NW_DB_PASSWORD: nightwatch_ci
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U nightwatch_owner -d nightwatch"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+      mailpit:
+        image: axllent/mailpit:v1.31.1
+        ports:
+          - "1025:1025"
+          - "8025:8025"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
+      - name: Generate development secret
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+      - name: Create least-privilege runtime database role
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/scripts/db/init:/init:ro" \
+            -e POSTGRES_USER=nightwatch_owner \
+            -e POSTGRES_DB=nightwatch \
+            -e POSTGRES_HOST=localhost \
+            -e PGPASSWORD=nightwatch_owner_ci \
+            -e NW_DB_PASSWORD=nightwatch_ci \
+            postgres:17.11-alpine sh /init/001-roles.sh
+      - name: Run database migrations
+        run: bun run db:migrate
       - run: bun run test:coverage
       - uses: actions/upload-artifact@v4
         with:
@@ -128,12 +175,37 @@ jobs:
     name: release-stage (e2e + container)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    env:
+      APP_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:4000
+      CORS_ORIGIN: http://localhost:3000
+      DATABASE_URL: postgres://nightwatch:nightwatch_ci@localhost:5432/nightwatch
+      DATABASE_OWNER_URL: postgres://nightwatch_owner:nightwatch_owner_ci@localhost:5432/nightwatch
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      SMTP_SECURE: "false"
+      SMTP_FROM: NightWatch CI <ci@nightwatch.local>
+    services: *db_services
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
+      - name: Generate development secret
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+      - name: Create least-privilege runtime database role
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/scripts/db/init:/init:ro" \
+            -e POSTGRES_USER=nightwatch_owner \
+            -e POSTGRES_DB=nightwatch \
+            -e POSTGRES_HOST=localhost \
+            -e PGPASSWORD=nightwatch_owner_ci \
+            -e NW_DB_PASSWORD=nightwatch_ci \
+            postgres:17.11-alpine sh /init/001-roles.sh
+      - name: Run database migrations
+        run: bun run db:migrate
       - name: Install e2e dependencies
         run: cd e2e && bun install --frozen-lockfile
       - name: Install Playwright browsers

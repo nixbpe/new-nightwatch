@@ -1,23 +1,26 @@
 /**
- * Domain error carrying a machine-readable `code`, an HTTP `statusCode` and a
- * display-safe `message`. The API error handler maps AppError to the
+ * Domain error carrying an HTTP `statusCode`, a machine-readable `code` and
+ * a display-safe `message`. The API error handler maps AppError to the
  * api-contract error envelope; anything else becomes a generic 500.
+ *
+ * Constructor order is status-first per user decision F001-ERR1:
+ * `AppError(status, code, message, details?)`.
  */
 export class AppError extends Error {
-  readonly code: string;
   readonly statusCode: number;
+  readonly code: string;
   readonly details?: unknown;
 
   constructor(
+    statusCode: number,
     code: string,
     message: string,
-    statusCode = 500,
     details?: unknown,
   ) {
     super(message);
     this.name = "AppError";
-    this.code = code;
     this.statusCode = statusCode;
+    this.code = code;
     this.details = details;
   }
 }
