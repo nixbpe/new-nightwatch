@@ -2,9 +2,7 @@ import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
-  useCallback,
   useContext,
-  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -59,72 +57,60 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   // Selection precedence: valid in-memory choice, then the persisted
   // last-active tenant when still a membership, then the first membership.
-  const activeOrg = useMemo<Membership | null>(() => {
-    if (memberships === undefined || memberships.length === 0) {
-      return null;
-    }
-    return (
-      memberships.find((org) => org.id === selectedOrgId) ??
-      memberships.find((org) => org.id === lastActiveTenantId) ??
-      memberships[0] ??
-      null
-    );
-  }, [memberships, selectedOrgId, lastActiveTenantId]);
+  // React Compiler memoizes this derivation; the precedence order is
+  // load-bearing and must not change.
+  const activeOrg: Membership | null =
+    memberships === undefined || memberships.length === 0
+      ? null
+      : (memberships.find((org) => org.id === selectedOrgId) ??
+        memberships.find((org) => org.id === lastActiveTenantId) ??
+        memberships[0] ??
+        null);
 
-  const switchOrg = useCallback(
-    async (organizationId: string): Promise<boolean> => {
-      if (
-        memberships?.some((org) => org.id === organizationId) !== true ||
-        organizationId === activeOrg?.id
-      ) {
-        return false;
-      }
-      setOrgSwitchPending(true);
-      try {
-        const updated = await updateActiveOrganization({ organizationId });
-        // PATCH succeeded: retire the previous tenant's queries before
-        // any new state publishes, so an in-flight response for the old
-        // organization can never repopulate the new view.
-        await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
-        queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
-        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-        setSelectedOrgId(organizationId);
-        return true;
-      } catch {
-        // Keep the previous tenant; the caller surfaces the error.
-        return false;
-      } finally {
-        setOrgSwitchPending(false);
-      }
-    },
-    [activeOrg?.id, memberships, queryClient],
-  );
+  // Guard, tenant-cache retirement and success ordering are behavioral
+  // contracts; React Compiler handles render-performance memoization.
+  const switchOrg = async (
+    organizationId: string,
+  ): Promise<boolean> => {
+    if (
+      memberships?.some((org) => org.id === organizationId) !== true ||
+      organizationId === activeOrg?.id
+    ) {
+      return false;
+    }
+    setOrgSwitchPending(true);
+    try {
+      const updated = await updateActiveOrganization({ organizationId });
+      // PATCH succeeded: retire the previous tenant's queries before
+      // any new state publishes, so an in-flight response for the old
+      // organization can never repopulate the new view.
+      await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
+      queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
+      setSelectedOrgId(organizationId);
+      return true;
+    } catch {
+      // Keep the previous tenant; the caller surfaces the error.
+      return false;
+    } finally {
+      setOrgSwitchPending(false);
+    }
+  };
 
   const { refetch: refetchMe } = meQuery;
-  const retryMe = useCallback(async (): Promise<void> => {
+  const retryMe = async (): Promise<void> => {
     await refetchMe();
-  }, [refetchMe]);
+  };
 
-  const value = useMemo<TenantContextValue>(
-    () => ({
-      me: meQuery.data,
-      mePending: meQuery.isPending,
-      meError: meQuery.error,
-      retryMe,
-      activeOrg,
-      switchOrg,
-      orgSwitchPending,
-    }),
-    [
-      meQuery.data,
-      meQuery.isPending,
-      meQuery.error,
-      retryMe,
-      activeOrg,
-      switchOrg,
-      orgSwitchPending,
-    ],
-  );
+  const value: TenantContextValue = {
+    me: meQuery.data,
+    mePending: meQuery.isPending,
+    meError: meQuery.error,
+    retryMe,
+    activeOrg,
+    switchOrg,
+    orgSwitchPending,
+  };
 
   return (
     <TenantContext.Provider value={value}>{children}</TenantContext.Provider>
