@@ -1,0 +1,27 @@
+{
+  "name": "@nightwatch/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "migrate": "bun run src/migrate.ts",
+    "build:migrate": "bun build src/migrate.ts --outdir dist-migrate --target bun",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@nightwatch/eslint-config": "workspace:*",
+    "@nightwatch/typescript-config": "workspace:*",
+    "@types/pg": "^8.11.10"
+  }
+}

@@ -1,0 +1,38 @@
+# Local development dependencies ONLY: isolated PostgreSQL + Mailpit SMTP
+# capture. Managed through `bun run db:*` (scripts/db.mjs), which computes the
+# per-worktree ports/project name and supplies the gitignored secrets file.
+# Do not add production services and do not commit real credentials here.
+name: nw-dev-${NW_SLOT:?run via bun run db:up}
+services:
+  postgres:
+    image: postgres:17.11-alpine
+    environment:
+      # Container superuser = owner role: DDL/migrations/provisioning only.
+      # The application and tests connect as `nightwatch` (least privilege,
+      # NOBYPASSRLS), created by scripts/db/init/001-roles.sh on first start.
+      POSTGRES_USER: nightwatch_owner
+      POSTGRES_PASSWORD: ${NW_OWNER_PASSWORD:?run bun run db:up}
+      POSTGRES_DB: nightwatch
+      NW_DB_PASSWORD: ${NW_DB_PASSWORD:?run bun run db:up}
+    ports:
+      - "127.0.0.1:${NW_DB_PORT:?run bun run db:up}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nightwatch_owner -d nightwatch"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  mailpit:
+    image: axllent/mailpit:v1.31.1
+    # In-memory capture only: messages reset when the container restarts.
+    # No UI auth — loopback binding is the access control.
+    ports:
+      - "127.0.0.1:${NW_MAIL_SMTP_PORT:?run bun run db:up}:1025"
+      - "127.0.0.1:${NW_MAIL_UI_PORT:?run bun run db:up}:8025"
+
+volumes:
+  pgdata:
