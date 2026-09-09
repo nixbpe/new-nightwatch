@@ -1,156 +1,179 @@
 # Architecture Blueprint
 
-กฎสำหรับพัฒนา NightWatch ซึ่งเป็นแพลตฟอร์ม cloud security แบบ multi-tenant
-ที่รองรับ AWS เป็นหลัก เอกสารนี้กำหนดขอบเขต contracts และ invariants
-ที่ C4 levels 1 ถึง 3 (context, containers, components) โดยไม่ได้อธิบายโค้ด
-รายละเอียดการ implement อยู่ในโค้ด tests และ scripts
-ส่วนเอกสารนี้กำหนดกฎที่สิ่งเหล่านั้นต้องปฏิบัติตาม
+NightWatch is an AWS-first, multi-tenant cloud security platform. This document defines its software and solution architecture: C4 levels 1 through 3, data architecture, deployment topology, operational boundaries, and conformance rules. Code, tests, and scripts own implementation details.
 
-## 0. Scope and document conventions
+## 0. Scope and conventions
 
-- อ้างอิงกฎด้วย ID (เช่น `TSQL-01`) ในงานที่มอบหมาย findings,
-  reviews และการตัดสินใจ ID ต้องคงเดิม: เพิ่มกฎใหม่ต่อท้าย
-  ห้ามเปลี่ยนลำดับเลขหรือนำ ID กลับมาใช้ซ้ำ
-- แต่ละ rule มีข้อกำหนดหลักหนึ่งเรื่อง พร้อมเงื่อนไขและข้อยกเว้นที่จำเป็น ข้อกำหนดที่ตรวจรับแยกกันได้ต้องแยก ID `Never` หรือ “ห้าม” หมายถึงข้อห้าม
-  ค่าที่ระบุว่า `baseline` เป็นค่าตั้งต้นของ design ที่ยัง `Planned` หรือ
-  `Deferred` เท่านั้น เมื่อ component เป็น `Implemented` แล้ว โค้ดเป็นเจ้าของ
-  ค่า tuning และเอกสารนี้คงไว้แต่กฎที่กำกับค่าเหล่านั้น
-- Status labels: `Implemented` (มีโค้ดแล้ว), `Planned` (กำหนด design แล้ว
-  แต่ยังรอโค้ด), `Deferred` (อนุมัติให้เลื่อนแล้ว; กำหนด design แล้ว
-  แต่ยังไม่มีโค้ด)
-- Status มีผลเฉพาะ component หรือ contract ที่ระบุ ไม่สืบทอดลงทุก capability, table หรือ workflow ใน container นั้น `Implemented` ไม่ได้หมายถึงผ่าน verification หรือพร้อม release; capability ที่ยังไม่มีสถานะชัดเจนให้ดู coverage และ open questions ห้ามอนุมานว่า implement แล้ว
-- เมื่อโค้ดกับเอกสารนี้ไม่ตรงกัน ต้องรายงานข้อขัดแย้งต่อ
-  Technical Lead เป็น finding ห้ามแก้ฝ่ายใดฝ่ายหนึ่งโดยไม่รายงาน
-- สิ่งที่อยู่นอกขอบเขตเอกสารนี้: toolchain, environment และคำสั่ง verification
-  (`package.json`, `turbo.json`, CI, `scripts/quality/README.md`);
-  กฎ UI (`docs/design-system.md`); ขอบเขตผลิตภัณฑ์
-  (`docs/product-direction.md`)
+Out of scope:
 
-คำศัพท์: tenant = organization; `tenantId` = organization id;
-candidate = implementation revision ที่รวมงานแล้วและอยู่ระหว่าง validation
+- Product Direction, user problems, and product scope → `docs/product-direction.md`
+- Functional requirements, user flows, business roles/actions, admission policy, and acceptance criteria → Feature/Story/API contracts
+- API endpoint behavior: endpoint names, exact response codes, and response schemas for each feature → API contracts; `packages/api-contract` is an integration boundary, not the source of feature behavior
+- UX/UI → `docs/design-system.md`
+- Delivery workflow (assignment, candidate, validation gates) → planning artifacts and agent contracts
+- Verification commands, toolchain, and environment (`package.json`, `turbo.json`, CI, `scripts/quality/README.md`)
 
-| หมวด                        | เป็นเจ้าของเนื้อหา                                                        |
-| --------------------------- | ------------------------------------------------------------------------- |
-| 1. System context           | Actors, external systems และ trust boundaries                             |
-| 2. Static architecture      | Containers, component responsibilities และ package dependencies           |
-| 3. Runtime flows            | Request, admission, provisioning, jobs และ client state transitions       |
-| 4. Data architecture        | Logical model, tenant SQL/RLS และ persistence lifecycle                   |
-| 5. Cross-cutting contracts  | Validation, errors, audit, credentials, outbound safety และ observability |
-| 6. Deployment and operation | Process roles, deployment, shutdown และ maintenance execution             |
-| 7. Quality review checklist | สิ่งที่ต้องตรวจโดยอ้าง canonical rules เท่านั้น                           |
+Conventions:
 
-## 1. System context (C4 level 1)
+- Reference rules by ID, such as `TSQL-01`, in assignments, findings, reviews, and decisions. IDs MUST remain stable. Append new rules. MUST NOT renumber rules or reuse IDs. Removed IDs remain unavailable.
+- Each rule contains one primary requirement plus necessary conditions and exceptions. Separately testable requirements require separate IDs. `Never` and `MUST NOT` indicate prohibitions.
+- Values marked `baseline` are design defaults only for components with `Planned` or `Deferred` status. Once a component is `Implemented`, code owns tuning values, while this document retains only the rules governing them.
+- Status labels: `Implemented` (code exists), `Planned` (design is defined; code is pending), `Deferred` (deferral is approved; design is defined but code does not exist). Status applies only to the specified component or contract. It does not propagate to every capability, table, or workflow in that container. `Implemented` does not mean verified or release-ready. A capability without an explicit status MUST NOT be assumed implemented.
+- If code conflicts with this document, report the conflict to the Technical Lead as a finding. MUST NOT change either side without reporting it.
 
-```text
-Public visitor ----> Landing site        (marketing only; no auth, no data)
-Organization user -> Web SPA -> API -----> PostgreSQL
-Operator (CLI) ----> provisioning on owner connection -> PostgreSQL
-Platform admin ----> API                 (explicit per-operation guard)
-API / Worker ------> SMTP relay          (verification, reset, invitation)
-Worker ------------> cloud provider APIs (Prowler, AWS SDK),
-                     HTTP/DNS/TCP monitor targets,
-                     notification destinations
+Terminology: tenant = organization; `tenantId` = organization id
+
+Rule ownership:
+
+| Category                     | Owns                                                                                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1. Architecture drivers      | Architectural qualities and principles that impose design constraints                                                                                                                                        |
+| 2. System context            | Actors, external systems, and trust boundaries (CTX)                                                                                                                                                         |
+| 3. Container architecture    | Containers, package dependency direction (CON, PKG), and container responsibilities                                                                                                                          |
+| 4. Component architecture    | API pipeline (REQ), identity boundary (AUTH), tenant context (ORG), background execution (QUE), SPA integration (FE), outbound and cross-cutting contracts (XC-01, XC-02, XC-05, XC-06, XC-09 through XC-11) |
+| 5. Data architecture         | Logical persistence model, tenant SQL/RLS (TSQL), persistence lifecycle (DATA), and encryption at rest (XC-04)                                                                                               |
+| 6. Deployment and operations | Runtime topology (DEP), observability and audit (XC-03, XC-07, XC-08), and production authorization                                                                                                          |
+| 7. Conformance checklist     | Checks against canonical architecture rules only                                                                                                                                                             |
+
+## 1. Architecture drivers and principles
+
+These drivers are design constraints, not product targets. Numeric SLOs belong in their owning contracts. Values marked `baseline` follow the rules in §0.
+
+- Security and tenant isolation: PostgreSQL enforces tenant isolation through RLS and non-owner runtime roles. Every request uses one verified tenant context throughout its path. Trust boundaries are defined in §2.
+- Reliability: no state exists only in transport. Background work is durable in SQL. SQL commits before enqueue, with compensation and recovery.
+- Integrity: SQL enforces invariants through constraints, uniqueness, claims, and CAS rather than code alone. Writes are idempotent. Work that requires reconciliation has a ledger.
+- Maintainability: one modular monolith with a clear, enforced package dependency direction. Premature abstractions are prohibited.
+- Operability: observability, including structured logs, audit, health, and readiness, is part of the architecture. Migrations and partition maintenance are bounded deployment steps.
+- Performance and scalability: network and CPU work stays outside SQL transactions. Batch size and concurrency are bounded per worker instance. Time-growing tables use pre-created partitions.
+- Privacy and compliance: protected data is encrypted at rest. Logs and audit records MUST NOT contain secrets or personal data. Legal requirements such as GDPR are policy decisions outside this document.
+- Accessibility boundary: the design system owns UX/UI. Architecture retains one invariant: authorization and business logic MUST NOT depend on UI helpers (FE-07).
+- Cost: cost-related architecture constraints include independently deployed static builds, Redis as transport only, reports stored in the database instead of object storage, and a modular monolith instead of distributed services. Budgets and pricing are outside this document.
+
+## 2. System context (C4 level 1)
+
+```mermaid
+flowchart LR
+  subgraph people[People]
+    direction TB
+    visitor([Public visitor])
+    org_user([Organization user])
+    operator([Operator])
+    platform_admin([Platform admin])
+  end
+
+  nightwatch["NightWatch<br/>AWS-first multi-tenant cloud security platform"]
+
+  subgraph external[External systems]
+    direction TB
+    cloud[Cloud provider APIs]
+    smtp[SMTP relay]
+    monitors[HTTP / DNS / TCP targets]
+    destinations[Notification destinations]
+  end
+
+  visitor -->|HTTPS / landing| nightwatch
+  org_user -->|HTTPS + session cookie| nightwatch
+  operator -->|CLI / deploy| nightwatch
+  platform_admin -->|HTTPS / guarded operations| nightwatch
+  nightwatch -->|HTTPS / SDK| cloud
+  nightwatch -->|SMTP| smtp
+  nightwatch -->|HTTP / DNS / TCP| monitors
+  nightwatch -->|Delivery| destinations
 ```
 
-Actors: ผู้เยี่ยมชมทั่วไป; ผู้ใช้ของ organization ที่มี role เป็น `owner`,
-`admin`,
-`viewer` หรือ `auditor`; operator; platform admin ระบบภายนอก:
-บัญชี cloud provider (AWS เป็นหลัก, GCP), SMTP relay, ปลายทางการแจ้งเตือน
-และ HTTP/DNS/TCP endpoints ที่ monitor
+Actors: public visitor; organization user, whose business roles are defined outside this document; operator; platform admin. External systems: cloud provider accounts, primarily AWS plus GCP; SMTP relay; notification destinations; and monitored HTTP/DNS/TCP endpoints. Provider support follows an AWS-first design.
 
-- CTX-01 ห้ามส่ง authentication, session cookies
-  หรือข้อมูลภายในให้ landing site
-- CTX-02 ผู้ใช้ของ organization เข้าถึงข้อมูลได้ผ่าน Web SPA -&gt; API
-  ด้วย session cookie เท่านั้น ไม่มีช่องทางผ่าน client อื่น
-- CTX-03 การสร้าง organization ต้องทำโดย operator ผ่าน
-  owner-connection CLI เท่านั้น ไม่มีช่องทางสร้าง organization ผ่าน HTTP
-- CTX-04 การเข้าถึงของ platform admin ต้องมี guard ที่ชัดเจนเฉพาะแต่ละ
-  operation ห้ามใช้เป็น global bypass ของ tenant context
-- CTX-05 การเรียก outbound integrations (cloud APIs, SMTP, destinations, monitors) ต้องมาจาก API หรือ Worker เท่านั้น การใช้ shared helpers อยู่ภายใต้ XC-10 และ protocol applicability ในหมวด cross-cutting
--
+- CTX-01 Authentication data, session cookies, and internal data MUST NOT be sent to the landing site.
+- CTX-02 Organization users MUST access data only through the Web SPA → API path using a session cookie. No other client path is allowed.
+- CTX-04 Platform-admin access MUST have an explicit guard for each operation. It MUST NOT act as a global tenant-context bypass.
+- CTX-05 Outbound integrations, including cloud APIs, SMTP, destinations, and monitors, MUST originate only from the API or Worker and remain within the outbound integration boundary in §4.6 (XC-05, XC-09 through XC-11).
+- CTX-06 The owner connection is a privileged path for DDL, migrations, partition maintenance, and other approved owner operations outside the HTTP request path. This document does not authorize other uses of the owner connection. Runtime roles MUST NOT hold owner privileges (TSQL-03).
 
-## 2. Static architecture (C4 levels 2 and 3)
+## 3. Container architecture (C4 level 2)
 
 ```text
-[Web SPA] --HTTP JSON + host-only cookie--> [API] --tenant SQL--> [PostgreSQL]
-[API] --typed producers--> [Redis/BullMQ] <--consume-- [Worker]
-[Worker] --SQL--> [PostgreSQL]; [Worker] --> Prowler / SDK / HTTP / SMTP
-[Scheduler (Worker role)] --SQL due-work lookup--> producers
-[Owner deployment / cron] --migrations + partition DDL--> [PostgreSQL]
-[Landing] independent build and deploy; no internal dependency
+C4 Level 2 — NightWatch containers
+
+Entry points
+[Public visitor]     --HTTPS--------------------> [Landing | Astro | Deferred]
+[Organization user] --HTTPS--------------------> [Web SPA | React + Vite | Implemented]
+[Platform admin]    --guarded HTTPS------------> [API | Hono on Bun | Implemented]
+[Operator]          --owner connection---------> [PostgreSQL | Drizzle + RLS | Implemented]
+
+Request and background paths
+[Web SPA] --JSON/HTTPS + session cookie--> [API] --tenant SQL--> [PostgreSQL]
+                                               |
+                                               +--typed jobs--> [Redis/BullMQ | Deferred]
+                                                                    |
+                                                                    +--consume--> [Worker | Deferred]
+                                                                                     |
+                                                                                     +--tenant SQL--> [PostgreSQL]
+
+Outbound paths
+[API]    --HTTPS / SMTP----------------------> [External integrations]
+[Worker] --SDK / HTTP / DNS / TCP / SMTP----> [External integrations]
+
+[Landing] has no internal dependencies. Redis is transport only.
 ```
 
-| Container    | Technology                   | Status      | Location         |
-| ------------ | ---------------------------- | ----------- | ---------------- |
-| Web SPA      | React, Vite                  | Implemented | `apps/web`       |
-| API          | Hono monolith บน Bun         | Implemented | `apps/api`       |
-| PostgreSQL   | Drizzle, migrations, RLS     | Implemented | `packages/db`    |
-| Worker       | BullMQ consumers, schedulers | Deferred    | `apps/worker`    |
-| Redis/BullMQ | การขนส่ง jobs                | Deferred    | `packages/queue` |
-| Landing      | Astro, deploy แยกอิสระ       | Deferred    | `apps/landing`   |
+| Container    | Technology                    | Status      | Location         |
+| ------------ | ----------------------------- | ----------- | ---------------- |
+| Web SPA      | React, Vite                   | Implemented | `apps/web`       |
+| API          | Hono monolith on Bun          | Implemented | `apps/api`       |
+| PostgreSQL   | Drizzle, migrations, RLS      | Implemented | `packages/db`    |
+| Worker       | BullMQ consumers, schedulers  | Deferred    | `apps/worker`    |
+| Redis/BullMQ | Job transport                 | Deferred    | `packages/queue` |
+| Landing      | Astro, independently deployed | Deferred    | `apps/landing`   |
 
-- CON-02 API เป็น modular monolith เดียว โดยมี domain modules อยู่ใต้
-  `apps/api/src/<domain>` ห้ามแยก service, ใช้ DI container
-  หรือสร้าง repository layer เผื่อไว้โดยยังไม่มีความจำเป็น
-- CON-03 Worker ต้องไม่ผูกกับ API ผ่าน HTTP
-  และใช้โค้ดร่วมกันผ่าน packages เท่านั้น
-- CON-04 Landing site ต้องไม่มี `workspace:*` dependency หรือ application API client; authentication boundary ใช้ CTX-01
-- CON-05 Web SPA ต้องรักษา browser-safe boundary ตาม package dependency contract PKG-01 และข้อห้าม external database/queue clients ใน PKG-05
+- CON-01 PostgreSQL is the system of record. Redis is transport only. State MUST NOT exist only in Redis (DATA-02).
+- CON-02 The API MUST remain one modular monolith with domain modules under `apps/api/src/<domain>`. It MUST NOT be split into services, use a DI container, or add a speculative repository layer.
+- CON-03 The Worker MUST NOT couple to the API over HTTP. They share code only through packages.
+- CON-04 The landing site MUST NOT have a `workspace:*` dependency or application API client. Its authentication boundary follows CTX-01.
+- CON-05 The Web SPA MUST preserve the browser-safe boundary defined by package dependency contract PKG-01 and the external database/queue client prohibition in PKG-05.
+- CON-06 SQL commit and Redis enqueue are not jointly atomic. Code MUST commit first, enqueue second, and compensate on failure (QUE-09).
 
-### 2.1 Code packages and dependency direction
+### 3.1 Code packages and dependency direction
 
-- `packages/api-contract`: Zod schemas, types และ error contract
-  ที่ปลอดภัยสำหรับ browser ต้อง export จาก package root เท่านั้น
-- `packages/db`: Drizzle schema และ client, tenant helpers,
-  migrations ที่มีลำดับ และ partitions ใช้ฝั่ง server เท่านั้น
-- `packages/queue` (Deferred): job payloads, options, producers และ
-  SQL `queue_jobs` ledger ใช้ฝั่ง server เท่านั้น; depend on `db` ได้
-- `packages/shared`: permissions, limits, encryption, logging, SSRF,
-  email config ใช้ฝั่ง server เท่านั้น; ห้าม import จาก app
-- `packages/*-config`: compiler และ lint configuration
-  ห้ามมี runtime code และห้าม import จาก app
-- PKG-01 Runtime imports ระหว่าง workspace packages ต้องเป็นไปตามตารางนี้เท่านั้น ตารางไม่ครอบคลุม external libraries; dev-time compiler/lint configuration แยกจาก runtime graph โดย config packages เองต้องไม่มี workspace dependencies ตารางนี้ไม่ใช่รายการ imports ที่ implement แล้วทั้งหมด
+- `packages/api-contract`: browser-safe Zod schemas, types, and error contract. Exports MUST come only from the package root.
+- `packages/db`: Drizzle schema and client, tenant helpers, ordered migrations, and partitions. Server-side only.
+- `packages/queue` (Deferred): job payloads, options, producers, and the SQL `queue_jobs` ledger. Server-side only; may depend on `db`.
+- `packages/shared`: permissions, limits, encryption, logging, SSRF, and email configuration. Server-side only; MUST NOT import from an app.
+- `packages/*-config`: compiler and lint configuration. MUST NOT contain runtime code or import from an app.
+- PKG-01 Runtime imports between workspace packages MUST follow this table. The table does not cover external libraries. Dev-time compiler and lint configuration is separate from the runtime graph, and config packages themselves MUST have no workspace dependencies. This table is not a list of all implemented imports.
 
-  | ผู้ import      | Workspace runtime dependencies ที่อนุญาต                           | ขอบเขตปัจจุบัน / target                                                                    |
-  | --------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-  | Web SPA         | `api-contract`                                                     | Current boundary                                                                           |
-  | API             | `api-contract`, `shared`, `db`; `queue` เมื่อเปิดใช้ job producers | สามรายการแรกเป็น current dependencies; `queue` เป็น Deferred target                        |
-  | Worker          | `queue`, `db`, `shared`                                            | Deferred target สำหรับ consumers, SQL และ shared integration helpers                       |
-  | `queue`         | `db`                                                               | Deferred target สำหรับ ledger                                                              |
-  | `shared`        | ไม่มี workspace runtime dependency                                 | Current boundary; ห้าม import app                                                          |
-  | `db`            | ไม่มี workspace runtime dependency                                 | Current boundary                                                                           |
-  | `api-contract`  | ไม่มี workspace runtime dependency                                 | Current browser-safe boundary                                                              |
-  | Landing         | ไม่มี workspace dependency                                         | Deferred target ตาม CON-04                                                                 |
-  | Config packages | ไม่มี workspace dependencies                                       | ห้าม import app/runtime code; external compiler/lint libraries อยู่นอก workspace graph นี้ |
+  | Importer        | Allowed workspace runtime dependencies                             | Current boundary / target                                                                 |
+  | --------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+  | Web SPA         | `api-contract`                                                     | Current boundary                                                                          |
+  | API             | `api-contract`, `shared`, `db`; `queue` when producers are enabled | The first three are current dependencies; `queue` is a Deferred target                    |
+  | Worker          | `queue`, `db`, `shared`                                            | Deferred target for consumers, SQL, and shared integration helpers                        |
+  | `queue`         | `db`                                                               | Deferred target for the ledger                                                            |
+  | `shared`        | No workspace runtime dependency                                    | Current boundary; MUST NOT import an app                                                  |
+  | `db`            | No workspace runtime dependency                                    | Current boundary                                                                          |
+  | `api-contract`  | No workspace runtime dependency                                    | Current browser-safe boundary                                                             |
+  | Landing         | No workspace dependency                                            | Deferred target under CON-04                                                              |
+  | Config packages | No workspace dependencies                                          | MUST NOT import app/runtime code; external compiler/lint libraries are outside this graph |
 
-- PKG-02 ต้องรักษา ESLint import-boundary checks ที่บังคับ PKG-01 ห้ามลดความเข้มงวดหรือปิดกฎเพื่อให้ผ่าน การมี contract ไม่ได้พิสูจน์ว่า lint ตรวจครบทุก edge; ให้รายงาน enforcement gaps เป็น review findings พร้อม source และหลักฐาน ไม่ใช้เป็นเหตุลดข้อกำหนด
-- PKG-03 ห้ามมี circular imports ต้องประกอบ functions ด้วย inputs ที่ชัดเจน
-- PKG-04 โครงสร้าง domain module: `routes.ts` (HTTP, context),
-  `schemas.ts` (inputs), `service.ts` (logic ที่ไม่ผูกกับ transport)
-  ห้าม import frontend ใน API
-- PKG-05 Web SPA ห้าม import PostgreSQL หรือ Redis clients
+- PKG-02 Import-boundary lint enforcement for PKG-01 MUST remain in place. Rules MUST NOT be weakened or disabled to pass checks. Report any enforcement gap as a review finding with its source and evidence. A gap does not justify weakening the requirement.
+- PKG-03 Circular imports are prohibited. Functions MUST be composed with explicit inputs.
+- PKG-04 Domain modules use `routes.ts` for HTTP and context, `schemas.ts` for inputs, and `service.ts` for transport-independent logic. The API MUST NOT import frontend code.
+- PKG-05 The Web SPA MUST NOT import PostgreSQL or Redis clients.
 
-### 2.2 Component responsibilities
+### 3.2 Container responsibilities
 
-ตารางนี้ระบุเจ้าของหน้าที่และ interfaces ไม่ใช่ลำดับการทำงาน รายละเอียด flow และ data rules อยู่ในหมวดเจ้าของเรื่อง
+The table assigns responsibilities and interfaces, not execution order. Component rules are in §4; data rules are in §5.
 
-| Component                      | หน้าที่ / interfaces                                                           | Contract และขอบเขตสถานะ                                                         |
-| ------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| API domain modules             | Routes รับ HTTP; services รับ typed inputs; schemas กำหนด inputs               | PKG-04, REQ-07; ไม่ได้ยืนยันว่าทุก domain implement แล้ว                        |
-| Auth                           | Identity, session และ invitation admission ใน `apps/api/src/auth`              | AUTH-01 ถึง AUTH-12; Implemented                                                |
-| Organization access / operator | Tenant selection ใน `apps/api/src/me`; provisioning ใน `apps/api/src/operator` | ORG-01 ถึง ORG-09; Implemented                                                  |
-| Tenant data access             | Drizzle/raw SQL helpers ใน `packages/db`                                       | TSQL rules; แยกสถานะ helper ในหมวด data architecture                            |
-| Worker consumers / schedulers  | รับ jobs, ค้นงานที่ถึงกำหนด และเรียก provider/monitor integrations             | SCAN และ QUE rules; Deferred                                                    |
-| Web API integration            | Typed clients, response validation และ tenant-sensitive state                  | FE rules; active-scan integration เป็น target ที่ขึ้นกับ Deferred scan workflow |
+| Component                     | Responsibilities / interfaces                                           | Contract and status boundary                                         |
+| ----------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| API domain modules            | Routes accept HTTP; services accept typed inputs; schemas define inputs | PKG-04, REQ rules; does not claim every domain is implemented        |
+| Identity / session boundary   | Integration with the identity library in `apps/api/src/auth`            | AUTH-08 through AUTH-12; Implemented                                 |
+| Tenant context / organization | Tenant context and membership resolution in `apps/api/src/me`           | ORG rules; Implemented                                               |
+| Tenant data access            | Drizzle/raw SQL helpers in `packages/db`                                | TSQL rules; helper status is defined separately in data architecture |
+| Worker consumers / schedulers | Consume jobs, find due work, and call provider/monitor integrations     | QUE rules; Deferred                                                  |
+| Web API integration           | Typed clients, response validation, and tenant-sensitive state          | FE rules                                                             |
 
-## 3. Runtime flows
+## 4. Component architecture (C4 level 3)
 
-หมวดนี้เป็นเจ้าของลำดับการทำงานและ state transitions ของ components ใน §2 การเข้าถึงข้อมูลทุก flow ใช้ TSQL rules ใน §4; การอ้าง §3 เรื่อง RLS ใน migration comment รุ่นเดิมหมายถึง rules ชุดเดียวกันที่ย้ายมา §4 ไม่ใช่คำสั่งให้แก้ applied migration
-
-- CON-06 SQL commit และ Redis enqueue ไม่เป็น atomic ร่วมกัน:
-  ต้อง commit ก่อน แล้ว enqueue จากนั้นชดเชยเมื่อเกิด failure (SCAN-02)
-
-### 3.1 API request pipeline
+### 4.1 API pipeline and tenant context
 
 ```text
 Request
@@ -165,250 +188,105 @@ Request
   -> enqueue + audit -> response
 ```
 
-- REQ-01 ต้องใช้ขอบเขต organization เดียวกันตลอด URL `orgId`,
-  service `tenantId`, SQL context และ job payloads
-- REQ-02 ก่อน implement ต้องจัดประเภททุก route เป็น tenant-protected,
-  pre-tenant หรือ platform access ที่มีขอบเขตแคบ
-- REQ-03 Tenant-protected routes (Planned) ต้อง resolve tenant ตามลำดับ
-  route `orgId` -&gt; `X-Org-ID` header -&gt; membership แรกสุดตาม `created_at`
-  ต้องเชื่อถือเฉพาะ membership ที่ตรวจสอบแล้ว
-  ห้ามเชื่อถือค่าที่เลือกใน browser หรือ request bodies
-- REQ-04 ต้องตรวจสอบ membership ก่อนเข้าถึงข้อมูลใด ๆ
-- REQ-05 Application routes ต้องตอบ 401 เมื่อ session หายไปหรือไม่ถูกต้อง
-  และ 403 เมื่อถูกปฏิเสธ membership หรือ permission โดยใช้ error envelope
-  ของ `api-contract` ต้อง audit การปฏิเสธโดยไม่บันทึกข้อมูลที่ได้รับการปกป้อง
-- REQ-06 ต้อง guard แต่ละ operation ด้วย permission ที่ชัดเจน (เช่น
-  `project:manage` สำหรับสั่งเริ่มและยกเลิก scan)
-- REQ-07 Routes รับผิดชอบการแปลงเข้าออก HTTP ส่วน services รับ `tenantId`
-  และ typed inputs โดยต้องไม่ผูกกับ transport
-- REQ-08 งาน network และ CPU ต้องอยู่นอก SQL transactions
+- REQ-01 The same organization scope MUST be used across URL `orgId`, service `tenantId`, SQL context, and job payloads.
+- REQ-02 Before implementation, every route MUST be classified as tenant-protected, pre-tenant, or narrowly scoped platform access.
+- REQ-03 Tenant context MUST be resolved server-side only from authenticated identity and verified current membership (Planned). Values from requests, including URL paths, headers, and bodies, and browser-selected values are untrusted hints. API contracts own source precedence.
+- REQ-04 Membership MUST be verified before any data access.
+- REQ-05 Application routes MUST reject missing or invalid sessions before accessing tenant data. They MUST reject invalid membership or permission using the `api-contract` error envelope. API contracts own exact response codes. Rejections MUST be audited without recording protected data.
+- REQ-06 Each operation MUST have an explicit permission guard. Feature/API contracts own each permission’s name and business meaning.
+- REQ-07 Routes own HTTP input and output conversion. Services accept `tenantId` and typed inputs and MUST remain transport-independent.
+- REQ-08 Network and CPU work MUST remain outside SQL transactions.
+- XC-01 Input validation MUST use Zod schemas from `api-contract` and shared validators from `shared`.
+- XC-02 Errors: `AppError(status, code, message, details?)` → `{ error: { code, message, details? } }`. The first argument MUST be status. The code-first overload MUST NOT be reintroduced. Production-like environments MUST present unknown errors generically.
+- XC-06 Rate limiting MUST use a Redis sliding window separate from auth throttling, with a bounded limiter timeout (baseline 2 s). Limiter errors MUST be tested. Fail-closed behavior MUST NOT be assumed.
 
-### 3.2 Identity and admission (Better Auth boundary)
+### 4.2 Identity and session integration boundary
 
-Implemented แล้วใน `apps/api/src/auth` บน PostgreSQL/Drizzle โดยมี entities:
-users, sessions, provider accounts, verifications, memberships,
-invitations และ TOTP two-factor เวอร์ชัน library ถูก pin ไว้ใน
-`apps/api/package.json`
+Identity uses Better Auth with PostgreSQL/Drizzle and includes users, sessions, provider accounts, verifications, memberships, invitations, and TOTP two-factor entities. The library version is pinned in `apps/api/package.json`. Feature/Story contracts own identity admission, business authorization, and MFA enforcement policy. This document defines only the integration boundary that remains subject to those policies.
 
-- AUTH-01 รับผู้ใช้ผ่าน invitation เท่านั้น ฝั่ง server ต้อง gate signup
-  ด้วย invitation ที่ยัง pending และไม่หมดอายุ โดย email ต้องตรงกับ email
-  ที่ใช้ signup แบบไม่แยกตัวพิมพ์เล็กใหญ่; client ส่ง invitation id ใน
-  `X-Invitation-ID` header ไม่มีการเปิด signup ทั่วไป
-- AUTH-02 Public invitation preview
-  (`GET /api/onboarding/invitations/:invitationId`) ต้องตอบ not-found
-  แบบเดียวกันทุกกรณีที่ id ไม่รู้จัก, cancelled, accepted หรือ expired
-- AUTH-03 ต้องสร้าง account หลังจากผู้รับพิสูจน์ความเป็นเจ้าของ email
-  แล้วเท่านั้น
-  ทั้ง signup และการยอมรับ invitation ต้องผ่าน email verification
-- AUTH-04 การยอมรับ invitation ต้องใช้ native flow ของ Better Auth
-  การเปลี่ยนสถานะ pending -&gt; accepted ต้องเป็น update statement เดียวที่มี guard
-  และข้อกำหนด uniqueness ของ membership `(organization_id, user_id)`
-  ทำให้การยอมรับซ้ำหรือพร้อมกันปลอดภัยด้าน idempotency
-- AUTH-05 การยอมรับพร้อมกันที่แพ้การแข่งขันต้อง map membership uniqueness
-  violation ไปเป็นการปฏิเสธแบบ deterministic เดียวกับที่ใช้สำหรับ invitation
-  ที่ accepted แล้ว ห้าม remap database error อื่นใด
-  รวมถึง uniqueness violations อื่น
-- AUTH-06 Roles ต้องมีเพียง `owner`, `admin`, `viewer`, `auditor`
-  เฉพาะสมาชิกที่มี role `owner` เท่านั้นที่ส่ง invitation ด้วย role `owner` ได้
-- AUTH-07 ผู้ใช้แต่ละคนเลือกเปิด TOTP two-factor ได้ โดยใช้ challenge
-  เมื่อ sign-in ด้วย credentials การกู้คืนใช้ backup codes
-  ที่เข้ารหัสและใช้ได้ครั้งเดียว
-  ห้ามออก full session ขณะที่ TOTP challenge ยัง pending
-- AUTH-08 `auth.getSession(headers)` ต้องเป็น session entry point
-  เพียงจุดเดียวสำหรับ application code
-- AUTH-09 Session cookies ต้องเป็น host-only, `HttpOnly`, `SameSite=Lax`
-  และ `Secure` ใน production ห้ามขยาย cookie scope เพื่อรองรับ CORS
-- AUTH-10 `CORS_ORIGIN`, `APP_URL` และ `trustedOrigins` ต้องสอดคล้องกัน
-  Credentialed CORS ที่ระบุ origin ตรงตัวต้องทำงานก่อน auth handler
-  และมี `X-Invitation-ID` อยู่ใน allow-list
-- AUTH-11 Better Auth raw endpoints ตอบด้วย error shape ของ library เอง
-  รวมถึง 401 เมื่อ upstream ปฏิเสธ permission ส่วน application routes
-  ใช้ envelope ของ `api-contract` (REQ-05)
-- AUTH-12 การใช้ auth ต้องอยู่ภายใต้ landing boundary ของ CTX-01 และ logging exclusions ของ XC-07 โดยไม่มีข้อยกเว้นเฉพาะ auth
+- AUTH-08 `auth.getSession(headers)` MUST be the only session entry point for application code.
+- AUTH-09 Session cookies MUST be host-only, `HttpOnly`, `SameSite=Lax`, and `Secure` in production. Cookie scope MUST NOT be widened to support CORS.
+- AUTH-10 `CORS_ORIGIN`, `APP_URL`, and `trustedOrigins` MUST be consistent. Credentialed CORS with an exact origin MUST run before the auth handler.
+- AUTH-11 Raw identity-library endpoints MUST return the library's error shape. Application routes MUST use the `api-contract` envelope (XC-02).
+- AUTH-12 Auth usage MUST remain within the CTX-01 landing boundary and XC-07 logging exclusions, with no auth-specific exceptions.
 
-### 3.3 Organization access and provisioning
+### 4.3 Tenant context and organization access
 
-Implemented แล้วใน `apps/api/src/me` และ `apps/api/src/operator`
+Implemented in `apps/api/src/me`. API contracts own endpoint names and response codes.
 
-- ORG-01 `GET /api/me/context` และ `PATCH /api/me/active-org`
-  ใช้ tenant-selection contract (`meContextResponseSchema`)
-  กับ sessions ที่ตรวจสอบแล้วเท่านั้น: ตอบ 401 เมื่อไม่มี session
-  และ 403 เมื่อ email ยังไม่ได้รับการยืนยัน
-- ORG-02 Membership lookup ต้องเป็น pre-tenant parameterized query
-  ที่กรองด้วย user id จาก session และเรียงตาม membership `created_at`
-  ห้าม responses เปิดเผย organizations ที่ผู้ใช้ไม่ได้เป็นสมาชิก
-- ORG-03 ต้องคืนค่า `last_active_tenant_id` ที่เก็บไว้เฉพาะเมื่อค่านั้น
-  ยัง resolve ไปยัง membership ที่มีอยู่ในปัจจุบันได้
-- ORG-04 การสลับ active organization ต้องตรวจสอบ membership อีกครั้ง
-  ภายใน transaction เดียว โดยใช้ `FOR UPDATE` กับ membership row,
-  อัปเดต `user.last_active_tenant_id` และสะท้อนค่าไปยัง
-  `session.active_organization_id` ใน transaction เดียวกัน
-  ห้ามใช้ค่าที่สะท้อนไว้ใน session เป็นหลักฐาน membership
-- ORG-05 ต้อง audit การสลับที่ถูกปฏิเสธ โดยไม่บันทึกข้อมูล tenant หรือ secrets
-- ORG-06 การ provision organization แรกต้องทำโดย operator เท่านั้น
-  ผ่าน owner connection โดย transaction เดียวต้องสร้าง organization และ
-  owner invitation ที่ pending หนึ่งรายการ ซึ่งมี id ที่คาดเดาไม่ได้
-  และ TTL ที่มีขอบเขต
-- ORG-07 Provisioning ต้องจัดลำดับ retries ที่ทำพร้อมกันสำหรับแต่ละ slug
-  ด้วย transaction-scoped advisory lock การรันซ้ำต้องสร้างหรือส่งซ้ำ
-  pending owner invitation เพียงหนึ่งรายการ
-  และห้ามสร้าง organization ซ้ำ
-- ORG-08 ต้องระบุผู้กระทำ provisioning เป็น internal principal ที่สงวนไว้
-  โดยไม่มี account, password หรือ session; principal นี้ห้าม log in
-  และมีไว้ระบุที่มาของการกระทำใน audit เท่านั้น
-- ORG-09 ต้องส่ง invitation email ผ่าน SMTP จริงหลัง commit
-  หากส่งไม่สำเร็จต้อง exit ด้วย non-zero; การรันซ้ำเป็นช่องทาง retry
+- ORG-02 Membership lookup MUST use a pre-tenant parameterized query scoped by the current identity, using the user id from the verified session. Responses MUST NOT reveal organizations the user does not belong to.
+- ORG-03 Remembered or denormalized tenant ids, such as `last_active_tenant_id`, are hints. They MUST be revalidated against current membership before every use.
+- ORG-04 Changing tenant context MUST revalidate membership within the same transaction and atomically update dependent auth context, such as a session mirror. Values mirrored into a session MUST NOT be used as membership evidence.
+- ORG-05 Denied tenant-context access MUST be audited without recording tenant data or other protected data.
+- ORG-10 Tenant-context exchange MUST use contract schemas from `api-contract` and reference only authenticated sessions. API contracts own each endpoint’s response behavior.
 
-### 3.4 Scan orchestration and completion gate (Deferred)
+### 4.4 Background execution architecture (Deferred)
 
-```text
-API / scheduler -> scan queued -> COMMIT -> scan-orchestrate
-  -> running + scan_tasks + total_tasks -> COMMIT -> scan-collect
-  -> Prowler OCSF -> resources_current
-  -> claim rule_evaluate_dispatched_at -> COMMIT total_rule_evaluate_jobs
-  -> enqueue rule-evaluate -> finding_occurrences + finding_current
-  -> notify-deliver (independent)
-terminal counters -> tryFinalizeScan (both gates, CAS from running)
-  -> terminal status -> reconcileStaleFindings -> refreshDailyAggregates
-```
+Queue names, concurrency, and attempts define execution channels, not business behavior.
 
-- SCAN-01 ต้องมี scan ที่ยังไม่เข้าสู่สถานะ terminal ได้เพียงรายการเดียวต่อ
-  `(tenant_id, project_id)` โดยบังคับด้วย partial unique index ต้องแปลง
-  uniqueness violation รวมถึง cause ที่ถูกห่อไว้ ให้เป็น 409
-- SCAN-02 ต้อง commit สถานะ queued ก่อน enqueue หากมีรายงานว่า enqueue
-  ล้มเหลว ต้องชดเชยโดยเปลี่ยนเป็น `failed` พร้อมสรุปข้อผิดพลาด
-- SCAN-03 Scheduler ต้อง poll ตามช่วงเวลาคงที่และจำกัดขนาด batch
-  (baseline ทุก 60 s, batch ละ 10) ต้อง claim งานที่ถึงกำหนดด้วย
-  `FOR UPDATE SKIP LOCKED` แล้ว commit ก่อน enqueue พร้อมการชดเชยเมื่อ enqueue
-  ล้มเหลว
-- SCAN-04 อัตลักษณ์ของ task คือ `(scan_id, cloud_account_id, region)`
-  ต้อง deduplicate ด้วย `jobId` ของ BullMQ ห้ามใช้ชื่อ job โดยใช้
-  region สำรอง `us-east-1` และใช้ task `global` หนึ่งรายการสำหรับ GCP
-  ต้องแนบ snapshot ของ scope และ configuration ไว้ใน task
-- SCAN-05 ต้องรัน Prowler เป็น spawned process โดยส่ง argument array
-  กำหนด timeout ที่มีขอบเขต (baseline 10 min) และเก็บ output `json-ocsf`
-  ใน temporary directory ต้องยอมรับ exit code 0 และ 2 และจำแนก exit code
-  อื่นกับ exception เป็น retryable หรือ terminal ให้สอดคล้องกับสถานะใน SQL
-- SCAN-06 ต้องเลือก credentials ตาม `auth_mode` และเขียนไฟล์ credentials
-  ชั่วคราวด้วย mode `0600` พร้อมลบใน `finally` ห้ามใส่ credentials
-  ที่ถอดรหัสแล้วใน job หรือสรุปข้อมูลใน ledger
-- SCAN-07 ต้อง dispatch เฉพาะรายการที่ check-id ตรงกับ rule ของ Project
-  และ provider ที่เปิดใช้งาน ต้องเก็บ `effective_ruleset` และ
-  `ruleSnapshot` ณ เวลา dispatch ไว้
-- SCAN-08 ต้อง claim `rule_evaluate_dispatched_at IS NULL` แบบ atomic
-  และ commit การเพิ่ม `total_rule_evaluate_jobs` ให้ครบก่อน enqueue
-  รายการแรก ต้องกู้คืนได้ทั้งกรณี claim แล้วแต่ยังไม่ enqueue และ batch ที่
-  enqueue ไปเพียงบางส่วน
-- SCAN-09 ต้อง insert occurrence ให้ปลอดภัยต่อ retry โดยใช้ uniqueness
-  `(scan_id, rule_id, resource_uid, observed_month)` และ upsert current
-  findings บน `(tenant_id, project_id, provider, rule_id, resource_uid)`
-  ต้องรองรับ retry ระหว่างการเขียนที่ commit แยกกัน
+| Queue               | Responsibility                                                      | Conc. | Attempts |
+| ------------------- | ------------------------------------------------------------------- | ----: | -------: |
+| `scan-orchestrate`  | Plan tasks and distribute work                                      |     2 |        3 |
+| `scan-collect`      | Collect data with Prowler                                           |     3 |        3 |
+| `rule-evaluate`     | Evaluate findings and request notification through `notify-deliver` |     5 |        3 |
+| `report-generate`   | Generate report artifacts                                           |     2 |        3 |
+| `health-collect`    | Collect AWS infrastructure health                                   |     5 |        3 |
+| `notify-deliver`    | Deliver notifications and record each attempt's result              |    10 |        3 |
+| `prowler-rule-sync` | Maintain the shared provider rule catalog                           |     1 |        1 |
+| `health-check`      | Run synthetic monitoring                                            |    10 |        3 |
+| `slo-recalculate`   | Maintain service objectives                                         |     5 |        3 |
 
-Completion gate ต้องผ่านทั้งสองเงื่อนไขจึงจะ finalize ตามปกติได้:
+- QUE-01 Concurrency and attempts are baselines per worker instance. Use exponential backoff starting at 5 s. Value precedence is per-queue override → worker default → built-in value. `prowler-rule-sync` accepts only an override explicitly assigned to that queue. It MUST NOT use a global override.
+- QUE-02 Concurrency 1 is not a distributed singleton. Singleton behavior MUST be enforced in SQL.
+- QUE-03 Every job MUST include `tenantId`. Shared-catalog jobs require separate authorization through `requestedByTenantId`. Payload identity MUST NOT be used as SQL context (TSQL-01).
+- QUE-04 Retryable, delayed, and exhausted states MUST be distinct. Ledger reconciliation MUST track failures between enqueue and ledger recording.
+- QUE-05 Delivery work for notification destinations MUST be scoped by tenant and Project. Every attempt result MUST be stored durably in SQL. Delivery MUST be idempotent: successful deliveries MUST NOT be repeated, but bookkeeping writes may be retried. Feature contracts own channel selection and routing behavior.
+- QUE-06 The Prowler version MUST remain pinned until an approved and compatibility-tested change.
+- QUE-07 Security collection through Prowler, health collection through AWS SDK, and monitoring through HTTP/DNS/TCP MUST remain separate.
+- QUE-08 Integration imports and credentials MUST remain separate from live OAuth sync.
+- QUE-09 Enqueued work MUST always reference committed SQL state (CON-06). If enqueue failure is reported, compensation MUST update SQL state with an error summary.
+- QUE-10 The scheduler MUST poll at a fixed interval with a bounded batch size (baseline every 60 s, batches of 10). It MUST claim due work with `FOR UPDATE SKIP LOCKED`, commit before enqueue, and compensate on enqueue failure.
+- QUE-11 Job identity MUST be deduplicated with BullMQ `jobId`. The job name MUST NOT be used. Payloads MUST include a snapshot of scope and configuration at enqueue time.
+- QUE-12 Integrations that run as child processes, such as Prowler, MUST use argument arrays, a bounded timeout (baseline 10 min), and a temporary output directory. Exit codes and exceptions MUST be classified as retryable or terminal consistently with SQL state.
+- QUE-13 Temporary credential files MUST use mode `0600` and be deleted in `finally`. Decrypted credentials MUST NOT appear in jobs or ledger summaries.
+- QUE-14 Dispatch MUST claim pending work atomically with a guarded marker update. It MUST commit the complete dispatch total before the first enqueue. Recovery MUST cover both claimed-but-not-enqueued work and partially enqueued batches.
+- QUE-15 Consumer writes MUST be idempotent through a uniqueness key stable for the work's business identity and an upsert on the current-state key. Retries between separately committed writes MUST be supported.
+- QUE-16 Finalization MUST select one finalizer with CAS (`UPDATE ... WHERE status = 'running' RETURNING id`). Duplicate terminal events and child-work retries MUST be safe.
+- QUE-17 Post-processing after terminal status is independent of terminal status. Terminal status does not confirm successful notification, reconciliation, or aggregation. Failures and recovery for those tasks MUST be exposed separately.
+- QUE-18 The sweeper MUST mark inactive work as failed after the configured inactivity period (baseline sweep every 5 min, inactivity 30 min), after comparing counters with waiting, active, and delayed jobs. Counter repair is not exactly-once recovery.
 
-1. `total_tasks > 0` และ `completed_tasks + failed_tasks >= total_tasks`;
-   ollection task ที่ถูกยกเลิกให้นับเป็น failed ในเงื่อนไขนี้
-2. `completed_rule_evaluate_jobs + failed_rule_evaluate_jobs >= total_rule_evaluate_jobs`; ต้องนับเฉพาะงานที่เสร็จหรือความล้มเหลวที่ใช้
-   ttempt
-   นครบแล้ว ห้ามนับความล้มเหลวที่ยัง retry ได้
+### 4.5 Web SPA integration architecture
 
-- SCAN-10 ต้องเลือก finalizer เพียงตัวเดียวด้วย
-  `UPDATE ... WHERE status = 'running' RETURNING id` โดย terminal event
-  ที่ซ้ำและ collection retry ต้องปลอดภัย
-- SCAN-11 ลำดับความสำคัญของสถานะ: มีคำขอยกเลิก -&gt; `cancelled`;
-  มิฉะนั้น หาก collection หรือ evaluation ใดล้มเหลว -&gt; `completed_with_errors`;
-  มิฉะนั้น -&gt; `completed` ต้องจัดการการยกเลิกก่อนมี task ความล้มเหลวจากการไม่มี
-  account
-  และ orchestration error นอก gate ที่กำหนดให้ต้องมี task
-- SCAN-12 งานหลังผ่าน gate เป็นอิสระจากสถานะ terminal:
-  `reconcileStaleFindings` ครอบคลุมเฉพาะ effective rules และส่วนของ
-  provider/account/region/service ที่ครอบคลุมในการ scan;
-  `refreshDailyAggregates`
-  สร้างข้อมูลจาก current findings และ framework mappings สถานะ terminal
-  ไม่ได้ยืนยันความสำเร็จของ notification, reconciliation หรือ aggregate
-  ต้องแสดงความล้มเหลวและการกู้คืนของงานเหล่านี้แยกกัน
-- SCAN-13 Sweeper ต้องเปลี่ยน scan ที่ไม่มีความเคลื่อนไหวเป็น failed
-  เมื่อพ้นช่วงเวลา
-  inactivity ที่กำหนด (baseline sweep ทุก 5 min, inactivity 30 min) หลังจาก
-  เปรียบเทียบ counter กับงานที่ waiting, active และ delayed แล้ว
-  การซ่อม counter ไม่ใช่การกู้คืนแบบ exactly-once
+- FE-01 The typed client in `apps/web/src/lib/api` MUST call `/api` with credentials and handle JSON, empty no-content responses, and non-OK responses.
+- FE-02 Responses MUST be validated at runtime with schemas from `api-contract`. TypeScript generics do not validate data. `ApiError` exposes server `error.code` and `details` only when explicitly mapped.
+- FE-05 Query keys MUST include `organizationId`, `projectId`, filters, and selected ids. Inflight responses MUST NOT populate another tenant’s view.
+- FE-06 Active work status refresh uses polling, not WebSocket or SSE. Polling cadence is a code tuning value, not an architecture rule.
+- FE-07 Role helpers and router helpers are for UX only. Authorization belongs in the API.
+- FE-08 UI structure, tokens, and accessibility MUST follow `docs/design-system.md`, which owns UX/UI.
+- FE-09 A browser-selected tenant value is only a UX hint. The client MUST NOT trust a selected or request-supplied value without server verification (REQ-03).
+- FE-10 The client MUST replace the tenant boundary only after the server confirms the context change. State bound to the previous tenant MUST be invalidated, and inflight results MUST be prevented from crossing into the new context.
 
-### 3.5 Background execution and delivery (Deferred)
+### 4.6 Outbound integration boundary
 
-| Queue               | หน้าที่                                                      | Conc. | Attempts |
-| ------------------- | ------------------------------------------------------------ | ----: | -------: |
-| `scan-orchestrate`  | วางแผน task และกระจายงาน                                     |     2 |        3 |
-| `scan-collect`      | เก็บข้อมูลด้วย Prowler                                       |     3 |        3 |
-| `rule-evaluate`     | ประเมิน findings และขอส่ง notification ผ่าน `notify-deliver` |     5 |        3 |
-| `report-generate`   | สร้าง XLSX/CSV/JSON                                          |     2 |        3 |
-| `health-collect`    | สุขภาพ infrastructure ของ AWS                                |     5 |        3 |
-| `notify-deliver`    | นโยบายการส่งและผลการส่ง                                      |    10 |        3 |
-| `prowler-rule-sync` | ดูแล rule catalog กลางของ provider                           |     1 |        1 |
-| `health-check`      | ทำ synthetic monitoring                                      |    10 |        3 |
-| `slo-recalculate`   | ดูแล service objectives                                      |     5 |        3 |
+- XC-05 Every outbound HTTP(S) call MUST use the shared SSRF helper, covering embedded credentials, blocked headers, private addresses, redirects, DNS changes, and connection-time behavior.
+- XC-09 Mail MUST use a real SMTP transport with `verify()` at startup. No environment may fall back to a fake transport.
+- XC-10 Outbound integrations MUST use shared helpers according to the protocol applicability below. This requirement preserves the CTX-05 boundary. It does not imply that the HTTP(S) helper supports every protocol. HTTP(S) validation MUST NOT be treated as evidence for another protocol. A protocol without detailed rules is not exempt.
+- XC-11 Integration credentials MUST be encrypted at rest under XC-04. Decryption MUST remain within a narrow boundary, using credential helpers or temporary files under QUE-13. Decrypted credentials MUST NOT enter job payloads or the ledger.
 
-- QUE-01 Concurrency และ attempts เป็น baseline ต่อ worker instance
-  โดยใช้ exponential backoff เริ่มจาก 5 s ลำดับการเลือกค่าคือ override
-  ราย queue -&gt; ค่าเริ่มต้นของ worker -&gt; ค่าที่มีในระบบ `prowler-rule-sync`
-  รับเฉพาะ override ที่ระบุให้ queue นี้โดยตรง ห้ามใช้ global override
-- QUE-02 Concurrency 1 ไม่ใช่ distributed singleton ต้องบังคับ
-  พฤติกรรม singleton ใน SQL
-- QUE-03 ทุก job ต้องมี `tenantId` ส่วน shared-catalog job ต้องได้รับ
-  authorization แยกต่างหากผ่าน `requestedByTenantId` ห้ามใช้ identity
-  ใน payload เป็น SQL context (TSQL-01)
-- QUE-04 ต้องแยกสถานะ retryable, delayed และ exhausted ออกจากกัน
-  และติดตาม ledger reconciliation รวมถึงความล้มเหลวระหว่าง enqueue กับการบันทึก
-  ledger
-- QUE-05 ปลายทาง notification ต้องมี scope ตาม tenant และ Project
-  พร้อม policy และ mute window ต้องบันทึกผลลัพธ์ทุกรายการ ห้ามส่งซ้ำ
-  เมื่อส่งสำเร็จแล้วแต่ retry เพื่อบันทึกข้อมูลประกอบ
-- QUE-06 ต้อง pin เวอร์ชัน Prowler จนกว่าจะมีการเปลี่ยนแปลงที่ได้รับอนุมัติและตรวจสอบ compatibility แล้ว
-- QUE-07 ต้องแยกการเก็บข้อมูล security ด้วย Prowler, health ผ่าน AWS SDK และ monitoring ผ่าน HTTP/DNS/TCP ออกจากกัน
-- QUE-08 ต้องแยก integration imports และ credentials ออกจาก live OAuth sync
+Protocol applicability:
 
-### 3.6 Web SPA data integration
+| Protocol / integration                                                  | Applicable contract                                                                                                                             | Status                           |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| HTTP(S), including cloud API and notification-destination HTTP(S) calls | XC-05 for outbound safety; XC-04 for credential encryption; QUE-13 for credential handling                                                      | Current                          |
+| Cloud SDK, primarily AWS plus GCP                                       | CTX-05, XC-10, XC-11; collector separation under QUE-07                                                                                         | Current/Deferred per integration |
+| DNS/TCP synthetic monitoring                                            | CTX-05, XC-10, and collector separation under QUE-07; destination validation and connection-time behavior MUST be defined before implementation | Deferred                         |
+| SMTP                                                                    | XC-09 for transport/startup verification; XC-04 and XC-11 for credentials; the SMTP SSRF-helper boundary MUST be defined before implementation  | Current/Deferred                 |
 
-- FE-01 Typed client ใน `apps/web/src/lib/api` ต้องเรียก `/api` พร้อม
-  credentials และรองรับ JSON, response 204 ที่ไม่มีเนื้อหา และ response
-  ที่ไม่ใช่ OK
-- FE-02 ต้อง validate response ด้วย schema จาก `api-contract` ณ runtime
-  TypeScript generics ไม่ได้ validate ข้อมูล `ApiError` จะเปิดเผย
-  `error.code` และ `details` จาก server เฉพาะเมื่อ map ไว้อย่างชัดเจน
-- FE-03 ลำดับการเลือก tenant จาก `/me/context`: organization ใน memory
-  ที่ยังใช้ได้ -&gt; `lastActiveTenantId` ที่ยังใช้ได้ -&gt; membership แรก
-- FE-04 ต้องเปลี่ยน tenant หลังจาก `PATCH /me/active-org` สำเร็จเท่านั้น
-  จากนั้นจึงอัปเดต snapshot ที่ router ใช้ รีเซ็ต Project และล้าง
-  query ที่ผูกกับ tenant
-- FE-05 ต้องกำหนด query key จาก `organizationId`, `projectId`, filters
-  และ ids ที่เลือก ห้ามให้
-  response ที่อยู่ระหว่างรับกลับมาเติมข้อมูลใน view ของ tenant อื่น
-- FE-06 Active-scan integration (Deferred ตาม scan workflow) ต้อง poll scan ที่ active (baseline ทุก 5 s) จนกว่า shared
-  active-scan predicate จะระบุว่าเข้าสู่สถานะ terminal ต้องใช้ polling
-  ไม่ใช่ WebSocket หรือ SSE
-- FE-07 Role helper และ router helper มีไว้เพื่อ UX เท่านั้น
-  ส่วน authorization อยู่ที่ API
-- FE-08 โครงสร้าง UI, tokens และ accessibility ต้องเป็นไปตาม
-  `docs/design-system.md`
+## 5. Data architecture
 
-### 3.7 Workflow coverage
+### 5.1 Logical persistence model
 
-การมีชื่อใน queue table หรือ logical model ไม่ได้แปลว่ามี end-to-end design ครบ ตารางนี้แยก contract ที่กำหนดแล้วออกจากส่วนที่ยังต้องตัดสินใจ ไม่เพิ่ม capability เข้า implementation scope
-
-| Workflow                                    | Contract ที่กำหนดแล้ว                               | ขอบเขตที่ยังไม่ตกลง                                                                |
-| ------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Admission / organization provisioning       | AUTH, ORG และ TSQL rules                            | สถานะ Implemented จำกัดเฉพาะหน้าที่ที่ระบุ ไม่ใช่ acceptance ของทุกเส้นทาง         |
-| Scan collection / evaluation / finalization | SCAN-01 ถึง SCAN-13; QUE rules                      | Deferred; runtime evidence ต้องมาจาก candidate ที่ implement จริง                  |
-| Catalog synchronization                     | `prowler-rule-sync`, QUE-01, QUE-02, QUE-03, QUE-06 | Catalog update/version lifecycle และ write-role contract: OPEN-02                  |
-| Synthetic monitoring / SLO                  | `health-check`, `slo-recalculate`, QUE-07           | Observation/state transitions, SLO inputs และ failure/recovery boundaries: OPEN-02 |
-| AWS infrastructure health                   | `health-collect`, QUE-07                            | Input/output, state ownership และ completion/failure/recovery boundaries: OPEN-02  |
-| Notification delivery                       | QUE-05; แยกผลส่งออกจาก scan status ตาม SCAN-12      | Channel-specific delivery และ completion/recovery contracts: OPEN-02               |
-| Report generation                           | `report-generate`, DATA-05, VER-06                  | Job lifecycle และ content contract ของแต่ละ report: OPEN-02                        |
-
-## 4. Data architecture
-
-### 4.1 Logical persistence model
-
-Diagram นี้เป็น logical target model ไม่ใช่รายการ physical tables ที่ implement ครบแล้ว PostgreSQL/`packages/db` ที่มีสถานะ Implemented ไม่รับรองสถานะของทุก entity ในภาพ Auth persistence ที่ระบุใน AUTH/TSQL เป็น current implementation; entities อื่นใช้สถานะและ coverage ของ capability ที่เกี่ยวข้อง โดยไม่อนุมานจากชื่อ table หรือ container
+The diagram is a logical target, not a list of implemented physical tables. PostgreSQL and `packages/db` being `Implemented` does not make every entity current. Auth persistence in the identity boundary is current. The status and coverage of every other entity are determined by its related capability; names alone do not imply implementation.
 
 ```text
 organizations (= tenants) -- memberships(role) -- users
@@ -427,7 +305,7 @@ organizations (= tenants) -- memberships(role) -- users
   +-- audit_events / queue_jobs
 ```
 
-### 4.2 Tenant SQL and RLS (load-bearing)
+### 5.2 Tenant SQL and RLS (load-bearing)
 
 | Caller          | Helper                                      | Status      |
 | --------------- | ------------------------------------------- | ----------- |
@@ -435,108 +313,34 @@ organizations (= tenants) -- memberships(role) -- users
 | API raw SQL     | `withTenantContextRaw(tenantId, tx => ...)` | Implemented |
 | Worker raw SQL  | `withWorkerTenantContext(tenantId, ...)`    | Deferred    |
 
-- TSQL-01 Tenant helper ต้องเปิด transaction และตั้ง `app.tenant_id`
-  ด้วย transaction-local `set_config(..., true)` ทุก query
-  รวมถึง `tx.unsafe` ต้องใช้ `tx` ที่ส่งให้
-  ห้ามใช้ global หรือ pooled handle
-- TSQL-02 ต้อง bind query values ทั้งหมด
-- TSQL-03 Runtime roles ต้องเป็น non-owner และ `NOBYPASSRLS` ห้ามให้สิทธิ์ superuser แก่ runtime; owner access แยกกำกับโดย TSQL-12
-- TSQL-04 Domain tables ที่มี `tenant_id` ต้องมี `USING`
-  และ `WITH CHECK` policies เฉพาะแต่ละ table, restrictive context guards
-  และ `FORCE ROW LEVEL SECURITY`
-- TSQL-05 อ่าน shared-catalog rows (`tenant_id IS NULL`) ได้เมื่อมี
-  tenant context ที่ถูกต้อง ห้าม tenant contexts เขียน rows เหล่านี้
-- TSQL-06 ข้อจำกัด pre-tenant: global auth tables (`user`, `session`,
-  `account`, `verification`, `organization`, `member`, `invitation`,
-  `twoFactor`) ไม่ถูกจำกัด tenant scope ด้วย RLS เพราะ login, signup gate
-  และ membership resolution ทำงานก่อนมี tenant context ใด ๆ
-  และผู้ใช้เป็นสมาชิกข้าม organizations ได้ การแยกข้อมูลของ tables เหล่านี้
-  อาศัย lookups ที่ตรวจสอบ membership และ auth queries ที่ผูกกับ organization
-  ห้ามอาศัย `app.tenant_id`
-- TSQL-07 Runtime role ต้องได้รับ DML grants บน auth tables
-  เท่าที่จำเป็นจาก migrations และยังคงเป็น non-owner
-  เพื่อให้ RLS มีผลบังคับกับ domain tables เมื่อเพิ่มเข้ามา
-- TSQL-08 ต้อง review database role ที่ตั้งใจใช้ในทุกช่องทาง pre-tenant
-  lookup, scheduler discovery, cross-tenant maintenance
-  และ ledger access
-- TSQL-09 ต้องระบุ tenant และ Project predicates ตาม scope ของข้อมูลอย่างชัดเจนควบคู่กับ RLS
-- TSQL-10 ต้องใช้ allow-list สำหรับ identifiers, sort columns และทิศทางการ sort
-- TSQL-11 ต้องตรวจสอบ parent scope ไม่ใช่อาศัย foreign keys เพียงอย่างเดียว
-- TSQL-12 Owner access สงวนสำหรับ DDL/migrations/partition maintenance ยกเว้น operator-only provisioning ตาม CTX-03 และ ORG-06 ถึง ORG-09 บน owner connection ข้อยกเว้นนี้ไม่ให้สิทธิ์ owner แก่ HTTP handlers หรือ DML workers
+- TSQL-01 The tenant helper MUST open a transaction and set `app.tenant_id` with transaction-local `set_config(..., true)`. Every query, including `tx.unsafe`, MUST use the provided `tx`. Global or pooled handles MUST NOT be used.
+- TSQL-02 All query values MUST be bound.
+- TSQL-03 Runtime roles MUST be non-owner and `NOBYPASSRLS`. Runtime MUST NOT have superuser privileges. TSQL-12 governs owner access separately.
+- TSQL-04 Domain tables with `tenant_id` MUST have table-specific `USING` and `WITH CHECK` policies, restrictive context guards, and `FORCE ROW LEVEL SECURITY`.
+- TSQL-05 Shared-catalog rows where `tenant_id IS NULL` may be read only with a valid tenant context. Tenant contexts MUST NOT write those rows.
+- TSQL-06 Pre-tenant limitation: global auth tables (`user`, `session`, `account`, `verification`, `organization`, `member`, `invitation`, `twoFactor`) are not tenant-scoped by RLS because login and membership resolution run before tenant context exists, and users may belong to multiple organizations. Isolation for these tables depends on verified membership lookups and organization-bound auth queries. It MUST NOT depend on `app.tenant_id`.
+- TSQL-07 The runtime role MUST receive only the DML grants required on auth tables through migrations and remain non-owner so RLS applies when domain tables are added.
+- TSQL-08 The intended database role MUST be reviewed for every pre-tenant lookup, scheduler discovery, cross-tenant maintenance, and ledger access path.
+- TSQL-09 Tenant and Project predicates MUST be explicit according to data scope, in addition to RLS.
+- TSQL-10 Identifiers, sort columns, and sort directions MUST use allow-lists.
+- TSQL-11 Parent scope MUST be verified. Foreign keys alone are insufficient.
+- TSQL-12 The owner role is reserved for DDL, migrations, and partition maintenance over the owner connection. This document does not authorize other uses of the owner connection; authorization must come from the owning document. HTTP handlers and DML workers MUST NOT hold owner privileges.
 
-### 4.3 Persistence lifecycle and integrity
+### 5.3 Persistence lifecycle and integrity
 
-- CON-01 PostgreSQL เป็น system of record ส่วน Redis ใช้ขนส่งเท่านั้น
-  ห้ามมี state ที่อยู่ใน Redis เพียงแห่งเดียว (DATA-02)
-- DATA-01 User id ใช้ text; organization และ Project id ใช้ UUID;
-  role เป็นไปตาม AUTH-06 ต้องบังคับความสัมพันธ์ที่ปลอดภัยต่อ tenant
-  และ `last_active_tenant_id` ต้องมี membership ที่ยังใช้ได้
-- DATA-02 ต้องจัดเก็บ schedule, ยอดรวมและผลลัพธ์ของ task และ evaluation,
-  การยกเลิก, effective rulesets และ dispatch claims ใน SQL
-  ห้ามเก็บเป็น progress ใน Redis เพียงอย่างเดียว
-- DATA-03 ต้องแยกประวัติ occurrence รายเดือน, current findings และสรุปรายวันเป็นคนละตาราง ไม่ใช่ event sourcing
-- DATA-04 `audit_events` และ `queue_jobs` เป็นบันทึกการปฏิบัติงาน
-  ไม่ใช่ business state ส่วน ledger ไม่ใช่ queue engine
-- DATA-05 Report ต้องเก็บ bytes ของ XLSX/CSV/JSON ใน `reports.content`;
-  ไม่ใช้ PDF และไม่ใช้ object storage ต้องอ่านข้อมูลใน tenant transaction
-  แล้ว serialize นอก transaction ก่อนจัดเก็บใน transaction ที่มี scope
-- DATA-06 Migration เป็นไฟล์ `NNNN_*.sql` ที่มีลำดับ รันด้วย custom runner
-  โดยใช้ `__nightwatch_migrations` ติดตามสถานะ พร้อม advisory locking
-  และหนึ่ง transaction ต่อ migration ห้ามใช้ `drizzle-kit push` หรือ `migrate`
-  ห้ามเขียน migration ที่ apply แล้วใหม่ ต้อง review SQL ที่ generate
-  โดยเทียบกับลำดับ migration ที่ apply แล้ว
-- DATA-07 แต่ละ migration ต้องมี constraints, RLS policies, grants
-  และ partitions ตาม scope ของตัวเอง
-- DATA-08 ต้องสร้าง monthly partition สำหรับ `audit_events`, `monitor_runs`
-  และ `finding_occurrences` ล่วงหน้า 12 เดือน ด้วย scheduled DDL
-  ภายใต้ owner role ห้ามสร้างขณะรับ request หรือจาก DML worker
-- DATA-09 ต้องแยกข้อมูล employee และ provider inventory ออกจาก login accounts
-- DATA-10 Migration runner ต้อง resolve `DATABASE_OWNER_URL` ก่อน `DATABASE_URL`; database-role boundary ใช้ TSQL-03 และ TSQL-12
+- DATA-01 User ids use text. Organization and Project ids use UUID. Feature/API contracts own business roles. Tenant-safe relationships MUST be enforced, and `last_active_tenant_id` MUST have a current valid membership.
+- DATA-02 Schedules, task and evaluation totals and results, cancellations, effective rulesets, and dispatch claims MUST be stored in SQL. They MUST NOT exist only as Redis progress.
+- DATA-03 Monthly occurrence history, current findings, and daily summaries MUST use separate tables. This is not event sourcing.
+- DATA-04 `audit_events` and `queue_jobs` are operational records, not business state. The ledger is not a queue engine.
+- DATA-05 Generated report artifacts MUST be stored in `reports.content`, not object storage. Data MUST be read in a tenant transaction, serialized outside the transaction, and then stored in a scoped transaction.
+- DATA-06 Migrations are ordered `NNNN_*.sql` files run by a custom runner using `__nightwatch_migrations` for status, advisory locking, and one transaction per migration. `drizzle-kit push` and `migrate` MUST NOT be used. Applied migrations MUST NOT be rewritten. Generated SQL MUST be reviewed against the applied migration sequence.
+- DATA-07 Each migration MUST include constraints, RLS policies, grants, and partitions within its scope.
+- DATA-08 Monthly partitions for `audit_events`, `monitor_runs`, and `finding_occurrences` MUST be created 12 months in advance by scheduled DDL under the owner role. They MUST NOT be created during requests or by a DML worker.
+- DATA-09 Employee data and provider inventory MUST remain separate from login accounts.
+- DATA-10 The migration runner MUST resolve `DATABASE_OWNER_URL` before `DATABASE_URL`. TSQL-03 and TSQL-12 define the database-role boundary.
+- XC-04 Encryption at rest: AES-256-GCM, random 12-byte IV, 16-byte tag, and a 32-byte base64url key. One key is active; old keys remain available with versions. This is not KMS envelope encryption.
 
-## 5. Cross-cutting contracts
-
-- XC-01 Validation: ใช้ Zod schema ใน `api-contract` สำหรับ input
-  และใช้ validator ร่วมกันจาก `shared`
-- XC-02 Errors: `AppError(status, code, message, details?)` -&gt;
-  `{ error: { code, message, details? } }` ลำดับ argument ต้องเริ่มด้วย
-  status (decision F001-ERR1) ห้ามนำ overload แบบ code-first กลับมา
-  ใน environment ที่ใกล้เคียง production ต้องแสดง unknown error แบบทั่วไป
-- XC-03 Audit event ต้องมี request context และ actor context พร้อมระบุว่า
-  เป็น transactional หรือ best-effort ห้ามใส่ secrets หรือข้อมูลที่ต้องคุ้มครอง
-  ใน payload
-- XC-04 Encryption: AES-256-GCM, IV แบบสุ่มขนาด 12-byte, tag ขนาด 16-byte,
-  key แบบ base64url ขนาด 32-byte; มี active key หนึ่งรายการและเก็บ key
-  เก่าพร้อมเวอร์ชันไว้
-  ไม่ใช่ KMS envelope encryption
-- XC-05 SSRF: ทุก outbound HTTP(S) call ต้องใช้ shared helper
-  ซึ่งครอบคลุม embedded credentials, blocked headers, private addresses,
-  redirects, การเปลี่ยน DNS และพฤติกรรมขณะเชื่อมต่อ
-- XC-06 Rate limiting: ใช้ Redis sliding window แยกจาก auth throttling
-  โดยมี limiter timeout ที่มีขอบเขต (baseline 2 s) ต้องทดสอบกรณี limiter error
-  ห้ามสันนิษฐานว่าเป็น fail-closed
-- XC-07 Logging: ใช้ structured Pino ใน runtime ที่ใกล้เคียง production
-  พร้อม redaction แยกตาม entrypoint ห้าม log ทั้ง job, credentials,
-  provider response ที่มี secrets หรือลิงก์ verification, reset
-  และ invitation
-- XC-08 Health: `/health` ใช้ตรวจ liveness; `/ready` รัน
-  `SELECT 1` กับฐานข้อมูล -&gt; 200/503 และเพิ่ม Redis ping เมื่อมี queue
-  Readiness ไม่ได้ยืนยันว่า RLS, partitions, SMTP หรือการทำงานของ worker
-  ใช้งานได้
-- XC-09 Mail: ต้องใช้ SMTP จริงพร้อม `verify()` ตอน startup
-  ห้าม fallback ไปใช้ fake transport ในทุก environment
-- XC-10 Outbound integrations ต้องใช้ shared SSRF และ credential helpers ตาม protocol applicability ด้านล่าง ข้อกำหนดนี้คงขอบเขตจาก CTX-05 ไม่ได้หมายความว่า HTTP helper รองรับทุก protocol แล้ว
-
-### 5.1 Outbound protocol applicability
-
-| Protocol / integration                                                  | Contract ที่ใช้                                                                                           | ขอบเขตที่ยังต้องระบุ                                                                        |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| HTTP(S), รวม HTTP(S) calls ของ cloud APIs และ notification destinations | XC-05 สำหรับ outbound safety; XC-04 สำหรับ credential encryption; SCAN-06 สำหรับ scan credential handling | ต้องตรวจการใช้ helpers ของแต่ละ integration; ไม่ถือว่า SDK import เป็นหลักฐาน               |
-| DNS/TCP synthetic monitoring                                            | CTX-05, XC-10 และการแยก collector ตาม QUE-07                                                              | Destination validation และ connection-time behavior ของแต่ละ protocol: OPEN-03              |
-| SMTP                                                                    | XC-09 สำหรับ transport/startup verification; XC-04 และ XC-10 สำหรับ credentials/outbound helpers          | ขอบเขต SSRF helper สำหรับ SMTP: OPEN-03; SMTP verification ไม่ได้พิสูจน์ destination safety |
-
-Protocol ที่ยังไม่มีรายละเอียดไม่ถือว่าได้รับการยกเว้นจาก XC-10 และห้ามใช้ผลตรวจ HTTP(S) เป็นหลักฐานแทน
-
-## 6. Deployment and operation
+## 6. Deployment and operations
 
 ```text
 Web SPA, Landing: independent static builds and deployments
@@ -547,128 +351,79 @@ Worker image: combined consumers + scheduler/dispatcher loops,
 PostgreSQL + Redis; owner-role monthly partition-maintenance cron
 ```
 
-- DEP-01 ต้องเลือกอย่างชัดเจนว่าจะใช้ worker entrypoint แบบรวมหรือแยก
-  Default entrypoint เริ่มเฉพาะ main consumers ไม่ใช่ทุก role ต้องตรวจว่า
-  consumer และ scheduler ใดทำงานอยู่ก่อนเพิ่มจำนวน replica
-- DEP-02 Container ต้องรันแบบ non-root และ pin runtime dependencies
-  โดย environment ตอน build และ runtime ต้องสอดคล้องกัน
-- DEP-03 ต้องทดสอบ shutdown, job ที่ถูกขัดจังหวะหรือ stalled และผลของงานที่
-  ปลอดภัยต่อ retry ห้ามสันนิษฐานว่าจะ drain งานได้ครบ
-- DEP-04 ต้องทำ partition maintenance ระหว่างการ deploy แต่ละครั้ง (DATA-08)
-- DEP-05 ต้องตรวจสอบ TLS, origins, secrets, จำนวน replica, credentials
-  และสิทธิ์ฐานข้อมูลใน environment เป้าหมาย การใช้ production credentials,
-  การทำ migration, deployment และ release ต้องได้รับ authorization
-  อย่างชัดเจน
+- DEP-01 Combined or separate worker entrypoints MUST be selected explicitly. The default entrypoint starts only the main consumers, not every role. Active consumers and schedulers MUST be verified before increasing replica count.
+- DEP-02 Containers MUST run as non-root and pin runtime dependencies. Build-time and runtime environments MUST be consistent.
+- DEP-03 Shutdown, interrupted or stalled jobs, and retry-safe effects MUST be tested. Complete draining MUST NOT be assumed.
+- DEP-04 Partition maintenance MUST run during each deployment (DATA-08).
+- DEP-05 TLS, origins, secrets, replica counts, credentials, and database privileges MUST be checked in the target environment. Use of production credentials, migrations, deployments, and releases MUST receive explicit authorization through an external approval gate outside this document.
+- XC-03 Audit events MUST include request and actor context and state whether recording is transactional or best-effort. Payloads MUST NOT contain secrets or protected data.
+- XC-07 Logging: production-like runtimes MUST use structured Pino logging with entrypoint-specific redaction. Logs MUST NOT contain entire jobs, credentials, provider responses containing secrets, or one-time links/tokens for authentication, recovery, or admission.
+- XC-08 Health: `/health` checks liveness. `/ready` reports ready only when database `SELECT 1` succeeds and, when queues are enabled, Redis ping succeeds. Readiness does not verify RLS, partitions, SMTP, or worker operation.
 
-## 7. Quality review checklist
+## 7. Architecture conformance checklist
 
-Checklist นี้เป็นมุมมองสำหรับ review ของ canonical rules ไม่สร้าง policy เพิ่ม ให้ทำเครื่องหมายว่าผ่านเฉพาะเมื่อมีหลักฐานตาม §8 ส่วน decision ที่ยังเปิดอยู่ติดตามใน §9 ไม่ถือเป็นเกณฑ์ที่อนุมัติแล้ว
+This checklist checks only the architecture rules in this document. It is not feature acceptance, a test plan, or a verification procedure. Every item cites a rule defined here and adds no policy. Mark an item complete only with evidence accepted by the Technical Lead.
 
 ### 7.1 Security and tenant isolation
 
-- [ ] จัดประเภท route เป็น tenant-protected, pre-tenant หรือ platform แล้ว
-
-  (REQ-02)
-
-- [ ] ตรวจสอบ membership ก่อนเข้าถึงข้อมูล และไม่เชื่อถือ tenant ที่ client
-
-  ส่งมาโดยไม่ตรวจสอบ (REQ-03, REQ-04)
-
-- [ ] ทุก operation มี permission guard ที่ระบุชัดเจน และ platform access
-
-  จำกัดอยู่เฉพาะ operation นั้น (REQ-06, CTX-04)
-
-- [ ] Tenant SQL ใช้ helper และ `tx` ที่ได้รับ; bind values, ตรวจ predicates, identifiers และ parent scope ตามกฎเจ้าของเรื่อง (TSQL-01, TSQL-02, TSQL-09, TSQL-10, TSQL-11)
-- [ ] Migration ของ domain table ใหม่มี RLS policies, FORCE RLS และ runtime
-
-  grants ครบถ้วน (TSQL-04, DATA-07)
-
-- [ ] การเปลี่ยน auth state ยังคงปลอดภัยเมื่อเกิด replay หรือ concurrency
-
-  (AUTH-04, AUTH-05, ORG-04)
-
-- [ ] การเพิกถอนสิทธิ์มีผลกับ operations ถัดไป ไม่ใช่เฉพาะ response
-
-  ทันทีหลังเพิกถอน (ORG-03, ORG-04)
-
-- [ ] ไม่มี secrets หรือ links ใน logs, jobs, ledger หรือ audit payloads (XC-03,
-
-  XC-07, SCAN-06)
-
-- [ ] Outbound calls ผ่าน SSRF helpers (XC-05)
+- [ ] Routes are classified as tenant-protected, pre-tenant, or platform access (REQ-02)
+- [ ] Membership is verified before data access, and client-supplied tenant values are not trusted without verification (REQ-03, REQ-04, FE-09)
+- [ ] Every operation has an explicit permission guard, and platform access is limited to that operation (REQ-06, CTX-04)
+- [ ] Tenant SQL uses the helper and provided `tx`; values are bound, and predicates, identifiers, and parent scope follow their owning rules (TSQL-01, TSQL-02, TSQL-09, TSQL-10, TSQL-11)
+- [ ] Migrations for new domain tables include RLS policies, FORCE RLS, and complete runtime grants (TSQL-04, DATA-07)
+- [ ] Tenant context is resolved server-side from authenticated identity and verified current membership (REQ-03, REQ-04, ORG-02)
+- [ ] Remembered or denormalized tenant values, including session mirrors, are revalidated every time and are not authorization evidence (ORG-03, ORG-04)
+- [ ] Tenant-context changes revalidate membership and atomically update dependent auth context (ORG-04)
+- [ ] The client replaces the tenant boundary only after server confirmation; previous tenant state is invalidated, and inflight results cannot cross contexts (FE-09, FE-10, FE-05)
+- [ ] Logs, jobs, ledger entries, and audit payloads contain no secrets or one-time links/tokens (XC-07, XC-03, QUE-13)
+- [ ] Outbound calls use SSRF helpers according to protocol applicability (XC-05, XC-10)
 
 ### 7.2 Data integrity and concurrency
 
-- [ ] บังคับ invariants ใน SQL ด้วย unique indexes, claims และ CAS ไม่ใช่อาศัย
-
-  code เพียงอย่างเดียว (SCAN-01, SCAN-08, SCAN-10, QUE-02)
-
-- [ ] Commit ก่อน enqueue และมี compensation (CON-06, SCAN-02)
-- [ ] Writes เป็น idempotent และ totals ปลอดภัยต่อ retries (SCAN-08, SCAN-09,
-
-  QUE-05)
-
-- [ ] Migrations เรียงลำดับและไม่มีการเขียนทับ migration ที่ apply แล้ว (DATA-06)
+- [ ] SQL enforces invariants through unique indexes, claims, and CAS rather than code alone (QUE-02, QUE-14, QUE-15, QUE-16)
+- [ ] SQL commits before enqueue, with compensation (CON-06, QUE-09)
+- [ ] Writes are idempotent, and totals are retry-safe (QUE-14, QUE-15, QUE-05)
+- [ ] Migrations are ordered, and applied migrations are not overwritten (DATA-06)
 
 ### 7.3 Reliability and recovery
 
-- [ ] แยกสถานะ retryable, exhausted และ terminal ออกจากกันชัดเจน (QUE-04,
-
-  SCAN-05)
-
-- [ ] กู้คืนจาก partial failures ได้ ทั้ง claim-before-enqueue, partial batches
-
-  และ stalled scans (SCAN-08, SCAN-13)
-
-- [ ] งานหลังเปลี่ยน terminal status รายงาน failures ของตัวเอง (SCAN-12)
-- [ ] ทดลอง shutdown และกรณี jobs ถูกขัดจังหวะแล้ว (DEP-03)
+- [ ] Retryable, delayed, exhausted, and terminal states are distinct (QUE-04, QUE-12)
+- [ ] Recovery covers partial failures, including claim-before-enqueue, partial batches, and stalled jobs (QUE-14, QUE-18)
+- [ ] Work after terminal status reports its own failures (QUE-17)
+- [ ] Shutdown and interrupted-job cases have been tested (DEP-03)
 
 ### 7.4 Observability and audit
 
-- [ ] ใช้ structured logs พร้อม redaction ที่ทุก entrypoint (XC-07)
-- [ ] บันทึก audit สำหรับ security-relevant events และ denials โดยไม่มี
-
-  protected data (REQ-05, ORG-05, XC-03)
-
-- [ ] Health และ readiness สะท้อน dependencies จริงและข้อจำกัดของการตรวจ (XC-08)
-- [ ] สามารถสังเกต failures ของ ledger และ reconciliation ได้ (QUE-04)
+- [ ] Every entrypoint uses structured logs with redaction (XC-07)
+- [ ] Security-relevant events and denials are audited without protected data (REQ-05, ORG-05, XC-03)
+- [ ] Health and readiness reflect actual dependencies and the limits of those checks (XC-08)
+- [ ] Ledger and reconciliation failures are observable (QUE-04)
 
 ### 7.5 Performance and scalability
 
-- [ ] Network และ CPU work อยู่นอก SQL transactions (REQ-08)
-- [ ] ระบุ batch และ concurrency limits ชัดเจน โดยกำหนดต่อ instance (SCAN-03,
-
-  QUE-01)
-
-- [ ] Query keys และ cache แยกตาม tenant และ Project (FE-05)
-- [ ] Partitioned tables มี partitions เตรียมไว้ล่วงหน้า (DATA-08)
+- [ ] Network and CPU work remains outside SQL transactions (REQ-08)
+- [ ] Batch and concurrency limits are explicit and defined per instance (QUE-01, QUE-10)
+- [ ] Query keys and caches are isolated by tenant and Project (FE-05)
+- [ ] Partitioned tables have pre-created partitions (DATA-08)
 
 ### 7.6 Maintainability and boundaries
 
-- [ ] เคารพ dependency direction และ package layout โดยตรวจ enforcement coverage ด้วย (PKG-01, PKG-02, PKG-03, PKG-04, PKG-05)
-- [ ] Clients validate responses ตาม `api-contract` และใช้ error envelope กับ argument order ที่กำหนด (FE-02, XC-02)
-- [ ] ไม่มี service split หรือ DI container, ไม่มี repository layer ที่สร้างเผื่อโดยยังไม่จำเป็น และไม่มี circular imports (CON-02, PKG-03)
-- [ ] Pin เวอร์ชัน Prowler และ runtime dependencies (QUE-06, DEP-02)
+- [ ] Dependency direction and package layout are followed, including enforcement coverage checks (PKG-01, PKG-02, PKG-03, PKG-04, PKG-05)
+- [ ] Clients validate responses against `api-contract` and use the specified error envelope and argument order (FE-02, XC-02)
+- [ ] There is no service split, DI container, speculative repository layer, or circular import (CON-02, PKG-03)
+- [ ] Prowler and runtime dependency versions are pinned (QUE-06, DEP-02)
 
 ### 7.7 Privacy and data protection
 
-- [ ] เข้ารหัส credentials ขณะจัดเก็บ (at rest) ด้วย versioned keys (XC-04)
-- [ ] Temporary credential files ใช้ mode 0600 และถูกลบหลังใช้งาน (SCAN-06)
-- [ ] ไม่ใส่ personal data หรือ secrets ใน logs และ audit payloads (XC-03,
-
-  XC-07)
+- [ ] Credentials are encrypted at rest with versioned keys (XC-04)
+- [ ] Temporary credential files use mode 0600 and are deleted after use (QUE-13)
+- [ ] Logs and audit payloads contain no personal data or secrets (XC-07, XC-03)
+- [ ] Landing receives no authentication or internal data (CTX-01, CON-04)
 
 ### 7.8 Operability and deployability
 
-- [ ] แยก owner/runtime roles ตามขอบเขต DDL และ operator provisioning; migrations ใช้ owner connection ก่อน application runtime (TSQL-03, TSQL-12, DATA-10)
-- [ ] เลือก Worker entrypoint roles อย่างชัดเจนก่อน scaling (DEP-01)
-- [ ] ตรวจ TLS, origins, secrets และ privileges ใน target environment (DEP-05)
-- [ ] ตรวจ SMTP ตอน startup และไม่มี fake transport (XC-09)
-
-### 7.9 Accessibility and UX
-
-- [ ] ปฏิบัติตาม design system และครอบคลุม interaction กับ accessibility states
-
-  (FE-08)
-
-- [ ] Authorization ไม่พึ่ง UI helpers (FE-07)
+- [ ] Owner and runtime roles are separated under TSQL-12; migrations use the owner connection before application runtime (TSQL-03, TSQL-12, DATA-10)
+- [ ] Worker entrypoint roles are selected explicitly before scaling (DEP-01)
+- [ ] TLS, origins, secrets, and privileges are checked in the target environment (DEP-05)
+- [ ] SMTP is verified at startup, with no fake transport (XC-09)
+- [ ] Authorization does not depend on UI helpers (FE-07)
