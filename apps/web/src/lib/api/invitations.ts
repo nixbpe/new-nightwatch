@@ -12,7 +12,8 @@ export function fetchInvitation(
   invitationId: string,
 ): Promise<InvitationResponse> {
   return request(
-    `/api/onboarding/invitations/${encodeURIComponent(invitationId)}`,
+    "/api/onboarding/invitations/{invitationId}",
     invitationResponseSchema,
+    { params: { invitationId } },
   );
 }

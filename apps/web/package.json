@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "codegen": "bun scripts/codegen-openapi.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
@@ -19,6 +20,7 @@
     "better-auth": "1.6.23",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "openapi-fetch": "^0.17.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router": "^7.0.0",
@@ -42,6 +44,7 @@
     "@vitest/coverage-v8": "^5.0.0",
     "babel-plugin-react-compiler": "1.0.0",
     "happy-dom": "^20.14.0",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "4.2.2",
     "vite": "^8.2.2",
     "vitest": "^5.0.0"
