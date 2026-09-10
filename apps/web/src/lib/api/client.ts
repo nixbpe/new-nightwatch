@@ -59,6 +59,33 @@ type RequestBodyFor<P extends keyof paths, M extends RequestMethod> =
       : never
     : never;
 
+/** Successful operation JSON payload from 2xx responses; never if no content is defined. */
+type OperationSuccessPayload<
+  TOperation,
+> = TOperation extends { responses: infer TResponses }
+  ? {
+      [K in keyof TResponses]: K extends string | number
+        ? `${K}` extends `2${string}`
+          ? TResponses[K] extends {
+              content: { "application/json": infer TPayload }
+            }
+            ? TPayload
+            : never
+          : never
+        : never;
+    }[keyof TResponses]
+  : never;
+
+type OperationSuccessSchema<
+  P extends keyof paths,
+  M extends RequestMethod,
+> = [OperationSuccessPayload<OperationFor<P, M>>] extends [never]
+  ? undefined
+  : ZodType<OperationSuccessPayload<OperationFor<P, M>>>;
+
+type OperationReturn<P extends keyof paths, M extends RequestMethod> =
+  OperationSuccessPayload<OperationFor<P, M>>;
+
 export type RequestOptions<
   P extends keyof paths,
   M extends RequestMethod = "GET",
@@ -96,12 +123,11 @@ type ClientOutcome = {
 export async function request<
   M extends RequestMethod = "GET",
   P extends PathsFor<M> = PathsFor<M>,
-  T = unknown,
 >(
   path: P,
-  schema: ZodType<T> | undefined,
+  schema: OperationSuccessSchema<P, M>,
   options?: RequestOptions<P, M>,
-): Promise<T> {
+): Promise<OperationReturn<P, M> extends never ? undefined : OperationReturn<P, M>> {
   const method: RequestMethod = options?.method ?? "GET";
 
   const call = client[method] as unknown as (
@@ -135,7 +161,7 @@ export async function request<
 
   if (response.status === 204) {
     if (schema === undefined) {
-      return undefined as T;
+      return undefined;
     }
     throw new ApiError(
       "CONTRACT_MISMATCH",
@@ -161,10 +187,10 @@ export async function request<
   }
 
   if (schema === undefined) {
-    return undefined as T;
+    return undefined;
   }
 
-  let bodyText: unknown = null;
+  let bodyText: unknown = data;
   if (typeof data === "string") {
     try {
       bodyText = JSON.parse(data) as unknown;
@@ -183,4 +209,3 @@ export async function request<
   }
   return parsed.data;
 }
-
