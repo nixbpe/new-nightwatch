@@ -1,6 +1,6 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -238,52 +238,6 @@ describe("WorkspacePage organization views", () => {
     );
   });
 
-  it("switching organization publishes the new tenant only after the PATCH succeeds", async () => {
-    fetchMeContextMock.mockResolvedValue(
-      meContext([ownerOrg, viewerOrg], ORG_A),
-    );
-    updateActiveOrganizationMock.mockResolvedValue(
-      meContext([ownerOrg, viewerOrg], ORG_B),
-    );
-    const user = userEvent.setup();
-    renderPage();
-
-    await screen.findByRole("heading", { name: "Org A" });
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "องค์กร" }),
-      ORG_B,
-    );
-
-    expect(
-      await screen.findByRole("heading", { name: "Org B" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/ผู้ชม/)).toBeInTheDocument();
-  });
-
-  it("a denied switch keeps the current organization", async () => {
-    // MEMBERSHIP_DENIED (403) from the server: the selection snaps back to
-    // the still-valid tenant instead of showing an org the user left.
-    fetchMeContextMock.mockResolvedValue(
-      meContext([ownerOrg, viewerOrg], ORG_A),
-    );
-    updateActiveOrganizationMock.mockRejectedValue(
-      new ApiError("MEMBERSHIP_DENIED", "denied", 403),
-    );
-    const user = userEvent.setup();
-    renderPage();
-
-    await screen.findByRole("heading", { name: "Org A" });
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "องค์กร" }),
-      ORG_B,
-    );
-
-    // Once the failed PATCH settles, the view must be back on Org A.
-    await waitFor(() => {
-      expect(screen.getByRole("combobox", { name: "องค์กร" })).toHaveValue(
-        ORG_A,
-      );
-    });
-    expect(screen.getByRole("heading", { name: "Org A" })).toBeInTheDocument();
-  });
+  // Organization switching moved into the shell sidebar (components/shell/
+  // OrgSwitcher.tsx); its UI-level tests live in AppShell.test.tsx.
 });

@@ -1,135 +1,97 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import type { RefObject } from "react";
+import { Link, useLocation } from "react-router";
 
-import { authClient } from "../../lib/auth-client";
-import { useTheme, type ThemePreference } from "../../lib/theme";
+import { useTenant } from "../../lib/tenant/TenantProvider";
 import { getBreadcrumbTrail } from "./breadcrumb";
-import {
-  BellIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  LogOutIcon,
-  MenuIcon,
-  MonitorIcon,
-  SearchIcon,
-  ShieldIcon,
-  UserIcon,
-} from "./icons";
-import { Skeleton } from "./Skeleton";
+import { ChevronRightIcon, MenuIcon, PanelLeftIcon, SearchIcon } from "./icons";
+import { Kbd } from "./Kbd";
+import { NotificationsPopover } from "./NotificationsPopover";
 
 /**
- * Header (Step 3): logo slot, breadcrumb derived from the current route
- * (breadcrumb.ts, sourced from the same NAV_ITEMS as the sidebar), a
- * search and a notification placeholder (both genuinely inert — disabled,
- * not just unstyled, so they don't read as broken features), and a user
- * avatar dropdown. "Profile" has no real destination yet and is marked as
- * such; "settings" and "sign out" stay fully functional (moved here from
- * Step 1's plain header button). Step 6 adds the persisted theme toggle
- * inside that same dropdown (lib/theme.ts). Step 7 hardening: a Skeleton
- * while the session is still resolving, an aria-label + focus management
- * on the avatar menu (opens focus into the menu, Escape/outside-click/
- * item-select all return it to the trigger button).
+ * Topbar, per the reference: sidebar toggle, breadcrumb rooted at the
+ * active organization, the search-all field and notifications. Below `lg`
+ * — the same breakpoint that turns the sidebar into a rail — the
+ * breadcrumb shows only the current page and search is icon-only, matching
+ * the reference's 768px render. Organization identity
+ * and the account menu live in the sidebar, so neither appears here.
  */
 export function Header({
+  collapsed,
+  onToggleSidebar,
   onOpenMobileMenu,
   mobileMenuButtonRef,
+  onOpenSearch,
 }: {
+  collapsed: boolean;
+  onToggleSidebar: () => void;
   onOpenMobileMenu: () => void;
   mobileMenuButtonRef: RefObject<HTMLButtonElement | null>;
+  onOpenSearch: () => void;
 }) {
-  const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { data, isPending } = authClient.useSession();
-  const { theme, setTheme } = useTheme();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const { activeOrg } = useTenant();
 
-  useEffect(() => {
-    if (!menuOpen) {
-      return;
-    }
-    // Move focus into the menu on open, matching the WAI-ARIA menu-button
-    // pattern; Escape and an outside click both return it to the trigger.
-    const firstItem = menuRef.current?.querySelector<HTMLElement>(
-      '[role="menuitem"]:not([aria-disabled="true"])',
-    );
-    firstItem?.focus();
-    const returnFocusAndClose = () => {
-      setMenuOpen(false);
-      menuTriggerRef.current?.focus();
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      if (
-        menuRef.current !== null &&
-        !menuRef.current.contains(event.target as Node)
-      ) {
-        returnFocusAndClose();
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        returnFocusAndClose();
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [menuOpen]);
+  const pageTrail = getBreadcrumbTrail(pathname);
+  const trail =
+    activeOrg === null
+      ? pageTrail
+      : [{ label: activeOrg.name, path: "/workspace" }, ...pageTrail];
 
-  const closeMenu = () => {
-    setMenuOpen(false);
-    menuTriggerRef.current?.focus();
-  };
-
-  const trail = getBreadcrumbTrail(pathname);
-  const email = data?.user.email ?? "";
-  const initial = email === "" ? "" : email.charAt(0).toUpperCase();
+  const iconButton =
+    "inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground";
 
   return (
-    <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-control-border/40 bg-surface px-4">
+    <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-foreground/10 bg-surface px-3 sm:px-4">
       <button
         ref={mobileMenuButtonRef}
         type="button"
         aria-label="เปิดเมนู"
         onClick={onOpenMobileMenu}
-        className="-ms-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-background hover:text-foreground sm:hidden"
+        className={`${iconButton} sm:hidden`}
       >
         <MenuIcon />
       </button>
+      <button
+        type="button"
+        aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
+        aria-expanded={!collapsed}
+        aria-controls="app-sidebar"
+        onClick={onToggleSidebar}
+        className={`${iconButton} hidden sm:inline-flex`}
+      >
+        <PanelLeftIcon size={18} />
+      </button>
 
-      {/* Logo slot */}
-      <div className="flex items-center gap-2">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary text-on-primary">
-          <ShieldIcon size={16} />
-        </span>
-        <span className="hidden text-lg font-semibold sm:inline">
-          NightWatch
-        </span>
-      </div>
-
-      {/* Breadcrumb, derived from the current route (breadcrumb.ts) */}
-      <nav aria-label="ตำแหน่งปัจจุบัน" className="hidden min-w-0 md:block">
-        <ol className="flex items-center gap-1.5 text-sm text-foreground-secondary">
+      <nav aria-label="ตำแหน่งปัจจุบัน" className="min-w-0 flex-1 ps-1">
+        <ol className="flex items-center gap-2 text-sm">
           {trail.map((crumb, index) => {
             const isLast = index === trail.length - 1;
             return (
               <li
                 key={`${crumb.label}-${String(index)}`}
-                className="flex items-center gap-1.5"
+                className={`flex items-center gap-2 ${
+                  isLast ? "min-w-0" : "hidden lg:flex"
+                }`}
               >
-                {index > 0 ? <ChevronRightIcon size={14} /> : null}
+                {index > 0 ? (
+                  <span
+                    aria-hidden="true"
+                    className="hidden text-foreground-secondary lg:block"
+                  >
+                    <ChevronRightIcon size={14} />
+                  </span>
+                ) : null}
                 {crumb.path !== undefined && !isLast ? (
-                  <Link to={crumb.path} className="hover:text-foreground">
+                  <Link
+                    to={crumb.path}
+                    className="text-foreground-secondary hover:text-foreground"
+                  >
                     {crumb.label}
                   </Link>
                 ) : (
                   <span
                     aria-current={isLast ? "page" : undefined}
-                    className={isLast ? "font-medium text-foreground" : ""}
+                    className="truncate font-medium text-foreground"
                   >
                     {crumb.label}
                   </span>
@@ -140,147 +102,26 @@ export function Header({
         </ol>
       </nav>
 
-      <div className="ms-auto flex items-center gap-2">
-        {/* Search placeholder — genuinely inert (disabled), not a dead-looking button. */}
+      <div className="flex items-center gap-1 sm:gap-2">
         <button
           type="button"
-          disabled
-          aria-label="ค้นหา (ยังไม่เปิดใช้งาน)"
-          className="hidden h-9 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-sm text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-60 sm:flex"
+          onClick={onOpenSearch}
+          className="hidden h-9 w-80 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-sm text-foreground-secondary hover:bg-foreground/5 lg:flex"
         >
           <SearchIcon size={16} />
-          <span>ค้นหา…</span>
+          <span className="flex-1 text-start">ค้นหาทั้งหมด...</span>
+          <Kbd>⌘K</Kbd>
         </button>
         <button
           type="button"
-          disabled
-          aria-label="การแจ้งเตือน (ยังไม่เปิดใช้งาน)"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label="ค้นหาทั้งหมด"
+          onClick={onOpenSearch}
+          className={`${iconButton} lg:hidden`}
         >
-          <BellIcon size={18} />
+          <SearchIcon size={18} />
         </button>
-
-        {/* User avatar dropdown */}
-        <div ref={menuRef} className="relative">
-          <button
-            ref={menuTriggerRef}
-            type="button"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            aria-label="เมนูบัญชีผู้ใช้"
-            onClick={() => {
-              setMenuOpen((value) => !value);
-            }}
-            className="flex h-9 items-center gap-1.5 rounded-md px-1.5 hover:bg-background"
-          >
-            {isPending ? (
-              <Skeleton className="h-7 w-7 rounded-full" />
-            ) : (
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background text-sm font-medium">
-                {initial === "" ? <UserIcon size={16} /> : initial}
-              </span>
-            )}
-            <ChevronDownIcon size={14} />
-          </button>
-          {menuOpen ? (
-            <div
-              role="menu"
-              aria-label="บัญชีของฉัน"
-              className="absolute right-0 z-50 mt-1 w-56 rounded-md border border-control-border/40 bg-surface p-1 shadow-sm"
-            >
-              {email === "" ? null : (
-                <div className="truncate px-2.5 py-2 text-sm text-foreground-secondary">
-                  {email}
-                </div>
-              )}
-              <div
-                role="menuitem"
-                aria-disabled="true"
-                className="flex cursor-not-allowed items-center gap-2 rounded-md px-2.5 py-2 text-sm text-foreground-secondary/70"
-              >
-                <UserIcon size={16} />
-                <span>โปรไฟล์ (เร็ว ๆ นี้)</span>
-              </div>
-              <Link
-                role="menuitem"
-                to="/settings/security"
-                onClick={closeMenu}
-                className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-background"
-              >
-                <ShieldIcon size={16} />
-                <span>ตั้งค่าความปลอดภัย</span>
-              </Link>
-              <div className="flex items-center gap-2 px-2.5 py-2 text-sm text-foreground">
-                <MonitorIcon size={16} />
-                <span className="flex-1">ธีม</span>
-                <ThemeSegmentedControl theme={theme} onChange={setTheme} />
-              </div>
-              <div className="my-1 h-px bg-control-border/40" />
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  closeMenu();
-                  void authClient.signOut({
-                    fetchOptions: {
-                      onSuccess: () => {
-                        void navigate("/login", { replace: true });
-                      },
-                    },
-                  });
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start text-sm text-foreground hover:bg-background"
-              >
-                <LogOutIcon size={16} />
-                <span>ออกจากระบบ</span>
-              </button>
-            </div>
-          ) : null}
-        </div>
+        <NotificationsPopover />
       </div>
     </header>
-  );
-}
-
-const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: "light", label: "สว่าง" },
-  { value: "dark", label: "มืด" },
-  { value: "system", label: "ระบบ" },
-];
-
-function ThemeSegmentedControl({
-  theme,
-  onChange,
-}: {
-  theme: ThemePreference;
-  onChange: (theme: ThemePreference) => void;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="ธีม"
-      className="flex gap-0.5 rounded-md bg-background p-0.5"
-    >
-      {THEME_OPTIONS.map((option) => {
-        const active = option.value === theme;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            onClick={() => {
-              onChange(option.value);
-            }}
-            className={`rounded px-2 py-0.5 text-xs font-medium ${
-              active
-                ? "bg-surface text-foreground shadow-sm"
-                : "text-foreground-secondary"
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }

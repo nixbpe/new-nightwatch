@@ -1,7 +1,7 @@
 /**
- * Inline stroke-based icons for the app shell (sidebar nav, collapse/drawer
- * toggles, header controls) — same style already established in
- * pages/LoginPage.tsx, no new icon library dependency.
+ * Inline stroke-based icons for the app shell (sidebar nav, org switcher,
+ * account menu, header controls, overlays) — same style already
+ * established in pages/LoginPage.tsx, no new icon library dependency.
  */
 function iconProps(size: number) {
   return {
@@ -52,10 +52,19 @@ export function SlidersIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-export function ChevronDownIcon({ size = 16 }: { size?: number }) {
+export function ChevronsUpDownIcon({ size = 16 }: { size?: number }) {
   return (
     <svg {...iconProps(size)}>
-      <path d="m6 9 6 6 6-6" />
+      <path d="m7 15 5 5 5-5" />
+      <path d="m7 9 5-5 5 5" />
+    </svg>
+  );
+}
+
+export function CheckIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   );
 }

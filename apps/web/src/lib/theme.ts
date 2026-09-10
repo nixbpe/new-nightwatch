@@ -14,7 +14,7 @@ function readStoredTheme(): ThemePreference {
 }
 
 /**
- * Persisted light/dark/system preference (Step 6), backing the header's
+ * Persisted light/dark/system preference, backing the account menu's
  * theme toggle. "system" removes data-theme so index.css's
  * prefers-color-scheme block decides, exactly as before this feature
  * existed; "light"/"dark" set data-theme, which index.css's explicit

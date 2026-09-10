@@ -2,24 +2,48 @@ import { useEffect, useRef, useState } from "react";
 import { Outlet } from "react-router";
 
 import { ErrorBoundary } from "../ErrorBoundary";
+import { CommandPalette } from "./CommandPalette";
 import { Header } from "./Header";
-import { PanelLeftIcon, XIcon } from "./icons";
+import { XIcon } from "./icons";
 import { Sidebar } from "./Sidebar";
+import { useMediaQuery } from "./useMediaQuery";
 
 /**
- * App shell — Steps 1–3 (layout, sidebar, header) + Step 7 hardening: a
- * skip-to-content link, the shared ErrorBoundary scoped to just the routed
- * content (so header/sidebar/footer stay usable if a page crashes — the
- * app already had a global one in RootLayout for anything outside any
- * shell), and focus management for the mobile drawer (focus moves to its
- * close button on open and back to the button that opened it on close,
- * matching docs/design-system.md's overlay-dismissal rule).
+ * Authenticated app shell, per the reference: a full-height sidebar
+ * (expanded at `lg`+, an icon rail below that, a drawer below `sm`) beside
+ * a column of header + scrollable main. The shared ErrorBoundary is scoped
+ * to the routed content so a crashing page leaves the chrome usable. The
+ * header toggle overrides the breakpoint default until the breakpoint
+ * itself changes, so resizing never leaves a stale override behind.
  */
 export function AppShell() {
-  const [collapsed, setCollapsed] = useState(false);
+  const isLarge = useMediaQuery("(min-width: 1024px)", true);
+  const [override, setOverride] = useState<{
+    collapsed: boolean;
+    forLarge: boolean;
+  } | null>(null);
+  const collapsed =
+    override !== null && override.forLarge === isLarge
+      ? override.collapsed
+      : !isLarge;
+
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     if (!mobileOpen) {
@@ -44,82 +68,85 @@ export function AppShell() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-dvh">
       <a
         href="#main-content"
         className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-2 focus-visible:left-2 focus-visible:z-50 focus-visible:rounded-md focus-visible:bg-primary focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-on-primary"
       >
         ข้ามไปที่เนื้อหาหลัก
       </a>
-      <Header
-        onOpenMobileMenu={() => {
-          setMobileOpen(true);
-        }}
-        mobileMenuButtonRef={mobileMenuButtonRef}
-      />
-      <div className="flex flex-1">
-        <aside
-          className={`hidden flex-shrink-0 flex-col border-r border-control-border/40 bg-surface py-3 sm:flex ${
-            collapsed ? "w-14" : "w-56"
-          }`}
-        >
-          <div className={`mb-2 px-2 ${collapsed ? "" : "flex justify-end"}`}>
-            <button
-              type="button"
-              aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
-              aria-expanded={!collapsed}
-              onClick={() => {
-                setCollapsed((value) => !value);
-              }}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground-secondary hover:bg-background hover:text-foreground"
-            >
-              <PanelLeftIcon size={16} />
-            </button>
-          </div>
-          <Sidebar collapsed={collapsed} />
-        </aside>
 
-        {mobileOpen ? (
-          <div className="fixed inset-0 z-40 sm:hidden">
+      <aside
+        id="app-sidebar"
+        className={`hidden flex-shrink-0 border-r border-foreground/10 bg-surface sm:block ${
+          collapsed ? "w-14" : "w-60"
+        }`}
+      >
+        <Sidebar collapsed={collapsed} />
+      </aside>
+
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-40 sm:hidden">
+          <button
+            type="button"
+            aria-label="ปิดเมนู"
+            onClick={closeMobileMenu}
+            className="absolute inset-0 bg-foreground/40"
+          />
+          <div className="absolute inset-y-0 left-0 w-64 bg-surface shadow-lg">
             <button
+              ref={mobileCloseButtonRef}
               type="button"
               aria-label="ปิดเมนู"
               onClick={closeMobileMenu}
-              className="absolute inset-0 bg-foreground/40"
-            />
-            <div className="absolute inset-y-0 left-0 flex w-64 flex-col bg-surface py-3 shadow-sm">
-              <div className="mb-2 flex items-center justify-between px-3">
-                <span className="text-sm font-semibold">เมนู</span>
-                <button
-                  ref={mobileCloseButtonRef}
-                  type="button"
-                  aria-label="ปิดเมนู"
-                  onClick={closeMobileMenu}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground-secondary hover:bg-background hover:text-foreground"
-                >
-                  <XIcon size={16} />
-                </button>
-              </div>
-              <Sidebar collapsed={false} onNavigate={closeMobileMenu} />
-            </div>
+              className="absolute top-2 -right-11 inline-flex h-9 w-9 items-center justify-center rounded-md bg-surface text-foreground-secondary hover:text-foreground"
+            >
+              <XIcon size={18} />
+            </button>
+            <Sidebar collapsed={false} onNavigate={closeMobileMenu} />
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header
+          collapsed={collapsed}
+          onToggleSidebar={() => {
+            setOverride({ collapsed: !collapsed, forLarge: isLarge });
+          }}
+          onOpenMobileMenu={() => {
+            setMobileOpen(true);
+          }}
+          mobileMenuButtonRef={mobileMenuButtonRef}
+          onOpenSearch={() => {
+            setSearchOpen(true);
+          }}
+        />
         <main
           id="main-content"
           tabIndex={-1}
-          className="min-w-0 flex-1 overflow-y-auto focus:outline-none"
+          className="flex-1 overflow-y-auto focus:outline-none"
         >
-          <div className="mx-auto max-w-5xl px-4 py-8">
-            <ErrorBoundary>
-              <Outlet />
-            </ErrorBoundary>
+          <div className="flex min-h-full flex-col">
+            <div className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
+            </div>
+            <footer className="px-4 py-3 text-xs text-foreground-secondary sm:px-8">
+              © NightWatch
+            </footer>
           </div>
         </main>
       </div>
-      <footer className="flex-shrink-0 border-t border-control-border/40 bg-surface px-4 py-3 text-xs text-foreground-secondary">
-        © NightWatch
-      </footer>
+
+      {searchOpen ? (
+        <CommandPalette
+          onClose={() => {
+            setSearchOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -137,17 +137,20 @@ export const routes: RouteObject[] = [
       // Authenticated app pages share the AppShell layout (header/sidebar/
       // main/footer — see components/shell/AppShell.tsx); each still runs
       // its own loader gate exactly as before nesting.
+      // TenantProvider wraps the shell, not just the workspace page: the
+      // sidebar's org switcher, account menu and the header breadcrumb all
+      // read the active organization.
       {
-        element: <AppShell />,
+        element: (
+          <TenantProvider>
+            <AppShell />
+          </TenantProvider>
+        ),
         children: [
           {
             path: "/workspace",
             loader: workspaceLoader,
-            element: (
-              <TenantProvider>
-                <WorkspacePage />
-              </TenantProvider>
-            ),
+            element: <WorkspacePage />,
           },
           {
             path: "/settings/security",

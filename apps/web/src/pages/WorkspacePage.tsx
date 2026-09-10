@@ -16,15 +16,7 @@ import { INVITABLE_ROLES, ROLE_LABELS, type InvitableRole } from "../lib/roles";
 import { useTenant } from "../lib/tenant/TenantProvider";
 
 export function WorkspacePage() {
-  const {
-    me,
-    mePending,
-    meError,
-    retryMe,
-    activeOrg,
-    switchOrg,
-    orgSwitchPending,
-  } = useTenant();
+  const { me, mePending, meError, retryMe, activeOrg } = useTenant();
 
   if (mePending) {
     return <FullPageLoading label="กำลังโหลดข้อมูลองค์กร…" />;
@@ -58,53 +50,29 @@ export function WorkspacePage() {
     );
   }
 
-  const memberships = me.organizations;
+  if (activeOrg === null) {
+    return <AccessNeeded email={me.user.email} />;
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      {memberships.length > 1 ? (
-        <label className="flex items-center gap-2 self-end text-sm">
-          <span className="text-foreground-secondary">องค์กร</span>
-          <select
-            name="active-organization"
-            value={activeOrg?.id ?? ""}
-            disabled={orgSwitchPending}
-            onChange={(event) => {
-              void switchOrg(event.target.value);
-            }}
-            className="rounded-md border border-control-border bg-surface px-2 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            {memberships.map((org) => (
-              <option key={org.id} value={org.id}>
-                {org.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <section className="rounded-lg bg-surface p-6 shadow-sm">
+        <h1 className="text-xl font-semibold">{activeOrg.name}</h1>
+        <p className="mt-1 text-sm text-foreground-secondary">
+          slug: {activeOrg.slug} — บทบาทของคุณ:{" "}
+          {ROLE_LABELS[activeOrg.role] ?? activeOrg.role}
+        </p>
+        <p className="mt-4 text-sm text-foreground-secondary">
+          ยังไม่มีข้อมูลการสแกนหรือสถานะระบบสำหรับองค์กรนี้
+          ข้อมูลการตรวจสอบจะปรากฏที่นี่เมื่อเปิดใช้งานโมดูลการสแกน
+        </p>
+      </section>
+      {activeOrg.role === "owner" || activeOrg.role === "admin" ? (
+        <InviteMemberPanel
+          organizationId={activeOrg.id}
+          organizationName={activeOrg.name}
+        />
       ) : null}
-      {activeOrg === null ? (
-        <AccessNeeded email={me.user.email} />
-      ) : (
-        <div className="flex flex-col gap-6">
-          <section className="rounded-lg bg-surface p-6 shadow-sm">
-            <h1 className="text-xl font-semibold">{activeOrg.name}</h1>
-            <p className="mt-1 text-sm text-foreground-secondary">
-              slug: {activeOrg.slug} — บทบาทของคุณ:{" "}
-              {ROLE_LABELS[activeOrg.role] ?? activeOrg.role}
-            </p>
-            <p className="mt-4 text-sm text-foreground-secondary">
-              ยังไม่มีข้อมูลการสแกนหรือสถานะระบบสำหรับองค์กรนี้
-              ข้อมูลการตรวจสอบจะปรากฏที่นี่เมื่อเปิดใช้งานโมดูลการสแกน
-            </p>
-          </section>
-          {activeOrg.role === "owner" || activeOrg.role === "admin" ? (
-            <InviteMemberPanel
-              organizationId={activeOrg.id}
-              organizationName={activeOrg.name}
-            />
-          ) : null}
-        </div>
-      )}
     </div>
   );
 }
