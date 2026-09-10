@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 import {
   Alert,
@@ -12,9 +12,14 @@ import { authClient, authErrorMessage } from "../lib/auth-client";
 import { rememberReturnTo } from "../lib/auth/continuation";
 
 export function LoginPage() {
-  const location = useLocation();
+  // The protected-route loaders bounce here as /login?from=<path+query>;
+  // same-origin paths only, anything else falls back to the workspace.
+  const [searchParams] = useSearchParams();
+  const fromParam = searchParams.get("from");
   const from =
-    (location.state as { from?: string } | null)?.from ?? "/workspace";
+    fromParam !== null && fromParam.startsWith("/") && !fromParam.startsWith("//")
+      ? fromParam
+      : "/workspace";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

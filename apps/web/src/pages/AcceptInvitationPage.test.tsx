@@ -1,40 +1,80 @@
 import type { InvitationResponse } from "@nightwatch/api-contract";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import {
+  createMemoryRouter,
+  RouterProvider,
+  useLocation,
+} from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { RequireAnon } from "../components/guards";
 import { ApiError } from "../lib/api/client";
 import { fetchInvitation } from "../lib/api/invitations";
 import { readInvitation } from "../lib/auth/continuation";
-import { SessionQueryProvider } from "../lib/auth/SessionQueryProvider";
+import { requireAnonLoader } from "../lib/auth/loaders";
+import { RootLayout } from "../router";
 import { AcceptInvitationPage } from "./AcceptInvitationPage";
 import { LoginPage } from "./LoginPage";
 import { OnboardingPage } from "./OnboardingPage";
 
-const { sessionState, signUpEmailMock, signInEmailMock, acceptInvitationMock } =
-  vi.hoisted(() => ({
-    sessionState: {
-      data: null as {
-        user: { id: string; email: string; emailVerified: boolean };
-      } | null,
-      isPending: false,
-    },
-    signUpEmailMock: vi.fn(),
-    signInEmailMock: vi.fn(),
-    acceptInvitationMock: vi.fn(),
-  }));
+type TestSessionData = {
+  user: { id: string; email: string; emailVerified: boolean };
+} | null;
 
-vi.mock("better-auth/react", () => ({
-  createAuthClient: () => ({
-    useSession: () => sessionState,
-    signUp: { email: signUpEmailMock },
-    signIn: { email: signInEmailMock },
-    organization: { acceptInvitation: acceptInvitationMock },
-    signOut: vi.fn(),
-  }),
-}));
+const { sessionStore, signUpEmailMock, signInEmailMock, acceptInvitationMock } =
+  vi.hoisted(() => {
+    const listeners = new Set<() => void>();
+    let snapshot: { data: TestSessionData; isPending: boolean } = {
+      data: null,
+      isPending: false,
+    };
+    return {
+      // Reactive stand-in for the better-auth session atom: mutations notify
+      // subscribers so hooks re-read, exactly like the real client.
+      sessionStore: {
+        get: () => snapshot,
+        set(data: TestSessionData) {
+          snapshot = { data, isPending: false };
+          for (const listener of listeners) {
+            listener();
+          }
+        },
+        reset() {
+          snapshot = { data: null, isPending: false };
+        },
+        subscribe(listener: () => void) {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+      },
+      signUpEmailMock: vi.fn(),
+      signInEmailMock: vi.fn(),
+      acceptInvitationMock: vi.fn(),
+    };
+  });
+
+vi.mock("better-auth/react", async () => {
+  // Dynamic import: vi.mock factories are hoisted above static imports, so
+  // react can only be reached lazily inside the factory.
+  const { useSyncExternalStore } = await import("react");
+  return {
+    createAuthClient: () => ({
+      useSession: () =>
+        useSyncExternalStore(
+          (listener) => sessionStore.subscribe(listener),
+          sessionStore.get,
+        ),
+      getSession: () =>
+        Promise.resolve({ data: sessionStore.get().data, error: null }),
+      signUp: { email: signUpEmailMock },
+      signIn: { email: signInEmailMock },
+      organization: { acceptInvitation: acceptInvitationMock },
+      signOut: vi.fn(),
+    }),
+  };
+});
 
 vi.mock("better-auth/client/plugins", () => ({
   organizationClient: () => ({}),
@@ -63,51 +103,48 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-function InvitationHarness({ path }: { path: string }) {
-  return (
-    <MemoryRouter initialEntries={[path]}>
-      <SessionQueryProvider>
-        <Routes>
-          <Route
-            path="/accept-invitation/:invitationId"
-            element={<AcceptInvitationPage />}
-          />
-          <Route
-            path="/login"
-            element={
-              <RequireAnon>
-                <LoginPage />
-              </RequireAnon>
-            }
-          />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="*" element={<LocationProbe />} />
-        </Routes>
-      </SessionQueryProvider>
-    </MemoryRouter>
-  );
-}
-
+/**
+ * Data-mode harness: the real anonymous-gate loader and the real root
+ * layout (per-identity query boundary + revalidation on identity change),
+ * so a session resolving mid-sign-in continues exactly as the app does.
+ */
 function renderPage(path = "/accept-invitation/inv-123") {
-  const view = render(<InvitationHarness path={path} />);
+  const router = createMemoryRouter(
+    [
+      {
+        element: <RootLayout />,
+        children: [
+          {
+            path: "/accept-invitation/:invitationId",
+            element: <AcceptInvitationPage />,
+          },
+          { path: "/login", loader: requireAnonLoader, element: <LoginPage /> },
+          { path: "/onboarding", element: <OnboardingPage /> },
+          { path: "*", element: <LocationProbe /> },
+        ],
+      },
+    ],
+    { initialEntries: [path] },
+  );
+  render(<RouterProvider router={router} />);
   return {
     resolveSession() {
-      sessionState.data = {
-        user: {
-          id: "user-1",
-          email: "new@example.com",
-          emailVerified: true,
-        },
-      };
-      view.rerender(<InvitationHarness path={path} />);
+      act(() => {
+        sessionStore.set({
+          user: {
+            id: "user-1",
+            email: "new@example.com",
+            emailVerified: true,
+          },
+        });
+      });
     },
   };
 }
 
 describe("AcceptInvitationPage", () => {
   beforeEach(() => {
-    sessionState.data = null;
-    sessionState.isPending = false;
+    sessionStore.reset();
   });
 
   afterEach(() => {
@@ -143,7 +180,7 @@ describe("AcceptInvitationPage", () => {
 
   it("returns from login automatically and keeps the invitation until explicit acceptance succeeds", async () => {
     const signIn = Promise.withResolvers<{
-      data: typeof sessionState.data;
+      data: TestSessionData;
       error: null;
     }>();
     const acceptance = Promise.withResolvers<{ data: object; error: null }>();
@@ -171,7 +208,7 @@ describe("AcceptInvitationPage", () => {
     expect(readInvitation()).toBe("inv-123");
     expect(acceptInvitationMock).not.toHaveBeenCalled();
     await act(async () => {
-      signIn.resolve({ data: sessionState.data, error: null });
+      signIn.resolve({ data: sessionStore.get().data, error: null });
       await signIn.promise;
     });
     expect(
@@ -195,13 +232,13 @@ describe("AcceptInvitationPage", () => {
 
   it("refuses an invitation addressed to a different email", async () => {
     fetchInvitationMock.mockResolvedValue(invitation);
-    sessionState.data = {
+    sessionStore.set({
       user: {
         id: "user-9",
         email: "other@example.com",
         emailVerified: true,
       },
-    };
+    });
     renderPage();
 
     expect(

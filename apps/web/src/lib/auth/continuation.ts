@@ -43,3 +43,12 @@ export function readReturnTo(): string {
 export function clearReturnTo(): void {
   sessionStorage.removeItem(RETURN_TO_KEY);
 }
+
+/**
+ * Where a signed-in arrival at an anonymous-only gate continues: a
+ * remembered pending invitation wins over the return path. Pure read —
+ * the caller decides when to consume (clearReturnTo) after commit.
+ */
+export function readPostAuthDestination(): string {
+  return readInvitation() === null ? readReturnTo() : "/onboarding";
+}

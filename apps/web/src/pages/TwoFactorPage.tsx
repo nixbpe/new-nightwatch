@@ -1,6 +1,6 @@
 import { useState, type SubmitEvent } from "react";
 
-import { PostAuthRedirect } from "../components/guards";
+import { PostAuthRedirect } from "../components/PostAuthRedirect";
 import {
   Alert,
   AuthPageShell,

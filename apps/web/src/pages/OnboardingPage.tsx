@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
-import { PostAuthRedirect } from "../components/guards";
+import { PostAuthRedirect } from "../components/PostAuthRedirect";
 import { Alert, FullPageLoading } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";

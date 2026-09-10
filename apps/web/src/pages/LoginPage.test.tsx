@@ -1,34 +1,73 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import {
+  createMemoryRouter,
+  RouterProvider,
+  useLocation,
+} from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RequireAnon } from "../components/guards";
 import {
   readInvitation,
   readReturnTo,
   rememberInvitation,
 } from "../lib/auth/continuation";
-import { SessionQueryProvider } from "../lib/auth/SessionQueryProvider";
+import { requireAnonLoader } from "../lib/auth/loaders";
+import { RootLayout } from "../router";
 import { LoginPage } from "./LoginPage";
 import { OnboardingPage } from "./OnboardingPage";
 
-const { sessionState, signInEmailMock } = vi.hoisted(() => ({
-  sessionState: {
-    data: null as {
-      user: { id: string; email: string; emailVerified: boolean };
-    } | null,
-    isPending: false,
-  },
-  signInEmailMock: vi.fn(),
-}));
+type TestSessionData = {
+  user: { id: string; email: string; emailVerified: boolean };
+} | null;
 
-vi.mock("better-auth/react", () => ({
-  createAuthClient: () => ({
-    useSession: () => sessionState,
-    signIn: { email: signInEmailMock },
-  }),
-}));
+const { sessionStore, signInEmailMock } = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  let snapshot: { data: TestSessionData; isPending: boolean } = {
+    data: null,
+    isPending: false,
+  };
+  return {
+    // Reactive stand-in for the better-auth session atom: mutations notify
+    // subscribers so hooks re-read, exactly like the real client.
+    sessionStore: {
+      get: () => snapshot,
+      set(data: TestSessionData) {
+        snapshot = { data, isPending: false };
+        for (const listener of listeners) {
+          listener();
+        }
+      },
+      reset() {
+        snapshot = { data: null, isPending: false };
+      },
+      subscribe(listener: () => void) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+    signInEmailMock: vi.fn(),
+  };
+});
+vi.mock("better-auth/react", async () => {
+  // Dynamic import: vi.mock factories are hoisted above static imports, so
+  // react can only be reached lazily inside the factory.
+  const { useSyncExternalStore } = await import("react");
+  return {
+    createAuthClient: () => ({
+      useSession: () =>
+        useSyncExternalStore(
+          (listener) => sessionStore.subscribe(listener),
+          sessionStore.get,
+        ),
+      getSession: () =>
+        Promise.resolve({ data: sessionStore.get().data, error: null }),
+      signIn: { email: signInEmailMock },
+    }),
+  };
+});
 
 vi.mock("better-auth/client/plugins", () => ({
   organizationClient: () => ({}),
@@ -44,56 +83,56 @@ function LocationProbe() {
   );
 }
 
-function LoginHarness({ from }: { from?: string }) {
-  return (
-    <MemoryRouter
-      initialEntries={[
-        from === undefined ? "/login" : { pathname: "/login", state: { from } },
-      ]}
-    >
-      <SessionQueryProvider>
-        <Routes>
-          <Route
-            path="/login"
-            element={
-              <RequireAnon>
-                <LoginPage />
-              </RequireAnon>
-            }
-          />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="*" element={<LocationProbe />} />
-        </Routes>
-      </SessionQueryProvider>
-    </MemoryRouter>
-  );
-}
-
+/**
+ * Data-mode harness: the real anonymous-gate loader and the real root
+ * layout (per-identity query boundary + revalidation on identity change),
+ * so a session resolving mid-sign-in continues exactly as the app does.
+ */
 function renderPage(from?: string) {
-  const view = render(<LoginHarness from={from} />);
+  const router = createMemoryRouter(
+    [
+      {
+        element: <RootLayout />,
+        children: [
+          { path: "/login", loader: requireAnonLoader, element: <LoginPage /> },
+          { path: "/onboarding", element: <OnboardingPage /> },
+          { path: "*", element: <LocationProbe /> },
+        ],
+      },
+    ],
+    {
+      initialEntries: [
+        from === undefined
+          ? "/login"
+          : `/login?from=${encodeURIComponent(from)}`,
+      ],
+    },
+  );
+  render(<RouterProvider router={router} />);
   return {
     resolveSession() {
-      sessionState.data = {
-        user: {
-          id: "newly-verified-user",
-          email: "member@example.com",
-          emailVerified: true,
-        },
-      };
-      view.rerender(<LoginHarness from={from} />);
+      act(() => {
+        sessionStore.set({
+          user: {
+            id: "newly-verified-user",
+            email: "member@example.com",
+            emailVerified: true,
+          },
+        });
+      });
     },
   };
 }
 
 function deferSignIn() {
   const { promise, resolve } = Promise.withResolvers<{
-    data: typeof sessionState.data;
+    data: TestSessionData;
     error: null;
   }>();
   signInEmailMock.mockReturnValue(promise);
   return async () => {
     await act(async () => {
-      resolve({ data: sessionState.data, error: null });
+      resolve({ data: sessionStore.get().data, error: null });
       await promise;
     });
   };
@@ -101,7 +140,7 @@ function deferSignIn() {
 
 async function submitLogin(email: string, password: string) {
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText("อีเมล"), email);
+  await user.type(await screen.findByLabelText("อีเมล"), email);
   await user.type(screen.getByLabelText("รหัสผ่าน"), password);
   await user.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
   return user;
@@ -109,8 +148,7 @@ async function submitLogin(email: string, password: string) {
 
 describe("LoginPage", () => {
   afterEach(() => {
-    sessionState.data = null;
-    sessionState.isPending = false;
+    sessionStore.reset();
     signInEmailMock.mockReset();
     sessionStorage.clear();
   });

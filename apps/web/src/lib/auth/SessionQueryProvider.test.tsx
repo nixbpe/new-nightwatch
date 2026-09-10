@@ -3,6 +3,10 @@ import { act, render, screen } from "@testing-library/react";
 import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  resetQueryClientRegistry,
+  resolveQueryClientForIdentity,
+} from "../queryClient";
 import { SessionQueryProvider } from "./SessionQueryProvider";
 
 const { sessionState, transport } = vi.hoisted(() => ({
@@ -72,6 +76,44 @@ describe("SessionQueryProvider identity boundaries", () => {
     sessionState.isPending = true;
     transport.mockReset();
     commitLog.length = 0;
+    resetQueryClientRegistry();
+  });
+
+  it("adopts a loader-staged client on hydration so the prefetch survives (data mode)", async () => {
+    // A loader of the initial URL prefetched into the staged client before
+    // the first render; the boundary must start from exactly that client.
+    resolveQueryClientForIdentity("user-a").setQueryData(["me", "context"], {
+      org: "Org A",
+    });
+    transport.mockImplementation(
+      () => new Promise<{ org: string }>(() => {}),
+    );
+
+    render(<Harness userId="user-a" pending={false} />);
+
+    expect(await screen.findByText("Org A")).toBeInTheDocument();
+    // Cache hit on the staged prefetch: the tree never re-fetched.
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it("adopts a client staged by a loader running ahead of the identity swap", async () => {
+    // Login flow: B's loader prefetched before the provider committed B.
+    transport.mockImplementationOnce(() => Promise.resolve({ org: "Org A" }));
+    transport.mockImplementation(
+      () => new Promise<{ org: string }>(() => {}),
+    );
+
+    const tree = render(<Harness userId="user-a" pending={false} />);
+    expect(await screen.findByText("Org A")).toBeInTheDocument();
+
+    resolveQueryClientForIdentity("user-b").setQueryData(["me", "context"], {
+      org: "Org B",
+    });
+    tree.rerender(<Harness userId="user-b" pending={false} />);
+
+    expect(await screen.findByText("Org B")).toBeInTheDocument();
+    // B's tree consumed the staged prefetch instead of fetching again.
+    expect(transport).toHaveBeenCalledTimes(1);
   });
 
   it("initial hydration keeps the in-flight context query (QA-12)", async () => {
