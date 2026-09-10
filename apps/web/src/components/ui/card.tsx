@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * NightWatch card (shadcn/ui new-york, Tailwind v4).
- * Surface fill, 12px panel radius, restrained shadow for floating panels;
+ * Surface fill, 4px panel radius, restrained shadow for floating panels;
  * no border by default per docs/design-system.md depth rules.
  */
 function Card({ className, ...props }: ComponentProps<"div">) {

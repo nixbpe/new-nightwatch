@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * NightWatch button (shadcn/ui new-york, Tailwind v4).
- * Tokens: primary/on-primary fills, control-boundary outlines, 6px radius.
+ * Tokens: primary/on-primary fills, control-boundary outlines, 4px radius.
  * Focus uses an offset outline so the indicator stays visible against a
  * solid primary fill (docs/design-system.md).
  */

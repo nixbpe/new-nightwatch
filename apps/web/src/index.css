@@ -2,8 +2,8 @@
 
 /*
  * NightWatch design tokens (docs/design-system.md): semantic roles only.
- * Default follows prefers-color-scheme; an explicit choice (Step 6's
- * header theme toggle, src/lib/theme.ts) sets data-theme on <html> and
+ * Default follows prefers-color-scheme; an explicit choice (the account
+ * menu's theme toggle, src/lib/theme.ts) sets data-theme on <html> and
  * overrides it — same token values either way, no new colors introduced.
  *
  * shadcn/ui CSS variables are mapped onto the same NightWatch tokens
@@ -24,15 +24,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #111315;
-    --surface: #1b1e22;
+    --background: #000000;
+    --surface: #121316;
     --foreground: #f3f4f6;
     --foreground-secondary: #adb5bf;
     --primary: #3ecf8e;
     --on-primary: #11251c;
     --danger: #fb7185;
     --caution: #f2be5c;
-    --control-border: #6b7582;
+    --control-border: #5b6470;
   }
 }
 
@@ -52,15 +52,15 @@
 }
 
 :root[data-theme="dark"] {
-  --background: #111315;
-  --surface: #1b1e22;
+  --background: #000000;
+  --surface: #121316;
   --foreground: #f3f4f6;
   --foreground-secondary: #adb5bf;
   --primary: #3ecf8e;
   --on-primary: #11251c;
   --danger: #fb7185;
   --caution: #f2be5c;
-  --control-border: #6b7582;
+  --control-border: #5b6470;
 }
 
 @theme inline {
@@ -90,9 +90,12 @@
   --color-input: var(--control-border);
   --color-ring: var(--primary);
   --font-sans: Inter, "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif;
-  --radius: 6px;
-  --radius-md: 6px;
-  --radius-lg: 12px;
+  /* One 4px corner for controls, panels and overlays (docs/design-system.md,
+     Layout); pills stay reserved for badges, counters and avatars. */
+  --radius: 4px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
 }
 
 body {
