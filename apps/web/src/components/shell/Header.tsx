@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { authClient } from "../../lib/auth-client";
@@ -15,6 +15,7 @@ import {
   ShieldIcon,
   UserIcon,
 } from "./icons";
+import { Skeleton } from "./Skeleton";
 
 /**
  * Header (Step 3): logo slot, breadcrumb derived from the current route
@@ -24,31 +25,51 @@ import {
  * avatar dropdown. "Profile" has no real destination yet and is marked as
  * such; "settings" and "sign out" stay fully functional (moved here from
  * Step 1's plain header button). Step 6 adds the persisted theme toggle
- * inside that same dropdown (lib/theme.ts).
+ * inside that same dropdown (lib/theme.ts). Step 7 hardening: a Skeleton
+ * while the session is still resolving, an aria-label + focus management
+ * on the avatar menu (opens focus into the menu, Escape/outside-click/
+ * item-select all return it to the trigger button).
  */
-export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
+export function Header({
+  onOpenMobileMenu,
+  mobileMenuButtonRef,
+}: {
+  onOpenMobileMenu: () => void;
+  mobileMenuButtonRef: RefObject<HTMLButtonElement | null>;
+}) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { data } = authClient.useSession();
+  const { data, isPending } = authClient.useSession();
   const { theme, setTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!menuOpen) {
       return;
     }
+    // Move focus into the menu on open, matching the WAI-ARIA menu-button
+    // pattern; Escape and an outside click both return it to the trigger.
+    const firstItem = menuRef.current?.querySelector<HTMLElement>(
+      '[role="menuitem"]:not([aria-disabled="true"])',
+    );
+    firstItem?.focus();
+    const returnFocusAndClose = () => {
+      setMenuOpen(false);
+      menuTriggerRef.current?.focus();
+    };
     const onPointerDown = (event: PointerEvent) => {
       if (
         menuRef.current !== null &&
         !menuRef.current.contains(event.target as Node)
       ) {
-        setMenuOpen(false);
+        returnFocusAndClose();
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setMenuOpen(false);
+        returnFocusAndClose();
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -59,6 +80,11 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
     };
   }, [menuOpen]);
 
+  const closeMenu = () => {
+    setMenuOpen(false);
+    menuTriggerRef.current?.focus();
+  };
+
   const trail = getBreadcrumbTrail(pathname);
   const email = data?.user.email ?? "";
   const initial = email === "" ? "" : email.charAt(0).toUpperCase();
@@ -66,6 +92,7 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
   return (
     <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-control-border/40 bg-surface px-4">
       <button
+        ref={mobileMenuButtonRef}
         type="button"
         aria-label="เปิดเมนู"
         onClick={onOpenMobileMenu}
@@ -136,17 +163,23 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
         {/* User avatar dropdown */}
         <div ref={menuRef} className="relative">
           <button
+            ref={menuTriggerRef}
             type="button"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
+            aria-label="เมนูบัญชีผู้ใช้"
             onClick={() => {
               setMenuOpen((value) => !value);
             }}
             className="flex h-9 items-center gap-1.5 rounded-md px-1.5 hover:bg-background"
           >
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background text-sm font-medium">
-              {initial === "" ? <UserIcon size={16} /> : initial}
-            </span>
+            {isPending ? (
+              <Skeleton className="h-7 w-7 rounded-full" />
+            ) : (
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background text-sm font-medium">
+                {initial === "" ? <UserIcon size={16} /> : initial}
+              </span>
+            )}
             <ChevronDownIcon size={14} />
           </button>
           {menuOpen ? (
@@ -171,9 +204,7 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
               <Link
                 role="menuitem"
                 to="/settings/security"
-                onClick={() => {
-                  setMenuOpen(false);
-                }}
+                onClick={closeMenu}
                 className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-background"
               >
                 <ShieldIcon size={16} />
@@ -189,7 +220,7 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  setMenuOpen(false);
+                  closeMenu();
                   void authClient.signOut({
                     fetchOptions: {
                       onSuccess: () => {
