@@ -1,45 +1,44 @@
-import { useState, type SubmitEvent } from "react";
+import { useState } from "react";
+import { useForm } from "@tanstack/react-form";
 import { Link } from "react-router";
 
 import {
   Alert,
   AuthPageShell,
   Field,
+  FieldValidationError,
   Input,
   SubmitButton,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
+
 export function ForgotPasswordPage() {
-  const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
 
-  async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending) {
-      return;
-    }
-    setError(null);
-    setPending(true);
-    try {
-      const { error: requestError } = await authClient.requestPasswordReset({
-        email: email.trim(),
-        redirectTo: "/reset-password",
-      });
-      // Always show the same confirmation to avoid account enumeration.
-      if (requestError != null) {
-        setError(authErrorMessage(requestError, "ส่งอีเมลไม่สำเร็จ"));
-        return;
+  const form = useForm({
+    defaultValues: {
+      email: "",
+    },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        const { error: requestError } = await authClient.requestPasswordReset({
+          email: value.email.trim(),
+          redirectTo: "/reset-password",
+        });
+        // Always show the same confirmation to avoid account enumeration.
+        if (requestError != null) {
+          setError(authErrorMessage(requestError, "ส่งอีเมลไม่สำเร็จ"));
+          return;
+        }
+        setSent(true);
+      } catch {
+        setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
       }
-      setSent(true);
-    } catch {
-      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
-    } finally {
-      setPending(false);
-    }
-  }
+    },
+  });
 
   return (
     <AuthPageShell
@@ -60,26 +59,64 @@ export function ForgotPasswordPage() {
         </div>
       ) : (
         <form
-          onSubmit={(event) => void onSubmit(event)}
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void form.handleSubmit();
+          }}
           className="flex flex-col gap-4"
           noValidate
         >
           {error === null ? null : <Alert tone="error">{error}</Alert>}
-          <Field label="อีเมล">
-            <Input
-              type="email"
-              name="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(event) => {
-                setEmail(event.target.value);
-              }}
-            />
-          </Field>
-          <SubmitButton pending={pending} pendingLabel="กำลังส่ง…">
-            ส่งลิงก์ตั้งรหัสผ่านใหม่
-          </SubmitButton>
+          <form.Field
+            name="email"
+            validators={{
+              onChange: ({ value }) => {
+                if (value.trim() === "") {
+                  return "กรุณากรอกอีเมล";
+                }
+                return undefined;
+              },
+              onSubmit: ({ value }) =>
+                value.trim() === "" ? "กรุณากรอกอีเมล" : undefined,
+            }}
+          >
+            {(field) => (
+              <Field label="อีเมล">
+                <Input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  value={field.state.value}
+                  onChange={(event) => {
+                    field.handleChange(event.target.value);
+                  }}
+                  onBlur={field.handleBlur}
+                  aria-invalid={field.state.meta.errors.length > 0}
+                  aria-describedby={
+                    field.state.meta.errors.length > 0
+                      ? "forgot-password-email-error"
+                      : undefined
+                  }
+                />
+                <FieldValidationError
+                  id="forgot-password-email-error"
+                  errors={field.state.meta.errors}
+                />
+              </Field>
+            )}
+          </form.Field>
+          <form.Subscribe
+            selector={(state) => state.isSubmitting}
+            children={(isSubmitting) => (
+              <SubmitButton
+                pending={isSubmitting}
+                pendingLabel="กำลังส่ง…"
+              >
+                ส่งลิงก์ตั้งรหัสผ่านใหม่
+              </SubmitButton>
+            )}
+          />
           <p className="text-center text-sm">
             <Link to="/login" className="text-primary underline">
               กลับไปเข้าสู่ระบบ

@@ -1,9 +1,11 @@
-import { useState, type SubmitEvent } from "react";
+import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import {
   Alert,
   Field,
+  FieldValidationError,
   FullPageLoading,
   Input,
   SubmitButton,
@@ -175,48 +177,44 @@ function InviteMemberPanel({
   organizationId: string;
   organizationName: string;
 }) {
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<InvitableRole>("viewer");
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
     text: string;
   } | null>(null);
-  const [pending, setPending] = useState(false);
 
-  async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending) {
-      return;
-    }
-    setNotice(null);
-    setPending(true);
-    try {
-      const { error } = await authClient.organization.inviteMember({
-        email: email.trim(),
-        role,
-        organizationId,
-      });
-      if (error != null) {
+  const form = useForm({
+    defaultValues: {
+      email: "",
+      role: "viewer" as InvitableRole,
+    },
+    onSubmit: async ({ value }) => {
+      setNotice(null);
+      try {
+        const { error } = await authClient.organization.inviteMember({
+          email: value.email.trim(),
+          role: value.role,
+          organizationId,
+        });
+        if (error != null) {
+          setNotice({
+            tone: "error",
+            text: authErrorMessage(error, "ส่งคำเชิญไม่สำเร็จ"),
+          });
+          return;
+        }
+        setNotice({
+          tone: "success",
+          text: `ส่งคำเชิญถึง ${value.email.trim()} เพื่อเข้าร่วม${organizationName} แล้ว`,
+        });
+        form.resetField("email");
+      } catch {
         setNotice({
           tone: "error",
-          text: authErrorMessage(error, "ส่งคำเชิญไม่สำเร็จ"),
+          text: "เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง",
         });
-        return;
       }
-      setNotice({
-        tone: "success",
-        text: `ส่งคำเชิญถึง ${email.trim()} เพื่อเข้าร่วม${organizationName} แล้ว`,
-      });
-      setEmail("");
-    } catch {
-      setNotice({
-        tone: "error",
-        text: "เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง",
-      });
-    } finally {
-      setPending(false);
-    }
-  }
+    },
+  });
 
   return (
     <section className="rounded-lg bg-surface p-6 shadow-sm">
@@ -224,7 +222,11 @@ function InviteMemberPanel({
         เชิญสมาชิกเข้าสู่ {organizationName}
       </h2>
       <form
-        onSubmit={(event) => void onSubmit(event)}
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void form.handleSubmit();
+        }}
         className="mt-4 flex flex-col gap-4"
         noValidate
       >
@@ -233,38 +235,73 @@ function InviteMemberPanel({
             {notice.text}
           </Alert>
         )}
-        <Field label="อีเมลของผู้ได้รับเชิญ">
-          <Input
-            type="email"
-            name="invite-email"
-            autoComplete="off"
-            required
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-            }}
-          />
-        </Field>
-        <Field label="บทบาท">
-          <select
-            name="invite-role"
-            value={role}
-            onChange={(event) => {
-              setRole(event.target.value as InvitableRole);
-            }}
-            className={textInputClass}
-          >
-            {INVITABLE_ROLES.map((value) => (
-              <option key={value} value={value}>
-                {ROLE_LABELS[value]}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <form.Field
+          name="email"
+          validators={{
+            onChange: ({ value }) =>
+              value.trim() === "" ? "กรุณากรอกอีเมลผู้รับคำเชิญ" : undefined,
+            onSubmit: ({ value }) =>
+              value.trim() === "" ? "กรุณากรอกอีเมลผู้รับคำเชิญ" : undefined,
+          }}
+        >
+          {(field) => (
+            <Field label="อีเมลของผู้ได้รับเชิญ">
+              <Input
+                type="email"
+                name="invite-email"
+                autoComplete="off"
+                value={field.state.value}
+                onChange={(event) => {
+                  field.handleChange(event.target.value);
+                }}
+                onBlur={field.handleBlur}
+                aria-invalid={field.state.meta.errors.length > 0}
+                aria-describedby={
+                  field.state.meta.errors.length > 0
+                    ? "invite-email-error"
+                    : undefined
+                }
+              />
+              <FieldValidationError
+                id="invite-email-error"
+                errors={field.state.meta.errors}
+              />
+            </Field>
+          )}
+        </form.Field>
+        <form.Field name="role">
+          {(field) => (
+            <Field label="บทบาท">
+              <select
+                name="invite-role"
+                value={field.state.value}
+                onChange={(event) => {
+                  field.handleChange(event.target.value as InvitableRole);
+                }}
+                onBlur={field.handleBlur}
+                className={textInputClass}
+              >
+                {INVITABLE_ROLES.map((value) => (
+                  <option key={value} value={value}>
+                    {ROLE_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+        </form.Field>
         <div>
-          <SubmitButton pending={pending} pendingLabel="กำลังส่งคำเชิญ…">
-            ส่งคำเชิญ
-          </SubmitButton>
+          <form.Subscribe
+            selector={(state) => state.isSubmitting}
+            children={(isSubmitting) => (
+              <SubmitButton
+                pending={isSubmitting}
+                pendingLabel="กำลังส่งคำเชิญ…"
+              >
+                ส่งคำเชิญ
+              </SubmitButton>
+            )}
+          />
         </div>
         <p className="text-sm text-foreground-secondary">
           ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร

@@ -1,14 +1,17 @@
-import { useState, type SubmitEvent } from "react";
+import { useState } from "react";
+import { useForm } from "@tanstack/react-form";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import {
   Alert,
   AuthPageShell,
   Field,
+  FieldValidationError,
   Input,
   SubmitButton,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
+
 
 /**
  * Target of the reset-password email link: /reset-password?token=<token>.
@@ -21,38 +24,37 @@ export function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
 
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
 
-  async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending || token === null) {
-      return;
-    }
-    setError(null);
-    if (password !== confirm) {
-      setError("รหัสผ่านทั้งสองช่องไม่ตรงกัน");
-      return;
-    }
-    setPending(true);
-    try {
-      const { error: resetError } = await authClient.resetPassword({
-        newPassword: password,
-        token,
-      });
-      if (resetError != null) {
-        setError(authErrorMessage(resetError, "ตั้งรหัสผ่านใหม่ไม่สำเร็จ"));
+  const form = useForm({
+    defaultValues: {
+      password: "",
+      confirm: "",
+    },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      if (token === null) {
         return;
       }
-      void navigate("/login", { replace: true });
-    } catch {
-      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
-    } finally {
-      setPending(false);
-    }
-  }
+      if (value.password !== value.confirm) {
+        setError("รหัสผ่านทั้งสองช่องไม่ตรงกัน");
+        return;
+      }
+      try {
+        const { error: resetError } = await authClient.resetPassword({
+          newPassword: value.password,
+          token,
+        });
+        if (resetError != null) {
+          setError(authErrorMessage(resetError, "ตั้งรหัสผ่านใหม่ไม่สำเร็จ"));
+          return;
+        }
+        void navigate("/login", { replace: true });
+      } catch {
+        setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+      }
+    },
+  });
 
   if (token === null) {
     return (
@@ -79,47 +81,125 @@ export function ResetPasswordPage() {
       subtitle="เลือกรหัสผ่านใหม่ที่ปลอดภัยสำหรับบัญชีของคุณ"
     >
       <form
-        onSubmit={(event) => void onSubmit(event)}
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void form.handleSubmit();
+        }}
         className="flex flex-col gap-4"
         noValidate
       >
         {error === null ? null : (
           <Alert tone="error">
-            {error}{" "}
-            <Link to="/forgot-password" className="font-medium underline">
+            {error} <Link to="/forgot-password" className="font-medium underline">
               ขอลิงก์ใหม่
             </Link>
           </Alert>
         )}
-        <Field label="รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)">
-          <Input
-            type="password"
-            name="new-password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-            }}
-          />
-        </Field>
-        <Field label="ยืนยันรหัสผ่านใหม่">
-          <Input
-            type="password"
-            name="confirm-password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            value={confirm}
-            onChange={(event) => {
-              setConfirm(event.target.value);
-            }}
-          />
-        </Field>
-        <SubmitButton pending={pending} pendingLabel="กำลังบันทึก…">
-          บันทึกรหัสผ่านใหม่
-        </SubmitButton>
+        <form.Field
+          name="password"
+          validators={{
+            onChange: ({ value }) => {
+              if (value.trim() === "") {
+                return "กรุณากรอกรหัสผ่านใหม่";
+              }
+              if (value.length < 8) {
+                return "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร";
+              }
+              return undefined;
+            },
+            onSubmit: ({ value }) => {
+              if (value.trim() === "") {
+                return "กรุณากรอกรหัสผ่านใหม่";
+              }
+              if (value.length < 8) {
+                return "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร";
+              }
+              return undefined;
+            },
+          }}
+        >
+          {(field) => (
+            <Field label="รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)">
+              <Input
+                type="password"
+                name="new-password"
+                autoComplete="new-password"
+                value={field.state.value}
+                onChange={(event) => {
+                  field.handleChange(event.target.value);
+                }}
+                onBlur={field.handleBlur}
+                aria-invalid={field.state.meta.errors.length > 0}
+                aria-describedby={
+                  field.state.meta.errors.length > 0
+                    ? "reset-password-password-error"
+                    : undefined
+                }
+              />
+              <FieldValidationError
+                id="reset-password-password-error"
+                errors={field.state.meta.errors}
+              />
+            </Field>
+          )}
+        </form.Field>
+        <form.Field
+          name="confirm"
+          validators={{
+            onChange: ({ value }) => {
+              if (value.trim() === "") {
+                return "กรุณายืนยันรหัสผ่านใหม่";
+              }
+              if (value.length < 8) {
+                return "รหัสผ่านยืนยันต้องมีอย่างน้อย 8 ตัวอักษร";
+              }
+              return undefined;
+            },
+            onSubmit: ({ value }) => {
+              if (value.trim() === "") {
+                return "กรุณายืนยันรหัสผ่านใหม่";
+              }
+              if (value.length < 8) {
+                return "รหัสผ่านยืนยันต้องมีอย่างน้อย 8 ตัวอักษร";
+              }
+              return undefined;
+            },
+          }}
+        >
+          {(field) => (
+            <Field label="ยืนยันรหัสผ่านใหม่">
+              <Input
+                type="password"
+                name="confirm-password"
+                autoComplete="new-password"
+                value={field.state.value}
+                onChange={(event) => {
+                  field.handleChange(event.target.value);
+                }}
+                onBlur={field.handleBlur}
+                aria-invalid={field.state.meta.errors.length > 0}
+                aria-describedby={
+                  field.state.meta.errors.length > 0
+                    ? "reset-password-confirm-error"
+                    : undefined
+                }
+              />
+              <FieldValidationError
+                id="reset-password-confirm-error"
+                errors={field.state.meta.errors}
+              />
+            </Field>
+          )}
+        </form.Field>
+        <form.Subscribe
+          selector={(state) => state.isSubmitting}
+          children={(isSubmitting) => (
+            <SubmitButton pending={isSubmitting} pendingLabel="กำลังบันทึก…">
+              บันทึกรหัสผ่านใหม่
+            </SubmitButton>
+          )}
+        />
       </form>
     </AuthPageShell>
   );

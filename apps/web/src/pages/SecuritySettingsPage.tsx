@@ -1,11 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type SubmitEvent } from "react";
+import { useForm } from "@tanstack/react-form";
+import { useState, type ReactNode } from "react";
 import { Link, Navigate } from "react-router";
 
 import {
   Alert,
   AuthPageShell,
   Field,
+  FieldValidationError,
   FullPageLoading,
   Input,
   SubmitButton,
@@ -18,30 +20,94 @@ type EnrollmentDraft = {
   backupCodes: string[];
 };
 
-type PendingAction = "enable" | "verify" | "regenerate" | null;
-
-/**
- * Optional TOTP enrollment and recovery-code regeneration. MFA is opt-in per
- * the approved scope. Enrollment is a two-step state machine:
- *   enable (current password) → URI + backup codes → first TOTP code
- *   via verifyTotp → enabled ONLY once the server reports
- *   twoFactorEnabled=true on the me/context contract.
- */
+/** Optional TOTP enrollment and recovery-code regeneration. */
 export function SecuritySettingsPage() {
   const queryClient = useQueryClient();
   const { data, isPending } = authClient.useSession();
-  // twoFactorEnabled comes from the me/context contract — the client-side
-  // session inference does not carry plugin fields reliably.
   const meQuery = useQuery({
     queryKey: ME_CONTEXT_QUERY_KEY,
     queryFn: fetchMeContext,
   });
-  const [password, setPassword] = useState("");
-  const [verifyCode, setVerifyCode] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [draft, setDraft] = useState<EnrollmentDraft | null>(null);
   const [regenerated, setRegenerated] = useState<string[] | null>(null);
+
+  const enableForm = useForm({
+    defaultValues: { password: "" },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        const { data: enableData, error: enableError } =
+          await authClient.twoFactor.enable({ password: value.password });
+        if (enableError != null) {
+          setError(
+            authErrorMessage(enableError, "เปิดใช้งานยืนยันสองขั้นตอนไม่สำเร็จ"),
+          );
+          return;
+        }
+        setDraft({
+          totpURI: enableData.totpURI,
+          backupCodes: enableData.backupCodes,
+        });
+        enableForm.resetField("password");
+      } catch {
+        setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+      }
+    },
+  });
+
+  const verifyForm = useForm({
+    defaultValues: { code: "" },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        const { error: verifyError } = await authClient.twoFactor.verifyTotp({
+          code: value.code.trim(),
+        });
+        if (verifyError != null) {
+          setError(
+            authErrorMessage(
+              verifyError,
+              "รหัสยืนยันไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง",
+            ),
+          );
+          return;
+        }
+        const refreshed = await meQuery.refetch();
+        await queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+        setDraft(null);
+        verifyForm.resetField("code");
+        if (refreshed.data?.user.twoFactorEnabled !== true) {
+          setError(
+            "ยืนยันรหัสแล้วแต่ยังไม่สามารถยืนยันสถานะกับเซิร์ฟเวอร์ได้ กรุณารีเฟรชหน้านี้",
+          );
+        }
+      } catch {
+        setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+      }
+    },
+  });
+
+  const regenerateForm = useForm({
+    defaultValues: { password: "" },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        const { data: codesData, error: codesError } =
+          await authClient.twoFactor.generateBackupCodes({
+            password: value.password,
+          });
+        if (codesError != null) {
+          setError(authErrorMessage(codesError, "สร้างรหัสกู้คืนใหม่ไม่สำเร็จ"));
+          return;
+        }
+        setRegenerated(codesData.backupCodes);
+        regenerateForm.resetField("password");
+      } catch {
+        setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+      }
+    },
+  });
 
   if (isPending) {
     return <FullPageLoading label="กำลังตรวจสอบเซสชัน…" />;
@@ -49,9 +115,6 @@ export function SecuritySettingsPage() {
   if (data === null) {
     return <Navigate to="/login" replace />;
   }
-  // The known enabled/disabled status comes only from a successful server
-  // context lookup — never render it (or enrollment controls) while the
-  // lookup is pending or has failed.
   if (meQuery.isPending) {
     return <FullPageLoading label="กำลังโหลดข้อมูลความปลอดภัย…" />;
   }
@@ -87,101 +150,6 @@ export function SecuritySettingsPage() {
 
   const twoFactorEnabled = meQuery.data.user.twoFactorEnabled;
 
-  async function enable(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pendingAction !== null) {
-      return;
-    }
-    setError(null);
-    setPendingAction("enable");
-    try {
-      const { data: enableData, error: enableError } =
-        await authClient.twoFactor.enable({ password });
-      if (enableError != null) {
-        setError(
-          authErrorMessage(enableError, "เปิดใช้งานยืนยันสองขั้นตอนไม่สำเร็จ"),
-        );
-        return;
-      }
-      // Enable alone does NOT activate the second factor: Better Auth keeps
-      // twoFactorEnabled=false until the first TOTP verifies. Hold the URI
-      // and backup codes in a pending draft until that verification lands.
-      setDraft({
-        totpURI: enableData.totpURI,
-        backupCodes: enableData.backupCodes,
-      });
-      setPassword("");
-    } catch {
-      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function confirmFirstCode(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pendingAction !== null) {
-      return;
-    }
-    setError(null);
-    setPendingAction("verify");
-    try {
-      const { error: verifyError } = await authClient.twoFactor.verifyTotp({
-        code: verifyCode.trim(),
-      });
-      if (verifyError != null) {
-        // Wrong/expired code: enrollment stays pending and the draft remains
-        // visible so the user can retry without re-enrolling.
-        setError(
-          authErrorMessage(
-            verifyError,
-            "รหัสยืนยันไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง",
-          ),
-        );
-        return;
-      }
-      const refreshed = await meQuery.refetch();
-      await queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
-      setDraft(null);
-      setVerifyCode("");
-      // Never claim enabled from the verify call alone — only the server
-      // contract may flip the visible state.
-      if (refreshed.data?.user.twoFactorEnabled !== true) {
-        setError(
-          "ยืนยันรหัสแล้วแต่ยังไม่สามารถยืนยันสถานะกับเซิร์ฟเวอร์ได้ กรุณารีเฟรชหน้านี้",
-        );
-      }
-    } catch {
-      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function regenerateCodes(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pendingAction !== null) {
-      return;
-    }
-    setError(null);
-    setPendingAction("regenerate");
-    try {
-      const { data: codesData, error: codesError } =
-        await authClient.twoFactor.generateBackupCodes({ password });
-      if (codesError != null) {
-        // Invalid credentials must not disturb the currently displayed codes.
-        setError(authErrorMessage(codesError, "สร้างรหัสกู้คืนใหม่ไม่สำเร็จ"));
-        return;
-      }
-      setRegenerated(codesData.backupCodes);
-      setPassword("");
-    } catch {
-      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
   return (
     <AuthPageShell
       title="ความปลอดภัยของบัญชี"
@@ -197,45 +165,186 @@ export function SecuritySettingsPage() {
         {error === null ? null : <Alert tone="error">{error}</Alert>}
 
         {twoFactorEnabled ? (
-          <RecoveryCodesPanel
-            password={password}
-            onPasswordChange={setPassword}
-            pending={pendingAction === "regenerate"}
-            onRegenerate={(event) => void regenerateCodes(event)}
-            regenerated={regenerated}
-          />
+          <div className="flex flex-col gap-4">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void regenerateForm.handleSubmit();
+              }}
+              className="flex flex-col gap-4"
+              noValidate
+            >
+              <regenerateForm.Field
+                name="password"
+                validators={{
+                  onChange: ({ value }) =>
+                    value === "" ? "กรุณากรอกรหัสผ่านปัจจุบัน" : undefined,
+                  onSubmit: ({ value }) =>
+                    value === "" ? "กรุณากรอกรหัสผ่านปัจจุบัน" : undefined,
+                }}
+              >
+                {(field) => (
+                  <Field label="รหัสผ่านปัจจุบัน (จำเป็นสำหรับสร้างรหัสกู้คืนชุดใหม่)">
+                    <Input
+                      type="password"
+                      name="regenerate-password"
+                      autoComplete="current-password"
+                      value={field.state.value}
+                      onChange={(event) => {
+                        field.handleChange(event.target.value);
+                      }}
+                      onBlur={field.handleBlur}
+                      aria-invalid={field.state.meta.errors.length > 0}
+                      aria-describedby={
+                        field.state.meta.errors.length > 0
+                          ? "regenerate-password-error"
+                          : undefined
+                      }
+                    />
+                    <FieldValidationError
+                      id="regenerate-password-error"
+                      errors={field.state.meta.errors}
+                    />
+                  </Field>
+                )}
+              </regenerateForm.Field>
+              <regenerateForm.Subscribe
+                selector={(state) => state.isSubmitting}
+                children={(submitting) => (
+                  <SubmitButton pending={submitting} pendingLabel="กำลังสร้าง…">
+                    สร้างรหัสกู้คืนใหม่
+                  </SubmitButton>
+                )}
+              />
+            </form>
+            {regenerated === null ? null : (
+              <div>
+                <h2 className="text-sm font-medium">
+                  รหัสกู้คืนชุดใหม่ (แสดงเพียงครั้งนี้ ใช้ได้ครั้งเดียวแต่ละรหัส
+                  รหัสชุดเดิมจะใช้ไม่ได้อีก)
+                </h2>
+                <ul className="mt-2 grid grid-cols-2 gap-1">
+                  {regenerated.map((code) => (
+                    <li key={code} className="font-mono text-xs">
+                      {code}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         ) : draft !== null ? (
-          <EnrollmentDraftPanel
-            draft={draft}
-            verifyCode={verifyCode}
-            onVerifyCodeChange={setVerifyCode}
-            pending={pendingAction === "verify"}
-            onConfirm={(event) => void confirmFirstCode(event)}
-          />
+          <EnrollmentDraftView draft={draft}>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void verifyForm.handleSubmit();
+              }}
+              className="flex flex-col gap-4"
+              noValidate
+            >
+              <verifyForm.Field
+                name="code"
+                validators={{
+                  onChange: ({ value }) =>
+                    value.trim() === "" ? "กรุณากรอกรหัสยืนยัน" : undefined,
+                  onSubmit: ({ value }) =>
+                    value.trim() === "" ? "กรุณากรอกรหัสยืนยัน" : undefined,
+                }}
+              >
+                {(field) => (
+                  <Field label="รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน">
+                    <Input
+                      type="text"
+                      name="first-totp"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={field.state.value}
+                      onChange={(event) => {
+                        field.handleChange(event.target.value);
+                      }}
+                      onBlur={field.handleBlur}
+                      aria-invalid={field.state.meta.errors.length > 0}
+                      aria-describedby={
+                        field.state.meta.errors.length > 0
+                          ? "first-totp-error"
+                          : undefined
+                      }
+                    />
+                    <FieldValidationError
+                      id="first-totp-error"
+                      errors={field.state.meta.errors}
+                    />
+                  </Field>
+                )}
+              </verifyForm.Field>
+              <verifyForm.Subscribe
+                selector={(state) => state.isSubmitting}
+                children={(submitting) => (
+                  <SubmitButton pending={submitting} pendingLabel="กำลังยืนยัน…">
+                    ยืนยันรหัสแรกและเปิดใช้งาน
+                  </SubmitButton>
+                )}
+              />
+            </form>
+          </EnrollmentDraftView>
         ) : (
           <form
-            onSubmit={(event) => void enable(event)}
+            onSubmit={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void enableForm.handleSubmit();
+            }}
             className="flex flex-col gap-4"
             noValidate
           >
-            <Field label="รหัสผ่านปัจจุบัน">
-              <Input
-                type="password"
-                name="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                }}
-              />
-            </Field>
-            <SubmitButton
-              pending={pendingAction === "enable"}
-              pendingLabel="กำลังเปิดใช้งาน…"
+            <enableForm.Field
+              name="password"
+              validators={{
+                onChange: ({ value }) =>
+                  value === "" ? "กรุณากรอกรหัสผ่านปัจจุบัน" : undefined,
+                onSubmit: ({ value }) =>
+                  value === "" ? "กรุณากรอกรหัสผ่านปัจจุบัน" : undefined,
+              }}
             >
-              เปิดใช้งานยืนยันสองขั้นตอน
-            </SubmitButton>
+              {(field) => (
+                <Field label="รหัสผ่านปัจจุบัน">
+                  <Input
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    value={field.state.value}
+                    onChange={(event) => {
+                      field.handleChange(event.target.value);
+                    }}
+                    onBlur={field.handleBlur}
+                    aria-invalid={field.state.meta.errors.length > 0}
+                    aria-describedby={
+                      field.state.meta.errors.length > 0
+                        ? "enable-password-error"
+                        : undefined
+                    }
+                  />
+                  <FieldValidationError
+                    id="enable-password-error"
+                    errors={field.state.meta.errors}
+                  />
+                </Field>
+              )}
+            </enableForm.Field>
+            <enableForm.Subscribe
+              selector={(state) => state.isSubmitting}
+              children={(submitting) => (
+                <SubmitButton
+                  pending={submitting}
+                  pendingLabel="กำลังเปิดใช้งาน…"
+                >
+                  เปิดใช้งานยืนยันสองขั้นตอน
+                </SubmitButton>
+              )}
+            />
           </form>
         )}
 
@@ -249,19 +358,12 @@ export function SecuritySettingsPage() {
   );
 }
 
-/** Pending enrollment: URI/backup codes shown, activation awaits first TOTP. */
-function EnrollmentDraftPanel({
+function EnrollmentDraftView({
   draft,
-  verifyCode,
-  onVerifyCodeChange,
-  pending,
-  onConfirm,
+  children,
 }: {
   draft: EnrollmentDraft;
-  verifyCode: string;
-  onVerifyCodeChange: (value: string) => void;
-  pending: boolean;
-  onConfirm: (event: SubmitEvent<HTMLFormElement>) => void;
+  children: ReactNode;
 }) {
   const secret = draft.totpURI.split("secret=")[1]?.split("&")[0] ?? null;
   return (
@@ -293,75 +395,7 @@ function EnrollmentDraftPanel({
           ))}
         </ul>
       </div>
-      <form onSubmit={onConfirm} className="flex flex-col gap-4" noValidate>
-        <Field label="รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน">
-          <Input
-            type="text"
-            name="first-totp"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            required
-            value={verifyCode}
-            onChange={(event) => {
-              onVerifyCodeChange(event.target.value);
-            }}
-          />
-        </Field>
-        <SubmitButton pending={pending} pendingLabel="กำลังยืนยัน…">
-          ยืนยันรหัสแรกและเปิดใช้งาน
-        </SubmitButton>
-      </form>
-    </div>
-  );
-}
-
-function RecoveryCodesPanel({
-  password,
-  onPasswordChange,
-  pending,
-  onRegenerate,
-  regenerated,
-}: {
-  password: string;
-  onPasswordChange: (value: string) => void;
-  pending: boolean;
-  onRegenerate: (event: SubmitEvent<HTMLFormElement>) => void;
-  regenerated: string[] | null;
-}) {
-  return (
-    <div className="flex flex-col gap-4">
-      <form onSubmit={onRegenerate} className="flex flex-col gap-4" noValidate>
-        <Field label="รหัสผ่านปัจจุบัน (จำเป็นสำหรับสร้างรหัสกู้คืนชุดใหม่)">
-          <Input
-            type="password"
-            name="regenerate-password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(event) => {
-              onPasswordChange(event.target.value);
-            }}
-          />
-        </Field>
-        <SubmitButton pending={pending} pendingLabel="กำลังสร้าง…">
-          สร้างรหัสกู้คืนใหม่
-        </SubmitButton>
-      </form>
-      {regenerated === null ? null : (
-        <div>
-          <h2 className="text-sm font-medium">
-            รหัสกู้คืนชุดใหม่ (แสดงเพียงครั้งนี้ ใช้ได้ครั้งเดียวแต่ละรหัส
-            รหัสชุดเดิมจะใช้ไม่ได้อีก)
-          </h2>
-          <ul className="mt-2 grid grid-cols-2 gap-1">
-            {regenerated.map((code) => (
-              <li key={code} className="font-mono text-xs">
-                {code}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {children}
     </div>
   );
 }

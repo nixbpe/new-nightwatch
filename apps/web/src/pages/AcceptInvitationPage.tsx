@@ -1,11 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type SubmitEvent } from "react";
+import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import {
   Alert,
   AuthPageShell,
   Field,
+  FieldValidationError,
   FullPageLoading,
   Input,
   SubmitButton,
@@ -226,46 +228,41 @@ function SignupGate({
   expiresAt: string;
   onSignedUp: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
   const expired = new Date(expiresAt).getTime() <= Date.now();
 
-  async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending) {
-      return;
-    }
-    setError(null);
-    setPending(true);
-    rememberInvitation(invitationId);
-    try {
-      const { error: signUpError } = await authClient.signUp.email(
-        {
-          name: name.trim(),
-          email,
-          password,
-          // The server forwards this invitationId into the emailed
-          // verification link so a new-tab verification can resume it.
-          callbackURL: `/onboarding?invitationId=${invitationId}`,
-        },
-        // Second argument is the fetch-options object itself: the header
-        // must ride the real request for the server-side invitation gate.
-        { headers: { "X-Invitation-ID": invitationId } },
-      );
-      if (signUpError != null) {
-        setError(authErrorMessage(signUpError, "สร้างบัญชีไม่สำเร็จ"));
-        return;
+  const form = useForm({
+    defaultValues: {
+      name: "",
+      password: "",
+    },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      rememberInvitation(invitationId);
+      try {
+        const { error: signUpError } = await authClient.signUp.email(
+          {
+            name: value.name.trim(),
+            email,
+            password: value.password,
+            // The server forwards this invitationId into the emailed
+            // verification link so a new-tab verification can resume it.
+            callbackURL: `/onboarding?invitationId=${invitationId}`,
+          },
+          // Second argument is the fetch-options object itself: the header
+          // must ride the real request for the server-side invitation gate.
+          { headers: { "X-Invitation-ID": invitationId } },
+        );
+        if (signUpError != null) {
+          setError(authErrorMessage(signUpError, "สร้างบัญชีไม่สำเร็จ"));
+          return;
+        }
+        onSignedUp();
+      } catch {
+        setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
       }
-      onSignedUp();
-    } catch {
-      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
-    } finally {
-      setPending(false);
-    }
-  }
+    },
+  });
 
   return (
     <AuthPageShell
@@ -278,7 +275,11 @@ function SignupGate({
         </Alert>
       ) : (
         <form
-          onSubmit={(event) => void onSubmit(event)}
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void form.handleSubmit();
+          }}
           className="flex flex-col gap-4"
           noValidate
         >
@@ -293,35 +294,93 @@ function SignupGate({
               className="opacity-70"
             />
           </Field>
-          <Field label="ชื่อที่แสดง">
-            <Input
-              type="text"
-              name="name"
-              autoComplete="name"
-              required
-              minLength={2}
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value);
-              }}
-            />
-          </Field>
-          <Field label="รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)">
-            <Input
-              type="password"
-              name="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(event) => {
-                setPassword(event.target.value);
-              }}
-            />
-          </Field>
-          <SubmitButton pending={pending} pendingLabel="กำลังสร้างบัญชี…">
-            สร้างบัญชีและรอการยืนยันอีเมล
-          </SubmitButton>
+          <form.Field
+            name="name"
+            validators={{
+              onChange: ({ value }) =>
+                value.trim().length >= 2
+                  ? undefined
+                  : "ชื่อต้องมีอย่างน้อย 2 ตัวอักษร",
+              onSubmit: ({ value }) =>
+                value.trim().length >= 2
+                  ? undefined
+                  : "ชื่อต้องมีอย่างน้อย 2 ตัวอักษร",
+            }}
+          >
+            {(field) => (
+              <Field label="ชื่อที่แสดง">
+                <Input
+                  type="text"
+                  name="name"
+                  autoComplete="name"
+                  value={field.state.value}
+                  onChange={(event) => {
+                    field.handleChange(event.target.value);
+                  }}
+                  onBlur={field.handleBlur}
+                  aria-invalid={field.state.meta.errors.length > 0}
+                  aria-describedby={
+                    field.state.meta.errors.length > 0
+                      ? "invitation-name-error"
+                      : undefined
+                  }
+                />
+                <FieldValidationError
+                  id="invitation-name-error"
+                  errors={field.state.meta.errors}
+                />
+              </Field>
+            )}
+          </form.Field>
+          <form.Field
+            name="password"
+            validators={{
+              onChange: ({ value }) =>
+                value.length >= 8
+                  ? undefined
+                  : "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร",
+              onSubmit: ({ value }) =>
+                value.length >= 8
+                  ? undefined
+                  : "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร",
+            }}
+          >
+            {(field) => (
+              <Field label="รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)">
+                <Input
+                  type="password"
+                  name="password"
+                  autoComplete="new-password"
+                  value={field.state.value}
+                  onChange={(event) => {
+                    field.handleChange(event.target.value);
+                  }}
+                  onBlur={field.handleBlur}
+                  aria-invalid={field.state.meta.errors.length > 0}
+                  aria-describedby={
+                    field.state.meta.errors.length > 0
+                      ? "invitation-password-error"
+                      : undefined
+                  }
+                />
+                <FieldValidationError
+                  id="invitation-password-error"
+                  errors={field.state.meta.errors}
+                />
+              </Field>
+            )}
+          </form.Field>
+          <form.Subscribe
+            selector={(state) => state.isSubmitting}
+            children={(isSubmitting) => (
+              <SubmitButton
+                pending={isSubmitting}
+                pendingLabel="กำลังสร้างบัญชี…"
+              >
+                สร้างบัญชีและรอการยืนยันอีเมล
+              </SubmitButton>
+            )}
+          />
           <p className="text-center text-sm text-foreground-secondary">
             มีบัญชีอยู่แล้ว?{" "}
             <Link

@@ -153,6 +153,54 @@ describe("LoginPage", () => {
     sessionStorage.clear();
   });
 
+  it("blocks an empty submission and links adjacent field errors", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", { name: "เข้าสู่ระบบ" }),
+    );
+
+    const email = screen.getByLabelText(/อีเมล/);
+    const password = screen.getByLabelText(/รหัสผ่าน/);
+    expect(email).toHaveAttribute("aria-invalid", "true");
+    expect(email).toHaveAttribute(
+      "aria-describedby",
+      "login-email-error",
+    );
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(password).toHaveAttribute(
+      "aria-describedby",
+      "login-password-error",
+    );
+    expect(screen.getByText("กรุณากรอกอีเมล")).toHaveAttribute(
+      "id",
+      "login-email-error",
+    );
+    expect(screen.getByText("กรุณากรอกรหัสผ่าน")).toHaveAttribute(
+      "id",
+      "login-password-error",
+    );
+    expect(signInEmailMock).not.toHaveBeenCalled();
+  });
+  it("prevents a duplicate sign-in while the first request is pending", async () => {
+    const finishSignIn = deferSignIn();
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(await screen.findByLabelText("อีเมล"), "member@example.com");
+    await user.type(screen.getByLabelText("รหัสผ่าน"), "correct-password");
+    const submit = screen.getByRole("button", { name: "เข้าสู่ระบบ" });
+    await user.dblClick(submit);
+
+    expect(signInEmailMock).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: "กำลังเข้าสู่ระบบ…" }),
+    ).toBeDisabled();
+    await finishSignIn();
+  });
+
+
   it("invalid credentials keep the entered form and show the error", async () => {
     // A failed attempt must not wipe the form or navigate away: the user
     // corrects a typo, not retypes everything.

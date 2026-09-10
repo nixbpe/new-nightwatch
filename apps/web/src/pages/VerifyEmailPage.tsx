@@ -1,11 +1,13 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useForm } from "@tanstack/react-form";
 import { Navigate, useNavigate } from "react-router";
 
 import {
   Alert,
   AuthPageShell,
   Field,
+  FieldValidationError,
   Input,
   SubmitButton,
 } from "../components/ui";
@@ -14,6 +16,7 @@ import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
 import { readInvitation } from "../lib/auth/continuation";
 
 const RESEND_COOLDOWN_MS = 60_000;
+
 
 /**
  * Resend hub for not-yet-verified accounts. Signup issues no session before
@@ -30,10 +33,7 @@ const RESEND_COOLDOWN_MS = 60_000;
 export function VerifyEmailPage() {
   const navigate = useNavigate();
   const { data, isPending, refetch } = authClient.useSession();
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "failed">(
-    "idle",
-  );
+  const [status, setStatus] = useState<"idle" | "sent" | "failed">("idle");
   const [cooldownUntil, setCooldownUntil] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,12 +45,8 @@ export function VerifyEmailPage() {
     if (data !== null && !data.user.emailVerified) {
       void refetch();
     }
-    // Run once per mount; the guards already loop-protect the rest.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [data, refetch]);
 
-  // Anonymous + remembered invitation: prefill the invited email from the
-  // public preview (unknown/expired invitations safely yield no prefill).
   const pendingInvitationId = signedIn ? null : readInvitation();
   const invitationPreview = useQuery({
     queryKey: invitationQueryKey(pendingInvitationId ?? ""),
@@ -58,14 +54,45 @@ export function VerifyEmailPage() {
     enabled: pendingInvitationId !== null,
     retry: false,
   });
+
+  const form = useForm({
+    defaultValues: {
+      email: data?.user.email ?? "",
+    },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      const resolvedEmail =
+        value.email.trim() === "" && data !== null
+          ? data.user.email
+          : value.email.trim();
+      try {
+        const { error: resendError } = await authClient.sendVerificationEmail({
+          email: resolvedEmail,
+          callbackURL:
+            pendingInvitationId === null
+              ? "/onboarding"
+              : `/onboarding?invitationId=${pendingInvitationId}`,
+        });
+        if (resendError != null) {
+          setError(authErrorMessage(resendError, "ส่งอีเมลยืนยันไม่สำเร็จ"));
+          setStatus("failed");
+          return;
+        }
+        setStatus("sent");
+        setCooldownUntil(Date.now() + RESEND_COOLDOWN_MS);
+      } catch {
+        setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+        setStatus("failed");
+      }
+    },
+  });
+
   useEffect(() => {
     const invited = invitationPreview.data?.invitation;
-    if (invited !== undefined && email === "") {
-      setEmail(invited.email);
+    if (invited !== undefined && form.state.values.email === "") {
+      form.setFieldValue("email", invited.email);
     }
-    // Prefill once per loaded preview; later edits are the user's own.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invitationPreview.data]);
+  }, [form, invitationPreview.data]);
 
   if (isPending) {
     return null;
@@ -74,56 +101,20 @@ export function VerifyEmailPage() {
     return <Navigate to="/onboarding" replace />;
   }
 
-  const targetEmail = signedIn ? data.user.email : email.trim();
   const coolingDown = Date.now() < cooldownUntil;
-
-  async function resend() {
-    if (status === "sending" || coolingDown) {
-      return;
-    }
-    if (targetEmail === "") {
-      return;
-    }
-    setError(null);
-    setStatus("sending");
-    try {
-      // Keep the pending invitation in the callback target as well as in
-      // same-tab storage, so verification can resume it even in a new tab
-      // (the server forwards it into the emailed link when supported).
-      const { error: resendError } = await authClient.sendVerificationEmail({
-        email: targetEmail,
-        callbackURL:
-          pendingInvitationId === null
-            ? "/onboarding"
-            : `/onboarding?invitationId=${pendingInvitationId}`,
-      });
-      if (resendError != null) {
-        setError(authErrorMessage(resendError, "ส่งอีเมลยืนยันไม่สำเร็จ"));
-        setStatus("failed");
-        return;
-      }
-      setStatus("sent");
-      setCooldownUntil(Date.now() + RESEND_COOLDOWN_MS);
-    } catch {
-      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
-      setStatus("failed");
-    }
-  }
+  const subtitle =
+    data === null
+      ? "กรอกอีเมลที่ใช้สมัครบัญชี เราจะส่งลิงก์ยืนยันใหม่ให้คุณ"
+      : `เราส่งลิงก์ยืนยันไปที่ ${data.user.email} กรุณาเปิดอีเมลแล้วคลิกลิงก์เพื่อดำเนินการต่อ`;
 
   return (
-    <AuthPageShell
-      title="ยืนยันอีเมลของคุณ"
-      subtitle={
-        signedIn
-          ? `เราส่งลิงก์ยืนยันไปที่ ${targetEmail} กรุณาเปิดอีเมลแล้วคลิกลิงก์เพื่อดำเนินการต่อ`
-          : "กรอกอีเมลที่ใช้สมัครบัญชี เราจะส่งลิงก์ยืนยันใหม่ให้คุณ"
-      }
-    >
+    <AuthPageShell title="ยืนยันอีเมลของคุณ" subtitle={subtitle}>
       {signedIn ? null : (
         <form
-          onSubmit={(event: SubmitEvent<HTMLFormElement>) => {
+          onSubmit={(event) => {
             event.preventDefault();
-            void resend();
+            event.stopPropagation();
+            void form.handleSubmit();
           }}
           className="flex flex-col gap-4"
           noValidate
@@ -135,25 +126,52 @@ export function VerifyEmailPage() {
               (รวมถึงโฟลเดอร์สแปม)
             </Alert>
           ) : null}
-          <Field label="อีเมลที่ใช้สมัครบัญชี">
-            <Input
-              type="email"
-              name="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(event) => {
-                setEmail(event.target.value);
-              }}
-            />
-          </Field>
-          <SubmitButton
-            pending={status === "sending"}
-            pendingLabel="กำลังส่ง…"
-            disabled={email.trim() === ""}
+          <form.Field
+            name="email"
+            validators={{
+              onChange: ({ value }) =>
+                value.trim() === "" ? "กรุณากรอกอีเมล" : undefined,
+              onSubmit: ({ value }) =>
+                value.trim() === "" ? "กรุณากรอกอีเมล" : undefined,
+            }}
           >
-            ส่งอีเมลยืนยันอีกครั้ง
-          </SubmitButton>
+            {(field) => (
+              <Field label="อีเมลที่ใช้สมัครบัญชี">
+                <Input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  value={field.state.value}
+                  onChange={(event) => {
+                    field.handleChange(event.target.value);
+                  }}
+                  onBlur={field.handleBlur}
+                  aria-invalid={field.state.meta.errors.length > 0}
+                  aria-describedby={
+                    field.state.meta.errors.length > 0
+                      ? "verify-email-error"
+                      : undefined
+                  }
+                />
+                <FieldValidationError
+                  id="verify-email-error"
+                  errors={field.state.meta.errors}
+                />
+              </Field>
+            )}
+          </form.Field>
+          <form.Subscribe
+            selector={(state) => state.isSubmitting}
+            children={(isSubmitting) => (
+              <SubmitButton
+                pending={isSubmitting}
+                pendingLabel="กำลังส่ง…"
+                disabled={isSubmitting || coolingDown}
+              >
+                ส่งอีเมลยืนยันอีกครั้ง
+              </SubmitButton>
+            )}
+          />
         </form>
       )}
       {signedIn ? (
@@ -165,18 +183,25 @@ export function VerifyEmailPage() {
               (รวมถึงโฟลเดอร์สแปม)
             </Alert>
           ) : null}
-          <button
-            type="button"
-            disabled={status === "sending" || coolingDown}
-            onClick={() => void resend()}
-            className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {status === "sending"
-              ? "กำลังส่ง…"
-              : coolingDown
-                ? "ส่งแล้ว กรุณารอสักครู่"
-                : "ส่งอีเมลยืนยันอีกครั้ง"}
-          </button>
+          <form.Subscribe
+            selector={(state) => state.isSubmitting}
+            children={(isSubmitting) => (
+              <button
+                type="button"
+                disabled={isSubmitting || coolingDown}
+                onClick={() => {
+                  void form.handleSubmit();
+                }}
+                className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting
+                  ? "กำลังส่ง…"
+                  : coolingDown
+                    ? "ส่งแล้ว กรุณารอสักครู่"
+                    : "ส่งอีเมลยืนยันอีกครั้ง"}
+              </button>
+            )}
+          />
         </div>
       ) : null}
       <div className="flex items-center justify-between text-sm">

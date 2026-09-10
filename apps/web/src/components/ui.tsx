@@ -65,6 +65,36 @@ export function Field({
   );
 }
 
+export function FieldValidationError({
+  id,
+  errors,
+}: {
+  id: string;
+  errors: readonly unknown[];
+}) {
+  const first = errors[0];
+  if (typeof first === "string") {
+    return (
+      <span id={id} role="alert" className="mt-1 block text-sm text-danger">
+        {first}
+      </span>
+    );
+  }
+  if (
+    first != null &&
+    typeof first === "object" &&
+    "message" in first &&
+    typeof first.message === "string"
+  ) {
+    return (
+      <span id={id} role="alert" className="mt-1 block text-sm text-danger">
+        {first.message}
+      </span>
+    );
+  }
+  return null;
+}
+
 export function SubmitButton({
   pending,
   pendingLabel,
