@@ -12,7 +12,7 @@ modelRoles:
   # Architecture/contracts, heaviest reasoning
   architect: openai-codex/gpt-6-astra:high
   # Code and infrastructure implementation
-  implement: kimi-code/kimi-for-coding
+  implement: openai-codex/gpt-5.3-codex-spark
   # Read-only correctness/security review, evidence-heavy
   review: openai-codex/gpt-5.6-sol:high
   # Acceptance runs, reproduction, test tooling
