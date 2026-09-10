@@ -6,6 +6,11 @@
 
 const INVITATION_KEY = "nightwatch.pendingInvitation";
 const RETURN_TO_KEY = "nightwatch.auth.returnTo";
+const DEFAULT_RETURN_TO = "/workspace";
+const SAME_ORIGIN_BASE = new URL("https://nightwatch.invalid");
+
+const ENCODED_CONTROL_OR_BACKSLASH =
+  /%(?:0[0-9a-f]|1[0-9a-f]|5c|7f|8[0-9a-f]|9[0-9a-f])/i;
 
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 
@@ -26,18 +31,46 @@ export function clearInvitation(): void {
   sessionStorage.removeItem(INVITATION_KEY);
 }
 
-/** Only same-origin absolute paths; anything else falls back to /workspace. */
-export function rememberReturnTo(path: string): void {
-  if (path.startsWith("/") && !path.startsWith("//")) {
-    sessionStorage.setItem(RETURN_TO_KEY, path);
+/**
+ * Canonicalizes a same-origin absolute path. The fixed base makes URL
+ * parsing independent of runtime globals and exposes protocol-relative or
+ * slash/backslash inputs whose canonical origin would escape the app.
+ */
+export function normalizeReturnTo(path: string | null): string {
+  if (path === null || !path.startsWith("/")) {
+    return DEFAULT_RETURN_TO;
+  }
+  for (let index = 0; index < path.length; index += 1) {
+    const code = path.charCodeAt(index);
+    if (code === 92 || code <= 31 || (code >= 127 && code <= 159)) {
+      return DEFAULT_RETURN_TO;
+    }
+  }
+  if (ENCODED_CONTROL_OR_BACKSLASH.test(path)) {
+    return DEFAULT_RETURN_TO;
+  }
+
+  try {
+    const url = new URL(path, SAME_ORIGIN_BASE);
+    return url.origin === SAME_ORIGIN_BASE.origin
+      ? url.pathname + url.search + url.hash
+      : DEFAULT_RETURN_TO;
+  } catch {
+    return DEFAULT_RETURN_TO;
   }
 }
 
+export function rememberReturnTo(path: string): void {
+  sessionStorage.setItem(RETURN_TO_KEY, normalizeReturnTo(path));
+}
+
 export function readReturnTo(): string {
-  const value = sessionStorage.getItem(RETURN_TO_KEY);
-  return value !== null && value.startsWith("/") && !value.startsWith("//")
-    ? value
-    : "/workspace";
+  const storedValue = sessionStorage.getItem(RETURN_TO_KEY);
+  const value = normalizeReturnTo(storedValue);
+  if (storedValue !== null) {
+    sessionStorage.setItem(RETURN_TO_KEY, value);
+  }
+  return value;
 }
 
 export function clearReturnTo(): void {

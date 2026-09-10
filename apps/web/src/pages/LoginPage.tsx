@@ -11,18 +11,14 @@ import {
   SubmitButton,
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
-import { rememberReturnTo } from "../lib/auth/continuation";
-
+import { normalizeReturnTo, rememberReturnTo } from "../lib/auth/continuation";
 
 export function LoginPage() {
   // The protected-route loaders bounce here as /login?from=<path+query>;
   // same-origin paths only, anything else falls back to the workspace.
   const [searchParams] = useSearchParams();
   const fromParam = searchParams.get("from");
-  const from =
-    fromParam !== null && fromParam.startsWith("/") && !fromParam.startsWith("//")
-      ? fromParam
-      : "/workspace";
+  const from = normalizeReturnTo(fromParam);
 
   const [error, setError] = useState<string | null>(null);
   const [needsVerification, setNeedsVerification] = useState(false);
@@ -108,7 +104,9 @@ export function LoginPage() {
                 onBlur={field.handleBlur}
                 aria-invalid={field.state.meta.errors.length > 0}
                 aria-describedby={
-                  field.state.meta.errors.length > 0 ? "login-email-error" : undefined
+                  field.state.meta.errors.length > 0
+                    ? "login-email-error"
+                    : undefined
                 }
               />
               <FieldValidationError

@@ -1,10 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  createMemoryRouter,
-  RouterProvider,
-  useLocation,
-} from "react-router";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -164,10 +160,7 @@ describe("LoginPage", () => {
     const email = screen.getByLabelText(/อีเมล/);
     const password = screen.getByLabelText(/รหัสผ่าน/);
     expect(email).toHaveAttribute("aria-invalid", "true");
-    expect(email).toHaveAttribute(
-      "aria-describedby",
-      "login-email-error",
-    );
+    expect(email).toHaveAttribute("aria-describedby", "login-email-error");
     expect(password).toHaveAttribute("aria-invalid", "true");
     expect(password).toHaveAttribute(
       "aria-describedby",
@@ -188,7 +181,10 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.type(await screen.findByLabelText("อีเมล"), "member@example.com");
+    await user.type(
+      await screen.findByLabelText("อีเมล"),
+      "member@example.com",
+    );
     await user.type(screen.getByLabelText("รหัสผ่าน"), "correct-password");
     const submit = screen.getByRole("button", { name: "เข้าสู่ระบบ" });
     await user.dblClick(submit);
@@ -199,7 +195,6 @@ describe("LoginPage", () => {
     ).toBeDisabled();
     await finishSignIn();
   });
-
 
   it("invalid credentials keep the entered form and show the error", async () => {
     // A failed attempt must not wipe the form or navigate away: the user
@@ -262,6 +257,20 @@ describe("LoginPage", () => {
       "/settings/security?tab=sessions#current",
     );
     expect(readReturnTo()).toBe("/workspace");
+  });
+
+  it("falls back to the workspace for an encoded backslash continuation", async () => {
+    const finishSignIn = deferSignIn();
+    const page = renderPage("/%5C%5Cevil.example");
+
+    await submitLogin("member@example.com", "correct-password");
+    page.resolveSession();
+
+    expect(await screen.findByTestId("location")).toHaveTextContent(
+      "/workspace",
+    );
+    expect(readReturnTo()).toBe("/workspace");
+    await finishSignIn();
   });
 
   it("resumes explicit invitation acceptance before the old login request settles", async () => {

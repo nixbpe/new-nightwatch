@@ -20,7 +20,7 @@ test.describe("hello journey", () => {
     page,
   }) => {
     await page.goto("/");
-    await expect(page).toHaveURL(/\/login$/);
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/login");
     await expect(
       page.getByRole("heading", { name: "เข้าสู่ระบบ NightWatch" }),
     ).toBeVisible();
