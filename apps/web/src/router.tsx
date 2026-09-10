@@ -7,6 +7,7 @@ import {
 } from "react-router";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AppShell } from "./components/shell/AppShell";
 import {
   requireAnonLoader,
   rootLoader,
@@ -111,19 +112,27 @@ export const routes: RouteObject[] = [
       // Onboarding handles anonymous, unverified and token-carrying
       // arrivals itself, so it stays outside the loader gates.
       { path: "/onboarding", element: <OnboardingPage /> },
+      // Authenticated app pages share the AppShell layout (header/sidebar/
+      // main/footer — see components/shell/AppShell.tsx); each still runs
+      // its own loader gate exactly as before nesting.
       {
-        path: "/workspace",
-        loader: workspaceLoader,
-        element: (
-          <TenantProvider>
-            <WorkspacePage />
-          </TenantProvider>
-        ),
-      },
-      {
-        path: "/settings/security",
-        loader: securitySettingsLoader,
-        element: <SecuritySettingsPage />,
+        element: <AppShell />,
+        children: [
+          {
+            path: "/workspace",
+            loader: workspaceLoader,
+            element: (
+              <TenantProvider>
+                <WorkspacePage />
+              </TenantProvider>
+            ),
+          },
+          {
+            path: "/settings/security",
+            loader: securitySettingsLoader,
+            element: <SecuritySettingsPage />,
+          },
+        ],
       },
       { path: "*", element: <NotFoundPage /> },
     ],

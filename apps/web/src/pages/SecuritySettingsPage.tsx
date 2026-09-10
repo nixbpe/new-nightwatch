@@ -5,7 +5,6 @@ import { Link, Navigate } from "react-router";
 
 import {
   Alert,
-  AuthPageShell,
   Field,
   FieldValidationError,
   FullPageLoading,
@@ -125,41 +124,35 @@ export function SecuritySettingsPage() {
   }
   if (meQuery.isError) {
     return (
-      <AuthPageShell
-        title="ความปลอดภัยของบัญชี"
-        subtitle="ยืนยันสองขั้นตอน (TOTP) ช่วยเพิ่มความปลอดภัยให้บัญชีของคุณ — เปิดใช้งานได้ตามต้องการ ไม่บังคับ"
-      >
-        <div className="flex flex-col gap-4">
-          <Alert tone="error">
-            ไม่สามารถตรวจสอบสถานะยืนยันสองขั้นตอนได้ กรุณาลองใหม่อีกครั้ง
-          </Alert>
-          <button
-            type="button"
-            disabled={meQuery.isRefetching}
-            onClick={() => {
-              void meQuery.refetch();
-            }}
-            className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {meQuery.isRefetching ? "กำลังโหลด…" : "ลองใหม่"}
-          </button>
-          <p className="text-sm">
-            <Link to="/workspace" className="text-primary underline">
-              กลับไปพื้นที่ทำงาน
-            </Link>
-          </p>
-        </div>
-      </AuthPageShell>
+      <div className="flex flex-col gap-4">
+        <PageHeading />
+        <Alert tone="error">
+          ไม่สามารถตรวจสอบสถานะยืนยันสองขั้นตอนได้ กรุณาลองใหม่อีกครั้ง
+        </Alert>
+        <button
+          type="button"
+          disabled={meQuery.isRefetching}
+          onClick={() => {
+            void meQuery.refetch();
+          }}
+          className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {meQuery.isRefetching ? "กำลังโหลด…" : "ลองใหม่"}
+        </button>
+        <p className="text-sm">
+          <Link to="/workspace" className="text-primary underline">
+            กลับไปพื้นที่ทำงาน
+          </Link>
+        </p>
+      </div>
     );
   }
 
   const twoFactorEnabled = meQuery.data.user.twoFactorEnabled;
 
   return (
-    <AuthPageShell
-      title="ความปลอดภัยของบัญชี"
-      subtitle="ยืนยันสองขั้นตอน (TOTP) ช่วยเพิ่มความปลอดภัยให้บัญชีของคุณ — เปิดใช้งานได้ตามต้องการ ไม่บังคับ"
-    >
+    <div className="flex flex-col gap-6">
+      <PageHeading />
       <div className="flex flex-col gap-4">
         <p className="text-sm text-foreground-secondary">
           สถานะปัจจุบัน:{" "}
@@ -362,7 +355,19 @@ export function SecuritySettingsPage() {
           </Link>
         </p>
       </div>
-    </AuthPageShell>
+    </div>
+  );
+}
+
+function PageHeading() {
+  return (
+    <div>
+      <h1 className="text-xl font-semibold">ความปลอดภัยของบัญชี</h1>
+      <p className="mt-1 text-sm text-foreground-secondary">
+        ยืนยันสองขั้นตอน (TOTP) ช่วยเพิ่มความปลอดภัยให้บัญชีของคุณ —
+        เปิดใช้งานได้ตามต้องการ ไม่บังคับ
+      </p>
+    </div>
   );
 }
 

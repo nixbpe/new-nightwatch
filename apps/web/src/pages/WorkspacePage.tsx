@@ -1,6 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 
 import {
   Alert,
@@ -16,7 +16,6 @@ import { INVITABLE_ROLES, ROLE_LABELS, type InvitableRole } from "../lib/roles";
 import { useTenant } from "../lib/tenant/TenantProvider";
 
 export function WorkspacePage() {
-  const navigate = useNavigate();
   const {
     me,
     mePending,
@@ -62,79 +61,50 @@ export function WorkspacePage() {
   const memberships = me.organizations;
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-control-border/40 bg-surface">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-4 px-4 py-3">
-          <span className="text-lg font-semibold">NightWatch</span>
-          {memberships.length > 1 ? (
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-foreground-secondary">องค์กร</span>
-              <select
-                name="active-organization"
-                value={activeOrg?.id ?? ""}
-                disabled={orgSwitchPending}
-                onChange={(event) => {
-                  void switchOrg(event.target.value);
-                }}
-                className="rounded-md border border-control-border bg-surface px-2 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {memberships.map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+    <div className="flex flex-col gap-6">
+      {memberships.length > 1 ? (
+        <label className="flex items-center gap-2 self-end text-sm">
+          <span className="text-foreground-secondary">องค์กร</span>
+          <select
+            name="active-organization"
+            value={activeOrg?.id ?? ""}
+            disabled={orgSwitchPending}
+            onChange={(event) => {
+              void switchOrg(event.target.value);
+            }}
+            className="rounded-md border border-control-border bg-surface px-2 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {memberships.map((org) => (
+              <option key={org.id} value={org.id}>
+                {org.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {activeOrg === null ? (
+        <AccessNeeded email={me.user.email} />
+      ) : (
+        <div className="flex flex-col gap-6">
+          <section className="rounded-lg bg-surface p-6 shadow-sm">
+            <h1 className="text-xl font-semibold">{activeOrg.name}</h1>
+            <p className="mt-1 text-sm text-foreground-secondary">
+              slug: {activeOrg.slug} — บทบาทของคุณ:{" "}
+              {ROLE_LABELS[activeOrg.role] ?? activeOrg.role}
+            </p>
+            <p className="mt-4 text-sm text-foreground-secondary">
+              ยังไม่มีข้อมูลการสแกนหรือสถานะระบบสำหรับองค์กรนี้
+              ข้อมูลการตรวจสอบจะปรากฏที่นี่เมื่อเปิดใช้งานโมดูลการสแกน
+            </p>
+          </section>
+          {activeOrg.role === "owner" || activeOrg.role === "admin" ? (
+            <InviteMemberPanel
+              organizationId={activeOrg.id}
+              organizationName={activeOrg.name}
+            />
           ) : null}
-          <div className="ms-auto flex items-center gap-4 text-sm">
-            <span className="text-foreground-secondary">{me.user.email}</span>
-            <Link to="/settings/security" className="text-primary underline">
-              ความปลอดภัย
-            </Link>
-            <button
-              type="button"
-              className="text-foreground-secondary underline"
-              onClick={() => {
-                void authClient.signOut({
-                  fetchOptions: {
-                    onSuccess: () => {
-                      void navigate("/login", { replace: true });
-                    },
-                  },
-                });
-              }}
-            >
-              ออกจากระบบ
-            </button>
-          </div>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-5xl px-4 py-8">
-        {activeOrg === null ? (
-          <AccessNeeded email={me.user.email} />
-        ) : (
-          <div className="flex flex-col gap-6">
-            <section className="rounded-lg bg-surface p-6 shadow-sm">
-              <h1 className="text-xl font-semibold">{activeOrg.name}</h1>
-              <p className="mt-1 text-sm text-foreground-secondary">
-                slug: {activeOrg.slug} — บทบาทของคุณ:{" "}
-                {ROLE_LABELS[activeOrg.role] ?? activeOrg.role}
-              </p>
-              <p className="mt-4 text-sm text-foreground-secondary">
-                ยังไม่มีข้อมูลการสแกนหรือสถานะระบบสำหรับองค์กรนี้
-                ข้อมูลการตรวจสอบจะปรากฏที่นี่เมื่อเปิดใช้งานโมดูลการสแกน
-              </p>
-            </section>
-            {activeOrg.role === "owner" || activeOrg.role === "admin" ? (
-              <InviteMemberPanel
-                organizationId={activeOrg.id}
-                organizationName={activeOrg.name}
-              />
-            ) : null}
-          </div>
-        )}
-      </main>
+      )}
     </div>
   );
 }
