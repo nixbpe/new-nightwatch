@@ -89,7 +89,18 @@ const versionRoute = createRoute({
 });
 
 export function createApp(deps: AppDeps): OpenAPIHono {
-  const app = new OpenAPIHono();
+  const app = new OpenAPIHono({
+    defaultHook: (result, c) => {
+      if (result.success) return;
+      const body: ErrorResponse = {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+        },
+      };
+      return c.json(body, 400);
+    },
+  });
 
   app.use("*", requestId());
 

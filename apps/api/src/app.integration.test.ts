@@ -157,6 +157,32 @@ describe("auth boundary wiring", () => {
     } satisfies Database;
   }
 
+  it("returns the canonical 400 envelope for request-validation failures without leaking input", async () => {
+    const submittedOrganizationId = "submitted-invalid-organization-id";
+    const app = makeApp({
+      auth: stubAuth,
+      database: stubDatabase(() => ({ rows: [] })),
+    });
+    const res = await app.request("/api/me/active-org", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ organizationId: submittedOrganizationId }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(errorResponseSchema.parse(body)).toEqual({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Request validation failed",
+      },
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain("success");
+    expect(serializedBody).not.toContain("ZodError");
+    expect(serializedBody).not.toContain(submittedOrganizationId);
+  });
+
   it("routes /api/auth/* through the composed auth handler", async () => {
     const app = makeApp({
       auth: stubAuth,
