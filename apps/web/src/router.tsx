@@ -8,6 +8,7 @@ import {
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppShell } from "./components/shell/AppShell";
+import { AuthLayout } from "./components/shell/AuthLayout";
 import { ShieldIcon } from "./components/shell/icons";
 import {
   requireAnonLoader,
@@ -91,36 +92,48 @@ export const routes: RouteObject[] = [
     element: <RootLayout />,
     children: [
       { path: "/", loader: rootLoader },
-      { path: "/login", loader: requireAnonLoader, element: <LoginPage /> },
+      // Every route with no sidebar/header shares AuthLayout (Step 5 — see
+      // components/shell/AuthLayout.tsx for how "layout switching" works
+      // here). Each keeps its own existing loader gate unchanged.
       {
-        path: "/forgot-password",
-        loader: requireAnonLoader,
-        element: <ForgotPasswordPage />,
+        element: <AuthLayout />,
+        children: [
+          {
+            path: "/login",
+            loader: requireAnonLoader,
+            element: <LoginPage />,
+          },
+          {
+            path: "/forgot-password",
+            loader: requireAnonLoader,
+            element: <ForgotPasswordPage />,
+          },
+          {
+            path: "/reset-password",
+            loader: requireAnonLoader,
+            element: <ResetPasswordPage />,
+          },
+          {
+            path: "/accept-invitation/:invitationId",
+            element: <AcceptInvitationPage />,
+          },
+          // The two-factor plugin owns arrivals here via a full navigation;
+          // the page applies its own challenge rules.
+          { path: "/two-factor", element: <TwoFactorPage /> },
+          // Resend hub for the not-yet-verified. Signup issues no session
+          // before verification, so this page must stay reachable for
+          // anonymous arrivals: it offers explicit, safe email entry itself
+          // (see VerifyEmailPage).
+          {
+            path: "/verify-email",
+            loader: verifyEmailLoader,
+            element: <VerifyEmailPage />,
+          },
+          // Onboarding handles anonymous, unverified and token-carrying
+          // arrivals itself, so it stays outside the loader gates.
+          { path: "/onboarding", element: <OnboardingPage /> },
+        ],
       },
-      {
-        path: "/reset-password",
-        loader: requireAnonLoader,
-        element: <ResetPasswordPage />,
-      },
-      {
-        path: "/accept-invitation/:invitationId",
-        element: <AcceptInvitationPage />,
-      },
-      // The two-factor plugin owns arrivals here via a full navigation;
-      // the page applies its own challenge rules.
-      { path: "/two-factor", element: <TwoFactorPage /> },
-      // Resend hub for the not-yet-verified. Signup issues no session
-      // before verification, so this page must stay reachable for
-      // anonymous arrivals: it offers explicit, safe email entry itself
-      // (see VerifyEmailPage).
-      {
-        path: "/verify-email",
-        loader: verifyEmailLoader,
-        element: <VerifyEmailPage />,
-      },
-      // Onboarding handles anonymous, unverified and token-carrying
-      // arrivals itself, so it stays outside the loader gates.
-      { path: "/onboarding", element: <OnboardingPage /> },
       // Authenticated app pages share the AppShell layout (header/sidebar/
       // main/footer — see components/shell/AppShell.tsx); each still runs
       // its own loader gate exactly as before nesting.
