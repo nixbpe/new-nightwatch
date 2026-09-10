@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "codegen:check": "bun scripts/codegen-openapi.mjs --check"
   },
   "dependencies": {
     "@nightwatch/api-contract": "workspace:*",

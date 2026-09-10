@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+/* global process, console */
 /**
  * Regenerate src/lib/api/openapi-types.gen.ts from the API's OpenAPI
  * document. Run via `bun run codegen` in apps/web.
@@ -11,6 +12,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +21,7 @@ import openapiTS, { astToString } from "openapi-typescript";
 const webRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const apiDir = join(webRoot, "..", "api");
 const outFile = join(webRoot, "src", "lib", "api", "openapi-types.gen.ts");
+const isCheck = process.argv.includes("--check");
 
 const HEADER = `/**
  * GENERATED FILE — DO NOT EDIT.
@@ -30,15 +33,37 @@ const HEADER = `/**
 `;
 
 const specDir = mkdtempSync(join(tmpdir(), "nightwatch-openapi-"));
+const fail = (message) => {
+  console.error(message);
+  process.exitCode = 1;
+};
+
 try {
   const specFile = join(specDir, "openapi.json");
   execFileSync("bun", ["run", "emit-openapi", specFile], {
     cwd: apiDir,
     stdio: ["ignore", "inherit", "inherit"],
   });
+
   const spec = JSON.parse(readFileSync(specFile, "utf8"));
   const ast = await openapiTS(spec);
-  writeFileSync(outFile, HEADER + astToString(ast));
+  const generated = `${HEADER}${astToString(ast)}`;
+
+  if (isCheck) {
+    if (!existsSync(outFile)) {
+      fail(
+        `\n[codegen:check] Missing generated file: ${outFile}\nRun \`bun run codegen\` to regenerate it.`,
+      );
+    } else if (readFileSync(outFile, "utf8") !== generated) {
+      fail(
+        `[codegen:check] Generated OpenAPI contract is stale: ${outFile}\nRun \`bun run codegen\` to regenerate it.`,
+      );
+    } else {
+      console.info("[codegen:check] Generated file is up to date.");
+    }
+  } else {
+    writeFileSync(outFile, generated);
+  }
 } finally {
   rmSync(specDir, { recursive: true, force: true });
 }
