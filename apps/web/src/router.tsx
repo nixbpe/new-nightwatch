@@ -8,6 +8,7 @@ import {
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppShell } from "./components/shell/AppShell";
+import { ShieldIcon } from "./components/shell/icons";
 import {
   requireAnonLoader,
   rootLoader,
@@ -52,11 +53,19 @@ export function RootLayout() {
   );
 }
 
+// Deliberately standalone (not nested under AppShell): a bad URL is
+// reachable by anonymous and signed-in visitors alike, and the shell's
+// header shows session state that would be misleading for the former.
+// The one link resolves correctly either way — /workspace redirects an
+// anonymous visitor on to /login via its own loader.
 function NotFoundPage() {
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md rounded-lg bg-surface p-6 text-center shadow-sm">
-        <h1 className="text-2xl font-semibold">ไม่พบหน้านี้</h1>
+        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-md bg-primary text-on-primary">
+          <ShieldIcon size={20} />
+        </span>
+        <h1 className="mt-3 text-2xl font-semibold">ไม่พบหน้านี้</h1>
         <p className="mt-2 text-sm text-foreground-secondary">
           ตรวจสอบที่อยู่หรือกลับไปยังพื้นที่ทำงาน
         </p>
