@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NightWatch</title>
+    <script>
+      // Apply a persisted explicit theme choice before first paint, so
+      // there's no flash of the system-default theme. Reads the same
+      // localStorage key as src/lib/theme.ts; "system" (or unset) leaves
+      // no attribute, so prefers-color-scheme decides as before.
+      (function () {
+        try {
+          var theme = localStorage.getItem("nightwatch-theme");
+          if (theme === "light" || theme === "dark") {
+            document.documentElement.setAttribute("data-theme", theme);
+          }
+        } catch (_error) {
+          // Storage unavailable (private mode, etc.) — system default applies.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { authClient } from "../../lib/auth-client";
+import { useTheme, type ThemePreference } from "../../lib/theme";
 import { getBreadcrumbTrail } from "./breadcrumb";
 import {
   BellIcon,
@@ -9,6 +10,7 @@ import {
   ChevronRightIcon,
   LogOutIcon,
   MenuIcon,
+  MonitorIcon,
   SearchIcon,
   ShieldIcon,
   UserIcon,
@@ -21,12 +23,14 @@ import {
  * not just unstyled, so they don't read as broken features), and a user
  * avatar dropdown. "Profile" has no real destination yet and is marked as
  * such; "settings" and "sign out" stay fully functional (moved here from
- * Step 1's plain header button).
+ * Step 1's plain header button). Step 6 adds the persisted theme toggle
+ * inside that same dropdown (lib/theme.ts).
  */
 export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { data } = authClient.useSession();
+  const { theme, setTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -175,6 +179,11 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
                 <ShieldIcon size={16} />
                 <span>ตั้งค่าความปลอดภัย</span>
               </Link>
+              <div className="flex items-center gap-2 px-2.5 py-2 text-sm text-foreground">
+                <MonitorIcon size={16} />
+                <span className="flex-1">ธีม</span>
+                <ThemeSegmentedControl theme={theme} onChange={setTheme} />
+              </div>
               <div className="my-1 h-px bg-control-border/40" />
               <button
                 type="button"
@@ -199,5 +208,48 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
         </div>
       </div>
     </header>
+  );
+}
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "light", label: "สว่าง" },
+  { value: "dark", label: "มืด" },
+  { value: "system", label: "ระบบ" },
+];
+
+function ThemeSegmentedControl({
+  theme,
+  onChange,
+}: {
+  theme: ThemePreference;
+  onChange: (theme: ThemePreference) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="ธีม"
+      className="flex gap-0.5 rounded-md bg-background p-0.5"
+    >
+      {THEME_OPTIONS.map((option) => {
+        const active = option.value === theme;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => {
+              onChange(option.value);
+            }}
+            className={`rounded px-2 py-0.5 text-xs font-medium ${
+              active
+                ? "bg-surface text-foreground shadow-sm"
+                : "text-foreground-secondary"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

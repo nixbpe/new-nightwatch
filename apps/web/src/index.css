@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 /*
- * NightWatch design tokens (docs/design-system.md): semantic roles only,
- * light/dark via prefers-color-scheme. Not the full design system.
+ * NightWatch design tokens (docs/design-system.md): semantic roles only.
+ * Default follows prefers-color-scheme; an explicit choice (Step 6's
+ * header theme toggle, src/lib/theme.ts) sets data-theme on <html> and
+ * overrides it — same token values either way, no new colors introduced.
  *
  * shadcn/ui CSS variables are mapped onto the same NightWatch tokens
  * (components.json cssVariables: true) — one source of truth for both
@@ -32,6 +34,33 @@
     --caution: #f2be5c;
     --control-border: #6b7582;
   }
+}
+
+/* Explicit choice wins over the system default either way — same values
+   as above, restated as attribute selectors so they win regardless of
+   prefers-color-scheme (equal specificity, later in source). */
+:root[data-theme="light"] {
+  --background: #f7f8fa;
+  --surface: #ffffff;
+  --foreground: #171a1f;
+  --foreground-secondary: #5b6470;
+  --primary: #087a55;
+  --on-primary: #ffffff;
+  --danger: #be123c;
+  --caution: #8a5a00;
+  --control-border: #7b8490;
+}
+
+:root[data-theme="dark"] {
+  --background: #111315;
+  --surface: #1b1e22;
+  --foreground: #f3f4f6;
+  --foreground-secondary: #adb5bf;
+  --primary: #3ecf8e;
+  --on-primary: #11251c;
+  --danger: #fb7185;
+  --caution: #f2be5c;
+  --control-border: #6b7582;
 }
 
 @theme inline {
