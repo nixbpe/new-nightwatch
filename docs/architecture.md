@@ -198,6 +198,7 @@ Request
 - REQ-08 Network and CPU work MUST remain outside SQL transactions.
 - XC-01 Input validation MUST use Zod schemas from `api-contract` and shared validators from `shared`.
 - XC-02 Errors: `AppError(status, code, message, details?)` → `{ error: { code, message, details? } }`. The first argument MUST be status. The code-first overload MUST NOT be reintroduced. Production-like environments MUST present unknown errors generically.
+- XC-12 Application request-validation failures MUST use the canonical error envelope (`api-contract`). This includes failures from framework validation hooks before handlers. Responses MUST NOT expose raw Zod issues, submitted input, credentials, tokens, or stack traces.
 - XC-06 Rate limiting MUST use a Redis sliding window separate from auth throttling, with a bounded limiter timeout (baseline 2 s). Limiter errors MUST be tested. Fail-closed behavior MUST NOT be assumed.
 
 ### 4.2 Identity and session integration boundary
@@ -209,6 +210,7 @@ Identity uses Better Auth with PostgreSQL/Drizzle and includes users, sessions, 
 - AUTH-10 `CORS_ORIGIN`, `APP_URL`, and `trustedOrigins` MUST be consistent. Credentialed CORS with an exact origin MUST run before the auth handler.
 - AUTH-11 Raw identity-library endpoints MUST return the library's error shape. Application routes MUST use the `api-contract` envelope (XC-02).
 - AUTH-12 Auth usage MUST remain within the CTX-01 landing boundary and XC-07 logging exclusions, with no auth-specific exceptions.
+- AUTH-13 Post-authentication and return destinations are untrusted input. Canonicalization MUST yield same-origin absolute paths. It MUST occur before persistence and redirects, and on browser-storage reads. Protocol-relative paths and external origins MUST fall back to `/workspace`. Paths with literal or percent-encoded backslashes MUST also fall back. The same applies to literal or percent-encoded control characters.
 
 ### 4.3 Tenant context and organization access
 
@@ -257,14 +259,16 @@ Queue names, concurrency, and attempts define execution channels, not business b
 
 ### 4.5 Web SPA integration architecture
 
-- FE-01 The typed client in `apps/web/src/lib/api` MUST call `/api` with credentials and handle JSON, empty no-content responses, and non-OK responses.
-- FE-02 Responses MUST be validated at runtime with schemas from `api-contract`. TypeScript generics do not validate data. `ApiError` exposes server `error.code` and `details` only when explicitly mapped.
-- FE-05 Query keys MUST include `organizationId`, `projectId`, filters, and selected ids. Inflight responses MUST NOT populate another tenant’s view.
+- FE-01 The typed client in `apps/web/src/lib/api` MUST call `/api` with credentials. It MUST handle JSON, empty no-content responses, and non-OK responses. The real API composition MUST produce the OpenAPI source. Every operation's path, method, and path-parameter types MUST derive from it. Every operation's request-body and successful-response types MUST also derive from it. These types MUST NOT be handwritten.
+- FE-02 Responses MUST be validated at runtime with schemas from `api-contract`. TypeScript generics do not validate data. `ApiError` exposes server `error.code` and `details` only when explicitly mapped. Each operation's runtime schema MUST be statically compatible with its generated success type.
+- FE-05 Query keys MUST include `organizationId`, `projectId`, filters, and selected ids. Inflight responses MUST NOT populate another tenant’s view. Each QueryClient MUST be scoped by resolved authentication identity.
 - FE-06 Active work status refresh uses polling, not WebSocket or SSE. Polling cadence is a code tuning value, not an architecture rule.
 - FE-07 Role helpers and router helpers are for UX only. Authorization belongs in the API.
 - FE-08 UI structure, tokens, and accessibility MUST follow `docs/design-system.md`, which owns UX/UI.
 - FE-09 A browser-selected tenant value is only a UX hint. The client MUST NOT trust a selected or request-supplied value without server verification (REQ-03).
 - FE-10 The client MUST replace the tenant boundary only after the server confirms the context change. State bound to the previous tenant MUST be invalidated, and inflight results MUST be prevented from crossing into the new context.
+- FE-11 Data loaders and their rendered trees MUST share the QueryClient for the same resolved identity. A loader/session identity mismatch MUST stop before query prefetch or route commit.
+- FE-12 Protected data routes MUST prefetch their primary query before route commit. Loader redirects and prefetching are UX only. The API MUST enforce authentication, authorization, and membership (FE-07).
 
 ### 4.6 Outbound integration boundary
 
@@ -368,13 +372,14 @@ This checklist checks only the architecture rules in this document. It is not fe
 
 - [ ] Routes are classified as tenant-protected, pre-tenant, or platform access (REQ-02)
 - [ ] Membership is verified before data access, and client-supplied tenant values are not trusted without verification (REQ-03, REQ-04, FE-09)
+- [ ] Return destinations are canonical before persistence and redirects, and on storage reads. Unsafe values fall back safely (AUTH-13)
 - [ ] Every operation has an explicit permission guard, and platform access is limited to that operation (REQ-06, CTX-04)
 - [ ] Tenant SQL uses the helper and provided `tx`; values are bound, and predicates, identifiers, and parent scope follow their owning rules (TSQL-01, TSQL-02, TSQL-09, TSQL-10, TSQL-11)
 - [ ] Migrations for new domain tables include RLS policies, FORCE RLS, and complete runtime grants (TSQL-04, DATA-07)
 - [ ] Tenant context is resolved server-side from authenticated identity and verified current membership (REQ-03, REQ-04, ORG-02)
 - [ ] Remembered or denormalized tenant values, including session mirrors, are revalidated every time and are not authorization evidence (ORG-03, ORG-04)
 - [ ] Tenant-context changes revalidate membership and atomically update dependent auth context (ORG-04)
-- [ ] The client replaces the tenant boundary only after server confirmation; previous tenant state is invalidated, and inflight results cannot cross contexts (FE-09, FE-10, FE-05)
+- [ ] Change identity or tenant only after server confirmation. Stop loader/session identity mismatches before prefetch or route commit. Invalidate old state. Prevent inflight results from crossing contexts (FE-05, FE-09, FE-10, FE-11)
 - [ ] Logs, jobs, ledger entries, and audit payloads contain no secrets or one-time links/tokens (XC-07, XC-03, QUE-13)
 - [ ] Outbound calls use SSRF helpers according to protocol applicability (XC-05, XC-10)
 
@@ -403,13 +408,14 @@ This checklist checks only the architecture rules in this document. It is not fe
 
 - [ ] Network and CPU work remains outside SQL transactions (REQ-08)
 - [ ] Batch and concurrency limits are explicit and defined per instance (QUE-01, QUE-10)
-- [ ] Query keys and caches are isolated by tenant and Project (FE-05)
+- [ ] Isolate QueryClients by resolved identity. Isolate query keys and caches by tenant and Project (FE-05, FE-11)
 - [ ] Partitioned tables have pre-created partitions (DATA-08)
 
 ### 7.6 Maintainability and boundaries
 
 - [ ] Dependency direction and package layout are followed, including enforcement coverage checks (PKG-01, PKG-02, PKG-03, PKG-04, PKG-05)
-- [ ] Clients validate responses against `api-contract` and use the specified error envelope and argument order (FE-02, XC-02)
+- [ ] Generate client operation types from current OpenAPI. Validate responses with compatible `api-contract` schemas (FE-01, FE-02)
+- [ ] Application/framework request-validation failures use the canonical error envelope. They do not expose validation internals or submitted input (XC-01, XC-02, XC-12)
 - [ ] There is no service split, DI container, speculative repository layer, or circular import (CON-02, PKG-03)
 - [ ] Prowler and runtime dependency versions are pinned (QUE-06, DEP-02)
 

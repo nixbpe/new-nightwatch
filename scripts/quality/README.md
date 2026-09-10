@@ -91,9 +91,22 @@ worktree's generated URLs through `scripts/dev-env.mjs` (shell env still
 wins):
 
 ```sh
-bun run db:up   # generates .env.compose.local (gitignored, 0600)
-eval "$(bun -e 'const { resolveDevEnv } = await import("./scripts/dev-env.mjs"); const { env } = resolveDevEnv(); for (const k of ["DATABASE_URL", "DATABASE_OWNER_URL"]) if (env[k]) console.log(`export ${k}=${JSON.stringify(env[k])}`);')"
-bun run test:integration
+(
+  set -e
+  bun run db:up # generates .env.compose.local (gitignored, 0600)
+  trap 'bun run db:down' EXIT
+  bun -e '
+    const { resolveDevEnv } = await import("./scripts/dev-env.mjs");
+    const { env } = resolveDevEnv();
+    const child = Bun.spawn(["bun", "run", "test:integration"], {
+      env,
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    process.exit(await child.exited);
+  '
+)
 ```
 
 CI needs no extra wiring: the `test` job already exports both database URLs
@@ -115,6 +128,79 @@ from its disposable PostgreSQL service and runs `bun run db:migrate` before
   generated per run. Never promote them to any real environment.
 - New DB-backed jobs must reuse the same service block and role bootstrap
   instead of inventing parallel database setup.
+
+## OpenAPI client drift
+
+Web operation types come from OpenAPI emitted by the real API composition.
+Generation runs in-process; no API, database, or SMTP server is needed.
+
+```sh
+bun run --cwd apps/web codegen # regenerate and commit the client types
+bun run codegen:check          # check committed output without changing it
+```
+
+- `apps/api/src/operator/emit-openapi.ts` composes the API and emits OpenAPI.
+  `apps/web/scripts/codegen-openapi.mjs` converts it. Output:
+  `apps/web/src/lib/api/openapi-types.gen.ts`.
+- API route or schema changes MUST run Web `codegen` and commit its output.
+  Never edit or format it directly. Prettier ignores it; drift checks compare bytes.
+- Root `validate` runs `codegen:check` before lint, typecheck, and tests. CI
+  `typecheck` runs the same command after a frozen install, so stale output
+  blocks pull requests.
+- Turbo caching is off because Web reads API sources outside its package. A
+  cache could miss API-only changes. Architecture requirements remain in FE-01
+  and FE-02. This section defines only drift checks.
+
+## Playwright E2E
+
+Playwright is already configured in `e2e/playwright.config.ts`. It starts both
+development servers itself and runs `e2e/tests` in Chromium. Install isolated
+E2E dependencies and Chromium once:
+
+```sh
+bun run e2e:setup
+```
+
+The API fails fast without local PostgreSQL and Mailpit. Use the same resolved
+development environment as `bun run dev`:
+
+```sh
+(
+  set -e
+  bun run db:up
+  trap 'bun run db:down' EXIT
+  bun -e '
+    const { resolveDevEnv } = await import("./scripts/dev-env.mjs");
+    const { env } = resolveDevEnv();
+    for (const script of ["db:migrate", "e2e"]) {
+      const child = Bun.spawn(["bun", "run", script], {
+        env,
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      const exitCode = await child.exited;
+      if (exitCode !== 0) process.exit(exitCode);
+    }
+  '
+)
+```
+
+Resolved values pass directly in `env`, never through shell source. The `EXIT`
+trap cleans up after success, migration/E2E failure, or interruption. Cleanup affects only
+the current worktree's containers and network. It keeps the database volume
+unless `db:down -- -v` is used.
+
+The suite covers observable browser/API contracts. These include public auth
+entry and client-side validation without an invalid boundary request. They also
+include data-router redirects, safe invitation failure, and the typed API
+greeting. It supplements, but does not replace, unit and database integration
+tests.
+
+CI runs Playwright only in the dispatch-only `full` release-stage job. It reuses
+shared PostgreSQL/Mailpit services and bootstraps the runtime role. It migrates
+and installs Chromium with system dependencies. It then runs the same root
+`e2e` command.
 
 ## Security script shape
 
