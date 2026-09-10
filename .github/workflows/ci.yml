@@ -53,6 +53,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
+      - run: bun run codegen:check
       - run: bun run typecheck
 
   # Coverage is measured and uploaded on every run; thresholds fail the build
