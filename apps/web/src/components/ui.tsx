@@ -126,14 +126,17 @@ export function Alert({
 }) {
   const className =
     tone === "error"
-      ? "border-danger/40 text-danger"
+      ? // Soft danger-tinted wash instead of the flat page background: the
+        // tint alone signals "error state" even at a glance, while icon/text
+        // stay the only fully-saturated danger color (docs/design-system.md).
+        "border-danger/40 bg-danger/8 text-danger"
       : tone === "success"
-        ? "border-primary/40 text-primary"
-        : "border-control-border text-foreground-secondary";
+        ? "border-primary/40 bg-background text-primary"
+        : "border-control-border bg-background text-foreground-secondary";
   return (
     <p
       role="alert"
-      className={`rounded-md border bg-background px-3 py-2 text-sm ${className}`}
+      className={`rounded-md border px-3 py-2 text-sm ${className}`}
     >
       {children}
     </p>
