@@ -322,8 +322,10 @@ describe("LoginPage", () => {
     await submitLogin("member@example.com", "correct-password");
 
     // No client-side navigation and no error: the challenge is pending.
+    // (Heading text follows the split-layout redesign — "NightWatch" now
+    // lives in the brand panel/compact row, not the form heading itself.)
     expect(
-      await screen.findByRole("heading", { name: "เข้าสู่ระบบ NightWatch" }),
+      await screen.findByRole("heading", { name: "เข้าสู่ระบบ" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByTestId("location")).toBeNull();

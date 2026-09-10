@@ -189,7 +189,9 @@ describe("AcceptInvitationPage", () => {
     await user.click(
       await screen.findByRole("link", { name: "เข้าสู่ระบบเพื่อรับคำเชิญ" }),
     );
-    await screen.findByRole("heading", { name: "เข้าสู่ระบบ NightWatch" });
+    // Heading text follows the login page's split-layout redesign —
+    // "NightWatch" now lives in its brand panel/compact row, not this heading.
+    await screen.findByRole("heading", { name: "เข้าสู่ระบบ" });
 
     await user.type(screen.getByLabelText("อีเมล"), "new@example.com");
     await user.type(screen.getByLabelText("รหัสผ่าน"), "super-secret-1");
