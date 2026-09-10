@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { clearReturnTo, readPostAuthDestination } from "../lib/auth/continuation";
+import {
+  clearReturnTo,
+  readPostAuthDestination,
+} from "../lib/auth/continuation";
 import { FullPageLoading } from "./ui";
 
 /**

@@ -1,11 +1,6 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  createContext,
-  useContext,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 import {
   fetchMeContext,
@@ -69,9 +64,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   // Guard, tenant-cache retirement and success ordering are behavioral
   // contracts; React Compiler handles render-performance memoization.
-  const switchOrg = async (
-    organizationId: string,
-  ): Promise<boolean> => {
+  const switchOrg = async (organizationId: string): Promise<boolean> => {
     if (
       memberships?.some((org) => org.id === organizationId) !== true ||
       organizationId === activeOrg?.id

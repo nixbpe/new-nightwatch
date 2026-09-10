@@ -15,10 +15,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 function stubFetch(response: Response): void {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(response),
-  );
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
 }
 
 /** The single fetch call openapi-fetch issued, as a Request instance. */
@@ -37,7 +34,14 @@ const meContextFixture: MeContextResponse = {
     emailVerified: true,
     twoFactorEnabled: false,
   },
-  organizations: [{ id: "550e8400-e29b-41d4-a716-446655440001", name: "Acme", slug: "acme", role: "owner" }],
+  organizations: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      name: "Acme",
+      slug: "acme",
+      role: "owner",
+    },
+  ],
   lastActiveTenantId: "550e8400-e29b-41d4-a716-446655440001",
 };
 
@@ -48,13 +52,15 @@ describe("api request helper", () => {
 
   it("returns the contract-parsed response", async () => {
     stubFetch(jsonResponse(200, meContextFixture));
-    await expect(request("/api/me/context", meContextResponseSchema)).resolves.toEqual(
-      meContextFixture,
-    );
+    await expect(
+      request("/api/me/context", meContextResponseSchema),
+    ).resolves.toEqual(meContextFixture);
   });
 
   it("sends credentials and JSON bodies for writes", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, meContextFixture));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, meContextFixture));
     vi.stubGlobal("fetch", fetchMock);
     await request("/api/me/active-org", meContextResponseSchema, {
       method: "PATCH",
@@ -107,9 +113,10 @@ describe("api request helper", () => {
         error: { code: "FORBIDDEN", message: "not allowed" },
       }),
     );
-    const failure = await request("/api/me/context", meContextResponseSchema).catch(
-      (error: unknown) => error,
-    );
+    const failure = await request(
+      "/api/me/context",
+      meContextResponseSchema,
+    ).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ApiError);
     expect(failure).toMatchObject({
       code: "FORBIDDEN",

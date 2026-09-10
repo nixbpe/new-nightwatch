@@ -12,7 +12,6 @@ import {
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
-
 /**
  * Target of the reset-password email link: /reset-password?token=<token>.
  * The token is submitted with the new password and consumed atomically by
@@ -91,7 +90,8 @@ export function ResetPasswordPage() {
       >
         {error === null ? null : (
           <Alert tone="error">
-            {error} <Link to="/forgot-password" className="font-medium underline">
+            {error}{" "}
+            <Link to="/forgot-password" className="font-medium underline">
               ขอลิงก์ใหม่
             </Link>
           </Alert>

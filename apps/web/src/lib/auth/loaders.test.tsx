@@ -1,4 +1,7 @@
-import type { InvitationResponse, MeContextResponse } from "@nightwatch/api-contract";
+import type {
+  InvitationResponse,
+  MeContextResponse,
+} from "@nightwatch/api-contract";
 import { render, screen } from "@testing-library/react";
 import {
   createMemoryRouter,
@@ -15,10 +18,7 @@ import {
   peekStagedQueryClient,
   resetQueryClientRegistry,
 } from "../queryClient";
-import {
-  rememberInvitation,
-  rememberReturnTo,
-} from "./continuation";
+import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
   requireAnonLoader,
   rootLoader,
@@ -42,8 +42,7 @@ const { sessionState } = vi.hoisted(() => ({
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
     useSession: () => ({ data: sessionState.data, isPending: false }),
-    getSession: () =>
-      Promise.resolve({ data: sessionState.data, error: null }),
+    getSession: () => Promise.resolve({ data: sessionState.data, error: null }),
   }),
 }));
 
@@ -209,10 +208,7 @@ describe("protected-route gates (workspaceLoader / securitySettingsLoader)", () 
   it("redirects / to /workspace and remembers /workspace as the bounce origin", async () => {
     // "/" itself redirects to /workspace; remembering "/" would loop the
     // login continuation back onto the bounce.
-    renderAt(
-      [{ path: "/", loader: rootLoader }, protectedWorkspace],
-      "/",
-    );
+    renderAt([{ path: "/", loader: rootLoader }, protectedWorkspace], "/");
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/login");
     expect(screen.getByTestId("from")).toHaveTextContent("/workspace");

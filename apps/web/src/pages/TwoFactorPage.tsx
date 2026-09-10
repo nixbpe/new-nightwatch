@@ -43,7 +43,10 @@ export function TwoFactorPage() {
     onSubmit: async ({ value }) => {
       setError(null);
       try {
-        const args = { code: value.code.trim(), trustDevice: value.trustDevice };
+        const args = {
+          code: value.code.trim(),
+          trustDevice: value.trustDevice,
+        };
         const { error: verifyError } =
           value.mode === "recovery"
             ? await authClient.twoFactor.verifyBackupCode(args)

@@ -46,9 +46,7 @@ export function createSessionQueryClient(): QueryClient {
  * `undefined` means no provider boundary has committed yet; `null` is the
  * distinct, committed anonymous identity.
  */
-export function peekActiveQueryClientIdentity():
-  | ResolvedIdentity
-  | undefined {
+export function peekActiveQueryClientIdentity(): ResolvedIdentity | undefined {
   return active?.identity;
 }
 

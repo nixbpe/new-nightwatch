@@ -41,7 +41,10 @@ export function SecuritySettingsPage() {
           await authClient.twoFactor.enable({ password: value.password });
         if (enableError != null) {
           setError(
-            authErrorMessage(enableError, "เปิดใช้งานยืนยันสองขั้นตอนไม่สำเร็จ"),
+            authErrorMessage(
+              enableError,
+              "เปิดใช้งานยืนยันสองขั้นตอนไม่สำเร็จ",
+            ),
           );
           return;
         }
@@ -98,7 +101,9 @@ export function SecuritySettingsPage() {
             password: value.password,
           });
         if (codesError != null) {
-          setError(authErrorMessage(codesError, "สร้างรหัสกู้คืนใหม่ไม่สำเร็จ"));
+          setError(
+            authErrorMessage(codesError, "สร้างรหัสกู้คืนใหม่ไม่สำเร็จ"),
+          );
           return;
         }
         setRegenerated(codesData.backupCodes);
@@ -283,7 +288,10 @@ export function SecuritySettingsPage() {
               <verifyForm.Subscribe
                 selector={(state) => state.isSubmitting}
                 children={(submitting) => (
-                  <SubmitButton pending={submitting} pendingLabel="กำลังยืนยัน…">
+                  <SubmitButton
+                    pending={submitting}
+                    pendingLabel="กำลังยืนยัน…"
+                  >
                     ยืนยันรหัสแรกและเปิดใช้งาน
                   </SubmitButton>
                 )}

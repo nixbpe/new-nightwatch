@@ -12,7 +12,6 @@ import {
 } from "../components/ui";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
-
 export function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,10 +108,7 @@ export function ForgotPasswordPage() {
           <form.Subscribe
             selector={(state) => state.isSubmitting}
             children={(isSubmitting) => (
-              <SubmitButton
-                pending={isSubmitting}
-                pendingLabel="กำลังส่ง…"
-              >
+              <SubmitButton pending={isSubmitting} pendingLabel="กำลังส่ง…">
                 ส่งลิงก์ตั้งรหัสผ่านใหม่
               </SubmitButton>
             )}

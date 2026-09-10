@@ -1,11 +1,7 @@
 import type { InvitationResponse } from "@nightwatch/api-contract";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  createMemoryRouter,
-  RouterProvider,
-  useLocation,
-} from "react-router";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";

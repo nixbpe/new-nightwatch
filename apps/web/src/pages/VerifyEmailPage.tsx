@@ -17,7 +17,6 @@ import { readInvitation } from "../lib/auth/continuation";
 
 const RESEND_COOLDOWN_MS = 60_000;
 
-
 /**
  * Resend hub for not-yet-verified accounts. Signup issues no session before
  * the email is verified (and unverified sign-in is refused), so a freshly

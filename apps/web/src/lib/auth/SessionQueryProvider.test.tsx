@@ -86,9 +86,7 @@ describe("SessionQueryProvider identity boundaries", () => {
     resolveQueryClientForIdentity("user-a").setQueryData(["me", "context"], {
       org: "Org A",
     });
-    transport.mockImplementation(
-      () => new Promise<{ org: string }>(() => {}),
-    );
+    transport.mockImplementation(() => new Promise<{ org: string }>(() => {}));
 
     render(<Harness userId="user-a" pending={false} />);
 
@@ -100,9 +98,7 @@ describe("SessionQueryProvider identity boundaries", () => {
   it("adopts a client staged by a loader running ahead of the identity swap", async () => {
     // Login flow: B's loader prefetched before the provider committed B.
     transport.mockImplementationOnce(() => Promise.resolve({ org: "Org A" }));
-    transport.mockImplementation(
-      () => new Promise<{ org: string }>(() => {}),
-    );
+    transport.mockImplementation(() => new Promise<{ org: string }>(() => {}));
 
     const tree = render(<Harness userId="user-a" pending={false} />);
     expect(await screen.findByText("Org A")).toBeInTheDocument();
