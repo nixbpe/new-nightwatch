@@ -14,11 +14,11 @@ Use the same semantic roles in both themes. Values below are opaque colors; they
 
 | Role | Light | Dark | Use |
 | --- | --- | --- | --- |
-| Canvas | `#F7F8FA` | `#111315` | Page background |
-| Surface | `#FFFFFF` | `#1B1E22` | Panels, fields, overlays |
+| Canvas | `#F7F8FA` | `#000000` | Page background |
+| Surface | `#FFFFFF` | `#121316` | Panels, fields, overlays |
 | Text | `#171A1F` | `#F3F4F6` | Primary content |
 | Secondary text | `#5B6470` | `#ADB5BF` | Supporting content, metadata |
-| Control boundary | `#7B8490` | `#6B7582` | Essential field/control outlines, not every panel |
+| Control boundary | `#7B8490` | `#5B6470` | Essential field/control outlines, not every panel |
 | Primary / positive | `#087A55` | `#3ECF8E` | Primary action, links, focus; positive status with a label |
 | On primary | `#FFFFFF` | `#11251C` | Text on a solid primary button only |
 | Caution | `#8A5A00` | `#F2BE5C` | Warning text/icons on Canvas or Surface |
@@ -29,11 +29,13 @@ Use the same semantic roles in both themes. Values below are opaque colors; they
 - Use color with text, icons, position or line styles. Do not imply success from a green primary action or classify business risk through an invented numeric threshold.
 - Charts reuse these roles for status; use direct labels and line/marker distinctions for unrelated series. Avoid adding a rainbow palette.
 - Preserve hierarchy and state meaning across themes; respect the user's theme preference.
-- Opaque pairs above were checked using WCAG contrast. Rounded minimums: text/status colors on Canvas/Surface **5.03:1**; On primary **5.35:1**; control boundaries **3.56:1**. Recheck actual combinations, states and any transparency; this is not a claim of whole-interface accessibility.
+- Divider (alpha, not an opaque swatch): a translucent hairline — roughly Light `rgba(23, 26, 31, 0.06–0.10)` / Dark `rgba(255, 255, 255, 0.07–0.10)` — for row/table separators, card and panel edges, and secondary/outline button borders. Not a substitute for Control boundary on essential field/control outlines, and never the sole way to convey meaning.
+- Opaque pairs above were checked using WCAG contrast. Rounded minimums: text/status colors on Canvas/Surface **5.03:1**; On primary **5.35:1**; control boundaries **3.10:1** — this is the floor of the ≥ 3:1 rule below; do not darken the Dark control boundary further. Recheck actual combinations, states and any transparency; this is not a claim of whole-interface accessibility.
 
 ## Typography
 
-- Use a readable sans-serif with compatible Thai and Latin forms; prefer Inter for Latin and Noto Sans Thai for Thai. Use monospace only for identifiers or code, not all labels.
+- Use a readable sans-serif with compatible Thai and Latin forms; prefer Inter for Latin and Noto Sans Thai for Thai. Use a monospace face (e.g., JetBrains Mono) for identifiers, code, timestamps and numeric counts; keep all other text — full sentences and all Thai — in the sans-serif.
+- Slight letter-spacing (tracking) is permitted only on small Latin/numeric labels; never on Thai text, and never enough to risk clipping Thai marks.
 - Body and data: **14–16 px**, supporting labels: **12–14 px**, section/page headings: **20–28 px**; marketing display may reach **36–56 px**. Do not shrink essential content to fit a layout.
 - Use regular body text and medium/semibold emphasis; comfortable line height around **1.5**, allowing Thai marks without clipping. Keep casing natural.
 - Align numeric columns; show units, timezone and measurement window where needed. Never sacrifice legibility for density.
@@ -44,8 +46,10 @@ Use the same semantic roles in both themes. Values below are opaque colors; they
 - Keep a clear page title, scope and one dominant next action. Navigation remains understandable without hover; active location needs more than color.
 - Reflow to narrow screens and **200% text enlargement** without losing actions or labels. Contain necessary two-dimensional table scrolling; avoid whole-page horizontal scrolling.
 - Controls need usable targets: at least **24 × 24 px** or equivalent spacing; prefer **44 × 44 px** for touch. Offer density without tiny text or targets.
-- Show depth through Canvas/Surface and spacing. Reserve restrained shadows for floating overlays; no glow as a hierarchy device.
-- Use **6 px** corners for controls and **12 px** for panels/overlays; pills only for compact tags.
+- Show depth through Canvas/Surface, spacing and a hairline border on cards and panels (see Divider) in place of a shadow. Reserve shadows for floating overlays (menus, popovers, the command palette), which may carry a stronger multi-layer shadow than a card ever does; no glow as a hierarchy device — a live-data indicator and the focus ring are the only sanctioned uses of a small state-only glow.
+- Use **4 px** corners for controls, panels and overlays; use a full pill/circular radius only for compact status badges/tags, counters and avatars.
+- Avatars stay circular (people); organization marks, folder/notification icons and step indicators use the 4 px corner (system) — keep this distinction consistent.
+- Canvas may carry a very subtle grain texture (roughly 4–5% opacity, tonal to the surface ink) for atmosphere on data-dense views; keep it off Surface panels and never let it compete with content or reduce export legibility.
 
 ## Components
 
@@ -64,9 +68,7 @@ Apply only states and interactions relevant to the assigned flow; a pattern is n
 ## Do's and Don'ts
 
 - Support keyboard operation with visible focus, a logical order and meaningful control names. Never rely on hover, placeholder text or color alone.
-- Keep normal text contrast ≥ **4.5:1**, essential control/focus distinctions ≥ **3:1**. A focus indicator must remain visible against adjacent surfaces, including primary buttons; separate it from the button fill.
+- Keep normal text contrast ≥ **4.5:1**, essential control/focus distinctions ≥ **3:1**. A focus indicator must remain visible against adjacent surfaces, including primary buttons; separate it from the button fill — a state-only glow may accompany the ring but never substitutes for that offset.
 - Keep motion brief and purposeful; respect reduced-motion preferences and never require animation to reveal essential content.
 - Before accepting a design, review both themes, narrow layouts, enlarged text, keyboard/focus and relevant error/empty/permission states. Palette math alone does not prove those behaviors.
 - Do not prescribe libraries, markup, storage, build tooling or deployment here. Do not claim a design is implemented merely because it is documented.
-
-References: [Google DESIGN.md outline](https://github.com/google-labs-code/design.md/blob/main/docs/spec.md); [Supabase-inspired palette](https://github.com/VoltAgent/awesome-design-md/blob/main/design-md/supabase/DESIGN.md) for restrained emerald; [Linear-inspired hierarchy](https://github.com/VoltAgent/awesome-design-md/blob/main/design-md/linear.app/DESIGN.md) for neutral surfaces. The latter two are community analyses, not official brand standards; NightWatch's light/dark pairs above are adapted and checked independently.
