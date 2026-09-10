@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  peekStagedQueryClient,
   resetQueryClientRegistry,
   resolveQueryClientForIdentity,
 } from "../queryClient";
@@ -114,6 +115,38 @@ describe("SessionQueryProvider identity boundaries", () => {
     expect(await screen.findByText("Org B")).toBeInTheDocument();
     // B's tree consumed the staged prefetch instead of fetching again.
     expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it("never relabels a loader-staged client when hydration resolves a different identity", async () => {
+    // Loader/session race: the loader of the initial URL prefetched A's
+    // me/context into A's staged client, but the session atom resolves to
+    // user B. The adopted staged client must be discarded — never served
+    // to B, never published as B's active client.
+    const stagedClient = resolveQueryClientForIdentity("user-a");
+    stagedClient.setQueryData(["me", "context"], { org: "Org A" });
+    const cancelSpy = vi.spyOn(stagedClient, "cancelQueries");
+    const clearSpy = vi.spyOn(stagedClient, "clear");
+    transport.mockImplementation(() => Promise.resolve({ org: "Org B" }));
+
+    render(<Harness userId="user-b" pending={false} />);
+
+    // (a) B's tree never receives A's cached payload — not even one frame.
+    expect(await screen.findByText("Org B")).toBeInTheDocument();
+    expect(commitLog).not.toContain("Org A");
+    // (b) The mismatched client is retired through the cancel-then-clear path.
+    await waitFor(() => {
+      expect(cancelSpy).toHaveBeenCalled();
+      expect(clearSpy).toHaveBeenCalled();
+    });
+    // (c) The registry never serves A's client as B's: resolving B's client
+    // yields the tree's own client holding B's payload, and A's staged slot
+    // is gone.
+    const activeForB = resolveQueryClientForIdentity("user-b");
+    expect(activeForB).not.toBe(stagedClient);
+    expect(activeForB.getQueryData(["me", "context"])).toEqual({
+      org: "Org B",
+    });
+    expect(peekStagedQueryClient()?.client).not.toBe(stagedClient);
   });
 
   it("initial hydration keeps the in-flight context query (QA-12)", async () => {

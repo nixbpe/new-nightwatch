@@ -21,12 +21,20 @@ type SessionBoundary = {
   /** The client serving the current identity. */
   client: QueryClient;
   /**
+   * Identity of the loader-staged client the initializer adopted, if any.
+   * The loader of the initial URL and the session atom resolve
+   * independently; if they disagree, the adopted client holds ANOTHER
+   * identity's prefetch and must be discarded, never relabeled.
+   */
+  stagedIdentity: ResolvedIdentity | undefined;
+  /**
    * Query-consuming subtree key. The initial unresolved lifetime and the
    * first resolved identity share epoch 0, so hydrating the session never
    * remounts or detaches anything (e.g. TenantProvider's freshly mounted
    * /me query on an authenticated hard reload). Each later identity change
-   * bumps the epoch, remounting the subtree synchronously with its new
-   * client so a new identity can never render against the retired one.
+   * — and a staged-identity mismatch on hydration — bumps the epoch,
+   * remounting the subtree synchronously with its new client so a new
+   * identity can never render against the retired one.
    */
   epoch: number;
 };
@@ -36,15 +44,6 @@ type SessionBoundary = {
  * and the anonymous state) gets its own QueryClient lifetime and keyed
  * subtree, so a previous user's tenant data can never be served from
  * cache to the next user within the same SPA session.
- *
- * Clients come from the loader-facing registry in lib/queryClient.ts: a
- * loader that prefetched for an identity before this boundary committed it
- * (initial hard load, or a loader running ahead of an identity swap) STAGED
- * that client; the boundary adopts it so the prefetch lands in the same
- * client the tree consumes. After every commit the boundary publishes the
- * active client back to the registry, so later loaders resolve it instead
- * of staging a parallel one. There is deliberately no module-level
- * singleton client.
  *
  * The swap is decided during render (not in an effect): when the resolved
  * identity differs from the boundary's, the tree re-renders immediately
@@ -61,10 +60,11 @@ export function SessionQueryProvider({
 }: {
   children: ReactNode;
   /**
-   * Called after a resolved→resolved identity swap commits (login, logout,
-   * account switch) — the root layout wires this to router revalidation so
-   * the data-mode gate loaders observe the new session. Initial hydration
-   * is not a change and never fires it.
+   * Called after a committed swap that retired a client: a
+   * resolved→resolved identity change (login, logout, account switch) or
+   * a staged-identity mismatch on hydration. The root layout wires this to
+   * router revalidation so the data-mode gate loaders observe the new
+   * session. Clean initial hydration retires nothing and never fires it.
    */
   onResolvedIdentityChange?: () => void;
 }) {
@@ -73,14 +73,19 @@ export function SessionQueryProvider({
     ? undefined
     : (data?.user.id ?? null);
 
-  const [boundary, setBoundary] = useState<SessionBoundary>(() => ({
-    identity: undefined,
+  const [boundary, setBoundary] = useState<SessionBoundary>(() => {
     // A loader of the initial URL may have staged this identity's client
     // (with its prefetch) before the first render; start from it so the
-    // prefetched data survives hydration.
-    client: peekStagedQueryClient()?.client ?? createSessionQueryClient(),
-    epoch: 0,
-  }));
+    // prefetched data survives hydration — but remember WHO it was staged
+    // for, so a loader/session disagreement cannot relabel it.
+    const staged = peekStagedQueryClient();
+    return {
+      identity: undefined,
+      client: staged?.client ?? createSessionQueryClient(),
+      stagedIdentity: staged?.identity,
+      epoch: 0,
+    };
+  });
   const [retired, setRetired] = useState<QueryClient[]>([]);
 
   if (identity !== undefined && boundary.identity !== identity) {
@@ -94,23 +99,26 @@ export function SessionQueryProvider({
       staged !== null && staged.identity === identity
         ? staged.client
         : undefined;
-    if (boundary.identity === undefined) {
+    const adoptedMismatch =
+      boundary.stagedIdentity !== undefined &&
+      boundary.stagedIdentity !== identity;
+    if (boundary.identity === undefined && !adoptedMismatch) {
       // Initial hydration: adopt the first resolved identity while keeping
       // the same client and epoch — nothing is cancelled, cleared, or
       // remounted. The staged client is the one the initializer peeked.
-      setBoundary({
-        ...boundary,
-        identity,
-        client: stagedClient ?? boundary.client,
-      });
+      setBoundary({ ...boundary, identity });
     } else {
-      // Resolved identity change (login, logout, account switch): move to
-      // the staged client a loader already prefetched for this identity, or
-      // a fresh one, and remount the query subtree in the same commit.
+      // Retire the outgoing client and remount with the staged or a fresh
+      // one — either a resolved identity change (login, logout, account
+      // switch) or the hydration mismatch above, where the initializer's
+      // adopted client was prefetched for a DIFFERENT identity
+      // (loader/session race) and must never be relabeled as this
+      // identity's client.
       setRetired([...retired, boundary.client]);
       setBoundary({
         identity,
         client: stagedClient ?? createSessionQueryClient(),
+        stagedIdentity: undefined,
         epoch: boundary.epoch + 1,
       });
     }
