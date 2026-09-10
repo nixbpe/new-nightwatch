@@ -42,6 +42,17 @@ export function createSessionQueryClient(): QueryClient {
 }
 
 /**
+ * Identity of the QueryClient consumed by the currently committed tree.
+ * `undefined` means no provider boundary has committed yet; `null` is the
+ * distinct, committed anonymous identity.
+ */
+export function peekActiveQueryClientIdentity():
+  | ResolvedIdentity
+  | undefined {
+  return active?.identity;
+}
+
+/**
  * Loader entry point: the client of the given identity, resolved at run
  * time. Returns the active client when the committed tree already serves
  * this identity; otherwise stages (or reuses) a client the provider will

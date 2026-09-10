@@ -1,9 +1,16 @@
-import { replace, type LoaderFunctionArgs } from "react-router";
+import {
+  redirectDocument,
+  replace,
+  type LoaderFunctionArgs,
+} from "react-router";
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import { authClient } from "../auth-client";
-import { resolveQueryClientForIdentity } from "../queryClient";
+import {
+  peekActiveQueryClientIdentity,
+  resolveQueryClientForIdentity,
+} from "../queryClient";
 import {
   clearReturnTo,
   readInvitation,
@@ -70,6 +77,10 @@ async function gateVerifiedSession(
   }
   if (!session.user.emailVerified) {
     return replace("/verify-email");
+  }
+  const activeIdentity = peekActiveQueryClientIdentity();
+  if (activeIdentity !== undefined && activeIdentity !== session.user.id) {
+    return redirectDocument(request.url);
   }
   return session;
 }

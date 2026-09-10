@@ -30,19 +30,26 @@ const { sessionStore, transport } = vi.hoisted(() => {
     data: null,
     isPending: false,
   };
+  let freshSession: TestSessionData = null;
   return {
     // Reactive stand-in for the better-auth session atom: mutations notify
     // subscribers so hooks re-read, exactly like the real client.
     sessionStore: {
       get: () => snapshot,
+      getFresh: () => freshSession,
       set(data: TestSessionData) {
         snapshot = { data, isPending: false };
+        freshSession = data;
         for (const listener of listeners) {
           listener();
         }
       },
+      setFresh(data: TestSessionData) {
+        freshSession = data;
+      },
       reset() {
         snapshot = { data: null, isPending: false };
+        freshSession = null;
       },
       subscribe(listener: () => void) {
         listeners.add(listener);
@@ -67,7 +74,7 @@ vi.mock("better-auth/react", async () => {
           sessionStore.get,
         ),
       getSession: () =>
-        Promise.resolve({ data: sessionStore.get().data, error: null }),
+        Promise.resolve({ data: sessionStore.getFresh(), error: null }),
     }),
   };
 });
@@ -225,5 +232,87 @@ describe("per-identity cache lifecycle across logout → login", () => {
     // No committed frame after the switch ever showed A's data.
     expect(commitLog.slice(commitsBeforeB)).toContain("User B");
     expect(commitLog.slice(commitsBeforeB)).not.toContain("User A");
+  });
+
+  it("document-resyncs when a fresh loader resolves B while the committed provider still serves A", async () => {
+    const fetchLog: string[] = [];
+    transport.mockImplementation(() => {
+      const user = sessionStore.getFresh()?.user;
+      if (user === undefined) {
+        return Promise.reject(new Error("anonymous transport call"));
+      }
+      fetchLog.push(user.id);
+      return Promise.resolve(meContextFor(user));
+    });
+
+    sessionStore.set({ user: USER_A });
+    const router = createMemoryRouter(lifecycleRoutes, {
+      initialEntries: ["/workspace"],
+    });
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByTestId("view")).toHaveTextContent("User A");
+    expect(fetchLog).toEqual(["user-a"]);
+    const commitsBeforeFreshB = commitLog.length;
+
+    // Exact race: the cookie-backed loader snapshot has advanced to B, but
+    // the client session atom and committed QueryClient boundary are still A.
+    sessionStore.setFresh({ user: USER_B });
+    const conflictingRequest = new Request(
+      "http://localhost/workspace?account=user-b",
+    );
+    const result = await workspaceLoader({
+      request: conflictingRequest,
+      url: new URL(conflictingRequest.url),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+
+    expect(result).toBeInstanceOf(Response);
+    if (!(result instanceof Response)) {
+      throw new Error("identity conflict did not request a document resync");
+    }
+    expect(result.headers.get("Location")).toBe(
+      "http://localhost/workspace?account=user-b",
+    );
+    expect(result.headers.get("X-Remix-Reload-Document")).toBe("true");
+    // The conflicting loader never stages or prefetches B, and nothing can
+    // commit under A after it: the browser is instructed to reload instead.
+    expect(fetchLog).toEqual(["user-a"]);
+    expect(commitLog.slice(commitsBeforeFreshB)).not.toContain("User B");
+  });
+
+  it("same-identity navigation reuses the rendered client's loader prefetch", async () => {
+    const fetchLog: string[] = [];
+    transport.mockImplementation(() => {
+      const user = sessionStore.getFresh()?.user;
+      if (user === undefined) {
+        return Promise.reject(new Error("anonymous transport call"));
+      }
+      fetchLog.push(user.id);
+      return Promise.resolve(meContextFor(user));
+    });
+
+    sessionStore.set({ user: USER_A });
+    const router = createMemoryRouter(lifecycleRoutes, {
+      initialEntries: ["/workspace"],
+    });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByTestId("view")).toHaveTextContent("User A");
+    const sameIdentityRequest = new Request(
+      "http://localhost/workspace?tab=same-user",
+    );
+    const result = await workspaceLoader({
+      request: sameIdentityRequest,
+      url: new URL(sameIdentityRequest.url),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+
+    expect(result).toBeNull();
+    expect(fetchLog).toEqual(["user-a"]);
+    expect(screen.getByTestId("view")).toHaveTextContent("User A");
   });
 });
