@@ -15,6 +15,40 @@ test.describe("public auth entry", () => {
     ).toBeVisible();
   });
 
+  test("invalid login stays client-side with accessible field errors", async ({
+    page,
+  }) => {
+    let signInRequestCount = 0;
+    await page.route("**/api/auth/sign-in/email", async (route) => {
+      signInRequestCount += 1;
+      await route.abort();
+    });
+
+    await page.goto("/login");
+    await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+
+    const email = page.getByLabel("อีเมล");
+    const password = page.getByLabel("รหัสผ่าน");
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(email).toHaveAttribute("aria-invalid", "true");
+    await expect(email).toHaveAttribute(
+      "aria-describedby",
+      "login-email-error",
+    );
+    await expect(password).toHaveAttribute("aria-invalid", "true");
+    await expect(password).toHaveAttribute(
+      "aria-describedby",
+      "login-password-error",
+    );
+    await expect(
+      page.getByText("กรุณากรอกอีเมล", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("กรุณากรอกรหัสผ่าน", { exact: true }),
+    ).toBeVisible();
+    expect(signInRequestCount).toBe(0);
+  });
+
   test("forgot-password page is reachable from login", async ({ page }) => {
     await page.goto("/login");
     await page.getByRole("link", { name: "ลืมรหัสผ่าน" }).click();
