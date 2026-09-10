@@ -32,6 +32,6 @@
     "test:coverage": {
       "outputs": ["coverage/**"]
     },
-    "codegen:check": {}
+    "codegen:check": {"cache": false}
   }
 }
