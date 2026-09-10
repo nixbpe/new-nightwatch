@@ -1,18 +1,17 @@
 import { useEffect, useState } from "react";
-import { Outlet, useNavigate } from "react-router";
+import { Outlet } from "react-router";
 
-import { authClient } from "../../lib/auth-client";
-import { MenuIcon, PanelLeftIcon, XIcon } from "./icons";
+import { Header } from "./Header";
+import { PanelLeftIcon, XIcon } from "./icons";
 import { Sidebar } from "./Sidebar";
 
 /**
- * App shell — Step 1 (layout) + Step 2 (sidebar): header, config-driven
- * sidebar (collapsible to icon-only, mobile drawer below `sm`), scrollable
- * main, footer. Existing design-system tokens/components only.
+ * App shell — Step 1 (layout) + Step 2 (sidebar) + Step 3 (header): header
+ * (logo/breadcrumb/search & notification placeholders/avatar dropdown —
+ * see Header.tsx), config-driven sidebar (collapsible, mobile drawer below
+ * `sm`), scrollable main, footer. Existing design-system tokens only.
  */
 export function AppShell() {
-  const navigate = useNavigate();
-  const { data } = authClient.useSession();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -36,40 +35,11 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex h-14 flex-shrink-0 items-center gap-4 border-b border-control-border/40 bg-surface px-4">
-        <button
-          type="button"
-          aria-label="เปิดเมนู"
-          aria-expanded={mobileOpen}
-          onClick={() => {
-            setMobileOpen(true);
-          }}
-          className="-ms-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-background hover:text-foreground sm:hidden"
-        >
-          <MenuIcon />
-        </button>
-        <span className="text-lg font-semibold">NightWatch</span>
-        <div className="ms-auto flex items-center gap-4 text-sm">
-          {data === null ? null : (
-            <span className="text-foreground-secondary">{data.user.email}</span>
-          )}
-          <button
-            type="button"
-            className="text-foreground-secondary underline"
-            onClick={() => {
-              void authClient.signOut({
-                fetchOptions: {
-                  onSuccess: () => {
-                    void navigate("/login", { replace: true });
-                  },
-                },
-              });
-            }}
-          >
-            ออกจากระบบ
-          </button>
-        </div>
-      </header>
+      <Header
+        onOpenMobileMenu={() => {
+          setMobileOpen(true);
+        }}
+      />
       <div className="flex flex-1">
         <aside
           className={`hidden flex-shrink-0 flex-col border-r border-control-border/40 bg-surface py-3 sm:flex ${
