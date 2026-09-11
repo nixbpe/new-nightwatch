@@ -29,7 +29,7 @@
 
 ## Phase 3 — account-display
 
-- [ ] Task 8: lib/preferences (types, storage, hook, formatDateTime)
+- [x] Task 8: lib/preferences (types, storage, hook, formatDateTime)
 - [ ] Task 9: DisplayPage (theme + language/time cards)
 
 ### Checkpoint C
