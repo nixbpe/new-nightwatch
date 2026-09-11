@@ -13,12 +13,12 @@
 
 ### Checkpoint A
 
-- [ ] validate green · live 1440/768/390 both themes · anonymous redirect · human review
+- [x] validate green · live 1440/768/390 both themes · anonymous redirect (ae9c670) · human review: screenshots sent
 - [x] Gate: approval to rewrite the six existing security test cases into MfaCard/PasswordCard tests (granted 2026-09-11)
 
 ## Phase 2 — account-security
 
-- [ ] Task 4: MfaCard three-step flow with existing enable/verify
+- [x] Task 4: MfaCard three-step flow with existing enable/verify
 - [ ] Task 5: qrcode dependency, QR render, copy/download, ack gate
 - [ ] Task 6: enabled state — regenerate codes, disable MFA
 - [ ] Task 7: PasswordCard + SecurityPage composition/states

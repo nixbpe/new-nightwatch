@@ -172,7 +172,7 @@ describe("SettingsLayout", () => {
     renderSettings("/settings/security");
 
     expect(
-      await screen.findByRole("heading", { name: "ความปลอดภัยของบัญชี" }),
+      await screen.findByRole("heading", { name: "ยืนยันสองขั้นตอน (MFA)" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "ความปลอดภัย" })).toHaveAttribute(
       "aria-selected",

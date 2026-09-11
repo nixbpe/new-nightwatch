@@ -152,6 +152,73 @@ export function LogOutIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function SmartphoneIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+      <path d="M12 18h.01" />
+    </svg>
+  );
+}
+
+export function KeyIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="m21 2-9.6 9.6" />
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="m15.5 7.5 3 3L22 7l-3-3" />
+    </svg>
+  );
+}
+
+export function CopyIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  );
+}
+
+export function DownloadIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" x2="12" y1="15" y2="3" />
+    </svg>
+  );
+}
+
+export function RefreshIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M8 16H3v5" />
+    </svg>
+  );
+}
+
+export function ArrowLeftIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="m12 19-7-7 7-7" />
+      <path d="M19 12H5" />
+    </svg>
+  );
+}
+
+export function ArrowRightIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
+  );
+}
+
 /** Registry keyed by the string name used in nav-config.ts's NavItem.icon. */
 export const NAV_ICONS = {
   grid: GridIcon,
