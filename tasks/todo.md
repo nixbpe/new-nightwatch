@@ -38,12 +38,12 @@
 
 ## Phase 4 — account-sessions
 
-- [ ] Task 10: lib/sessions/device-label
-- [ ] Task 11: SessionsPage (list, revoke one, revoke others, states)
+- [x] Task 10: lib/sessions/device-label
+- [x] Task 11: SessionsPage (list, revoke one, revoke others, states)
 
 ### Checkpoint D
 
-- [ ] validate green · two-context revoke test · no tokens in DOM
+- [x] validate green · two-device live revoke (phone signed out) · no tokens in DOM · 1440 light + 390 dark
 
 ## Phase 5 — account-profile
 

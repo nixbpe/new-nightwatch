@@ -7,6 +7,7 @@ import {
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import { authClient } from "../auth-client";
+import { fetchSessions, SESSIONS_QUERY_KEY } from "../sessions/sessions";
 import {
   peekActiveQueryClientIdentity,
   resolveQueryClientForIdentity,
@@ -119,6 +120,27 @@ export async function workspaceLoader({
 /** "/settings" carries no page of its own; the first tab is the landing. */
 export function settingsIndexLoader(): Response {
   return replace("/settings/profile");
+}
+
+/**
+ * /settings/sessions — prefetch the tab's primary query (FE-12) into the
+ * identity's client. Parent and child loaders run in parallel, so this
+ * re-reads the session rather than relying on the layout gate having run;
+ * anonymous/unverified arrivals are bounced by settingsLoader regardless.
+ */
+export async function sessionsLoader(): Promise<null> {
+  const session = await loadSession();
+  if (session === null || !session.user.emailVerified) {
+    return null;
+  }
+  await resolveQueryClientForIdentity(session.user.id)
+    .query({
+      queryKey: SESSIONS_QUERY_KEY,
+      queryFn: fetchSessions,
+      staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
 }
 
 /** /settings/* layout route — verified-session gate + me/context prefetch shared by every settings tab. */

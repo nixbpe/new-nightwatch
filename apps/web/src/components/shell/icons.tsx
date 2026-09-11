@@ -239,6 +239,14 @@ export function EyeOffIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function LaptopIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16" />
+    </svg>
+  );
+}
+
 /** Registry keyed by the string name used in nav-config.ts's NavItem.icon. */
 export const NAV_ICONS = {
   grid: GridIcon,

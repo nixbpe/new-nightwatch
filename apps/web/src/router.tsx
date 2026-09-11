@@ -13,6 +13,7 @@ import { ShieldIcon } from "./components/shell/icons";
 import {
   requireAnonLoader,
   rootLoader,
+  sessionsLoader,
   settingsIndexLoader,
   settingsLoader,
   verifyEmailLoader,
@@ -168,7 +169,11 @@ export const routes: RouteObject[] = [
               { index: true, loader: settingsIndexLoader },
               { path: "profile", element: <ProfilePage /> },
               { path: "security", element: <SecurityPage /> },
-              { path: "sessions", element: <SessionsPage /> },
+              {
+                path: "sessions",
+                loader: sessionsLoader,
+                element: <SessionsPage />,
+              },
               { path: "display", element: <DisplayPage /> },
             ],
           },
