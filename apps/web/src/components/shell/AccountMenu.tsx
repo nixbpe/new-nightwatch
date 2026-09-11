@@ -1,4 +1,3 @@
-import type { ComponentType } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { authClient } from "../../lib/auth-client";
@@ -9,9 +8,7 @@ import {
   ChevronsUpDownIcon,
   LogOutIcon,
   MonitorIcon,
-  ShieldIcon,
   SlidersIcon,
-  UserIcon,
 } from "./icons";
 import { initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
@@ -19,9 +16,9 @@ import { usePopover } from "./usePopover";
 
 /**
  * Pinned to the bottom of the sidebar, per the reference: avatar, name and
- * email, opening the account menu upward. Profile and personal settings
- * have no destination yet and are marked as such; account security (with
- * the live 2FA status), the theme choice and sign-out are real.
+ * email, opening the account menu upward. One link into the personal
+ * settings (whose tabs hold profile, security, sessions and display), the
+ * theme choice, and sign-out.
  */
 export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
@@ -46,8 +43,6 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
       </div>
     );
   }
-
-  const twoFactorEnabled = me?.user.twoFactorEnabled;
 
   return (
     <div className="relative border-t border-foreground/10 p-2">
@@ -115,21 +110,14 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
           )}
           <div className="h-px bg-foreground/10" />
           <div className="p-1">
-            <MenuStub icon={UserIcon} label="โปรไฟล์ของฉัน" />
-            <MenuStub icon={SlidersIcon} label="การตั้งค่าส่วนตัว" />
             <Link
               role="menuitem"
-              to="/settings/security"
+              to="/settings/profile"
               onClick={popover.close}
               className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-foreground/5"
             >
-              <ShieldIcon size={16} />
-              <span className="flex-1">ความปลอดภัยของบัญชี</span>
-              {twoFactorEnabled === undefined ? null : (
-                <span className="text-xs text-foreground-secondary">
-                  {twoFactorEnabled ? "2FA เปิดอยู่" : "2FA ปิดอยู่"}
-                </span>
-              )}
+              <SlidersIcon size={16} />
+              <span className="flex-1">การตั้งค่าส่วนตัว</span>
             </Link>
             <div className="flex items-center gap-2.5 px-2.5 py-2 text-sm text-foreground">
               <MonitorIcon size={16} />
@@ -175,26 +163,6 @@ function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
     >
       {initialsOf(name)}
     </span>
-  );
-}
-
-function MenuStub({
-  icon: Icon,
-  label,
-}: {
-  icon: ComponentType<{ size?: number }>;
-  label: string;
-}) {
-  return (
-    <div
-      role="menuitem"
-      aria-disabled="true"
-      className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-foreground-secondary/70"
-    >
-      <Icon size={16} />
-      <span className="flex-1">{label}</span>
-      <span className="text-xs">เร็ว ๆ นี้</span>
-    </div>
   );
 }
 

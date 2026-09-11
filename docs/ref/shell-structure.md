@@ -48,18 +48,34 @@ org switcher, account menu and breadcrumb all read the active organization.
   rail shows a divider in their place. Active row: alpha fill, medium
   weight, primary-coloured icon, `aria-current="page"`.
 - **`AccountMenu.tsx`** (bottom) — avatar (circle), name, email; opens
-  upward: role pill + org, profile / personal settings (disabled stubs
-  marked "เร็ว ๆ นี้"), account security (real link, live 2FA status), theme
-  segmented control (`lib/theme.ts`), sign-out.
+  upward: role pill + org, one link **การตั้งค่าส่วนตัว** → `/settings/profile`
+  (its tabs hold profile, security, sessions and display), theme segmented
+  control (`lib/theme.ts`), sign-out.
 
 ```ts
 export const NAV_ITEMS: NavItem[] = [
   { label: "ภาพรวม", icon: "grid", path: "/workspace" },
-  { label: "ตั้งค่า", children: [
-    { label: "ความปลอดภัยบัญชี", icon: "shield", path: "/settings/security" },
-  ]},
+  {
+    label: "ตั้งค่า",
+    children: [
+      {
+        label: "การตั้งค่าส่วนตัว",
+        icon: "sliders",
+        path: "/settings",
+        palette: [
+          /* โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล → /settings/<tab> */
+        ],
+      },
+    ],
+  },
 ];
 ```
+
+A leaf's `palette` entries are searchable in ⌘K (grouped under the leaf's
+label) but never rendered as sidebar rows; `pages/settings/settings-tabs.ts`
+derives the settings tab strip from them, so one definition feeds the
+sidebar, the palette and the tabs. `/settings` is prefix-active on every
+tab, which is what the breadcrumb shows.
 
 Only the two real destinations are listed; the reference's illustrative
 Projects/Activity/Reports/Members sections were deliberately not added as
@@ -114,10 +130,11 @@ design system (`#000000` canvas / `#121316` surface) and all corners are
 `AppShell.test.tsx` renders the real shell (TenantProvider + mocked
 `/me/context`) and covers: structure (org switcher, org-rooted breadcrumb,
 labelled nav section with no accordion, account block, skip link), the
-scoped error boundary, account-menu focus + 2FA status + Escape return, org
-switch success and denied, ⌘K → filter → Enter navigation, field-open /
-Escape focus return, the notifications empty state, and the no-membership
-logo fallback. Suite: 109 passing.
+scoped error boundary, account-menu focus + Escape return, org switch
+success and denied, ⌘K → grouped palette result → Enter navigation,
+field-open / Escape focus return, the notifications empty state, and the
+no-membership logo fallback. `pages/settings/SettingsLayout.test.tsx` covers
+the settings frame (header, tabs, index redirect, security tab).
 
 ## Removed or changed on existing pages
 
@@ -125,7 +142,8 @@ logo fallback. Suite: 109 passing.
   (now) are gone; both moved into the shell. Its two org-switching tests
   moved to `AppShell.test.tsx`.
 - `SecuritySettingsPage.tsx` — `AuthPageShell` wrapper removed; renders as
-  plain content inside `AppShell` with a local heading.
+  plain content inside `AppShell` with a local heading. Since moved to
+  `pages/settings/SecurityPage.tsx` as the security tab of `/settings`.
 - `NotFoundPage` — brand mark added, link points at `/workspace`.
 
 Not touched (page content, outside this scope): page cards still use

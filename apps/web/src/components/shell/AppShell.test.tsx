@@ -188,7 +188,7 @@ describe("AppShell", () => {
     consoleError.mockRestore();
   });
 
-  it("the account menu opens upward with focus on its first real item, shows the 2FA status, and Escape returns focus", async () => {
+  it("the account menu opens upward with focus on its settings link and Escape returns focus", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
     renderShell();
@@ -198,13 +198,16 @@ describe("AppShell", () => {
     await user.click(trigger);
 
     const menu = screen.getByRole("menu", { name: "บัญชีของฉัน" });
-    // Profile / personal settings are honest stubs; security is the first
-    // enabled item, so focus lands there.
-    const security = within(menu).getByRole("menuitem", {
-      name: /ความปลอดภัยของบัญชี/,
+    // One settings link (its tabs hold profile/security/sessions/display);
+    // it is the first enabled item, so focus lands there.
+    const settings = within(menu).getByRole("menuitem", {
+      name: "การตั้งค่าส่วนตัว",
     });
-    expect(security).toHaveFocus();
-    expect(security).toHaveTextContent("2FA เปิดอยู่");
+    expect(settings).toHaveFocus();
+    expect(settings).toHaveAttribute("href", "/settings/profile");
+    // Exactly two actionable items: the settings link and sign-out.
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(2);
+    expect(within(menu).queryByText(/2FA/)).toBeNull();
     expect(within(menu).getByText("เจ้าของ")).toBeInTheDocument();
     expect(
       within(menu).getByRole("group", { name: "ธีม" }),
