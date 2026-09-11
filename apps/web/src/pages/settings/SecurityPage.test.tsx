@@ -1,6 +1,6 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,7 @@ vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
     useSession: () => ({ data: null, isPending: false }),
     twoFactor: twoFactorMock,
+    changePassword: vi.fn(),
   }),
 }));
 
@@ -92,6 +93,11 @@ function renderPage() {
   );
 }
 
+/** The MFA card is a labelled region; the password card below shares field labels. */
+function mfaCard() {
+  return within(screen.getByRole("region", { name: "ยืนยันสองขั้นตอน (MFA)" }));
+}
+
 /** Walk the inline enrolment to the verification step. */
 async function enroll() {
   const user = userEvent.setup();
@@ -102,7 +108,7 @@ async function enroll() {
   renderPage();
   await user.click(await screen.findByRole("button", { name: "เปิดใช้งาน" }));
   await user.type(
-    screen.getByLabelText("รหัสผ่านปัจจุบัน"),
+    mfaCard().getByLabelText("รหัสผ่านปัจจุบัน"),
     "CurrentPassw0rd!",
   );
   await user.click(
@@ -222,7 +228,7 @@ describe("SecurityPage recovery regeneration", () => {
 
     await user.click(screen.getByRole("button", { name: /สร้างชุดใหม่/ }));
     await user.type(
-      screen.getByLabelText(/รหัสผ่านปัจจุบัน/),
+      mfaCard().getByLabelText(/รหัสผ่านปัจจุบัน/),
       "CurrentPassw0rd!",
     );
     await user.click(
@@ -258,7 +264,7 @@ describe("SecurityPage recovery regeneration", () => {
       });
 
     await user.click(screen.getByRole("button", { name: /สร้างชุดใหม่/ }));
-    const password = screen.getByLabelText(/รหัสผ่านปัจจุบัน/);
+    const password = mfaCard().getByLabelText(/รหัสผ่านปัจจุบัน/);
     await user.type(password, "WrongPassw0rd!");
     await user.click(
       screen.getByRole("button", { name: "สร้างรหัสกู้คืนใหม่" }),
@@ -304,5 +310,19 @@ describe("SecurityPage recovery regeneration", () => {
       screen.getByRole("button", { name: "เปิดใช้งาน" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("เปิดอยู่")).toBeNull();
+  });
+
+  it("renders the password card below the MFA card", async () => {
+    renderPage();
+    await screen.findByText("ปิดอยู่");
+
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings.map((h) => h.textContent)).toEqual([
+      "ยืนยันสองขั้นตอน (MFA)",
+      "รหัสผ่าน",
+    ]);
+    expect(
+      screen.getByRole("button", { name: "เปลี่ยนรหัสผ่าน" }),
+    ).toBeInTheDocument();
   });
 });

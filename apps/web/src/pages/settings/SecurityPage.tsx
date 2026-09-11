@@ -5,6 +5,7 @@ import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import { MfaCard } from "./MfaCard";
+import { PasswordCard } from "./PasswordCard";
 
 /**
  * Security tab of /settings. The layout's loader already gates the
@@ -67,6 +68,7 @@ export function SecurityPage() {
         enabled={meQuery.data.user.twoFactorEnabled}
         refreshStatus={refreshStatus}
       />
+      <PasswordCard />
     </div>
   );
 }
