@@ -25,7 +25,7 @@
 
 ### Checkpoint B
 
-- [ ] validate green · keyboard pass · real-authenticator round trip · e2e written · human review
+- [x] validate green (131) · keyboard/focus pass · real-TOTP round trip · e2e settings.spec written + run (5 passed) · human review: screenshots sent (1b2dd6b)
 
 ## Phase 3 — account-display
 
