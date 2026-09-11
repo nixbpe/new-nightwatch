@@ -10,9 +10,9 @@ import {
   FullPageLoading,
   Input,
   SubmitButton,
-} from "../components/ui";
-import { authClient, authErrorMessage } from "../lib/auth-client";
-import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
+} from "../../components/ui";
+import { authClient, authErrorMessage } from "../../lib/auth-client";
+import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 
 type EnrollmentDraft = {
   totpURI: string;
@@ -20,7 +20,7 @@ type EnrollmentDraft = {
 };
 
 /** Optional TOTP enrollment and recovery-code regeneration. */
-export function SecuritySettingsPage() {
+export function SecurityPage() {
   const queryClient = useQueryClient();
   const { data, isPending } = authClient.useSession();
   const meQuery = useQuery({

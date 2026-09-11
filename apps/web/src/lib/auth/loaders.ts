@@ -116,8 +116,8 @@ export async function workspaceLoader({
   return null;
 }
 
-/** /settings/security — the page's twoFactorEnabled status reads the same me/context contract. */
-export async function securitySettingsLoader({
+/** /settings/* layout route — verified-session gate + me/context prefetch shared by every settings tab. */
+export async function settingsLoader({
   request,
 }: LoaderFunctionArgs): Promise<null | Response> {
   const sessionOrRedirect = await gateVerifiedSession(request);

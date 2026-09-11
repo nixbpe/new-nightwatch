@@ -22,7 +22,7 @@ import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
   requireAnonLoader,
   rootLoader,
-  securitySettingsLoader,
+  settingsLoader,
   verifyEmailLoader,
   workspaceLoader,
 } from "./loaders";
@@ -186,7 +186,7 @@ describe("requireAnonLoader (anonymous-only gate)", () => {
   });
 });
 
-describe("protected-route gates (workspaceLoader / securitySettingsLoader)", () => {
+describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
   afterEach(() => {
     sessionState.data = null;
     sessionStorage.clear();
@@ -230,7 +230,7 @@ describe("protected-route gates (workspaceLoader / securitySettingsLoader)", () 
       [
         {
           path: "/settings/security",
-          loader: securitySettingsLoader,
+          loader: settingsLoader,
           element: <div>security-area</div>,
         },
       ],

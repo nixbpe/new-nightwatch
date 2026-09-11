@@ -13,7 +13,7 @@ import { ShieldIcon } from "./components/shell/icons";
 import {
   requireAnonLoader,
   rootLoader,
-  securitySettingsLoader,
+  settingsLoader,
   verifyEmailLoader,
   workspaceLoader,
 } from "./lib/auth/loaders";
@@ -24,7 +24,7 @@ import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
-import { SecuritySettingsPage } from "./pages/SecuritySettingsPage";
+import { SecurityPage } from "./pages/settings/SecurityPage";
 import { TwoFactorPage } from "./pages/TwoFactorPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
@@ -154,8 +154,8 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/settings/security",
-            loader: securitySettingsLoader,
-            element: <SecuritySettingsPage />,
+            loader: settingsLoader,
+            element: <SecurityPage />,
           },
         ],
       },

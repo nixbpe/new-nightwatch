@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SecuritySettingsPage } from "./SecuritySettingsPage";
+import { SecurityPage } from "./SecurityPage";
 
 type SessionUser = {
   id: string;
@@ -41,7 +41,7 @@ vi.mock("better-auth/client/plugins", () => ({
   twoFactorClient: () => ({}),
 }));
 
-vi.mock("../lib/api/me", () => ({
+vi.mock("../../lib/api/me", () => ({
   ME_CONTEXT_QUERY_KEY: ["me", "context"],
   fetchMeContext: () => fetchMeContextMock(),
 }));
@@ -99,7 +99,7 @@ function renderPage() {
     >
       <MemoryRouter initialEntries={["/settings/security"]}>
         <Routes>
-          <Route path="/settings/security" element={<SecuritySettingsPage />} />
+          <Route path="/settings/security" element={<SecurityPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -126,7 +126,7 @@ async function enroll() {
   return user;
 }
 
-describe("SecuritySettingsPage enrollment", () => {
+describe("SecurityPage enrollment", () => {
   beforeEach(resetAuthMocks);
 
   it("reports pending after enable alone — never claims enabled before first-code verification", async () => {
@@ -215,7 +215,7 @@ describe("SecuritySettingsPage enrollment", () => {
   });
 });
 
-describe("SecuritySettingsPage recovery regeneration", () => {
+describe("SecurityPage recovery regeneration", () => {
   beforeEach(resetAuthMocks);
 
   it("regeneration with the current password displays the new one-time codes", async () => {
