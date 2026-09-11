@@ -22,7 +22,7 @@ test.describe("hello journey", () => {
     await page.goto("/");
     await expect.poll(() => new URL(page.url()).pathname).toBe("/login");
     await expect(
-      page.getByRole("heading", { name: "เข้าสู่ระบบ NightWatch" }),
+      page.getByRole("heading", { name: "เข้าสู่ระบบ" }),
     ).toBeVisible();
   });
 });

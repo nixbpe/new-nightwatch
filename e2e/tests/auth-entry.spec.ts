@@ -6,7 +6,7 @@ test.describe("public auth entry", () => {
   }) => {
     await page.goto("/login");
     await expect(
-      page.getByRole("heading", { name: "เข้าสู่ระบบ NightWatch" }),
+      page.getByRole("heading", { name: "เข้าสู่ระบบ" }),
     ).toBeVisible();
     await expect(page.getByLabel("อีเมล")).toBeVisible();
     await expect(page.getByLabel("รหัสผ่าน")).toBeVisible();

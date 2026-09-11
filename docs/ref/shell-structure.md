@@ -105,9 +105,22 @@ or avatar in the header.
   popovers: focus moves in on open, ↑↓ rove between items, Escape /
   outside click / item select return focus to the trigger.
 
+## Personal settings (`/settings/*`)
+
+`pages/settings/` holds the personal-settings page: `SettingsLayout.tsx`
+(header + tab strip, gated by `settingsLoader`) with one child route per tab
+— `ProfilePage` (display name, read-only verified email, initials avatar),
+`SecurityPage` (`MfaCard` inline three-step TOTP enrolment / regenerate /
+disable, `PasswordCard`), `SessionsPage` (better-auth sessions, revoke one or
+all others; prefetched by `sessionsLoader`) and `DisplayPage` (theme +
+browser-stored language/time preferences from `lib/preferences.ts`). `/settings`
+lands on the profile tab. Specs: `CAPABILITY-MAP.md` and `SPEC-*.md` at the
+repo root; e2e: `e2e/tests/settings.spec.ts`.
+
 ## Theme
 
-`lib/theme.ts` `useTheme()` backs the segmented control in the account menu.
+`lib/theme.ts` `useTheme()` is one shared store behind both the account menu's
+segmented control and the display tab's, so a change in either shows in both.
 "system" clears `data-theme`; "light"/"dark" set it. Persisted in
 `localStorage` (`nightwatch-theme`); an inline script in `index.html`
 applies it before first paint. Dark tokens are the near-black pair from the

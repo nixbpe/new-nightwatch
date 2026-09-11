@@ -51,4 +51,4 @@
 
 ### Checkpoint E — complete
 
-- [ ] validate green · e2e settings.spec with DB · live pass all tabs · docs current · human review
+- [x] validate green (163) · e2e 11/11 (settings 5 + auth-entry/hello, stale login heading fixed) · live pass 4 tabs × 3 widths × 2 themes, 0 problems · docs current · human review: screenshots sent
