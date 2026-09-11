@@ -116,6 +116,11 @@ export async function workspaceLoader({
   return null;
 }
 
+/** "/settings" carries no page of its own; the first tab is the landing. */
+export function settingsIndexLoader(): Response {
+  return replace("/settings/profile");
+}
+
 /** /settings/* layout route — verified-session gate + me/context prefetch shared by every settings tab. */
 export async function settingsLoader({
   request,

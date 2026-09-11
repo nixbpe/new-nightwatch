@@ -13,6 +13,7 @@ import { ShieldIcon } from "./components/shell/icons";
 import {
   requireAnonLoader,
   rootLoader,
+  settingsIndexLoader,
   settingsLoader,
   verifyEmailLoader,
   workspaceLoader,
@@ -24,7 +25,11 @@ import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { DisplayPage } from "./pages/settings/DisplayPage";
+import { ProfilePage } from "./pages/settings/ProfilePage";
 import { SecurityPage } from "./pages/settings/SecurityPage";
+import { SessionsPage } from "./pages/settings/SessionsPage";
+import { SettingsLayout } from "./pages/settings/SettingsLayout";
 import { TwoFactorPage } from "./pages/TwoFactorPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
@@ -152,10 +157,20 @@ export const routes: RouteObject[] = [
             loader: workspaceLoader,
             element: <WorkspacePage />,
           },
+          // Personal settings: one layout loader gates the session and
+          // prefetches me/context for every tab; the index lands on the
+          // first tab. Unknown children fall through to the "*" route.
           {
-            path: "/settings/security",
+            path: "/settings",
             loader: settingsLoader,
-            element: <SecurityPage />,
+            element: <SettingsLayout />,
+            children: [
+              { index: true, loader: settingsIndexLoader },
+              { path: "profile", element: <ProfilePage /> },
+              { path: "security", element: <SecurityPage /> },
+              { path: "sessions", element: <SessionsPage /> },
+              { path: "display", element: <DisplayPage /> },
+            ],
           },
         ],
       },

@@ -157,6 +157,8 @@ export const NAV_ICONS = {
   grid: GridIcon,
   shield: ShieldIcon,
   sliders: SlidersIcon,
+  user: UserIcon,
+  monitor: MonitorIcon,
 } as const;
 
 export type NavIconName = keyof typeof NAV_ICONS;
