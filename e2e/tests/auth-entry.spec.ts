@@ -5,6 +5,7 @@ test.describe("public auth entry", () => {
     page,
   }) => {
     await page.goto("/login");
+    await expect(page.locator("html").first()).toHaveAttribute("lang", "th");
     await expect(
       page.getByRole("heading", { name: "เข้าสู่ระบบ" }),
     ).toBeVisible();

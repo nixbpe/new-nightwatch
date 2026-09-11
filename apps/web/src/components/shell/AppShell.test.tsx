@@ -107,11 +107,28 @@ function renderShell(workspaceElement: ReactNode = <p>เนื้อหาห�
   return render(<RouterProvider router={router} />);
 }
 
+function mockMobileViewport(): void {
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query): MediaQueryList =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: () => true,
+      }) satisfies MediaQueryList,
+  );
+}
+
 describe("AppShell", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
     signOutMock.mockReset();
+    vi.restoreAllMocks();
   });
 
   it("renders org switcher, breadcrumb, nav sections, account block, skip link and routed content", async () => {
@@ -219,6 +236,127 @@ describe("AppShell", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu", { name: "บัญชีของฉัน" })).toBeNull();
     expect(trigger).toHaveFocus();
+  });
+
+  it("makes the mobile drawer modal and inert, and wraps focus in both directions", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    mockMobileViewport();
+    const user = userEvent.setup();
+    renderShell();
+    await screen.findByRole("link", { name: "Org A" });
+
+    const opener = screen.getByRole("button", { name: "เปิดเมนู" });
+    await user.click(opener);
+
+    const dialog = screen.getByRole("dialog", { name: "เมนูหลัก" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    const close = within(dialog).getByRole("button", { name: "ปิดเมนู" });
+    expect(close).toHaveFocus();
+
+    const background = screen.getByText("เนื้อหาหน้า").closest("[inert]");
+    expect(background).not.toBeNull();
+    expect(background).toContainElement(opener);
+
+    const last = within(dialog).getByRole("button", {
+      name: "เมนูบัญชีผู้ใช้",
+    });
+    last.focus();
+    await user.tab();
+    expect(close).toHaveFocus();
+
+    await user.tab({ shift: true });
+    expect(last).toHaveFocus();
+  });
+
+  it("closes the mobile drawer without locking the page when the viewport reaches sm", async () => {
+    let desktop = false;
+    const listeners = new Set<EventListenerOrEventListenerObject>();
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query): MediaQueryList =>
+        ({
+          matches: query === "(min-width: 640px)" ? desktop : false,
+          media: query,
+          onchange: null,
+          addEventListener: (
+            _type: string,
+            listener: EventListenerOrEventListenerObject,
+          ) => {
+            listeners.add(listener);
+          },
+          removeEventListener: (
+            _type: string,
+            listener: EventListenerOrEventListenerObject,
+          ) => {
+            listeners.delete(listener);
+          },
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: () => true,
+        }) satisfies MediaQueryList,
+    );
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const user = userEvent.setup();
+    renderShell();
+    await screen.findByRole("link", { name: "Org A" });
+
+    await user.click(screen.getByRole("button", { name: "เปิดเมนู" }));
+    expect(
+      screen.getByRole("dialog", { name: "เมนูหลัก" }),
+    ).toBeInTheDocument();
+
+    desktop = true;
+    for (const listener of listeners) {
+      if (typeof listener === "function") {
+        listener(new Event("change"));
+      } else {
+        listener.handleEvent(new Event("change"));
+      }
+    }
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "เมนูหลัก" })).toBeNull();
+    });
+    expect(screen.getByText("เนื้อหาหน้า").closest("[inert]")).toBeNull();
+  });
+
+  it("restores mobile drawer focus after close control, backdrop, Escape, and navigation closes", async () => {
+    mockMobileViewport();
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const user = userEvent.setup();
+    renderShell();
+    await screen.findByRole("link", { name: "Org A" });
+
+    const opener = screen.getByRole("button", { name: "เปิดเมนู" });
+    const openDrawer = async () => {
+      await user.click(opener);
+      return screen.getByRole("dialog", { name: "เมนูหลัก" });
+    };
+    const expectFocusRestored = async () => {
+      await waitFor(() => {
+        expect(opener).toHaveFocus();
+      });
+    };
+
+    let dialog = await openDrawer();
+    await user.click(within(dialog).getByRole("button", { name: "ปิดเมนู" }));
+    await expectFocusRestored();
+
+    dialog = await openDrawer();
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "ปิดเมนูด้วยฉากหลัง",
+      }),
+    );
+    await expectFocusRestored();
+
+    await openDrawer();
+    await user.keyboard("{Escape}");
+    await expectFocusRestored();
+
+    await user.keyboard("{Enter}");
+    dialog = screen.getByRole("dialog", { name: "เมนูหลัก" });
+    await user.click(within(dialog).getByRole("link", { name: "ภาพรวม" }));
+    await expectFocusRestored();
   });
 
   it("switching organization from the sidebar publishes the new tenant only after the PATCH succeeds", async () => {

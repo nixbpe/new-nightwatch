@@ -1,3 +1,3 @@
 import { createConfig } from "@nightwatch/eslint-config";
 
-export default createConfig({ apiService: true });
+export default createConfig({ kind: "api", apiService: true });

@@ -4,9 +4,12 @@ import { useNavigate, useSearchParams } from "react-router";
 
 import { PostAuthRedirect } from "../components/PostAuthRedirect";
 import { Alert, FullPageLoading } from "../components/ui";
-import { authClient, authErrorMessage } from "../lib/auth-client";
+import { authClient } from "../lib/auth-client";
 import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
 import { readInvitation, rememberInvitation } from "../lib/auth/continuation";
+
+const EMAIL_VERIFICATION_FAILURE_TEXT =
+  "ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว";
 
 type TokenPhase = "none" | "running" | "failed" | "done";
 
@@ -56,26 +59,42 @@ export function OnboardingPage() {
     }
     tokenStarted.current = true;
     void (async () => {
-      const { error: verifyError } = await authClient.verifyEmail({
-        query: { token: verificationToken, callbackURL: "/onboarding" },
-      });
-      const next = new URLSearchParams(searchParams);
-      next.delete("emailVerificationToken");
-      setSearchParams(next, { replace: true });
-      if (verifyError != null) {
-        setTokenError(
-          authErrorMessage(
-            verifyError,
-            "ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว",
-          ),
-        );
+      let failed = false;
+
+      try {
+        const { error: verifyError } = await authClient.verifyEmail({
+          query: { token: verificationToken, callbackURL: "/onboarding" },
+        });
+        if (verifyError != null) {
+          failed = true;
+        } else {
+          await refetchSession();
+        }
+      } catch {
+        failed = true;
+      } finally {
+        const next = new URLSearchParams(searchParams);
+        next.delete("emailVerificationToken");
+        setSearchParams(next, { replace: true });
+      }
+
+      if (failed) {
+        if (invitationId !== null) {
+          rememberInvitation(invitationId);
+        }
+        setTokenError(EMAIL_VERIFICATION_FAILURE_TEXT);
         setTokenPhase("failed");
         return;
       }
-      await refetchSession();
       setTokenPhase("done");
     })();
-  }, [verificationToken, searchParams, setSearchParams, refetchSession]);
+  }, [
+    verificationToken,
+    searchParams,
+    setSearchParams,
+    refetchSession,
+    invitationId,
+  ]);
 
   // Post-verification routing. Pure redirects: idempotent under StrictMode.
   useEffect(() => {

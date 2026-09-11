@@ -7,13 +7,21 @@ import { expect, test, type Page } from "@playwright/test";
  *
  * The public cases run everywhere. The credentialed cases need a real
  * database plus a dedicated QA account passed as E2E_EMAIL / E2E_PASSWORD;
- * they enable and then disable MFA and change the password and change it
+ * E2E_REQUIRE_CREDENTIALS=1 makes their absence a module-setup failure.
+ * They enable and then disable MFA and change the password and change it
  * back, so never point them at a shared account.
  */
 
-const EMAIL = process.env.E2E_EMAIL;
-const PASSWORD = process.env.E2E_PASSWORD;
-const credentialed = EMAIL !== undefined && PASSWORD !== undefined;
+const EMAIL = process.env.E2E_EMAIL?.trim();
+const PASSWORD = process.env.E2E_PASSWORD?.trim();
+const credentialsRequired = process.env.E2E_REQUIRE_CREDENTIALS === "1";
+const credentialed = Boolean(EMAIL && PASSWORD);
+
+if (credentialsRequired && !credentialed) {
+  throw new Error(
+    "E2E_REQUIRE_CREDENTIALS=1 requires non-empty E2E_EMAIL and E2E_PASSWORD",
+  );
+}
 
 test.describe("public entry", () => {
   test("anonymous visits bounce to login carrying the intended tab", async ({

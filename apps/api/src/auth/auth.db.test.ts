@@ -6,7 +6,7 @@ import { meContextResponseSchema } from "@nightwatch/api-contract";
 import { createDatabase, runMigrations } from "@nightwatch/db";
 import type { Database } from "@nightwatch/db";
 import { createLogger, type AuthEnv, type Env } from "@nightwatch/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../app";
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
@@ -383,6 +383,86 @@ afterAll(async () => {
   await database.close();
 });
 
+describe("Better Auth failure diagnostics", () => {
+  it("keeps invitation IDs and raw SQL out of the raw signup response and logs", async () => {
+    const invitationId = `invite-${crypto.randomUUID()}`;
+    const sqlMarker = `select CRR01_SECRET_${crypto.randomUUID()}`;
+    const databaseError = Object.assign(
+      new Error(`invitation lookup failed for ${invitationId}: ${sqlMarker}`),
+      {
+        cause: `driver cause ${invitationId}`,
+        query: sqlMarker,
+        params: [invitationId],
+      },
+    );
+    const failingDatabase = {
+      db: database.db,
+      sql: {
+        query: () => Promise.reject(databaseError),
+      } as unknown as Database["sql"],
+      close: () => Promise.resolve(),
+    } satisfies Database;
+
+    let pinoOutput = "";
+    const errorLogger = createLogger(
+      { level: "error", name: "auth-crr01" },
+      {
+        write: (chunk: string) => {
+          pinoOutput += chunk;
+        },
+      },
+    );
+    const consoleErrors: unknown[][] = [];
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation((...args: unknown[]) => {
+        consoleErrors.push(args);
+      });
+
+    try {
+      const failingAuth = createAuth({
+        env,
+        authEnv,
+        logger: errorLogger,
+        database: failingDatabase,
+        mailer,
+      });
+      const response = await failingAuth.handler(
+        new Request(`${authEnv.BETTER_AUTH_URL}/api/auth/sign-up/email`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: APP_URL,
+            "x-invitation-id": invitationId,
+          },
+          body: JSON.stringify({
+            name: "CRR-01 failure",
+            email: userEmail("crr01-failure"),
+            password: PASSWORD,
+          }),
+        }),
+      );
+      const responseText = await response.text();
+      const capturedOutput = `${pinoOutput}\n${JSON.stringify(consoleErrors)}`;
+
+      expect(response.status).toBe(500);
+      expect(JSON.parse(responseText)).toEqual({
+        code: "AUTH_INTERNAL_ERROR",
+        message: "ไม่สามารถดำเนินการยืนยันตัวตนได้",
+      });
+      expect(`${responseText}\n${capturedOutput}`).not.toContain(invitationId);
+      expect(`${responseText}\n${capturedOutput}`).not.toContain(sqlMarker);
+      expect(capturedOutput).toContain('"component":"better-auth"');
+      expect(capturedOutput).toContain('"event":"api_error"');
+      expect(capturedOutput).toContain(
+        '"msg":"authentication API request failed"',
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
+
 describe("invitation-gated signup against the real boundary", () => {
   // The fail-closed contract: every denial returns the same generic Thai
   // message, so the response never distinguishes missing, unknown or
@@ -721,6 +801,12 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
       "-c default_transaction_read_only=on",
     );
     const readOnlyDatabase = createDatabase(readOnlyUrl.toString());
+    const consoleErrors: unknown[][] = [];
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation((...args: unknown[]) => {
+        consoleErrors.push(args);
+      });
     try {
       const readOnlyAuth = createAuth({
         env,
@@ -747,12 +833,19 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
         { invitationId },
       );
       expect(accept.status).toBe(500);
-      expect(accept.json).toBeNull();
+      expect(accept.json).toEqual({
+        code: "AUTH_INTERNAL_ERROR",
+        message: "ไม่สามารถดำเนินการยืนยันตัวตนได้",
+      });
+      const capturedOutput = JSON.stringify(consoleErrors);
+      expect(capturedOutput).not.toContain(invitationId);
+      expect(capturedOutput).not.toContain('update "invitation"');
       // The invitation stays pending and no membership was created: the
       // translation boundary only ever re-labels the member uniqueness
       // violation, nothing else.
       expect(await invitationStatus(invitationId)).toBe("pending");
     } finally {
+      consoleError.mockRestore();
       await readOnlyDatabase.close();
     }
   });

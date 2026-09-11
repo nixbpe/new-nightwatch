@@ -186,6 +186,9 @@ jobs:
       SMTP_PORT: "1025"
       SMTP_SECURE: "false"
       SMTP_FROM: NightWatch CI <ci@nightwatch.local>
+      E2E_REQUIRE_CREDENTIALS: "1"
+      E2E_EMAIL: settings-e2e@nightwatch.invalid
+      E2E_PASSWORD: "nightwatch-ci-disposable-only-06!"
     services: *db_services
     steps:
       - uses: actions/checkout@v4
@@ -207,6 +210,8 @@ jobs:
             postgres:17.11-alpine sh /init/001-roles.sh
       - name: Run database migrations
         run: bun run db:migrate
+      - name: Provision dedicated E2E settings fixture
+        run: bun run --cwd apps/api provision-e2e-fixture
       - name: Install e2e dependencies
         run: cd e2e && bun install --frozen-lockfile
       - name: Install Playwright browsers

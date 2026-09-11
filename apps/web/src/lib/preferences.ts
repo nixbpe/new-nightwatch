@@ -5,7 +5,20 @@ export const PREFERENCES_KEY = "nightwatch-preferences";
 
 const preferencesSchema = z.object({
   language: z.literal("th"),
-  timeZone: z.string().min(1),
+  timeZone: z
+    .string()
+    .min(1)
+    .refine(
+      (timeZone) => {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: "Invalid IANA time zone." },
+    ),
   hourCycle: z.enum(["h23", "h12"]),
   weekStart: z.enum(["monday", "sunday"]),
 });
@@ -111,7 +124,7 @@ export function usePreferences(): {
  * year, abbreviated month) — e.g. "10 ก.ย. 2569 14:12".
  */
 export function formatDateTime(date: Date, preferences: Preferences): string {
-  return new Intl.DateTimeFormat("th-TH", {
+  const options: Intl.DateTimeFormatOptions = {
     timeZone: preferences.timeZone,
     hourCycle: preferences.hourCycle,
     year: "numeric",
@@ -119,5 +132,15 @@ export function formatDateTime(date: Date, preferences: Preferences): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date);
+  };
+  try {
+    return new Intl.DateTimeFormat("th-TH", options).format(date);
+  } catch {
+    const defaults = defaultPreferences();
+    return new Intl.DateTimeFormat("th-TH", {
+      ...options,
+      timeZone: defaults.timeZone,
+      hourCycle: defaults.hourCycle,
+    }).format(date);
+  }
 }

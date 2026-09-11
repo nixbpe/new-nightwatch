@@ -30,6 +30,8 @@ type Stage = "idle" | "password" | "scan" | "verify";
 
 const REFRESH_GUARD_MESSAGE =
   "ยืนยันรหัสแล้วแต่ยังไม่สามารถยืนยันสถานะกับเซิร์ฟเวอร์ได้ กรุณารีเฟรชหน้านี้";
+const VERIFY_TOTP_CLIENT_ERROR_ID = "first-totp-error";
+const VERIFY_TOTP_SERVER_ERROR_ID = "first-totp-server-error";
 
 function secretFromUri(totpURI: string): string | null {
   const secret = totpURI.split("secret=")[1]?.split("&")[0];
@@ -834,7 +836,17 @@ export function MfaCard({
                 จะเปิดใช้งานเมื่อรหัสแรกถูกต้องเท่านั้น รหัสเปลี่ยนทุก{" "}
                 <span className="font-mono">30</span> วินาที
               </p>
-              {error === null ? null : <Alert tone="error">{error}</Alert>}
+              {error === null ? null : codeInvalid ? (
+                <p
+                  id={VERIFY_TOTP_SERVER_ERROR_ID}
+                  role="alert"
+                  className="rounded-md border border-danger/40 bg-danger/8 px-3 py-2 text-sm text-danger"
+                >
+                  {error}
+                </p>
+              ) : (
+                <Alert tone="error">{error}</Alert>
+              )}
               <verifyForm.Field
                 name="code"
                 validators={{
@@ -866,13 +878,17 @@ export function MfaCard({
                       }
                       aria-describedby={
                         field.state.meta.errors.length > 0
-                          ? "first-totp-error"
-                          : undefined
+                          ? codeInvalid
+                            ? `${VERIFY_TOTP_CLIENT_ERROR_ID} ${VERIFY_TOTP_SERVER_ERROR_ID}`
+                            : VERIFY_TOTP_CLIENT_ERROR_ID
+                          : codeInvalid
+                            ? VERIFY_TOTP_SERVER_ERROR_ID
+                            : undefined
                       }
                       className="w-56 text-center font-mono text-2xl tracking-[0.35em]"
                     />
                     <FieldValidationError
-                      id="first-totp-error"
+                      id={VERIFY_TOTP_CLIENT_ERROR_ID}
                       errors={field.state.meta.errors}
                     />
                   </Field>

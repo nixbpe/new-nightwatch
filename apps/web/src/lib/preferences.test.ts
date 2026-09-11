@@ -43,6 +43,15 @@ describe("preferences storage", () => {
     expect(readPreferences()).toEqual(defaultPreferences());
   });
 
+  it("falls back to defaults for a stored non-IANA time zone", () => {
+    localStorage.setItem(
+      PREFERENCES_KEY,
+      JSON.stringify({ ...STORED, timeZone: "Mars/Olympus" }),
+    );
+
+    expect(readPreferences()).toEqual(defaultPreferences());
+  });
+
   it("falls back to defaults when storage throws", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("blocked");
@@ -101,5 +110,16 @@ describe("formatDateTime", () => {
     });
     expect(twelve).not.toContain("14:12");
     expect(twelve).toMatch(/2:12/);
+  });
+
+  it("falls back to the runtime defaults for an invalid time zone", () => {
+    const invalid = formatDateTime(instant, {
+      ...base,
+      timeZone: "Mars/Olympus",
+      hourCycle: "h12",
+    });
+    const expected = formatDateTime(instant, defaultPreferences());
+
+    expect(invalid).toBe(expected);
   });
 });

@@ -176,7 +176,7 @@ export async function setActiveOrganization(
       await rollbackQuietly(client);
       inTransaction = false;
       logger.warn(
-        { userId: session.user.id, organizationId },
+        { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
         "active organization change denied: not a member",
       );
       throw new AppError(

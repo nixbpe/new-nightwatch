@@ -29,8 +29,9 @@ const OTHERS = "__others__";
  */
 export function SessionsPage() {
   const queryClient = useQueryClient();
-  const { data: session } = authClient.useSession();
-  const currentToken = session?.session.token ?? null;
+  const { data: session, isPending: isSessionPending } =
+    authClient.useSession();
+  const sessionToken = session?.session.token ?? null;
   const { preferences } = usePreferences();
   const query = useQuery({
     queryKey: SESSIONS_QUERY_KEY,
@@ -125,8 +126,22 @@ export function SessionsPage() {
     );
   }
 
+  let currentToken: string | null = null;
+  if (!isSessionPending && sessionToken !== null) {
+    let matchingRowCount = 0;
+    for (const row of query.data) {
+      if (row.token === sessionToken) {
+        matchingRowCount += 1;
+        if (matchingRowCount > 1) break;
+      }
+    }
+    if (matchingRowCount === 1) currentToken = sessionToken;
+  }
   const rows = sortSessions(query.data, currentToken);
-  const others = rows.filter((row) => row.token !== currentToken);
+  const others =
+    currentToken === null
+      ? null
+      : rows.filter((row) => row.token !== currentToken);
   const now = new Date();
 
   return (
@@ -203,7 +218,7 @@ export function SessionsPage() {
                     </time>
                   </p>
                 </div>
-                {isCurrent ? null : isConfirming ? (
+                {currentToken === null || isCurrent ? null : isConfirming ? (
                   <div className="flex items-center gap-2">
                     <Button
                       ref={confirmRef}
@@ -260,11 +275,12 @@ export function SessionsPage() {
         })}
       </ul>
 
-      {others.length === 0 ? (
+      {others?.length === 0 ? (
         <Alert tone="info">
           ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ — มีเพียงอุปกรณ์นี้เท่านั้น
         </Alert>
-      ) : (
+      ) : null}
+      {others !== null && others.length > 0 ? (
         <div className="flex flex-col gap-3 border-t border-foreground/10 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-foreground-secondary">
@@ -321,7 +337,7 @@ export function SessionsPage() {
             </p>
           ) : null}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

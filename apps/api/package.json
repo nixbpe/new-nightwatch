@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "provision-organization": "bun run src/operator/provision-organization.ts",
+    "provision-e2e-fixture": "bun run src/operator/provision-e2e-fixture.ts",
     "emit-openapi": "bun run src/operator/emit-openapi.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "lint": "eslint .",

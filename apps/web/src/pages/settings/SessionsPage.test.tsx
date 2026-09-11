@@ -6,23 +6,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionRow } from "../../lib/sessions/sessions";
 import { SessionsPage } from "./SessionsPage";
 
-const { authMock } = vi.hoisted(() => ({
+const { authMock, sessionState } = vi.hoisted(() => ({
   authMock: {
     listSessions: vi.fn(),
     revokeSession: vi.fn(),
     revokeOtherSessions: vi.fn(),
   },
+  sessionState: {
+    data: null as {
+      session: { token: string };
+      user: { id: string; email: string };
+    } | null,
+    isPending: true,
+  },
 }));
 
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
-    useSession: () => ({
-      data: {
-        session: { token: "tok-current" },
-        user: { id: "user-1", email: "me@example.com" },
-      },
-      isPending: false,
-    }),
+    useSession: () => sessionState,
     ...authMock,
   }),
 }));
@@ -77,11 +78,12 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <SessionsPage />
     </QueryClientProvider>,
   );
+  return { ...view, queryClient };
 }
 
 describe("SessionsPage", () => {
@@ -89,6 +91,11 @@ describe("SessionsPage", () => {
     authMock.listSessions.mockReset();
     authMock.revokeSession.mockReset();
     authMock.revokeOtherSessions.mockReset();
+    sessionState.data = {
+      session: { token: "tok-current" },
+      user: { id: "user-1", email: "me@example.com" },
+    };
+    sessionState.isPending = false;
   });
 
   it("lists sessions with the current device first and un-revokable, honest fallbacks, and no tokens in the DOM", async () => {
@@ -118,6 +125,67 @@ describe("SessionsPage", () => {
     expect(
       screen.getByRole("button", { name: "ออกจากระบบทุกอุปกรณ์อื่น" }),
     ).toBeInTheDocument();
+  });
+
+  it("shows rows without current-device claims or revoke controls while the session is pending", async () => {
+    sessionState.data = null;
+    sessionState.isPending = true;
+    authMock.listSessions.mockResolvedValue({
+      data: [PHONE, CURRENT],
+      error: null,
+    });
+    const { queryClient, rerender } = renderPage();
+
+    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
+    expect(screen.queryByText("อุปกรณ์นี้")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+
+    sessionState.data = {
+      session: { token: "tok-current" },
+      user: { id: "user-1", email: "me@example.com" },
+    };
+    sessionState.isPending = false;
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <SessionsPage />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText("อุปกรณ์นี้")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "ออกจากระบบทุกอุปกรณ์อื่น" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows rows without current-device claims or revoke controls when no listed session matches", async () => {
+    sessionState.data = {
+      session: { token: "tok-not-listed" },
+      user: { id: "user-1", email: "me@example.com" },
+    };
+    authMock.listSessions.mockResolvedValue({
+      data: [PHONE, CURRENT],
+      error: null,
+    });
+    renderPage();
+
+    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
+    expect(screen.queryByText("อุปกรณ์นี้")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("shows no destructive controls when more than one row matches the current token", async () => {
+    authMock.listSessions.mockResolvedValue({
+      data: [
+        CURRENT,
+        session({ id: "s-duplicate-current", token: "tok-current" }),
+      ],
+      error: null,
+    });
+    renderPage();
+
+    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
+    expect(screen.queryByText("อุปกรณ์นี้")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("revoking one session asks for confirmation, calls the API with that token, and refetches", async () => {

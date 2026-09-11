@@ -5,14 +5,14 @@ import {
   readinessResponseSchema,
   versionResponseSchema,
 } from "@nightwatch/api-contract";
-import type { Database } from "@nightwatch/db";
+import { DB_READINESS_TIMEOUT_MS, type Database } from "@nightwatch/db";
 import {
   AppError,
   createLogger,
   type AuthEnv,
   type Env,
 } from "@nightwatch/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createApp } from "./app";
 import type { Auth } from "./auth";
@@ -143,12 +143,14 @@ describe("auth boundary wiring", () => {
     getSession: () => Promise.resolve(null),
   };
 
-  function stubDatabase(query: (text: string, params: unknown[]) => unknown) {
+  function stubDatabase(
+    query: (queryConfig: unknown, params?: unknown[]) => unknown,
+  ) {
     return {
       db: undefined as unknown as Database["db"],
       sql: {
-        query: (text: string, params: unknown[]) =>
-          Promise.resolve(query(text, params)),
+        query: (queryConfig: unknown, params?: unknown[]) =>
+          Promise.resolve(query(queryConfig, params)),
         connect: () => {
           throw new Error("not used in tests");
         },
@@ -235,16 +237,24 @@ describe("auth boundary wiring", () => {
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 
-  it("checks database readiness and reports failure as not_ready", async () => {
+  it("checks database readiness with a query deadline and reports rejection as not_ready", async () => {
+    let issuedQuery: unknown;
     const healthy = makeApp({
       auth: stubAuth,
-      database: stubDatabase(() => ({ rows: [] })),
+      database: stubDatabase((queryConfig) => {
+        issuedQuery = queryConfig;
+        return { rows: [] };
+      }),
     });
     const res = await healthy.request("/ready");
     expect(res.status).toBe(200);
     expect(readinessResponseSchema.parse(await res.json())).toEqual({
       status: "ready",
       checks: { database: "ok" },
+    });
+    expect(issuedQuery).toEqual({
+      text: "select 1",
+      query_timeout: DB_READINESS_TIMEOUT_MS,
     });
 
     const unhealthy = makeApp({
@@ -259,6 +269,45 @@ describe("auth boundary wiring", () => {
       status: "not_ready",
       checks: { database: "fail" },
     });
+  });
+
+  it("returns canonical not_ready within the application deadline when the database query remains pending", async () => {
+    vi.useFakeTimers();
+    let resolveQueryIssued!: () => void;
+    const queryIssued = new Promise<void>((resolve) => {
+      resolveQueryIssued = resolve;
+    });
+
+    try {
+      const app = makeApp({
+        auth: stubAuth,
+        database: stubDatabase(() => {
+          resolveQueryIssued();
+          return new Promise<never>(() => {});
+        }),
+      });
+      let completed = false;
+      const responsePromise = Promise.resolve(app.request("/ready")).then(
+        (response) => {
+          completed = true;
+          return response;
+        },
+      );
+      await queryIssued;
+
+      await vi.advanceTimersByTimeAsync(DB_READINESS_TIMEOUT_MS - 1);
+      expect(completed).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const response = await responsePromise;
+      expect(response.status).toBe(503);
+      expect(readinessResponseSchema.parse(await response.json())).toEqual({
+        status: "not_ready",
+        checks: { database: "fail" },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("serves the invitation preview for a pending invitation", async () => {

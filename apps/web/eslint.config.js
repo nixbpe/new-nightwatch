@@ -1,3 +1,3 @@
 import { createConfig } from "@nightwatch/eslint-config";
 
-export default createConfig({ react: true });
+export default createConfig({ kind: "web", react: true });

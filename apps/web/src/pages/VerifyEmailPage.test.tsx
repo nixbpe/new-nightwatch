@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -72,6 +78,8 @@ describe("VerifyEmailPage", () => {
     sendVerificationEmailMock.mockReset();
     fetchInvitationMock.mockReset();
     sessionStorage.clear();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("anonymous signup resends to the invited email", async () => {
@@ -151,6 +159,85 @@ describe("VerifyEmailPage", () => {
     ).toBeInTheDocument();
     expect(readInvitation()).toBe("inv-123");
   });
+
+  it.each([
+    ["anonymous", false],
+    ["signed-in", true],
+  ] as const)(
+    "%s resend cooldown expires automatically and cleans up its timer",
+    async (_mode, signedIn) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-09-11T00:00:00.000Z"));
+      const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+      const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+      const submit = async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
+        );
+        await act(async () => {
+          await Promise.resolve();
+        });
+      };
+
+      if (signedIn) {
+        sessionState.data = {
+          user: {
+            id: "u-1",
+            email: "member@example.com",
+            emailVerified: false,
+          },
+        };
+      }
+
+      const page = renderPage();
+      if (!signedIn) {
+        fireEvent.change(screen.getByLabelText("อีเมลที่ใช้สมัครบัญชี"), {
+          target: { value: "member@example.com" },
+        });
+      }
+
+      await submit();
+
+      expect(sendVerificationEmailMock).toHaveBeenCalledTimes(1);
+      const coolingDownButton = screen.getByRole("button", {
+        name: "ส่งแล้ว กรุณารอสักครู่",
+      });
+      expect(coolingDownButton).toBeDisabled();
+
+      const firstCooldownCallIndex = setTimeoutSpy.mock.calls.findIndex(
+        ([, delay]) => delay === 60_000,
+      );
+      expect(firstCooldownCallIndex).toBeGreaterThanOrEqual(0);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(59_999);
+      });
+      expect(
+        screen.getByRole("button", { name: "ส่งแล้ว กรุณารอสักครู่" }),
+      ).toBeDisabled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      const readyButton = screen.getByRole("button", {
+        name: "ส่งอีเมลยืนยันอีกครั้ง",
+      });
+      expect(readyButton).toBeEnabled();
+
+      await submit();
+      expect(sendVerificationEmailMock).toHaveBeenCalledTimes(2);
+      const latestCooldownCallIndex = setTimeoutSpy.mock.calls
+        .map(([, delay]) => delay)
+        .lastIndexOf(60_000);
+      expect(latestCooldownCallIndex).toBeGreaterThan(firstCooldownCallIndex);
+      const clearCallsBeforeUnmount = clearTimeoutSpy.mock.calls.length;
+      page.unmount();
+      expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(
+        clearCallsBeforeUnmount,
+      );
+      vi.advanceTimersByTime(60_000);
+    },
+  );
 
   it("shows an error and stays retryable when resend fails", async () => {
     sendVerificationEmailMock.mockResolvedValue({

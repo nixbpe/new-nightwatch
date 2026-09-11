@@ -93,6 +93,28 @@ export function VerifyEmailPage() {
     }
   }, [form, invitationPreview.data]);
 
+  useEffect(() => {
+    if (cooldownUntil === 0) {
+      return;
+    }
+
+    const remainingMs = cooldownUntil - Date.now();
+    if (remainingMs <= 0) {
+      setCooldownUntil(0);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setCooldownUntil((currentDeadline) =>
+        currentDeadline === cooldownUntil ? 0 : currentDeadline,
+      );
+    }, remainingMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [cooldownUntil]);
+
   if (isPending) {
     return null;
   }
@@ -167,7 +189,9 @@ export function VerifyEmailPage() {
                 pendingLabel="กำลังส่ง…"
                 disabled={isSubmitting || coolingDown}
               >
-                ส่งอีเมลยืนยันอีกครั้ง
+                {coolingDown
+                  ? "ส่งแล้ว กรุณารอสักครู่"
+                  : "ส่งอีเมลยืนยันอีกครั้ง"}
               </SubmitButton>
             )}
           />

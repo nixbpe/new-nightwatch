@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -53,13 +54,25 @@ function LocationProbe() {
   );
 }
 
+function SearchProbe() {
+  return <div data-testid="search">{useLocation().search}</div>;
+}
+
 function renderAt(entry: string) {
   return render(
     <StrictMode>
       <MemoryRouter initialEntries={[entry]}>
         <SessionQueryProvider>
           <Routes>
-            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route
+              path="/onboarding"
+              element={
+                <>
+                  <OnboardingPage />
+                  <SearchProbe />
+                </>
+              }
+            />
             <Route path="*" element={<LocationProbe />} />
           </Routes>
         </SessionQueryProvider>
@@ -107,7 +120,7 @@ describe("OnboardingPage transitions", () => {
     );
   });
 
-  it("a rejected token renders a retry-safe error instead of redirecting", async () => {
+  it("an unsuccessful token renders a retry-safe error instead of redirecting", async () => {
     // INT-WEB-2: network/API failure stays on this page with recovery actions.
     verifyEmailMock.mockResolvedValue({
       error: { message: "ลิงก์ยืนยันหมดอายุแล้ว" },
@@ -118,12 +131,60 @@ describe("OnboardingPage transitions", () => {
     expect(
       await screen.findByRole("heading", { name: "ยืนยันอีเมลไม่สำเร็จ" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("ลิงก์ยืนยันหมดอายุแล้ว")).toBeInTheDocument();
+    expect(
+      screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "ส่งอีเมลยืนยันใหม่" }),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
     // Still on the hub: no redirect occurred.
     expect(screen.queryByTestId("location")).toBeNull();
+  });
+
+  it("handles a rejected verification and removes only the emailed token", async () => {
+    verifyEmailMock.mockRejectedValue(
+      new Error("sensitive verification error"),
+    );
+    renderAt(
+      "/onboarding?emailVerificationToken=tok-rejected&invitationId=inv-9",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "ยืนยันอีเมลไม่สำเร็จ" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("search")).toHaveTextContent(
+      "?invitationId=inv-9",
+    );
+    expect(readInvitation()).toBe("inv-9");
+    expect(screen.queryByTestId("location")).toBeNull();
+  });
+
+  it("handles a rejected session refresh after successful verification", async () => {
+    verifyEmailMock.mockResolvedValue({ error: null });
+    sessionState.refetch.mockRejectedValue(
+      new Error("sensitive refresh error"),
+    );
+    renderAt("/onboarding?emailVerificationToken=tok-refresh");
+
+    expect(
+      await screen.findByRole("heading", { name: "ยืนยันอีเมลไม่สำเร็จ" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+    expect(screen.queryByTestId("location")).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "ส่งอีเมลยืนยันใหม่" }),
+    );
+    expect(await screen.findByTestId("location")).toHaveTextContent(
+      "/verify-email",
+    );
   });
 
   it("anonymous post-verification visitors go to login with the invitation kept", async () => {

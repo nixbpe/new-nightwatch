@@ -5,7 +5,7 @@ import {
   versionResponseSchema,
   type ErrorResponse,
 } from "@nightwatch/api-contract";
-import type { Database } from "@nightwatch/db";
+import { DB_READINESS_TIMEOUT_MS, type Database } from "@nightwatch/db";
 import {
   AppError,
   type AuthEnv,
@@ -15,6 +15,7 @@ import {
 import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { QueryConfig } from "pg";
 import pkg from "../package.json";
 import type { Auth } from "./auth";
 import { registerHelloRoutes } from "./hello/routes";
@@ -87,6 +88,38 @@ const versionRoute = createRoute({
     },
   },
 });
+
+type ReadinessQueryConfig = QueryConfig & { query_timeout: number };
+
+const databaseReadinessQuery: ReadinessQueryConfig = {
+  text: "select 1",
+  query_timeout: DB_READINESS_TIMEOUT_MS,
+};
+
+async function checkDatabaseReadiness(database: Database): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const deadline = setTimeout(() => {
+      reject(new Error("database readiness check timed out"));
+    }, DB_READINESS_TIMEOUT_MS);
+
+    void Promise.resolve()
+      .then(() => database.sql.query(databaseReadinessQuery))
+      .then(
+        () => {
+          clearTimeout(deadline);
+          resolve();
+        },
+        (error: unknown) => {
+          clearTimeout(deadline);
+          reject(
+            error instanceof Error
+              ? error
+              : new Error("database readiness query failed"),
+          );
+        },
+      );
+  });
+}
 
 export function createApp(deps: AppDeps): OpenAPIHono {
   const app = new OpenAPIHono({
@@ -181,7 +214,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
     const checks: Record<string, "ok" | "fail"> = {};
     if (database) {
       try {
-        await database.sql.query("select 1");
+        await checkDatabaseReadiness(database);
         checks.database = "ok";
       } catch {
         checks.database = "fail";

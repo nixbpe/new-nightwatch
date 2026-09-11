@@ -131,6 +131,26 @@ export function createAuth(deps: AuthDeps): Auth {
     basePath: "/api/auth",
     secret: authEnv.BETTER_AUTH_SECRET,
     trustedOrigins: [authEnv.CORS_ORIGIN],
+    // Better Auth's default logger forwards arbitrary error arguments, which
+    // can include database causes, SQL text, parameters, and invitation IDs.
+    // All unexpected API failures are reported by the sanitized hook below.
+    logger: { disabled: true },
+    onAPIError: {
+      onError: (error) => {
+        if (error instanceof APIError && error.statusCode < 500) return;
+        logger.error(
+          { component: "better-auth", event: "api_error" },
+          "authentication API request failed",
+        );
+        // Throwing a sanitized APIError from Better Auth's supported error
+        // hook prevents the underlying router from falling back to logging
+        // the original exception while retaining its native response shape.
+        throw new APIError("INTERNAL_SERVER_ERROR", {
+          code: "AUTH_INTERNAL_ERROR",
+          message: "ไม่สามารถดำเนินการยืนยันตัวตนได้",
+        });
+      },
+    },
     database: adapter,
     // UUID IDs for every model; user IDs stay text columns carrying UUID
     // values, organizations are native UUID tenant keys.

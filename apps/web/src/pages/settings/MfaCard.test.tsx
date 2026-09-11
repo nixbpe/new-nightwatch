@@ -124,6 +124,36 @@ describe("MfaCard enrolment steps", () => {
     expect(screen.queryByText(SECRET_GROUPED)).toBeNull();
   });
 
+  it("links a wrong TOTP code to its exact server validation alert", async () => {
+    const user = await reachScanStep();
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(
+      screen.getByRole("button", { name: /ถัดไป: ยืนยันรหัสแรก/ }),
+    );
+    twoFactorMock.verifyTotp.mockResolvedValue({
+      data: null,
+      error: { message: "รหัสยืนยันไม่ถูกต้อง" },
+    });
+
+    const code = screen.getByLabelText(/รหัสยืนยัน 6 หลัก/);
+    await user.type(code, "123456");
+    await user.click(
+      screen.getByRole("button", { name: /ยืนยันและเปิดใช้งาน/ }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(code).toHaveAttribute("aria-invalid", "true");
+    expect(code).toHaveAttribute("aria-describedby", "first-totp-server-error");
+    expect(alert).toHaveAttribute("id", "first-totp-server-error");
+    expect(alert).toHaveTextContent("รหัสยืนยันไม่ถูกต้อง");
+
+    await user.clear(code);
+    expect(code).toHaveAttribute(
+      "aria-describedby",
+      "first-totp-error first-totp-server-error",
+    );
+  });
+
   it("a verified code that the server still reports as disabled shows the refresh guard, not success", async () => {
     const refreshStatus = vi.fn().mockResolvedValue(false);
     const user = await reachScanStep(refreshStatus);

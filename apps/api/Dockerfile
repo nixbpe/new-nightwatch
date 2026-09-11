@@ -9,7 +9,7 @@
 # Only manifests + lockfile are copied so source changes never bust this
 # layer's cache.
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.2-alpine AS deps
+FROM oven/bun:1.3.2-alpine@sha256:adda30fd4db7d8ef9a2113cb935c6f751de3daad39373713b56eefe49db78471 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
@@ -57,11 +57,16 @@ RUN bun run build:migrate && test -f dist-migrate/migrate.js
 # (owner-before-app rule); the app runtime never receives owner credentials.
 # PORT and LOG_LEVEL keep their defaults below.
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.3.2-alpine AS runtime
+FROM oven/bun:1.3.2-alpine@sha256:adda30fd4db7d8ef9a2113cb935c6f751de3daad39373713b56eefe49db78471 AS runtime
 WORKDIR /app
-# Apply pending Alpine security fixes (openssl/musl/zlib in the pinned base
-# image carry HIGH/CRITICAL CVEs; the trivy gate requires zero).
-RUN apk update && apk upgrade --no-cache \
+# The base digest freezes Bun and the initial filesystem. Security fixes are
+# explicit reviewed package pins: no rolling `apk update`/`apk upgrade`.
+RUN apk add --no-cache \
+      'libcrypto3=3.5.8-r0' \
+      'libssl3=3.5.8-r0' \
+      'musl=1.2.5-r12' \
+      'musl-utils=1.2.5-r12' \
+      'zlib=1.3.2-r0' \
   && addgroup -S nightwatch -g 1001 \
   && adduser -S nightwatch -u 1001 -G nightwatch
 COPY --from=build --chown=1001:1001 /app/apps/api/dist ./dist

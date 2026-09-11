@@ -1,30 +1,123 @@
+import path from "node:path";
 import js from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
+const workspaceImportAllowlists = {
+  web: ["@nightwatch/api-contract"],
+  api: ["@nightwatch/api-contract", "@nightwatch/shared", "@nightwatch/db"],
+  shared: [],
+  db: [],
+  "api-contract": [],
+  config: [],
+};
+
+function workspaceLocation(filePath) {
+  const parts = path.resolve(filePath).split(path.sep);
+  const markerIndex = parts.findIndex(
+    (part, index) =>
+      (part === "apps" || part === "packages") &&
+      parts[index + 1] !== undefined,
+  );
+  if (markerIndex < 0) {
+    return null;
+  }
+  return parts.slice(0, markerIndex + 2).join(path.sep);
+}
+
+const workspaceBoundaryPlugin = {
+  rules: {
+    "no-cross-workspace-relative-imports": {
+      meta: {
+        type: "problem",
+        schema: [],
+        messages: {
+          crossing:
+            "Relative imports must not cross workspace roots; import through the package root.",
+        },
+      },
+      create(context) {
+        const importerRoot = workspaceLocation(context.filename);
+        const checkSource = (node) => {
+          const specifier = node.source?.value;
+          if (
+            importerRoot === null ||
+            typeof specifier !== "string" ||
+            !specifier.startsWith(".")
+          ) {
+            return;
+          }
+          const targetRoot = workspaceLocation(
+            path.resolve(path.dirname(context.filename), specifier),
+          );
+          if (targetRoot !== null && targetRoot !== importerRoot) {
+            context.report({ node: node.source, messageId: "crossing" });
+          }
+        };
+        return {
+          ImportDeclaration: checkSource,
+          ExportAllDeclaration: checkSource,
+          ExportNamedDeclaration: checkSource,
+          ImportExpression(node) {
+            if (node.source.type === "Literal") {
+              checkSource({ source: node.source });
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
+function workspaceBoundaryPattern(kind) {
+  if (!Object.hasOwn(workspaceImportAllowlists, kind)) {
+    throw new TypeError(
+      `createConfig requires a valid workspace kind (${Object.keys(workspaceImportAllowlists).join(", ")}).`,
+    );
+  }
+
+  const allowed = workspaceImportAllowlists[kind];
+  const allowance =
+    allowed.length === 0
+      ? "no workspace runtime packages"
+      : `only ${allowed.join(", ")}`;
+  const allowedPackageNames = allowed
+    .map((specifier) => specifier.slice("@nightwatch/".length))
+    .join("|");
+
+  return {
+    regex:
+      allowed.length === 0
+        ? "^@nightwatch/"
+        : `^@nightwatch/(?!(?:${allowedPackageNames})(?:/|$)).+`,
+    message: `${kind} allows ${allowance}.`,
+  };
+}
+
+const apiContractRootOnlyPattern = {
+  regex: "^@nightwatch/api-contract/",
+  message:
+    "@nightwatch/api-contract exports are available only from its package root.",
+};
+
 /**
  * NightWatch flat-config factory.
  *
- * Usage in a workspace `eslint.config.js`:
- *   import { createConfig } from '@nightwatch/eslint-config';
- *   export default createConfig({ react: true });      // apps/web
- *   export default createConfig({ apiService: true }); // apps/api
- *   export default createConfig();                     // packages/*
- *
- * Composes: eslint recommended + typescript-eslint strict-type-checked
- * (type-aware via the TS project service) + the contracted rules
- * (no-explicit-any, no-floating-promises, consistent-type-imports).
- *
- * `react: true` adds react-hooks rules and the module boundary guard:
- * browser code (apps/web) must not import the server-only
- * `@nightwatch/shared` or the backend implementation `@nightwatch/api`;
- * browser-safe contracts come from `@nightwatch/api-contract` only.
- *
- * `apiService: true` forbids Hono imports in service files: business
- * logic must stay transport-independent; HTTP wiring lives in routes
- * and app composition only.
+ * Every workspace declares its PKG-01 importer kind. The kind selects a
+ * centralized workspace-import allowlist, while `react` and `apiService`
+ * retain their framework-specific rules.
  */
-export function createConfig({ react = false, apiService = false } = {}) {
+export function createConfig({ kind, react = false, apiService = false } = {}) {
+  const boundaryPattern = workspaceBoundaryPattern(kind);
+  const boundaryPatterns = [boundaryPattern, apiContractRootOnlyPattern];
+  if (kind === "web") {
+    boundaryPatterns.push({
+      regex:
+        "^(?:pg|postgres|drizzle-orm|redis|ioredis|bullmq|@redis/|@upstash/redis)(?:/|$)",
+      message: "web forbids PostgreSQL and Redis clients.",
+    });
+  }
+
   return tseslint.config(
     {
       name: "nightwatch/ignores",
@@ -73,28 +166,25 @@ export function createConfig({ react = false, apiService = false } = {}) {
             rules: {
               "react-hooks/rules-of-hooks": "error",
               "react-hooks/exhaustive-deps": "warn",
-              // Boundary: browser apps must never pull in server-only code.
-              "no-restricted-imports": [
-                "error",
-                {
-                  patterns: [
-                    {
-                      group: ["@nightwatch/shared", "@nightwatch/shared/*"],
-                      message:
-                        "@nightwatch/shared is server-only. Browser code must import contracts from @nightwatch/api-contract.",
-                    },
-                    {
-                      group: ["@nightwatch/api", "@nightwatch/api/*"],
-                      message:
-                        "Frontend must never import backend implementation code. Share contracts via @nightwatch/api-contract.",
-                    },
-                  ],
-                },
-              ],
             },
           },
         ]
       : []),
+    {
+      name: "nightwatch/workspace-boundary",
+      files: ["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"],
+      ignores: ["eslint.config.js"],
+      plugins: { nightwatch: workspaceBoundaryPlugin },
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: boundaryPatterns,
+          },
+        ],
+        "nightwatch/no-cross-workspace-relative-imports": "error",
+      },
+    },
     ...(apiService
       ? [
           {
@@ -105,6 +195,7 @@ export function createConfig({ react = false, apiService = false } = {}) {
                 "error",
                 {
                   patterns: [
+                    ...boundaryPatterns,
                     {
                       group: ["hono", "hono/*", "@hono/*"],
                       message:

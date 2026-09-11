@@ -6,6 +6,9 @@
   "exports": {
     ".": "./index.js"
   },
+  "scripts": {
+    "test": "node --test index.test.js"
+  },
   "dependencies": {
     "@eslint/js": "^9.39.5",
     "eslint-plugin-react-hooks": "^7.1.1",

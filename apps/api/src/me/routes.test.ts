@@ -213,12 +213,16 @@ describe("PATCH /api/me/active-org", () => {
     expect(res.status).toBe(403);
     const body = errorResponseSchema.parse(await res.json());
     expect(body.error.code).toBe("MEMBERSHIP_DENIED");
-    // The denial is audit-logged with identifiers only — no tokens,
-    // emails or other protected data.
+    expect(logger.warn).toHaveBeenCalledOnce();
     expect(logger.warn).toHaveBeenCalledWith(
-      { userId: "user-1", organizationId: ORG_B },
+      { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
       "active organization change denied: not a member",
     );
+    const denyEvent = logger.warn.mock.calls[0];
+    expect(denyEvent?.[0]).not.toHaveProperty("userId");
+    expect(denyEvent?.[0]).not.toHaveProperty("organizationId");
+    expect(JSON.stringify(denyEvent)).not.toContain(session.user.id);
+    expect(JSON.stringify(denyEvent)).not.toContain(ORG_B);
   });
 
   it("switches the active organization and returns the fresh context", async () => {
