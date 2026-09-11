@@ -8,7 +8,7 @@
 
 - [x] Task 1: move SecuritySettingsPage → pages/settings/SecurityPage, rename loader
 - [x] Task 2: SettingsLayout + settings-tabs + nested /settings routes + placeholders
-- [ ] Task 3a: nav leaf + palette entries + AppShell palette tests
+- [x] Task 3a: nav leaf + palette entries + AppShell palette tests
 - [ ] Task 3b: account-menu single link + AppShell menu tests + docs
 
 ### Checkpoint A

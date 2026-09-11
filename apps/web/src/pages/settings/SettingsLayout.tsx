@@ -49,7 +49,7 @@ export function SettingsLayout() {
             pathname === tab.path || pathname.startsWith(`${tab.path}/`);
           return (
             <NavLink
-              key={tab.key}
+              key={tab.path}
               to={tab.path}
               role="tab"
               aria-selected={active}

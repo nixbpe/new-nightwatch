@@ -98,6 +98,7 @@ function renderShell(workspaceElement: ReactNode = <p>เนื้อหาห�
         children: [
           { path: "/workspace", element: workspaceElement },
           { path: "/settings/security", element: <p>หน้าความปลอดภัย</p> },
+          { path: "/settings/sessions", element: <p>หน้าเซสชัน</p> },
         ],
       },
     ],
@@ -145,8 +146,12 @@ describe("AppShell", () => {
     );
     expect(within(nav).getByText("ตั้งค่า")).toBeInTheDocument();
     expect(
-      within(nav).getByRole("link", { name: "ความปลอดภัยบัญชี" }),
-    ).toHaveAttribute("href", "/settings/security");
+      within(nav).getByRole("link", { name: "การตั้งค่าส่วนตัว" }),
+    ).toHaveAttribute("href", "/settings");
+    // Palette-only sub-destinations never become sidebar rows.
+    expect(
+      within(nav).queryByRole("link", { name: "เซสชันและอุปกรณ์" }),
+    ).toBeNull();
     expect(within(nav).queryByRole("button")).toBeNull();
 
     // Sidebar bottom: the account block.
@@ -288,17 +293,20 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    expect(within(dialog).getAllByRole("option")).toHaveLength(2);
+    // 2 sidebar destinations + the 4 settings tabs (palette-only entries).
+    expect(within(dialog).getAllByRole("option")).toHaveLength(6);
     expect(dialog).toHaveTextContent("ค้นหาใน Org A");
 
-    await user.keyboard("ความปลอดภัย");
+    await user.keyboard("เซสชัน");
     const options = within(dialog).getAllByRole("option");
     expect(options).toHaveLength(1);
-    expect(options[0]).toHaveTextContent("ความปลอดภัยบัญชี");
+    expect(options[0]).toHaveTextContent("เซสชันและอุปกรณ์");
+    // Grouped under the leaf it belongs to.
+    expect(options[0]).toHaveTextContent("การตั้งค่าส่วนตัว");
 
     await user.keyboard("{Enter}");
     expect(screen.queryByRole("dialog", { name: "ค้นหาทั้งหมด" })).toBeNull();
-    expect(await screen.findByText("หน้าความปลอดภัย")).toBeInTheDocument();
+    expect(await screen.findByText("หน้าเซสชัน")).toBeInTheDocument();
   });
 
   it("the header search field opens the same palette and Escape returns focus to it", async () => {

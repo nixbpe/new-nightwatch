@@ -1,31 +1,25 @@
-import type { NavIconName } from "../../components/shell/icons";
+import {
+  isNavGroup,
+  NAV_ITEMS,
+  type NavLeaf,
+} from "../../components/shell/nav-config";
 
-export type SettingsTab = {
-  key: "profile" | "security" | "sessions" | "display";
-  label: string;
-  icon: NavIconName;
-  path: string;
-};
+export type SettingsTab = Pick<NavLeaf, "label" | "icon" | "path">;
 
-/** Tab strip of the personal-settings page; one entry per /settings child route. */
-export const SETTINGS_TABS: SettingsTab[] = [
-  { key: "profile", label: "โปรไฟล์", icon: "user", path: "/settings/profile" },
-  {
-    key: "security",
-    label: "ความปลอดภัย",
-    icon: "shield",
-    path: "/settings/security",
-  },
-  {
-    key: "sessions",
-    label: "เซสชันและอุปกรณ์",
-    icon: "monitor",
-    path: "/settings/sessions",
-  },
-  {
-    key: "display",
-    label: "การแสดงผล",
-    icon: "sliders",
-    path: "/settings/display",
-  },
-];
+const settingsLeaf = NAV_ITEMS.flatMap((item) =>
+  isNavGroup(item) ? item.children : [item],
+).find((leaf) => leaf.path === "/settings");
+
+if (settingsLeaf?.palette === undefined) {
+  throw new Error(
+    "nav-config.ts must declare the /settings leaf with palette entries",
+  );
+}
+
+/**
+ * Tab strip of the personal-settings page — the nav leaf's palette entries,
+ * so the sidebar, the command palette and this strip share one definition.
+ */
+export const SETTINGS_TABS: SettingsTab[] = settingsLeaf.palette.map(
+  ({ label, icon, path }) => ({ label, icon, path }),
+);
