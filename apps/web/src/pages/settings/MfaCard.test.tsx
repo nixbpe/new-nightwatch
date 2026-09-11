@@ -10,6 +10,7 @@ const { twoFactorMock } = vi.hoisted(() => ({
     enable: vi.fn(),
     verifyTotp: vi.fn(),
     generateBackupCodes: vi.fn(),
+    disable: vi.fn(),
   },
 }));
 
@@ -57,6 +58,7 @@ describe("MfaCard enrolment steps", () => {
     twoFactorMock.enable.mockReset();
     twoFactorMock.verifyTotp.mockReset();
     twoFactorMock.generateBackupCodes.mockReset();
+    twoFactorMock.disable.mockReset();
   });
 
   it("step 2 shows the manual key grouped in fours and the codes, and gates the next step on the acknowledgement", async () => {
@@ -211,5 +213,83 @@ describe("MfaCard enrolment steps", () => {
     createObjectURL.mockRestore();
     revokeObjectURL.mockRestore();
     click.mockRestore();
+  });
+});
+
+describe("MfaCard enabled state", () => {
+  beforeEach(() => {
+    twoFactorMock.enable.mockReset();
+    twoFactorMock.verifyTotp.mockReset();
+    twoFactorMock.generateBackupCodes.mockReset();
+    twoFactorMock.disable.mockReset();
+  });
+
+  it("disable asks for the password, calls the API, and hands the flip to the server's answer", async () => {
+    const refreshStatus = vi.fn().mockResolvedValue(false);
+    twoFactorMock.disable.mockResolvedValue({
+      data: { status: true },
+      error: null,
+    });
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <MfaCard enabled refreshStatus={refreshStatus} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ปิดใช้งาน" }));
+    const password = screen.getByLabelText(
+      "ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน",
+    );
+    expect(password).toHaveFocus();
+    expect(screen.getByRole("alert")).toHaveTextContent("การปิด MFA");
+    await user.type(password, "CurrentPassw0rd!");
+    await user.click(
+      screen.getByRole("button", { name: "ปิดใช้งานยืนยันสองขั้นตอน" }),
+    );
+
+    expect(twoFactorMock.disable).toHaveBeenCalledWith({
+      password: "CurrentPassw0rd!",
+    });
+    expect(refreshStatus).toHaveBeenCalledTimes(1);
+    rerender(<MfaCard enabled={false} refreshStatus={refreshStatus} />);
+    expect(await screen.findByText("ปิดอยู่")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "เปิดใช้งาน" })).toHaveFocus();
+  });
+
+  it("a wrong password on disable keeps the panel open with a field-level error", async () => {
+    twoFactorMock.disable.mockResolvedValue({
+      data: null,
+      error: { message: "รหัสผ่านไม่ถูกต้อง" },
+    });
+    const user = userEvent.setup();
+    render(<MfaCard enabled refreshStatus={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "ปิดใช้งาน" }));
+    const password = screen.getByLabelText(
+      "ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน",
+    );
+    await user.type(password, "nope");
+    await user.click(
+      screen.getByRole("button", { name: "ปิดใช้งานยืนยันสองขั้นตอน" }),
+    );
+
+    expect(await screen.findByText("รหัสผ่านไม่ถูกต้อง")).toBeInTheDocument();
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("เปิดอยู่")).toBeInTheDocument();
+  });
+
+  it("only one panel is open at a time, and cancelling returns focus to the button that opened it", async () => {
+    const user = userEvent.setup();
+    render(<MfaCard enabled refreshStatus={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /สร้างชุดใหม่/ }));
+    expect(screen.getByLabelText(/รหัสผ่านปัจจุบัน/)).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "ปิดใช้งาน" }));
+    expect(screen.queryByLabelText(/จำเป็นสำหรับสร้างรหัสกู้คืน/)).toBeNull();
+    expect(
+      screen.getByLabelText("ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน"),
+    ).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
+    expect(screen.getByRole("button", { name: "ปิดใช้งาน" })).toHaveFocus();
   });
 });

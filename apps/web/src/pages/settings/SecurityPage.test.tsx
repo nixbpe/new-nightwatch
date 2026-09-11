@@ -14,6 +14,7 @@ const { meState, fetchMeContextMock, twoFactorMock } = vi.hoisted(() => ({
     enable: vi.fn(),
     verifyTotp: vi.fn(),
     generateBackupCodes: vi.fn(),
+    disable: vi.fn(),
   },
 }));
 
@@ -66,6 +67,7 @@ function resetAuthMocks() {
   twoFactorMock.enable.mockReset();
   twoFactorMock.verifyTotp.mockReset();
   twoFactorMock.generateBackupCodes.mockReset();
+  twoFactorMock.disable.mockReset();
   fetchMeContextMock.mockReset();
   fetchMeContextMock.mockImplementation(() =>
     Promise.resolve(meContextFixture()),
@@ -276,5 +278,31 @@ describe("SecurityPage recovery regeneration", () => {
 
     expect(await screen.findByText("kept-1")).toBeInTheDocument();
     expect(screen.getByText("kept-2")).toBeInTheDocument();
+  });
+
+  it("disabling flips the card to off only after the server confirms", async () => {
+    meState.twoFactorEnabled = true;
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("เปิดอยู่");
+    twoFactorMock.disable.mockImplementation(() => {
+      meState.twoFactorEnabled = false;
+      return Promise.resolve({ data: { status: true }, error: null });
+    });
+
+    await user.click(screen.getByRole("button", { name: "ปิดใช้งาน" }));
+    await user.type(
+      screen.getByLabelText("ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน"),
+      "CurrentPassw0rd!",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "ปิดใช้งานยืนยันสองขั้นตอน" }),
+    );
+
+    expect(await screen.findByText("ปิดอยู่")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "เปิดใช้งาน" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("เปิดอยู่")).toBeNull();
   });
 });

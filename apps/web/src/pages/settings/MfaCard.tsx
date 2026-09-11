@@ -1,6 +1,12 @@
 import { useForm } from "@tanstack/react-form";
 import { toDataURL } from "qrcode";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import {
   ArrowLeftIcon,
@@ -80,6 +86,25 @@ export function MfaCard({
   const [regenError, setRegenError] = useState<string | null>(null);
   const [copied, setCopied] = useState<null | "secret" | "codes">(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [disableOpen, setDisableOpen] = useState(false);
+  const [disableError, setDisableError] = useState<string | null>(null);
+  const enableTriggerRef = useRef<HTMLButtonElement>(null);
+  const regenTriggerRef = useRef<HTMLButtonElement>(null);
+  const disableTriggerRef = useRef<HTMLButtonElement>(null);
+  // Inline panels are not overlays, but focus still moves into an opened
+  // panel (autoFocus on its field) and back to the button that opened it
+  // when it closes — that button remounts, so the return happens after
+  // the next render.
+  const pendingFocus = useRef<RefObject<HTMLButtonElement | null> | null>(null);
+  useEffect(() => {
+    // Stays pending until the target button is actually mounted (e.g. the
+    // enable button only appears once the parent reports enabled=false).
+    const target = pendingFocus.current?.current;
+    if (target !== null && target !== undefined) {
+      target.focus();
+      pendingFocus.current = null;
+    }
+  });
 
   useEffect(() => {
     if (enabled) {
@@ -140,6 +165,7 @@ export function MfaCard({
     setError(null);
     setCodeInvalid(false);
     setEnableError(null);
+    pendingFocus.current = enableTriggerRef;
   };
 
   const enableForm = useForm({
@@ -224,6 +250,38 @@ export function MfaCard({
     },
   });
 
+  const disableForm = useForm({
+    defaultValues: { password: "" },
+    onSubmit: async ({ value }) => {
+      setDisableError(null);
+      try {
+        const { error: disableErr } = await authClient.twoFactor.disable({
+          password: value.password,
+        });
+        if (disableErr != null) {
+          setDisableError(
+            authErrorMessage(disableErr, "ปิดใช้งานยืนยันสองขั้นตอนไม่สำเร็จ"),
+          );
+          return;
+        }
+        const stillEnabled = await refreshStatus();
+        disableForm.resetField("password");
+        if (stillEnabled === false) {
+          setDisableOpen(false);
+          setJustEnabled(false);
+          setRegen(null);
+          pendingFocus.current = enableTriggerRef;
+        } else {
+          setDisableError(
+            "ปิดใช้งานแล้วแต่ยังไม่สามารถยืนยันสถานะกับเซิร์ฟเวอร์ได้ กรุณารีเฟรชหน้านี้",
+          );
+        }
+      } catch {
+        setDisableError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+      }
+    },
+  });
+
   const status: { label: string; tone: "neutral" | "caution" | "positive" } =
     enabled
       ? { label: "เปิดอยู่", tone: "positive" }
@@ -266,17 +324,132 @@ export function MfaCard({
             </Alert>
           ) : null}
           <div className="flex flex-col rounded-md border border-foreground/10">
-            <div className="flex items-center gap-3 border-b border-foreground/10 p-4">
-              <IconTile tone="positive">
-                <SmartphoneIcon size={20} />
-              </IconTile>
-              <div className="min-w-0">
-                <p className="text-sm font-medium">แอปยืนยันตัวตน (TOTP)</p>
-                <p className="text-xs text-foreground-secondary">
-                  ต้องกรอกรหัสจากแอปทุกครั้งที่เข้าสู่ระบบ
-                </p>
+            <div className="flex items-center justify-between gap-3 border-b border-foreground/10 p-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <IconTile tone="positive">
+                  <SmartphoneIcon size={20} />
+                </IconTile>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">แอปยืนยันตัวตน (TOTP)</p>
+                  <p className="text-xs text-foreground-secondary">
+                    ต้องกรอกรหัสจากแอปทุกครั้งที่เข้าสู่ระบบ
+                  </p>
+                </div>
               </div>
+              {disableOpen ? null : (
+                <Button
+                  ref={disableTriggerRef}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="text-danger"
+                  onClick={() => {
+                    setRegen(null);
+                    setRegenError(null);
+                    setDisableError(null);
+                    setJustEnabled(false);
+                    setDisableOpen(true);
+                  }}
+                >
+                  ปิดใช้งาน
+                </Button>
+              )}
             </div>
+            {disableOpen ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void disableForm.handleSubmit();
+                }}
+                noValidate
+                className="flex flex-col gap-4 border-b border-foreground/10 bg-foreground/5 p-4"
+              >
+                <Alert tone="error">
+                  การปิด MFA ทำให้บัญชีเข้าสู่ระบบได้ด้วยรหัสผ่านอย่างเดียว
+                  และรหัสกู้คืนทุกชุดจะใช้ไม่ได้อีก
+                </Alert>
+                <div className="max-w-md">
+                  <disableForm.Field
+                    name="password"
+                    validators={{
+                      onChange: ({ value }) =>
+                        value === "" ? "กรุณากรอกรหัสผ่านปัจจุบัน" : undefined,
+                      onSubmit: ({ value }) =>
+                        value === "" ? "กรุณากรอกรหัสผ่านปัจจุบัน" : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <Field label="ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน">
+                        <Input
+                          type="password"
+                          name="disable-password"
+                          autoComplete="current-password"
+                          autoFocus
+                          value={field.state.value}
+                          onChange={(event) => {
+                            field.handleChange(event.target.value);
+                          }}
+                          onBlur={field.handleBlur}
+                          aria-invalid={
+                            field.state.meta.errors.length > 0 ||
+                            disableError !== null
+                          }
+                          aria-describedby={
+                            field.state.meta.errors.length > 0 ||
+                            disableError !== null
+                              ? "disable-password-error"
+                              : undefined
+                          }
+                        />
+                        {disableError === null ? (
+                          <FieldValidationError
+                            id="disable-password-error"
+                            errors={field.state.meta.errors}
+                          />
+                        ) : (
+                          <span
+                            id="disable-password-error"
+                            role="alert"
+                            className="mt-1 block text-sm text-danger"
+                          >
+                            {disableError}
+                          </span>
+                        )}
+                      </Field>
+                    )}
+                  </disableForm.Field>
+                </div>
+                <div className="flex items-center gap-2">
+                  <disableForm.Subscribe
+                    selector={(state) => state.isSubmitting}
+                    children={(submitting) => (
+                      <Button
+                        type="submit"
+                        variant="destructive"
+                        disabled={submitting}
+                      >
+                        {submitting
+                          ? "กำลังปิดใช้งาน…"
+                          : "ปิดใช้งานยืนยันสองขั้นตอน"}
+                      </Button>
+                    )}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setDisableOpen(false);
+                      setDisableError(null);
+                      disableForm.reset();
+                      pendingFocus.current = disableTriggerRef;
+                    }}
+                  >
+                    ยกเลิก
+                  </Button>
+                </div>
+              </form>
+            ) : null}
             <div className="flex items-center justify-between gap-3 p-4">
               <div className="flex min-w-0 items-center gap-3">
                 <IconTile>
@@ -292,10 +465,13 @@ export function MfaCard({
               </div>
               {regen === null ? (
                 <Button
+                  ref={regenTriggerRef}
                   type="button"
                   variant="secondary"
                   size="sm"
                   onClick={() => {
+                    setDisableOpen(false);
+                    setDisableError(null);
                     setRegenError(null);
                     setRegen("form");
                   }}
@@ -331,6 +507,7 @@ export function MfaCard({
                           type="password"
                           name="regenerate-password"
                           autoComplete="current-password"
+                          autoFocus
                           value={field.state.value}
                           onChange={(event) => {
                             field.handleChange(event.target.value);
@@ -381,6 +558,7 @@ export function MfaCard({
                       setRegen(null);
                       setRegenError(null);
                       regenerateForm.reset();
+                      pendingFocus.current = regenTriggerRef;
                     }}
                   >
                     ยกเลิก
@@ -407,6 +585,7 @@ export function MfaCard({
                     size="sm"
                     onClick={() => {
                       setRegen(null);
+                      pendingFocus.current = regenTriggerRef;
                     }}
                   >
                     เรียบร้อย
@@ -431,6 +610,7 @@ export function MfaCard({
             </div>
           </div>
           <Button
+            ref={enableTriggerRef}
             type="button"
             onClick={() => {
               setJustEnabled(false);
@@ -473,6 +653,7 @@ export function MfaCard({
                       type="password"
                       name="password"
                       autoComplete="current-password"
+                      autoFocus
                       value={field.state.value}
                       onChange={(event) => {
                         field.handleChange(event.target.value);
@@ -669,6 +850,7 @@ export function MfaCard({
                       type="text"
                       name="first-totp"
                       inputMode="numeric"
+                      autoFocus
                       autoComplete="one-time-code"
                       maxLength={6}
                       placeholder="000000"

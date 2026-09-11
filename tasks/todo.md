@@ -20,7 +20,7 @@
 
 - [x] Task 4: MfaCard three-step flow with existing enable/verify
 - [x] Task 5: qrcode dependency, QR render, copy/download, ack gate
-- [ ] Task 6: enabled state — regenerate codes, disable MFA
+- [x] Task 6: enabled state — regenerate codes, disable MFA
 - [ ] Task 7: PasswordCard + SecurityPage composition/states
 
 ### Checkpoint B
