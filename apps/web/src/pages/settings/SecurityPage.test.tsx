@@ -29,6 +29,10 @@ vi.mock("better-auth/client/plugins", () => ({
   twoFactorClient: () => ({}),
 }));
 
+vi.mock("qrcode", () => ({
+  toDataURL: vi.fn(() => Promise.resolve("data:image/png;base64,QR")),
+}));
+
 vi.mock("../../lib/api/me", () => ({
   ME_CONTEXT_QUERY_KEY: ["me", "context"],
   fetchMeContext: () => fetchMeContextMock(),

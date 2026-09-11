@@ -1,14 +1,18 @@
 import { useForm } from "@tanstack/react-form";
-import { useEffect, useState, type ReactNode } from "react";
+import { toDataURL } from "qrcode";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckIcon,
+  CopyIcon,
+  DownloadIcon,
   KeyIcon,
   RefreshIcon,
   SmartphoneIcon,
 } from "../../components/shell/icons";
+import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert, Field, FieldValidationError, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
@@ -30,12 +34,27 @@ function groupedSecret(secret: string): string {
   return secret.replace(/(.{4})/g, "$1 ").trim();
 }
 
+function downloadCodes(codes: string[]): void {
+  const blob = new Blob(
+    [
+      `รหัสกู้คืน NightWatch\nแต่ละรหัสใช้ได้ครั้งเดียว\n\n${codes.join("\n")}\n`,
+    ],
+    { type: "text/plain;charset=utf-8" },
+  );
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "nightwatch-recovery-codes.txt";
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 /**
  * Two-factor (TOTP) card. Enrolment runs inline as three steps — password,
  * scan + save recovery codes, verify the first code — and the enabled
  * state offers recovery-code regeneration. `enabled` is the server's word
  * (me/context); nothing here claims "enabled" before `refreshStatus`
- * confirms it. The enrolment draft (secret, codes) lives only in this
+ * confirms it. The enrolment draft (secret, codes, QR) lives only in this
  * component's state and is dropped on cancel, back, success or unmount.
  */
 export function MfaCard({
@@ -47,6 +66,11 @@ export function MfaCard({
 }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [draft, setDraft] = useState<EnrollmentDraft | null>(null);
+  const [qr, setQr] = useState<
+    | { state: "loading" }
+    | { state: "ready"; dataUrl: string }
+    | { state: "failed" }
+  >({ state: "loading" });
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [codeInvalid, setCodeInvalid] = useState(false);
@@ -54,6 +78,8 @@ export function MfaCard({
   const [enableError, setEnableError] = useState<string | null>(null);
   const [regen, setRegen] = useState<null | "form" | { codes: string[] }>(null);
   const [regenError, setRegenError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<null | "secret" | "codes">(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (enabled) {
@@ -62,6 +88,50 @@ export function MfaCard({
       setAcknowledged(false);
     }
   }, [enabled]);
+
+  // The QR is derived from the draft's URI and never stored anywhere else.
+  useEffect(() => {
+    if (draft === null) {
+      return;
+    }
+    let cancelled = false;
+    setQr({ state: "loading" });
+    toDataURL(draft.totpURI, { margin: 0, width: 168 })
+      .then((dataUrl) => {
+        if (!cancelled) {
+          setQr({ state: "ready", dataUrl });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQr({ state: "failed" });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft]);
+
+  useEffect(
+    () => () => {
+      if (copiedTimer.current !== null) {
+        clearTimeout(copiedTimer.current);
+      }
+    },
+    [],
+  );
+
+  const copy = (text: string, which: "secret" | "codes") => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(which);
+      if (copiedTimer.current !== null) {
+        clearTimeout(copiedTimer.current);
+      }
+      copiedTimer.current = setTimeout(() => {
+        setCopied(null);
+      }, 1500);
+    });
+  };
 
   const resetEnrollment = () => {
     setDraft(null);
@@ -160,6 +230,14 @@ export function MfaCard({
       : stage === "idle"
         ? { label: "ปิดอยู่", tone: "neutral" }
         : { label: "กำลังตั้งค่า", tone: "caution" };
+
+  const secret = draft === null ? null : secretFromUri(draft.totpURI);
+  const secretDisplay =
+    draft === null
+      ? ""
+      : secret === null
+        ? draft.totpURI
+        : groupedSecret(secret);
 
   return (
     <section
@@ -312,13 +390,15 @@ export function MfaCard({
             ) : null}
             {regen !== null && regen !== "form" ? (
               <div className="flex flex-col gap-3 border-t border-foreground/10 p-4">
-                <div>
-                  <p className="text-sm font-medium">รหัสกู้คืนชุดใหม่</p>
-                  <p className="text-xs text-foreground-secondary">
-                    แสดงเพียงครั้งนี้ · แต่ละรหัสใช้ได้ครั้งเดียว ·
-                    ชุดเดิมใช้ไม่ได้แล้ว
-                  </p>
-                </div>
+                <CodesHeader
+                  title="รหัสกู้คืนชุดใหม่"
+                  description="แสดงเพียงครั้งนี้ · แต่ละรหัสใช้ได้ครั้งเดียว · ชุดเดิมใช้ไม่ได้แล้ว"
+                  codes={regen.codes}
+                  copied={copied === "codes"}
+                  onCopy={() => {
+                    copy(regen.codes.join("\n"), "codes");
+                  }}
+                />
                 <BackupCodes codes={regen.codes} />
                 <div>
                   <Button
@@ -452,8 +532,23 @@ export function MfaCard({
           <Stepper current={2} />
           <div className="grid gap-6 md:grid-cols-[200px_minmax(0,1fr)]">
             <div className="flex flex-col gap-2">
-              <div className="flex aspect-square w-[200px] items-center justify-center rounded-md border border-dashed border-foreground/10 p-4 text-center text-xs text-foreground-secondary">
-                สแกนคิวอาร์โค้ด (เร็ว ๆ นี้) — ใช้คีย์ด้านล่างแทน
+              {/* Scanners want dark modules on white, in both themes. */}
+              <div className="flex h-[200px] w-[200px] items-center justify-center rounded-md border border-foreground/10 bg-white p-4">
+                {qr.state === "ready" ? (
+                  <img
+                    src={qr.dataUrl}
+                    alt="คิวอาร์โค้ดสำหรับแอปยืนยันตัวตน"
+                    width={168}
+                    height={168}
+                    className="block"
+                  />
+                ) : qr.state === "loading" ? (
+                  <Skeleton className="h-[168px] w-[168px]" />
+                ) : (
+                  <p className="text-center text-xs text-foreground-secondary">
+                    สร้างคิวอาร์โค้ดไม่สำเร็จ — ใช้คีย์ด้านล่างแทน
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex min-w-0 flex-col gap-4">
@@ -462,23 +557,33 @@ export function MfaCard({
                 <p className="text-sm text-foreground-secondary">
                   หรือกรอกคีย์นี้ในแอปด้วยตนเองถ้าสแกนไม่ได้
                 </p>
-                <code className="mt-1 block truncate rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-sm tracking-wider">
-                  {(() => {
-                    const secret = secretFromUri(draft.totpURI);
-                    return secret === null
-                      ? draft.totpURI
-                      : groupedSecret(secret);
-                  })()}
-                </code>
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="block min-w-0 flex-1 truncate rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-sm tracking-wider">
+                    {secretDisplay}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      copy(secret ?? draft.totpURI, "secret");
+                    }}
+                  >
+                    <CopyIcon size={14} />
+                    {copied === "secret" ? "คัดลอกแล้ว" : "คัดลอก"}
+                  </Button>
+                </div>
               </div>
               <div className="flex flex-col gap-2">
-                <p className="text-sm font-medium">
-                  2. เก็บรหัสกู้คืนไว้ในที่ปลอดภัย
-                </p>
-                <p className="text-sm text-foreground-secondary">
-                  ใช้แทนรหัสจากแอปเมื่อเข้าถึงโทรศัพท์ไม่ได้ ·
-                  แต่ละรหัสใช้ได้ครั้งเดียว · แสดงเพียงครั้งนี้
-                </p>
+                <CodesHeader
+                  title="2. เก็บรหัสกู้คืนไว้ในที่ปลอดภัย"
+                  description="ใช้แทนรหัสจากแอปเมื่อเข้าถึงโทรศัพท์ไม่ได้ · แต่ละรหัสใช้ได้ครั้งเดียว · แสดงเพียงครั้งนี้"
+                  codes={draft.backupCodes}
+                  copied={copied === "codes"}
+                  onCopy={() => {
+                    copy(draft.backupCodes.join("\n"), "codes");
+                  }}
+                />
                 <BackupCodes codes={draft.backupCodes} />
               </div>
               <label className="flex items-start gap-2.5 text-sm">
@@ -682,6 +787,46 @@ function StepFooter({ left, right }: { left: ReactNode; right: ReactNode }) {
     <div className="flex items-center justify-between gap-2 border-t border-foreground/10 pt-4">
       {left}
       {right}
+    </div>
+  );
+}
+
+function CodesHeader({
+  title,
+  description,
+  codes,
+  copied,
+  onCopy,
+}: {
+  title: string;
+  description: string;
+  codes: string[];
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-foreground-secondary">{description}</p>
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-1">
+        <Button type="button" variant="ghost" size="sm" onClick={onCopy}>
+          <CopyIcon size={14} />
+          {copied ? "คัดลอกแล้ว" : "คัดลอกทั้งหมด"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            downloadCodes(codes);
+          }}
+        >
+          <DownloadIcon size={14} />
+          ดาวน์โหลด .txt
+        </Button>
+      </div>
     </div>
   );
 }

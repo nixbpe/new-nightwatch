@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toDataURL } from "qrcode";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MfaCard } from "./MfaCard";
@@ -22,6 +23,10 @@ vi.mock("better-auth/react", () => ({
 vi.mock("better-auth/client/plugins", () => ({
   organizationClient: () => ({}),
   twoFactorClient: () => ({}),
+}));
+
+vi.mock("qrcode", () => ({
+  toDataURL: vi.fn(() => Promise.resolve("data:image/png;base64,QR")),
 }));
 
 const TOTP_URI =
@@ -151,5 +156,60 @@ describe("MfaCard enrolment steps", () => {
     const code = screen.getByLabelText(/รหัสยืนยัน 6 หลัก/);
     await user.type(code, "12ab34567");
     expect(code).toHaveValue("123456");
+  });
+
+  it("step 2 renders a QR image generated from the real otpauth URI on a white tile", async () => {
+    await reachScanStep();
+
+    const qr = await screen.findByRole("img", {
+      name: "คิวอาร์โค้ดสำหรับแอปยืนยันตัวตน",
+    });
+    expect(qr).toHaveAttribute("src", "data:image/png;base64,QR");
+    expect(vi.mocked(toDataURL)).toHaveBeenCalledWith(TOTP_URI, {
+      margin: 0,
+      width: 168,
+    });
+  });
+
+  it("copies the raw secret and the codes to the clipboard with a transient confirmation", async () => {
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+    const user = await reachScanStep();
+
+    await user.click(screen.getByRole("button", { name: /^คัดลอก$/ }));
+    expect(writeText).toHaveBeenCalledWith("JBSWY3DPEHPK3PXP");
+    expect(
+      await screen.findByRole("button", { name: "คัดลอกแล้ว" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "คัดลอกทั้งหมด" }));
+    expect(writeText).toHaveBeenLastCalledWith("code-1\ncode-2");
+    writeText.mockRestore();
+  });
+
+  it("downloads the codes as a text file", async () => {
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:codes");
+    const revokeObjectURL = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => undefined);
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    const user = await reachScanStep();
+
+    await user.click(screen.getByRole("button", { name: /ดาวน์โหลด \.txt/ }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(await (blob as Blob).text()).toContain("code-1\ncode-2");
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:codes");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+    click.mockRestore();
   });
 });
