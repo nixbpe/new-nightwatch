@@ -47,7 +47,7 @@
 
 ## Phase 5 — account-profile
 
-- [ ] Task 12: ProfilePage (name edit, read-only email, initials avatar)
+- [x] Task 12: ProfilePage (name edit, read-only email, initials avatar)
 
 ### Checkpoint E — complete
 
