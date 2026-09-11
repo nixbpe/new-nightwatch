@@ -30,11 +30,11 @@
 ## Phase 3 — account-display
 
 - [x] Task 8: lib/preferences (types, storage, hook, formatDateTime)
-- [ ] Task 9: DisplayPage (theme + language/time cards)
+- [x] Task 9: DisplayPage (theme + language/time cards)
 
 ### Checkpoint C
 
-- [ ] validate green · persists across reload · in sync with account-menu theme
+- [x] validate green (143) · persists across reload · theme in sync with account menu (shared store) · 1440/390 light+dark
 
 ## Phase 4 — account-sessions
 
