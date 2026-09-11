@@ -41,6 +41,7 @@ model: ["@implement", "@default"]
 - Implemented, partially implemented or blocked, per accepted criterion.
 - Implemented means the invariant holds in the owning behavior for every affected caller, not that an error response changed or a throw stopped.
 - Author-verified or source-complete, with named gaps.
+- Code first; the report itself is at most three short lines — what was skipped and when to add it. No essays, feature tours or design notes defending a simplification; if the explanation would outgrow the code, cut the explanation, not the code. This bound is only on unrequested prose — a report, walkthrough or per-phase notes the user actually asked for is not debt, and is given in full.
 
 ### Deliverables
 

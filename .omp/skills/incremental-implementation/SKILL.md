@@ -7,7 +7,7 @@ description: Delivers changes incrementally in thin, verifiable slices. Use when
 
 ## Overview
 
-Build in thin vertical slices — implement one piece, test it, verify it, then expand. Avoid implementing an entire feature in one pass. Each increment should leave the system in a working, testable state. This is the execution discipline that makes large features manageable.
+Build in thin vertical slices — implement one piece, test it, verify it, then expand. Avoid implementing an entire feature in one pass. Each increment should leave the system in a working, testable state.
 
 ## When to Use
 
@@ -21,229 +21,105 @@ Build in thin vertical slices — implement one piece, test it, verify it, then 
 ## The Increment Cycle
 
 ```
-┌──────────────────────────────────────┐
-│                                      │
-│   Implement ──→ Test ──→ Verify ──┐  │
-│       ▲                           │  │
-│       └───── Commit ◄─────────────┘  │
-│              │                       │
-│              ▼                       │
-│          Next slice                  │
-│                                      │
-└──────────────────────────────────────┘
+Implement ──→ Test ──→ Verify ──→ Commit ──→ Next slice
+                          │
+                     (on failure)
+                          ▼
+                    fix, then retry
 ```
-
-For each slice:
 
 1. **Implement** the smallest complete piece of functionality
 2. **Test** — run the test suite (or write a test if none exists)
-3. **Verify** — confirm the slice works as expected (tests pass, build succeeds, manual check)
-4. **Commit** -- save your progress with a descriptive message (see `git-workflow-and-versioning` for atomic commit guidance)
+3. **Verify** — tests pass, build succeeds, manual check
+4. **Commit** — save progress with a descriptive message (see `git-workflow`)
 5. **Move to the next slice** — carry forward, don't restart
 
 ## Slicing Strategies
 
-### Vertical Slices (Preferred)
-
-Build one complete path through the stack:
-
-```
-Slice 1: Create a task (DB + API + basic UI)
-    → Tests pass, user can create a task via the UI
-
-Slice 2: List tasks (query + API + UI)
-    → Tests pass, user can see their tasks
-
-Slice 3: Edit a task (update + API + UI)
-    → Tests pass, user can modify tasks
-
-Slice 4: Delete a task (delete + API + UI + confirmation)
-    → Tests pass, full CRUD complete
-```
-
-Each slice delivers working end-to-end functionality.
-
-### Contract-First Slicing
-
-When backend and frontend need to develop in parallel:
-
-```
-Slice 0: Define the API contract (types, interfaces, OpenAPI spec)
-Slice 1a: Implement backend against the contract + API tests
-Slice 1b: Implement frontend against mock data matching the contract
-Slice 2: Integrate and test end-to-end
-```
-
-### Risk-First Slicing
-
-Tackle the riskiest or most uncertain piece first:
-
-```
-Slice 1: Prove the WebSocket connection works (highest risk)
-Slice 2: Build real-time task updates on the proven connection
-Slice 3: Add offline support and reconnection
-```
-
-If Slice 1 fails, you discover it before investing in Slices 2 and 3.
+| Strategy | Use when | Example |
+|---|---|---|
+| **Vertical (preferred)** | Default — one complete path through the stack per slice | Slice 1: create a task (DB+API+UI) → tests pass, user can create one. Then list, edit, delete |
+| **Contract-first** | Backend and frontend must develop in parallel | Define the API contract first; each side builds against it; integrate last |
+| **Risk-first** | The riskiest or most uncertain piece needs proving early | Prove the hard part (e.g. a WebSocket connection) before building features on top of it |
 
 ## Implementation Rules
 
 ### Rule 0: Simplicity First
 
-Before writing any code, ask: "What is the simplest thing that could work?"
-
-After writing code, review it against these checks:
-- Can this be done in fewer lines?
-- Are these abstractions earning their complexity?
-- Would a staff engineer look at this and say "why didn't you just..."?
-- Am I building for hypothetical future requirements, or the current task?
+Before writing any code, ask: "What is the simplest thing that could work?" After writing it: can this be done in fewer lines, are these abstractions earning their complexity, would a staff engineer say "why didn't you just..."?
 
 ```
-SIMPLICITY CHECK:
-✗ Generic EventBus with middleware pipeline for one notification
-✓ Simple function call
-
-✗ Abstract factory pattern for two similar components
-✓ Two straightforward components with shared utilities
-
-✗ Config-driven form builder for three forms
-✓ Three form components
+✗ An interface with one implementation          →  ✓ Just the implementation
+✗ A factory for one product                      →  ✓ A plain constructor or function
+✗ A config knob for a value that never changes   →  ✓ A constant
 ```
 
-Three similar lines of code is better than a premature abstraction. Implement the naive, obviously-correct version first. Optimize only after correctness is proven with tests.
+Implement the naive, obviously-correct version first. Optimize only after correctness is proven with tests. Prefer deletion over addition, and boring over clever — clever is what someone else decodes at 3am.
+
+### Rule 0.1: Understand Before You Minimize
+
+Trace the whole thing first — every file the change touches, the actual flow — before picking the smallest fix. Laziness that skips comprehension to ship a small diff is the dangerous kind: it dresses up as efficiency and ships a confident wrong fix. Read fully, then be lazy.
+
+Fewest files and the shortest working diff win, but only once you understand the problem — the smallest change in the wrong place isn't lazy, it's a second bug. And "lazy" never means picking the flimsier of two equally simple options: if two standard-library approaches are the same size, take the one that's correct on edge cases.
+
+### Rule 0.2: Never Simplify Away Safety
+
+Simplicity has a floor. Never simplify away input validation at trust boundaries, error handling that prevents data loss, security measures, accessibility basics, or anything the user explicitly requested. If the user insists on the full version, build it — don't re-argue for the simpler one.
 
 ### Rule 0.5: Scope Discipline
 
-Touch only what the task requires.
-
-Do NOT:
-- "Clean up" code adjacent to your change
-- Refactor imports in files you're not modifying
-- Remove comments you don't fully understand
-- Add features not in the spec because they "seem useful"
-- Modernize syntax in files you're only reading
-
-If you notice something worth improving outside your task scope, note it — don't fix it:
+Touch only what the task requires. Do NOT clean up adjacent code, refactor imports you're not touching, remove comments you don't understand, or add unrequested features. Note anything worth improving outside scope instead of fixing it:
 
 ```
-NOTICED BUT NOT TOUCHING:
-- src/utils/format.ts has an unused import (unrelated to this task)
-- The auth middleware could use better error messages (separate task)
-→ Want me to create tasks for these?
+NOTICED BUT NOT TOUCHING: src/utils/format.ts has an unused import (unrelated to this task)
+→ Want me to create a task for this?
 ```
 
-### Rule 1: One Thing at a Time
+### Rules 1–5
 
-Each increment changes one logical thing. Don't mix concerns:
-
-**Bad:** One commit that adds a new component, refactors an existing one, and updates the build config.
-
-**Good:** Three separate commits — one for each change.
-
-### Rule 2: Keep It Compilable
-
-After each increment, the project must build and existing tests must pass. Don't leave the codebase in a broken state between slices.
-
-### Rule 3: Feature Flags for Incomplete Features
-
-If a feature isn't ready for users but you need to merge increments:
-
-```typescript
-// Feature flag for work-in-progress
-const ENABLE_TASK_SHARING = process.env.FEATURE_TASK_SHARING === 'true';
-
-if (ENABLE_TASK_SHARING) {
-  // New sharing UI
-}
-```
-
-This lets you merge small increments to the main branch without exposing incomplete work.
-
-### Rule 4: Safe Defaults
-
-New code should default to safe, conservative behavior:
-
-```typescript
-// Safe: disabled by default, opt-in
-export function createTask(data: TaskInput, options?: { notify?: boolean }) {
-  const shouldNotify = options?.notify ?? false;
-  // ...
-}
-```
-
-### Rule 5: Rollback-Friendly
-
-Each increment should be independently revertable:
-
-- Additive changes (new files, new functions) are easy to revert
-- Modifications to existing code should be minimal and focused
-- Database migrations should have corresponding rollback migrations
-- Avoid deleting something in one commit and replacing it in the same commit — separate them
+| Rule | Statement |
+|---|---|
+| One thing at a time | Each increment changes one logical thing — don't mix a new component, a refactor, and a config update in one commit |
+| Keep it compilable | The project must build and existing tests must pass after every increment |
+| Feature flags | If a feature isn't ready for users but you need to merge, gate it behind a flag defaulted off, rather than leaving it on a branch |
+| Safe defaults | New code defaults to conservative, opt-in behavior (e.g. a new `notify` option defaults to `false`) |
+| Rollback-friendly | Prefer additive changes; keep modifications minimal; never delete something and replace it in the same commit |
 
 ## Working with Agents
 
-When directing an agent to implement incrementally:
-
-```
-"Let's implement Task 3 from the plan.
-
-Start with just the database schema change and the API endpoint.
-Don't touch the UI yet — we'll do that in the next increment.
-
-After implementing, run the repository's test and build commands to
-verify nothing is broken."
-```
-
-Be explicit about what's in scope and what's NOT in scope for each increment.
+When directing an agent: be explicit about what's in scope and what's NOT in scope for this increment, and require it to run the repository's test and build commands before reporting done.
 
 ## Increment Checklist
 
-After each increment, verify with the repository's own commands (see the test-driven-development skill's Discover the Stack First section):
-
 - [ ] The change does one thing and does it completely
-- [ ] All existing tests still pass (the repository's test command: `npm test`, `./gradlew test`, `pytest`, ...)
-- [ ] The build succeeds (the repository's build command)
-- [ ] Type checking passes, where the stack has one (`npx tsc --noEmit`, `mypy`, ...)
-- [ ] Linting passes (the repository's lint command)
+- [ ] All existing tests still pass, and the build succeeds
+- [ ] Type checking and linting pass, where the stack has them
 - [ ] The new functionality works as expected
 - [ ] The change is committed with a descriptive message
 
-**Note:** Run each verification command after a change that could affect it. After a successful run, don't repeat the same command unless the code has changed since — re-running on unchanged code adds no information.
+**Note:** Run each verification command after a change that could affect it — don't repeat an unchanged command for reassurance.
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
 | "I'll test it all at the end" | Bugs compound. A bug in Slice 1 makes Slices 2-5 wrong. Test each slice. |
-| "It's faster to do it all at once" | It *feels* faster until something breaks and you can't find which of 500 changed lines caused it. |
 | "These changes are too small to commit separately" | Small commits are free. Large commits hide bugs and make rollbacks painful. |
 | "I'll add the feature flag later" | If the feature isn't complete, it shouldn't be user-visible. Add the flag now. |
 | "This refactor is small enough to include" | Refactors mixed with features make both harder to review and debug. Separate them. |
-| "Let me run the build command again just to be sure" | After a successful run, repeating the same command adds nothing unless the code has changed since. Run it again after subsequent edits, not as reassurance. |
 
 ## Red Flags
 
 - More than 100 lines of code written without running tests
 - Multiple unrelated changes in a single increment
 - "Let me just quickly add this too" scope expansion
-- Skipping the test/verify step to move faster
 - Build or tests broken between increments
-- Large uncommitted changes accumulating
 - Building abstractions before the third use case demands it
 - Touching files outside the task scope "while I'm here"
-- Creating new utility files for one-time operations
-- Running the same build/test command twice in a row without any intervening code change
 
 ## Verification
 
-After completing all increments for a task:
-
 - [ ] Each increment was individually tested and committed
-- [ ] The full test suite passes
-- [ ] The build is clean
+- [ ] The full test suite passes and the build is clean
 - [ ] The feature works end-to-end as specified
 - [ ] No uncommitted changes remain
-
-## See Also
-
-Per-increment verification is the local check. Before declaring a task done, apply the project-wide Definition of Done as the final gate, the standing bar every increment clears regardless of the task. See `../../references/definition-of-done.md`.
