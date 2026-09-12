@@ -4,13 +4,13 @@ Source design: https://claude.ai/code/artifact/85f80e5a-fa43-463f-b632-afe697f47
 (clickable prototype; light/dark; tabs: โปรไฟล์ / ความปลอดภัย / เซสชันและอุปกรณ์ / การแสดงผล).
 Shell it lives in: `apps/web/src/components/shell/` (see `docs/ref/shell-structure.md`).
 
-| Module id          | Responsibility                                                                                                                                              | Depends on                          | Spec                       |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | -------------------------- |
-| `settings-shell`   | `/settings/*` route family, page header + tab strip layout, nav/breadcrumb/account-menu wiring, index redirect                                              | —                                   | `SPEC-settings-shell.md`   |
-| `account-security` | Password change; MFA enable → verify → backup codes (existing) + regenerate codes + **disable**; moves the current `/settings/security` page into the shell | `settings-shell`                    | `SPEC-account-security.md` |
-| `account-sessions` | List signed-in sessions (device, IP, last active), revoke one, revoke all others; absolute times via `formatDateTime`                                       | `settings-shell`, `account-display` | `SPEC-account-sessions.md` |
-| `account-profile`  | Edit display name; read-only email with verified badge; initials avatar (no upload)                                                                         | `settings-shell`                    | `SPEC-account-profile.md`  |
-| `account-display`  | Theme (existing) + language / time zone / time format / week start, persisted in the browser only                                                           | `settings-shell`                    | `SPEC-account-display.md`  |
+| Module id          | Responsibility                                                                                                                                              | Depends on                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `settings-shell`   | `/settings/*` route family, page header + tab strip layout, nav/breadcrumb/account-menu wiring, index redirect                                              | —                                   |
+| `account-security` | Password change; MFA enable → verify → backup codes (existing) + regenerate codes + **disable**; moves the current `/settings/security` page into the shell | `settings-shell`                    |
+| `account-sessions` | List signed-in sessions (device, IP, last active), revoke one, revoke all others; absolute times via `formatDateTime`                                       | `settings-shell`, `account-display` |
+| `account-profile`  | Edit display name; read-only email with verified badge; initials avatar (no upload)                                                                         | `settings-shell`                    |
+| `account-display`  | Theme (existing) + language / time zone / time format / week start, persisted in the browser only                                                           | `settings-shell`                    |
 
 Build order: `settings-shell` → `account-security` → `account-display` → `account-sessions` → `account-profile`.
 `account-security` and `account-profile` depend only on the shell; `account-sessions` also reads `formatDateTime` from `account-display`, so display lands first.
@@ -38,7 +38,7 @@ Open questions resolved with the user (2026-09-11):
 - Organization-level settings (ตั้งค่าองค์กร) are out of scope.
 - Email change (`changeEmail`) is out of scope — it needs `user.changeEmail.enabled` on the server plus a verification flow.
 
-## Shared conventions (apply to every module spec)
+## Shared implementation conventions
 
 ### Tech stack
 
