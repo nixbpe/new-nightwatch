@@ -20,6 +20,8 @@ Follow the applicable reference, including its verification requirements. Keep d
 
 - Keep changes within the assignment; avoid unrelated refactors and scaffolding.
 - Update affected tests and documentation when contracts change.
+- No code review is required when a change contains no code edit (docs-only, config-only, or other non-code content).
+- Don't invoke code-implementation skills (e.g. `incremental-implementation`, `test-driven-development`) unless the assignment is actually to implement code.
 - State your assumptions explicitly. If uncertain, ask
 - If something is unclear, stop. Name what's confusing. Ask.
 - No error handling for impossible scenarios.
