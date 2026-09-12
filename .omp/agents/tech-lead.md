@@ -99,6 +99,7 @@ Focused repair runs only:
 - lint/typecheck for the affected package(s)
 - the regression test targeting the finding
 - a DB/E2E scenario only when the finding itself requires that runtime
+- a targeted security check scoped to the finding (e.g. one semgrep rule or file), never the full `security`/`security:image` battery
 
 Release gate, ordered once the ledger is closed:
 ```text
