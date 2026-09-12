@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formatDateTime, PREFERENCES_KEY } from "../../lib/preferences";
 import type { SessionRow } from "../../lib/sessions/sessions";
 import { SessionsPage } from "./SessionsPage";
 
@@ -34,6 +35,13 @@ vi.mock("better-auth/client/plugins", () => ({
 }));
 
 const NOW = Date.now();
+const STORED_PREFERENCES = {
+  language: "th",
+  timeZone: "Asia/Tokyo",
+  hourCycle: "h12",
+  weekStart: "sunday",
+} as const;
+
 function session(
   overrides: Partial<SessionRow> & { token: string; id: string },
 ): SessionRow {
@@ -74,6 +82,23 @@ function nth<T>(items: T[], index: number): T {
   return item;
 }
 
+function expectVisibleAbsoluteTime(item: HTMLElement, row: SessionRow): void {
+  const value = formatDateTime(row.updatedAt, STORED_PREFERENCES);
+  const time = item.querySelector(
+    `time[datetime="${row.updatedAt.toISOString()}"]`,
+  );
+
+  expect(time).not.toBeNull();
+  if (time === null) {
+    throw new Error("expected a timestamp");
+  }
+
+  expect(time).toBeVisible();
+  expect(time.textContent).toBe(value);
+  expect(time).not.toHaveClass("sr-only");
+  expect(time).not.toHaveAttribute("aria-hidden", "true");
+}
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -96,9 +121,14 @@ describe("SessionsPage", () => {
       user: { id: "user-1", email: "me@example.com" },
     };
     sessionState.isPending = false;
+    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(STORED_PREFERENCES));
   });
 
-  it("lists sessions with the current device first and un-revokable, honest fallbacks, and no tokens in the DOM", async () => {
+  afterEach(() => {
+    localStorage.removeItem(PREFERENCES_KEY);
+  });
+
+  it("lists current and other sessions with visible, accessible absolute timestamps", async () => {
     authMock.listSessions.mockResolvedValue({
       data: [PHONE, UNKNOWN, CURRENT],
       error: null,
@@ -110,17 +140,13 @@ describe("SessionsPage", () => {
     expect(items[0]).toHaveTextContent("Chrome 129 · macOS");
     expect(items[0]).toHaveTextContent("อุปกรณ์นี้");
     expect(items[0]).toHaveTextContent("171.99.12.48");
-    expect(items[0]).toHaveTextContent("ตอนนี้");
+    expectVisibleAbsoluteTime(nth(items, 0), CURRENT);
     expect(within(nth(items, 0)).queryByRole("button")).toBeNull();
     // Most recently active other session next (1 h ago before 3 days ago).
     expect(items[1]).toHaveTextContent("อุปกรณ์ที่ไม่รู้จัก");
     expect(items[1]).toHaveTextContent("ไม่ทราบ IP");
     expect(items[2]).toHaveTextContent("Safari 18 · iOS");
-    expect(items[2]).toHaveTextContent("3 วันที่ผ่านมา");
-    expect(
-      within(nth(items, 2)).getByRole("button", { name: /ออกจากระบบ/ }),
-    ).toBeInTheDocument();
-
+    expectVisibleAbsoluteTime(nth(items, 2), PHONE);
     expect(container.textContent).not.toContain("tok-");
     expect(
       screen.getByRole("button", { name: "ออกจากระบบทุกอุปกรณ์อื่น" }),

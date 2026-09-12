@@ -14,7 +14,6 @@ import { formatDateTime, usePreferences } from "../../lib/preferences";
 import { deviceLabel } from "../../lib/sessions/device-label";
 import {
   fetchSessions,
-  relativeTime,
   SESSIONS_QUERY_KEY,
   type SessionRow,
 } from "../../lib/sessions/sessions";
@@ -142,7 +141,6 @@ export function SessionsPage() {
     currentToken === null
       ? null
       : rows.filter((row) => row.token !== currentToken);
-  const now = new Date();
 
   return (
     <section
@@ -165,6 +163,7 @@ export function SessionsPage() {
           const isConfirming = confirming === row.token;
           const rowFailure =
             failure?.key === row.token ? failure.message : null;
+          const lastActive = formatDateTime(row.updatedAt, preferences);
           return (
             <li
               key={row.id}
@@ -210,11 +209,8 @@ export function SessionsPage() {
                       <span className="font-mono">{row.ipAddress}</span>
                     )}
                     {" · ใช้งานล่าสุด "}
-                    <time
-                      dateTime={row.updatedAt.toISOString()}
-                      title={formatDateTime(row.updatedAt, preferences)}
-                    >
-                      {isCurrent ? "ตอนนี้" : relativeTime(row.updatedAt, now)}
+                    <time dateTime={row.updatedAt.toISOString()}>
+                      {lastActive}
                     </time>
                   </p>
                 </div>
