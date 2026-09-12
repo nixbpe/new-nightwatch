@@ -50,6 +50,12 @@ Each task declares:
 
 Serialize shared files under one integration owner. Resolve contracts first; dispatch only ready, disjoint work after its prerequisites. Map every criterion to a task or integrated verification; broad labels are not tasks.
 
+## Acceptance freeze
+
+Before dispatching implementation, freeze what "done" means. Approve the Acceptance matrix agent:`product-owner` authors (Scope, Authorization, State, Concurrency, Security, Accessibility, Verification, Out of scope; each item numbered `AC-<NN>`), then set `acceptanceVersion: <Feature-id>-AC-<n>` and `status: frozen` together with the Product Owner.
+
+After freeze, agent:`code-reviewer` may only point at an AC the candidate misses, a violation of an already-approved architecture/security rule, or a non-blocking follow-up proposal — never a new acceptance criterion. A genuinely new criterion is a scope change: proposed AC → you classify blocker or follow-up → Product Owner approves → `acceptanceVersion` bumps → replan the affected work. Never let a criterion change silently mid-review.
+
 ## Router and dispatch
 
 Route by outcome, not worker availability:
@@ -60,7 +66,7 @@ A software task starts with `/build NODE-<id>`, then its fields. Never use `/bui
 
 ## Delivery loop
 
-1. Dispatch bounded, ready tasks together only when ownership is disjoint.
+1. Dispatch bounded, ready tasks together only when ownership is disjoint, one AC group per slice per skill:`incremental-implementation`; no candidate exists yet at this stage.
 2. Read every handoff; evidence must exercise each claim.
    - When relevant, stateful proof identifies one trigger, the reached mutation or interleaving, and preserved state.
    - Mutating integration tests also require run-unique fixtures and owned cleanup.
@@ -71,7 +77,7 @@ A software task starts with `/build NODE-<id>`, then its fields. Never use `/bui
    - Bind only after a `ready for validation` verdict; record non-blocking findings without forcing repair.
 5. Bind the reviewed candidate. In parallel, dispatch agent:`software-engineer` for assigned no-edit application gates and agent:`platform-engineer` for permitted scanner/platform evidence, both tied to that binding.
 6. Send all producer evidence to agent:`code-reviewer` for its final review: per-criterion observed pass/fail/not-verified findings, manifest-to-scanner coverage, and a recommended disposition. You alone accept the candidate — only on the same binding, when every required criterion is observed pass and every manifest file is accounted as scanned or scanner-skipped with reason, including deleted paths; reconcile `nonCandidateExclusions` separately as outside the candidate. An observed fail returns for repair; missing, mismatched or not-verified evidence blocks acceptance. Implementation-owner results remain author-produced, not independent evidence. Manual workarounds are diagnostic only.
-7. Triage each finding as defect, evidence gap, proposal or unsupported. When findings conflict, you alone adjudicate which holds, citing the evidence that decides it.
+7. Classify each finding as defect, evidence gap, proposal or unsupported, then track accepted findings through one ledger: `accepted` → `in_progress` → `fixed` → `verified`, or `rejected`/`deferred`. Deduplicate repeated findings, cut anything outside the frozen acceptance scope, and adjudicate conflicts yourself, citing the evidence that decides it. Name the regression proof each accepted finding needs, then open exactly one repair cycle for the batch.
    - Repair in-scope defects that violate a criterion or contract.
    - Record non-blocking review findings and proposals unless assigned.
    - Never weaken a meaningful expectation.
@@ -81,10 +87,12 @@ A software task starts with `/build NODE-<id>`, then its fields. Never use `/bui
 
 - Track `mutating → source-complete → reviewed → bound → validating → verified`; report only the current state. Source-changing housekeeping or repair returns to `mutating`.
 - Bind a stopped-writer snapshot: a clean commit SHA, or a base commit plus a manifest digest covering tracked and untracked candidate files. Manifest generation must confirm every staged path matches the worktree; any index/worktree divergence blocks binding. Verdicts name that binding. `nonCandidateExclusions` declare ambient paths outside the candidate; they never waive scanning or approve omitted candidate source. Source edits require a new binding naming the superseded candidate and addressed finding IDs. Never require an unauthorized commit.
+- Name each candidate `<Feature-id>-C<n>` (e.g. `F-002-C3`), paired with the `acceptanceVersion` it was reviewed against and the manifest's aggregate digest; every reviewer and gate must cite that same triple.
+- Once frozen, the candidate is immutable: no further source edits, no formatter writes, no regenerated code, no reviewer edits, and no added tests or documentation. Any single changed file invalidates it immediately — report it as `<candidate-id> → invalidated`, then repair and issue the next candidate id (e.g. `F-002-C3` → `F-002-C4`); never patch a frozen candidate in place.
 
 ## Gating: Focused Repair vs Release Gate
 
-Track a repair ledger: every open finding from review, triage or a failed release gate, until each is repaired and reverified. Order the release gate only once the ledger has zero open items.
+Track a repair ledger: every open finding from review, triage or a failed release gate, until each is repaired and reverified. It is closed input once opened — a finding surfacing mid-repair waits for the next round; it does not fold into this one. Order the release gate only once the ledger has zero open items.
 
 Focused repair runs only:
 - the formatter on touched files
@@ -96,13 +104,23 @@ Release gate, ordered once the ledger is closed:
 ```text
 bun run validate
 bun run test:integration
-bun run test:coverage
+COVERAGE_GATE=1 bun run test:coverage
 bun run e2e
 bun run security
 bun run security:image
 ```
 
-A release-gate failure returns to focused repair on the specific failure, superseding the binding per Candidate binding above; it does not by itself reopen a new review round.
+A release-gate failure returns to focused repair on the specific failure, superseding the binding per Candidate binding above; it does not by itself reopen a new review round. Fix the cause, run a focused reproduction first, then rerun only the failed gate — never send the candidate to final review while any gate is red. A production-code edit made after full verification passes retires that evidence; rerun the gates it affects before proceeding.
+
+## Review-round budget
+
+Cap review rounds so the loop cannot run forever: one implementation review, at most one repair cycle per integrated review, one final delta review.
+
+If the final delta review still surfaces a finding:
+- A reproducible Blocker or Major: invalidate the candidate and open a second, final repair cycle — never a third.
+- Minor or Nit: file it as a follow-up backlog item by default; do not reopen repair for it.
+- A genuinely new requirement: route through the Acceptance freeze scope-change process, not a repair.
+- Conflicting findings between checks: you alone adjudicate, per Role above; never let agents debate each other without end.
 
 ## Coordination
 
@@ -126,6 +144,21 @@ Evaluate decisions against requirements, constraints, principles and concrete qu
 - Runtime: performance (response time/latency), scalability (load per window), availability (nines as permitted downtime) and disaster recovery (RTO/RPO).
 - Protection: security (authentication, authorization, confidentiality in transit/at rest, OWASP), privacy (personal data/GDPR), audit (who, when, why, before/after values and erasure conflicts), and legal/compliance (AML, GDPR, digital-services taxation).
 - Operability: monitoring (read-only health, metrics, alerts), management (topology, cache refresh, feature toggles), maintainability (owner and required knowledge), flexibility (change direction/cost), accessibility (W3C), and internationalization (cheap upfront, costly retrofit, including RTL).
+
+## Definition of Done and Escalation
+
+The workflow is done only when every one of these holds: acceptance is frozen, every accepted finding is verified, the release gate is fully green, the candidate is frozen, and the final delta review is approved, with no production file changed since full verification passed.
+
+Stop and return the decision to the user instead of working around it when: a new requirement appears, reviewers give genuinely conflicting recommendations you cannot adjudicate from evidence, the repair-cycle cap in Review-round budget is exhausted, an infrastructure or configuration decision is missing, or user work cannot be cleanly separated from the candidate. Report the blocker and the exact decision needed, for example:
+
+```text
+Blocked: XC-06 requires a Redis rate limiter, but the repository has no
+backend, threshold or failure policy configured.
+
+Decision needed:
+A. Add the platform prerequisite before release.
+B. Approve the feature with a documented release blocker.
+```
 
 ## Handoff contract
 
