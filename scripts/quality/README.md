@@ -4,6 +4,20 @@ Root-level notes for the platform quality scripts. Scripts themselves live in
 the root `package.json`; this file records where policies live and how the
 scripts are meant to evolve.
 
+## Agent workflow integrity
+
+```sh
+bun run workflow:test
+bun run agent:check
+bun run candidate:manifest -- --base HEAD
+```
+
+- `workflow:test` exercises the agent-reference and candidate-binding scripts. Root `validate` runs it before other gates.
+- `agent:check` validates model selectors, frontmatter routing and explicit references under `.omp`. Reference metadata uses `agent:<name>`, `skill:<name>`, `command:/<name>` and `file:<path>` with the value enclosed in backticks after the prefix. Fenced examples are ignored; referenced files and canonical `SKILL.md` files must resolve inside the repository.
+- `.omp/config.yml` pins `referenceInventory` counts. Update a count only when an intentional typed reference or `autoloadSkills` declaration is added or removed; unexpected drift fails validation.
+- `candidate:manifest` binds the resolved base commit to all tracked changes, deletions and non-ignored untracked files. Each included file records its normalized repository-relative path, state, kind, mode and SHA-256 content or symlink-target digest; the output also includes a digest of the complete payload.
+- Positional paths or `--from <newline-delimited-file>` may make the scope explicit, but every discovered path must be included. `--exclude path=reason` declares an ambient path outside the candidate under `nonCandidateExclusions`; it is not a scanner waiver or approval to omit candidate source. Repository escapes, control characters, undecodable paths, unchanged paths, unexplained exclusions and empty candidate scopes fail.
+
 ## Local development dependencies (PostgreSQL + Mailpit)
 
 The auth/database features need real PostgreSQL and observable email. Both run

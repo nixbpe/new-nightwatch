@@ -25,7 +25,14 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
-    "lint": {},
+    "lint": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/eslint-config/index.js",
+        "$TURBO_ROOT$/packages/eslint-config/package.json",
+        "$TURBO_ROOT$/packages/typescript-config/*.json"
+      ]
+    },
     "typecheck": {},
     "test": {},
     "test:integration": {},
