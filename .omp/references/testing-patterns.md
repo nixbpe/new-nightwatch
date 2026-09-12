@@ -1,6 +1,6 @@
 # Testing Patterns Reference (JavaScript/TypeScript)
 
-Quick reference of JavaScript/TypeScript testing patterns — Jest, React Testing Library, Supertest, and Playwright — illustrating the universal principles from the `test-driven-development` skill. The principles (Arrange-Act-Assert, naming, mock discipline, anti-patterns) apply in any ecosystem; the syntax and tooling shown here are JS/TS-specific. In another stack, follow the same principles with the repository's own test framework and commands.
+JavaScript/TypeScript testing patterns for the principles in skill:`test-driven-development`. Other stacks use the same principles with their repository's framework and commands.
 
 ## Table of Contents
 

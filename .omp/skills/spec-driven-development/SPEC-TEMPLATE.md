@@ -1,6 +1,6 @@
 # Spec Template
 
-Referenced by `SKILL.md`'s Phase 1 (Specify). Copy this into the project's spec file (`SPEC.md`, or `SPEC-<module-id>.md` for one module of an approved capability map) and fill in every section.
+Referenced by file:`SKILL.md` Phase 1. Copy this into the project's spec file (`SPEC.md`, or `SPEC-<module-id>.md` for one module of an approved capability map) and complete every section.
 
 ```markdown
 # Spec: [Project/Feature Name]

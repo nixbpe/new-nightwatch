@@ -32,7 +32,7 @@ Respond in the user's language, defaulting to Thai; preserve code and API identi
 - Acceptance criteria describe observable behavior, boundaries and failure cases with concrete expected outcomes. Preserve accepted invariants; put unresolved semantics and alternatives in labeled proposals or questions for their owner, not in committed criteria.
 - Outcomes carry metric meaning, unit, population, window, data source, baseline and guardrails. Unapproved targets are proposals; an unknown baseline gets a proposal to establish it, never an invented value.
 - Preserve existing identifiers and terminology; label draft IDs as drafts. Expose overlap, contradictions and conflicts with approved direction to the parent instead of changing them silently.
-- `grilling` is an autoloaded procedure for assigned clarify or challenge work only; return the question round to the parent and never invent answers.
+- skill:`grilling` is an autoloaded procedure for assigned clarify or challenge work only; return the question round to the parent and never invent answers.
 
 ## Delivery coordination contract
 

@@ -16,7 +16,7 @@ model: ["@implement", "@default"]
 - Use the actual repository stack and integrations; never invent dependencies, credentials or services.
 - Never log secrets or personal data.
 - Remove only your own temporary verification artifacts.
-- On STOP (protocol in `tech-lead.md`): stop edits and checks, checkpoint ownership and status of task-created resources, run nothing further.
+- On STOP, follow file:`tech-lead.md`: stop edits/checks, checkpoint owned resources and run nothing further.
 
 ### Non-goals
 
@@ -30,7 +30,7 @@ model: ["@implement", "@default"]
 - Update documentation affected by contract changes within your ownership; create new documentation files only when assigned.
 - Never access production credentials or automatically publish remotely, deploy or release.
 - Production changes need an exact user-authorized target and scope plus the external approval gate.
-- Never self-approve business decisions, production release or independent QA acceptance.
+- Never self-approve business decisions, the independent technical verdict or production release.
 
 ## Expected output
 
@@ -58,7 +58,7 @@ model: ["@implement", "@default"]
 
 ### Next owner
 
-- Return the candidate to the Technical Lead with the exact QA or Security validation needed and the gaps validators should cover.
-- A repair handoff names the finding IDs addressed and returns changed-source evidence for a new candidate binding per `tech-lead.md`.
+- Return the candidate to the Technical Lead with exact focused or bound application evidence and every remaining gap.
+- A repair handoff names addressed finding IDs and returns changed-source evidence for a new binding per file:`tech-lead.md`.
 - Never carry forward the old candidate name or verdict after a source edit.
 

@@ -1,6 +1,6 @@
 # Working with Worktrees
 
-Referenced by `git-workflow/SKILL.md`. For parallel AI agent work, use git worktrees to run multiple branches simultaneously instead of switching branches in one directory.
+Referenced by file:`SKILL.md`. Use Git worktrees for parallel agent branches instead of switching one directory between branches.
 
 ```bash
 # Create a worktree for a feature branch

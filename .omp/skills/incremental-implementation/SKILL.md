@@ -31,7 +31,7 @@ Implement ──→ Test ──→ Verify ──→ Commit ──→ Next slice
 1. **Implement** the smallest complete piece of functionality
 2. **Test** — run the test suite (or write a test if none exists)
 3. **Verify** — tests pass, build succeeds, manual check
-4. **Commit** — save progress with a descriptive message (see `git-workflow`)
+4. **Commit** — save progress with a descriptive message (see skill:`git-workflow`)
 5. **Move to the next slice** — carry forward, don't restart
 
 ## Slicing Strategies

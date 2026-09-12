@@ -26,9 +26,9 @@ main ──●──●──●──●──●──●──  (always deplo
 
 Teams using gitflow or long-lived branches can adapt the same principles (atomic commits, small changes, descriptive messages) to their branching model. Release branches are acceptable when stabilizing a release while main moves forward; prefer feature flags over long branches for incomplete work.
 
-### 1. Commit Early, Commit Often
+### 1. Checkpoint Early; Commit When Authorized
 
-Each successful increment gets its own commit — don't accumulate large uncommitted changes. Commits are save points: if the next change breaks something, revert to the last known-good state instantly.
+Keep recoverable checkpoints, but commit only when the user or assignment authorizes it. A passing check proves behavior; it does not grant commit authority. In shared worktrees, use scoped diffs or an isolated worktree until ownership and staging are clear.
 
 ### 2. Atomic Commits
 
@@ -62,7 +62,7 @@ Don't combine formatting, refactors, and features in one commit — ideally not 
 
 ### 5. Size Your Changes
 
-Target ~100 lines per commit/PR; split anything over ~1000. See `code-review-and-quality` for splitting strategies on large changes.
+Target ~100 lines per commit/PR; split anything over ~1000. Use skill:`code-review-and-quality` for splitting strategies.
 
 ## Branching Strategy
 
@@ -72,16 +72,21 @@ Target ~100 lines per commit/PR; split anything over ~1000. See `code-review-and
 
 **Naming:** `feature/<desc>`, `fix/<desc>`, `chore/<desc>`, `refactor/<desc>`.
 
-For running several agents on parallel branches simultaneously, see `WORKTREES.md`.
+For parallel agent branches, use file:`WORKTREES.md`.
 
-## The Save Point Pattern
+## Safe Checkpoint and Recovery
 
+```text
+change → focused check → scoped checkpoint → continue
+                    └→ fail → diagnose or restore owned hunks only
 ```
-Makes a change → test passes? → commit → continue
-              └→ test fails?  → revert to last commit → investigate
-```
 
-You never lose more than one increment of work. If an agent goes off the rails, `git reset --hard HEAD` takes you back to the last successful state.
+- Never use repository-wide `git reset --hard`, `git restore`, `git clean` or stash in a dirty/shared worktree.
+- Restore only paths or hunks you created after confirming no later writer touched them.
+- If ownership is ambiguous, stop and coordinate; do not guess.
+- Prefer an isolated worktree for risky experiments or parallel writers.
+- An authorized commit is an atomic checkpoint, not permission to absorb ambient work.
+- Before an authorized commit, stage only owned paths, inspect `git diff --cached --name-only` and `git diff --cached --check`, and regenerate or reconcile the candidate manifest so staged bytes and deletions match the accepted worktree binding. Any ambient, unexpected or mismatched staged content blocks the commit.
 
 ## Change Summaries
 
@@ -114,7 +119,7 @@ This catches wrong assumptions early. The "DIDN'T TOUCH" section matters most �
 
 | Rationalization | Reality |
 |---|---|
-| "I'll commit when the feature is done" | One giant commit is impossible to review, debug, or revert. Commit each slice. |
+| "I'll commit when the feature is done" | Large unreviewed changes hide defects; keep scoped checkpoints and make authorized commits atomic. |
 | "The message doesn't matter" | Messages are documentation. Future you (and future agents) need to understand what changed and why. |
 | "I'll squash it all later" | Squashing destroys the development narrative. Prefer clean incremental commits from the start. |
 | "Branches add overhead" | Short-lived branches are free and prevent conflicting work from colliding. Long-lived branches are the problem. |
@@ -122,16 +127,16 @@ This catches wrong assumptions early. The "DIDN'T TOUCH" section matters most �
 
 ## Red Flags
 
-- Large uncommitted changes accumulating
+- Large changes without scoped checkpoints
 - Commit messages like "fix", "update", "misc"
-- Formatting changes mixed with behavior changes
-- No `.gitignore`, or committing `node_modules/`/`.env`/build artifacts
-- Long-lived branches that diverge significantly from main
+- Formatting mixed with behavior changes
+- Missing `.gitignore`, or committed dependencies, secrets or build output
+- Repository-wide reset, clean, restore or stash in a dirty worktree
 - Force-pushing to shared branches
 
 ## Verification
 
-- [ ] Commit does one logical thing; message explains the why
-- [ ] Tests pass before committing; no secrets in the diff
-- [ ] No formatting-only changes mixed with behavior changes
-- [ ] `.gitignore` covers standard exclusions
+- [ ] Commit authority is explicit; staged paths belong to this change
+- [ ] The commit is atomic and its message explains why
+- [ ] Applicable checks pass; no secrets are staged
+- [ ] Formatting-only changes are separate; standard exclusions are ignored

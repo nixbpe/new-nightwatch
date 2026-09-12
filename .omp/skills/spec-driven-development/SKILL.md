@@ -23,7 +23,7 @@ Write a structured specification before writing any code. The spec is the shared
 
 Spec-driven development has four phases, preceded by a scope check (Phase 0) that activates only when one request bundles several independently testable capabilities. Do not advance to the next phase until the current one is validated.
 
-Phases 2–4 below are lightweight summaries: `planning-and-task-breakdown` is the canonical source for Phase 2–3 mechanics, and `incremental-implementation`/`test-driven-development` for Phase 4.
+Phases 2–4 define planning and task mechanics here; Phase 4 uses skill:`incremental-implementation` and skill:`test-driven-development`.
 
 ```
 SPECIFY ──→ PLAN ──→ TASKS ──→ IMPLEMENT
@@ -67,7 +67,7 @@ ASSUMPTIONS I'M MAKING:
 
 Don't silently fill in ambiguous requirements — the spec exists to surface misunderstandings *before* code gets written.
 
-**Write a spec covering:** Objective (what and why, who's the user, what does success look like), Tech Stack, Commands (full executable commands, not just tool names), Project Structure, Code Style (one real snippet beats three paragraphs), Testing Strategy, Boundaries (Always do / Ask first / Never do), Success Criteria, and Open Questions. A fill-in template for all nine is in `SPEC-TEMPLATE.md`.
+**Write a spec covering:** Objective (what and why, who the user is, and what success looks like), Tech Stack, Commands (full executable commands, not only tool names), Project Structure, Code Style (one real snippet beats three paragraphs), Testing Strategy, Boundaries (Always do / Ask first / Never do), Success Criteria and Open Questions. Use file:`SPEC-TEMPLATE.md` for all nine.
 
 **Reframe vague instructions as success criteria:**
 
@@ -81,7 +81,7 @@ REFRAMED: LCP < 2.5s on 4G; initial data load < 500ms; no layout shift (CLS < 0.
 
 Identify the major components and dependencies, the build order, risks and mitigations, what can run in parallel, and verification checkpoints between phases.
 
-> **Output convention:** save the plan to `tasks/plan.md` and the task list to the target `planning-and-task-breakdown` defines (default `tasks/todo.md`). Create `tasks/` if it doesn't exist.
+> **Output convention:** save the plan to `tasks/plan.md` and its task list to `tasks/todo.md`. Create `tasks/` if needed.
 
 The plan should be reviewable: the human can read it and say "yes" or "no, change X."
 
@@ -98,7 +98,7 @@ Break the plan into tasks that are each completable in one focused session, with
 
 ### Phase 4: Implement
 
-Execute tasks one at a time following `incremental-implementation` and `test-driven-development`. Use `context-engineering` to load only the relevant spec sections and source files at each step.
+Execute tasks one at a time with skill:`incremental-implementation` and skill:`test-driven-development`. Load only the relevant spec sections and source files at each step.
 
 ## Keeping the Spec Alive
 

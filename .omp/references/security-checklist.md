@@ -1,6 +1,6 @@
 # Security Checklist
 
-Quick reference for web application security. Use alongside the `security-and-hardening` skill.
+Quick reference for web security. Use with skill:`security-and-hardening`.
 
 ## Table of Contents
 
