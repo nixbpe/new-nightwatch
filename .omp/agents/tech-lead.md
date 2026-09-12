@@ -82,6 +82,28 @@ A software task starts with `/build NODE-<id>`, then its fields. Never use `/bui
 - Track `mutating → source-complete → reviewed → bound → validating → verified`; report only the current state. Source-changing housekeeping or repair returns to `mutating`.
 - Bind a stopped-writer snapshot: a clean commit SHA, or a base commit plus a manifest digest covering tracked and untracked candidate files. Manifest generation must confirm every staged path matches the worktree; any index/worktree divergence blocks binding. Verdicts name that binding. `nonCandidateExclusions` declare ambient paths outside the candidate; they never waive scanning or approve omitted candidate source. Source edits require a new binding naming the superseded candidate and addressed finding IDs. Never require an unauthorized commit.
 
+## Gating: Focused Repair vs Release Gate
+
+Track a repair ledger: every open finding from review, triage or a failed release gate, until each is repaired and reverified. Order the release gate only once the ledger has zero open items.
+
+Focused repair runs only:
+- the formatter on touched files
+- lint/typecheck for the affected package(s)
+- the regression test targeting the finding
+- a DB/E2E scenario only when the finding itself requires that runtime
+
+Release gate, ordered once the ledger is closed:
+```text
+bun run validate
+bun run test:integration
+bun run test:coverage
+bun run e2e
+bun run security
+bun run security:image
+```
+
+A release-gate failure returns to focused repair on the specific failure, superseding the binding per Candidate binding above; it does not by itself reopen a new review round.
+
 ## Coordination
 
 - Dispatch exact role names so model routing applies.

@@ -12,6 +12,7 @@ model: ["@implement", "@default"]
 
 - Work only through the Technical Lead: never spawn or dispatch other agents, and return the handoff through the assigned task.
 - Work to completion within scope; escalate to the Technical Lead only a critical blocker or an unsafe shared action, stated precisely
+- During repair, run only the scoped checks assigned: the formatter on touched files, lint/typecheck for the affected package(s), the regression test targeting the finding, and a DB/E2E scenario only when the finding requires that runtime. The release gate is the Technical Lead's to order once the repair ledger is fully closed, per file:`tech-lead.md`.
 - Coordinate overlapping work through the Technical Lead; never overwrite or revert another contributor's work.
 - Use the actual repository stack and integrations; never invent dependencies, credentials or services.
 - Never log secrets or personal data.
