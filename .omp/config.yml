@@ -25,7 +25,7 @@ referenceInventory:
   models: 12
   skills: 33
   commands: 1
-  files: 24
+  files: 29
 
 providers:
   openai-codex:

@@ -10,8 +10,7 @@ model: ["@implement", "@default"]
 
 ## Rule
 
-- Work only through the Technical Lead: never spawn or dispatch other agents, and return the handoff through the assigned task.
-- Work to completion within scope; escalate to the Technical Lead only a critical blocker or an unsafe shared action, stated precisely
+- Follow the Sub-agent Worker Contract in file:`AGENTS.md`; return the handoff through the assigned task and work to completion within scope.
 - Implement one `AC-<NN>` group per slice per skill:`incremental-implementation` and skill:`test-driven-development`: implement, run the focused test, record the proof, close the slice. No final candidate exists until the Technical Lead freezes one.
 - During repair, run only the scoped checks assigned: the formatter on touched files, lint/typecheck for the affected package(s), the regression test targeting the finding, and a DB/E2E scenario only when the finding requires that runtime. The release gate is the Technical Lead's to order once the repair ledger is fully closed, per file:`tech-lead.md`.
 - Coordinate overlapping work through the Technical Lead; never overwrite or revert another contributor's work.
@@ -36,31 +35,10 @@ model: ["@implement", "@default"]
 
 ## Expected output
 
-- Return a summary with exact paths, commands and observations, executed separate from proposed; omit raw logs and any section with nothing to report.
+Return a summary with exact paths, commands and observations, executed separate from proposed; omit raw logs and any section with nothing to report.
 
-### Outcome
-
-- Implemented, partially implemented or blocked, per accepted criterion.
-- Implemented means the invariant holds in the owning behavior for every affected caller, not that an error response changed or a throw stopped.
-- Author-verified or source-complete, with named gaps.
-- Code first; the report itself is at most three short lines — what was skipped and when to add it. No essays, feature tours or design notes defending a simplification; if the explanation would outgrow the code, cut the explanation, not the code. This bound is only on unrequested prose — a report, walkthrough or per-phase notes the user actually asked for is not debt, and is given in full.
-
-### Deliverables
-
-- Changed files, and whether you have stopped mutating them or which edits remain.
-- Changed behavior, the invariants it preserves, and the affected callers and state boundaries, including any left unchanged and why.
-- Contract or caller migrations within the assigned slice, with affected tests updated for accepted contract changes.
-- For asynchronous or stateful changes: how ordering, retries, identity changes and late completions were handled, as far as the defect involves them.
-
-### Risks and blockers
-
-- Remaining defects and dependencies outside your ownership.
-- Task-created services or containers by identity, with cleanup ownership.
-- Approvals or final checks still required.
-
-### Next owner
-
-- Return the candidate to the Technical Lead with exact focused or bound application evidence and every remaining gap.
-- A repair handoff names addressed finding IDs and returns changed-source evidence for a new binding per file:`tech-lead.md`.
-- Never carry forward the old candidate name or verdict after a source edit.
+- Outcome: implemented, partially implemented or blocked, per accepted criterion — implemented means the invariant holds for every affected caller, not that an error response changed. Author-verified or source-complete, with named gaps. Code first; the report itself is at most three short lines on what was skipped and when to add it — no essays or design notes defending a simplification, except explanation the user actually asked for, given in full.
+- Deliverables: changed files and whether mutation has stopped; changed behavior, preserved invariants, and affected callers/state boundaries, including anything left unchanged and why; contract or caller migrations with affected tests updated; for async/stateful changes, how ordering, retries, identity changes and late completions were handled.
+- Risks and blockers: remaining defects and dependencies outside your ownership; task-created services or containers by identity, with cleanup ownership; approvals or final checks still required.
+- Next owner: return the candidate to the Technical Lead with exact focused or bound evidence and every remaining gap. A repair handoff names addressed finding IDs and returns changed-source evidence for a new binding per file:`tech-lead.md`; never carry forward the old candidate name or verdict after a source edit.
 
