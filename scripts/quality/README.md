@@ -18,10 +18,11 @@ bun run candidate:manifest -- --base HEAD
 - `candidate:manifest` binds the resolved base commit to all tracked changes, deletions and non-ignored untracked files. Each included file records its normalized repository-relative path, state, kind, mode and SHA-256 content or symlink-target digest; the output also includes a digest of the complete payload.
 - Positional paths or `--from <newline-delimited-file>` may make the scope explicit, but every discovered path must be included. `--exclude path=reason` declares an ambient path outside the candidate under `nonCandidateExclusions`; it is not a scanner waiver or approval to omit candidate source. Repository escapes, control characters, undecodable paths, unchanged paths, unexplained exclusions and empty candidate scopes fail.
 
-## Local development dependencies (PostgreSQL + Mailpit)
+## Local development dependencies (PostgreSQL + Mailpit + Redis)
 
-The auth/database features need real PostgreSQL and observable email. Both run
-locally through Docker Compose — no external resources, no system installs:
+The auth/database features need real PostgreSQL, observable email, and the
+Redis transport used by queued work. All run locally through Docker Compose —
+no external resources or system installs:
 
 ```sh
 bun run db:up      # start postgres + mailpit, wait until healthy
@@ -49,22 +50,25 @@ bun run provision:organization -- \
 
 - Every worktree gets an isolated compose project (`nw-dev-<slot>`) and
   loopback-only ports from `scripts/ports.mjs`: PostgreSQL `127.0.0.1:5400+slot`,
-  Mailpit SMTP `127.0.0.1:7400+slot`, Mailpit UI `127.0.0.1:7500+slot`. Override
-  with `NW_DB_PORT` / `NW_MAIL_SMTP_PORT` / `NW_MAIL_UI_PORT` (same rule as
-  `WEB_PORT` / `API_PORT`). The bases deliberately avoid the fixed service ports
-  5432/1025/8025 so the stack never shadows system services.
+  Mailpit SMTP `127.0.0.1:7400+slot`, Mailpit UI `127.0.0.1:7500+slot`, and
+  Redis transport `127.0.0.1:6380+slot`. The Redis port follows the same stable
+  worktree slot; runtime code receives it only through `REDIS_URL`, resolved by
+  `scripts/dev-env.mjs`. The bases deliberately avoid fixed service ports so the
+  stack never shadows system services.
 - Two database roles: `nightwatch_owner` (container superuser — DDL,
   migrations, provisioning only) and `nightwatch` (runtime: `LOGIN NOSUPERUSER
 NOCREATEDB NOCREATEROLE NOBYPASSRLS`). The runtime role is created by
   `scripts/db/init/001-roles.sh` (also used by CI); table grants are applied by
   migrations. `DATABASE_URL` must use the runtime role, `DATABASE_OWNER_URL`
   the owner; the migration runner resolves owner before app URL.
+- Notification migration `0008_notification_function_owners.sql` creates cluster-global NOLOGIN function-owner roles. A clean migration must use a fresh dedicated PostgreSQL cluster, not a second database on a cluster where NightWatch migrations already ran; only one NightWatch database per cluster is supported by this migration. The DDL owner needs `CREATEROLE` or superuser privileges for initial creation; runtime stays unprivileged. The isolated Worker scheduler integration test must provision and remove only its own ephemeral cluster. Deployment still requires a separate approval gate (architecture DEP-05/DEP-06).
 - Development secrets (role passwords, `BETTER_AUTH_SECRET`) are generated on
   first `bun run db:up` into `.env.compose.local` — gitignored, mode 0600,
   never committed. `scripts/dev.mjs` forwards them with the computed
-  `APP_URL` / `BETTER_AUTH_URL` / `CORS_ORIGIN` / `SMTP_*` values; explicitly
-  exported shell variables always win. `bun run db:up` must precede
-  `bun run dev`.
+  `APP_URL` / `BETTER_AUTH_URL` / `CORS_ORIGIN` / `SMTP_*` / `REDIS_URL`
+  values; explicitly exported shell variables always win. `bun run db:up` must
+  precede `bun run dev`. Redis uses no development secret, has no volume, and is
+  an ephemeral transport only; durable work state remains in PostgreSQL.
 - Mailpit captures verification/reset/invitation mail in memory (messages reset
   on container restart); open the UI from `bun run db:mail`. Production requires
   real configured SMTP — there is no fallback sender (see `.env.example`).
@@ -129,19 +133,24 @@ from its disposable PostgreSQL service and runs `bun run db:migrate` before
 
 ## CI database-backed checks
 
-- The CI `test` job (and the dispatch-only `full` job) run PostgreSQL +
-  Mailpit service containers and bootstrap the least-privilege runtime role by
-  executing `scripts/db/init/001-roles.sh` in a one-off Postgres container —
-  the same script compose uses locally. `bun run db:migrate` applies schema
-  migrations before tests/e2e (in CI there is no generated secrets file, so
-  the wrapper uses the exported job environment unchanged), so DB-backed
-  tests run against a real, role-separated database (mocks cannot prove RLS
-  or role denial).
+- The CI `test` job (and the dispatch-only `full` job) run PostgreSQL, Mailpit,
+  and a health-checked Redis transport service, then bootstrap the
+  least-privilege runtime role by executing `scripts/db/init/001-roles.sh` in a
+  one-off Postgres container — the same script compose uses locally. `bun run
+db:migrate` applies schema migrations before tests/e2e (in CI there is no
+  generated secrets file, so the wrapper uses the exported job environment
+  unchanged), so DB-backed tests run against real, role-separated database
+  paths. Redis is exposed only as `REDIS_URL=redis://localhost:6379`; it has no
+  durable volume or application state.
 - CI database values (`nightwatch_ci` / `nightwatch_owner_ci` passwords) are
   disposable, localhost-only development credentials; `BETTER_AUTH_SECRET` is
   generated per run. Never promote them to any real environment.
-- New DB-backed jobs must reuse the same service block and role bootstrap
-  instead of inventing parallel database setup.
+- Regular app DB-backed checks reuse the CI service block and
+  `scripts/db/init/001-roles.sh` rather than inventing parallel setup. The
+  isolated Worker clean-migration test is an exception: it provisions a
+  task-owned fresh PostgreSQL cluster, reuses the same role bootstrap, and
+  removes only its own cluster. Migration `0008_notification_function_owners.sql`
+  cannot be clean-applied to a second database on the shared cluster (DEP-06).
 
 ## OpenAPI client drift
 
@@ -167,16 +176,17 @@ bun run codegen:check          # check committed output without changing it
 
 ## Playwright E2E
 
-Playwright is already configured in `e2e/playwright.config.ts`. It starts both
-development servers itself and runs `e2e/tests` in Chromium. Install isolated
-E2E dependencies and Chromium once:
+Playwright is already configured in `e2e/playwright.config.ts`. It starts the
+Worker, API, and Web servers itself and runs `e2e/tests` in Chromium. Install
+isolated E2E dependencies and Chromium once:
 
-```sh
-bun run e2e:setup
-```
-
-The API fails fast without local PostgreSQL and Mailpit. Use the same resolved
-development environment as `bun run dev`:
+The caller supplies runtime configuration; Playwright forwards `DATABASE_URL`
+and `REDIS_URL` to the Worker and `REDIS_URL` to the API without fabricating
+either service. The Worker must log `in-app materialize worker ready` after its
+Redis queue/consumer is ready; Playwright waits for that bounded readiness
+signal before browser tests begin. A notification E2E can therefore exercise
+real materialization only when the caller has started local PostgreSQL and
+Redis and applied the required schema migrations.
 
 ```sh
 (
@@ -212,11 +222,9 @@ greeting. It supplements, but does not replace, unit and database integration
 tests.
 
 CI runs Playwright only in the dispatch-only `full` release-stage job. It reuses
-shared PostgreSQL/Mailpit services and bootstraps the runtime role. It migrates
-and installs Chromium with system dependencies. It then runs the same root
-`e2e` command.
-
-## Security script shape
+the shared PostgreSQL, Mailpit, and Redis services, applies migrations, and
+starts the Worker with the same runtime database/Redis URLs before the browser
+suite. It then runs the same root `e2e` command.
 
 - `security` chains `security:audit` → `security:secrets` → `security:sast`
   (sequential, fail-fast).

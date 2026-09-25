@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -137,7 +137,9 @@ describe("OnboardingPage transitions", () => {
     expect(
       screen.getByRole("button", { name: "ส่งอีเมลยืนยันใหม่" }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+    await waitFor(() =>
+      expect(screen.getByTestId("search")).toHaveTextContent(/^$/),
+    );
     // Still on the hub: no redirect occurred.
     expect(screen.queryByTestId("location")).toBeNull();
   });

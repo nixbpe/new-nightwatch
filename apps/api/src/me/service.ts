@@ -27,6 +27,35 @@ type MembershipRow = {
 
 type LastActiveRow = { lastActiveTenantId: string | null };
 
+const ROLE_PRIORITY: Record<MeContextOrganization["role"], number> = {
+  owner: 0,
+  admin: 1,
+  viewer: 2,
+  auditor: 3,
+};
+
+// `/me` projects composite storage roles into the finite UI contract. It does
+// not write or otherwise change the authorization role stored by Better Auth.
+function normalizeOrganizationRole(
+  rawRole: string,
+): MeContextOrganization["role"] | null {
+  const exactRole = organizationRoleSchema.safeParse(rawRole);
+  if (exactRole.success) return exactRole.data;
+
+  let normalizedRole: MeContextOrganization["role"] | null = null;
+  for (const token of rawRole.split(",")) {
+    const role = organizationRoleSchema.safeParse(token.trim());
+    if (
+      role.success &&
+      (normalizedRole === null ||
+        ROLE_PRIORITY[role.data] < ROLE_PRIORITY[normalizedRole])
+    ) {
+      normalizedRole = role.data;
+    }
+  }
+  return normalizedRole;
+}
+
 const MEMBERSHIPS_SELECT = `
   select o.id   as "organizationId",
          o.name,
@@ -90,13 +119,13 @@ function toContext(
 ): MeContextResponse {
   const organizations: MeContextOrganization[] = [];
   for (const row of memberships) {
-    const role = organizationRoleSchema.safeParse(row.role);
-    if (role.success) {
+    const role = normalizeOrganizationRole(row.role);
+    if (role !== null) {
       organizations.push({
         id: row.organizationId,
         name: row.name,
         slug: row.slug,
-        role: role.data,
+        role,
       });
     }
   }
@@ -165,6 +194,26 @@ export async function setActiveOrganization(
   let inTransaction = true;
   try {
     await client.query("begin");
+    const organization = await client.query(
+      "select id from organization where id = $1 for update",
+      [organizationId],
+    );
+    if (organization.rows.length === 0) {
+      await rollbackQuietly(client);
+      inTransaction = false;
+      logger.warn(
+        { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
+        "active organization change denied: not a member",
+      );
+      throw new AppError(
+        403,
+        "MEMBERSHIP_DENIED",
+        "คุณไม่ใช่สมาชิกขององค์กรนี้",
+      );
+    }
+    await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+      `notification-membership:${organizationId}`,
+    ]);
     const membership = await client.query(
       `select m.organization_id
        from member m

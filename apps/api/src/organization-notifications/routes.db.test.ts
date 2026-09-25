@@ -1,0 +1,564 @@
+import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
+import { createLogger, type AuthEnv, type Env } from "@nightwatch/shared";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { createApp } from "../app";
+import { createAuth } from "../auth";
+import type { Mailer, OutboundMail } from "../auth/mailer";
+import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
+
+const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
+const migrationsDir =
+  process.env.MIGRATIONS_DIR ??
+  fileURLToPath(new URL("../../../../packages/db/migrations", import.meta.url));
+const run = crypto.randomUUID().slice(0, 8);
+const organizationId = crypto.randomUUID();
+const settingsOrganizationId = crypto.randomUUID();
+const lastOwnerOrganizationId = crypto.randomUUID();
+const inviterId = crypto.randomUUID();
+const memberIds = {
+  owner: crypto.randomUUID(),
+  target: crypto.randomUUID(),
+  leaver: crypto.randomUUID(),
+  settingsOwner: crypto.randomUUID(),
+  lastOwner: crypto.randomUUID(),
+  homeowner: crypto.randomUUID(),
+  secondOwner: crypto.randomUUID(),
+};
+const password = "Member-Route-Passw0rd!";
+const appUrl = "http://localhost:5173";
+const emails = {
+  owner: `member-owner-${run}@example.test`,
+  target: `member-target-${run}@example.test`,
+  leaver: `member-leaver-${run}@example.test`,
+  settingsOwner: `settings-owner-${run}@example.test`,
+  lastOwner: `last-owner-${run}@example.test`,
+  homeowner: `homeowner-${run}@example.test`,
+  secondOwner: `second-owner-${run}@example.test`,
+};
+const userIds = new Map<keyof typeof emails, string>();
+const mail: OutboundMail[] = [];
+const runtime: Database = createDatabase(runtimeUrl);
+const owner: Database = createDatabase(ownerUrl);
+const env: Env = { PORT: 4000, LOG_LEVEL: "silent", NODE_ENV: "test" };
+const authEnv: AuthEnv = {
+  DATABASE_URL: runtimeUrl,
+  BETTER_AUTH_SECRET: `member-route-${run}-0123456789abcdef`,
+  APP_URL: appUrl,
+  BETTER_AUTH_URL: "http://localhost:4000",
+  CORS_ORIGIN: appUrl,
+  SMTP_HOST: "127.0.0.1",
+  SMTP_PORT: 1025,
+  SMTP_SECURE: false,
+  SMTP_FROM: "Member routes <members@example.test>",
+};
+const mailer: Mailer = {
+  send: (outbound) => {
+    mail.push(outbound);
+    return Promise.resolve();
+  },
+  verify: () => Promise.resolve(),
+};
+const auth = createAuth({
+  env,
+  authEnv,
+  logger: createLogger({ level: "silent", name: "member-routes-db-test" }),
+  database: runtime,
+  mailer,
+});
+const app = createApp({
+  env,
+  authEnv,
+  auth,
+  database: runtime,
+  logger: createLogger({ level: "silent", name: "member-routes-db-test" }),
+});
+
+type ApiResponse = { status: number; json: unknown };
+type Client = (
+  method: "DELETE" | "GET" | "PATCH" | "POST",
+  path: string,
+  body?: Record<string, unknown>,
+  options?: { invitationId?: string },
+) => Promise<ApiResponse>;
+
+function client(): Client {
+  const cookies = new Map<string, string>();
+  return async (method, path, body, options) => {
+    const headers = new Headers();
+    if (cookies.size > 0) {
+      headers.set(
+        "cookie",
+        [...cookies].map(([name, value]) => `${name}=${value}`).join("; "),
+      );
+    }
+    if (body) {
+      headers.set("content-type", "application/json");
+      headers.set("origin", appUrl);
+    }
+    if (options?.invitationId)
+      headers.set("x-invitation-id", options.invitationId);
+    const response = await app.request(path, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    for (const setCookie of response.headers.getSetCookie()) {
+      const [pair] = setCookie.split(";");
+      if (!pair) continue;
+      const separator = pair.indexOf("=");
+      if (separator === -1) continue;
+      cookies.set(pair.slice(0, separator), pair.slice(separator + 1));
+    }
+    const text = await response.text();
+    return {
+      status: response.status,
+      json: text ? (JSON.parse(text) as unknown) : null,
+    };
+  };
+}
+
+function verificationToken(email: string): string {
+  const message = mail.find(
+    (entry) => entry.to === email && entry.subject.includes("ยืนยันอีเมล"),
+  );
+  if (!message) throw new Error(`verification mail missing for ${email}`);
+  const token = new URL(
+    /https?:\/\/[^\s<>'"]+/.exec(message.text)?.[0] ?? "",
+  ).searchParams.get("emailVerificationToken");
+  if (!token) throw new Error(`verification token missing for ${email}`);
+  return token;
+}
+
+async function admit(member: keyof typeof emails): Promise<Client> {
+  const request = client();
+  const email = emails[member];
+  const invitationId = crypto.randomUUID();
+  await owner.sql.query(
+    `insert into invitation
+       (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
+     values ($1, $2, $3, 'viewer', 'pending', $4, now() + interval '1 day', now())`,
+    [invitationId, organizationId, email, inviterId],
+  );
+  expect(
+    (
+      await request(
+        "POST",
+        "/api/auth/sign-up/email",
+        {
+          name: `Member ${member}`,
+          email,
+          password,
+          callbackURL: `/onboarding?invitationId=${invitationId}`,
+        },
+        { invitationId },
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request(
+        "GET",
+        `/api/auth/verify-email?token=${encodeURIComponent(verificationToken(email))}`,
+      )
+    ).status,
+  ).toBeLessThan(500);
+  expect(
+    (await request("POST", "/api/auth/sign-in/email", { email, password }))
+      .status,
+  ).toBe(200);
+  const user = await owner.sql.query<{ id: string }>(
+    'select id from "user" where email = $1',
+    [email],
+  );
+  const userId = user.rows[0]?.id;
+  if (!userId) throw new Error(`admitted user missing for ${email}`);
+  userIds.set(member, userId);
+  return request;
+}
+
+beforeAll(async () => {
+  await runMigrations({ url: ownerUrl, migrationsDir });
+  await owner.sql.query(
+    `insert into organization (id, name, slug, created_at)
+     values ($1, $2, $3, now()),
+            ($4, $5, $6, now()),
+            ($7, $8, $9, now())`,
+    [
+      organizationId,
+      `Member route ${run}`,
+      `member-route-${run}`,
+      settingsOrganizationId,
+      `Settings route ${run}`,
+      `settings-route-${run}`,
+      lastOwnerOrganizationId,
+      `Last owner route ${run}`,
+      `last-owner-route-${run}`,
+    ],
+  );
+  await owner.sql.query(
+    'insert into "user" (id, name, email, email_verified, created_at, updated_at) values ($1, $2, $3, true, now(), now())',
+    [inviterId, "Member route inviter", `member-inviter-${run}@example.test`],
+  );
+}, 120_000);
+
+afterAll(async () => {
+  await owner.sql.query("delete from organization where id = any($1::uuid[])", [
+    [organizationId, settingsOrganizationId, lastOwnerOrganizationId],
+  ]);
+  await owner.sql.query(
+    'delete from "user" where id = $1 or email = any($2::text[])',
+    [inviterId, Object.values(emails)],
+  );
+  await owner.close();
+  await runtime.close();
+});
+
+describe("organization member HTTP mutations", () => {
+  it("blocks stock Better Auth member mutations, preserves native password and MFA, and mutates membership through first-party routes", async () => {
+    const ownerClient = await admit("owner");
+    const targetClient = await admit("target");
+    const leaverClient = await admit("leaver");
+    const ownerId = userIds.get("owner");
+    const targetId = userIds.get("target");
+    const leaverId = userIds.get("leaver");
+    if (!ownerId || !targetId || !leaverId)
+      throw new Error("admitted membership users missing");
+
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $2, $3, 'owner', now(), now()),
+              ($4, $2, $5, 'viewer', now(), now()),
+              ($6, $2, $7, 'viewer', now(), now())`,
+      [
+        memberIds.owner,
+        organizationId,
+        ownerId,
+        memberIds.target,
+        targetId,
+        memberIds.leaver,
+        leaverId,
+      ],
+    );
+    await owner.sql.query(
+      'update "user" set last_active_tenant_id = $1 where id = any($2::text[])',
+      [organizationId, [targetId, leaverId]],
+    );
+    await owner.sql.query(
+      "update session set active_organization_id = $1 where user_id = any($2::text[])",
+      [organizationId, [targetId, leaverId]],
+    );
+
+    for (const path of [
+      "/api/auth/organization/update-member-role",
+      "/api/auth/organization/remove-member",
+      "/api/auth/organization/leave",
+    ]) {
+      const denied = await ownerClient("POST", path, {});
+      expect(denied.status).toBe(403);
+      expect(denied.json).toEqual({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "ใช้เส้นทางจัดการสมาชิกใหม่",
+        },
+      });
+    }
+
+    expect(
+      (
+        await ownerClient("POST", "/api/auth/sign-in/email", {
+          email: emails.owner,
+          password,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await ownerClient("POST", "/api/auth/two-factor/enable", { password }))
+        .status,
+    ).toBe(200);
+
+    const role = await ownerClient(
+      "PATCH",
+      `/api/organizations/${organizationId}/members/${memberIds.target}/role`,
+      { role: "admin" },
+    );
+    expect(role.status).toBe(200);
+    expect(role.json).toMatchObject({
+      member: { id: memberIds.target, userId: targetId, role: "admin" },
+    });
+    expect(
+      (
+        await owner.sql.query<{ role: string }>(
+          "select role from member where id = $1",
+          [memberIds.target],
+        )
+      ).rows[0]?.role,
+    ).toBe("admin");
+
+    const revoke = await ownerClient(
+      "DELETE",
+      `/api/organizations/${organizationId}/members/${memberIds.target}`,
+    );
+    expect(revoke.status).toBe(200);
+    expect(revoke.json).toMatchObject({
+      member: { id: memberIds.target, userId: targetId },
+    });
+    expect(
+      (
+        await owner.sql.query<{ last_active_tenant_id: string | null }>(
+          'select last_active_tenant_id from "user" where id = $1',
+          [targetId],
+        )
+      ).rows[0]?.last_active_tenant_id,
+    ).toBeNull();
+    expect(
+      (
+        await owner.sql.query<{ active_organization_id: string | null }>(
+          "select active_organization_id from session where user_id = $1",
+          [targetId],
+        )
+      ).rows.every((session) => session.active_organization_id === null),
+    ).toBe(true);
+
+    const leave = await leaverClient(
+      "DELETE",
+      `/api/organizations/${organizationId}/members/me`,
+    );
+    expect(leave.json).toMatchObject({
+      member: { id: memberIds.leaver, userId: leaverId },
+    });
+    expect(leave.status).toBe(200);
+    expect(
+      (
+        await owner.sql.query<{ last_active_tenant_id: string | null }>(
+          'select last_active_tenant_id from "user" where id = $1',
+          [leaverId],
+        )
+      ).rows[0]?.last_active_tenant_id,
+    ).toBeNull();
+    expect(
+      (
+        await owner.sql.query<{ active_organization_id: string | null }>(
+          "select active_organization_id from session where user_id = $1",
+          [leaverId],
+        )
+      ).rows.every((session) => session.active_organization_id === null),
+    ).toBe(true);
+
+    const lastOwner = await ownerClient(
+      "DELETE",
+      `/api/organizations/${organizationId}/members/me`,
+    );
+    expect(lastOwner.status).toBe(400);
+    expect(lastOwner.json).toMatchObject({ error: { code: "LAST_OWNER" } });
+    expect(
+      (
+        await owner.sql.query("select 1 from member where id = $1", [
+          memberIds.owner,
+        ])
+      ).rows,
+    ).toHaveLength(1);
+
+    // Keep the target client live until all mutations complete: its session was
+    // a real Better Auth session whose active-org mirror was cleared by revoke.
+    expect((await targetClient("GET", "/api/auth/get-session")).status).toBe(
+      200,
+    );
+  }, 120_000);
+});
+
+describe("organization member last-owner HTTP protection", () => {
+  it("counts only exact owner tokens when preserving the last owner", async () => {
+    const lastOwnerClient = await admit("lastOwner");
+    const homeownerClient = await admit("homeowner");
+    await admit("secondOwner");
+    const lastOwnerId = userIds.get("lastOwner");
+    const homeownerId = userIds.get("homeowner");
+    const secondOwnerId = userIds.get("secondOwner");
+    if (!lastOwnerId || !homeownerId || !secondOwnerId) {
+      throw new Error("last-owner membership users missing");
+    }
+
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $2, $3, 'owner,viewer', now(), now()),
+              ($4, $2, $5, 'homeowner', now(), now())`,
+      [
+        memberIds.lastOwner,
+        lastOwnerOrganizationId,
+        lastOwnerId,
+        memberIds.homeowner,
+        homeownerId,
+      ],
+    );
+
+    const counts = async () => {
+      const result = await owner.sql.query<{
+        memberCount: number;
+        lastActiveMirrorCount: number;
+        activeSessionMirrorCount: number;
+        intentCount: number;
+        ledgerCount: number;
+      }>(
+        `select
+           (select count(*)::int from member where organization_id = $1::uuid) as "memberCount",
+           (select count(*)::int from "user" where last_active_tenant_id = $1::uuid) as "lastActiveMirrorCount",
+           (select count(*)::int from session where active_organization_id = $1::text) as "activeSessionMirrorCount",
+           (select count(*)::int from notification_intents where tenant_id = $1::uuid) as "intentCount",
+           (select count(*)::int
+            from notification_dispatch_ledger as ledger
+            join notification_intents as intent on intent.id = ledger.intent_id
+            where intent.tenant_id = $1::uuid) as "ledgerCount"`,
+        [lastOwnerOrganizationId],
+      );
+      const count = result.rows[0];
+      if (!count) throw new Error("last-owner counts missing");
+      return count;
+    };
+    const before = await counts();
+
+    const substringActor = await homeownerClient(
+      "PATCH",
+      `/api/organizations/${lastOwnerOrganizationId}/members/${memberIds.lastOwner}/role`,
+      { role: "viewer" },
+    );
+    expect(substringActor.status).toBe(403);
+    expect(substringActor.json).toMatchObject({
+      error: { code: "PERMISSION_DENIED" },
+    });
+
+    for (const response of [
+      await lastOwnerClient(
+        "PATCH",
+        `/api/organizations/${lastOwnerOrganizationId}/members/${memberIds.lastOwner}/role`,
+        { role: "viewer" },
+      ),
+      await lastOwnerClient(
+        "DELETE",
+        `/api/organizations/${lastOwnerOrganizationId}/members/${memberIds.lastOwner}`,
+      ),
+      await lastOwnerClient(
+        "DELETE",
+        `/api/organizations/${lastOwnerOrganizationId}/members/me`,
+      ),
+    ]) {
+      expect(response.status).toBe(400);
+      expect(response.json).toMatchObject({ error: { code: "LAST_OWNER" } });
+    }
+
+    expect(await counts()).toEqual(before);
+    expect(
+      (
+        await owner.sql.query<{ role: string }>(
+          "select role from member where id = $1",
+          [memberIds.lastOwner],
+        )
+      ).rows[0]?.role,
+    ).toBe("owner,viewer");
+
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $2, $3, 'owner,viewer', now(), now())`,
+      [memberIds.secondOwner, lastOwnerOrganizationId, secondOwnerId],
+    );
+    const transfer = await lastOwnerClient(
+      "PATCH",
+      `/api/organizations/${lastOwnerOrganizationId}/members/${memberIds.lastOwner}/role`,
+      { role: "viewer" },
+    );
+    expect(transfer.status).toBe(200);
+    expect(transfer.json).toMatchObject({
+      member: { id: memberIds.lastOwner, userId: lastOwnerId, role: "viewer" },
+    });
+    expect(
+      (
+        await owner.sql.query<{ role: string }>(
+          "select role from member where id = $1",
+          [memberIds.secondOwner],
+        )
+      ).rows[0]?.role,
+    ).toBe("owner,viewer");
+    expect(await counts()).toEqual({ ...before, memberCount: 3 });
+  }, 120_000);
+});
+
+describe("organization notification settings HTTP input validation", () => {
+  it("returns INVALID_INPUT for malformed settings request input while preserving authorized behavior and unauthenticated privacy", async () => {
+    const settingsOwnerClient = await admit("settingsOwner");
+    const settingsOwnerId = userIds.get("settingsOwner");
+    if (!settingsOwnerId) throw new Error("admitted settings owner missing");
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $2, $3, 'owner', now(), now())`,
+      [memberIds.settingsOwner, settingsOrganizationId, settingsOwnerId],
+    );
+
+    const invalidOrganizationId = "not-a-uuid";
+    for (const [method, path, body] of [
+      [
+        "GET",
+        `/api/organizations/${invalidOrganizationId}/notification-settings`,
+        undefined,
+      ],
+      [
+        "PATCH",
+        `/api/organizations/${invalidOrganizationId}/notification-settings`,
+        { settingsChangedEnabled: false, expectedVersion: 0 },
+      ],
+      [
+        "PATCH",
+        `/api/organizations/${settingsOrganizationId}/notification-settings`,
+        { settingsChangedEnabled: "false", expectedVersion: 0 },
+      ],
+      [
+        "PATCH",
+        `/api/organizations/${settingsOrganizationId}/notification-settings`,
+        { settingsChangedEnabled: false, expectedVersion: 0.5 },
+      ],
+      [
+        "PATCH",
+        `/api/organizations/${settingsOrganizationId}/notification-settings`,
+        undefined,
+      ],
+    ] as const) {
+      const response = await settingsOwnerClient(method, path, body);
+      expect(response.status).toBe(400);
+      expect(response.json).toEqual({
+        error: { code: "INVALID_INPUT", message: "Invalid request input" },
+      });
+    }
+
+    const initial = await settingsOwnerClient(
+      "GET",
+      `/api/organizations/${settingsOrganizationId}/notification-settings`,
+    );
+    expect(initial.status).toBe(200);
+    expect(initial.json).toEqual({
+      organizationId: settingsOrganizationId,
+      settingsChangedEnabled: true,
+      version: 0,
+    });
+
+    const updated = await settingsOwnerClient(
+      "PATCH",
+      `/api/organizations/${settingsOrganizationId}/notification-settings`,
+      { settingsChangedEnabled: false, expectedVersion: 0 },
+    );
+    expect(updated.status).toBe(200);
+    expect(updated.json).toEqual({
+      organizationId: settingsOrganizationId,
+      settingsChangedEnabled: false,
+      version: 1,
+    });
+
+    const unauthenticated = await client()(
+      "GET",
+      `/api/organizations/${settingsOrganizationId}/notification-settings`,
+    );
+    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.json).toMatchObject({
+      error: { code: "UNAUTHENTICATED" },
+    });
+  }, 120_000);
+});

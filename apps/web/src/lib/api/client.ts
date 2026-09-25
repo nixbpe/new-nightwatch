@@ -51,6 +51,14 @@ type PathParamsFor<P extends keyof paths, M extends RequestMethod> =
       : never
     : never;
 
+/** Declared query parameters; never when an operation takes none. */
+type QueryParamsFor<P extends keyof paths, M extends RequestMethod> =
+  OperationFor<P, M> extends { parameters?: infer TParameters }
+    ? TParameters extends { query?: infer TQuery }
+      ? TQuery
+      : never
+    : never;
+
 /** Declared JSON request body; never when the operation takes none. */
 type RequestBodyFor<P extends keyof paths, M extends RequestMethod> =
   OperationFor<P, M> extends { requestBody?: infer TRequestBody }
@@ -92,9 +100,12 @@ export type RequestOptions<
   M extends RequestMethod = "GET",
 > = {
   method?: M;
-} & ([PathParamsFor<P, M>] extends [never]
-  ? { params?: never }
-  : { params: PathParamsFor<P, M> }) &
+} & ([QueryParamsFor<P, M>] extends [never]
+  ? { query?: never }
+  : { query?: QueryParamsFor<P, M> }) &
+  ([PathParamsFor<P, M>] extends [never]
+    ? { params?: never }
+    : { params: PathParamsFor<P, M> }) &
   ([RequestBodyFor<P, M>] extends [never]
     ? { body?: never }
     : { body: RequestBodyFor<P, M> });
@@ -136,21 +147,35 @@ export async function request<
   const call = client[method] as unknown as (
     url: string,
     init: {
-      params?: { path: Record<string, string> };
+      params?: {
+        path?: Record<string, string>;
+        query?: Record<string, unknown>;
+      };
       body?: unknown;
       parseAs: "text";
     },
   ) => Promise<ClientOutcome>;
 
-  const { params, body: requestBody } = (options ?? {}) as {
+  const {
+    params,
+    query,
+    body: requestBody,
+  } = (options ?? {}) as {
     params?: Record<string, string>;
+    query?: Record<string, unknown>;
     body?: unknown;
   };
 
   let outcome: ClientOutcome;
   try {
     outcome = await call(path, {
-      params: params === undefined ? undefined : { path: params },
+      params:
+        params === undefined && query === undefined
+          ? undefined
+          : {
+              ...(params === undefined ? {} : { path: params }),
+              ...(query === undefined ? {} : { query }),
+            },
       body: requestBody,
       // Raw text keeps JSON parsing here, preserving the previous layer's
       // `res.json().catch(() => null)` failure semantics.

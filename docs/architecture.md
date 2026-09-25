@@ -103,11 +103,11 @@ Entry points
 Request and background paths
 [Web SPA] --JSON/HTTPS + session cookie--> [API] --tenant SQL--> [PostgreSQL]
                                                |
-                                               +--typed jobs--> [Redis/BullMQ | Deferred]
+                                               +--in-app jobs--> [Redis/BullMQ | In-app Implemented]
                                                                     |
-                                                                    +--consume--> [Worker | Deferred]
+                                                                    +--consume--> [Worker | In-app Implemented]
                                                                                      |
-                                                                                     +--tenant SQL--> [PostgreSQL]
+                                                                                     +--scoped SQL--> [PostgreSQL]
 
 Outbound paths
 [API]    --HTTPS / SMTP----------------------> [External integrations]
@@ -121,8 +121,8 @@ Outbound paths
 | Web SPA      | React, Vite                   | Implemented | `apps/web`       |
 | API          | Hono monolith on Bun          | Implemented | `apps/api`       |
 | PostgreSQL   | Drizzle, migrations, RLS      | Implemented | `packages/db`    |
-| Worker       | BullMQ consumers, schedulers  | Deferred    | `apps/worker`    |
-| Redis/BullMQ | Job transport                 | Deferred    | `packages/queue` |
+| Worker       | In-app BullMQ consumer + dispatcher; other roles Deferred | Implemented (in-app only) | `apps/worker` |
+| Redis/BullMQ | In-app job transport; other queues Deferred              | Implemented (in-app only) | `apps/worker` |
 | Landing      | Astro, independently deployed | Deferred    | `apps/landing`   |
 
 - CON-01 PostgreSQL is the system of record. Redis is transport only. State MUST NOT exist only in Redis (DATA-02).
@@ -136,7 +136,7 @@ Outbound paths
 
 - `packages/api-contract`: browser-safe Zod schemas, types, and error contract. Exports MUST come only from the package root.
 - `packages/db`: Drizzle schema and client, tenant helpers, ordered migrations, and partitions. Server-side only.
-- `packages/queue` (Deferred): job payloads, options, producers, and the SQL `queue_jobs` ledger. Server-side only; may depend on `db`.
+- `packages/queue` (Deferred): general job payloads, options, producers, and the SQL `queue_jobs` ledger target; the implemented in-app channel currently uses `apps/worker` and notification ledger helpers in `packages/db`, not this package.
 - `packages/shared`: permissions, limits, encryption, logging, SSRF, and email configuration. Server-side only; MUST NOT import from an app.
 - `packages/*-config`: compiler and lint configuration. MUST NOT contain runtime code or import from an app.
 - PKG-01 Runtime imports between workspace packages MUST follow this table. The table does not cover external libraries. Dev-time compiler and lint configuration is separate from the runtime graph, and config packages themselves MUST have no workspace dependencies. This table is not a list of all implemented imports.
@@ -144,9 +144,9 @@ Outbound paths
   | Importer        | Allowed workspace runtime dependencies                             | Current boundary / target                                                                 |
   | --------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
   | Web SPA         | `api-contract`                                                     | Current boundary                                                                          |
-  | API             | `api-contract`, `shared`, `db`; `queue` when producers are enabled | The first three are current dependencies; `queue` is a Deferred target                    |
-  | Worker          | `queue`, `db`, `shared`                                            | Deferred target for consumers, SQL, and shared integration helpers                        |
-  | `queue`         | `db`                                                               | Deferred target for the ledger                                                            |
+  | API             | `api-contract`, `shared`, `db`; `queue` when general producers are enabled | First three are current dependencies; general `queue` is a Deferred target |
+  | Worker          | `queue`, `db`, `shared`                                            | In-app worker currently imports `db` and `shared`; general `queue` is Deferred |
+  | `queue`         | `db`                                                               | Deferred target for the general ledger |
   | `shared`        | No workspace runtime dependency                                    | Current boundary; MUST NOT import an app                                                  |
   | `db`            | No workspace runtime dependency                                    | Current boundary                                                                          |
   | `api-contract`  | No workspace runtime dependency                                    | Current browser-safe boundary                                                             |
@@ -168,7 +168,7 @@ The table assigns responsibilities and interfaces, not execution order. Componen
 | Identity / session boundary   | Integration with the identity library in `apps/api/src/auth`            | AUTH-08 through AUTH-12; Implemented                                 |
 | Tenant context / organization | Tenant context and membership resolution in `apps/api/src/me`           | ORG rules; Implemented                                               |
 | Tenant data access            | Drizzle/raw SQL helpers in `packages/db`                                | TSQL rules; helper status is defined separately in data architecture |
-| Worker consumers / schedulers | Consume jobs, find due work, and call provider/monitor integrations     | QUE rules; Deferred                                                  |
+| Worker consumers / schedulers | In-app intent dispatch/materialization implemented; other consumers, providers, monitors and schedulers remain deferred | QUE rules; Implemented only for `in-app-materialize` |
 | Web API integration           | Typed clients, response validation, and tenant-sensitive state          | FE rules                                                             |
 
 ## 4. Component architecture (C4 level 3)
@@ -222,9 +222,9 @@ Implemented in `apps/api/src/me`. API contracts own endpoint names and response 
 - ORG-05 Denied tenant-context access MUST be audited without recording tenant data or other protected data.
 - ORG-10 Tenant-context exchange MUST use contract schemas from `api-contract` and reference only authenticated sessions. API contracts own each endpoint’s response behavior.
 
-### 4.4 Background execution architecture (Deferred)
+### 4.4 Background execution architecture (in-app channel implemented; other channels Deferred)
 
-Queue names, concurrency, and attempts define execution channels, not business behavior.
+Queue names, concurrency, and attempts define execution channels, not business behavior. Only `in-app-materialize` has an implemented Worker; the remaining channels below are design baselines.
 
 | Queue               | Responsibility                                                      | Conc. | Attempts |
 | ------------------- | ------------------------------------------------------------------- | ----: | -------: |
@@ -234,13 +234,14 @@ Queue names, concurrency, and attempts define execution channels, not business b
 | `report-generate`   | Generate report artifacts                                           |     2 |        3 |
 | `health-collect`    | Collect AWS infrastructure health                                   |     5 |        3 |
 | `notify-deliver`    | Deliver notifications and record each attempt's result              |    10 |        3 |
+| `in-app-materialize` | Materialize account- or tenant-scoped in-app inbox items from durable intents |     5 |        3 |
 | `prowler-rule-sync` | Maintain the shared provider rule catalog                           |     1 |        1 |
 | `health-check`      | Run synthetic monitoring                                            |    10 |        3 |
 | `slo-recalculate`   | Maintain service objectives                                         |     5 |        3 |
 
 - QUE-01 Concurrency and attempts are baselines per worker instance. Use exponential backoff starting at 5 s. Value precedence is per-queue override → worker default → built-in value. `prowler-rule-sync` accepts only an override explicitly assigned to that queue. It MUST NOT use a global override.
 - QUE-02 Concurrency 1 is not a distributed singleton. Singleton behavior MUST be enforced in SQL.
-- QUE-03 Every job MUST include `tenantId`. Shared-catalog jobs require separate authorization through `requestedByTenantId`. Payload identity MUST NOT be used as SQL context (TSQL-01).
+- QUE-03 Every job MUST carry a discriminated scope: `{ kind: 'tenant', tenantId }` for tenant work or `{ kind: 'account', userId }` for account work. Shared-catalog jobs MUST use a tenant scope and separately verify `requestedByTenantId`. A queue payload MUST NOT establish tenant or account SQL authorization; workers MUST resolve a committed, scope-bound SQL claim and use the applicable verified transaction context (TSQL-01, TSQL-13). Account work MUST NOT use a synthetic or remembered tenant ID.
 - QUE-04 Retryable, delayed, and exhausted states MUST be distinct. Ledger reconciliation MUST track failures between enqueue and ledger recording.
 - QUE-05 Delivery work for notification destinations MUST be scoped by tenant and Project. Every attempt result MUST be stored durably in SQL. Delivery MUST be idempotent: successful deliveries MUST NOT be repeated, but bookkeeping writes may be retried. Feature contracts own channel selection and routing behavior.
 - QUE-06 The Prowler version MUST remain pinned until an approved and compatibility-tested change.
@@ -309,13 +310,14 @@ organizations (= tenants) -- memberships(role) -- users
   +-- audit_events / queue_jobs
 ```
 
-### 5.2 Tenant SQL and RLS (load-bearing)
+### 5.2 Scoped SQL and RLS (load-bearing)
 
 | Caller          | Helper                                      | Status      |
 | --------------- | ------------------------------------------- | ----------- |
 | Drizzle queries | `withTenantContext(tenantId, tx => ...)`    | Implemented |
 | API raw SQL     | `withTenantContextRaw(tenantId, tx => ...)` | Implemented |
 | Worker raw SQL  | `withWorkerTenantContext(tenantId, ...)`    | Deferred    |
+| API/Worker account SQL | `withAccountContext(database, userId, fn)` | Implemented for notifications |
 
 - TSQL-01 The tenant helper MUST open a transaction and set `app.tenant_id` with transaction-local `set_config(..., true)`. Every query, including `tx.unsafe`, MUST use the provided `tx`. Global or pooled handles MUST NOT be used.
 - TSQL-02 All query values MUST be bound.
@@ -329,6 +331,8 @@ organizations (= tenants) -- memberships(role) -- users
 - TSQL-10 Identifiers, sort columns, and sort directions MUST use allow-lists.
 - TSQL-11 Parent scope MUST be verified. Foreign keys alone are insufficient.
 - TSQL-12 The owner role is reserved for DDL, migrations, and partition maintenance over the owner connection. This document does not authorize other uses of the owner connection; authorization must come from the owning document. HTTP handlers and DML workers MUST NOT hold owner privileges.
+
+- TSQL-13 New account-scoped domain tables, including personal notification intents and inbox items, are NOT part of the TSQL-06 global-auth exception. They MUST have table-specific `USING` and `WITH CHECK` policies, a restrictive non-null user-context guard, `FORCE ROW LEVEL SECURITY`, explicit user-id predicates, and minimum runtime grants. An account helper MUST set `app.user_id` transaction-locally from a verified session or a claim against a separate dispatch ledger and use only its transaction handle for account-domain queries; a GUC, request field, or job payload alone is NOT authorization. Pre-context discovery MUST claim work from that separate ledger, not from account-domain tables whose user-context RLS would deny discovery. The ledger MUST contain only bounded routing metadata, bind its immutable user ID and intent ID to committed origin state, and have its own narrowly scoped RLS policies, grants, and claim/recovery rules. A fixed-purpose claim function, if used, MUST have restricted `EXECUTE` and fixed `search_path`; its dedicated non-login owner MUST have only the ledger access explicitly permitted by those policies, not superuser, `BYPASSRLS`, DB-owner, or unrestricted account-domain access. HTTP/DML runtimes remain non-owner and `NOBYPASSRLS` (TSQL-03, TSQL-08, TSQL-12).
 
 ### 5.3 Persistence lifecycle and integrity
 
@@ -360,6 +364,7 @@ PostgreSQL + Redis; owner-role monthly partition-maintenance cron
 - DEP-03 Shutdown, interrupted or stalled jobs, and retry-safe effects MUST be tested. Complete draining MUST NOT be assumed.
 - DEP-04 Partition maintenance MUST run during each deployment (DATA-08).
 - DEP-05 TLS, origins, secrets, replica counts, credentials, and database privileges MUST be checked in the target environment. Use of production credentials, migrations, deployments, and releases MUST receive explicit authorization through an external approval gate outside this document.
+- DEP-06 Notification migration `0008_notification_function_owners.sql` creates cluster-global purpose-scoped `NOLOGIN` roles. Until provisioning is redesigned, a PostgreSQL cluster MUST host only one NightWatch database that runs these migrations: applying them to a second database on the same cluster fails at `CREATE ROLE` before later migrations. The authorized migration owner MUST have `CREATEROLE` or superuser privileges for initial role creation; the application and Worker runtime roles MUST NOT. Clean-install verification requires a fresh, dedicated cluster, not a second database inside the existing development cluster. This prerequisite does not authorize production deployment (DEP-05).
 - XC-03 Audit events MUST include request and actor context and state whether recording is transactional or best-effort. Payloads MUST NOT contain secrets or protected data.
 - XC-07 Logging: production-like runtimes MUST use structured Pino logging with entrypoint-specific redaction. Logs MUST NOT contain entire jobs, credentials, provider responses containing secrets, or one-time links/tokens for authentication, recovery, or admission.
 - XC-08 Health: `/health` checks liveness. `/ready` reports ready only when database `SELECT 1` succeeds and, when queues are enabled, Redis ping succeeds. Readiness does not verify RLS, partitions, SMTP, or worker operation.
@@ -376,6 +381,7 @@ This checklist checks only the architecture rules in this document. It is not fe
 - [ ] Every operation has an explicit permission guard, and platform access is limited to that operation (REQ-06, CTX-04)
 - [ ] Tenant SQL uses the helper and provided `tx`; values are bound, and predicates, identifiers, and parent scope follow their owning rules (TSQL-01, TSQL-02, TSQL-09, TSQL-10, TSQL-11)
 - [ ] Migrations for new domain tables include RLS policies, FORCE RLS, and complete runtime grants (TSQL-04, DATA-07)
+- [ ] Account-scoped domain SQL has verified transaction-local user context and `FORCE RLS`; a separately protected dispatch ledger supports bounded pre-context claims without bypassing account-domain RLS (TSQL-13, QUE-03).
 - [ ] Tenant context is resolved server-side from authenticated identity and verified current membership (REQ-03, REQ-04, ORG-02)
 - [ ] Remembered or denormalized tenant values, including session mirrors, are revalidated every time and are not authorization evidence (ORG-03, ORG-04)
 - [ ] Tenant-context changes revalidate membership and atomically update dependent auth context (ORG-04)
@@ -387,6 +393,7 @@ This checklist checks only the architecture rules in this document. It is not fe
 
 - [ ] SQL enforces invariants through unique indexes, claims, and CAS rather than code alone (QUE-02, QUE-14, QUE-15, QUE-16)
 - [ ] SQL commits before enqueue, with compensation (CON-06, QUE-09)
+- [ ] Every job has a typed tenant or account scope bound to a committed SQL claim; account jobs do not acquire a synthetic tenant (QUE-03, TSQL-13).
 - [ ] Writes are idempotent, and totals are retry-safe (QUE-14, QUE-15, QUE-05)
 - [ ] Migrations are ordered, and applied migrations are not overwritten (DATA-06)
 

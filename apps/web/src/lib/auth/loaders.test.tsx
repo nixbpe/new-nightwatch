@@ -15,18 +15,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import {
+  fetchNotifications,
+  fetchOrganizationNotificationSettings,
+  notificationQueryKey,
+  organizationNotificationSettingsQueryKey,
+} from "../api/notifications";
+import {
   peekStagedQueryClient,
   resetQueryClientRegistry,
 } from "../queryClient";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
+  notificationSettingsLoader,
+  notificationsLoader,
   requireAnonLoader,
   rootLoader,
   settingsLoader,
   verifyEmailLoader,
   workspaceLoader,
 } from "./loaders";
-
 type SessionUser = {
   id: string;
   email: string;
@@ -61,8 +68,21 @@ vi.mock("../api/invitations", async (importOriginal) => {
   return { ...original, fetchInvitation: vi.fn() };
 });
 
+vi.mock("../api/notifications", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return {
+    ...original,
+    fetchNotifications: vi.fn(),
+    fetchOrganizationNotificationSettings: vi.fn(),
+  };
+});
+
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const fetchInvitationMock = vi.mocked(fetchInvitation);
+const fetchNotificationsMock = vi.mocked(fetchNotifications);
+const fetchOrganizationNotificationSettingsMock = vi.mocked(
+  fetchOrganizationNotificationSettings,
+);
 
 const VERIFIED: SessionUser = {
   id: "user-1",
@@ -132,6 +152,12 @@ const protectedWorkspace: RouteObject = {
   element: <div>protected-area</div>,
 };
 
+const protectedNotifications: RouteObject = {
+  path: "/notifications",
+  loader: notificationsLoader,
+  element: <div>notifications-area</div>,
+};
+
 describe("requireAnonLoader (anonymous-only gate)", () => {
   afterEach(() => {
     sessionState.data = null;
@@ -192,6 +218,8 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     sessionStorage.clear();
     resetQueryClientRegistry();
     fetchMeContextMock.mockReset();
+    fetchNotificationsMock.mockReset();
+    fetchOrganizationNotificationSettingsMock.mockReset();
   });
 
   it("bounces anonymous visitors to login remembering the deep link", async () => {
@@ -256,6 +284,62 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     expect(staged?.client.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
       meContext,
     );
+  });
+
+  it("stages the notification Center's primary inbox in the verified identity client", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: null,
+      items: [],
+      nextCursor: null,
+      unreadCount: 0,
+    });
+    renderAt([protectedNotifications], "/notifications");
+
+    expect(await screen.findByText("notifications-area")).toBeInTheDocument();
+    const staged = peekStagedQueryClient();
+    expect(staged?.identity).toBe(VERIFIED.id);
+    expect(staged?.client.getQueryData(notificationQueryKey(null))).toEqual({
+      organizationId: null,
+      items: [],
+      nextCursor: null,
+      unreadCount: 0,
+    });
+  });
+
+  it("stages organization notification settings before its protected route commits", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchOrganizationNotificationSettingsMock.mockResolvedValue({
+      organizationId: "11111111-1111-4111-8111-111111111111",
+      settingsChangedEnabled: true,
+      version: 2,
+    });
+    renderAt(
+      [
+        {
+          path: "/organizations/:organizationId/notification-settings",
+          loader: notificationSettingsLoader,
+          element: <div>notification-settings-area</div>,
+        },
+      ],
+      "/organizations/11111111-1111-4111-8111-111111111111/notification-settings",
+    );
+
+    expect(
+      await screen.findByText("notification-settings-area"),
+    ).toBeInTheDocument();
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        organizationNotificationSettingsQueryKey(
+          "11111111-1111-4111-8111-111111111111",
+        ),
+      ),
+    ).toEqual({
+      organizationId: "11111111-1111-4111-8111-111111111111",
+      settingsChangedEnabled: true,
+      version: 2,
+    });
   });
 
   it("a failed prefetch does not become a router-level error", async () => {

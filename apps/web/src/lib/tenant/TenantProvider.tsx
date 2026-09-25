@@ -23,6 +23,7 @@ type TenantContextValue = {
   meError: Error | null;
   retryMe: () => Promise<void>;
   activeOrg: Membership | null;
+  serverActiveOrgId: string | null;
   switchOrg: (organizationId: string) => Promise<boolean>;
   orgSwitchPending: boolean;
 };
@@ -62,12 +63,20 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         memberships[0] ??
         null);
 
+  // Inbox scope comes only from the server-confirmed active mirror. The UI
+  // falls back to a membership for navigation, but that fallback must never
+  // make organization notifications visible or alter an inbox request.
+  const serverActiveOrgId =
+    memberships?.some((org) => org.id === lastActiveTenantId) === true
+      ? lastActiveTenantId
+      : null;
+
   // Guard, tenant-cache retirement and success ordering are behavioral
   // contracts; React Compiler handles render-performance memoization.
   const switchOrg = async (organizationId: string): Promise<boolean> => {
     if (
       memberships?.some((org) => org.id === organizationId) !== true ||
-      organizationId === activeOrg?.id
+      organizationId === serverActiveOrgId
     ) {
       return false;
     }
@@ -101,6 +110,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     meError: meQuery.error,
     retryMe,
     activeOrg,
+    serverActiveOrgId,
     switchOrg,
     orgSwitchPending,
   };

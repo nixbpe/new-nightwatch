@@ -11,6 +11,8 @@ import { AppShell } from "./components/shell/AppShell";
 import { AuthLayout } from "./components/shell/AuthLayout";
 import { ShieldIcon } from "./components/shell/icons";
 import {
+  notificationSettingsLoader,
+  notificationsLoader,
   requireAnonLoader,
   rootLoader,
   sessionsLoader,
@@ -26,6 +28,8 @@ import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
+import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
 import { DisplayPage } from "./pages/settings/DisplayPage";
 import { ProfilePage } from "./pages/settings/ProfilePage";
 import { SecurityPage } from "./pages/settings/SecurityPage";
@@ -96,6 +100,7 @@ function NotFoundPage() {
 export const routes: RouteObject[] = [
   {
     element: <RootLayout />,
+    hydrateFallbackElement: <div role="status">กำลังเปิดหน้า…</div>,
     children: [
       { path: "/", loader: rootLoader },
       // Every route with no sidebar/header shares AuthLayout (Step 5 — see
@@ -157,6 +162,16 @@ export const routes: RouteObject[] = [
             path: "/workspace",
             loader: workspaceLoader,
             element: <WorkspacePage />,
+          },
+          {
+            path: "/notifications",
+            loader: notificationsLoader,
+            element: <NotificationsPage />,
+          },
+          {
+            path: "/organizations/:organizationId/notification-settings",
+            loader: notificationSettingsLoader,
+            element: <OrganizationNotificationSettingsPage />,
           },
           // Personal settings: one layout loader gates the session and
           // prefetches me/context for every tab; the index lands on the

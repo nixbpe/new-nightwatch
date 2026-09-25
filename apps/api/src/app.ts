@@ -20,7 +20,13 @@ import pkg from "../package.json";
 import type { Auth } from "./auth";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
+import { registerNotificationInboxRoutes } from "./notifications/routes";
 import { registerOnboardingRoutes } from "./onboarding/routes";
+import {
+  createNativeOrganizationMutationGuard,
+  registerOrganizationMemberRoutes,
+  registerOrganizationNotificationSettingsRoutes,
+} from "./organization-notifications/routes";
 
 export type AppDeps = {
   env: Env;
@@ -166,9 +172,24 @@ export function createApp(deps: AppDeps): OpenAPIHono {
     app.use("/api/auth/*", authCors);
     app.use("/api/onboarding/*", authCors);
     app.use("/api/me/*", authCors);
+    app.use("/api/notifications/*", authCors);
+    app.use("/api/organizations/*", authCors);
+    app.use("/api/auth/*", createNativeOrganizationMutationGuard());
     app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
     registerOnboardingRoutes(app, { database });
     registerMeRoutes(app, { auth, database, logger: deps.logger });
+    registerNotificationInboxRoutes(app, {
+      auth,
+      authEnv: deps.authEnv,
+      database,
+    });
+    registerOrganizationNotificationSettingsRoutes(app, {
+      auth,
+      authEnv: deps.authEnv,
+      database,
+      logger: deps.logger,
+    });
+    registerOrganizationMemberRoutes(app, { auth, database });
   }
 
   app.notFound((c) => {

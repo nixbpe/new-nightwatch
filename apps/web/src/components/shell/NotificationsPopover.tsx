@@ -1,16 +1,56 @@
-import { EmptyState } from "./EmptyState";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router";
+
+import {
+  fetchNotifications,
+  fetchUnreadCount,
+  markAllNotificationsRead,
+  notificationQueryKey,
+  openNotification,
+} from "../../lib/api/notifications";
+import { useTenant } from "../../lib/tenant/TenantProvider";
+import { NotificationRows } from "../../pages/NotificationsPage";
 import { BellIcon, SlidersIcon } from "./icons";
 import { usePopover } from "./usePopover";
 
-/**
- * Header notifications panel, per the reference — title row, list area,
- * footer actions. There is no notification source yet, so the list is an
- * honest empty state (never sample items or a fake unread badge; the
- * design system forbids demonstrations that read as live data), and the
- * actions that would act on real items are disabled rather than dead.
- */
 export function NotificationsPopover() {
   const popover = usePopover();
+  const { serverActiveOrgId, activeOrg } = useTenant();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const list = useQuery({
+    queryKey: notificationQueryKey(serverActiveOrgId),
+    queryFn: () => fetchNotifications(serverActiveOrgId),
+    enabled: popover.open,
+  });
+  const count = useQuery({
+    queryKey: [...notificationQueryKey(serverActiveOrgId), "count"],
+    queryFn: () => fetchUnreadCount(serverActiveOrgId),
+  });
+  const all = useMutation({
+    mutationFn: markAllNotificationsRead,
+    onSuccess: async () => {
+      await client.invalidateQueries({
+        queryKey: notificationQueryKey(serverActiveOrgId),
+      });
+    },
+  });
+  const open = useMutation({
+    mutationFn: openNotification,
+    onSuccess: async (value) => {
+      await client.invalidateQueries({
+        queryKey: notificationQueryKey(serverActiveOrgId),
+      });
+      popover.close();
+      void navigate("/notifications", {
+        state: {
+          notificationId: value.id,
+          notificationOrganizationId: serverActiveOrgId,
+          notificationScope: value.scope,
+        },
+      });
+    },
+  });
   return (
     <div className="relative">
       <button
@@ -20,9 +60,17 @@ export function NotificationsPopover() {
         aria-haspopup="dialog"
         aria-expanded={popover.open}
         onClick={popover.toggle}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground"
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <BellIcon size={18} />
+        {count.data?.unreadCount ? (
+          <span
+            aria-label={`${String(count.data.unreadCount)} รายการยังไม่อ่าน`}
+            className="absolute -top-1 -right-1 min-w-4 rounded-full bg-primary px-1 text-[10px] text-on-primary"
+          >
+            {count.data.unreadCount}
+          </span>
+        ) : null}
       </button>
       {popover.open ? (
         <div
@@ -30,41 +78,72 @@ export function NotificationsPopover() {
           role="dialog"
           aria-label="การแจ้งเตือน"
           tabIndex={-1}
-          className="absolute top-full right-0 z-50 mt-2 w-[380px] max-w-[calc(100vw-2rem)] rounded-md border border-foreground/10 bg-surface shadow-lg focus:outline-none"
+          className="fixed inset-4 z-50 mx-auto flex w-auto max-w-[380px] flex-col overflow-hidden rounded-md border border-foreground/10 bg-surface shadow-lg focus:outline-none sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100vh-5rem)]"
         >
-          <div className="flex items-center justify-between border-b border-foreground/10 px-4 py-3">
+          <div className="flex shrink-0 items-center justify-between border-b border-foreground/10 px-4 py-3">
             <h2 className="text-sm font-semibold">การแจ้งเตือน</h2>
             <button
               type="button"
-              disabled
-              className="text-xs text-primary disabled:cursor-not-allowed disabled:opacity-60"
+              data-popover-item=""
+              disabled={
+                count.data === undefined ||
+                count.data.unreadCount === 0 ||
+                all.isPending
+              }
+              onClick={() => {
+                all.mutate();
+              }}
+              className="text-xs text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               ทำเครื่องหมายว่าอ่านทั้งหมด
             </button>
           </div>
-          <div className="p-3">
-            <EmptyState
-              icon={<BellIcon size={20} />}
-              title="ยังไม่มีการแจ้งเตือน"
-              description="เมื่อมีเหตุการณ์ในองค์กรของคุณ การแจ้งเตือนจะแสดงที่นี่"
-            />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {list.isPending ? (
+              <p
+                role="status"
+                className="p-4 text-sm text-foreground-secondary"
+              >
+                กำลังโหลด…
+              </p>
+            ) : list.isError ? (
+              <p role="alert" className="p-4 text-sm text-danger">
+                โหลดการแจ้งเตือนไม่สำเร็จ
+              </p>
+            ) : list.data.items.length === 0 ? (
+              <p className="p-6 text-center text-sm text-foreground-secondary">
+                ยังไม่มีการแจ้งเตือน
+              </p>
+            ) : (
+              <NotificationRows
+                items={list.data.items.slice(0, 5)}
+                onOpen={(id) => {
+                  open.mutate(id);
+                }}
+                popoverItems
+              />
+            )}
           </div>
-          <div className="flex items-center justify-between border-t border-foreground/10 px-4 py-2.5 text-xs">
-            <button
-              type="button"
-              disabled
-              className="text-primary disabled:cursor-not-allowed disabled:opacity-60"
+          <div className="flex shrink-0 items-center justify-between border-t border-foreground/10 px-4 py-2.5 text-xs">
+            <Link
+              onClick={popover.close}
+              data-popover-item=""
+              to="/notifications"
+              className="text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               ดูการแจ้งเตือนทั้งหมด
-            </button>
-            <button
-              type="button"
-              disabled
-              className="inline-flex items-center gap-1.5 text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <SlidersIcon size={14} />
-              ตั้งค่า
-            </button>
+            </Link>
+            {activeOrg?.role === "owner" || activeOrg?.role === "admin" ? (
+              <Link
+                onClick={popover.close}
+                data-popover-item=""
+                to={`/organizations/${activeOrg.id}/notification-settings`}
+                className="inline-flex items-center gap-1.5 text-foreground-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <SlidersIcon size={14} />
+                ตั้งค่า
+              </Link>
+            ) : null}
           </div>
         </div>
       ) : null}

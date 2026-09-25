@@ -1,4 +1,7 @@
-import type { MeContextResponse } from "@nightwatch/api-contract";
+import type {
+  MeContextResponse,
+  NotificationItem,
+} from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -9,10 +12,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
+import { NotificationsPage } from "../../pages/NotificationsPage";
 import { WorkspacePage } from "../../pages/WorkspacePage";
 import { AppShell } from "./AppShell";
 
-const { sessionState, signOutMock } = vi.hoisted(() => ({
+const {
+  fetchNotificationsMock,
+  fetchUnreadCountMock,
+  markAllNotificationsReadMock,
+  openNotificationMock,
+  sessionState,
+  signOutMock,
+} = vi.hoisted(() => ({
+  fetchNotificationsMock: vi.fn(),
+  fetchUnreadCountMock: vi.fn(),
+  markAllNotificationsReadMock: vi.fn(),
+  openNotificationMock: vi.fn(),
   sessionState: {
     data: { user: { email: "napat@example.com", name: "นภัส วงศ์สกุล" } },
     isPending: false,
@@ -39,6 +54,16 @@ vi.mock("../../lib/api/me", async (importOriginal) => {
     ...original,
     fetchMeContext: vi.fn(),
     updateActiveOrganization: vi.fn(),
+  };
+});
+vi.mock("../../lib/api/notifications", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return {
+    ...original,
+    fetchNotifications: fetchNotificationsMock,
+    fetchUnreadCount: fetchUnreadCountMock,
+    markAllNotificationsRead: markAllNotificationsReadMock,
+    openNotification: openNotificationMock,
   };
 });
 
@@ -97,6 +122,7 @@ function renderShell(workspaceElement: ReactNode = <p>เนื้อหาห�
         ),
         children: [
           { path: "/workspace", element: workspaceElement },
+          { path: "/notifications", element: <NotificationsPage /> },
           { path: "/settings/security", element: <p>หน้าความปลอดภัย</p> },
           { path: "/settings/sessions", element: <p>หน้าเซสชัน</p> },
         ],
@@ -123,12 +149,29 @@ function mockMobileViewport(): void {
   );
 }
 
+fetchNotificationsMock.mockResolvedValue({
+  items: [],
+  nextCursor: null,
+  unreadCount: 0,
+});
+fetchUnreadCountMock.mockResolvedValue({ unreadCount: 0 });
+
 describe("AppShell", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
+    fetchNotificationsMock.mockReset();
+    fetchUnreadCountMock.mockReset();
+    markAllNotificationsReadMock.mockReset();
+    openNotificationMock.mockReset();
     signOutMock.mockReset();
     vi.restoreAllMocks();
+    fetchNotificationsMock.mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      unreadCount: 0,
+    });
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 0 });
   });
 
   it("renders org switcher, breadcrumb, nav sections, account block, skip link and routed content", async () => {
@@ -467,20 +510,70 @@ describe("AppShell", () => {
     expect(field).toHaveFocus();
   });
 
-  it("the notifications button opens an honest empty state, not sample items", async () => {
+  it("uses the server unread count when marking all notifications read", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    let resolveUnreadCount!: (value: { unreadCount: number }) => void;
+    const unreadCount = new Promise<{ unreadCount: number }>((resolve) => {
+      resolveUnreadCount = resolve;
+    });
+    fetchUnreadCountMock.mockReturnValue(unreadCount);
+    fetchNotificationsMock.mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      unreadCount: 1,
+    });
     const user = userEvent.setup();
     renderShell();
     await screen.findByRole("link", { name: "Org A" });
 
     await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
     const panel = screen.getByRole("dialog", { name: "การแจ้งเตือน" });
-    expect(panel).toHaveTextContent("ยังไม่มีการแจ้งเตือน");
+    const markAll = within(panel).getByRole("button", {
+      name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+    });
+    expect(markAll).toBeDisabled();
+
+    resolveUnreadCount({ unreadCount: 1 });
     expect(
-      within(panel).getByRole("button", {
-        name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
-      }),
-    ).toBeDisabled();
+      await screen.findByLabelText("1 รายการยังไม่อ่าน"),
+    ).toHaveTextContent("1");
+    expect(markAll).toBeEnabled();
+    await user.click(markAll);
+    expect(markAllNotificationsReadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a selected popover notification in the center with its persisted read state", async () => {
+    const notification: NotificationItem = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      scope: "account",
+      organizationId: null,
+      eventType: "PASSWORD_CHANGED",
+      occurredAt: "2026-09-25T03:00:00.000Z",
+      readAt: null,
+      actor: null,
+      category: null,
+    };
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+    fetchNotificationsMock.mockResolvedValue({
+      items: [notification],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    openNotificationMock.mockResolvedValue({
+      ...notification,
+      readAt: "2026-09-25T03:01:00.000Z",
+    });
+    const user = userEvent.setup();
+    renderShell();
+
+    await screen.findByRole("link", { name: "Org A" });
+    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await user.click(
+      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+    );
+
+    expect(await screen.findByText("สถานะ: อ่านแล้ว")).toBeInTheDocument();
   });
 
   it("with no membership the logo slot falls back to the product mark", async () => {

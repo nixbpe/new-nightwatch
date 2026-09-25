@@ -14,6 +14,11 @@ import { registerMeRoutes } from "./routes";
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 
+const ORG_C = "33333333-3333-4333-8333-333333333333";
+const ORG_D = "44444444-4444-4444-8444-444444444444";
+const ORG_E = "55555555-5555-4555-8555-555555555555";
+const ORG_F = "66666666-6666-4666-8666-666666666666";
+
 const session: AuthSession = {
   user: {
     id: "user-1",
@@ -160,6 +165,69 @@ describe("GET /api/me/context", () => {
       ],
       lastActiveTenantId: ORG_B,
     });
+  });
+
+  it("normalizes exact composite role tokens by UI priority without promoting unknown roles", async () => {
+    const memberships: SqlResult = {
+      rows: [
+        {
+          organizationId: ORG_A,
+          name: "Acme",
+          slug: "acme",
+          role: "auditor, viewer",
+        },
+        {
+          organizationId: ORG_B,
+          name: "Beta",
+          slug: "beta",
+          role: "viewer, admin",
+        },
+        {
+          organizationId: ORG_C,
+          name: "Core",
+          slug: "core",
+          role: "auditor, owner, admin",
+        },
+        {
+          organizationId: ORG_D,
+          name: "Dormant",
+          slug: "dormant",
+          role: "homeowner, administrator",
+        },
+        {
+          organizationId: ORG_E,
+          name: "Evidence",
+          slug: "evidence",
+          role: "homeowner, viewer",
+        },
+        {
+          organizationId: ORG_F,
+          name: "Forensics",
+          slug: "forensics",
+          role: "auditor",
+        },
+      ],
+    };
+    const app = makeApp({
+      auth: stubAuth(session),
+      database: stubDatabase((text) =>
+        text.includes("from member")
+          ? memberships
+          : { rows: [{ lastActiveTenantId: ORG_B }] },
+      ),
+      logger: stubLogger(),
+    });
+    const res = await app.request("/api/me/context");
+    expect(res.status).toBe(200);
+    const body = meContextResponseSchema.parse(await res.json());
+    expect(body.organizations).toEqual([
+      { id: ORG_A, name: "Acme", slug: "acme", role: "viewer" },
+      { id: ORG_B, name: "Beta", slug: "beta", role: "admin" },
+      { id: ORG_C, name: "Core", slug: "core", role: "owner" },
+      { id: ORG_E, name: "Evidence", slug: "evidence", role: "viewer" },
+      { id: ORG_F, name: "Forensics", slug: "forensics", role: "auditor" },
+    ]);
+    expect(body.lastActiveTenantId).toBe(ORG_B);
   });
 
   it("never exposes a stale lastActiveTenantId after membership loss", async () => {
