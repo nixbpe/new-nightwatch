@@ -225,10 +225,13 @@ beforeAll(async () => {
     `${initRolesScript}:/docker-entrypoint-initdb.d/001-roles.sh:ro`,
     "postgres:17.11-alpine",
   ]);
+  // Probe over TCP: the image's init-time server listens only on the unix
+  // socket and restarts after init scripts, so a socket probe can pass
+  // before the published port serves the final server.
   await waitFor(
     postgresContainer,
-    "pg_isready -U nightwatch_owner -d nightwatch >/dev/null && " +
-      `psql -U nightwatch_owner -d nightwatch -Atqc "select 1 from pg_roles where rolname = 'nightwatch'" | grep -qx 1`,
+    "pg_isready -h 127.0.0.1 -U nightwatch_owner -d nightwatch >/dev/null && " +
+      `psql -h 127.0.0.1 -U nightwatch_owner -d nightwatch -Atqc "select 1 from pg_roles where rolname = 'nightwatch'" | grep -qx 1`,
   );
   const postgresPort = await publishedPort(postgresContainer, "5432/tcp");
   const ownerUrl = databaseUrl("nightwatch_owner", ownerPassword, postgresPort);
