@@ -290,7 +290,22 @@ describe("notification inbox API", () => {
       'update "user" set last_active_tenant_id = $1 where id = $2',
       [revokedOrg, userId],
     );
-    const fallback = await request("/api/notifications");
+    // A former member with a stale mirror is resolved before any
+    // organization lock, so another transaction holding the row cannot block
+    // the personal fallback.
+    const lockHolder = await owner.sql.connect();
+    let fallback: Awaited<ReturnType<typeof request>>;
+    try {
+      await lockHolder.query("begin");
+      await lockHolder.query(
+        "select id from organization where id = $1 for update",
+        [revokedOrg],
+      );
+      fallback = await request("/api/notifications");
+    } finally {
+      await lockHolder.query("rollback");
+      lockHolder.release();
+    }
     expect(fallback.response.status).toBe(200);
     const fallbackBody = notificationListResponseSchema.parse(fallback.body);
     expect(fallbackBody.items.map((item) => item.scope)).toEqual(["account"]);

@@ -98,17 +98,28 @@ async function resolveActiveScopeOnClient(
     return { userId, organizationId: null };
   }
 
-  await client.query("select id from organization where id = $1 for share", [
-    organizationId,
-  ]);
-  await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
-    `notification-membership:${organizationId}`,
-  ]);
-  const membership = await client.query(
-    `select 1 from member
-     where organization_id = $1 and user_id = $2 for update`,
+  // Actor-scoped membership lookup before any organization lock (ORG-02):
+  // a former member with a stale mirror never contends on that
+  // organization's locks. A current member is rechecked under the locks.
+  const preMembership = await client.query(
+    `select 1 from member where organization_id = $1 and user_id = $2`,
     [organizationId, userId],
   );
+  let isMember = false;
+  if (preMembership.rows.length > 0) {
+    await client.query("select id from organization where id = $1 for share", [
+      organizationId,
+    ]);
+    await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+      `notification-membership:${organizationId}`,
+    ]);
+    const membership = await client.query(
+      `select 1 from member
+       where organization_id = $1 and user_id = $2 for update`,
+      [organizationId, userId],
+    );
+    isMember = membership.rows.length > 0;
+  }
   const lockedMirror = await client.query<{
     organizationId: string | null;
   }>(
@@ -117,7 +128,7 @@ async function resolveActiveScopeOnClient(
     [userId],
   );
   if (lockedMirror.rows[0]?.organizationId !== organizationId) return null;
-  if (membership.rows.length > 0) return { userId, organizationId };
+  if (isMember) return { userId, organizationId };
   await client.query(
     `update "user" set last_active_tenant_id = null, updated_at = now()
      where id = $1 and last_active_tenant_id = $2`,
