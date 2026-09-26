@@ -62,11 +62,39 @@ async function membershipFor(
   return result.rows[0];
 }
 
+/**
+ * Pre-tenant membership resolution scoped by the verified actor (ORG-02).
+ * Runs before any tenant context exists, so a nonmember never sets
+ * `app.tenant_id` or contends on another organization's locks. Callers
+ * recheck membership under their locks inside the scoped transaction.
+ */
+export async function assertMemberBeforeTenantContext(
+  database: Database,
+  organizationId: string,
+  userId: string,
+): Promise<void> {
+  const client = await database.sql.connect();
+  try {
+    const result = await client.query(
+      `select 1 from member where organization_id = $1 and user_id = $2`,
+      [organizationId, userId],
+    );
+    if (result.rows.length === 0) assertMember(undefined);
+  } finally {
+    client.release();
+  }
+}
+
 /** Reads settings only for a current owner or administrator. */
 export async function getOrganizationNotificationSettings(
   database: Database,
   input: { organizationId: string; userId: string },
 ): Promise<OrganizationNotificationSettings> {
+  await assertMemberBeforeTenantContext(
+    database,
+    input.organizationId,
+    input.userId,
+  );
   return withTenantContextRaw(
     database,
     input.organizationId,
@@ -111,6 +139,11 @@ export async function updateOrganizationNotificationSettings(
     update: NotificationSettingsUpdate;
   },
 ): Promise<OrganizationNotificationSettings> {
+  await assertMemberBeforeTenantContext(
+    database,
+    input.organizationId,
+    input.userId,
+  );
   return withTenantContextRaw(
     database,
     input.organizationId,

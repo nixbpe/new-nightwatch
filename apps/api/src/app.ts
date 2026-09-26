@@ -174,7 +174,10 @@ export function createApp(deps: AppDeps): OpenAPIHono {
     app.use("/api/me/*", authCors);
     app.use("/api/notifications/*", authCors);
     app.use("/api/organizations/*", authCors);
-    app.use("/api/auth/*", createNativeOrganizationMutationGuard());
+    app.use(
+      "/api/auth/*",
+      createNativeOrganizationMutationGuard({ auth, logger: deps.logger }),
+    );
     app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
     registerOnboardingRoutes(app, { database });
     registerMeRoutes(app, { auth, database, logger: deps.logger });

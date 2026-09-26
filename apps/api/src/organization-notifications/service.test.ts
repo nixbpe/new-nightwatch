@@ -17,7 +17,7 @@ const ORGANIZATION_ID = crypto.randomUUID();
 const USER_ID = "user-owner";
 
 describe("getOrganizationNotificationSettings", () => {
-  it("locks the organization and membership ordering before authorizing the settings read", async () => {
+  it("resolves membership pre-tenant, then locks organization and membership before authorizing the settings read", async () => {
     const queries: string[] = [];
     const database = {
       sql: {
@@ -51,6 +51,7 @@ describe("getOrganizationNotificationSettings", () => {
       version: 0,
     });
     expect(queries.map((query) => query.trim())).toMatchObject([
+      expect.stringContaining("from member"),
       expect.stringContaining("from organization"),
       expect.stringContaining("pg_advisory_xact_lock"),
       expect.stringContaining("from member"),

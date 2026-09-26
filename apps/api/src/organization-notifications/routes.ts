@@ -21,7 +21,10 @@ import {
 /** App-owned guard installed before Better Auth's native organization routes. */
 export type NativeOrganizationMutationGuard = MiddlewareHandler;
 
-export function createNativeOrganizationMutationGuard(): NativeOrganizationMutationGuard {
+export function createNativeOrganizationMutationGuard(deps: {
+  auth: Auth;
+  logger: Logger;
+}): NativeOrganizationMutationGuard {
   return async (c, next) => {
     if (
       c.req.method === "POST" &&
@@ -31,6 +34,15 @@ export function createNativeOrganizationMutationGuard(): NativeOrganizationMutat
         "/api/auth/organization/leave",
       ].includes(c.req.path)
     ) {
+      const session = await deps.auth.getSession(c.req.raw.headers);
+      deps.logger.warn(
+        {
+          actorUserId: session?.user.id ?? null,
+          action: `legacy:${c.req.path}`,
+          code: "PERMISSION_DENIED",
+        },
+        "organization access denied",
+      );
       return c.json(
         {
           error: {

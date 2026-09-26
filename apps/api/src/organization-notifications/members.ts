@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { AppError } from "@nightwatch/shared";
 
 import { normalizeOrganizationRole } from "../me/service";
+import { assertMemberBeforeTenantContext } from "./service";
 
 type OrganizationRole = "owner" | "admin" | "viewer" | "auditor";
 
@@ -98,8 +99,10 @@ async function lockedTarget(
 async function withLockedOrganization<T>(
   database: Database,
   organizationId: string,
+  actorUserId: string,
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
+  await assertMemberBeforeTenantContext(database, organizationId, actorUserId);
   return withTenantContextRaw(database, organizationId, async (client) => {
     const organization = await client.query<{ id: string }>(
       "select id from organization where id = $1 for update",
@@ -156,6 +159,7 @@ export async function updateOrganizationMemberRole(
   return withLockedOrganization(
     database,
     input.organizationId,
+    input.actorUserId,
     async (client) => {
       const actor = await lockedMember(
         client,
@@ -201,6 +205,7 @@ export async function revokeOrganizationMember(
   return withLockedOrganization(
     database,
     input.organizationId,
+    input.actorUserId,
     async (client) => {
       const actor = await lockedMember(
         client,
@@ -250,6 +255,7 @@ export async function leaveOrganization(
   return withLockedOrganization(
     database,
     input.organizationId,
+    input.actorUserId,
     async (client) => {
       const member = await lockedMember(
         client,

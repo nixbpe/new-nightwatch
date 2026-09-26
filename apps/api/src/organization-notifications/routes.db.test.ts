@@ -254,6 +254,7 @@ describe("organization member HTTP mutations", () => {
       [organizationId, [targetId, leaverId]],
     );
 
+    auditLines.length = 0;
     for (const path of [
       "/api/auth/organization/update-member-role",
       "/api/auth/organization/remove-member",
@@ -268,6 +269,24 @@ describe("organization member HTTP mutations", () => {
         },
       });
     }
+    // Legacy-path denials are audited with the actor, like the new routes.
+    expect(
+      auditLines
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((entry) => entry.msg === "organization access denied"),
+    ).toEqual([
+      expect.objectContaining({
+        actorUserId: ownerId,
+        action: "legacy:/api/auth/organization/update-member-role",
+        code: "PERMISSION_DENIED",
+      }),
+      expect.objectContaining({
+        action: "legacy:/api/auth/organization/remove-member",
+      }),
+      expect.objectContaining({
+        action: "legacy:/api/auth/organization/leave",
+      }),
+    ]);
 
     expect(
       (
@@ -368,10 +387,29 @@ describe("organization member HTTP mutations", () => {
         error: { code: "MEMBERSHIP_DENIED" },
       });
     }
+    // Membership is resolved before any tenant context or organization lock:
+    // a nonmember is denied even while another transaction holds the row.
+    const lockHolder = await owner.sql.connect();
+    try {
+      await lockHolder.query("begin");
+      await lockHolder.query(
+        "select id from organization where id = $1 for update",
+        [organizationId],
+      );
+      const blocked = await leaverClient(
+        "DELETE",
+        `/api/organizations/${organizationId}/members/me`,
+      );
+      expect(blocked.status).toBe(403);
+    } finally {
+      await lockHolder.query("rollback");
+      lockHolder.release();
+    }
+
     const denials = auditLines
       .map((line) => JSON.parse(line) as Record<string, unknown>)
       .filter((entry) => entry.msg === "organization access denied");
-    expect(denials).toHaveLength(2);
+    expect(denials).toHaveLength(3);
     for (const denial of denials) {
       expect(denial).toMatchObject({
         actorUserId: leaverId,
