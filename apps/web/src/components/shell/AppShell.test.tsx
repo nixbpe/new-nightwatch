@@ -542,6 +542,32 @@ describe("AppShell", () => {
     expect(markAllNotificationsReadMock).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a popover mark-all failure and keeps the action retryable", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+    fetchNotificationsMock.mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    markAllNotificationsReadMock.mockRejectedValue(new Error("network down"));
+    const user = userEvent.setup();
+    renderShell();
+    await screen.findByRole("link", { name: "Org A" });
+
+    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await screen.findByLabelText("1 รายการยังไม่อ่าน");
+    const markAll = screen.getByRole("button", {
+      name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+    });
+    await user.click(markAll);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+    );
+    expect(markAll).toBeEnabled();
+  });
+
   it("opens a selected popover notification in the center with its persisted read state", async () => {
     const notification: NotificationItem = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

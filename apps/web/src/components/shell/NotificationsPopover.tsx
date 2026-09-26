@@ -61,6 +61,7 @@ export function NotificationsPopover() {
         aria-expanded={popover.open}
         onClick={() => {
           open.reset();
+          all.reset();
           popover.toggle();
         }}
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -102,12 +103,14 @@ export function NotificationsPopover() {
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {open.isError ? (
+            {open.isError || all.isError ? (
               <p
                 role="alert"
                 className="border-b border-foreground/10 px-4 py-3 text-sm text-danger"
               >
-                เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
+                {open.isError
+                  ? "เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"
+                  : "ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"}
               </p>
             ) : null}
             {list.isPending ? (
