@@ -2,12 +2,19 @@ import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import type { PoolClient } from "pg";
 import { AppError } from "@nightwatch/shared";
 
+import { normalizeOrganizationRole } from "../me/service";
+
 type OrganizationRole = "owner" | "admin" | "viewer" | "auditor";
 
+/** A stored member row; `role` may be a comma-separated composite. */
 type MemberRow = {
   id: string;
   userId: string;
   organizationId: string;
+  role: string;
+};
+/** A member as returned by the API, projected to one contract role. */
+export type MemberResponse = Omit<MemberRow, "role"> & {
   role: OrganizationRole;
 };
 const ORGANIZATION_ROLES: Record<string, true> = {
@@ -40,6 +47,16 @@ function isOwnerOrAdmin(member: MemberRow): boolean {
       .map((role) => role.trim())
       .includes("admin")
   );
+}
+
+// Projected inside the transaction so an unrecognized stored role rolls the
+// mutation back instead of committing it behind a failed response.
+function toMemberResponse(member: MemberRow): MemberResponse {
+  const role = normalizeOrganizationRole(member.role);
+  if (role === null) {
+    throw new Error(`member ${member.id} has no recognized role`);
+  }
+  return { ...member, role };
 }
 
 async function lockedMember(
@@ -128,7 +145,7 @@ export async function updateOrganizationMemberRole(
     memberId: string;
     role: OrganizationRole;
   },
-): Promise<MemberRow> {
+): Promise<MemberResponse> {
   if (!ORGANIZATION_ROLES[input.role]) {
     throw new AppError(400, "INVALID_ROLE", "บทบาทองค์กรไม่ถูกต้อง");
   }
@@ -168,7 +185,7 @@ export async function updateOrganizationMemberRole(
       );
       const member = updated.rows[0];
       if (!member) memberNotFound();
-      return member;
+      return toMemberResponse(member);
     },
   );
 }
@@ -176,7 +193,7 @@ export async function updateOrganizationMemberRole(
 export async function revokeOrganizationMember(
   database: Database,
   input: { organizationId: string; actorUserId: string; memberId: string },
-): Promise<MemberRow> {
+): Promise<MemberResponse> {
   return withLockedOrganization(
     database,
     input.organizationId,
@@ -216,7 +233,7 @@ export async function revokeOrganizationMember(
       );
       const member = removed.rows[0];
       if (!member) memberNotFound();
-      return member;
+      return toMemberResponse(member);
     },
   );
 }
@@ -225,7 +242,7 @@ export async function revokeOrganizationMember(
 export async function leaveOrganization(
   database: Database,
   input: { organizationId: string; actorUserId: string },
-): Promise<MemberRow> {
+): Promise<MemberResponse> {
   return withLockedOrganization(
     database,
     input.organizationId,
@@ -259,7 +276,7 @@ export async function leaveOrganization(
       );
       const removedMember = removed.rows[0];
       if (!removedMember) memberNotFound();
-      return removedMember;
+      return toMemberResponse(removedMember);
     },
   );
 }

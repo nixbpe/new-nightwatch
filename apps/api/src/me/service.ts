@@ -36,7 +36,7 @@ const ROLE_PRIORITY: Record<MeContextOrganization["role"], number> = {
 
 // `/me` projects composite storage roles into the finite UI contract. It does
 // not write or otherwise change the authorization role stored by Better Auth.
-function normalizeOrganizationRole(
+export function normalizeOrganizationRole(
   rawRole: string,
 ): MeContextOrganization["role"] | null {
   const exactRole = organizationRoleSchema.safeParse(rawRole);

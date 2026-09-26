@@ -230,7 +230,7 @@ describe("organization member HTTP mutations", () => {
       `insert into member (id, organization_id, user_id, role, created_at, updated_at)
        values ($1, $2, $3, 'owner', now(), now()),
               ($4, $2, $5, 'viewer', now(), now()),
-              ($6, $2, $7, 'viewer', now(), now())`,
+              ($6, $2, $7, 'viewer,auditor', now(), now())`,
       [
         memberIds.owner,
         organizationId,
@@ -296,13 +296,18 @@ describe("organization member HTTP mutations", () => {
       ).rows[0]?.role,
     ).toBe("admin");
 
+    // Composite stored roles are projected to one contract role.
+    await owner.sql.query(
+      "update member set role = 'admin,viewer' where id = $1",
+      [memberIds.target],
+    );
     const revoke = await ownerClient(
       "DELETE",
       `/api/organizations/${organizationId}/members/${memberIds.target}`,
     );
     expect(revoke.status).toBe(200);
     expect(revoke.json).toMatchObject({
-      member: { id: memberIds.target, userId: targetId },
+      member: { id: memberIds.target, userId: targetId, role: "admin" },
     });
     expect(
       (
@@ -326,7 +331,7 @@ describe("organization member HTTP mutations", () => {
       `/api/organizations/${organizationId}/members/me`,
     );
     expect(leave.json).toMatchObject({
-      member: { id: memberIds.leaver, userId: leaverId },
+      member: { id: memberIds.leaver, userId: leaverId, role: "viewer" },
     });
     expect(leave.status).toBe(200);
     expect(
