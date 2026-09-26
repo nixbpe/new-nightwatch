@@ -7,6 +7,7 @@
     "CORS_ORIGIN",
     "DATABASE_URL",
     "DATABASE_OWNER_URL",
+    "REDIS_URL",
     "BETTER_AUTH_SECRET",
     "SMTP_HOST",
     "SMTP_PORT",

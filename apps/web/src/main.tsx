@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { RouterProvider } from "react-router";
+import { RouterProvider } from "react-router/dom";
 
 import { createAppRouter } from "./router";
 import "./index.css";
@@ -16,8 +16,6 @@ const router = createAppRouter();
 
 createRoot(container).render(
   <StrictMode>
-    {/* Renders nothing while the initial document load's loaders run (the
-        session gate + me/context prefetch on a hard load of /workspace). */}
     <RouterProvider router={router} />
   </StrictMode>,
 );

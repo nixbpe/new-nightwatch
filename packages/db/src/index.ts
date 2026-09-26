@@ -9,6 +9,26 @@ export {
 export { schema } from "./schema";
 export { withTenantContext, withTenantContextRaw } from "./tenant-context";
 export {
+  claimNotificationDispatches,
+  completeNotificationDispatch,
+  failNotificationDispatch,
+  createNotificationDispatch,
+  initializeAccountMfaState,
+  insertAccountNotificationIntent,
+  markNotificationDispatchEnqueued,
+  recordAccountMfaTransition,
+  requeueStaleNotificationDispatches,
+  resolveNotificationDispatchClaim,
+  purgeExpiredNotificationInboxItems,
+  setAccountContext,
+  withAccountContext,
+  withAccountContextRaw,
+  type AccountNotificationEventType,
+  type NotificationDispatchClaim,
+  type NotificationDispatchFailureReason,
+  type NotificationTransaction,
+} from "./notification";
+export {
   listMigrations,
   runMigrations,
   sha256,

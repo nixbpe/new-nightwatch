@@ -38,12 +38,22 @@ const me: MeContextResponse = {
 };
 
 function Probe() {
-  const { activeOrg, switchOrg, mePending, meError, retryMe } = useTenant();
+  const {
+    activeOrg,
+    serverActiveOrgId,
+    switchOrg,
+    mePending,
+    meError,
+    retryMe,
+  } = useTenant();
   return (
     <div>
       <span data-testid="pending">{String(mePending)}</span>
       <span data-testid="error">{meError?.message ?? "none"}</span>
       <span data-testid="active">{activeOrg?.id ?? "none"}</span>
+      <span data-testid="server-active">
+        server:{serverActiveOrgId ?? "none"}
+      </span>
       <button type="button" onClick={() => void switchOrg("org-a")}>
         switch-a
       </button>
@@ -77,6 +87,41 @@ describe("TenantProvider", () => {
     fetchMeContextMock.mockResolvedValue(me);
     renderProvider();
     expect(await screen.findByText("org-b")).toBeInTheDocument();
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:org-b",
+    );
+  });
+
+  it("keeps the inbox scope personal-only when the server has no active organization", async () => {
+    fetchMeContextMock.mockResolvedValue({ ...me, lastActiveTenantId: null });
+    renderProvider();
+
+    expect(await screen.findByText("org-a")).toBeInTheDocument();
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:none",
+    );
+  });
+
+  it("switches from a navigation fallback so the server can establish its active organization", async () => {
+    const personalOnly = { ...me, lastActiveTenantId: null };
+    fetchMeContextMock.mockResolvedValue(personalOnly);
+    updateActiveOrganizationMock.mockResolvedValue({
+      ...personalOnly,
+      lastActiveTenantId: "org-a",
+    });
+    renderProvider();
+    await screen.findByText("org-a");
+
+    await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
+
+    await waitFor(() => {
+      expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
+        organizationId: "org-a",
+      });
+    });
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:org-a",
+    );
   });
 
   it("publishes a switch only after PATCH succeeds and clears tenant caches", async () => {
@@ -98,6 +143,40 @@ describe("TenantProvider", () => {
     });
     expect(
       queryClient.getQueryData(["tenant", "org-b", "widgets"]),
+    ).toBeUndefined();
+  });
+
+  it("retires a deferred old-tenant response before publishing the confirmed switch", async () => {
+    fetchMeContextMock.mockResolvedValue(me);
+    updateActiveOrganizationMock.mockResolvedValue({
+      ...me,
+      lastActiveTenantId: "org-a",
+    });
+    const queryClient = new QueryClient();
+    let resolveOldTenant!: (value: { source: string }) => void;
+    const oldTenant = new Promise<{ source: string }>((resolve) => {
+      resolveOldTenant = resolve;
+    });
+    void queryClient
+      .query({
+        queryKey: ["tenant", "org-b", "notifications"],
+        queryFn: () => oldTenant,
+      })
+      .catch(() => undefined);
+    renderProvider(queryClient);
+    await screen.findByText("org-b");
+
+    await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("server-active")).toHaveTextContent(
+        "server:org-a",
+      );
+    });
+    resolveOldTenant({ source: "org-b" });
+    await Promise.resolve();
+
+    expect(
+      queryClient.getQueryData(["tenant", "org-b", "notifications"]),
     ).toBeUndefined();
   });
 

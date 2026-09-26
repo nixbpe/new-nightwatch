@@ -21,4 +21,3 @@ export async function fetchSessions(): Promise<SessionRow[]> {
   }
   return data;
 }
-

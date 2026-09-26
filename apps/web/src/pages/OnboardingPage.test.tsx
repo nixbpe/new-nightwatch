@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -137,7 +137,9 @@ describe("OnboardingPage transitions", () => {
     expect(
       screen.getByRole("button", { name: "ส่งอีเมลยืนยันใหม่" }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+    await waitFor(() =>
+      expect(screen.getByTestId("search")).toHaveTextContent(/^$/),
+    );
     // Still on the hub: no redirect occurred.
     expect(screen.queryByTestId("location")).toBeNull();
   });
@@ -156,9 +158,13 @@ describe("OnboardingPage transitions", () => {
     expect(
       screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("search")).toHaveTextContent(
-      "?invitationId=inv-9",
-    );
+    // The token strip is a router navigation that can land after the
+    // failure render; wait for it rather than racing it.
+    await waitFor(() => {
+      expect(screen.getByTestId("search")).toHaveTextContent(
+        "?invitationId=inv-9",
+      );
+    });
     expect(readInvitation()).toBe("inv-9");
     expect(screen.queryByTestId("location")).toBeNull();
   });
@@ -176,7 +182,9 @@ describe("OnboardingPage transitions", () => {
     expect(
       screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+    await waitFor(() => {
+      expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+    });
     expect(screen.queryByTestId("location")).toBeNull();
 
     await userEvent.click(

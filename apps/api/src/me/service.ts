@@ -27,6 +27,35 @@ type MembershipRow = {
 
 type LastActiveRow = { lastActiveTenantId: string | null };
 
+const ROLE_PRIORITY: Record<MeContextOrganization["role"], number> = {
+  owner: 0,
+  admin: 1,
+  viewer: 2,
+  auditor: 3,
+};
+
+// `/me` projects composite storage roles into the finite UI contract. It does
+// not write or otherwise change the authorization role stored by Better Auth.
+export function normalizeOrganizationRole(
+  rawRole: string,
+): MeContextOrganization["role"] | null {
+  const exactRole = organizationRoleSchema.safeParse(rawRole);
+  if (exactRole.success) return exactRole.data;
+
+  let normalizedRole: MeContextOrganization["role"] | null = null;
+  for (const token of rawRole.split(",")) {
+    const role = organizationRoleSchema.safeParse(token.trim());
+    if (
+      role.success &&
+      (normalizedRole === null ||
+        ROLE_PRIORITY[role.data] < ROLE_PRIORITY[normalizedRole])
+    ) {
+      normalizedRole = role.data;
+    }
+  }
+  return normalizedRole;
+}
+
 const MEMBERSHIPS_SELECT = `
   select o.id   as "organizationId",
          o.name,
@@ -90,13 +119,13 @@ function toContext(
 ): MeContextResponse {
   const organizations: MeContextOrganization[] = [];
   for (const row of memberships) {
-    const role = organizationRoleSchema.safeParse(row.role);
-    if (role.success) {
+    const role = normalizeOrganizationRole(row.role);
+    if (role !== null) {
       organizations.push({
         id: row.organizationId,
         name: row.name,
         slug: row.slug,
-        role: role.data,
+        role,
       });
     }
   }
@@ -145,6 +174,14 @@ async function rollbackQuietly(client: PoolClient): Promise<void> {
   }
 }
 
+function denyNotMember(logger: Logger): never {
+  logger.warn(
+    { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
+    "active organization change denied: not a member",
+  );
+  throw new AppError(403, "MEMBERSHIP_DENIED", "คุณไม่ใช่สมาชิกขององค์กรนี้");
+}
+
 /**
  * Switch the active organization. Membership is re-verified inside the
  * transaction with `FOR UPDATE` on the membership row: an in-flight
@@ -162,9 +199,30 @@ export async function setActiveOrganization(
   organizationId: string,
 ): Promise<MeContextResponse> {
   const client = await database.sql.connect();
-  let inTransaction = true;
+  let inTransaction = false;
   try {
+    // Pre-tenant, actor-scoped membership lookup before any organization lock
+    // (ORG-02): a nonmember never contends on another organization's rows.
+    // Membership is rechecked under the locks below.
+    const preMembership = await client.query(
+      "select 1 from member where organization_id = $1 and user_id = $2",
+      [organizationId, session.user.id],
+    );
+    if (preMembership.rows.length === 0) denyNotMember(logger);
     await client.query("begin");
+    inTransaction = true;
+    const organization = await client.query(
+      "select id from organization where id = $1 for update",
+      [organizationId],
+    );
+    if (organization.rows.length === 0) {
+      await rollbackQuietly(client);
+      inTransaction = false;
+      denyNotMember(logger);
+    }
+    await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+      `notification-membership:${organizationId}`,
+    ]);
     const membership = await client.query(
       `select m.organization_id
        from member m
@@ -175,15 +233,7 @@ export async function setActiveOrganization(
     if (membership.rows.length === 0) {
       await rollbackQuietly(client);
       inTransaction = false;
-      logger.warn(
-        { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
-        "active organization change denied: not a member",
-      );
-      throw new AppError(
-        403,
-        "MEMBERSHIP_DENIED",
-        "คุณไม่ใช่สมาชิกขององค์กรนี้",
-      );
+      denyNotMember(logger);
     }
     await client.query(
       `update "user"
@@ -191,11 +241,15 @@ export async function setActiveOrganization(
        where id = $2`,
       [organizationId, session.user.id],
     );
+    // Organization selection is account-global (last_active_tenant_id), so
+    // every session mirror of the user moves with it in this transaction
+    // (ORG-04); otherwise another live session's mirror would disagree with
+    // the scope its inbox requests resolve.
     await client.query(
       `update session
        set active_organization_id = $1
-       where token = $2`,
-      [organizationId, session.session.token],
+       where user_id = $2`,
+      [organizationId, session.user.id],
     );
     await client.query("commit");
     inTransaction = false;

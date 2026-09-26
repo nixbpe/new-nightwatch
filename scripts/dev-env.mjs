@@ -21,14 +21,21 @@ import { repoRoot, resolvePorts } from "./ports.mjs";
  * incomplete configuration fails fast in the consuming command.
  */
 
+const LOCAL_REDIS_PORT_BASE = 6380;
+
+export function localRedisPort(slot) {
+  return LOCAL_REDIS_PORT_BASE + slot;
+}
+
 export const LOCAL_ENV_PATH = resolve(repoRoot, ".env.compose.local");
 
 /**
  * @param {NodeJS.ProcessEnv} [sourceEnv]
- * @returns {{ env: NodeJS.ProcessEnv, ports: ReturnType<typeof resolvePorts>, hasLocalEnv: boolean }}
+ * @returns {{ env: NodeJS.ProcessEnv, ports: ReturnType<typeof resolvePorts>, redisPort: number, hasLocalEnv: boolean }}
  */
 export function resolveDevEnv(sourceEnv = process.env) {
   const ports = resolvePorts(sourceEnv);
+  const redisPort = localRedisPort(ports.slot);
   const hasLocalEnv = existsSync(LOCAL_ENV_PATH);
   const localEnv = hasLocalEnv ? readEnvFile(LOCAL_ENV_PATH) : {};
 
@@ -48,6 +55,7 @@ export function resolveDevEnv(sourceEnv = process.env) {
     SMTP_PORT: String(ports.mailSmtpPort),
     SMTP_SECURE: "false",
     SMTP_FROM: "NightWatch Dev <noreply@nightwatch.local>",
+    REDIS_URL: `redis://127.0.0.1:${redisPort}`,
   };
 
   const env = { ...sourceEnv };
@@ -59,5 +67,5 @@ export function resolveDevEnv(sourceEnv = process.env) {
     }
   }
 
-  return { env, ports, hasLocalEnv };
+  return { env, ports, redisPort, hasLocalEnv };
 }

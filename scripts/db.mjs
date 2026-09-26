@@ -21,6 +21,7 @@ import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { readEnvFile } from "./env-file.mjs";
+import { localRedisPort } from "./dev-env.mjs";
 import { repoRoot, resolvePorts } from "./ports.mjs";
 
 const LOCAL_ENV_PATH = resolve(repoRoot, ".env.compose.local");
@@ -48,6 +49,7 @@ function ensureLocalEnv() {
 
 function compose(args) {
   const { slot, dbPort, mailSmtpPort, mailUiPort } = resolvePorts(process.env);
+  const redisPort = localRedisPort(slot);
   const local = readEnvFile(LOCAL_ENV_PATH);
   const result = spawnSync("docker", ["compose", "-f", COMPOSE_FILE, ...args], {
     stdio: "inherit",
@@ -57,6 +59,7 @@ function compose(args) {
       NW_DB_PORT: String(dbPort),
       NW_MAIL_SMTP_PORT: String(mailSmtpPort),
       NW_MAIL_UI_PORT: String(mailUiPort),
+      NW_REDIS_PORT: String(redisPort),
       NW_OWNER_PASSWORD: local.NW_OWNER_PASSWORD ?? "",
       NW_DB_PASSWORD: local.NW_DB_PASSWORD ?? "",
     },
@@ -102,7 +105,7 @@ switch (command) {
   case "env":
     console.log(`[db] secrets file: ${LOCAL_ENV_PATH} (gitignored)`);
     console.log(
-      `[db] project nw-dev-${ports.slot} · postgres 127.0.0.1:${ports.dbPort} · mailpit UI http://localhost:${ports.mailUiPort}`,
+      `[db] project nw-dev-${ports.slot} · postgres 127.0.0.1:${ports.dbPort} · redis redis://127.0.0.1:${localRedisPort(ports.slot)} · mailpit UI http://localhost:${ports.mailUiPort}`,
     );
     break;
   default:

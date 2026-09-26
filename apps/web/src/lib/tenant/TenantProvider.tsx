@@ -1,12 +1,19 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   fetchMeContext,
   ME_CONTEXT_QUERY_KEY,
   updateActiveOrganization,
 } from "../api/me";
+import { isInboxScopeChanged } from "../api/notifications";
 
 type Membership = MeContextResponse["organizations"][number];
 
@@ -23,6 +30,7 @@ type TenantContextValue = {
   meError: Error | null;
   retryMe: () => Promise<void>;
   activeOrg: Membership | null;
+  serverActiveOrgId: string | null;
   switchOrg: (organizationId: string) => Promise<boolean>;
   orgSwitchPending: boolean;
 };
@@ -47,8 +55,39 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     queryFn: fetchMeContext,
   });
 
+  useEffect(() => {
+    const refreshOnScopeChange = (error: unknown) => {
+      if (isInboxScopeChanged(error)) {
+        void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+      }
+    };
+    const stopQueries = queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "error") {
+        refreshOnScopeChange(event.action.error);
+      }
+    });
+    const stopMutations = queryClient.getMutationCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "error") {
+        refreshOnScopeChange(event.action.error);
+      }
+    });
+    return () => {
+      stopQueries();
+      stopMutations();
+    };
+  }, [queryClient]);
+
   const memberships = meQuery.data?.organizations;
   const lastActiveTenantId = meQuery.data?.lastActiveTenantId ?? null;
+
+  // A refreshed server mirror (e.g. another session switched the
+  // account-global organization) supersedes this tab's earlier local choice;
+  // otherwise the header and notifications would show different tenants.
+  const [mirrorSeen, setMirrorSeen] = useState(lastActiveTenantId);
+  if (mirrorSeen !== lastActiveTenantId) {
+    setMirrorSeen(lastActiveTenantId);
+    setSelectedOrgId(null);
+  }
 
   // Selection precedence: valid in-memory choice, then the persisted
   // last-active tenant when still a membership, then the first membership.
@@ -62,12 +101,20 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         memberships[0] ??
         null);
 
+  // Inbox scope comes only from the server-confirmed active mirror. The UI
+  // falls back to a membership for navigation, but that fallback must never
+  // make organization notifications visible or alter an inbox request.
+  const serverActiveOrgId =
+    memberships?.some((org) => org.id === lastActiveTenantId) === true
+      ? lastActiveTenantId
+      : null;
+
   // Guard, tenant-cache retirement and success ordering are behavioral
   // contracts; React Compiler handles render-performance memoization.
   const switchOrg = async (organizationId: string): Promise<boolean> => {
     if (
       memberships?.some((org) => org.id === organizationId) !== true ||
-      organizationId === activeOrg?.id
+      organizationId === serverActiveOrgId
     ) {
       return false;
     }
@@ -101,6 +148,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     meError: meQuery.error,
     retryMe,
     activeOrg,
+    serverActiveOrgId,
     switchOrg,
     orgSwitchPending,
   };

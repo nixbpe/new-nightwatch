@@ -3,8 +3,13 @@ import { fileURLToPath } from "node:url";
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { meContextResponseSchema } from "@nightwatch/api-contract";
-import { createDatabase, runMigrations } from "@nightwatch/db";
-import type { Database } from "@nightwatch/db";
+import {
+  createDatabase,
+  insertAccountNotificationIntent,
+  type Database,
+  type NotificationTransaction,
+  runMigrations,
+} from "@nightwatch/db";
 import { createLogger, type AuthEnv, type Env } from "@nightwatch/shared";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +18,9 @@ import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { createAuth } from "./index";
 import type { Mailer, OutboundMail } from "./mailer";
 
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+
+import { withAccountNotificationOrigins } from "./auth-origin-intents";
 /**
  * Real database integration for the auth boundary (QA-8/QA-9, SEC-005).
  * Runs only under the explicit `integration` project
@@ -78,9 +86,14 @@ const mailer: Mailer = {
 // The pool is created at module scope but connects lazily on first query;
 // beforeAll applies migrations and seeds before any test touches it.
 const database: Database = createDatabase(DATABASE_URL);
-let app: OpenAPIHono;
+const ownerDatabase: Database = createDatabase(OWNER_URL);
 const orgName = "Auth IT Org";
-
+let app: OpenAPIHono;
+const passwordOriginFixtureEmails: string[] = [];
+const mfaReenrollmentFixtureEmails: string[] = [];
+const memberGuardFixtureEmails: string[] = [];
+const memberGuardOrganizationIds: string[] = [];
+const MFA_REENROLL_TRIGGER = `fail_two_factor_insert_${RUN}`;
 function userEmail(local: string): string {
   return `${local}-${RUN}@example.test`;
 }
@@ -98,7 +111,7 @@ type ApiRequestOptions = {
 type ApiResponse = { status: number; json: unknown };
 
 type ApiRequest = ((
-  method: "GET" | "POST" | "PATCH",
+  method: "DELETE" | "GET" | "POST" | "PATCH",
   path: string,
   body?: Record<string, unknown>,
   options?: ApiRequestOptions,
@@ -114,7 +127,7 @@ function client(
 ): ApiRequest {
   const jar = new Map<string, string>(Object.entries(initialCookies ?? {}));
   const request = async (
-    method: "GET" | "POST" | "PATCH",
+    method: "DELETE" | "GET" | "POST" | "PATCH",
     path: string,
     body?: Record<string, unknown>,
     options?: ApiRequestOptions,
@@ -168,6 +181,14 @@ function findMail(to: string, subjectPart: string): OutboundMail {
   const found = mail.find(
     (entry) => entry.to === to && entry.subject.includes(subjectPart),
   );
+  if (!found) throw new Error(`no mail to ${to} matching "${subjectPart}"`);
+
+  return found;
+}
+function latestMail(to: string, subjectPart: string): OutboundMail {
+  const found = [...mail]
+    .reverse()
+    .find((entry) => entry.to === to && entry.subject.includes(subjectPart));
   if (!found) throw new Error(`no mail to ${to} matching "${subjectPart}"`);
   return found;
 }
@@ -239,6 +260,86 @@ async function sqlUserId(email: string): Promise<string> {
   return id;
 }
 
+async function mfaProjectionEnabled(userId: string): Promise<boolean | null> {
+  const client = await database.sql.connect();
+  try {
+    await client.query("begin");
+    await client.query("select set_config('app.user_id', $1, true)", [userId]);
+    const result = await client.query<{ verified_enabled: boolean }>(
+      "select verified_enabled from notification_account_mfa_state where user_id = $1",
+      [userId],
+    );
+    await client.query("commit");
+    return result.rows[0]?.verified_enabled ?? null;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function mfaIntentCount(userId: string): Promise<number> {
+  const client = await database.sql.connect();
+  try {
+    await client.query("begin");
+    await client.query("select set_config('app.user_id', $1, true)", [userId]);
+    const result = await client.query<{ n: number }>(
+      `select count(*)::int as n
+       from notification_intents
+       where user_id = $1 and event_type in ('MFA_ENABLED', 'MFA_DISABLED')`,
+      [userId],
+    );
+    await client.query("commit");
+    return result.rows[0]?.n ?? 0;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+type PasswordOriginSnapshot = {
+  credentialCount: number;
+  inboxCount: number;
+  intentCount: number;
+  ledgerCount: number;
+  passwordHash: string | null;
+};
+
+async function passwordOriginSnapshot(
+  userId: string,
+): Promise<PasswordOriginSnapshot> {
+  const result = await ownerDatabase.sql.query<PasswordOriginSnapshot>(
+    `select
+       (select count(*)::int from account
+        where user_id = $1 and provider_id = 'credential') as "credentialCount",
+       (select count(*)::int from notification_intents
+        where user_id = $1 and event_type = 'PASSWORD_CHANGED') as "intentCount",
+       (select count(*)::int from notification_dispatch_ledger as ledger
+        join notification_intents as intent on intent.id = ledger.intent_id
+        where intent.user_id = $1 and intent.event_type = 'PASSWORD_CHANGED') as "ledgerCount",
+       (select count(*)::int from notification_inbox_items
+        where user_id = $1 and event_type = 'PASSWORD_CHANGED') as "inboxCount",
+       (select password from account
+        where user_id = $1 and provider_id = 'credential'
+        limit 1) as "passwordHash"`,
+    [userId],
+  );
+  const snapshot = result.rows[0];
+  if (!snapshot) throw new Error(`missing password origin state for ${userId}`);
+  return snapshot;
+}
+
+function sessionHeaders(request: ApiRequest): Headers {
+  return new Headers({
+    cookie: Object.entries(request.cookies())
+      .map(([name, value]) => `${name}=${value}`)
+      .join("; "),
+  });
+}
+
 async function membershipCount(
   organizationId: string,
   userId: string,
@@ -248,6 +349,42 @@ async function membershipCount(
     [organizationId, userId],
   );
   return result.rows[0]?.n ?? 0;
+}
+
+type MemberMutationSnapshot = {
+  targetRole: string | null;
+  targetMembership: number;
+  leaverMembership: number;
+  targetLastActiveOrganizationId: string | null;
+  leaverLastActiveOrganizationId: string | null;
+  targetActiveOrganizationSessions: number;
+  leaverActiveOrganizationSessions: number;
+  notificationIntentCount: number;
+  notificationLedgerCount: number;
+};
+
+async function memberMutationSnapshot(
+  organizationId: string,
+  targetMemberId: string,
+  targetUserId: string,
+  leaverUserId: string,
+): Promise<MemberMutationSnapshot> {
+  const result = await ownerDatabase.sql.query<MemberMutationSnapshot>(
+    `select
+       (select role from member where id::text = $1) as "targetRole",
+       (select count(*)::int from member where organization_id::text = $2 and user_id::text = $3) as "targetMembership",
+       (select count(*)::int from member where organization_id::text = $2 and user_id::text = $4) as "leaverMembership",
+       (select last_active_tenant_id from "user" where id::text = $3) as "targetLastActiveOrganizationId",
+       (select last_active_tenant_id from "user" where id::text = $4) as "leaverLastActiveOrganizationId",
+       (select count(*)::int from session where user_id::text = $3 and active_organization_id::text = $2) as "targetActiveOrganizationSessions",
+       (select count(*)::int from session where user_id::text = $4 and active_organization_id::text = $2) as "leaverActiveOrganizationSessions",
+       (select count(*)::int from notification_intents) as "notificationIntentCount",
+       (select count(*)::int from notification_dispatch_ledger) as "notificationLedgerCount"`,
+    [targetMemberId, organizationId, targetUserId, leaverUserId],
+  );
+  const snapshot = result.rows[0];
+  if (!snapshot) throw new Error("member mutation snapshot missing");
+  return snapshot;
 }
 
 async function invitationStatus(invitationId: string): Promise<string | null> {
@@ -298,6 +435,27 @@ async function admitUser(
   });
   expect(signIn.status).toBe(200);
   return { email, request };
+}
+
+async function createInvitation(
+  email: string,
+  role: "owner" | "viewer" = "viewer",
+  organizationId = ORG_ID,
+): Promise<string> {
+  const inviter = await database.sql.query<{ id: string }>(
+    'select id from "user" where email = $1',
+    [OWNER_INVITER_EMAIL],
+  );
+  const inviterId = inviter.rows[0]?.id;
+  if (!inviterId) throw new Error("seeded inviter missing");
+  const invitationId = crypto.randomUUID();
+  await database.sql.query(
+    `insert into invitation
+       (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
+     values ($1, $2, $3, $4, 'pending', $5, now() + interval '2 days', now())`,
+    [invitationId, organizationId, email, role, inviterId],
+  );
+  return invitationId;
 }
 
 /**
@@ -380,6 +538,28 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  const fixtureEmails = [
+    ...passwordOriginFixtureEmails,
+    ...mfaReenrollmentFixtureEmails,
+    ...memberGuardFixtureEmails,
+  ];
+  if (fixtureEmails.length > 0) {
+    await database.sql.query(
+      "delete from invitation where email = any($1::text[])",
+      [fixtureEmails],
+    );
+    await database.sql.query(
+      'delete from "user" where email = any($1::text[])',
+      [fixtureEmails],
+    );
+  }
+  if (memberGuardOrganizationIds.length > 0) {
+    await ownerDatabase.sql.query(
+      "delete from organization where id = any($1::uuid[])",
+      [memberGuardOrganizationIds],
+    );
+  }
+  await ownerDatabase.close();
   await database.close();
 });
 
@@ -709,10 +889,16 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
     expect(await membershipCount(ORG_ID, userId)).toBe(1);
     expect(await invitationStatus(invitationId)).toBe("accepted");
 
-    const remove = await owner("POST", "/api/auth/organization/remove-member", {
-      memberIdOrEmail: raceUser.email,
-      organizationId: ORG_ID,
-    });
+    const member = await database.sql.query<{ id: string }>(
+      "select id from member where organization_id = $1 and user_id = $2",
+      [ORG_ID, userId],
+    );
+    const memberId = member.rows[0]?.id;
+    if (!memberId) throw new Error("accepted member missing");
+    const remove = await owner(
+      "DELETE",
+      `/api/organizations/${ORG_ID}/members/${memberId}`,
+    );
     expect(remove.status).toBe(200);
     expect(await membershipCount(ORG_ID, userId)).toBe(0);
     const removedContext = await raceUser.request("GET", "/api/me/context");
@@ -894,6 +1080,304 @@ describe("password recovery cycle", () => {
     expect(newLogin.status).toBe(200);
   });
 });
+describe("native password notification origins", () => {
+  it("emits once for a changed native credential hash, skips repeated identical hashes, and rolls back failed intent writes", async () => {
+    const email = userEmail("password-origin");
+    passwordOriginFixtureEmails.push(email);
+    const invitationId = await createInvitation(email);
+    const member = await admitUser("password-origin", invitationId);
+    const userId = await sqlUserId(member.email);
+    const initial = await passwordOriginSnapshot(userId);
+    expect(initial).toMatchObject({
+      credentialCount: 1,
+      inboxCount: 0,
+      intentCount: 0,
+      ledgerCount: 0,
+    });
+    expect(initial.passwordHash).not.toBe(PASSWORD);
+
+    const changedPassword = "Auth-It-ChangedPassw0rd!";
+    const change = await member.request("POST", "/api/auth/change-password", {
+      currentPassword: PASSWORD,
+      newPassword: changedPassword,
+    });
+    expect(change.status).toBe(200);
+    const afterChange = await passwordOriginSnapshot(userId);
+    expect(afterChange.credentialCount).toBe(1);
+    expect(afterChange.passwordHash).not.toBe(initial.passwordHash);
+    expect(afterChange.intentCount).toBe(1);
+    expect(afterChange.ledgerCount).toBe(1);
+    expect(afterChange.inboxCount).toBe(0);
+
+    if (!afterChange.passwordHash) throw new Error("missing credential hash");
+    const sameHashAdapter =
+      withAccountNotificationOrigins<NotificationTransaction>(
+        drizzleAdapter(database.db, { provider: "pg", transaction: true }),
+        {
+          writer: {
+            insertPasswordChanged: async (tx, input) => {
+              await insertAccountNotificationIntent(tx, {
+                ...input,
+                eventType: "PASSWORD_CHANGED",
+              });
+            },
+            initializeMfaState: () => Promise.resolve(undefined),
+            recordMfaTransition: () => Promise.resolve({ transitioned: false }),
+          },
+          transaction: (callback) => database.db.transaction(callback),
+          transactionAdapter: (tx, options) =>
+            drizzleAdapter(tx, { provider: "pg", transaction: true })(options),
+        },
+      )({});
+    const sameHashWrite = {
+      model: "account",
+      update: { password: afterChange.passwordHash },
+      where: [
+        { field: "userId", value: userId },
+        { field: "providerId", value: "credential" },
+      ],
+    };
+    await sameHashAdapter.update(sameHashWrite);
+    await sameHashAdapter.update(sameHashWrite);
+    expect(await passwordOriginSnapshot(userId)).toEqual(afterChange);
+
+    const directAuth = createAuth({
+      env,
+      authEnv,
+      logger: createLogger({ level: "silent", name: "auth-it" }),
+      database,
+      mailer,
+    });
+    const directPassword = "Auth-It-DirectPassw0rd!";
+    await expect(
+      directAuth.api.changePassword({
+        body: {
+          currentPassword: changedPassword,
+          newPassword: directPassword,
+        },
+        headers: sessionHeaders(member.request),
+      }),
+    ).resolves.toMatchObject({ token: null });
+    const afterDirectChange = await passwordOriginSnapshot(userId);
+    expect(afterDirectChange.passwordHash).not.toBe(afterChange.passwordHash);
+    expect(afterDirectChange.intentCount).toBe(2);
+    expect(afterDirectChange.ledgerCount).toBe(2);
+    expect(afterDirectChange.inboxCount).toBe(0);
+
+    const resetRequest = await member.request(
+      "POST",
+      "/api/auth/request-password-reset",
+      { email: member.email, redirectTo: `${APP_URL}/reset-password` },
+    );
+    expect(resetRequest.status).toBe(200);
+    const resetToken = linkQuery(
+      findMail(member.email, "รีเซ็ตรหัสผ่าน").text,
+      "token",
+    );
+    const resetPassword = "Auth-It-ResetPassw0rd!";
+    await expect(
+      directAuth.api.resetPassword({
+        body: { newPassword: resetPassword, token: resetToken },
+      }),
+    ).resolves.toEqual({ status: true });
+    const afterReset = await passwordOriginSnapshot(userId);
+    expect(afterReset.passwordHash).not.toBe(afterDirectChange.passwordHash);
+    expect(afterReset.intentCount).toBe(3);
+    expect(afterReset.ledgerCount).toBe(3);
+    expect(afterReset.inboxCount).toBe(0);
+
+    // The token is consumed before a credential update; replaying it cannot
+    // create another credential mutation or account notification.
+    const consumedReset = await member.request(
+      "POST",
+      "/api/auth/reset-password",
+      { newPassword: "Auth-It-ReplayedPassw0rd!", token: resetToken },
+    );
+    expect(consumedReset.status).toBe(400);
+    expect(await passwordOriginSnapshot(userId)).toEqual(afterReset);
+
+    const lateFailurePassword = "Auth-It-LateFailurePassw0rd!";
+    const triggerFunction = `password_origin_session_failure_${RUN}`;
+    const triggerName = `password_origin_session_trigger_${RUN}`;
+    try {
+      await ownerDatabase.sql.query(
+        `create function ${triggerFunction}() returns trigger language plpgsql as $$
+         begin
+           if new.user_id = '${userId}' then
+             raise exception 'forced post-credential session failure';
+           end if;
+           return new;
+         end;
+         $$`,
+      );
+      await ownerDatabase.sql.query(
+        `create trigger ${triggerName}
+         before insert on session
+         for each row execute function ${triggerFunction}()`,
+      );
+      const lateFailure = await member.request(
+        "POST",
+        "/api/auth/change-password",
+        {
+          currentPassword: resetPassword,
+          newPassword: lateFailurePassword,
+          revokeOtherSessions: true,
+        },
+      );
+      expect(lateFailure.status).toBe(500);
+      expect(JSON.stringify(lateFailure.json)).not.toContain(
+        lateFailurePassword,
+      );
+      const afterLateFailure = await passwordOriginSnapshot(userId);
+      expect(afterLateFailure.passwordHash).not.toBe(afterReset.passwordHash);
+      expect(afterLateFailure.intentCount).toBe(4);
+      expect(afterLateFailure.ledgerCount).toBe(4);
+    } finally {
+      await ownerDatabase.sql.query(
+        `drop trigger if exists ${triggerName} on session`,
+      );
+      await ownerDatabase.sql.query(
+        `drop function if exists ${triggerFunction}()`,
+      );
+    }
+
+    const renewed = client();
+    const renewedSignIn = await renewed("POST", "/api/auth/sign-in/email", {
+      email: member.email,
+      password: lateFailurePassword,
+    });
+    expect(renewedSignIn.status).toBe(200);
+    const afterLateFailure = await passwordOriginSnapshot(userId);
+    const failingAuth = createAuth({
+      env,
+      authEnv,
+      logger: createLogger({ level: "silent", name: "auth-it" }),
+      database,
+      mailer,
+      originWriter: {
+        insertPasswordChanged: () =>
+          Promise.reject(new Error("forced password intent failure")),
+        initializeMfaState: () => Promise.resolve(undefined),
+        recordMfaTransition: () => Promise.resolve({ transitioned: false }),
+      },
+    });
+    const failingApp = createApp({
+      env,
+      authEnv,
+      logger: createLogger({ level: "silent", name: "auth-it" }),
+      auth: failingAuth,
+      database,
+    });
+    const failedChange = await client(failingApp, renewed.cookies())(
+      "POST",
+      "/api/auth/change-password",
+      {
+        currentPassword: lateFailurePassword,
+        newPassword: "Auth-It-FailedChangePassw0rd!",
+      },
+    );
+    expect(failedChange.status).toBe(500);
+    expect(await passwordOriginSnapshot(userId)).toEqual(afterLateFailure);
+    await expect(
+      failingAuth.api.changePassword({
+        body: {
+          currentPassword: lateFailurePassword,
+          newPassword: "Auth-It-FailedDirectPassw0rd!",
+        },
+        headers: sessionHeaders(renewed),
+      }),
+    ).rejects.toThrow("forced password intent failure");
+    expect(await passwordOriginSnapshot(userId)).toEqual(afterLateFailure);
+
+    const resetFailureRequest = await member.request(
+      "POST",
+      "/api/auth/request-password-reset",
+      { email: member.email, redirectTo: `${APP_URL}/reset-password` },
+    );
+    expect(resetFailureRequest.status).toBe(200);
+    const failedResetToken = linkQuery(
+      latestMail(member.email, "รีเซ็ตรหัสผ่าน").text,
+      "token",
+    );
+    await expect(
+      failingAuth.api.resetPassword({
+        body: {
+          newPassword: "Auth-It-FailedResetPassw0rd!",
+          token: failedResetToken,
+        },
+      }),
+    ).rejects.toThrow("forced password intent failure");
+    expect(await passwordOriginSnapshot(userId)).toEqual(afterLateFailure);
+  });
+
+  it("writes an intent when reset creates the first credential account", async () => {
+    const email = userEmail("first-credential");
+    passwordOriginFixtureEmails.push(email);
+    const invitationId = await createInvitation(email);
+    const member = await admitUser("first-credential", invitationId);
+    const userId = await sqlUserId(member.email);
+    await database.sql.query(
+      "delete from account where user_id = $1 and provider_id = 'credential'",
+      [userId],
+    );
+    await database.sql.query(
+      `insert into account (id, account_id, provider_id, user_id, created_at, updated_at)
+       values ($1, $2, 'google', $3, now(), now())`,
+      [crypto.randomUUID(), `google-${userId}`, userId],
+    );
+    const oauthAdapter =
+      withAccountNotificationOrigins<NotificationTransaction>(
+        drizzleAdapter(database.db, { provider: "pg", transaction: true }),
+        {
+          writer: {
+            insertPasswordChanged: async (tx, input) => {
+              await insertAccountNotificationIntent(tx, {
+                ...input,
+                eventType: "PASSWORD_CHANGED",
+              });
+            },
+            initializeMfaState: () => Promise.resolve(undefined),
+            recordMfaTransition: () => Promise.resolve({ transitioned: false }),
+          },
+          transaction: (callback) => database.db.transaction(callback),
+          transactionAdapter: (tx, options) =>
+            drizzleAdapter(tx, { provider: "pg", transaction: true })(options),
+        },
+      )({});
+    const oauthUpdate = await oauthAdapter.update({
+      model: "account",
+      update: { accessToken: "opaque-oauth-token" },
+      where: [
+        { field: "userId", value: userId },
+        { field: "providerId", value: "google" },
+      ],
+    });
+    expect(oauthUpdate).not.toBeNull();
+    expect(await passwordOriginSnapshot(userId)).toMatchObject({
+      credentialCount: 0,
+      intentCount: 0,
+      ledgerCount: 0,
+      passwordHash: null,
+    });
+
+    const resetRequest = await member.request(
+      "POST",
+      "/api/auth/request-password-reset",
+      { email: member.email, redirectTo: `${APP_URL}/reset-password` },
+    );
+    expect(resetRequest.status).toBe(200);
+    const reset = await member.request("POST", "/api/auth/reset-password", {
+      newPassword: "Auth-It-FirstCredentialPassw0rd!",
+      token: linkQuery(findMail(member.email, "รีเซ็ตรหัสผ่าน").text, "token"),
+    });
+    expect(reset.status).toBe(200);
+    expect(await passwordOriginSnapshot(userId)).toMatchObject({
+      credentialCount: 1,
+      intentCount: 1,
+      ledgerCount: 1,
+    });
+  });
+});
 
 describe("TOTP challenge and session boundary", () => {
   it("never yields a session during a pending challenge and accepts a one-time backup code", async () => {
@@ -1008,6 +1492,522 @@ describe("TOTP challenge and session boundary", () => {
   });
 });
 
+describe("MFA notification intent rollback", () => {
+  it("preserves pending native MFA state when the verified-transition intent fails", async () => {
+    const inviter = await database.sql.query<{ id: string }>(
+      'select id from "user" where email = $1',
+      [OWNER_INVITER_EMAIL],
+    );
+    const inviterId = inviter.rows[0]?.id;
+    if (!inviterId) throw new Error("seeded inviter missing");
+    const ownerInvitationId = crypto.randomUUID();
+    await database.sql.query(
+      `insert into invitation
+         (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
+       values ($1, $2, $3, 'owner', 'pending', $4, now() + interval '2 days', now())`,
+      [ownerInvitationId, ORG_ID, userEmail("mfa-owner"), inviterId],
+    );
+    const mfaOwner = await admitUser("mfa-owner", ownerInvitationId);
+    await mfaOwner.request("POST", "/api/auth/organization/accept-invitation", {
+      invitationId: ownerInvitationId,
+    });
+    const active = await mfaOwner.request("PATCH", "/api/me/active-org", {
+      organizationId: ORG_ID,
+    });
+    expect(active.status).toBe(200);
+    const owner = mfaOwner.request;
+    const invite = await owner("POST", "/api/auth/organization/invite-member", {
+      email: userEmail("mfa-intent-failure"),
+      role: "viewer",
+    });
+    expect(invite.status).toBe(200);
+    const invitationId = invitationIdFromMail(
+      findMail(userEmail("mfa-intent-failure"), "คำเชิญ").text,
+    );
+    const pending = await admitUser("mfa-intent-failure", invitationId);
+    await pending.request("POST", "/api/auth/organization/accept-invitation", {
+      invitationId,
+    });
+    const enabled = await pending.request(
+      "POST",
+      "/api/auth/two-factor/enable",
+      {
+        password: PASSWORD,
+      },
+    );
+    expect(enabled.status).toBe(200);
+    const { totpURI } = enabled.json as { totpURI: string };
+    const userId = await sqlUserId(pending.email);
+    const pendingProjection = await mfaProjectionEnabled(userId);
+    expect(pendingProjection).toBe(false);
+    const failingAuth = createAuth({
+      env,
+      authEnv,
+      logger: createLogger({ level: "silent", name: "auth-it" }),
+      database,
+      mailer,
+      originWriter: {
+        insertPasswordChanged: () => Promise.resolve(),
+        initializeMfaState: () => Promise.resolve(undefined),
+        recordMfaTransition: () =>
+          Promise.reject(new Error("forced MFA intent failure")),
+      },
+    });
+    const failingApp = createApp({
+      env,
+      authEnv,
+      logger: createLogger({ level: "silent", name: "auth-it" }),
+      auth: failingAuth,
+      database,
+    });
+    const request = client(failingApp, pending.request.cookies());
+
+    const verify = await request("POST", "/api/auth/two-factor/verify-totp", {
+      code: totpCode(totpSecretFromUri(totpURI)),
+    });
+    expect(verify.status).toBe(500);
+    const user = await database.sql.query<{
+      two_factor_enabled: boolean | null;
+    }>('select two_factor_enabled from "user" where id = $1', [userId]);
+    const directHeaders = new Headers({
+      cookie: Object.entries(pending.request.cookies())
+        .map(([name, value]) => `${name}=${value}`)
+        .join("; "),
+    });
+    await expect(
+      failingAuth.api.verifyTOTP({
+        body: { code: totpCode(totpSecretFromUri(totpURI)) },
+        headers: directHeaders,
+      }),
+    ).rejects.toThrow("forced MFA intent failure");
+    const twoFactor = await database.sql.query<{ verified: boolean }>(
+      'select verified from "twoFactor" where user_id = $1',
+      [userId],
+    );
+
+    expect(user.rows[0]?.two_factor_enabled).not.toBe(true);
+    expect(twoFactor.rows[0]?.verified).toBe(false);
+    expect(await mfaProjectionEnabled(userId)).toBe(pendingProjection);
+    expect(await mfaIntentCount(userId)).toBe(0);
+    const session = await request("GET", "/api/auth/get-session");
+    const sessionBody = session.json as {
+      user: { twoFactorEnabled?: boolean | null };
+    };
+    expect(sessionBody.user.twoFactorEnabled).not.toBe(true);
+
+    const successfulVerify = await pending.request(
+      "POST",
+      "/api/auth/two-factor/verify-totp",
+      { code: totpCode(totpSecretFromUri(totpURI)) },
+    );
+    expect(successfulVerify.status).toBe(200);
+    const disableRequest = client(failingApp, pending.request.cookies());
+    const disable = await disableRequest(
+      "POST",
+      "/api/auth/two-factor/disable",
+      {
+        password: PASSWORD,
+      },
+    );
+    expect(disable.status).toBe(500);
+    const enabledUser = await database.sql.query<{
+      two_factor_enabled: boolean | null;
+    }>('select two_factor_enabled from "user" where id = $1', [userId]);
+    const enabledTwoFactor = await database.sql.query<{ verified: boolean }>(
+      'select verified from "twoFactor" where user_id = $1',
+      [userId],
+    );
+    expect(enabledUser.rows[0]?.two_factor_enabled).toBe(true);
+    expect(enabledTwoFactor.rows[0]?.verified).toBe(true);
+    expect(await mfaProjectionEnabled(userId)).toBe(true);
+    expect(await mfaIntentCount(userId)).toBe(1);
+    const sessionAfterDisableFailure = await disableRequest(
+      "GET",
+      "/api/auth/get-session",
+    );
+    const enabledSession = sessionAfterDisableFailure.json as {
+      user: { twoFactorEnabled?: boolean | null };
+    };
+    expect(enabledSession.user.twoFactorEnabled).toBe(true);
+    await disableRequest("POST", "/api/auth/sign-out");
+    const challenged = await client()("POST", "/api/auth/sign-in/email", {
+      email: pending.email,
+      password: PASSWORD,
+    });
+    expect(
+      (challenged.json as { twoFactorRedirect?: boolean }).twoFactorRedirect,
+    ).toBe(true);
+  });
+});
+
+describe("MFA re-enrollment atomicity", () => {
+  it("preserves verified MFA when its replacement insert fails and keeps verified re-enrollment origin-free", async () => {
+    const email = userEmail("mfa-reenrollment");
+    mfaReenrollmentFixtureEmails.push(email);
+    const invitationId = await createInvitation(email);
+    const member = await admitUser("mfa-reenrollment", invitationId);
+    await member.request("POST", "/api/auth/organization/accept-invitation", {
+      invitationId,
+    });
+    const initialEnable = await member.request(
+      "POST",
+      "/api/auth/two-factor/enable",
+      { password: PASSWORD },
+    );
+    expect(initialEnable.status).toBe(200);
+    const initialSecret = totpSecretFromUri(
+      (initialEnable.json as { totpURI: string }).totpURI,
+    );
+    const initialVerify = await member.request(
+      "POST",
+      "/api/auth/two-factor/verify-totp",
+      { code: totpCode(initialSecret) },
+    );
+    expect(initialVerify.status).toBe(200);
+
+    const userId = await sqlUserId(email);
+    const before = await ownerDatabase.sql.query<{
+      id: string;
+      two_factor_enabled: boolean | null;
+      verified: boolean;
+    }>(
+      `select tf.id, u.two_factor_enabled, tf.verified
+       from "user" as u
+       join "twoFactor" as tf on tf.user_id = u.id
+       where u.id = $1`,
+      [userId],
+    );
+    const oldRow = before.rows[0];
+    if (!oldRow) throw new Error("verified MFA fixture missing");
+    const intentCount = await mfaIntentCount(userId);
+    expect(oldRow).toMatchObject({
+      two_factor_enabled: true,
+      verified: true,
+    });
+    expect(await mfaProjectionEnabled(userId)).toBe(true);
+    expect(intentCount).toBe(1);
+
+    let triggerCreated = false;
+    try {
+      await ownerDatabase.sql.query(
+        `create function ${MFA_REENROLL_TRIGGER}() returns trigger
+         language plpgsql as $$
+         begin
+           if new.user_id = '${userId}' then
+             raise exception 'fixture rejects replacement two-factor row';
+           end if;
+           return new;
+         end;
+         $$`,
+      );
+      await ownerDatabase.sql.query(
+        `create trigger ${MFA_REENROLL_TRIGGER}
+         before insert on "twoFactor"
+         for each row execute function ${MFA_REENROLL_TRIGGER}()`,
+      );
+      triggerCreated = true;
+
+      const failed = await member.request(
+        "POST",
+        "/api/auth/two-factor/enable",
+        { password: PASSWORD },
+      );
+      expect(failed.status).toBe(500);
+      const afterFailed = await ownerDatabase.sql.query<{
+        id: string;
+        two_factor_enabled: boolean | null;
+        verified: boolean;
+      }>(
+        `select tf.id, u.two_factor_enabled, tf.verified
+         from "user" as u
+         join "twoFactor" as tf on tf.user_id = u.id
+         where u.id = $1`,
+        [userId],
+      );
+      expect(afterFailed.rows[0]).toEqual(oldRow);
+      expect(await mfaProjectionEnabled(userId)).toBe(true);
+      expect(await mfaIntentCount(userId)).toBe(intentCount);
+    } finally {
+      if (triggerCreated) {
+        await ownerDatabase.sql.query(
+          `drop trigger ${MFA_REENROLL_TRIGGER} on "twoFactor"`,
+        );
+      }
+      await ownerDatabase.sql.query(
+        `drop function if exists ${MFA_REENROLL_TRIGGER}()`,
+      );
+    }
+
+    // A missing projection models a verified legacy credential created before
+    // its projection migration. The adapter derives the credential state
+    // before replacing it, so re-enrollment does not invent MFA_ENABLED.
+    await ownerDatabase.sql.query(
+      "delete from notification_account_mfa_state where user_id = $1",
+      [userId],
+    );
+    const directAuth = createAuth({
+      env,
+      authEnv,
+      logger: createLogger({ level: "silent", name: "auth-it" }),
+
+      database,
+      mailer,
+    });
+    await directAuth.api.enableTwoFactor({
+      body: { password: PASSWORD },
+      headers: sessionHeaders(member.request),
+    });
+    const afterReenrollment = await database.sql.query<{
+      id: string;
+      two_factor_enabled: boolean | null;
+      verified: boolean;
+    }>(
+      `select tf.id, u.two_factor_enabled, tf.verified
+       from "user" as u
+       join "twoFactor" as tf on tf.user_id = u.id
+       where u.id = $1`,
+      [userId],
+    );
+    expect(afterReenrollment.rows[0]).toMatchObject({
+      two_factor_enabled: true,
+      verified: true,
+    });
+    expect(afterReenrollment.rows[0]?.id).not.toBe(oldRow.id);
+    expect(await mfaProjectionEnabled(userId)).toBe(true);
+    expect(await mfaIntentCount(userId)).toBe(intentCount);
+
+    await ownerDatabase.sql.query(
+      "delete from notification_account_mfa_state where user_id = $1",
+      [userId],
+    );
+    const legacyDisable = await member.request(
+      "POST",
+      "/api/auth/two-factor/disable",
+      { password: PASSWORD },
+    );
+    expect(legacyDisable.status).toBe(200);
+    expect(await mfaProjectionEnabled(userId)).toBe(false);
+    expect(await mfaIntentCount(userId)).toBe(intentCount + 1);
+    expect(
+      (
+        await ownerDatabase.sql.query<{
+          two_factor_enabled: boolean | null;
+          two_factor_count: number;
+        }>(
+          `select u.two_factor_enabled,
+                  (select count(*)::integer from "twoFactor" where user_id = u.id) as two_factor_count
+           from "user" as u
+           where u.id = $1`,
+          [userId],
+        )
+      ).rows,
+    ).toEqual([{ two_factor_enabled: false, two_factor_count: 0 }]);
+    expect(
+      (
+        await ownerDatabase.sql.query<{ event_type: string }>(
+          `select event_type from notification_intents
+           where user_id = $1
+           order by created_at desc
+           limit 1`,
+          [userId],
+        )
+      ).rows,
+    ).toEqual([{ event_type: "MFA_DISABLED" }]);
+
+    const repeatedDisable = await member.request(
+      "POST",
+      "/api/auth/two-factor/disable",
+      { password: PASSWORD },
+    );
+    expect(repeatedDisable.status).toBe(200);
+    expect(await mfaIntentCount(userId)).toBe(intentCount + 1);
+
+    await member.request("POST", "/api/auth/sign-out");
+    const challenged = await client()("POST", "/api/auth/sign-in/email", {
+      email,
+      password: PASSWORD,
+    });
+    expect(
+      (challenged.json as { twoFactorRedirect?: boolean }).twoFactorRedirect,
+    ).not.toBe(true);
+  });
+});
+
+describe("native organization membership mutation guard", () => {
+  it("rejects direct native member mutations without touching membership mirrors or notification state, while first-party mutations retain their locked rules", async () => {
+    const organizationId = crypto.randomUUID();
+    const ownerEmail = userEmail("member-guard-owner");
+    const targetEmail = userEmail("member-guard-target");
+    const leaverEmail = userEmail("member-guard-leaver");
+    memberGuardFixtureEmails.push(ownerEmail, targetEmail, leaverEmail);
+    memberGuardOrganizationIds.push(organizationId);
+    await database.sql.query(
+      "insert into organization (id, name, slug, created_at) values ($1, $2, $3, now())",
+      [organizationId, `Member Guard ${RUN}`, `member-guard-${RUN}`],
+    );
+    const [ownerInvitationId, targetInvitationId, leaverInvitationId] =
+      await Promise.all([
+        createInvitation(ownerEmail, "viewer", organizationId),
+        createInvitation(targetEmail, "viewer", organizationId),
+        createInvitation(leaverEmail, "viewer", organizationId),
+      ]);
+    const [owner, target, leaver] = await Promise.all([
+      admitUser("member-guard-owner", ownerInvitationId),
+      admitUser("member-guard-target", targetInvitationId),
+      admitUser("member-guard-leaver", leaverInvitationId),
+    ]);
+    const [ownerId, targetId, leaverId] = await Promise.all([
+      sqlUserId(owner.email),
+      sqlUserId(target.email),
+      sqlUserId(leaver.email),
+    ]);
+    const [ownerMemberId, targetMemberId, leaverMemberId] = [
+      crypto.randomUUID(),
+      crypto.randomUUID(),
+      crypto.randomUUID(),
+    ];
+    await database.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $2, $3, 'owner', now(), now()),
+              ($4, $2, $5, 'viewer', now(), now()),
+              ($6, $2, $7, 'viewer', now(), now())`,
+      [
+        ownerMemberId,
+        organizationId,
+        ownerId,
+        targetMemberId,
+        targetId,
+        leaverMemberId,
+        leaverId,
+      ],
+    );
+    await database.sql.query(
+      'update "user" set last_active_tenant_id = $1 where id = any($2::text[])',
+      [organizationId, [targetId, leaverId]],
+    );
+    await database.sql.query(
+      "update session set active_organization_id = $1 where user_id = any($2::text[])",
+      [organizationId, [targetId, leaverId]],
+    );
+
+    const directAuth = createAuth({
+      env,
+      authEnv,
+      logger: createLogger({ level: "silent", name: "auth-it" }),
+      database,
+      mailer,
+    });
+    const before = await memberMutationSnapshot(
+      organizationId,
+      targetMemberId,
+      targetId,
+      leaverId,
+    );
+    expect(before).toMatchObject({
+      targetRole: "viewer",
+      targetMembership: 1,
+      leaverMembership: 1,
+      targetLastActiveOrganizationId: organizationId,
+      leaverLastActiveOrganizationId: organizationId,
+    });
+    expect(before.targetActiveOrganizationSessions).toBeGreaterThan(0);
+    expect(before.leaverActiveOrganizationSessions).toBeGreaterThan(0);
+    const ownerHeaders = sessionHeaders(owner.request);
+    ownerHeaders.set("content-type", "application/json");
+    const leaverHeaders = sessionHeaders(leaver.request);
+    leaverHeaders.set("content-type", "application/json");
+
+    const directResponses = await Promise.all([
+      directAuth.handler(
+        new Request(
+          `${authEnv.BETTER_AUTH_URL}/api/auth/organization/update-member-role`,
+          {
+            method: "POST",
+            headers: ownerHeaders,
+            body: JSON.stringify({
+              organizationId,
+              memberId: targetMemberId,
+              role: "admin",
+            }),
+          },
+        ),
+      ),
+      directAuth.handler(
+        new Request(
+          `${authEnv.BETTER_AUTH_URL}/api/auth/organization/remove-member`,
+          {
+            method: "POST",
+            headers: ownerHeaders,
+            body: JSON.stringify({
+              organizationId,
+              memberIdOrEmail: targetMemberId,
+            }),
+          },
+        ),
+      ),
+      directAuth.handler(
+        new Request(`${authEnv.BETTER_AUTH_URL}/api/auth/organization/leave`, {
+          method: "POST",
+          headers: leaverHeaders,
+          body: JSON.stringify({ organizationId }),
+        }),
+      ),
+    ]);
+    for (const response of directResponses) {
+      expect(response.status).toBe(403);
+    }
+    expect(
+      await memberMutationSnapshot(
+        organizationId,
+        targetMemberId,
+        targetId,
+        leaverId,
+      ),
+    ).toEqual(before);
+
+    const role = await owner.request(
+      "PATCH",
+      `/api/organizations/${organizationId}/members/${targetMemberId}/role`,
+      { role: "admin" },
+    );
+    expect(role.status).toBe(200);
+    const revoke = await owner.request(
+      "DELETE",
+      `/api/organizations/${organizationId}/members/${targetMemberId}`,
+    );
+    expect(revoke.status).toBe(200);
+    const leave = await leaver.request(
+      "DELETE",
+      `/api/organizations/${organizationId}/members/me`,
+    );
+    expect(leave.status).toBe(200);
+    const lastOwner = await owner.request(
+      "DELETE",
+      `/api/organizations/${organizationId}/members/me`,
+    );
+    expect(lastOwner.status).toBe(400);
+    expect(lastOwner.json).toMatchObject({ error: { code: "LAST_OWNER" } });
+
+    const afterFirstParty = await memberMutationSnapshot(
+      organizationId,
+      targetMemberId,
+      targetId,
+      leaverId,
+    );
+    expect(afterFirstParty).toMatchObject({
+      targetRole: null,
+      targetMembership: 0,
+      leaverMembership: 0,
+      targetLastActiveOrganizationId: null,
+      leaverLastActiveOrganizationId: null,
+      targetActiveOrganizationSessions: 0,
+      leaverActiveOrganizationSessions: 0,
+      notificationIntentCount: before.notificationIntentCount,
+      notificationLedgerCount: before.notificationLedgerCount,
+    });
+    expect(await membershipCount(organizationId, ownerId)).toBe(1);
+  }, 120_000);
+});
 describe("duplicate-account signup stays enumeration-safe and harmless", () => {
   it("answers the generic success without touching the existing account", async () => {
     const invitations = await database.sql.query<{ id: string }>(

@@ -77,6 +77,14 @@ export function ChevronRightIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+export function ChevronLeftIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
 export function PanelLeftIcon({ size = 18 }: { size?: number }) {
   return (
     <svg {...iconProps(size)}>

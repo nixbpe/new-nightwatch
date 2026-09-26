@@ -189,6 +189,192 @@ export const twoFactor = pgTable("twoFactor", {
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+export const notificationOrgSettings = pgTable("notification_org_settings", {
+  tenantId: uuid("tenant_id")
+    .primaryKey()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  orgSettingsChangedEnabled: boolean("org_settings_changed_enabled")
+    .notNull()
+    .default(true),
+  version: integer("version").notNull().default(0),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const notificationIntents = pgTable(
+  "notification_intents",
+  {
+    id: text("id").primaryKey(),
+    scopeKind: text("scope_kind").notNull(),
+    tenantId: uuid("tenant_id").references(() => organization.id, {
+      onDelete: "cascade",
+    }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    origin: text("origin").notNull(),
+    eventType: text("event_type").notNull(),
+    occurredAt: timestamp("occurred_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    expiresAt: timestamp("expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    actorUserId: text("actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    actorDisplayName: text("actor_display_name"),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("notification_intents_origin_key").on(table.origin),
+    index("notification_intents_tenant_occurred_idx").on(
+      table.tenantId,
+      table.occurredAt,
+      table.id,
+    ),
+    index("notification_intents_user_occurred_idx").on(
+      table.userId,
+      table.occurredAt,
+      table.id,
+    ),
+  ],
+);
+
+export const notificationIntentRecipients = pgTable(
+  "notification_intent_recipients",
+  {
+    intentId: text("intent_id").notNull(),
+    origin: text("origin").notNull(),
+    recipientUserId: text("recipient_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    scopeKind: text("scope_kind").notNull(),
+    tenantId: uuid("tenant_id").references(() => organization.id, {
+      onDelete: "cascade",
+    }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("notification_intent_recipients_origin_recipient_key").on(
+      table.origin,
+      table.recipientUserId,
+    ),
+  ],
+);
+
+export const notificationInboxItems = pgTable(
+  "notification_inbox_items",
+  {
+    id: text("id").primaryKey(),
+    intentId: text("intent_id")
+      .notNull()
+      .references(() => notificationIntents.id, { onDelete: "cascade" }),
+    origin: text("origin").notNull(),
+    recipientUserId: text("recipient_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    scopeKind: text("scope_kind").notNull(),
+    tenantId: uuid("tenant_id").references(() => organization.id, {
+      onDelete: "cascade",
+    }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    occurredAt: timestamp("occurred_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    expiresAt: timestamp("expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    actorUserId: text("actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    actorDisplayName: text("actor_display_name"),
+    readAt: timestamp("read_at", { mode: "date", withTimezone: true }),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("notification_inbox_items_origin_recipient_key").on(
+      table.origin,
+      table.recipientUserId,
+    ),
+    index("notification_inbox_items_tenant_visible_idx").on(
+      table.tenantId,
+      table.recipientUserId,
+      table.occurredAt,
+      table.id,
+    ),
+    index("notification_inbox_items_user_visible_idx").on(
+      table.userId,
+      table.recipientUserId,
+      table.occurredAt,
+      table.id,
+    ),
+  ],
+);
+
+export const notificationAccountMfaState = pgTable(
+  "notification_account_mfa_state",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    verifiedEnabled: boolean("verified_enabled").notNull().default(false),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
+
+export const notificationDispatchLedger = pgTable(
+  "notification_dispatch_ledger",
+  {
+    id: text("id").primaryKey(),
+    intentId: text("intent_id")
+      .notNull()
+      .references(() => notificationIntents.id, { onDelete: "cascade" }),
+    scopeKind: text("scope_kind").notNull(),
+    tenantId: uuid("tenant_id").references(() => organization.id, {
+      onDelete: "cascade",
+    }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"),
+    claimToken: text("claim_token"),
+    claimedAt: timestamp("claimed_at", { mode: "date", withTimezone: true }),
+    enqueuedAt: timestamp("enqueued_at", { mode: "date", withTimezone: true }),
+    failureReason: text("failure_reason"),
+    failureSummary: text("failure_summary"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("notification_dispatch_ledger_intent_key").on(table.intentId),
+    index("notification_dispatch_ledger_claim_idx").on(
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+  ],
+);
+
 export const schema = {
   user,
   session,
@@ -198,4 +384,10 @@ export const schema = {
   member,
   invitation,
   twoFactor,
+  notificationOrgSettings,
+  notificationIntents,
+  notificationIntentRecipients,
+  notificationInboxItems,
+  notificationAccountMfaState,
+  notificationDispatchLedger,
 };
