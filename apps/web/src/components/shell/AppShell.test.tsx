@@ -403,6 +403,40 @@ describe("AppShell", () => {
     await expectFocusRestored();
   });
 
+  it("follows a remote organization switch over this tab's earlier selection", async () => {
+    fetchMeContextMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_A),
+    );
+    updateActiveOrganizationMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_B),
+    );
+    const user = userEvent.setup();
+    renderShell(<WorkspacePage />);
+    await screen.findByRole("heading", { name: "Org A" });
+
+    // After this tab selects Org B, another session switches back to Org A:
+    // the next inbox request sees the scope change and /me reports Org A.
+    fetchUnreadCountMock.mockRejectedValue(new InboxScopeChangedError());
+    fetchMeContextMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_A),
+    );
+    await user.click(screen.getByRole("button", { name: /Org A/ }));
+    await user.click(
+      within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
+        "menuitemradio",
+        { name: /Org B/ },
+      ),
+    );
+
+    expect(updateActiveOrganizationMock).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Org A" }),
+    ).toBeInTheDocument();
+  });
+
   it("switching organization from the sidebar publishes the new tenant only after the PATCH succeeds", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),

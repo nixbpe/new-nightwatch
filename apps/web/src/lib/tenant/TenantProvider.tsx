@@ -83,6 +83,15 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const memberships = meQuery.data?.organizations;
   const lastActiveTenantId = meQuery.data?.lastActiveTenantId ?? null;
 
+  // A refreshed server mirror (e.g. another session switched the
+  // account-global organization) supersedes this tab's earlier local choice;
+  // otherwise the header and notifications would show different tenants.
+  const [mirrorSeen, setMirrorSeen] = useState(lastActiveTenantId);
+  if (mirrorSeen !== lastActiveTenantId) {
+    setMirrorSeen(lastActiveTenantId);
+    setSelectedOrgId(null);
+  }
+
   // Selection precedence: valid in-memory choice, then the persisted
   // last-active tenant when still a membership, then the first membership.
   // React Compiler memoizes this derivation; the precedence order is
