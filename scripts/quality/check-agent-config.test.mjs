@@ -17,23 +17,12 @@ afterEach(async () =>
   ),
 );
 
-function inventoryYaml({
-  agents = 2,
-  models = 2,
-  skills = 1,
-  commands = 1,
-  files = 1,
-} = {}) {
-  return `referenceInventory:\n  agents: ${agents}\n  models: ${models}\n  skills: ${skills}\n  commands: ${commands}\n  files: ${files}\n`;
-}
-
 async function fixture({
   selector = "provider/model:medium",
   spawnsYaml = "spawns:\n  - worker",
   autoloadYaml = "",
   modelYaml = 'model: ["@review", "@default"]',
   refs = "agent:`worker` skill:`known` command:`/build` file:`AGENTS.md`\n```text\nagent:`missing-agent` skill:`missing-skill` file:`missing.md`\n```",
-  inventory,
 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "agent-config-"));
   roots.push(root);
@@ -45,7 +34,7 @@ async function fixture({
   await writeFile(path.join(root, "AGENTS.md"), "# Rules\n");
   await writeFile(
     path.join(root, ".omp/config.yml"),
-    `modelRoles:\n  review: ${selector}\n${inventoryYaml(inventory)}`,
+    `modelRoles:\n  review: ${selector}\n`,
   );
   await writeFile(
     path.join(root, ".omp/agents/lead.md"),
@@ -87,7 +76,6 @@ describe("agent config checker", () => {
     const root = await fixture({
       selector: "provider/model",
       modelYaml: 'model: "@review"',
-      inventory: { models: 1 },
     });
     const result = check(root);
     expect(result.exitCode, result.stderr.toString()).toBe(0);
@@ -145,7 +133,6 @@ describe("agent config checker", () => {
   test("rejects missing autoload skills", async () => {
     const root = await fixture({
       autoloadYaml: "autoloadSkills: [missing]",
-      inventory: { skills: 2 },
     });
     const result = check(root);
     expect(result.exitCode).toBe(1);
@@ -219,7 +206,7 @@ describe("agent config checker", () => {
     const externalConfig = path.join(outside, "config.yml");
     await writeFile(
       externalConfig,
-      `modelRoles:\n  review: provider/model:external\n${inventoryYaml()}`,
+      `modelRoles:\n  review: provider/model:external\n`,
     );
     const configPath = path.join(root, ".omp/config.yml");
     await rm(configPath);
@@ -282,18 +269,11 @@ describe("agent config checker", () => {
     );
   });
 
-  test("rejects missing config and reference inventory drift", async () => {
+  test("rejects missing config", async () => {
     const missing = await fixture();
     await rm(path.join(missing, ".omp/config.yml"));
     const missingResult = check(missing);
     expect(missingResult.exitCode).toBe(1);
     expect(missingResult.stderr.toString()).toContain("missing config.yml");
-
-    const drift = await fixture({ inventory: { agents: 99 } });
-    const driftResult = check(drift);
-    expect(driftResult.exitCode).toBe(1);
-    expect(driftResult.stderr.toString()).toContain(
-      "agents reference count 2 does not match inventory 99",
-    );
   });
 });

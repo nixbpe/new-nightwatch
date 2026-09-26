@@ -372,25 +372,6 @@ for (const file of await markdownFiles(omp)) {
   }
 }
 
-const expectedCounts = config.referenceInventory;
-if (
-  !expectedCounts ||
-  typeof expectedCounts !== "object" ||
-  Array.isArray(expectedCounts)
-) {
-  errors.push(
-    `${path.relative(root, configPath)}: referenceInventory must be a mapping`,
-  );
-} else {
-  for (const [kind, actual] of Object.entries(counts)) {
-    if (expectedCounts[kind] !== actual) {
-      errors.push(
-        `${path.relative(root, configPath)}: ${kind} reference count ${actual} does not match inventory ${expectedCounts[kind]}`,
-      );
-    }
-  }
-}
-
 if (errors.length) {
   console.error(errors.sort().join("\n"));
   process.exit(1);

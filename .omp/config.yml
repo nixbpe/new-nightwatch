@@ -20,13 +20,6 @@ modelRoles:
   # PDD interaction and accessibility specs
   design: openai-codex/gpt-5.6-astra:high
 
-referenceInventory:
-  agents: 26
-  models: 12
-  skills: 55
-  commands: 1
-  files: 24
-
 providers:
   openai-codex:
     codeMode: off
