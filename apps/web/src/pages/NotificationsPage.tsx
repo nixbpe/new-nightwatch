@@ -176,6 +176,7 @@ function NotificationsPageForOrganization({
   const [detailId, setDetailId] = useState(initialDetailId);
   const [pages, setPages] = useState<NotificationPage[]>([]);
   const [loadingNextPage, setLoadingNextPage] = useState(false);
+  const [nextPageError, setNextPageError] = useState<unknown>(null);
   const openedInitialDetail = useRef(false);
   const list = useQuery({
     queryKey: notificationQueryKey(serverActiveOrgId),
@@ -185,6 +186,7 @@ function NotificationsPageForOrganization({
     mutationFn: openNotification,
     onSuccess: async () => {
       setPages([]);
+      setNextPageError(null);
       await client.invalidateQueries({
         queryKey: notificationQueryKey(serverActiveOrgId),
       });
@@ -194,6 +196,7 @@ function NotificationsPageForOrganization({
     mutationFn: markAllNotificationsRead,
     onSuccess: async () => {
       setPages([]);
+      setNextPageError(null);
       await client.invalidateQueries({
         queryKey: notificationQueryKey(serverActiveOrgId),
       });
@@ -213,6 +216,7 @@ function NotificationsPageForOrganization({
   async function loadNextPage() {
     if (nextCursor === null || loadingNextPage) return;
     setLoadingNextPage(true);
+    setNextPageError(null);
     try {
       const nextPage = await client.query({
         queryKey: notificationPageQueryKey(serverActiveOrgId, nextCursor),
@@ -220,6 +224,8 @@ function NotificationsPageForOrganization({
         staleTime: Infinity,
       });
       setPages((current) => [...current, nextPage]);
+    } catch (error) {
+      setNextPageError(error);
     } finally {
       setLoadingNextPage(false);
     }
@@ -417,6 +423,11 @@ function NotificationsPageForOrganization({
             <NotificationRows items={items} onOpen={requestOpen} />
             {nextCursor === null ? null : (
               <div className="border-t border-foreground/10 p-2">
+                {nextPageError === null ? null : (
+                  <div className="mb-2">
+                    <Alert tone="error">{problem(nextPageError)}</Alert>
+                  </div>
+                )}
                 <Button
                   variant="ghost"
                   className="w-full"

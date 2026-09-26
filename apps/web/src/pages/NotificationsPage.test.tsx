@@ -247,6 +247,62 @@ describe("NotificationsPage", () => {
     await user.click(markAll);
   });
 
+  it("shows a next-page failure, keeps loaded rows and retries", async () => {
+    const pageTwo: NotificationItem = {
+      ...notification,
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      scope: "organization",
+      organizationId: ORG_A,
+      eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED",
+      actor: { displayName: "Retried page two" },
+      category: "notification-settings",
+    };
+    let pageTwoAttempts = 0;
+    fetchNotificationsMock.mockImplementation((organizationId, cursor) => {
+      if (cursor === "cursor-1") {
+        pageTwoAttempts += 1;
+        return pageTwoAttempts === 1
+          ? Promise.reject(new Error("network down"))
+          : Promise.resolve({
+              organizationId,
+              items: [pageTwo],
+              nextCursor: null,
+              unreadCount: 0,
+            });
+      }
+      return Promise.resolve({
+        organizationId,
+        items: [notification],
+        nextCursor: "cursor-1",
+        unreadCount: 0,
+      });
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const loadMore = await screen.findByRole("button", {
+      name: "โหลดการแจ้งเตือนเพิ่มเติม",
+    });
+    await user.click(loadMore);
+
+    expect(
+      await screen.findByText("โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: /Retried page two/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"),
+    ).not.toBeInTheDocument();
+  });
+
   it("refetches a cached next page after mark-all so its unread row becomes read", async () => {
     const pageTwoReadAt = "2026-09-25T03:02:00.000Z";
     let pageTwo: NotificationItem = {
