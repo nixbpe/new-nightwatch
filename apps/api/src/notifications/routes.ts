@@ -46,12 +46,10 @@ export function registerNotificationInboxRoutes(
   app.openapi(notificationRouteDeclarations.unreadCount, async (c) => {
     const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
     return c.json(
-      {
-        unreadCount: await countUnreadInbox(serviceDeps, {
-          userId: session.user.id,
-          sessionToken: session.session.token,
-        }),
-      },
+      await countUnreadInbox(serviceDeps, {
+        userId: session.user.id,
+        sessionToken: session.session.token,
+      }),
       200,
     );
   });
@@ -93,14 +91,23 @@ export function registerNotificationInboxRoutes(
     },
     invalidInputHook,
   );
-  app.openapi(notificationRouteDeclarations.markAllRead, async (c) => {
-    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
-    return c.json(
-      await markAllInboxRead(serviceDeps, {
-        userId: session.user.id,
-        sessionToken: session.session.token,
-      }),
-      200,
-    );
-  });
+  app.openapi(
+    notificationRouteDeclarations.markAllRead,
+    async (c) => {
+      const session = await requireVerifiedSession(
+        deps.auth,
+        c.req.raw.headers,
+      );
+      const { expectedOrganizationId } = c.req.valid("json");
+      return c.json(
+        await markAllInboxRead(serviceDeps, {
+          userId: session.user.id,
+          sessionToken: session.session.token,
+          expectedOrganizationId,
+        }),
+        200,
+      );
+    },
+    invalidInputHook,
+  );
 }

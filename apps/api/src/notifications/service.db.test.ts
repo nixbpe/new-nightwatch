@@ -291,7 +291,7 @@ describe("notification active-scope lock order", () => {
 
       markAll = markAllInboxRead(
         { database, cursorSecret: "lock-order-secret" },
-        { userId, sessionToken: token },
+        { userId, sessionToken: token, expectedOrganizationId: orgB },
       );
       await switcher.query(
         'update "user" set last_active_tenant_id = $1 where id = $2',
@@ -484,7 +484,7 @@ describe("notification mark-all atomic scope", () => {
 
       markAll = markAllInboxRead(
         { database, cursorSecret: "atomic-mark-all-secret" },
-        { userId, sessionToken: token },
+        { userId, sessionToken: token, expectedOrganizationId: orgA },
       );
       void markAll.catch(() => undefined);
       const markAllPid = await waitForMarkAllUpdateToBlock(lockerPid);
@@ -574,13 +574,13 @@ describe("notification mark-all atomic scope", () => {
       expect(
         await markAllInboxRead(
           { database, cursorSecret: "atomic-mark-all-secret" },
-          { userId, sessionToken: token },
+          { userId, sessionToken: token, expectedOrganizationId: orgA },
         ),
       ).toEqual({ markedCount: 2 });
       expect(
         await markAllInboxRead(
           { database, cursorSecret: "atomic-mark-all-secret" },
-          { userId, sessionToken: token },
+          { userId, sessionToken: token, expectedOrganizationId: orgA },
         ),
       ).toEqual({ markedCount: 0 });
     } finally {
@@ -632,7 +632,7 @@ describe("notification mark-all atomic scope", () => {
     expect(
       await markAllInboxRead(
         { database, cursorSecret: "atomic-mark-all-secret" },
-        { userId, sessionToken: token },
+        { userId, sessionToken: token, expectedOrganizationId: orgB },
       ),
     ).toEqual({ markedCount: 2 });
     const reads = await owner.query<{ id: string; readAt: Date | null }>(
@@ -653,6 +653,35 @@ describe("notification mark-all atomic scope", () => {
 });
 
 describe("notification pagination precision", () => {
+  it("rejects mark-all for a scope the caller did not see and marks nothing", async () => {
+    const orgAId = `notification-lock-order:scope-a-${run}`;
+    await seedItem({
+      id: orgAId,
+      scope: "tenant",
+      organizationId: orgA,
+      occurredAt: "2026-09-25T01:00:00.000Z",
+    });
+    // Another session switched the account-global selection to orgB.
+    await owner.query(
+      'update "user" set last_active_tenant_id = $1 where id = $2',
+      [orgB, userId],
+    );
+
+    await expect(
+      markAllInboxRead(
+        { database, cursorSecret: "scope-guard-secret" },
+        { userId, sessionToken: token, expectedOrganizationId: orgA },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: "INBOX_SCOPE_CHANGED" });
+    const unread = await owner.query<{ count: string }>(
+      `select count(*)::text as count from notification_inbox_items
+       where recipient_user_id = $1 and read_at is not null
+         and origin like $2`,
+      [userId, `notification-lock-order:%-${run}`],
+    );
+    expect(unread.rows[0]?.count).toBe("0");
+  });
+
   it("returns each mixed-scope microsecond row once across limit-one pages", async () => {
     const occurredAt = new Date(Date.now() - 60_000)
       .toISOString()

@@ -414,12 +414,19 @@ function NotificationsPageForOrganization({
           className="h-auto min-h-9 w-full max-w-full break-words whitespace-normal sm:w-auto"
           disabled={unreadCount === 0 || all.isPending}
           onClick={() => {
-            all.mutate();
+            all.mutate(serverActiveOrgId);
           }}
         >
           ทำเครื่องหมายว่าอ่านทั้งหมด
         </Button>
       </header>
+      {all.isError ? (
+        <div className="mt-4">
+          <Alert tone="error">
+            ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
+          </Alert>
+        </div>
+      ) : null}
       <div className="mt-6">
         {items.length === 0 ? (
           <EmptyState

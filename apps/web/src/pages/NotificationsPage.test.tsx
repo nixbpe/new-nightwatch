@@ -427,6 +427,33 @@ describe("NotificationsPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows a mark-all failure when the inbox scope changed", async () => {
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: [notification],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    markAllNotificationsReadMock.mockRejectedValue(
+      new ApiError("INBOX_SCOPE_CHANGED", "scope changed", 409),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+      }),
+    );
+
+    expect(markAllNotificationsReadMock.mock.calls[0]?.[0]).toBe(ORG_A);
+    expect(
+      await screen.findByText(
+        "ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("keeps an empty inbox distinct from a failed inbox request", async () => {
     fetchNotificationsMock.mockResolvedValueOnce({
       organizationId: ORG_A,

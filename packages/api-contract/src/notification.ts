@@ -47,10 +47,16 @@ export type NotificationItem = z.infer<typeof notificationItemSchema>;
 export const notificationDetailSchema = notificationItemSchema;
 export type NotificationDetail = z.infer<typeof notificationDetailSchema>;
 
+/**
+ * `organizationId` is the scope the server resolved for this response (null
+ * for personal-only). Organization selection is account-global, so a client
+ * must discard a response whose scope differs from the one it expected.
+ */
 export const notificationListResponseSchema = z.object({
   items: z.array(notificationItemSchema),
   nextCursor: z.string().min(1).nullable(),
   unreadCount: z.number().int().min(0),
+  organizationId: organizationIdSchema.nullable(),
 });
 
 export type NotificationListResponse = z.infer<
@@ -59,6 +65,7 @@ export type NotificationListResponse = z.infer<
 
 export const notificationCountResponseSchema = z.object({
   unreadCount: z.number().int().min(0),
+  organizationId: organizationIdSchema.nullable(),
 });
 
 export type NotificationCountResponse = z.infer<
@@ -71,6 +78,13 @@ export const markReadResponseSchema = z.object({
 });
 
 export type MarkReadResponse = z.infer<typeof markReadResponseSchema>;
+
+/** Mark-all applies only if the server still resolves the expected scope. */
+export const markAllReadRequestSchema = z.object({
+  expectedOrganizationId: organizationIdSchema.nullable(),
+});
+
+export type MarkAllReadRequest = z.infer<typeof markAllReadRequestSchema>;
 
 export const markAllReadResponseSchema = z.object({
   markedCount: z.number().int().min(0),
@@ -146,6 +160,9 @@ export const notificationNotFoundErrorResponseSchema = errorResponseForCodes([
 export const settingsVersionConflictErrorResponseSchema = errorResponseForCodes(
   ["SETTINGS_VERSION_CONFLICT"],
 );
+export const inboxScopeChangedErrorResponseSchema = errorResponseForCodes([
+  "INBOX_SCOPE_CHANGED",
+]);
 
 export const notificationStatusErrorResponseSchemas = {
   400: z.union([

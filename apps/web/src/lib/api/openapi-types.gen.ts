@@ -324,6 +324,8 @@ export interface paths {
                             })[];
                             nextCursor: string | null;
                             unreadCount: number;
+                            /** Format: uuid */
+                            organizationId: string | null;
                         };
                     };
                 };
@@ -417,6 +419,8 @@ export interface paths {
                     content: {
                         "application/json": {
                             unreadCount: number;
+                            /** Format: uuid */
+                            organizationId: string | null;
                         };
                     };
                 };
@@ -720,7 +724,14 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        expectedOrganizationId: string | null;
+                    };
+                };
+            };
             responses: {
                 /** @description Count of items newly marked read */
                 200: {
@@ -730,6 +741,22 @@ export interface paths {
                     content: {
                         "application/json": {
                             markedCount: number;
+                        };
+                    };
+                };
+                /** @description Invalid request input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
                         };
                     };
                 };
@@ -759,6 +786,22 @@ export interface paths {
                             error: {
                                 /** @enum {string} */
                                 code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The server resolves a different active scope than expected */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INBOX_SCOPE_CHANGED";
                                 message: string;
                                 details?: unknown;
                             };

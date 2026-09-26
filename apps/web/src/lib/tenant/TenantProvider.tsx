@@ -1,12 +1,19 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   fetchMeContext,
   ME_CONTEXT_QUERY_KEY,
   updateActiveOrganization,
 } from "../api/me";
+import { isInboxScopeChanged } from "../api/notifications";
 
 type Membership = MeContextResponse["organizations"][number];
 
@@ -47,6 +54,31 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     queryKey: ME_CONTEXT_QUERY_KEY,
     queryFn: fetchMeContext,
   });
+
+  // Organization selection is account-global: when an inbox request finds
+  // the server resolving another scope (another session switched), refresh
+  // the context so every tenant view re-keys to the server's scope.
+  useEffect(() => {
+    const refreshOnScopeChange = (error: unknown) => {
+      if (isInboxScopeChanged(error)) {
+        void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+      }
+    };
+    const stopQueries = queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "error") {
+        refreshOnScopeChange(event.action.error);
+      }
+    });
+    const stopMutations = queryClient.getMutationCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "error") {
+        refreshOnScopeChange(event.action.error);
+      }
+    });
+    return () => {
+      stopQueries();
+      stopMutations();
+    };
+  }, [queryClient]);
 
   const memberships = meQuery.data?.organizations;
   const lastActiveTenantId = meQuery.data?.lastActiveTenantId ?? null;

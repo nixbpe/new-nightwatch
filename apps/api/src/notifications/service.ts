@@ -3,6 +3,7 @@ import type {
   MarkReadResponse,
   NotificationDetail,
   NotificationItem,
+  NotificationCountResponse,
   NotificationListResponse,
 } from "@nightwatch/api-contract";
 import {
@@ -284,6 +285,7 @@ export async function listInbox(
           })
         : null,
     unreadCount,
+    organizationId: scope.organizationId,
   };
 }
 
@@ -316,9 +318,12 @@ async function countUnreadInScope(
 export async function countUnreadInbox(
   deps: InboxServiceDeps,
   input: { userId: string; sessionToken: string },
-): Promise<number> {
+): Promise<NotificationCountResponse> {
   const scope = await resolveActiveScope(deps.database, input.userId);
-  return countUnreadInScope(deps.database, scope);
+  return {
+    unreadCount: await countUnreadInScope(deps.database, scope),
+    organizationId: scope.organizationId,
+  };
 }
 
 async function updateVisibleItem(
@@ -369,7 +374,11 @@ export async function markInboxItemRead(
 
 export async function markAllInboxRead(
   deps: InboxServiceDeps,
-  input: { userId: string; sessionToken: string },
+  input: {
+    userId: string;
+    sessionToken: string;
+    expectedOrganizationId: string | null;
+  },
 ): Promise<MarkAllReadResponse> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const client = await deps.database.sql.connect();
@@ -379,6 +388,16 @@ export async function markAllInboxRead(
       if (!scope) {
         await client.query("rollback");
         continue;
+      }
+      // Organization selection is account-global: another session may have
+      // switched it since this client loaded. Never mark a scope the caller
+      // did not see.
+      if (scope.organizationId !== input.expectedOrganizationId) {
+        throw new AppError(
+          409,
+          "INBOX_SCOPE_CHANGED",
+          "องค์กรที่ใช้งานถูกเปลี่ยนแล้ว กรุณาโหลดใหม่",
+        );
       }
       await client.query("select set_config('app.user_id', $1, true)", [
         scope.userId,

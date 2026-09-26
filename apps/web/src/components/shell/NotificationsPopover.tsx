@@ -98,7 +98,7 @@ export function NotificationsPopover() {
                 unreadCount === undefined || unreadCount === 0 || all.isPending
               }
               onClick={() => {
-                all.mutate();
+                all.mutate(serverActiveOrgId);
               }}
               className="text-xs text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
             >

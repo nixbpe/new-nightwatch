@@ -1,7 +1,9 @@
 import { createRoute } from "@hono/zod-openapi";
 import {
   emailNotVerifiedErrorResponseSchema,
+  inboxScopeChangedErrorResponseSchema,
   invalidInputErrorResponseSchema,
+  markAllReadRequestSchema,
   markAllReadResponseSchema,
   markReadResponseSchema,
   notificationCountResponseSchema,
@@ -161,12 +163,26 @@ export const notificationRouteDeclarations = {
     path: "/api/notifications/read-all",
     tags: ["notifications"],
     summary: "Mark all currently visible notifications read",
+    request: {
+      body: {
+        content: { "application/json": { schema: markAllReadRequestSchema } },
+        required: true,
+      },
+    },
     responses: {
       200: {
         description: "Count of items newly marked read",
         content: { "application/json": { schema: markAllReadResponseSchema } },
       },
+      400: invalidInputResponse,
       ...inboxErrorResponses,
+      409: {
+        description:
+          "The server resolves a different active scope than expected",
+        content: {
+          "application/json": { schema: inboxScopeChangedErrorResponseSchema },
+        },
+      },
     },
   }),
   getSettings: createRoute({

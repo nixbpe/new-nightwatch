@@ -1,4 +1,5 @@
 import {
+  markAllReadRequestSchema,
   markAllReadResponseSchema,
   markReadResponseSchema,
   notificationCountResponseSchema,
@@ -9,7 +10,7 @@ import {
   type NotificationListResponse,
 } from "@nightwatch/api-contract";
 
-import { request } from "./client";
+import { ApiError, request } from "./client";
 
 export const NOTIFICATION_QUERY_PREFIX = ["tenant", "notifications"] as const;
 export const notificationQueryKey = (organizationId: string | null) =>
@@ -25,9 +26,37 @@ export const organizationNotificationSettingsQueryKey = (
   organizationId: string,
 ) => ["tenant", "notification-settings", organizationId] as const;
 
-export type NotificationPage = NotificationListResponse & {
-  organizationId: string | null;
-};
+export type NotificationPage = NotificationListResponse;
+
+/**
+ * Organization selection is account-global, so another session can switch it
+ * after this client loaded. A response resolved for a different scope is
+ * rejected (never cached under this client's key); the tenant provider then
+ * refreshes the context so the view follows the server's scope.
+ */
+export class InboxScopeChangedError extends Error {
+  constructor() {
+    super("inbox scope changed");
+    this.name = "InboxScopeChangedError";
+  }
+}
+
+export function isInboxScopeChanged(error: unknown): boolean {
+  return (
+    error instanceof InboxScopeChangedError ||
+    (error instanceof ApiError && error.code === "INBOX_SCOPE_CHANGED")
+  );
+}
+
+function expectScope<T extends { organizationId: string | null }>(
+  expectedOrganizationId: string | null,
+  result: T,
+): T {
+  if (result.organizationId !== expectedOrganizationId) {
+    throw new InboxScopeChangedError();
+  }
+  return result;
+}
 
 export function fetchNotifications(
   organizationId: string | null,
@@ -35,19 +64,17 @@ export function fetchNotifications(
 ): Promise<NotificationPage> {
   return request("/api/notifications", notificationListResponseSchema, {
     query: cursor === undefined ? { limit: 20 } : { limit: 20, cursor },
-  }).then((result) => ({
-    ...notificationListResponseSchema.parse(result),
-    organizationId,
-  }));
+  }).then((result) =>
+    expectScope(organizationId, notificationListResponseSchema.parse(result)),
+  );
 }
 export function fetchUnreadCount(organizationId: string | null) {
   return request(
     "/api/notifications/unread-count",
     notificationCountResponseSchema,
-  ).then((result) => ({
-    ...notificationCountResponseSchema.parse(result),
-    organizationId,
-  }));
+  ).then((result) =>
+    expectScope(organizationId, notificationCountResponseSchema.parse(result)),
+  );
 }
 export function openNotification(id: string) {
   return request("/api/notifications/{id}/open", notificationDetailSchema, {
@@ -61,9 +88,13 @@ export function markNotificationRead(id: string) {
     params: { id },
   }).then((result) => markReadResponseSchema.parse(result));
 }
-export function markAllNotificationsRead() {
+export function markAllNotificationsRead(
+  expectedOrganizationId: string | null,
+) {
+  const body = markAllReadRequestSchema.parse({ expectedOrganizationId });
   return request("/api/notifications/read-all", markAllReadResponseSchema, {
     method: "POST",
+    body,
   }).then((result) => markAllReadResponseSchema.parse(result));
 }
 export function fetchOrganizationNotificationSettings(organizationId: string) {

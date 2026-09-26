@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { InboxScopeChangedError } from "../../lib/api/notifications";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import { NotificationsPage } from "../../pages/NotificationsPage";
 import { WorkspacePage } from "../../pages/WorkspacePage";
@@ -540,6 +541,17 @@ describe("AppShell", () => {
     expect(markAll).toBeEnabled();
     await user.click(markAll);
     expect(markAllNotificationsReadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes the context when the server resolves another inbox scope", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchUnreadCountMock.mockRejectedValue(new InboxScopeChangedError());
+    renderShell();
+    await screen.findByRole("link", { name: "Org A" });
+
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(1);
+    });
   });
 
   it("falls back to the list unread count when the count request fails", async () => {

@@ -61,8 +61,17 @@ const app = createApp({
   logger: createLogger({ level: "silent", name: "notification-db-test" }),
 });
 
-async function request(path: string, method = "GET") {
-  const response = await app.request(`http://localhost${path}`, { method });
+async function request(path: string, method = "GET", json?: unknown) {
+  const response = await app.request(
+    `http://localhost${path}`,
+    json === undefined
+      ? { method }
+      : {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(json),
+        },
+  );
   const body: unknown = await response.json();
   return { response, body };
 }
@@ -199,6 +208,7 @@ describe("notification inbox API", () => {
     expect(first.response.status).toBe(200);
     const firstBody = notificationListResponseSchema.parse(first.body);
     expect(firstBody.items).toHaveLength(2);
+    expect(firstBody.organizationId).toBe(orgA);
     const cursor = firstBody.nextCursor;
     if (!cursor) throw new Error("first page should have a cursor");
     expect(
@@ -241,7 +251,9 @@ describe("notification inbox API", () => {
       scope: "account",
       occurredAt: "2026-08-01T00:00:00.000Z",
     });
-    const markAll = await request("/api/notifications/read-all", "POST");
+    const markAll = await request("/api/notifications/read-all", "POST", {
+      expectedOrganizationId: orgA,
+    });
     expect(markAll.response.status).toBe(200);
     expect(markAllReadResponseSchema.parse(markAll.body)).toEqual({
       markedCount: 2,
@@ -371,12 +383,18 @@ describe("notification inbox API", () => {
       (await request("/api/notifications")).body,
     );
     expect(personalOnly.items.map((item) => item.id)).toEqual([personal]);
+    expect(personalOnly.organizationId).toBeNull();
     expect((await request("/api/notifications/unread-count")).body).toEqual({
       unreadCount: 1,
+      organizationId: null,
     });
     expect(
       markAllReadResponseSchema.parse(
-        (await request("/api/notifications/read-all", "POST")).body,
+        (
+          await request("/api/notifications/read-all", "POST", {
+            expectedOrganizationId: null,
+          })
+        ).body,
       ),
     ).toEqual({
       markedCount: 1,
@@ -454,7 +472,11 @@ describe("notification inbox API", () => {
     }
     expect(
       markAllReadResponseSchema.parse(
-        (await request("/api/notifications/read-all", "POST")).body,
+        (
+          await request("/api/notifications/read-all", "POST", {
+            expectedOrganizationId: orgA,
+          })
+        ).body,
       ),
     ).toEqual({
       markedCount: 0,
@@ -483,6 +505,7 @@ describe("notification inbox API", () => {
     expect(read.response.status).toBe(200);
     expect((await request("/api/notifications/unread-count")).body).toEqual({
       unreadCount: 3,
+      organizationId: orgA,
     });
   });
 
