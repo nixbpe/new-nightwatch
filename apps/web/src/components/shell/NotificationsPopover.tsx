@@ -75,7 +75,7 @@ export function NotificationsPopover() {
         {unreadCount ? (
           <span
             aria-label={`${String(unreadCount)} รายการยังไม่อ่าน`}
-            className="absolute -top-1 -right-1 min-w-4 rounded-full bg-primary px-1 text-[10px] text-on-primary"
+            className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-xs leading-none text-on-primary"
           >
             {unreadCount}
           </span>

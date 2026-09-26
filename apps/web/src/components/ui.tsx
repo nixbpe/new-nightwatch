@@ -16,7 +16,7 @@ export { Input } from "./ui/input";
  * that take the same field styling; text inputs use <Input> instead.
  */
 export const textInputClass =
-  "w-full rounded-md border border-control-border bg-surface px-3 py-2 text-foreground " +
+  "h-10 w-full rounded-md border border-control-border bg-surface px-3 text-foreground " +
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -124,15 +124,15 @@ export function Alert({
   tone: "error" | "success" | "info";
   children: ReactNode;
 }) {
+  // One construction for every tone: a soft wash of the tone colour so the
+  // state reads at a glance, while text stays the only fully-saturated use
+  // of that colour (docs/design-system.md). Info is neutral by design.
   const className =
     tone === "error"
-      ? // Soft danger-tinted wash instead of the flat page background: the
-        // tint alone signals "error state" even at a glance, while icon/text
-        // stay the only fully-saturated danger color (docs/design-system.md).
-        "border-danger/40 bg-danger/8 text-danger"
+      ? "border-danger/40 bg-danger/8 text-danger"
       : tone === "success"
-        ? "border-primary/40 bg-background text-primary"
-        : "border-control-border bg-background text-foreground-secondary";
+        ? "border-primary/40 bg-primary/8 text-primary"
+        : "border-foreground/15 bg-foreground/4 text-foreground";
   return (
     <p
       role="alert"

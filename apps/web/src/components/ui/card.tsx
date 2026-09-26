@@ -4,15 +4,16 @@ import { cn } from "@/lib/utils";
 
 /**
  * NightWatch card (shadcn/ui new-york, Tailwind v4).
- * Surface fill, 4px panel radius, restrained shadow for floating panels;
- * no border by default per docs/design-system.md depth rules.
+ * Surface fill, 4px panel radius and a hairline divider border — depth
+ * comes from Canvas/Surface, never a shadow; shadows are reserved for
+ * floating overlays (docs/design-system.md, Layout).
  */
 function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="card"
       className={cn(
-        "flex flex-col rounded-lg bg-surface text-foreground shadow-sm",
+        "flex flex-col rounded-md border border-foreground/10 bg-surface text-foreground",
         className,
       )}
       {...props}
