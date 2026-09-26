@@ -21,16 +21,12 @@ Write a structured specification before writing any code. The spec is the shared
 
 ## The Gated Workflow
 
-Spec-driven development has four phases, preceded by a scope check (Phase 0) that activates only when one request bundles several independently testable capabilities. Do not advance to the next phase until the current one is validated.
+Spec-driven development has four phases, preceded by a scope check (Phase 0) that activates only when one request bundles several independently testable capabilities. Move on once the current phase is settled. Ask the human only about what is still open (an ambiguous requirement, scope, a boundary or a tradeoff); clear, already-approved requirements need no separate sign-off per phase.
 
 Phases 2–4 define planning and task mechanics here; Phase 4 uses skill:`incremental-implementation` and skill:`test-driven-development`.
 
 ```
 SPECIFY ──→ PLAN ──→ TASKS ──→ IMPLEMENT
-   │          │        │          │
-   ▼          ▼        ▼          ▼
- Human      Human    Human      Human
- reviews    reviews  reviews    reviews
 ```
 
 ### Phase 0: Scope Check
@@ -50,7 +46,7 @@ Most requests describe one capability — if this one does, skip straight to Spe
 Build order: identity → billing
 ```
 
-Stable, kebab-case module ids chosen once; dependency arrows point one way (two modules needing each other are one module); interfaces live in the depended-on module's own spec. **Gated like every phase:** the human reviews boundaries, dependencies, and build order before any module spec is written. Then recurse Specify → Plan → Tasks → Implement per module, saving each spec alongside the approved map as `SPEC-<module-id>.md`.
+Stable, kebab-case module ids chosen once; dependency arrows point one way (two modules needing each other are one module); interfaces live in the depended-on module's own spec. Module boundaries are a decision: the human approves boundaries, dependencies, and build order before any module spec is written. Then recurse Specify → Plan → Tasks → Implement per module, saving each spec alongside the approved map as `SPEC-<module-id>.md`.
 
 ### Phase 1: Specify
 
@@ -81,13 +77,13 @@ REFRAMED: LCP < 2.5s on 4G; initial data load < 500ms; no layout shift (CLS < 0.
 
 Identify the major components and dependencies, the build order, risks and mitigations, what can run in parallel, and verification checkpoints between phases.
 
-> **Output convention:** save the plan to `tasks/plan.md` and its task list to `tasks/todo.md`. Create `tasks/` if needed.
+Keep the plan and task list in the response or the Technical Lead's breakdown. Write `tasks/plan.md` and `tasks/todo.md` only when the assignment or `/build auto` requires them.
 
-The plan should be reviewable: the human can read it and say "yes" or "no, change X."
+Keep the plan reviewable, so a human can change any point that still needs a decision.
 
 ### Phase 3: Tasks
 
-Break the plan into tasks that are each completable in one focused session, with explicit acceptance criteria, a verification step, dependency ordering (not perceived importance), and no task touching more than ~5 files.
+Break the plan into tasks that are each completable in one focused session, with explicit acceptance criteria, a verification step, and dependency ordering (not perceived importance). Size a task by the behavior one owner can finish, not by a file count.
 
 ```markdown
 - [ ] Task: [Description]
@@ -125,7 +121,7 @@ The spec is a living document: update it when decisions or scope change (before 
 ## Verification
 
 - [ ] The spec covers every core area (Objective, Tech Stack, Commands, Project Structure, Code Style, Testing Strategy, Boundaries, Success Criteria, Open Questions)
-- [ ] The human has reviewed and approved the spec
+- [ ] Every open point in the spec has a human decision
 - [ ] Success criteria are specific and testable
 - [ ] The spec is saved to a file in the repository
 - [ ] If the request bundles several capabilities, a capability map was approved before any module spec was written

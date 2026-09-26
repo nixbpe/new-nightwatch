@@ -45,7 +45,7 @@ Pick the next pending task and use the implementation assignment. If no accepted
 2. Require a clean baseline outside `tasks/plan.md`, `tasks/todo.md` and the approved spec. Never absorb unrelated work.
 3. Derive `tasks/plan.md` from the spec when absent; do not invoke an undefined planning skill.
 4. Present the plan once and require unambiguous approval.
-5. Execute dependency order with one behavioral slice and scoped commit at a time.
+5. Execute in dependency order, one behavioral slice at a time. Commit only under `COMMIT_MODE: owned-slice`, as in an implementation assignment; plan approval is not commit approval.
 6. Stop for ambiguous requirements, failed gates without a bounded fix, or irreversible/high-risk work requiring explicit sign-off.
 7. Summarize completed tasks, evidence, commits, skipped checks and blockers.
 

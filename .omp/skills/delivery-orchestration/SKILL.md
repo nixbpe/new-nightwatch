@@ -58,7 +58,7 @@ Every dispatch:
 
 ## 4. Build to review-ready
 
-1. Dispatch bounded, ready Tasks together only when ownership is disjoint, one AC group per slice per skill:`incremental-implementation`. No candidate exists yet.
+1. Dispatch bounded, ready Tasks together only when ownership is disjoint; owners build in slices per skill:`incremental-implementation`, and one slice may cover several ACs. No candidate exists yet.
 2. Read every handoff; evidence must exercise each claim.
    - When relevant, stateful proof names one trigger, the mutation or interleaving it reached, and the state it preserved.
    - Integration tests that write data need run-unique fixtures and owned cleanup.

@@ -21,7 +21,7 @@ Build in thin vertical slices — implement one piece, test it, verify it, then 
 ## The Increment Cycle
 
 ```
-Implement ──→ Test ──→ Verify ──→ Commit ──→ Next slice
+Implement ──→ Test ──→ Verify ──→ Commit (if allowed) ──→ Next slice
                           │
                      (on failure)
                           ▼
@@ -29,9 +29,9 @@ Implement ──→ Test ──→ Verify ──→ Commit ──→ Next slice
 ```
 
 1. **Implement** the smallest complete piece of functionality
-2. **Test** — run the test suite (or write a test if none exists)
-3. **Verify** — tests pass, build succeeds, manual check
-4. **Commit** — save progress with a descriptive message (see skill:`git-workflow`)
+2. **Test** — run the focused checks the assignment's `VERIFY` allows, writing a test if none exists; they must exercise the changed behavior
+3. **Verify** — those checks pass and the changed behavior is observed
+4. **Commit** — only when `COMMIT_MODE: owned-slice` allows it (see skill:`git-workflow`); otherwise leave the change uncommitted and report it
 5. **Move to the next slice** — carry forward, don't restart
 
 ## Slicing Strategies
@@ -79,23 +79,22 @@ NOTICED BUT NOT TOUCHING: src/utils/format.ts has an unused import (unrelated to
 
 | Rule | Statement |
 |---|---|
-| One thing at a time | Each increment changes one logical thing — don't mix a new component, a refactor, and a config update in one commit |
-| Keep it compilable | The project must build and existing tests must pass after every increment |
+| One thing at a time | Each increment changes one logical thing — don't mix a new component, a refactor, and a config update in one increment |
+| Keep it working | Never leave the changed code broken; prove each increment with the `VERIFY` checks. The full suite and build run when the Technical Lead orders them |
 | Feature flags | If a feature isn't ready for users but you need to merge, gate it behind a flag defaulted off, rather than leaving it on a branch |
 | Safe defaults | New code defaults to conservative, opt-in behavior (e.g. a new `notify` option defaults to `false`) |
-| Rollback-friendly | Prefer additive changes; keep modifications minimal; never delete something and replace it in the same commit |
+| Rollback-friendly | Prefer additive changes; keep modifications minimal; never delete something and replace it in the same increment |
 
 ## Working with Agents
 
-When directing an agent: be explicit about what's in scope and what's NOT in scope for this increment, and require it to run the repository's test and build commands before reporting done.
+When directing an agent: be explicit about what's in scope and what's NOT in scope for this increment, and require it to run the `VERIFY` checks that prove the changed behavior before reporting done.
 
 ## Increment Checklist
 
 - [ ] The change does one thing and does it completely
-- [ ] All existing tests still pass, and the build succeeds
-- [ ] Type checking and linting pass, where the stack has them
+- [ ] The `VERIFY` checks pass and exercise the changed behavior
 - [ ] The new functionality works as expected
-- [ ] The change is committed with a descriptive message
+- [ ] The change is committed only if `COMMIT_MODE` allows it
 
 **Note:** Run each verification command after a change that could affect it — don't repeat an unchanged command for reassurance.
 
@@ -104,7 +103,7 @@ When directing an agent: be explicit about what's in scope and what's NOT in sco
 | Rationalization | Reality |
 |---|---|
 | "I'll test it all at the end" | Bugs compound. A bug in Slice 1 makes Slices 2-5 wrong. Test each slice. |
-| "These changes are too small to commit separately" | Small commits are free. Large commits hide bugs and make rollbacks painful. |
+| "These changes are too small to separate" | Small increments are cheap. Large ones hide bugs and make rollbacks painful. |
 | "I'll add the feature flag later" | If the feature isn't complete, it shouldn't be user-visible. Add the flag now. |
 | "This refactor is small enough to include" | Refactors mixed with features make both harder to review and debug. Separate them. |
 
@@ -113,13 +112,13 @@ When directing an agent: be explicit about what's in scope and what's NOT in sco
 - More than 100 lines of code written without running tests
 - Multiple unrelated changes in a single increment
 - "Let me just quickly add this too" scope expansion
-- Build or tests broken between increments
+- Changed behavior left broken or unproven between increments
 - Building abstractions before the third use case demands it
 - Touching files outside the task scope "while I'm here"
 
 ## Verification
 
-- [ ] Each increment was individually tested and committed
-- [ ] The full test suite passes and the build is clean
-- [ ] The feature works end-to-end as specified
-- [ ] No uncommitted changes remain
+- [ ] Each increment was individually tested, and committed only if `COMMIT_MODE` allows it
+- [ ] The checks the assignment names pass; the full suite and build pass whenever they were ordered
+- [ ] The changed behavior works as specified, end to end when the user asked for it
+- [ ] Uncommitted changes are listed in the handoff
