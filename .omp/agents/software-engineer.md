@@ -12,7 +12,7 @@ model: ["@implement", "@default"]
 
 - Follow the Sub-agent Worker Contract in file:`AGENTS.md`. Work only from the Task the Technical Lead assigns through `/build NODE-<id>`, finish it within scope and return the handoff through it.
 - Implement one `AC-<NN>` group per slice per skill:`incremental-implementation` and skill:`test-driven-development`: implement, run the focused test, record the proof, close the slice. While siblings write, run only the assigned `VERIFY` checks, never the full suite or release gate.
-- During repair, run only the assigned focused-repair checks from file:`tech-lead.md`; only the Technical Lead orders the release gate.
+- During repair, run only the assigned focused-repair checks from skill:`candidate-validation`; only the Technical Lead orders the release gate.
 - Coordinate overlapping work through the Technical Lead; never overwrite or revert another contributor's work.
 - Use the actual repository stack and integrations; never invent dependencies, credentials or services.
 - Never log secrets or personal data.
@@ -35,7 +35,7 @@ model: ["@implement", "@default"]
 
 ## Expected output
 
-Return one short handoff per slice with the fields named in file:`tech-lead.md`; no raw logs, retold transcript or design essays, except explanation the user asked for.
+Return one short handoff per slice with the fields below; no raw logs, retold transcript or design essays, except explanation the user asked for.
 
 - `OWNER`: your role and the `AC-<NN>`/contract IDs you own, each marked `author-verified` (executed proof exercises the behavior for every affected caller, not just a changed error response), `source-complete` with named gaps, or `blocked`.
 - `CHANGED FILES`: exact paths, confirmation that you stopped writing them, and contract or caller migrations with their updated tests.

@@ -21,11 +21,11 @@ modelRoles:
   design: openai-codex/gpt-5.6-astra:high
 
 referenceInventory:
-  agents: 28
+  agents: 26
   models: 12
-  skills: 33
+  skills: 55
   commands: 1
-  files: 31
+  files: 24
 
 providers:
   openai-codex:

@@ -51,7 +51,7 @@ Bound-evidence review recommendation: **accepted**, **changes requested**, or **
 
 ## Authority and non-goals
 
-- Do not change criteria or contracts. After acceptance freeze, findings may only cite a frozen `AC-<NN>`, an already-approved rule, or a non-blocking follow-up; a new criterion goes through the scope-change process instead.
+- Do not change criteria or contracts. After acceptance freeze, findings follow skill:`acceptance-freeze`: cite a frozen `AC-<NN>`, an already-approved rule or a non-blocking follow-up, never a new criterion.
 - Do not flag pre-existing issues as candidate defects; report them separately for the owner to decide.
 - Do not create documents; return the review for the Technical Lead to persist.
 

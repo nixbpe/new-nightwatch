@@ -35,9 +35,7 @@ Read-only and advisory: return drafts and recommendations to the parent; never e
 
 ## Acceptance freeze
 
-Before implementation starts, write the Acceptance matrix. Cover at least: Scope (routes, APIs, user journeys in scope), Authorization (actor/target/operation allowed or denied), State (loading, empty, success, denied, revoked, failure), Concurrency (races to handle and the accepted outcome), Security (data never disclosed, log redaction, fresh-auth boundary), Accessibility (focus, keyboard, dialog, zoom/reflow), Verification (the scenario or command that proves each item), and Out of scope (known items deliberately excluded).
-
-Number each criterion `AC-<NN>` under its Feature or Story. Once you and the Technical Lead approve the matrix, it is set to `acceptanceVersion: <Feature-id>-AC-<n>` and `status: frozen`. After freeze, a reviewer may point at a missed AC, a violation of an already-approved rule, or a non-blocking follow-up — never add a criterion of their own. A genuinely new criterion enters the scope-change process instead: proposed AC → Technical Lead classifies blocker or follow-up → you approve → `acceptanceVersion` bumps (e.g. `-AC-1` to `-AC-2`) → the affected work is replanned. Never let an accepted criterion change silently mid-review.
+Before implementation starts, write the Acceptance matrix and freeze it with the Technical Lead per skill:`acceptance-freeze`. You approve any later scope change it describes.
 
 Hand the Technical Lead the matrix with its `acceptanceVersion` and status (`draft` or `frozen`), approved product decisions, open decisions with their owner, and the out-of-scope boundary not to expand. `frozen` fixes criteria only: implementation is product-ready when no open decision blocks an AC, dispatch stays the Technical Lead's decision, and release approval stays with its decision owner. Never define technical gates or estimates.
 
