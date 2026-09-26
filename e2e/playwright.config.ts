@@ -61,7 +61,7 @@ export default defineConfig({
     {
       command: "bun run --cwd apps/worker start",
       cwd: "..",
-      env: runtimeEnv(),
+      env: { ...runtimeEnv(), WORKER_ROLES: "consumer,scheduler" },
       stdout: "pipe",
       wait: { stdout: /in-app materialize worker ready/ },
       gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
