@@ -51,6 +51,11 @@ export function NotificationsPopover() {
       });
     },
   });
+  // A failed count request must not read as zero; the loaded list carries
+  // the same server-wide unread count.
+  const unreadCount = count.isError
+    ? list.data?.unreadCount
+    : count.data?.unreadCount;
   return (
     <div className="relative">
       <button
@@ -67,12 +72,12 @@ export function NotificationsPopover() {
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <BellIcon size={18} />
-        {count.data?.unreadCount ? (
+        {unreadCount ? (
           <span
-            aria-label={`${String(count.data.unreadCount)} รายการยังไม่อ่าน`}
+            aria-label={`${String(unreadCount)} รายการยังไม่อ่าน`}
             className="absolute -top-1 -right-1 min-w-4 rounded-full bg-primary px-1 text-[10px] text-on-primary"
           >
-            {count.data.unreadCount}
+            {unreadCount}
           </span>
         ) : null}
       </button>
@@ -90,9 +95,7 @@ export function NotificationsPopover() {
               type="button"
               data-popover-item=""
               disabled={
-                count.data === undefined ||
-                count.data.unreadCount === 0 ||
-                all.isPending
+                unreadCount === undefined || unreadCount === 0 || all.isPending
               }
               onClick={() => {
                 all.mutate();
@@ -132,6 +135,9 @@ export function NotificationsPopover() {
               <NotificationRows
                 items={list.data.items.slice(0, 5)}
                 onOpen={(id) => {
+                  // One open at a time, so a slow earlier open cannot
+                  // navigate away from the latest selection.
+                  if (open.isPending) return;
                   open.mutate(id);
                 }}
                 popoverItems

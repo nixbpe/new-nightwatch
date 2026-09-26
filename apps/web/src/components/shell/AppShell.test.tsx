@@ -542,6 +542,70 @@ describe("AppShell", () => {
     expect(markAllNotificationsReadMock).toHaveBeenCalledTimes(1);
   });
 
+  it("falls back to the list unread count when the count request fails", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchUnreadCountMock.mockRejectedValue(new Error("count down"));
+    fetchNotificationsMock.mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      unreadCount: 2,
+    });
+    const user = userEvent.setup();
+    renderShell();
+    await screen.findByRole("link", { name: "Org A" });
+
+    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+
+    expect(
+      await screen.findByLabelText("2 รายการยังไม่อ่าน"),
+    ).toHaveTextContent("2");
+    expect(
+      screen.getByRole("button", { name: "ทำเครื่องหมายว่าอ่านทั้งหมด" }),
+    ).toBeEnabled();
+  });
+
+  it("ignores further popover row clicks while an open is pending", async () => {
+    const first: NotificationItem = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      scope: "account",
+      organizationId: null,
+      eventType: "PASSWORD_CHANGED",
+      occurredAt: "2026-09-25T03:00:00.000Z",
+      readAt: null,
+      actor: null,
+      category: null,
+    };
+    const second: NotificationItem = {
+      ...first,
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      eventType: "MFA_ENABLED",
+    };
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 2 });
+    fetchNotificationsMock.mockResolvedValue({
+      items: [first, second],
+      nextCursor: null,
+      unreadCount: 2,
+    });
+    openNotificationMock.mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    renderShell();
+    await screen.findByRole("link", { name: "Org A" });
+
+    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await user.click(
+      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: /เปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว/,
+      }),
+    );
+
+    expect(openNotificationMock).toHaveBeenCalledTimes(1);
+    expect(openNotificationMock.mock.calls[0]?.[0]).toBe(first.id);
+  });
+
   it("shows a popover mark-all failure and keeps the action retryable", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
