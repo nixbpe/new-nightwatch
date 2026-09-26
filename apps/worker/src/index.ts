@@ -99,7 +99,9 @@ function startConsumer(): Worker<MaterializeJobData> {
             failed,
             reason: "MATERIALIZATION_EXHAUSTED",
           },
-          "notification materialization exhausted retries",
+          failed
+            ? "notification materialization exhausted retries"
+            : "notification materialization exhausted before enqueue acknowledgement; left for stale-claim recovery",
         );
       })
       .catch(() => {

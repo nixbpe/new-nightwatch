@@ -398,6 +398,15 @@ describe("notification database scopes", () => {
          where id = $2`,
         [token, dispatchId],
       );
+      // Only acknowledged work can be exhausted by materialization.
+      if (reason === "MATERIALIZATION_EXHAUSTED") {
+        await expect(
+          markNotificationDispatchEnqueued(database, {
+            id: dispatchId,
+            claimToken: token,
+          }),
+        ).resolves.toBe(true);
+      }
       await expect(
         failNotificationDispatch(database, {
           id: dispatchId,
@@ -423,6 +432,60 @@ describe("notification database scopes", () => {
         rows: [{ status: "failed", failure_reason: reason }],
       });
     }
+  });
+
+  it("leaves pre-acknowledgement exhaustion for stale-claim recovery", async () => {
+    const dispatchId = randomUUID();
+    await withAccountContext(database, accountA, async (tx) => {
+      await insertAccountNotificationIntent(tx, {
+        id: randomUUID(),
+        dispatchId,
+        userId: accountA,
+        origin: `pre-ack-exhausted:${run}`,
+        eventType: "PASSWORD_CHANGED",
+        occurredAt: new Date(),
+      });
+    });
+    const token = randomUUID();
+    await owner.query(
+      `update notification_dispatch_ledger
+       set status = 'claimed', claim_token = $1,
+           claimed_at = '2000-01-01T00:00:00.000Z'
+       where id = $2`,
+      [token, dispatchId],
+    );
+
+    // The scheduler died after queue.add but before the enqueue ack.
+    await expect(
+      failNotificationDispatch(database, {
+        id: dispatchId,
+        claimToken: token,
+        reason: "MATERIALIZATION_EXHAUSTED",
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      owner.query(
+        `select status, failure_reason from notification_dispatch_ledger
+         where id = $1`,
+        [dispatchId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ status: "claimed", failure_reason: null }],
+    });
+
+    await expect(
+      requeueStaleNotificationDispatches(database, {
+        claimedBefore: new Date("2001-01-01T00:00:00.000Z"),
+        limit: 100,
+      }),
+    ).resolves.toContain(dispatchId);
+    const reclaimed = await claimNotificationDispatches(database, {
+      claimToken: randomUUID(),
+      limit: 100,
+    });
+    expect(reclaimed).toContainEqual(
+      expect.objectContaining({ id: dispatchId }),
+    );
   });
 
   it("lets the runtime update only inbox read state", async () => {
