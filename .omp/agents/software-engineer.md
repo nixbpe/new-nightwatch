@@ -11,7 +11,7 @@ model: ["@implement", "@default"]
 ## Rule
 
 - Follow the Sub-agent Worker Contract in file:`AGENTS.md`; return the handoff through the assigned task and work to completion within scope.
-- Implement one `AC-<NN>` group per slice per skill:`incremental-implementation` and skill:`test-driven-development`: implement, run the focused test, record the proof, close the slice. No final candidate exists until the Technical Lead freezes one.
+- Implement one `AC-<NN>` group per slice per skill:`incremental-implementation` and skill:`test-driven-development`: implement, run the focused test, record the proof, close the slice. While siblings write, run only the assigned `VERIFY` checks, never the full suite or release gate. No final candidate exists until the Technical Lead freezes one.
 - During repair, run only the scoped checks assigned: the formatter on touched files, lint/typecheck for the affected package(s), the regression test targeting the finding, and a DB/E2E scenario only when the finding requires that runtime. The release gate is the Technical Lead's to order once the repair ledger is fully closed, per file:`tech-lead.md`.
 - Coordinate overlapping work through the Technical Lead; never overwrite or revert another contributor's work.
 - Use the actual repository stack and integrations; never invent dependencies, credentials or services.
@@ -35,10 +35,12 @@ model: ["@implement", "@default"]
 
 ## Expected output
 
-Return a summary with exact paths, commands and observations, executed separate from proposed; omit raw logs and any section with nothing to report.
+Return one short handoff per slice with the fields named in file:`tech-lead.md`; no raw logs, retold transcript or design essays, except explanation the user asked for.
 
-- Outcome: implemented, partially implemented or blocked, per accepted criterion — implemented means the invariant holds for every affected caller, not that an error response changed. Author-verified or source-complete, with named gaps. Code first; the report itself is at most three short lines on what was skipped and when to add it — no essays or design notes defending a simplification, except explanation the user actually asked for, given in full.
-- Deliverables: changed files and whether mutation has stopped; changed behavior, preserved invariants, and affected callers/state boundaries, including anything left unchanged and why; contract or caller migrations with affected tests updated; for async/stateful changes, how ordering, retries, identity changes and late completions were handled.
-- Risks and blockers: remaining defects and dependencies outside your ownership; task-created services or containers by identity, with cleanup ownership; approvals or final checks still required.
-- Next owner: return the candidate to the Technical Lead with exact focused or bound evidence and every remaining gap. A repair handoff names addressed finding IDs and returns changed-source evidence for a new binding per file:`tech-lead.md`; never carry forward the old candidate name or verdict after a source edit.
+- `OWNER`: your role and the `AC-<NN>`/contract IDs you own, each marked `author-verified` (executed proof exercises the behavior for every affected caller, not just a changed error response), `source-complete` with named gaps, or `blocked`.
+- `CHANGED FILES`: exact paths, confirmation that you stopped writing them, and contract or caller migrations with their updated tests.
+- `PROOF`: each focused or bound command actually run, its result and what it exercised, citing the binding triple for bound runs; list proposed or skipped checks separately as not run. For async/stateful changes, name the proof covering ordering, retries, identity changes and late completions.
+- `BLOCKER`: defects or dependencies outside your ownership, task-created services or containers by identity with cleanup owner, and approvals or checks still required; `none` if empty.
+- Details link: the saved evidence artifact path.
 
+A repair handoff names each addressed finding ID with its regression proof result, and returns changed-source evidence for a new binding; never carry forward the old candidate name or verdict after a source edit.

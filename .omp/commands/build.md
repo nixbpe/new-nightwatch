@@ -14,7 +14,7 @@ Treat only bare `auto` or `all` as autonomous mode. Any `NODE-<id>` is assignmen
 
 ## Technical Lead assignment
 
-Read `OUTCOME`, `SOURCE`, `FILES`, `NON-GOALS`, `VERIFY`, `PROOF`, sibling ownership and any `BINDING` before acting.
+Read `OUTCOME`, `SOURCE`, `FILES`, `NON-GOALS`, `VERIFY`, `PROOF`, `COMMIT_MODE`, sibling ownership and any `BINDING` before acting.
 
 ### Implementation assignment
 
@@ -22,8 +22,8 @@ Read `OUTCOME`, `SOURCE`, `FILES`, `NON-GOALS`, `VERIFY`, `PROOF`, sibling owner
 2. Reproduce changed behavior with a failing regression when appropriate.
 3. Implement the smallest complete fix.
 4. Run exactly the focused checks permitted by `VERIFY`; defer shared/full gates while siblings write.
-5. Commit only owned implementation files when the assignment requires a commit.
-6. Return changed paths, observed behavior, commands/results and confirmation that mutation stopped.
+5. Commit only under `COMMIT_MODE: owned-slice`: after focused checks pass, stage only owned in-scope files and commit one behavior with its regression proof. Otherwise do not commit; never push, open a PR, force-push or rewrite history.
+6. Return changed paths, observed behavior, commands/results, any commit SHA and confirmation that mutation stopped.
 
 ### Bound evidence assignment
 
