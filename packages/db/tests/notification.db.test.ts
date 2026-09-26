@@ -425,6 +425,26 @@ describe("notification database scopes", () => {
     }
   });
 
+  it("lets the runtime update only inbox read state", async () => {
+    await expect(
+      database.sql.query(
+        "update notification_inbox_items set read_at = read_at where false",
+      ),
+    ).resolves.toBeDefined();
+    for (const column of [
+      "recipient_user_id",
+      "event_type",
+      "occurred_at",
+      "actor_display_name",
+    ]) {
+      await expect(
+        database.sql.query(
+          `update notification_inbox_items set ${column} = ${column} where false`,
+        ),
+      ).rejects.toThrow("permission denied");
+    }
+  });
+
   it("exposes completed dispatch existence only in its verified scope", async () => {
     const accountIntentId = randomUUID();
     const accountDispatchId = randomUUID();
