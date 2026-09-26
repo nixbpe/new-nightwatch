@@ -1,6 +1,6 @@
 import type { NotificationItem } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -245,6 +245,63 @@ describe("NotificationsPage", () => {
       screen.getByRole("button", { name: "กลับไปที่การแจ้งเตือน" }),
     );
     await user.click(markAll);
+  });
+
+  it("drops retained pages when a refetched first page changes", async () => {
+    const pageTwo: NotificationItem = {
+      ...notification,
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      scope: "organization",
+      organizationId: ORG_A,
+      eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED",
+      actor: { displayName: "Stale page two" },
+      category: "notification-settings",
+    };
+    let firstPageVersion = 1;
+    fetchNotificationsMock.mockImplementation((organizationId, cursor) =>
+      Promise.resolve(
+        cursor === "cursor-1"
+          ? {
+              organizationId,
+              items: [pageTwo],
+              nextCursor: null,
+              unreadCount: 0,
+            }
+          : {
+              organizationId,
+              items: [
+                {
+                  ...notification,
+                  readAt:
+                    firstPageVersion === 1 ? null : notification.occurredAt,
+                },
+              ],
+              nextCursor: "cursor-1",
+              unreadCount: 0,
+            },
+      ),
+    );
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+
+    await user.click(
+      await screen.findByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: /Stale page two/ }),
+    ).toBeInTheDocument();
+
+    firstPageVersion = 2;
+    await act(() => queryClient.refetchQueries({ type: "active" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /Stale page two/ }),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
+    ).toBeInTheDocument();
   });
 
   it("shows a next-page failure, keeps loaded rows and retries", async () => {

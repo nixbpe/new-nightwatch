@@ -174,7 +174,12 @@ function NotificationsPageForOrganization({
 }) {
   const client = useQueryClient();
   const [detailId, setDetailId] = useState(initialDetailId);
-  const [pages, setPages] = useState<NotificationPage[]>([]);
+  // Later pages are only valid for the first page whose cursor chain they
+  // continue; a refetched first page with new data drops them.
+  const [retained, setRetained] = useState<{
+    firstPage: NotificationPage;
+    pages: NotificationPage[];
+  } | null>(null);
   const [loadingNextPage, setLoadingNextPage] = useState(false);
   const [nextPageError, setNextPageError] = useState<unknown>(null);
   const openedInitialDetail = useRef(false);
@@ -185,7 +190,7 @@ function NotificationsPageForOrganization({
   const open = useMutation({
     mutationFn: openNotification,
     onSuccess: async () => {
-      setPages([]);
+      setRetained(null);
       setNextPageError(null);
       await client.invalidateQueries({
         queryKey: notificationQueryKey(serverActiveOrgId),
@@ -195,7 +200,7 @@ function NotificationsPageForOrganization({
   const all = useMutation({
     mutationFn: markAllNotificationsRead,
     onSuccess: async () => {
-      setPages([]);
+      setRetained(null);
       setNextPageError(null);
       await client.invalidateQueries({
         queryKey: notificationQueryKey(serverActiveOrgId),
@@ -209,12 +214,16 @@ function NotificationsPageForOrganization({
     open.mutate(initialDetailId);
   }, [initialDetailId, open]);
 
+  const pages =
+    retained !== null && retained.firstPage === list.data ? retained.pages : [];
   const loadedPages = list.data === undefined ? [] : [list.data, ...pages];
   const items = loadedPages.flatMap((page) => page.items);
   const nextCursor = loadedPages.at(-1)?.nextCursor ?? null;
 
   async function loadNextPage() {
-    if (nextCursor === null || loadingNextPage) return;
+    const firstPage = list.data;
+    if (firstPage === undefined || nextCursor === null || loadingNextPage)
+      return;
     setLoadingNextPage(true);
     setNextPageError(null);
     try {
@@ -223,7 +232,7 @@ function NotificationsPageForOrganization({
         queryFn: () => fetchNotifications(serverActiveOrgId, nextCursor),
         staleTime: Infinity,
       });
-      setPages((current) => [...current, nextPage]);
+      setRetained({ firstPage, pages: [...pages, nextPage] });
     } catch (error) {
       setNextPageError(error);
     } finally {
