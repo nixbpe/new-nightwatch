@@ -6,11 +6,7 @@ import type {
   NotificationCountResponse,
   NotificationListResponse,
 } from "@nightwatch/api-contract";
-import {
-  withAccountContextRaw,
-  withTenantContextRaw,
-  type Database,
-} from "@nightwatch/db";
+import type { Database } from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
@@ -143,10 +139,17 @@ async function resolveActiveScopeOnClient(
   return { userId, organizationId: null };
 }
 
-async function resolveActiveScope(
+/**
+ * Resolves the active scope and runs `fn` in the SAME transaction. The
+ * resolver holds the user row FOR UPDATE, which an organization switch also
+ * updates, so a switch cannot commit between scope resolution and the read
+ * or mutation: every response reflects one consistent scope.
+ */
+async function withResolvedScope<T>(
   database: Database,
   userId: string,
-): Promise<ActiveScope> {
+  fn: (client: PoolClient, scope: ActiveScope) => Promise<T>,
+): Promise<T> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const client = await database.sql.connect();
     try {
@@ -156,8 +159,17 @@ async function resolveActiveScope(
         await client.query("rollback");
         continue;
       }
+      await client.query("select set_config('app.user_id', $1, true)", [
+        scope.userId,
+      ]);
+      if (scope.organizationId) {
+        await client.query("select set_config('app.tenant_id', $1, true)", [
+          scope.organizationId,
+        ]);
+      }
+      const result = await fn(client, scope);
       await client.query("commit");
-      return scope;
+      return result;
     } catch (error) {
       await client.query("rollback").catch(() => undefined);
       throw error;
@@ -186,7 +198,7 @@ const completedDispatch = `
   )`;
 
 async function accountRows(
-  database: Database,
+  client: PoolClient,
   userId: string,
   anchor: { occurredAt: string; id: string } | undefined,
   limit: number,
@@ -196,21 +208,18 @@ async function accountRows(
     : [userId, limit];
   const keyset = anchor ? "and (occurred_at, id) < ($2, $3)" : "";
   const limitParameter = anchor ? "$4" : "$2";
-  return withAccountContextRaw(database, userId, (client) =>
-    client
-      .query<InboxRow>(
-        `select ${itemFields} from notification_inbox_items
-         where scope_kind = 'account' and recipient_user_id = $1
-           and expires_at > now() ${completedDispatch} ${keyset}
-         order by occurred_at desc, id desc limit ${limitParameter}`,
-        values,
-      )
-      .then((result) => result.rows),
+  const result = await client.query<InboxRow>(
+    `select ${itemFields} from notification_inbox_items
+     where scope_kind = 'account' and recipient_user_id = $1
+       and expires_at > now() ${completedDispatch} ${keyset}
+     order by occurred_at desc, id desc limit ${limitParameter}`,
+    values,
   );
+  return result.rows;
 }
 
 async function tenantRows(
-  database: Database,
+  client: PoolClient,
   scope: ActiveScope,
   anchor: { occurredAt: string; id: string } | undefined,
   limit: number,
@@ -221,18 +230,15 @@ async function tenantRows(
     : [scope.organizationId, scope.userId, limit];
   const keyset = anchor ? "and (occurred_at, id) < ($3, $4)" : "";
   const limitParameter = anchor ? "$5" : "$3";
-  return withTenantContextRaw(database, scope.organizationId, (client) =>
-    client
-      .query<InboxRow>(
-        `select ${itemFields} from notification_inbox_items
-         where scope_kind = 'tenant' and tenant_id = $1 and recipient_user_id = $2
-           and exists (select 1 from member where organization_id = $1 and user_id = $2)
-           and expires_at > now() ${completedDispatch} ${keyset}
-         order by occurred_at desc, id desc limit ${limitParameter}`,
-        values,
-      )
-      .then((result) => result.rows),
+  const result = await client.query<InboxRow>(
+    `select ${itemFields} from notification_inbox_items
+     where scope_kind = 'tenant' and tenant_id = $1 and recipient_user_id = $2
+       and exists (select 1 from member where organization_id = $1 and user_id = $2)
+       and expires_at > now() ${completedDispatch} ${keyset}
+     order by occurred_at desc, id desc limit ${limitParameter}`,
+    values,
   );
+  return result.rows;
 }
 
 function compareRows(left: InboxRow, right: InboxRow): number {
@@ -251,46 +257,58 @@ export async function listInbox(
     cursor?: string;
   },
 ): Promise<NotificationListResponse> {
-  const scope = await resolveActiveScope(deps.database, input.userId);
-  let anchor: { occurredAt: string; id: string } | undefined;
-  if (input.cursor) {
-    try {
-      anchor = parseNotificationCursor({
-        secret: deps.cursorSecret,
-        scope: { ...scope, limit: input.limit },
-        cursor: input.cursor,
-      });
-    } catch {
-      throw new AppError(400, "INVALID_CURSOR", "Invalid notification cursor");
-    }
-  }
-  const [account, tenant, unreadCount] = await Promise.all([
-    accountRows(deps.database, scope.userId, anchor, input.limit + 1),
-    tenantRows(deps.database, scope, anchor, input.limit + 1),
-    countUnreadInScope(deps.database, scope),
-  ]);
-  const visible = [...account, ...tenant]
-    .sort(compareRows)
-    .slice(0, input.limit + 1);
-  const page = visible.slice(0, input.limit);
-  const last = page.at(-1);
-  return {
-    items: page.map(toItem),
-    nextCursor:
-      visible.length > input.limit && last
-        ? createNotificationCursor({
+  return withResolvedScope(
+    deps.database,
+    input.userId,
+    async (client, scope) => {
+      let anchor: { occurredAt: string; id: string } | undefined;
+      if (input.cursor) {
+        try {
+          anchor = parseNotificationCursor({
             secret: deps.cursorSecret,
             scope: { ...scope, limit: input.limit },
-            anchor: { occurredAt: last.cursorOccurredAt, id: last.id },
-          })
-        : null,
-    unreadCount,
-    organizationId: scope.organizationId,
-  };
+            cursor: input.cursor,
+          });
+        } catch {
+          throw new AppError(
+            400,
+            "INVALID_CURSOR",
+            "Invalid notification cursor",
+          );
+        }
+      }
+      const account = await accountRows(
+        client,
+        scope.userId,
+        anchor,
+        input.limit + 1,
+      );
+      const tenant = await tenantRows(client, scope, anchor, input.limit + 1);
+      const unreadCount = await countUnreadInScope(client, scope);
+      const visible = [...account, ...tenant]
+        .sort(compareRows)
+        .slice(0, input.limit + 1);
+      const page = visible.slice(0, input.limit);
+      const last = page.at(-1);
+      return {
+        items: page.map(toItem),
+        nextCursor:
+          visible.length > input.limit && last
+            ? createNotificationCursor({
+                secret: deps.cursorSecret,
+                scope: { ...scope, limit: input.limit },
+                anchor: { occurredAt: last.cursorOccurredAt, id: last.id },
+              })
+            : null,
+        unreadCount,
+        organizationId: scope.organizationId,
+      };
+    },
+  );
 }
 
 async function countUnreadInScope(
-  database: Database,
+  client: PoolClient,
   scope: ActiveScope,
 ): Promise<number> {
   const count = async (client: PoolClient, values: unknown[]) =>
@@ -302,15 +320,9 @@ async function countUnreadInScope(
         values,
       )
       .then((result) => Number(result.rows[0]?.count ?? 0));
-  const account = await withAccountContextRaw(
-    database,
-    scope.userId,
-    (client) => count(client, [scope.userId]),
-  );
+  const account = await count(client, [scope.userId]);
   const tenant = scope.organizationId
-    ? await withTenantContextRaw(database, scope.organizationId, (client) =>
-        count(client, [scope.userId, scope.organizationId]),
-      )
+    ? await count(client, [scope.userId, scope.organizationId])
     : 0;
   return account + tenant;
 }
@@ -319,15 +331,18 @@ export async function countUnreadInbox(
   deps: InboxServiceDeps,
   input: { userId: string; sessionToken: string },
 ): Promise<NotificationCountResponse> {
-  const scope = await resolveActiveScope(deps.database, input.userId);
-  return {
-    unreadCount: await countUnreadInScope(deps.database, scope),
-    organizationId: scope.organizationId,
-  };
+  return withResolvedScope(
+    deps.database,
+    input.userId,
+    async (client, scope) => ({
+      unreadCount: await countUnreadInScope(client, scope),
+      organizationId: scope.organizationId,
+    }),
+  );
 }
 
 async function updateVisibleItem(
-  database: Database,
+  client: PoolClient,
   scope: ActiveScope,
   itemId: string,
 ): Promise<InboxRow | null> {
@@ -341,26 +356,29 @@ async function updateVisibleItem(
         values,
       )
       .then((result) => result.rows[0] ?? null);
-  const account = await withAccountContextRaw(
-    database,
-    scope.userId,
-    (client) => update(client, [itemId, scope.userId]),
-  );
+  const account = await update(client, [itemId, scope.userId]);
   if (account || !scope.organizationId) return account;
-  return withTenantContextRaw(database, scope.organizationId, (client) =>
-    update(client, [itemId, scope.userId, scope.organizationId]),
-  );
+  return update(client, [itemId, scope.userId, scope.organizationId]);
 }
 
 export async function openInboxItem(
   deps: InboxServiceDeps,
   input: { userId: string; sessionToken: string; itemId: string },
 ): Promise<NotificationDetail> {
-  const scope = await resolveActiveScope(deps.database, input.userId);
-  const row = await updateVisibleItem(deps.database, scope, input.itemId);
-  if (!row)
-    throw new AppError(404, "NOTIFICATION_NOT_FOUND", "Notification not found");
-  return toItem(row);
+  return withResolvedScope(
+    deps.database,
+    input.userId,
+    async (client, scope) => {
+      const row = await updateVisibleItem(client, scope, input.itemId);
+      if (!row)
+        throw new AppError(
+          404,
+          "NOTIFICATION_NOT_FOUND",
+          "Notification not found",
+        );
+      return toItem(row);
+    },
+  );
 }
 
 export async function markInboxItemRead(
@@ -380,15 +398,10 @@ export async function markAllInboxRead(
     expectedOrganizationId: string | null;
   },
 ): Promise<MarkAllReadResponse> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const client = await deps.database.sql.connect();
-    try {
-      await client.query("begin");
-      const scope = await resolveActiveScopeOnClient(client, input.userId);
-      if (!scope) {
-        await client.query("rollback");
-        continue;
-      }
+  return withResolvedScope(
+    deps.database,
+    input.userId,
+    async (client, scope) => {
       // Organization selection is account-global: another session may have
       // switched it since this client loaded. Never mark a scope the caller
       // did not see.
@@ -399,44 +412,25 @@ export async function markAllInboxRead(
           "องค์กรที่ใช้งานถูกเปลี่ยนแล้ว กรุณาโหลดใหม่",
         );
       }
-      await client.query("select set_config('app.user_id', $1, true)", [
-        scope.userId,
-      ]);
-      if (scope.organizationId) {
-        await client.query("select set_config('app.tenant_id', $1, true)", [
-          scope.organizationId,
-        ]);
-      }
       const result = await client.query(
         `update notification_inbox_items set read_at = now()
-         where recipient_user_id = $1 and read_at is null
-           and expires_at > now() ${completedDispatch}
-           and (
-             (scope_kind = 'account' and user_id = $1)
-             or (
-               $2::uuid is not null
-               and scope_kind = 'tenant'
-               and tenant_id = $2
-               and exists (
-                 select 1 from member
-                 where organization_id = $2 and user_id = $1
-               )
+       where recipient_user_id = $1 and read_at is null
+         and expires_at > now() ${completedDispatch}
+         and (
+           (scope_kind = 'account' and user_id = $1)
+           or (
+             $2::uuid is not null
+             and scope_kind = 'tenant'
+             and tenant_id = $2
+             and exists (
+               select 1 from member
+               where organization_id = $2 and user_id = $1
              )
-           )`,
+           )
+         )`,
         [scope.userId, scope.organizationId],
       );
-      await client.query("commit");
       return { markedCount: result.rowCount ?? 0 };
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-  throw new AppError(
-    500,
-    "INTERNAL_ERROR",
-    "Unable to resolve notification scope",
+    },
   );
 }

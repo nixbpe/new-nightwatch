@@ -2,9 +2,9 @@ import type {
   MarkAllReadResponse,
   NotificationListResponse,
 } from "@nightwatch/api-contract";
-import { createDatabase, runMigrations } from "@nightwatch/db";
+import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
 import { fileURLToPath } from "node:url";
-import { Client } from "pg";
+import { Client, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { listInbox, markAllInboxRead } from "./service";
@@ -680,6 +680,103 @@ describe("notification pagination precision", () => {
       [userId, `notification-lock-order:%-${run}`],
     );
     expect(unread.rows[0]?.count).toBe("0");
+  });
+
+  it("holds the resolved scope until the list's data queries finish", async () => {
+    const orgAId = `notification-lock-order:hold-a-${run}`;
+    await seedItem({
+      id: orgAId,
+      scope: "tenant",
+      organizationId: orgA,
+      occurredAt: "2026-09-25T01:00:00.000Z",
+    });
+    // Pause the list's first data query (after scope resolution) on a
+    // dedicated pool so the wrapper never leaks into the shared one.
+    const pausingPool = createDatabase(runtimeUrl);
+    const paused = Promise.withResolvers<number>();
+    const release = Promise.withResolvers<undefined>();
+    const pausing: Database = {
+      ...pausingPool,
+      sql: new Proxy(pausingPool.sql, {
+        get(target, property, receiver) {
+          if (property !== "connect")
+            return Reflect.get(target, property, receiver) as unknown;
+          return async (): Promise<PoolClient> => {
+            const client = await target.connect();
+            const query = client.query.bind(client) as (
+              text: string,
+              values?: unknown[],
+            ) => Promise<{ rows: { pid?: number }[] }>;
+            let held = false;
+            Object.assign(client, {
+              query: async (text: string, values?: unknown[]) => {
+                if (
+                  !held &&
+                  text.includes("from notification_inbox_items") &&
+                  text.includes("scope_kind = 'account'")
+                ) {
+                  held = true;
+                  const pid = (await query("select pg_backend_pid() as pid"))
+                    .rows[0]?.pid;
+                  if (!pid) throw new Error("list backend PID missing");
+                  paused.resolve(pid);
+                  await release.promise;
+                }
+                return query(text, values);
+              },
+            });
+            return client;
+          };
+        },
+      }),
+    };
+    const switcher = new Client({ connectionString: ownerUrl });
+    let transactionOpen = false;
+    let list: Promise<NotificationListResponse> | undefined;
+    let switched: Promise<unknown> | undefined;
+    try {
+      list = listInbox(
+        { database: pausing, cursorSecret: "hold-scope-secret" },
+        { userId, sessionToken: token, limit: 20 },
+      );
+      const listPid = await paused.promise;
+
+      await switcher.connect();
+      await switcher.query("begin");
+      transactionOpen = true;
+      const switcherPid = (
+        await switcher.query<{ pid: number }>("select pg_backend_pid() as pid")
+      ).rows[0]?.pid;
+      if (!switcherPid) throw new Error("switcher backend PID missing");
+      switched = switcher.query(
+        'update "user" set last_active_tenant_id = $1 where id = $2',
+        [orgB, userId],
+      );
+      await waitForClientToBlock(switcherPid, listPid, "organization switch");
+
+      release.resolve(undefined);
+      const response = await list;
+      expect(response.organizationId).toBe(orgA);
+      expect(response.items.map((item) => item.id)).toContain(orgAId);
+      await switched;
+      await switcher.query("commit");
+      transactionOpen = false;
+      const mirror = await owner.query<{ organizationId: string | null }>(
+        `select last_active_tenant_id as "organizationId" from "user"
+         where id = $1`,
+        [userId],
+      );
+      expect(mirror.rows[0]?.organizationId).toBe(orgB);
+    } finally {
+      release.resolve(undefined);
+      if (transactionOpen)
+        await switcher.query("rollback").catch(() => undefined);
+      await Promise.allSettled(
+        [list, switched].filter((promise) => promise !== undefined),
+      );
+      await switcher.end().catch(() => undefined);
+      await pausingPool.close();
+    }
   });
 
   it("returns each mixed-scope microsecond row once across limit-one pages", async () => {
