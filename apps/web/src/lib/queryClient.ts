@@ -1,5 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 
+import { isInboxScopeChanged } from "./api/notifications";
+
 /**
  * Resolved identity: the signed-in user id, or null for a resolved
  * anonymous session. `undefined` means the session snapshot has not
@@ -35,7 +37,10 @@ export function createSessionQueryClient(): QueryClient {
     defaultOptions: {
       queries: {
         staleTime: 30_000,
-        retry: 1,
+        // A changed inbox scope recovers through a context refresh
+        // (TenantProvider), so retrying it would only delay recovery.
+        retry: (failureCount, error) =>
+          failureCount < 1 && !isInboxScopeChanged(error),
       },
     },
   });

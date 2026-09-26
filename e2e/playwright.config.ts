@@ -9,12 +9,12 @@ const { webPort, apiPort } = resolvePorts();
 const webUrl = `http://localhost:${webPort}`;
 const apiUrl = `http://localhost:${apiPort}`;
 
-// Auth-bearing environment is forwarded from the caller only — never
-// fabricated here. APP_URL/BETTER_AUTH_URL/CORS_ORIGIN fall back to the
-// resolved dev origins (same computation as scripts/dev.mjs) so the webServer
-// block is self-contained; DATABASE_URL and BETTER_AUTH_SECRET must come from
-// the caller's environment when the API requires a database.
-const AUTH_ENV_NAMES = [
+// Runtime configuration is forwarded from the caller only — never fabricated
+// here. APP_URL/BETTER_AUTH_URL/CORS_ORIGIN fall back to the resolved dev
+// origins (same computation as scripts/dev.mjs) so the webServer block is
+// self-contained; database/auth/Redis values must come from the caller when
+// the API or worker needs them.
+const RUNTIME_ENV_NAMES = [
   "DATABASE_URL",
   "DATABASE_OWNER_URL",
   "BETTER_AUTH_SECRET",
@@ -24,22 +24,28 @@ const AUTH_ENV_NAMES = [
   "SMTP_USER",
   "SMTP_PASSWORD",
   "SMTP_FROM",
+  "REDIS_URL",
 ] as const;
 
-function apiServerEnv(): Record<string, string> {
-  const env: Record<string, string> = {
-    PORT: String(apiPort),
-    APP_URL: process.env.APP_URL ?? webUrl,
-    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? apiUrl,
-    CORS_ORIGIN: process.env.CORS_ORIGIN ?? webUrl,
-  };
-  for (const name of AUTH_ENV_NAMES) {
+function runtimeEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const name of RUNTIME_ENV_NAMES) {
     const value = process.env[name];
     if (value !== undefined && value !== "") {
       env[name] = value;
     }
   }
   return env;
+}
+
+function apiServerEnv(): Record<string, string> {
+  return {
+    ...runtimeEnv(),
+    PORT: String(apiPort),
+    APP_URL: process.env.APP_URL ?? webUrl,
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? apiUrl,
+    CORS_ORIGIN: process.env.CORS_ORIGIN ?? webUrl,
+  };
 }
 
 export default defineConfig({
@@ -52,6 +58,15 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: [
+    {
+      command: "bun run --cwd apps/worker start",
+      cwd: "..",
+      env: { ...runtimeEnv(), WORKER_ROLES: "consumer,scheduler" },
+      stdout: "pipe",
+      wait: { stdout: /in-app materialize worker ready/ },
+      gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
+      timeout: 60_000,
+    },
     {
       command: "bun run dev",
       cwd: "../apps/api",

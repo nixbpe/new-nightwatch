@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const ITEM_SELECTOR =
-  '[role="menuitem"]:not([aria-disabled="true"]), [role="menuitemradio"]:not([aria-disabled="true"])';
+  '[role="menuitem"]:not([aria-disabled="true"]), [role="menuitemradio"]:not([aria-disabled="true"]), [data-popover-item]:not([disabled])';
 
 /**
- * Anchored popover behaviour shared by the org switcher, the account menu
- * and the notifications panel (WAI-ARIA menu-button pattern): focus moves
- * into the panel on open (first enabled item, else the panel itself),
- * ↑/↓ rove between items, and Escape / an outside click / `close()` all
+ * Anchored popover behaviour shared by the org switcher, account menu and
+ * notifications panel: focus moves to the first usable control on open,
+ * ↑/↓ roves between controls, and Escape / an outside click / `close()`
  * return focus to the trigger — the design system's overlay-dismissal rule.
  */
 export function usePopover<TTrigger extends HTMLElement = HTMLButtonElement>() {

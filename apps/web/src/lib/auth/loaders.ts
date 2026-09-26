@@ -1,3 +1,5 @@
+import type { MeContextResponse } from "@nightwatch/api-contract";
+
 import {
   redirectDocument,
   replace,
@@ -7,6 +9,12 @@ import {
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import { authClient } from "../auth-client";
+import {
+  fetchNotifications,
+  fetchOrganizationNotificationSettings,
+  notificationQueryKey,
+  organizationNotificationSettingsQueryKey,
+} from "../api/notifications";
 import { fetchSessions, SESSIONS_QUERY_KEY } from "../sessions/sessions";
 import {
   peekActiveQueryClientIdentity,
@@ -95,8 +103,10 @@ async function gateVerifiedSession(
  * the router error boundary: the in-tree query surfaces the same error
  * state (with retry UI) as before.
  */
-async function prefetchMeContext(userId: string): Promise<void> {
-  await resolveQueryClientForIdentity(userId)
+async function prefetchMeContext(
+  userId: string,
+): Promise<MeContextResponse | undefined> {
+  return resolveQueryClientForIdentity(userId)
     .query({
       queryKey: ME_CONTEXT_QUERY_KEY,
       queryFn: fetchMeContext,
@@ -114,6 +124,54 @@ export async function workspaceLoader({
     return sessionOrRedirect;
   }
   await prefetchMeContext(sessionOrRedirect.user.id);
+  return null;
+}
+
+/** /notifications — gates and prefetches the Center's primary inbox page. */
+export async function notificationsLoader({
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  const activeOrganizationId =
+    context?.organizations.some(
+      (organization) => organization.id === context.lastActiveTenantId,
+    ) === true
+      ? context.lastActiveTenantId
+      : null;
+  await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+    .query({
+      queryKey: notificationQueryKey(activeOrganizationId),
+      queryFn: () => fetchNotifications(activeOrganizationId),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
+}
+
+/** Organization notification settings — primary data is prefetched before commit. */
+export async function notificationSettingsLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const organizationId = params.organizationId;
+  if (organizationId === undefined) {
+    return null;
+  }
+  await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+    .query({
+      queryKey: organizationNotificationSettingsQueryKey(organizationId),
+      queryFn: () => fetchOrganizationNotificationSettings(organizationId),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
   return null;
 }
 

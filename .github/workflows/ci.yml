@@ -58,8 +58,9 @@ jobs:
 
   # Coverage is measured and uploaded on every run; thresholds fail the build
   # because COVERAGE_GATE=1 is set (first domain feature: auth/onboarding).
-  # The job runs against real PostgreSQL + Mailpit services with the
-  # least-privilege runtime role — no mocks for DB-backed checks.
+  # The job runs against real PostgreSQL, Mailpit, and Redis transport
+  # services with the least-privilege runtime role — no mocks for DB-backed
+  # checks.
   test:
     name: unit tests + coverage
     runs-on: ubuntu-latest
@@ -74,6 +75,7 @@ jobs:
       SMTP_PORT: "1025"
       SMTP_SECURE: "false"
       SMTP_FROM: NightWatch CI <ci@nightwatch.local>
+      REDIS_URL: redis://localhost:6379
     services: &db_services
       postgres:
         image: postgres:17.11-alpine
@@ -94,6 +96,15 @@ jobs:
         ports:
           - "1025:1025"
           - "8025:8025"
+      redis:
+        image: redis:7.4.7-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -186,6 +197,7 @@ jobs:
       SMTP_PORT: "1025"
       SMTP_SECURE: "false"
       SMTP_FROM: NightWatch CI <ci@nightwatch.local>
+      REDIS_URL: redis://localhost:6379
       E2E_REQUIRE_CREDENTIALS: "1"
       E2E_EMAIL: settings-e2e@nightwatch.invalid
       E2E_PASSWORD: "nightwatch-ci-disposable-only-06!"
