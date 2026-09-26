@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --exclude 'src/**/*.db.test.ts'",
-    "test:integration": "vitest run src/materialize.db.test.ts src/dispatch.db.test.ts"
+    "test:integration": "vitest run src/materialize.db.test.ts src/dispatch.db.test.ts",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@nightwatch/db": "workspace:*",
