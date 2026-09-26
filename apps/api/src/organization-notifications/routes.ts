@@ -1,7 +1,7 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { MiddlewareHandler } from "hono";
 import type { Database } from "@nightwatch/db";
-import type { AuthEnv, Logger } from "@nightwatch/shared";
+import { AppError, type AuthEnv, type Logger } from "@nightwatch/shared";
 import { z } from "zod";
 
 import type { Auth } from "../auth";
@@ -43,6 +43,31 @@ export function createNativeOrganizationMutationGuard(): NativeOrganizationMutat
     }
     await next();
   };
+}
+
+const DENIAL_CODES = new Set(["MEMBERSHIP_DENIED", "PERMISSION_DENIED"]);
+
+/**
+ * Audits organization authorization denials (REQ-05/ORG-05) with the actor
+ * and action only — never the target organization or member data.
+ */
+async function auditDenials<T>(
+  logger: Logger,
+  actorUserId: string,
+  action: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof AppError && DENIAL_CODES.has(error.code)) {
+      logger.warn(
+        { actorUserId, action, code: error.code },
+        "organization access denied",
+      );
+    }
+    throw error;
+  }
 }
 
 const memberParamsSchema = z.object({
@@ -114,7 +139,7 @@ const memberSelfLeaveRoute = createRoute({
  */
 export function registerOrganizationNotificationSettingsRoutes(
   app: OpenAPIHono,
-  deps: { auth: Auth; authEnv: AuthEnv; database: Database; logger?: Logger },
+  deps: { auth: Auth; authEnv: AuthEnv; database: Database; logger: Logger },
 ): void {
   app.openapi(
     notificationRouteDeclarations.getSettings,
@@ -124,10 +149,16 @@ export function registerOrganizationNotificationSettingsRoutes(
         deps.auth,
         c.req.raw.headers,
       );
-      const body = await getOrganizationNotificationSettings(deps.database, {
-        organizationId,
-        userId: session.user.id,
-      });
+      const body = await auditDenials(
+        deps.logger,
+        session.user.id,
+        "organization.notification-settings.read",
+        () =>
+          getOrganizationNotificationSettings(deps.database, {
+            organizationId,
+            userId: session.user.id,
+          }),
+      );
       return c.json(body, 200);
     },
     invalidInputHook,
@@ -142,12 +173,18 @@ export function registerOrganizationNotificationSettingsRoutes(
         deps.auth,
         c.req.raw.headers,
       );
-      const body = await updateOrganizationNotificationSettings(deps.database, {
-        organizationId,
-        userId: session.user.id,
-        actorDisplayName: session.user.name,
-        update,
-      });
+      const body = await auditDenials(
+        deps.logger,
+        session.user.id,
+        "organization.notification-settings.update",
+        () =>
+          updateOrganizationNotificationSettings(deps.database, {
+            organizationId,
+            userId: session.user.id,
+            actorDisplayName: session.user.name,
+            update,
+          }),
+      );
       return c.json(body, 200);
     },
     invalidInputHook,
@@ -156,39 +193,57 @@ export function registerOrganizationNotificationSettingsRoutes(
 
 export function registerOrganizationMemberRoutes(
   app: OpenAPIHono,
-  deps: { auth: Auth; database: Database },
+  deps: { auth: Auth; database: Database; logger: Logger },
 ): void {
   app.openapi(memberRoleUpdateRoute, async (c) => {
     const { organizationId, memberId } = c.req.valid("param");
     const { role } = c.req.valid("json");
     const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
-    const member = await updateOrganizationMemberRole(deps.database, {
-      organizationId,
-      actorUserId: session.user.id,
-      memberId,
-      role,
-    });
+    const member = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.member.role.update",
+      () =>
+        updateOrganizationMemberRole(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          memberId,
+          role,
+        }),
+    );
     return c.json({ member }, 200);
   });
 
   app.openapi(memberSelfLeaveRoute, async (c) => {
     const { organizationId } = c.req.valid("param");
     const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
-    const member = await leaveOrganization(deps.database, {
-      organizationId,
-      actorUserId: session.user.id,
-    });
+    const member = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.member.leave",
+      () =>
+        leaveOrganization(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+        }),
+    );
     return c.json({ member }, 200);
   });
 
   app.openapi(memberRevokeRoute, async (c) => {
     const { organizationId, memberId } = c.req.valid("param");
     const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
-    const member = await revokeOrganizationMember(deps.database, {
-      organizationId,
-      actorUserId: session.user.id,
-      memberId,
-    });
+    const member = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.member.revoke",
+      () =>
+        revokeOrganizationMember(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          memberId,
+        }),
+    );
     return c.json({ member }, 200);
   });
 }

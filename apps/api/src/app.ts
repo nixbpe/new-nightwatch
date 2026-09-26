@@ -189,7 +189,11 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       database,
       logger: deps.logger,
     });
-    registerOrganizationMemberRoutes(app, { auth, database });
+    registerOrganizationMemberRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+    });
   }
 
   app.notFound((c) => {

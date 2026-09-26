@@ -28,6 +28,12 @@ function deny(message: string): never {
   throw new AppError(403, "PERMISSION_DENIED", message);
 }
 
+// One denial for a missing organization and a non-member actor, so a
+// nonmember cannot probe which organizations exist (ORG-02).
+function notMember(): never {
+  throw new AppError(403, "MEMBERSHIP_DENIED", "คุณไม่ใช่สมาชิกขององค์กรนี้");
+}
+
 function memberNotFound(): never {
   throw new AppError(404, "MEMBER_NOT_FOUND", "ไม่พบสมาชิกองค์กร");
 }
@@ -70,7 +76,7 @@ async function lockedMember(
     [organizationId, userId],
   );
   const member = result.rows[0];
-  if (!member) memberNotFound();
+  if (!member) notMember();
   return member;
 }
 
@@ -99,9 +105,7 @@ async function withLockedOrganization<T>(
       "select id from organization where id = $1 for update",
       [organizationId],
     );
-    if (!organization.rows[0]) {
-      throw new AppError(404, "ORGANIZATION_NOT_FOUND", "ไม่พบองค์กร");
-    }
+    if (!organization.rows[0]) notMember();
     await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
       `notification-membership:${organizationId}`,
     ]);

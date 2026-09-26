@@ -67,12 +67,16 @@ const auth = createAuth({
   database: runtime,
   mailer,
 });
+const auditLines: string[] = [];
 const app = createApp({
   env,
   authEnv,
   auth,
   database: runtime,
-  logger: createLogger({ level: "silent", name: "member-routes-db-test" }),
+  logger: createLogger(
+    { level: "warn", name: "member-routes-db-test" },
+    { write: (line: string) => void auditLines.push(line) },
+  ),
 });
 
 type ApiResponse = { status: number; json: unknown };
@@ -350,6 +354,32 @@ describe("organization member HTTP mutations", () => {
         )
       ).rows.every((session) => session.active_organization_id === null),
     ).toBe(true);
+
+    // A nonmember gets one denial whether or not the organization exists,
+    // and every denial is audited with the actor but no tenant data.
+    auditLines.length = 0;
+    for (const probedOrganizationId of [organizationId, crypto.randomUUID()]) {
+      const probe = await leaverClient(
+        "DELETE",
+        `/api/organizations/${probedOrganizationId}/members/me`,
+      );
+      expect(probe.status).toBe(403);
+      expect(probe.json).toMatchObject({
+        error: { code: "MEMBERSHIP_DENIED" },
+      });
+    }
+    const denials = auditLines
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.msg === "organization access denied");
+    expect(denials).toHaveLength(2);
+    for (const denial of denials) {
+      expect(denial).toMatchObject({
+        actorUserId: leaverId,
+        action: "organization.member.leave",
+        code: "MEMBERSHIP_DENIED",
+      });
+      expect(JSON.stringify(denial)).not.toContain(organizationId);
+    }
 
     const lastOwner = await ownerClient(
       "DELETE",
