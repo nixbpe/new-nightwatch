@@ -257,7 +257,9 @@ export async function listInbox(
     cursor?: string;
   },
 ): Promise<NotificationListResponse> {
-  return withResolvedScope(
+  // Only the queries run under the scope locks; sorting, item conversion and
+  // cursor signing happen after commit (REQ-08).
+  const { scope, account, tenant, unreadCount } = await withResolvedScope(
     deps.database,
     input.userId,
     async (client, scope) => {
@@ -277,34 +279,37 @@ export async function listInbox(
           );
         }
       }
-      const account = await accountRows(
-        client,
-        scope.userId,
-        anchor,
-        input.limit + 1,
-      );
-      const tenant = await tenantRows(client, scope, anchor, input.limit + 1);
-      const unreadCount = await countUnreadInScope(client, scope);
-      const visible = [...account, ...tenant]
-        .sort(compareRows)
-        .slice(0, input.limit + 1);
-      const page = visible.slice(0, input.limit);
-      const last = page.at(-1);
       return {
-        items: page.map(toItem),
-        nextCursor:
-          visible.length > input.limit && last
-            ? createNotificationCursor({
-                secret: deps.cursorSecret,
-                scope: { ...scope, limit: input.limit },
-                anchor: { occurredAt: last.cursorOccurredAt, id: last.id },
-              })
-            : null,
-        unreadCount,
-        organizationId: scope.organizationId,
+        scope,
+        account: await accountRows(
+          client,
+          scope.userId,
+          anchor,
+          input.limit + 1,
+        ),
+        tenant: await tenantRows(client, scope, anchor, input.limit + 1),
+        unreadCount: await countUnreadInScope(client, scope),
       };
     },
   );
+  const visible = [...account, ...tenant]
+    .sort(compareRows)
+    .slice(0, input.limit + 1);
+  const page = visible.slice(0, input.limit);
+  const last = page.at(-1);
+  return {
+    items: page.map(toItem),
+    nextCursor:
+      visible.length > input.limit && last
+        ? createNotificationCursor({
+            secret: deps.cursorSecret,
+            scope: { ...scope, limit: input.limit },
+            anchor: { occurredAt: last.cursorOccurredAt, id: last.id },
+          })
+        : null,
+    unreadCount,
+    organizationId: scope.organizationId,
+  };
 }
 
 async function countUnreadInScope(
@@ -365,20 +370,14 @@ export async function openInboxItem(
   deps: InboxServiceDeps,
   input: { userId: string; sessionToken: string; itemId: string },
 ): Promise<NotificationDetail> {
-  return withResolvedScope(
+  const row = await withResolvedScope(
     deps.database,
     input.userId,
-    async (client, scope) => {
-      const row = await updateVisibleItem(client, scope, input.itemId);
-      if (!row)
-        throw new AppError(
-          404,
-          "NOTIFICATION_NOT_FOUND",
-          "Notification not found",
-        );
-      return toItem(row);
-    },
+    (client, scope) => updateVisibleItem(client, scope, input.itemId),
   );
+  if (!row)
+    throw new AppError(404, "NOTIFICATION_NOT_FOUND", "Notification not found");
+  return toItem(row);
 }
 
 export async function markInboxItemRead(
