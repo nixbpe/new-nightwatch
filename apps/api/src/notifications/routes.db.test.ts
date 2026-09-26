@@ -485,4 +485,44 @@ describe("notification inbox API", () => {
       unreadCount: 3,
     });
   });
+
+  it("moves every session mirror of the user when the active organization changes", async () => {
+    await owner.sql.query(
+      "insert into session (id, token, user_id, expires_at, active_organization_id) values ($1, $2, $3, $4, $5)",
+      [
+        crypto.randomUUID(),
+        `notification-other-${run}-${crypto.randomUUID()}`,
+        userId,
+        session.session.expiresAt,
+        orgA,
+      ],
+    );
+    await owner.sql.query(
+      'update "user" set last_active_tenant_id = $1 where id = $2',
+      [orgA, userId],
+    );
+    await owner.sql.query(
+      "update session set active_organization_id = $1 where user_id = $2",
+      [orgA, userId],
+    );
+
+    const response = await app.request("http://localhost/api/me/active-org", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ organizationId: orgB }),
+    });
+    expect(response.status).toBe(200);
+
+    const mirrors = await owner.sql.query<{
+      activeOrganizationId: string | null;
+    }>(
+      `select active_organization_id as "activeOrganizationId"
+       from session where user_id = $1`,
+      [userId],
+    );
+    expect(mirrors.rows.length).toBeGreaterThan(1);
+    expect(mirrors.rows.every((row) => row.activeOrganizationId === orgB)).toBe(
+      true,
+    );
+  });
 });

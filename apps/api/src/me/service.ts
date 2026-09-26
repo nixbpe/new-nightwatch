@@ -259,11 +259,15 @@ export async function setActiveOrganization(
        where id = $2`,
       [organizationId, session.user.id],
     );
+    // Organization selection is account-global (last_active_tenant_id), so
+    // every session mirror of the user moves with it in this transaction
+    // (ORG-04); otherwise another live session's mirror would disagree with
+    // the scope its inbox requests resolve.
     await client.query(
       `update session
        set active_organization_id = $1
-       where token = $2`,
-      [organizationId, session.session.token],
+       where user_id = $2`,
+      [organizationId, session.user.id],
     );
     await client.query("commit");
     inTransaction = false;
