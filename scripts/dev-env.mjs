@@ -23,7 +23,6 @@ import { repoRoot, resolvePorts } from "./ports.mjs";
 
 const LOCAL_REDIS_PORT_BASE = 6380;
 
-/** Loopback Redis port isolated by the existing per-worktree slot. */
 export function localRedisPort(slot) {
   return LOCAL_REDIS_PORT_BASE + slot;
 }

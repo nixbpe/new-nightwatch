@@ -214,6 +214,8 @@ export async function revokeOrganizationMember(
         input.organizationId,
         input.actorUserId,
       );
+      // Authorize before touching the target, so an unauthorized caller can
+      // neither probe which members exist nor contend on their rows.
       if (!isOwnerOrAdmin(actor)) deny("คุณไม่มีสิทธิ์ลบสมาชิก");
       const target = await lockedTarget(
         client,

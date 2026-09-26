@@ -36,7 +36,6 @@ const organizationNotificationItemSchema = z.object({
   category: z.literal("notification-settings"),
 });
 
-/** A recipient inbox item, discriminated by its account or organization scope. */
 export const notificationItemSchema = z.discriminatedUnion("scope", [
   accountNotificationItemSchema,
   organizationNotificationItemSchema,
