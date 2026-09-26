@@ -106,7 +106,7 @@ export function Header({
         <button
           type="button"
           onClick={onOpenSearch}
-          className="hidden h-9 w-80 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-sm text-foreground-secondary hover:bg-foreground/5 lg:flex"
+          className="hidden h-9 w-80 items-center gap-2 rounded-md border border-foreground/10 bg-background px-3 text-sm text-foreground-secondary hover:bg-foreground/5 hover:text-foreground lg:flex"
         >
           <SearchIcon size={16} />
           <span className="flex-1 text-start">ค้นหาทั้งหมด...</span>

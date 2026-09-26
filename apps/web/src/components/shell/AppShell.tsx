@@ -208,7 +208,7 @@ export function AppShell() {
               type="button"
               aria-label="ปิดเมนู"
               onClick={closeMobileMenu}
-              className="absolute top-2 -right-11 inline-flex h-9 w-9 items-center justify-center rounded-md bg-surface text-foreground-secondary hover:text-foreground"
+              className="absolute top-2 -right-11 inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/10 bg-surface text-foreground-secondary shadow-lg hover:text-foreground"
             >
               <XIcon size={18} />
             </button>

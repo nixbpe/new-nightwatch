@@ -199,16 +199,23 @@ describe("AppShell", () => {
       "page",
     );
 
-    // Nav: a labelled section, not an accordion — no expandable control.
+    // Nav: top-level pages, then a labelled section, not an accordion — no
+    // expandable control. The organization leaf resolves against ORG_A.
     const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
     expect(within(nav).getByRole("link", { name: "ภาพรวม" })).toHaveAttribute(
       "href",
       "/workspace",
     );
-    expect(within(nav).getByText("ตั้งค่า")).toBeInTheDocument();
+    expect(
+      within(nav).getByRole("link", { name: "การแจ้งเตือน" }),
+    ).toHaveAttribute("href", "/notifications");
     expect(
       within(nav).getByRole("link", { name: "การตั้งค่าส่วนตัว" }),
     ).toHaveAttribute("href", "/settings");
+    expect(within(nav).getByText("องค์กร")).toBeInTheDocument();
+    expect(
+      within(nav).getByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+    ).toHaveAttribute("href", `/organizations/${ORG_A}/notification-settings`);
     // Palette-only sub-destinations never become sidebar rows.
     expect(
       within(nav).queryByRole("link", { name: "เซสชันและอุปกรณ์" }),
@@ -229,6 +236,21 @@ describe("AppShell", () => {
     expect(
       screen.getByRole("button", { name: "การแจ้งเตือน" }),
     ).toBeInTheDocument();
+  });
+
+  it("hides the organization section from roles it does not admit", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
+    renderShell();
+    await screen.findByRole("link", { name: "Org B" });
+
+    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    expect(
+      within(nav).getByRole("link", { name: "ภาพรวม" }),
+    ).toBeInTheDocument();
+    expect(within(nav).queryByText("องค์กร")).toBeNull();
+    expect(
+      within(nav).queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+    ).toBeNull();
   });
 
   it("a crashing page is caught without losing the shell chrome", async () => {
@@ -512,8 +534,9 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    // 2 sidebar destinations + the 4 settings tabs (palette-only entries).
-    expect(within(dialog).getAllByRole("option")).toHaveLength(6);
+    // 4 sidebar destinations (the owner sees the organization leaf) + the
+    // 4 settings tabs (palette-only entries).
+    expect(within(dialog).getAllByRole("option")).toHaveLength(8);
     expect(dialog).toHaveTextContent("ค้นหาใน Org A");
 
     await user.keyboard("เซสชัน");

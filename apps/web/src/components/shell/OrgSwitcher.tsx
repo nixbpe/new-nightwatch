@@ -1,6 +1,7 @@
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
-import { CheckIcon, ChevronsUpDownIcon, ShieldIcon } from "./icons";
+import { BrandMark } from "./BrandMark";
+import { CheckIcon, ChevronsUpDownIcon } from "./icons";
 import { initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
@@ -37,12 +38,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
           collapsed ? "justify-center px-2" : "px-4"
         }`}
       >
-        <span className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-primary text-on-primary">
-          <ShieldIcon size={16} />
-        </span>
-        {collapsed ? null : (
-          <span className="text-sm font-semibold">NightWatch</span>
-        )}
+        <BrandMark withName={!collapsed} />
       </div>
     );
   }

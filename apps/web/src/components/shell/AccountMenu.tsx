@@ -169,7 +169,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "light", label: "สว่าง" },
   { value: "dark", label: "มืด" },
-  { value: "system", label: "ระบบ" },
+  { value: "system", label: "ตามระบบ" },
 ];
 
 function ThemeSegmentedControl({
