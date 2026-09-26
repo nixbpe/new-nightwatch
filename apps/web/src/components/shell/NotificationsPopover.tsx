@@ -59,7 +59,10 @@ export function NotificationsPopover() {
         aria-label="การแจ้งเตือน"
         aria-haspopup="dialog"
         aria-expanded={popover.open}
-        onClick={popover.toggle}
+        onClick={() => {
+          open.reset();
+          popover.toggle();
+        }}
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <BellIcon size={18} />
@@ -99,6 +102,14 @@ export function NotificationsPopover() {
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
+            {open.isError ? (
+              <p
+                role="alert"
+                className="border-b border-foreground/10 px-4 py-3 text-sm text-danger"
+              >
+                เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
+              </p>
+            ) : null}
             {list.isPending ? (
               <p
                 role="status"

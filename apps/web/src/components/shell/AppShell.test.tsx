@@ -580,6 +580,42 @@ describe("AppShell", () => {
     expect(within(breadcrumb).getByText("การแจ้งเตือน")).toBeInTheDocument();
   });
 
+  it("shows a popover open failure while keeping the list for retry", async () => {
+    const notification: NotificationItem = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      scope: "account",
+      organizationId: null,
+      eventType: "PASSWORD_CHANGED",
+      occurredAt: "2026-09-25T03:00:00.000Z",
+      readAt: null,
+      actor: null,
+      category: null,
+    };
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+    fetchNotificationsMock.mockResolvedValue({
+      items: [notification],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    openNotificationMock.mockRejectedValue(new Error("network down"));
+    const user = userEvent.setup();
+    renderShell();
+
+    await screen.findByRole("link", { name: "Org A" });
+    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await user.click(
+      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+    );
+    expect(
+      screen.getByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+    ).toBeInTheDocument();
+  });
+
   it("with no membership the logo slot falls back to the product mark", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([]));
     renderShell(<WorkspacePage />);
