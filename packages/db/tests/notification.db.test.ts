@@ -375,6 +375,56 @@ describe("notification database scopes", () => {
     });
   });
 
+  it("holds exhausted and invalid-scope failures instead of reclaiming them", async () => {
+    for (const reason of [
+      "MATERIALIZATION_EXHAUSTED",
+      "INVALID_SCOPE",
+    ] as const) {
+      const dispatchId = randomUUID();
+      await withAccountContext(database, accountA, async (tx) => {
+        await insertAccountNotificationIntent(tx, {
+          id: randomUUID(),
+          dispatchId,
+          userId: accountA,
+          origin: `terminal-failure:${reason}:${run}`,
+          eventType: "PASSWORD_CHANGED",
+          occurredAt: new Date(),
+        });
+      });
+      const token = randomUUID();
+      await owner.query(
+        `update notification_dispatch_ledger
+         set status = 'claimed', claim_token = $1, claimed_at = now()
+         where id = $2`,
+        [token, dispatchId],
+      );
+      await expect(
+        failNotificationDispatch(database, {
+          id: dispatchId,
+          claimToken: token,
+          reason,
+        }),
+      ).resolves.toBe(true);
+
+      const claimed = await claimNotificationDispatches(database, {
+        claimToken: randomUUID(),
+        limit: 100,
+      });
+      expect(claimed).not.toContainEqual(
+        expect.objectContaining({ id: dispatchId }),
+      );
+      await expect(
+        owner.query(
+          `select status, failure_reason from notification_dispatch_ledger
+           where id = $1`,
+          [dispatchId],
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ status: "failed", failure_reason: reason }],
+      });
+    }
+  });
+
   it("exposes completed dispatch existence only in its verified scope", async () => {
     const accountIntentId = randomUUID();
     const accountDispatchId = randomUUID();
