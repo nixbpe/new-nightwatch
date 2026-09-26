@@ -166,12 +166,14 @@ export async function updateOrganizationMemberRole(
         input.organizationId,
         input.actorUserId,
       );
+      // Authorize before touching the target, so an unauthorized caller can
+      // neither probe which members exist nor contend on their rows.
+      if (!isOwnerOrAdmin(actor)) deny("คุณไม่มีสิทธิ์เปลี่ยนบทบาทสมาชิก");
       const target = await lockedTarget(
         client,
         input.organizationId,
         input.memberId,
       );
-      if (!isOwnerOrAdmin(actor)) deny("คุณไม่มีสิทธิ์เปลี่ยนบทบาทสมาชิก");
       if (
         (!isOwner(actor) && isOwner(target)) ||
         (!isOwner(actor) && input.role === "owner")
@@ -212,12 +214,14 @@ export async function revokeOrganizationMember(
         input.organizationId,
         input.actorUserId,
       );
+      // Authorize before touching the target, so an unauthorized caller can
+      // neither probe which members exist nor contend on their rows.
+      if (!isOwnerOrAdmin(actor)) deny("คุณไม่มีสิทธิ์ลบสมาชิก");
       const target = await lockedTarget(
         client,
         input.organizationId,
         input.memberId,
       );
-      if (!isOwnerOrAdmin(actor)) deny("คุณไม่มีสิทธิ์ลบสมาชิก");
       await assertOwnerMayChangeOwner(
         client,
         input.organizationId,

@@ -301,6 +301,20 @@ describe("organization member HTTP mutations", () => {
         .status,
     ).toBe(200);
 
+    // An unauthorized actor is denied before any target lookup, so a missing
+    // and an existing target are indistinguishable to a viewer.
+    for (const probedMemberId of [memberIds.owner, crypto.randomUUID()]) {
+      const probe = await targetClient(
+        "PATCH",
+        `/api/organizations/${organizationId}/members/${probedMemberId}/role`,
+        { role: "viewer" },
+      );
+      expect(probe.status).toBe(403);
+      expect(probe.json).toMatchObject({
+        error: { code: "PERMISSION_DENIED" },
+      });
+    }
+
     const role = await ownerClient(
       "PATCH",
       `/api/organizations/${organizationId}/members/${memberIds.target}/role`,
@@ -401,6 +415,13 @@ describe("organization member HTTP mutations", () => {
         `/api/organizations/${organizationId}/members/me`,
       );
       expect(blocked.status).toBe(403);
+      const blockedSwitch = await leaverClient("PATCH", "/api/me/active-org", {
+        organizationId,
+      });
+      expect(blockedSwitch.status).toBe(403);
+      expect(blockedSwitch.json).toMatchObject({
+        error: { code: "MEMBERSHIP_DENIED" },
+      });
     } finally {
       await lockHolder.query("rollback");
       lockHolder.release();

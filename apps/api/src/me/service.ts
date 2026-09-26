@@ -191,9 +191,28 @@ export async function setActiveOrganization(
   organizationId: string,
 ): Promise<MeContextResponse> {
   const client = await database.sql.connect();
-  let inTransaction = true;
+  let inTransaction = false;
   try {
+    // Pre-tenant, actor-scoped membership lookup before any organization lock
+    // (ORG-02): a nonmember never contends on another organization's rows.
+    // Membership is rechecked under the locks below.
+    const preMembership = await client.query(
+      "select 1 from member where organization_id = $1 and user_id = $2",
+      [organizationId, session.user.id],
+    );
+    if (preMembership.rows.length === 0) {
+      logger.warn(
+        { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
+        "active organization change denied: not a member",
+      );
+      throw new AppError(
+        403,
+        "MEMBERSHIP_DENIED",
+        "คุณไม่ใช่สมาชิกขององค์กรนี้",
+      );
+    }
     await client.query("begin");
+    inTransaction = true;
     const organization = await client.query(
       "select id from organization where id = $1 for update",
       [organizationId],
