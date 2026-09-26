@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { BrandMark } from "./shell/BrandMark";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Label } from "./ui/label";
@@ -20,7 +21,11 @@ export const textInputClass =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
-/** Centered single-card page used by every auth form (docs/design-system.md). */
+/**
+ * Centered single-card page used by every auth form except the login
+ * split layout: the product mark above the card keeps the brand present
+ * on recovery, verification and invitation pages (docs/design-system.md).
+ */
 export function AuthPageShell({
   title,
   subtitle,
@@ -31,7 +36,8 @@ export function AuthPageShell({
   children: ReactNode;
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
+      <BrandMark withName />
       <Card className="w-full max-w-md p-6 sm:p-8">
         <h1 className="text-2xl font-semibold">{title}</h1>
         {subtitle === undefined ? null : (

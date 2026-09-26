@@ -2,6 +2,14 @@ import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { Link, useSearchParams } from "react-router";
 
+import { BrandMark } from "../components/shell/BrandMark";
+import {
+  EyeIcon,
+  EyeOffIcon,
+  LayersIcon,
+  LockIcon,
+  SearchIcon,
+} from "../components/shell/icons";
 import {
   Alert,
   Field,
@@ -20,12 +28,6 @@ import { normalizeReturnTo, rememberReturnTo } from "../lib/auth/continuation";
  * the form panel follows the current theme via the shared tokens every other
  * page already uses. Below the `lg` breakpoint the brand panel collapses to
  * the compact row so the page reflows instead of losing content.
- *
- * Known gap (tracked, not fixed here): the mockup's 4px corners and
- * hairline-not-shadow card treatment (docs/design-system.md) apply only to
- * the elements introduced by this page. The shared Input/SubmitButton still
- * render at their current global radius until index.css's tokens migrate —
- * that is a separate, app-wide change, not scoped to this page.
  */
 export function LoginPage() {
   // The protected-route loaders bounce here as /login?from=<path+query>;
@@ -69,9 +71,8 @@ export function LoginPage() {
     <div className="grid min-h-screen lg:grid-cols-[560px_minmax(0,1fr)]">
       <BrandPanel />
       <div className="flex flex-col">
-        <div className="flex items-center gap-2.5 px-6 pt-6 lg:hidden">
-          <BrandMark size={28} />
-          <span className="text-base font-semibold">NightWatch</span>
+        <div className="px-6 pt-6 lg:hidden">
+          <BrandMark size={28} withName />
         </div>
         <main className="flex flex-1 items-center justify-center p-4 sm:p-8">
           <div className="flex w-full max-w-[360px] flex-col gap-5">
@@ -239,18 +240,6 @@ export function LoginPage() {
   );
 }
 
-/** 36px shield mark on a solid primary square (4px corners, per the redesign). */
-function BrandMark({ size = 36 }: { size?: number }) {
-  return (
-    <span
-      className="inline-flex flex-shrink-0 items-center justify-center rounded-[4px] bg-primary text-on-primary"
-      style={{ width: size, height: size }}
-    >
-      <ShieldIcon size={Math.round(size * 0.55)} />
-    </span>
-  );
-}
-
 const BULLETS = [
   {
     icon: LayersIcon,
@@ -278,10 +267,7 @@ function BrandPanel() {
   return (
     <aside className="hidden flex-col justify-between overflow-hidden bg-[#05060a] p-14 text-[#f3f4f6] lg:flex">
       <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-3">
-          <BrandMark size={36} />
-          <span className="text-lg font-semibold">NightWatch</span>
-        </div>
+        <BrandMark size={36} withName />
         <h2 className="max-w-[380px] text-[26px] leading-[34px] font-semibold">
           จัดลำดับความเสี่ยงที่ควรแก้ไขก่อน ครอบคลุมทุกโปรเจกต์ของลูกค้า
         </h2>
@@ -306,77 +292,5 @@ function BrandPanel() {
         ))}
       </div>
     </aside>
-  );
-}
-
-// Inline SVGs, stroke-based on a 24px grid, matching the icon style already
-// established for this design (docs/ref/designs/) — no icon library dependency.
-function iconProps(size: number) {
-  return {
-    width: size,
-    height: size,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.75,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    "aria-hidden": true,
-  };
-}
-
-function ShieldIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg {...iconProps(size)}>
-      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-    </svg>
-  );
-}
-
-function LayersIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg {...iconProps(size)}>
-      <path d="m12 2 9 5-9 5-9-5 9-5Z" />
-      <path d="m3 12 9 5 9-5" />
-      <path d="m3 17 9 5 9-5" />
-    </svg>
-  );
-}
-
-function SearchIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg {...iconProps(size)}>
-      <circle cx="11" cy="11" r="7" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
-  );
-}
-
-function LockIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg {...iconProps(size)}>
-      <rect x="3" y="11" width="18" height="11" rx="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg {...iconProps(18)}>
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function EyeOffIcon() {
-  return (
-    <svg {...iconProps(18)}>
-      <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-      <path d="M6.61 6.61C3.94 8.42 2 12 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-      <line x1="2" y1="2" x2="22" y2="22" />
-    </svg>
   );
 }

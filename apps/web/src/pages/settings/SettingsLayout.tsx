@@ -1,14 +1,15 @@
 import { NavLink, Outlet, useLocation } from "react-router";
 
 import { NAV_ICONS } from "../../components/shell/icons";
+import { Page, PageHeader } from "../../components/shell/Page";
 import { Skeleton } from "../../components/shell/Skeleton";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { SETTINGS_TABS } from "./settings-tabs";
 
 /**
  * Personal-settings page frame: header, tab strip, and the routed tab. The
- * settings apply to the account across organizations, so the subtitle says
- * so explicitly (design-system: keep scope visible).
+ * settings apply to the account across organizations, so the description
+ * says so explicitly (design-system: keep scope visible).
  */
 export function SettingsLayout() {
   const { me, mePending, activeOrg } = useTenant();
@@ -16,27 +17,24 @@ export function SettingsLayout() {
   const name = me?.user.name ?? "";
 
   return (
-    <div className="flex flex-col gap-6">
-      <header>
-        <p className="text-xs text-foreground-secondary">
-          {mePending ? (
+    <Page>
+      <PageHeader
+        eyebrow={
+          mePending ? (
             <Skeleton className="h-3 w-40 align-middle" />
           ) : name === "" ? (
             "บัญชีของฉัน"
           ) : (
             `${name} · บัญชีของฉัน`
-          )}
-        </p>
-        <h1 className="mt-1.5 text-[28px] leading-9 font-semibold tracking-tight">
-          การตั้งค่าส่วนตัว
-        </h1>
-        <p className="mt-1.5 text-sm text-foreground-secondary">
-          ใช้กับบัญชีของคุณในทุกองค์กร
-          {activeOrg === null
-            ? ""
-            : ` — ไม่ใช่การตั้งค่าขององค์กร ${activeOrg.name}`}
-        </p>
-      </header>
+          )
+        }
+        title="การตั้งค่าส่วนตัว"
+        description={
+          activeOrg === null
+            ? "ใช้กับบัญชีของคุณในทุกองค์กร"
+            : `ใช้กับบัญชีของคุณในทุกองค์กร ไม่ใช่การตั้งค่าขององค์กร ${activeOrg.name}`
+        }
+      />
 
       <nav
         role="tablist"
@@ -68,9 +66,9 @@ export function SettingsLayout() {
         })}
       </nav>
 
-      <div className="min-w-0 max-w-[960px]">
+      <div className="min-w-0">
         <Outlet />
       </div>
-    </div>
+    </Page>
   );
 }

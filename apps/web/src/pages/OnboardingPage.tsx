@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import { PostAuthRedirect } from "../components/PostAuthRedirect";
-import { Alert, FullPageLoading } from "../components/ui";
+import { Alert, AuthPageShell, FullPageLoading } from "../components/ui";
+import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
 import { readInvitation, rememberInvitation } from "../lib/auth/continuation";
@@ -129,29 +130,30 @@ export function OnboardingPage() {
 
   if (tokenPhase === "failed") {
     return (
-      <HubCard title="ยืนยันอีเมลไม่สำเร็จ">
+      <AuthPageShell title="ยืนยันอีเมลไม่สำเร็จ">
         <div className="flex flex-col gap-4">
           <Alert tone="error">{tokenError}</Alert>
-          <button
+          <Button
             type="button"
-            className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="w-full"
             onClick={() => {
               void navigate("/verify-email", { replace: true });
             }}
           >
             ส่งอีเมลยืนยันใหม่
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="w-full rounded-md border border-control-border px-4 py-2.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            variant="secondary"
+            className="w-full"
             onClick={() => {
               void navigate("/login", { replace: true });
             }}
           >
             กลับไปเข้าสู่ระบบ
-          </button>
+          </Button>
         </div>
-      </HubCard>
+      </AuthPageShell>
     );
   }
 
@@ -161,15 +163,4 @@ export function OnboardingPage() {
 
   // Every remaining outcome is a redirect handled by the routing effect.
   return <FullPageLoading label="กำลังตั้งค่าบัญชีของคุณ…" />;
-}
-
-function HubCard({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-lg bg-surface p-6 shadow-sm sm:p-8">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        <div className="mt-6">{children}</div>
-      </div>
-    </main>
-  );
 }

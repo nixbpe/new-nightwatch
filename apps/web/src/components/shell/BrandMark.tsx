@@ -30,7 +30,9 @@ export function BrandMark({
   return (
     <span className="inline-flex items-center gap-2.5">
       {mark}
-      <span className="text-base font-semibold">NightWatch</span>
+      <span className={`font-semibold ${size >= 36 ? "text-lg" : "text-base"}`}>
+        NightWatch
+      </span>
     </span>
   );
 }

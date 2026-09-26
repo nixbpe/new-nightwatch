@@ -434,7 +434,7 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     renderShell(<WorkspacePage />);
-    await screen.findByRole("heading", { name: "Org A" });
+    await screen.findByText("Org A · เจ้าของ");
 
     // After this tab selects Org B, another session switches back to Org A:
     // the next inbox request sees the scope change and /me reports Org A.
@@ -454,9 +454,7 @@ describe("AppShell", () => {
     await vi.waitFor(() => {
       expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(1);
     });
-    expect(
-      await screen.findByRole("heading", { name: "Org A" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
   });
 
   it("switching organization from the sidebar publishes the new tenant only after the PATCH succeeds", async () => {
@@ -468,7 +466,7 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     renderShell(<WorkspacePage />);
-    await screen.findByRole("heading", { name: "Org A" });
+    await screen.findByText("Org A · เจ้าของ");
 
     await user.click(screen.getByRole("button", { name: /Org A/ }));
     const menu = screen.getByRole("menu", { name: "สลับองค์กร" });
@@ -479,9 +477,7 @@ describe("AppShell", () => {
       within(menu).getByRole("menuitemradio", { name: /Org B/ }),
     );
 
-    expect(
-      await screen.findByRole("heading", { name: "Org B" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Org B · ผู้ชม")).toBeInTheDocument();
     expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
       organizationId: ORG_B,
     });
@@ -505,7 +501,7 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     renderShell(<WorkspacePage />);
-    await screen.findByRole("heading", { name: "Org A" });
+    await screen.findByText("Org A · เจ้าของ");
 
     await user.click(screen.getByRole("button", { name: /Org A/ }));
     await user.click(
@@ -518,7 +514,7 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(updateActiveOrganizationMock).toHaveBeenCalled();
     });
-    expect(screen.getByRole("heading", { name: "Org A" })).toBeInTheDocument();
+    expect(screen.getByText("Org A · เจ้าของ")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Org A/ })).toBeInTheDocument();
   });
 

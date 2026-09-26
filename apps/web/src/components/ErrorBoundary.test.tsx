@@ -33,7 +33,7 @@ describe("ErrorBoundary", () => {
         <Bomb />
       </ErrorBoundary>,
     );
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("เกิดข้อผิดพลาดที่ไม่คาดคิด")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
   });
 
@@ -43,7 +43,7 @@ describe("ErrorBoundary", () => {
         <Bomb />
       </ErrorBoundary>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
     // Bomb throws again, so the fallback returns — proving the reset ran.
     expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
   });

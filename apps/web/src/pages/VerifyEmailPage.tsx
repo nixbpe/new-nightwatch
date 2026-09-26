@@ -11,6 +11,7 @@ import {
   Input,
   SubmitButton,
 } from "../components/ui";
+import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
 import { readInvitation } from "../lib/auth/continuation";
@@ -130,140 +131,142 @@ export function VerifyEmailPage() {
 
   return (
     <AuthPageShell title="ยืนยันอีเมลของคุณ" subtitle={subtitle}>
-      {signedIn ? null : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void form.handleSubmit();
-          }}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          {error === null ? null : <Alert tone="error">{error}</Alert>}
-          {status === "sent" ? (
-            <Alert tone="success">
-              ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
-              (รวมถึงโฟลเดอร์สแปม)
-            </Alert>
-          ) : null}
-          <form.Field
-            name="email"
-            validators={{
-              onChange: ({ value }) =>
-                value.trim() === "" ? "กรุณากรอกอีเมล" : undefined,
-              onSubmit: ({ value }) =>
-                value.trim() === "" ? "กรุณากรอกอีเมล" : undefined,
+      <div className="flex flex-col gap-6">
+        {signedIn ? null : (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void form.handleSubmit();
             }}
+            className="flex flex-col gap-4"
+            noValidate
           >
-            {(field) => (
-              <Field label="อีเมลที่ใช้สมัครบัญชี">
-                <Input
-                  type="email"
-                  name="email"
-                  autoComplete="email"
-                  value={field.state.value}
-                  onChange={(event) => {
-                    field.handleChange(event.target.value);
-                  }}
-                  onBlur={field.handleBlur}
-                  aria-invalid={field.state.meta.errors.length > 0}
-                  aria-describedby={
-                    field.state.meta.errors.length > 0
-                      ? "verify-email-error"
-                      : undefined
-                  }
-                />
-                <FieldValidationError
-                  id="verify-email-error"
-                  errors={field.state.meta.errors}
-                />
-              </Field>
-            )}
-          </form.Field>
-          <form.Subscribe
-            selector={(state) => state.isSubmitting}
-            children={(isSubmitting) => (
-              <SubmitButton
-                pending={isSubmitting}
-                pendingLabel="กำลังส่ง…"
-                disabled={isSubmitting || coolingDown}
-              >
-                {coolingDown
-                  ? "ส่งแล้ว กรุณารอสักครู่"
-                  : "ส่งอีเมลยืนยันอีกครั้ง"}
-              </SubmitButton>
-            )}
-          />
-        </form>
-      )}
-      {signedIn ? (
-        <div className="flex flex-col gap-4">
-          {error === null ? null : <Alert tone="error">{error}</Alert>}
-          {status === "sent" ? (
-            <Alert tone="success">
-              ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
-              (รวมถึงโฟลเดอร์สแปม)
-            </Alert>
-          ) : null}
-          <form.Subscribe
-            selector={(state) => state.isSubmitting}
-            children={(isSubmitting) => (
-              <button
-                type="button"
-                disabled={isSubmitting || coolingDown}
-                onClick={() => {
-                  void form.handleSubmit();
-                }}
-                className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSubmitting
-                  ? "กำลังส่ง…"
-                  : coolingDown
+            {error === null ? null : <Alert tone="error">{error}</Alert>}
+            {status === "sent" ? (
+              <Alert tone="success">
+                ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
+                (รวมถึงโฟลเดอร์สแปม)
+              </Alert>
+            ) : null}
+            <form.Field
+              name="email"
+              validators={{
+                onChange: ({ value }) =>
+                  value.trim() === "" ? "กรุณากรอกอีเมล" : undefined,
+                onSubmit: ({ value }) =>
+                  value.trim() === "" ? "กรุณากรอกอีเมล" : undefined,
+              }}
+            >
+              {(field) => (
+                <Field label="อีเมลที่ใช้สมัครบัญชี">
+                  <Input
+                    type="email"
+                    name="email"
+                    autoComplete="email"
+                    value={field.state.value}
+                    onChange={(event) => {
+                      field.handleChange(event.target.value);
+                    }}
+                    onBlur={field.handleBlur}
+                    aria-invalid={field.state.meta.errors.length > 0}
+                    aria-describedby={
+                      field.state.meta.errors.length > 0
+                        ? "verify-email-error"
+                        : undefined
+                    }
+                  />
+                  <FieldValidationError
+                    id="verify-email-error"
+                    errors={field.state.meta.errors}
+                  />
+                </Field>
+              )}
+            </form.Field>
+            <form.Subscribe
+              selector={(state) => state.isSubmitting}
+              children={(isSubmitting) => (
+                <SubmitButton
+                  pending={isSubmitting}
+                  pendingLabel="กำลังส่ง…"
+                  disabled={isSubmitting || coolingDown}
+                >
+                  {coolingDown
                     ? "ส่งแล้ว กรุณารอสักครู่"
                     : "ส่งอีเมลยืนยันอีกครั้ง"}
-              </button>
-            )}
-          />
-        </div>
-      ) : null}
-      <div className="flex items-center justify-between text-sm">
-        {signedIn ? (
-          <button
-            type="button"
-            className="text-foreground-secondary underline"
-            onClick={() => {
-              void authClient.signOut({
-                fetchOptions: {
-                  onSuccess: () => {
-                    void navigate("/login", { replace: true });
-                  },
-                },
-              });
-            }}
-          >
-            ออกจากระบบ
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="text-foreground-secondary underline"
-            onClick={() => {
-              void navigate("/login", { replace: true });
-            }}
-          >
-            กลับไปเข้าสู่ระบบ
-          </button>
+                </SubmitButton>
+              )}
+            />
+          </form>
         )}
-        <button
-          type="button"
-          className="text-primary underline"
-          onClick={() => {
-            void navigate("/onboarding", { replace: true });
-          }}
-        >
-          ฉันยืนยันแล้ว — ดำเนินการต่อ
-        </button>
+        {signedIn ? (
+          <div className="flex flex-col gap-4">
+            {error === null ? null : <Alert tone="error">{error}</Alert>}
+            {status === "sent" ? (
+              <Alert tone="success">
+                ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
+                (รวมถึงโฟลเดอร์สแปม)
+              </Alert>
+            ) : null}
+            <form.Subscribe
+              selector={(state) => state.isSubmitting}
+              children={(isSubmitting) => (
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={isSubmitting || coolingDown}
+                  onClick={() => {
+                    void form.handleSubmit();
+                  }}
+                >
+                  {isSubmitting
+                    ? "กำลังส่ง…"
+                    : coolingDown
+                      ? "ส่งแล้ว กรุณารอสักครู่"
+                      : "ส่งอีเมลยืนยันอีกครั้ง"}
+                </Button>
+              )}
+            />
+          </div>
+        ) : null}
+        <div className="flex items-center justify-between text-sm">
+          {signedIn ? (
+            <button
+              type="button"
+              className="text-foreground-secondary underline"
+              onClick={() => {
+                void authClient.signOut({
+                  fetchOptions: {
+                    onSuccess: () => {
+                      void navigate("/login", { replace: true });
+                    },
+                  },
+                });
+              }}
+            >
+              ออกจากระบบ
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="text-foreground-secondary underline"
+              onClick={() => {
+                void navigate("/login", { replace: true });
+              }}
+            >
+              กลับไปเข้าสู่ระบบ
+            </button>
+          )}
+          <button
+            type="button"
+            className="text-primary underline"
+            onClick={() => {
+              void navigate("/onboarding", { replace: true });
+            }}
+          >
+            ฉันยืนยันแล้ว ดำเนินการต่อ
+          </button>
+        </div>
       </div>
     </AuthPageShell>
   );
