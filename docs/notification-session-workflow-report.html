@@ -152,6 +152,12 @@
           <g font-size="16" font-weight="700"><text x="350" y="90" fill="#171a1f">16.5M</text><text x="318" y="153" fill="#fff">432.6M</text><text x="477" y="216" fill="#171a1f">74.3M</text><text x="318" y="279" fill="#fff">200.4M</text></g>
         </svg>
       </div><figcaption>Graph C · ความยาวแท่งเทียบจำนวน tokens; ระยะเวลาจริงอยู่ใต้ชื่อ phase. งานหลาย subagents รันขนานกัน จึงห้ามบวกเวลาของแต่ละ agent เป็น wall-clock</figcaption></figure>
+      <div class="callout">
+        <h3>ทำไมช่วง build/integration สูงถึง 432.6M?</h3>
+        <p><strong>นี่คือ time bucket ของ model activity ทุก agent ตั้งแต่ dispatch ถึงเริ่ม review ไม่ใช่ token หรือเวลาของคำสั่ง build.</strong> ในช่วง 9 ชม. 37 นาที มี 4,564 model calls: input ใหม่ 8.93M, output 1.12M และ <strong>cache reads 422.54M (97.7%)</strong> เฉลี่ย 92,582 cached tokens ต่อ call. ยอดใหญ่จึงเป็น context ที่ model ประมวลผลซ้ำ ไม่ใช่ข้อความใหม่ 432.6M tokens หรือ context size ของ call ล่าสุด</p>
+        <p>Technical Lead ใช้ 197.9M (45.7%); delivery subagents 54 sessions ใช้รวม 223.7M (51.7%); Main และ acceptance agent อีก 11.1M. แปด implementation slices หลักแตกต่อเป็น proof/repair/browser/worker jobs มากกว่าสี่สิบ sessions ระหว่าง phase นี้; การ fan-out กับ context ที่ยาวและถูกอ่านซ้ำเป็นคำอธิบายเชิงปริมาณ ไม่ได้แปลว่า agent เดียวสร้าง 432.6M. ไม่มี <code>responseId</code> ซ้ำใน records ที่มี ID; 6 records ที่ไม่มี ID ใช้ 0 tokens และผลรวม usage แต่ละ record ตรงทุกครั้ง</p>
+        <p>ผลรวม <code>message.duration</code> ของ calls ในช่วงนี้ราว 10 ชม. 50 นาทีเป็น <strong>agent-seconds ที่ซ้อนทับกันได้</strong> ไม่ใช่เวลาที่ผู้ใช้รอหรือเวลาทำงานของคน; 9 ชม. 37 นาทีเป็น elapsed wall-clock ที่รวม tool/DB/browser/wait. ตารางหลักตัด advisor process ออกตามขอบเขตที่ระบุด้านบน; ถ้านับ advisor เพิ่มอีก 41.9M ในช่วงเดียวกัน จะเป็น 474.5M processed tokens แต่ไม่ใช่ยอดในตารางนี้</p>
+      </div>
       <div class="table-scroll"><table><thead><tr><th>ช่วงเวลา (UTC+7)</th><th>Wall-clock</th><th>Input</th><th>Output</th><th>Cache read</th><th>Total tokens</th><th>Cost telemetry*</th></tr></thead><tbody>
         <tr><td>25 ก.ย. 02:00–09:51 · spec/freeze ก่อน dispatch</td><td>7:50:58</td><td>938,017</td><td>122,893</td><td>15,412,736</td><td>16,473,646</td><td>$6.86</td></tr>
         <tr><td>25 ก.ย. 09:51–19:29 · build/integration ถึงเริ่ม review</td><td>9:37:27</td><td>8,932,815</td><td>1,124,305</td><td>422,544,000</td><td>432,601,120</td><td>$115.28</td></tr>
