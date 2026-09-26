@@ -72,7 +72,7 @@ function OrganizationNotificationSettingsForOrganization({
         {header}
         <div
           role="status"
-          className="flex flex-col gap-4 rounded-md border border-foreground/10 bg-surface p-6"
+          className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
         >
           <span className="sr-only">กำลังโหลดการตั้งค่า…</span>
           <Skeleton className="h-4 w-72 max-w-full" />
@@ -99,7 +99,7 @@ function OrganizationNotificationSettingsForOrganization({
   return (
     <Page>
       {header}
-      <section className="flex flex-col gap-5 rounded-md border border-foreground/10 bg-surface p-6">
+      <section className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6">
         {save.isError ? (
           <Alert tone="error">
             {save.error instanceof ApiError &&

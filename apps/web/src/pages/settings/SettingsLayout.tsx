@@ -39,7 +39,7 @@ export function SettingsLayout() {
       <nav
         role="tablist"
         aria-label="หมวดการตั้งค่า"
-        className="flex gap-1 overflow-x-auto border-b border-foreground/10"
+        className="flex gap-6 overflow-x-auto border-b border-foreground/10"
       >
         {SETTINGS_TABS.map((tab) => {
           const Icon = NAV_ICONS[tab.icon];
@@ -51,7 +51,8 @@ export function SettingsLayout() {
               to={tab.path}
               role="tab"
               aria-selected={active}
-              className={`-mb-px inline-flex h-10 items-center gap-2 border-b-2 px-3 text-sm whitespace-nowrap ${
+              // Text flush with the page's left edge, like the reference tabs.
+              className={`-mb-px inline-flex h-10 items-center gap-2 border-b-2 px-1 text-sm whitespace-nowrap ${
                 active
                   ? "border-primary font-medium text-foreground"
                   : "border-transparent text-foreground-secondary hover:text-foreground"

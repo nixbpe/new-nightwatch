@@ -19,7 +19,7 @@ import { INVITABLE_ROLES, ROLE_LABELS, type InvitableRole } from "../lib/roles";
 import { useTenant } from "../lib/tenant/TenantProvider";
 
 const CARD =
-  "flex flex-col gap-5 rounded-md border border-foreground/10 bg-surface p-6";
+  "flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6";
 
 export function WorkspacePage() {
   const { me, mePending, meError, retryMe, activeOrg } = useTenant();
@@ -194,7 +194,7 @@ function InviteMemberPanel({
           event.stopPropagation();
           void form.handleSubmit();
         }}
-        className="flex flex-col gap-5"
+        className="flex flex-col gap-6"
         noValidate
       >
         <div className="grid max-w-2xl gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">

@@ -17,7 +17,7 @@ export { Input } from "./ui/input";
  * that take the same field styling; text inputs use <Input> instead.
  */
 export const textInputClass =
-  "h-10 w-full rounded-md border border-control-border bg-surface px-3 text-foreground " +
+  "h-10 w-full rounded-md border border-control-border bg-surface px-3 text-base font-normal text-foreground " +
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -60,7 +60,7 @@ export function Field({
 }) {
   return (
     <Label className="block">
-      <span className="mb-1 block">{label}</span>
+      <span className="mb-2 block">{label}</span>
       {children}
       {error === undefined || error === null ? null : (
         <span role="alert" className="mt-1 block text-sm text-danger">

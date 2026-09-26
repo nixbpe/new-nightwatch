@@ -145,7 +145,7 @@ export function SessionsPage() {
   return (
     <section
       aria-labelledby="sessions-card-title"
-      className="flex flex-col gap-5 rounded-md border border-foreground/10 bg-surface p-6"
+      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
     >
       <div>
         <h2 id="sessions-card-title" className="text-base font-semibold">

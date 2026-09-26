@@ -132,11 +132,11 @@ export function NotificationRows({
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span
-                className={item.readAt === null ? "font-medium" : undefined}
+                className={`text-sm ${item.readAt === null ? "font-medium" : ""}`}
               >
                 {itemTitle(item)}
               </span>
-              <span className="flex flex-wrap items-baseline gap-x-2 text-sm text-foreground-secondary">
+              <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-foreground-secondary">
                 <span>{itemContext(item)}</span>
                 <time
                   dateTime={item.occurredAt}

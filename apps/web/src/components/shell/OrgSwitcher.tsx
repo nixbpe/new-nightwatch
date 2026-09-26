@@ -74,7 +74,8 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   }`;
 
   return (
-    <div className="relative border-b border-foreground/10 p-2">
+    // h-14 like the header, so the two hairlines meet at the same y.
+    <div className="relative flex h-14 items-center border-b border-foreground/10 px-2">
       {canSwitch ? (
         <button
           ref={popover.triggerRef}

@@ -171,7 +171,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                       onClick={() => {
                         choose(index);
                       }}
-                      className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm ${
+                      className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 text-sm ${
                         isSelected
                           ? "bg-foreground/8 text-foreground"
                           : "text-foreground"

@@ -39,7 +39,7 @@ export function ProfilePage() {
       <section
         role="status"
         aria-label="กำลังโหลดโปรไฟล์"
-        className="flex flex-col gap-4 rounded-md border border-foreground/10 bg-surface p-6"
+        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
       >
         <Skeleton className="h-4 w-40" />
         <div className="flex items-center gap-4">
@@ -143,7 +143,7 @@ function ProfileForm({
   return (
     <section
       aria-labelledby="profile-card-title"
-      className="flex flex-col gap-5 rounded-md border border-foreground/10 bg-surface p-6"
+      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
     >
       <div>
         <h2 id="profile-card-title" className="text-base font-semibold">
@@ -174,11 +174,11 @@ function ProfileForm({
           void save();
         }}
         noValidate
-        className="flex flex-col gap-5"
+        className="flex flex-col gap-6"
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <Label htmlFor={nameId} className="mb-1 block">
+            <Label htmlFor={nameId} className="mb-2 flex min-h-6 items-center">
               ชื่อที่แสดง
             </Label>
             <Input
@@ -208,7 +208,10 @@ function ProfileForm({
             ) : null}
           </div>
           <div>
-            <Label htmlFor={emailId} className="mb-1 flex items-center gap-2">
+            <Label
+              htmlFor={emailId}
+              className="mb-2 flex min-h-6 items-center gap-2"
+            >
               อีเมล
               {emailVerified ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-xs font-medium text-primary">

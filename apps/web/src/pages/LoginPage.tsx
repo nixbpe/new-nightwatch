@@ -71,14 +71,14 @@ export function LoginPage() {
     <div className="grid min-h-screen lg:grid-cols-[560px_minmax(0,1fr)]">
       <BrandPanel />
       <div className="flex flex-col">
-        <div className="px-6 pt-6 lg:hidden">
+        <div className="px-4 pt-4 sm:px-8 sm:pt-8 lg:hidden">
           <BrandMark size={28} withName />
         </div>
-        <main className="flex flex-1 items-center justify-center p-4 sm:p-8">
-          <div className="flex w-full max-w-[360px] flex-col gap-5">
+        <main className="flex flex-1 items-start justify-center px-4 pt-10 pb-8 sm:px-8 lg:items-center lg:py-8">
+          <div className="flex w-full max-w-[360px] flex-col gap-6">
             <div>
               <h1 className="text-2xl font-semibold">เข้าสู่ระบบ</h1>
-              <p className="mt-1 text-sm text-foreground-secondary">
+              <p className="mt-2 text-sm text-foreground-secondary">
                 ใช้อีเมลและรหัสผ่านที่ได้รับการเชิญเท่านั้น
               </p>
             </div>
@@ -88,7 +88,7 @@ export function LoginPage() {
                 event.stopPropagation();
                 void form.handleSubmit();
               }}
-              className="flex flex-col gap-5"
+              className="flex flex-col gap-4"
               noValidate
             >
               {error === null ? null : (
@@ -167,7 +167,7 @@ export function LoginPage() {
                   // accessible association (and the same visual output) with
                   // only the <input> associated to the label.
                   <div className="flex flex-col gap-1">
-                    <Label htmlFor="login-password" className="mb-1 block">
+                    <Label htmlFor="login-password" className="mb-2 block">
                       รหัสผ่าน
                     </Label>
                     <div className="relative flex items-center">
@@ -176,7 +176,7 @@ export function LoginPage() {
                         type={showPassword ? "text" : "password"}
                         name="password"
                         autoComplete="current-password"
-                        className="pr-10"
+                        className="pr-11"
                         value={field.state.value}
                         onChange={(event) => {
                           field.handleChange(event.target.value);
@@ -194,7 +194,7 @@ export function LoginPage() {
                         onClick={() => {
                           setShowPassword((value) => !value);
                         }}
-                        className="absolute right-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-foreground-secondary hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
                       >
                         {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                         {/* Visible/accessible name via inner text, not
@@ -268,7 +268,7 @@ function BrandPanel() {
     <aside className="hidden flex-col justify-between overflow-hidden bg-[#05060a] p-14 text-[#f3f4f6] lg:flex">
       <div className="flex flex-col gap-6">
         <BrandMark size={36} withName />
-        <h2 className="max-w-[380px] text-[26px] leading-[34px] font-semibold">
+        <h2 className="max-w-[440px] text-[28px] leading-9 font-semibold">
           จัดลำดับความเสี่ยงที่ควรแก้ไขก่อน ครอบคลุมทุกโปรเจกต์ของลูกค้า
         </h2>
         <p className="max-w-[380px] text-sm text-white/70">

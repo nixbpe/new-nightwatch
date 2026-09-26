@@ -302,7 +302,7 @@ export function MfaCard({
   return (
     <section
       aria-labelledby="mfa-card-title"
-      className="flex flex-col gap-5 rounded-md border border-foreground/10 bg-surface p-6"
+      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -633,7 +633,7 @@ export function MfaCard({
               void enableForm.handleSubmit();
             }}
             noValidate
-            className="flex flex-col gap-5"
+            className="flex flex-col gap-6"
           >
             <div className="flex max-w-md flex-col gap-4">
               <p className="text-sm text-foreground-secondary">
@@ -828,7 +828,7 @@ export function MfaCard({
               void verifyForm.handleSubmit();
             }}
             noValidate
-            className="flex flex-col gap-5"
+            className="flex flex-col gap-6"
           >
             <div className="flex max-w-md flex-col gap-4">
               <p className="text-sm text-foreground-secondary">
