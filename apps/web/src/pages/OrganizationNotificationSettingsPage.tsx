@@ -17,7 +17,9 @@ export function OrganizationNotificationSettingsPage() {
   if (organizationId === undefined) return null;
 
   return (
+    // Keyed so an unsaved draft never carries over to another organization.
     <OrganizationNotificationSettingsForOrganization
+      key={organizationId}
       organizationId={organizationId}
     />
   );

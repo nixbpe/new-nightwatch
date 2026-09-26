@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";
@@ -12,6 +12,7 @@ import {
 import { OrganizationNotificationSettingsPage } from "./OrganizationNotificationSettingsPage";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
+const ORG_B = "22222222-2222-4222-8222-222222222222";
 
 vi.mock("../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
@@ -25,7 +26,7 @@ vi.mock("../lib/api/notifications", async (importOriginal) => {
 const fetchSettingsMock = vi.mocked(fetchOrganizationNotificationSettings);
 const updateSettingsMock = vi.mocked(updateOrganizationNotificationSettings);
 
-function renderPage() {
+function renderPage(extra: React.ReactNode = null) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -37,7 +38,12 @@ function renderPage() {
         <Routes>
           <Route
             path="/organizations/:organizationId/notification-settings"
-            element={<OrganizationNotificationSettingsPage />}
+            element={
+              <>
+                {extra}
+                <OrganizationNotificationSettingsPage />
+              </>
+            }
           />
         </Routes>
       </MemoryRouter>
@@ -107,5 +113,31 @@ describe("OrganizationNotificationSettingsPage", () => {
     expect(
       await screen.findByText("การตั้งค่าถูกเปลี่ยนโดยผู้อื่น กรุณาโหลดใหม่"),
     ).toBeInTheDocument();
+  });
+
+  it("drops an unsaved draft when navigating to another organization", async () => {
+    fetchSettingsMock.mockImplementation((organizationId) =>
+      Promise.resolve({
+        organizationId,
+        settingsChangedEnabled: true,
+        version: organizationId === ORG_A ? 4 : 9,
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage(
+      <Link to={`/organizations/${ORG_B}/notification-settings`}>
+        องค์กร B
+      </Link>,
+    );
+
+    await user.click(await screen.findByRole("checkbox"));
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    await user.click(screen.getByRole("link", { name: "องค์กร B" }));
+
+    await vi.waitFor(() => {
+      expect(fetchSettingsMock).toHaveBeenCalledWith(ORG_B);
+    });
+    expect(await screen.findByRole("checkbox")).toBeChecked();
+    expect(updateSettingsMock).not.toHaveBeenCalled();
   });
 });
