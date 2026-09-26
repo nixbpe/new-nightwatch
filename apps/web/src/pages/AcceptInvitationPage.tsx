@@ -74,7 +74,7 @@ export function AcceptInvitationPage() {
       return (
         <AuthPageShell
           title="ยืนยันอีเมลก่อนเข้าร่วม"
-          subtitle={`คำเชิญสำหรับ ${invitation.email} — กรุณายืนยันอีเมลของบัญชีนี้ก่อนรับคำเชิญ`}
+          subtitle={`คำเชิญสำหรับ ${invitation.email} กรุณายืนยันอีเมลของบัญชีนี้ก่อนรับคำเชิญ`}
         >
           <div className="flex flex-col gap-4">
             <Alert tone="info">

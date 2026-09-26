@@ -273,14 +273,14 @@ export function SessionsPage() {
 
       {others?.length === 0 ? (
         <Alert tone="info">
-          ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ — มีเพียงอุปกรณ์นี้เท่านั้น
+          ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ มีเพียงอุปกรณ์นี้เท่านั้น
         </Alert>
       ) : null}
       {others !== null && others.length > 0 ? (
         <div className="flex flex-col gap-3 border-t border-foreground/10 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-foreground-secondary">
-              อุปกรณ์นี้จะยังเข้าสู่ระบบอยู่ · อุปกรณ์อื่นต้องเข้าสู่ระบบใหม่
+              อุปกรณ์นี้จะยังเข้าสู่ระบบอยู่ อุปกรณ์อื่นต้องเข้าสู่ระบบใหม่
               (และผ่าน MFA ถ้าเปิดไว้)
             </p>
             {confirming === OTHERS ? (

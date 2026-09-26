@@ -311,7 +311,7 @@ export function MfaCard({
           </h2>
           <p className="mt-1 text-sm text-foreground-secondary">
             ใช้รหัส 6 หลักจากแอปยืนยันตัวตน (TOTP) เพิ่มอีกชั้นเมื่อเข้าสู่ระบบ
-            — ไม่บังคับ แต่แนะนำสำหรับเจ้าของและผู้ดูแลองค์กร
+            ไม่บังคับ แต่แนะนำสำหรับเจ้าของและผู้ดูแลองค์กร
           </p>
         </div>
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -321,7 +321,7 @@ export function MfaCard({
         <>
           {justEnabled ? (
             <Alert tone="success">
-              เปิดใช้งานยืนยันสองขั้นตอนแล้ว —
+              เปิดใช้งานยืนยันสองขั้นตอนแล้ว
               ครั้งถัดไปที่เข้าสู่ระบบจะต้องกรอกรหัสจากแอปด้วย
             </Alert>
           ) : null}
@@ -460,8 +460,8 @@ export function MfaCard({
                 <div className="min-w-0">
                   <p className="text-sm font-medium">รหัสกู้คืน</p>
                   <p className="text-xs text-foreground-secondary">
-                    ใช้แทนรหัสจากแอปเมื่อเข้าถึงโทรศัพท์ไม่ได้ ·
-                    สร้างชุดใหม่ได้ทุกเมื่อ ชุดเดิมจะใช้ไม่ได้ทันที
+                    ใช้แทนรหัสจากแอปเมื่อเข้าถึงโทรศัพท์ไม่ได้
+                    สร้างชุดใหม่ได้ทุกเมื่อ แล้วชุดเดิมจะใช้ไม่ได้ทันที
                   </p>
                 </div>
               </div>
@@ -572,7 +572,7 @@ export function MfaCard({
               <div className="flex flex-col gap-3 border-t border-foreground/10 p-4">
                 <CodesHeader
                   title="รหัสกู้คืนชุดใหม่"
-                  description="แสดงเพียงครั้งนี้ · แต่ละรหัสใช้ได้ครั้งเดียว · ชุดเดิมใช้ไม่ได้แล้ว"
+                  description="แสดงเพียงครั้งนี้ แต่ละรหัสใช้ได้ครั้งเดียว และชุดเดิมใช้ไม่ได้แล้ว"
                   codes={regen.codes}
                   copied={copied === "codes"}
                   onCopy={() => {
@@ -606,7 +606,7 @@ export function MfaCard({
             <div className="min-w-0">
               <p className="text-sm font-medium">แอปยืนยันตัวตน</p>
               <p className="text-xs text-foreground-secondary">
-                Google Authenticator, 1Password, Authy หรือแอป TOTP อื่น ·
+                Google Authenticator, 1Password, Authy หรือแอป TOTP อื่น
                 ใช้เวลาตั้งค่าประมาณ 2 นาที
               </p>
             </div>
@@ -637,7 +637,7 @@ export function MfaCard({
           >
             <div className="flex max-w-md flex-col gap-4">
               <p className="text-sm text-foreground-secondary">
-                ยืนยันตัวตนอีกครั้งก่อนเปลี่ยนวิธีเข้าสู่ระบบ —
+                ยืนยันตัวตนอีกครั้งก่อนเปลี่ยนวิธีเข้าสู่ระบบ
                 รหัสผ่านนี้ใช้เฉพาะขั้นตอนนี้
               </p>
               <enableForm.Field
@@ -729,7 +729,7 @@ export function MfaCard({
                   <Skeleton className="h-[168px] w-[168px]" />
                 ) : (
                   <p className="text-center text-xs text-foreground-secondary">
-                    สร้างคิวอาร์โค้ดไม่สำเร็จ — ใช้คีย์ด้านล่างแทน
+                    สร้างคิวอาร์โค้ดไม่สำเร็จ ใช้คีย์ด้านล่างแทน
                   </p>
                 )}
               </div>
@@ -760,7 +760,7 @@ export function MfaCard({
               <div className="flex flex-col gap-2">
                 <CodesHeader
                   title="2. เก็บรหัสกู้คืนไว้ในที่ปลอดภัย"
-                  description="ใช้แทนรหัสจากแอปเมื่อเข้าถึงโทรศัพท์ไม่ได้ · แต่ละรหัสใช้ได้ครั้งเดียว · แสดงเพียงครั้งนี้"
+                  description="ใช้แทนรหัสจากแอปเมื่อเข้าถึงโทรศัพท์ไม่ได้ แต่ละรหัสใช้ได้ครั้งเดียว และแสดงเพียงครั้งนี้"
                   codes={draft.backupCodes}
                   copied={copied === "codes"}
                   onCopy={() => {
@@ -832,7 +832,7 @@ export function MfaCard({
           >
             <div className="flex max-w-md flex-col gap-4">
               <p className="text-sm text-foreground-secondary">
-                กรอกรหัสที่แอปแสดงอยู่ตอนนี้ — MFA
+                กรอกรหัสที่แอปแสดงอยู่ตอนนี้ MFA
                 จะเปิดใช้งานเมื่อรหัสแรกถูกต้องเท่านั้น รหัสเปลี่ยนทุก{" "}
                 <span className="font-mono">30</span> วินาที
               </p>

@@ -171,13 +171,13 @@ export function DisplayPage() {
             ภาษาและเวลา
           </h2>
           <p className="mt-1 text-sm text-foreground-secondary">
-            ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป ·
+            ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป
             เก็บไว้ในเบราว์เซอร์นี้เท่านั้น
           </p>
         </div>
 
         {saved ? (
-          <Alert tone="success">บันทึกแล้ว — ใช้กับเบราว์เซอร์นี้</Alert>
+          <Alert tone="success">บันทึกแล้ว ใช้กับเบราว์เซอร์นี้</Alert>
         ) : null}
 
         <div className="grid max-w-3xl gap-4 sm:grid-cols-2">
@@ -198,7 +198,7 @@ export function DisplayPage() {
               id={`${ids.language}-help`}
               className="mt-1 text-xs text-foreground-secondary"
             >
-              ตอนนี้มีภาษาไทยภาษาเดียว — ภาษาอังกฤษจะเพิ่มในภายหลัง
+              ตอนนี้มีภาษาไทยภาษาเดียว ภาษาอังกฤษจะเพิ่มในภายหลัง
             </p>
           </div>
           <div>

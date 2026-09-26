@@ -232,7 +232,7 @@ function ProfileForm({
               id={`${emailId}-help`}
               className="mt-1 text-xs text-foreground-secondary"
             >
-              ใช้เข้าสู่ระบบและรับการแจ้งเตือน · เปลี่ยนอีเมลยังไม่เปิดให้บริการ
+              ใช้เข้าสู่ระบบและรับการแจ้งเตือน เปลี่ยนอีเมลยังไม่เปิดให้บริการ
             </p>
           </div>
         </div>
