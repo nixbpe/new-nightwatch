@@ -2,7 +2,6 @@ import { getNavDestinations, isLeafActive } from "./nav-config";
 
 export type BreadcrumbCrumb = { label: string; path?: string };
 
-/** Labels for routed pages that have no sidebar entry. */
 const OFF_NAV_LABELS: Record<string, string> = {
   "/notifications": "การแจ้งเตือน",
 };

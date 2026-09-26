@@ -55,9 +55,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     queryFn: fetchMeContext,
   });
 
-  // Organization selection is account-global: when an inbox request finds
-  // the server resolving another scope (another session switched), refresh
-  // the context so every tenant view re-keys to the server's scope.
   useEffect(() => {
     const refreshOnScopeChange = (error: unknown) => {
       if (isInboxScopeChanged(error)) {

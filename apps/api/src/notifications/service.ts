@@ -401,9 +401,6 @@ export async function markAllInboxRead(
     deps.database,
     input.userId,
     async (client, scope) => {
-      // Organization selection is account-global: another session may have
-      // switched it since this client loaded. Never mark a scope the caller
-      // did not see.
       if (scope.organizationId !== input.expectedOrganizationId) {
         throw new AppError(
           409,

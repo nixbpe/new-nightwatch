@@ -174,6 +174,14 @@ async function rollbackQuietly(client: PoolClient): Promise<void> {
   }
 }
 
+function denyNotMember(logger: Logger): never {
+  logger.warn(
+    { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
+    "active organization change denied: not a member",
+  );
+  throw new AppError(403, "MEMBERSHIP_DENIED", "คุณไม่ใช่สมาชิกขององค์กรนี้");
+}
+
 /**
  * Switch the active organization. Membership is re-verified inside the
  * transaction with `FOR UPDATE` on the membership row: an in-flight
@@ -200,17 +208,7 @@ export async function setActiveOrganization(
       "select 1 from member where organization_id = $1 and user_id = $2",
       [organizationId, session.user.id],
     );
-    if (preMembership.rows.length === 0) {
-      logger.warn(
-        { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
-        "active organization change denied: not a member",
-      );
-      throw new AppError(
-        403,
-        "MEMBERSHIP_DENIED",
-        "คุณไม่ใช่สมาชิกขององค์กรนี้",
-      );
-    }
+    if (preMembership.rows.length === 0) denyNotMember(logger);
     await client.query("begin");
     inTransaction = true;
     const organization = await client.query(
@@ -220,15 +218,7 @@ export async function setActiveOrganization(
     if (organization.rows.length === 0) {
       await rollbackQuietly(client);
       inTransaction = false;
-      logger.warn(
-        { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
-        "active organization change denied: not a member",
-      );
-      throw new AppError(
-        403,
-        "MEMBERSHIP_DENIED",
-        "คุณไม่ใช่สมาชิกขององค์กรนี้",
-      );
+      denyNotMember(logger);
     }
     await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
       `notification-membership:${organizationId}`,
@@ -243,15 +233,7 @@ export async function setActiveOrganization(
     if (membership.rows.length === 0) {
       await rollbackQuietly(client);
       inTransaction = false;
-      logger.warn(
-        { code: "MEMBERSHIP_DENIED", reason: "NOT_MEMBER" },
-        "active organization change denied: not a member",
-      );
-      throw new AppError(
-        403,
-        "MEMBERSHIP_DENIED",
-        "คุณไม่ใช่สมาชิกขององค์กรนี้",
-      );
+      denyNotMember(logger);
     }
     await client.query(
       `update "user"
