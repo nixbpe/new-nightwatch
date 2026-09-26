@@ -158,9 +158,13 @@ describe("OnboardingPage transitions", () => {
     expect(
       screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("search")).toHaveTextContent(
-      "?invitationId=inv-9",
-    );
+    // The token strip is a router navigation that can land after the
+    // failure render; wait for it rather than racing it.
+    await waitFor(() => {
+      expect(screen.getByTestId("search")).toHaveTextContent(
+        "?invitationId=inv-9",
+      );
+    });
     expect(readInvitation()).toBe("inv-9");
     expect(screen.queryByTestId("location")).toBeNull();
   });
@@ -178,7 +182,9 @@ describe("OnboardingPage transitions", () => {
     expect(
       screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+    await waitFor(() => {
+      expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+    });
     expect(screen.queryByTestId("location")).toBeNull();
 
     await userEvent.click(
