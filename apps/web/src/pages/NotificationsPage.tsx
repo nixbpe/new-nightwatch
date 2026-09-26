@@ -6,6 +6,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router";
 import { useEffect, useRef, useState } from "react";
 
+import { EmptyState } from "../components/shell/EmptyState";
+import {
+  BellIcon,
+  ChevronLeftIcon,
+  KeyIcon,
+  ShieldIcon,
+  SlidersIcon,
+} from "../components/shell/icons";
+import { Skeleton } from "../components/shell/Skeleton";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
 import { ApiError } from "../lib/api/client";
@@ -28,11 +37,37 @@ function itemTitle(item: NotificationItem) {
     return "เปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว";
   return "ปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว";
 }
+function itemContext(item: NotificationItem) {
+  return item.scope === "organization"
+    ? "องค์กร · การตั้งค่าการแจ้งเตือน"
+    : "บัญชีของคุณ · ความปลอดภัย";
+}
+function ItemIcon({ item, size }: { item: NotificationItem; size: number }) {
+  if (item.scope === "organization") return <SlidersIcon size={size} />;
+  if (item.eventType === "PASSWORD_CHANGED") return <KeyIcon size={size} />;
+  return <ShieldIcon size={size} />;
+}
 function itemTime(value: string) {
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["minute", 60],
+  ["hour", 24],
+  ["day", 7],
+];
+/** "5 นาทีที่แล้ว" for the last week; the absolute time beyond that. */
+function relativeTime(value: string) {
+  let elapsed = (Date.now() - new Date(value).getTime()) / 60_000;
+  if (elapsed < 1) return "เมื่อสักครู่";
+  const format = new Intl.RelativeTimeFormat("th-TH", { numeric: "auto" });
+  for (const [unit, next] of RELATIVE_UNITS) {
+    if (elapsed < next) return format.format(-Math.floor(elapsed), unit);
+    elapsed /= next;
+  }
+  return itemTime(value);
 }
 function problem(error: unknown) {
   if (
@@ -81,19 +116,35 @@ export function NotificationRows({
               onOpen(item.id);
             }}
             data-popover-item={popoverItems ? "" : undefined}
-            className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-foreground/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
-            <span className="flex items-center gap-2 font-medium">
+            <span className="flex h-8 w-2 shrink-0 items-center">
               {item.readAt === null ? (
                 <span
                   aria-label="ยังไม่อ่าน"
-                  className="h-2 w-2 shrink-0 rounded-full bg-primary"
+                  className="h-2 w-2 rounded-full bg-primary"
                 />
               ) : null}
-              {itemTitle(item)}
             </span>
-            <span className="text-xs text-foreground-secondary">
-              {itemTime(item.occurredAt)}
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground-secondary">
+              <ItemIcon item={item} size={16} />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span
+                className={item.readAt === null ? "font-medium" : undefined}
+              >
+                {itemTitle(item)}
+              </span>
+              <span className="text-sm text-foreground-secondary">
+                {itemContext(item)}
+              </span>
+              <time
+                dateTime={item.occurredAt}
+                title={itemTime(item.occurredAt)}
+                className="font-mono text-xs text-foreground-secondary"
+              >
+                {relativeTime(item.occurredAt)}
+              </time>
             </span>
           </button>
         </li>
@@ -186,50 +237,130 @@ function NotificationsPageForOrganization({
   }
 
   if (detailId !== null) {
+    const backButton = (
+      <Button variant="ghost" className="-ml-3 gap-1" onClick={closeDetail}>
+        <ChevronLeftIcon />
+        กลับไปที่การแจ้งเตือน
+      </Button>
+    );
     if (
       open.isIdle ||
       open.isPending ||
       (open.data !== undefined && open.data.id !== detailId)
     ) {
-      return <div role="status">กำลังเปิดการแจ้งเตือน…</div>;
-    }
-    if (open.isError) {
       return (
-        <section className="max-w-2xl">
-          <Button variant="ghost" onClick={closeDetail}>
-            กลับไปที่การแจ้งเตือน
-          </Button>
-          <Alert tone="error">{problem(open.error)}</Alert>
+        <section className="max-w-3xl">
+          {backButton}
+          <div
+            role="status"
+            className="mt-4 flex gap-4 rounded-md border border-foreground/10 bg-surface p-6"
+          >
+            <span className="sr-only">กำลังเปิดการแจ้งเตือน…</span>
+            <Skeleton className="h-10 w-10 shrink-0" />
+            <span className="flex flex-1 flex-col gap-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-6 w-64 max-w-full" />
+            </span>
+          </div>
         </section>
       );
     }
+    if (open.isError) {
+      return (
+        <section className="max-w-3xl">
+          {backButton}
+          <div className="mt-4">
+            <Alert tone="error">{problem(open.error)}</Alert>
+          </div>
+        </section>
+      );
+    }
+    const detail = open.data;
     return (
-      <section className="max-w-2xl">
-        <Button variant="ghost" onClick={closeDetail}>
-          กลับไปที่การแจ้งเตือน
-        </Button>
-        <h1 className="mt-4 text-2xl font-semibold">{itemTitle(open.data)}</h1>
-        <p className="mt-2 text-sm text-foreground-secondary">
-          {itemTime(open.data.occurredAt)}
-        </p>
-        <p className="mt-6 text-sm">
-          สถานะ: {open.data.readAt === null ? "ยังไม่อ่าน" : "อ่านแล้ว"}
-        </p>
+      <section className="max-w-3xl">
+        {backButton}
+        <article className="mt-4 rounded-md border border-foreground/10 bg-surface">
+          <header className="flex items-start gap-4 border-b border-foreground/10 p-6">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground-secondary">
+              <ItemIcon item={detail} size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm text-foreground-secondary">
+                {itemContext(detail)}
+              </p>
+              <h1 className="mt-1 text-xl font-semibold">
+                {itemTitle(detail)}
+              </h1>
+            </div>
+          </header>
+          <dl className="grid gap-x-8 gap-y-1 p-6 text-sm sm:grid-cols-[max-content_1fr] sm:gap-y-4">
+            <dt className="text-foreground-secondary">สถานะ</dt>
+            <dd className="mb-3 sm:mb-0">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-xs">
+                <span
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    detail.readAt === null
+                      ? "bg-primary"
+                      : "bg-foreground-secondary"
+                  }`}
+                />
+                {detail.readAt === null ? "ยังไม่อ่าน" : "อ่านแล้ว"}
+              </span>
+            </dd>
+            <dt className="text-foreground-secondary">เวลาที่เกิดเหตุการณ์</dt>
+            <dd className="mb-3 sm:mb-0">
+              <time dateTime={detail.occurredAt} className="font-mono">
+                {itemTime(detail.occurredAt)}
+              </time>
+            </dd>
+            {detail.readAt === null ? null : (
+              <>
+                <dt className="text-foreground-secondary">อ่านเมื่อ</dt>
+                <dd className="mb-3 sm:mb-0">
+                  <time dateTime={detail.readAt} className="font-mono">
+                    {itemTime(detail.readAt)}
+                  </time>
+                </dd>
+              </>
+            )}
+            {detail.scope === "organization" ? (
+              <>
+                <dt className="text-foreground-secondary">ผู้เปลี่ยนแปลง</dt>
+                <dd>{detail.actor.displayName}</dd>
+              </>
+            ) : null}
+          </dl>
+        </article>
       </section>
     );
   }
   if (list.isPending)
     return (
-      <div
-        role="status"
-        className="rounded-md border border-foreground/10 bg-surface p-6"
-      >
-        กำลังโหลดการแจ้งเตือน…
-      </div>
+      <section className="max-w-3xl">
+        <div
+          role="status"
+          className="rounded-md border border-foreground/10 bg-surface"
+        >
+          <span className="sr-only">กำลังโหลดการแจ้งเตือน…</span>
+          {[0, 1, 2].map((row) => (
+            <div
+              key={row}
+              className="flex gap-3 border-b border-foreground/10 px-4 py-3 last:border-b-0"
+            >
+              <Skeleton className="ml-5 h-8 w-8 shrink-0" />
+              <span className="flex flex-1 flex-col gap-2">
+                <Skeleton className="h-4 w-56 max-w-full" />
+                <Skeleton className="h-3 w-32" />
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
     );
   if (list.isError)
     return (
-      <section>
+      <section className="max-w-3xl">
         <Alert tone="error">{problem(list.error)}</Alert>
         <Button
           className="mt-4"
@@ -240,9 +371,10 @@ function NotificationsPageForOrganization({
         </Button>
       </section>
     );
+  const { unreadCount } = list.data;
   return (
-    <section className="max-w-2xl">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className="max-w-3xl">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-foreground-secondary">
             บัญชีของคุณ
@@ -250,40 +382,56 @@ function NotificationsPageForOrganization({
               ? " · ไม่มีองค์กรที่ใช้งาน"
               : " · องค์กรที่ใช้งาน"}
           </p>
-          <h1 className="text-2xl font-semibold">การแจ้งเตือน</h1>
+          <h1 className="mt-1 text-2xl font-semibold">การแจ้งเตือน</h1>
+          <p className="mt-1 text-sm text-foreground-secondary">
+            {unreadCount === 0 ? (
+              "อ่านครบทุกรายการแล้ว"
+            ) : (
+              <>
+                ยังไม่อ่าน <span className="font-mono">{unreadCount}</span>{" "}
+                รายการ
+              </>
+            )}
+          </p>
         </div>
         <Button
           variant="secondary"
           className="h-auto min-h-9 w-full max-w-full break-words whitespace-normal sm:w-auto"
-          disabled={list.data.unreadCount === 0 || all.isPending}
+          disabled={unreadCount === 0 || all.isPending}
           onClick={() => {
             all.mutate();
           }}
         >
           ทำเครื่องหมายว่าอ่านทั้งหมด
         </Button>
+      </header>
+      <div className="mt-6">
+        {items.length === 0 ? (
+          <EmptyState
+            icon={<BellIcon size={20} />}
+            title="ยังไม่มีการแจ้งเตือน"
+            description="เหตุการณ์ด้านความปลอดภัยของบัญชีและการเปลี่ยนแปลงขององค์กรจะแสดงที่นี่"
+          />
+        ) : (
+          <div className="overflow-hidden rounded-md border border-foreground/10 bg-surface">
+            <NotificationRows items={items} onOpen={requestOpen} />
+            {nextCursor === null ? null : (
+              <div className="border-t border-foreground/10 p-2">
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  disabled={loadingNextPage}
+                  onClick={() => void loadNextPage()}
+                >
+                  {loadingNextPage
+                    ? "กำลังโหลดเพิ่มเติม…"
+                    : "โหลดการแจ้งเตือนเพิ่มเติม"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      {items.length === 0 ? (
-        <p className="mt-6 rounded-md border border-dashed border-foreground/10 p-8 text-center text-sm text-foreground-secondary">
-          ยังไม่มีการแจ้งเตือน
-        </p>
-      ) : (
-        <div className="mt-6 rounded-md border border-foreground/10 bg-surface">
-          <NotificationRows items={items} onOpen={requestOpen} />
-        </div>
-      )}
-      {nextCursor === null ? null : (
-        <Button
-          className="mt-4"
-          variant="secondary"
-          disabled={loadingNextPage}
-          onClick={() => void loadNextPage()}
-        >
-          {loadingNextPage
-            ? "กำลังโหลดเพิ่มเติม…"
-            : "โหลดการแจ้งเตือนเพิ่มเติม"}
-        </Button>
-      )}
     </section>
   );
 }

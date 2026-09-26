@@ -93,7 +93,7 @@ describe("NotificationsPage", () => {
       await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
     );
 
-    expect(await screen.findByText("สถานะ: อ่านแล้ว")).toBeInTheDocument();
+    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
   });
 
   it("clears an open detail when the server-confirmed organization changes", async () => {
@@ -115,12 +115,12 @@ describe("NotificationsPage", () => {
     await user.click(
       await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
     );
-    expect(await screen.findByText("สถานะ: อ่านแล้ว")).toBeInTheDocument();
+    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
 
     serverActiveOrgId = ORG_B;
     view.rerender(page(view.queryClient));
 
-    expect(screen.queryByText("สถานะ: อ่านแล้ว")).not.toBeInTheDocument();
+    expect(screen.queryByText("อ่านแล้ว")).not.toBeInTheDocument();
   });
 
   it("ignores an old organization open completion after the organization changes", async () => {
@@ -148,7 +148,7 @@ describe("NotificationsPage", () => {
     resolveOpen({ ...notification, readAt: "2026-09-25T03:01:00.000Z" });
 
     await waitFor(() => {
-      expect(screen.queryByText("สถานะ: อ่านแล้ว")).not.toBeInTheDocument();
+      expect(screen.queryByText("อ่านแล้ว")).not.toBeInTheDocument();
     });
   });
 
@@ -186,7 +186,7 @@ describe("NotificationsPage", () => {
     );
 
     expect(await screen.findByText("ไม่พบการแจ้งเตือนนี้")).toBeInTheDocument();
-    expect(screen.queryByText("สถานะ: ยังไม่อ่าน")).not.toBeInTheDocument();
+    expect(screen.queryByText("ยังไม่อ่าน")).not.toBeInTheDocument();
   });
 
   it("loads a next page and keeps mark-all enabled for server-global unread items", async () => {
@@ -240,7 +240,7 @@ describe("NotificationsPage", () => {
       await screen.findByRole("button", { name: /Unread page two/ }),
     );
 
-    expect(await screen.findByText("สถานะ: อ่านแล้ว")).toBeInTheDocument();
+    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "กลับไปที่การแจ้งเตือน" }),
     );

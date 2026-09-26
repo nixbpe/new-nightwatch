@@ -573,7 +573,11 @@ describe("AppShell", () => {
       await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
     );
 
-    expect(await screen.findByText("สถานะ: อ่านแล้ว")).toBeInTheDocument();
+    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
+    const breadcrumb = screen.getByRole("navigation", {
+      name: "ตำแหน่งปัจจุบัน",
+    });
+    expect(within(breadcrumb).getByText("การแจ้งเตือน")).toBeInTheDocument();
   });
 
   it("with no membership the logo slot falls back to the product mark", async () => {
