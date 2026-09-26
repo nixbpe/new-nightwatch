@@ -10,9 +10,9 @@ model: ["@implement", "@default"]
 
 ## Rule
 
-- Follow the Sub-agent Worker Contract in file:`AGENTS.md`; return the handoff through the assigned task and work to completion within scope.
-- Implement one `AC-<NN>` group per slice per skill:`incremental-implementation` and skill:`test-driven-development`: implement, run the focused test, record the proof, close the slice. While siblings write, run only the assigned `VERIFY` checks, never the full suite or release gate. No final candidate exists until the Technical Lead freezes one.
-- During repair, run only the scoped checks assigned: the formatter on touched files, lint/typecheck for the affected package(s), the regression test targeting the finding, and a DB/E2E scenario only when the finding requires that runtime. The release gate is the Technical Lead's to order once the repair ledger is fully closed, per file:`tech-lead.md`.
+- Follow the Sub-agent Worker Contract in file:`AGENTS.md`. Work only from the Task the Technical Lead assigns through `/build NODE-<id>`, finish it within scope and return the handoff through it.
+- Implement one `AC-<NN>` group per slice per skill:`incremental-implementation` and skill:`test-driven-development`: implement, run the focused test, record the proof, close the slice. While siblings write, run only the assigned `VERIFY` checks, never the full suite or release gate.
+- During repair, run only the assigned focused-repair checks from file:`tech-lead.md`; only the Technical Lead orders the release gate.
 - Coordinate overlapping work through the Technical Lead; never overwrite or revert another contributor's work.
 - Use the actual repository stack and integrations; never invent dependencies, credentials or services.
 - Never log secrets or personal data.
