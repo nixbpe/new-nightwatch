@@ -18,7 +18,7 @@
 - Organization เป็นขอบเขตการแยกข้อมูล ผู้ใช้ที่เป็นสมาชิกหลาย Organization ไม่ได้รับสิทธิ์ดูหรือจัดการสมาชิกข้าม Organization จาก membership ของอีกแห่ง
 - การกำกับสมาชิกครอบคลุมรายชื่อสมาชิก การสร้างคำเชิญ การเปลี่ยน role การถอนสมาชิก และการออกจาก Organization ด้วยตนเอง ตาม permission และสถานะที่กำหนดใน `F-004` การสร้างคำเชิญยังไม่ทำให้ผู้รับเป็นสมาชิก
 - การเปลี่ยน role การถอน และการออกต้องรักษา owner อย่างน้อยหนึ่งคน คำขอที่อ้าง Organization เดิมหลังพ้นสมาชิกต้องไม่คงสิทธิ์ไว้
-- Epic นี้กำกับ Organization membership lifecycle; `E-001` กำกับโครงสร้าง Project และการมองเห็น Project ภายใน Organization ขอบเขต Project visibility ใน `E-001` ไม่เปลี่ยน Epic นี้เป็นสิทธิ์ระดับ Project
+- Epic นี้กำกับ Organization membership lifecycle ส่วน Project visibility เป็น initiative แยกต่างหากและไม่เปลี่ยน Epic นี้เป็นสิทธิ์ระดับ Project
 
 ## Features
 
@@ -31,7 +31,7 @@
 ## Out of scope
 
 - การสร้างหรือลบ Organization; การจัดการบัญชี รหัสผ่าน MFA หรือการลบบัญชีผู้ใช้
-- การกำหนดสิทธิ์หรือการมองเห็นระดับ Project ซึ่งอยู่ในขอบเขต `E-001`
+- การกำหนดสิทธิ์หรือการมองเห็นระดับ Project ซึ่งอยู่นอก Epic นี้
 - การแสดง ยกเลิก หรือส่งคำเชิญค้างซ้ำ; bulk member actions
 - Cloud IAM/GRC, audit report UI, รายงาน compliance และการเก็บ customer credentials หรือ sensitive evidence
 - API/schema/หน้าจอที่เลือกใช้ วิธี implement, วันส่งมอบ, การอนุมัติ release และ metric เป้าหมาย
@@ -44,7 +44,7 @@
 | `E-002-R02` | สิทธิ์ actor/target ที่เปลี่ยนหรือคำขอแข่งกันอาจเพิ่มสิทธิ์ผิดกฎหรือทำให้ไม่มี `owner` | `F-004` permission matrix และ `AC-05`, `AC-08`, `AC-10`, `AC-12`, `AC-14` | ยังไม่ยืนยัน | ตรวจสิทธิ์ปัจจุบันและ last-owner invariant ตาม Feature; ทบทวนจาก concurrency evidence ก่อน release |
 | `E-002-R03` | สิทธิ์หรือข้อมูลเดิมอาจค้างหลังพ้นสมาชิกหรือสลับ Organization | `F-004` UI flow และ `AC-15`–`AC-16` | ยังไม่ยืนยัน | ตรวจการปฏิเสธคำขอหลังพ้นสมาชิกและ scope transition ตาม Feature; ทบทวนจาก browser/API evidence ก่อน release |
 
-ไม่มี `blocked_by` ที่ยืนยันสำหรับการร่าง Epic นี้ Epic ได้รับอนุมัติแล้ว แต่ยังขาดผู้รับผิดชอบรายบุคคล นิยามและแหล่งข้อมูลสำหรับวัด outcome และ start authorization `E-001` มี candidate `F-003` เรื่อง Project visibility เมื่อ role หรือ membership เปลี่ยน จึงต้องรักษาขอบเขต interface เมื่อวางแผนร่วมกัน แต่ `F-003` ยังเป็น candidate และไม่ใช่ prerequisite หรือ Feature ของ `E-002`
+ไม่มี `blocked_by` ที่ยืนยันสำหรับการร่าง Epic นี้ Epic ได้รับอนุมัติแล้ว แต่ยังขาดผู้รับผิดชอบรายบุคคล นิยามและแหล่งข้อมูลสำหรับวัด outcome และ start authorization Project visibility เป็น initiative แยกที่ต้องรักษาขอบเขต interface เมื่อวางแผนร่วมกัน แต่ไม่ใช่ prerequisite หรือ Feature ของ `E-002`
 
 ## Traceability
 
@@ -53,7 +53,6 @@
 | `docs/product-direction.md`, `DIR-001/v2` Scope and trust | หนึ่งลูกค้าเป็นหนึ่ง Organization และเป็น isolation boundary |
 | `docs/product-direction.md`, `DIR-001/v2` S2, S3 | Access governance เป็นความสามารถที่อาจมีภายหลัง; Direction ไม่อนุญาตการเก็บ credentials หรือ sensitive evidence |
 | `docs/features/F-004-organization-member-management/feature.md`, scope approval 2026-09-27 และ `F-004-AC-2` frozen | ขอบเขตห้า operation, pagination, member hard cap, permission, owner invariant, การพ้นสมาชิก และการสลับ scope เป็นสัญญาของ Feature ที่เลือก ไม่ได้ถูกนิยาม AC ซ้ำใน Epic |
-| `docs/epics/E-001-project-organization-visibility.md`, Features และ Out of scope | Project visibility เป็น initiative อีกชุด; `F-001`–`F-003` ไม่ใช่ลูกของ Epic นี้ |
 
 ## Readiness
 
