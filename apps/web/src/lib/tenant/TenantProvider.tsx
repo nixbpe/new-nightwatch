@@ -46,6 +46,8 @@ export function useTenant(): TenantContextValue {
 export function TenantProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [membershipContextUnavailable, setMembershipContextUnavailable] =
+    useState(false);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
 
   const meQuery = useQuery({
@@ -75,8 +77,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  const memberships = meQuery.data?.organizations;
-  const lastActiveTenantId = meQuery.data?.lastActiveTenantId ?? null;
+  const memberships = membershipContextUnavailable
+    ? undefined
+    : meQuery.data?.organizations;
+  const lastActiveTenantId = membershipContextUnavailable
+    ? null
+    : (meQuery.data?.lastActiveTenantId ?? null);
 
   // A refreshed server mirror (another session switched org) supersedes this tab's local choice,
   // otherwise the header and notifications would show different tenants.
@@ -103,12 +109,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const refreshMembershipContext =
     useCallback(async (): Promise<MeContextResponse | null> => {
+      setMembershipContextUnavailable(true);
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       try {
         const updated = await fetchMeContext();
         queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
         setSelectedOrgId(null);
+        setMembershipContextUnavailable(false);
         return updated;
       } catch {
         return null;
@@ -144,7 +152,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   };
 
   const value: TenantContextValue = {
-    me: meQuery.data,
+    me: membershipContextUnavailable ? undefined : meQuery.data,
     mePending: meQuery.isPending,
     meError: meQuery.error,
     retryMe,

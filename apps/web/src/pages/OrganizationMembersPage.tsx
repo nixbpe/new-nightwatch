@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
@@ -36,6 +36,9 @@ function OrganizationMembersPageForOrganization({
 }) {
   const { me, mePending, refreshMembershipContext } = useTenant();
   const navigate = useNavigate();
+  const [membershipRefreshState, setMembershipRefreshState] = useState<
+    "idle" | "refreshing" | "failed"
+  >("idle");
   const [offset, setOffset] = useState(0);
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
@@ -48,21 +51,44 @@ function OrganizationMembersPageForOrganization({
     enabled: canRead,
   });
 
+  const refreshAfterMembershipDenied = useCallback(async () => {
+    setMembershipRefreshState("refreshing");
+    const context = await refreshMembershipContext();
+    if (context === null) {
+      setMembershipRefreshState("failed");
+      return;
+    }
+    const nextOrganizationId =
+      context.organizations.find(
+        (organization) => organization.id === context.lastActiveTenantId,
+      )?.id ?? context.organizations[0]?.id;
+    navigate(
+      nextOrganizationId === undefined
+        ? "/workspace"
+        : `/organizations/${nextOrganizationId}/members`,
+      { replace: true },
+    );
+  }, [navigate, refreshMembershipContext]);
+
   useEffect(() => {
-    if (!isMembershipDenied(list.error)) return;
-    void refreshMembershipContext().then((context) => {
-      const organizationId =
-        context?.organizations.find(
-          (organization) => organization.id === context.lastActiveTenantId,
-        )?.id ?? context?.organizations[0]?.id;
-      navigate(
-        organizationId === undefined
-          ? "/workspace"
-          : `/organizations/${organizationId}/members`,
-        { replace: true },
-      );
-    });
-  }, [list.error, navigate, refreshMembershipContext]);
+    if (!isMembershipDenied(list.error) || membershipRefreshState !== "idle") {
+      return;
+    }
+    void refreshAfterMembershipDenied();
+  }, [list.error, membershipRefreshState, refreshAfterMembershipDenied]);
+  if (membershipRefreshState !== "idle") {
+    return (
+      <Page>
+        <PageHeader title="สมาชิกองค์กร" />
+        <Alert tone="error">ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้</Alert>
+        {membershipRefreshState === "failed" ? (
+          <Button onClick={() => void refreshAfterMembershipDenied()}>
+            ลองอีกครั้ง
+          </Button>
+        ) : null}
+      </Page>
+    );
+  }
   if (mePending) {
     return <p role="status">กำลังโหลดสมาชิก</p>;
   }

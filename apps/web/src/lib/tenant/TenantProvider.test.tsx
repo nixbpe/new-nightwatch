@@ -44,6 +44,7 @@ function Probe() {
     switchOrg,
     mePending,
     meError,
+    refreshMembershipContext,
     retryMe,
   } = useTenant();
   return (
@@ -62,6 +63,9 @@ function Probe() {
       </button>
       <button type="button" onClick={() => void retryMe()}>
         retry
+      </button>
+      <button type="button" onClick={() => void refreshMembershipContext()}>
+        refresh membership
       </button>
     </div>
   );
@@ -209,6 +213,51 @@ describe("TenantProvider", () => {
       expect(screen.getByTestId("active")).toHaveTextContent("org-b");
     });
     expect(updateActiveOrganizationMock).not.toHaveBeenCalled();
+  });
+
+  it("retires stale scope after a failed membership refresh until retry confirms a replacement", async () => {
+    const aContext: MeContextResponse = {
+      ...me,
+      lastActiveTenantId: "org-a",
+    };
+    const bContext: MeContextResponse = {
+      ...me,
+      organizations: [me.organizations[1]!],
+      lastActiveTenantId: "org-b",
+    };
+    fetchMeContextMock
+      .mockResolvedValueOnce(aContext)
+      .mockRejectedValueOnce(new Error("context unavailable"))
+      .mockResolvedValueOnce(bContext);
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["tenant", "org-a", "members"], { stale: true });
+    renderProvider(queryClient);
+    await screen.findByText("org-a");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+    });
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:none",
+    );
+    expect(
+      queryClient.getQueryData(["tenant", "org-a", "members"]),
+    ).toBeUndefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b");
+    });
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:org-b",
+    );
   });
 
   it("a failed context load exposes the error and retryMe recovers", async () => {

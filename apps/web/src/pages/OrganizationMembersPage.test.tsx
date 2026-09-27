@@ -350,6 +350,88 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeEnabled();
   });
 
+  it("keeps revoked A restricted until a fresh context confirms B", async () => {
+    const bPage: OrganizationMemberListResponse = {
+      organizationId: organizationBId,
+      members: [
+        {
+          id: "member-b",
+          userId: "user-b",
+          name: "B-confirmed",
+          email: "b@example.test",
+          role: "owner",
+        },
+      ],
+      page: { limit: 50, offset: 0, total: 1 },
+    };
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockImplementationOnce(async () => {
+          tenant = {
+            ...tenant,
+            me: { organizations: [organizationB] },
+            activeOrg: organizationB,
+          };
+          return {
+            organizations: [organizationB],
+            lastActiveTenantId: organizationBId,
+          };
+        }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      )
+      .mockResolvedValueOnce(bPage);
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+            <Route path="/workspace" element={<p>workspace</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "ลองอีกครั้ง" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${organizationId}/members`,
+    );
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
+
+    await userEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+
+    expect(await screen.findByText("B-confirmed")).toBeInTheDocument();
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${organizationBId}/members`,
+    );
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+  });
+
   it("retires revoked A scope after the next list denial and routes to confirmed B", async () => {
     const bPage: OrganizationMemberListResponse = {
       organizationId: organizationBId,
