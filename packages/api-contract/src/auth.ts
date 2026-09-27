@@ -20,7 +20,7 @@ const decimalInteger = z.preprocess(
     typeof value === "string" && /^(?:0|[1-9]\d*)$/.test(value)
       ? Number(value)
       : value,
-  z.number().int().safe(),
+  z.number().int(),
 );
 
 export const organizationMemberListQuerySchema = z.object({
