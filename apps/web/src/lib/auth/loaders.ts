@@ -168,6 +168,11 @@ export async function notificationSettingsLoader({
   return null;
 }
 
+// AbortSignal changes across awaits; keep each check as a fresh read.
+function isNavigationAborted(signal: AbortSignal): boolean {
+  return signal.aborted;
+}
+
 export async function organizationMembersLoader({
   params,
   request,
@@ -177,50 +182,105 @@ export async function organizationMembersLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
+  if (isNavigationAborted(request.signal)) return null;
   const organizationId = params.organizationId;
   if (organizationId === undefined) return null;
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
-  if (!claimContextPublication(queryClient, claim)) {
+  if (
+    isNavigationAborted(request.signal) ||
+    !claimContextPublication(queryClient, claim)
+  ) {
     return null;
   }
   const previousContext =
     queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
   // A prior context or member query may have started before this membership
   // gate. Cancel it before the direct request can publish.
+  if (
+    isNavigationAborted(request.signal) ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
+    return null;
+  }
   await queryClient.cancelQueries({
     queryKey: ME_CONTEXT_QUERY_KEY,
     exact: true,
   });
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    isNavigationAborted(request.signal) ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
   await queryClient.cancelQueries({ queryKey: ["tenant"] });
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    isNavigationAborted(request.signal) ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
   // A bookmarked tenant route needs a fresh server membership decision, not a
   // static context cache that could predate a revocation or role change.
   const context = await fetchMeContext().catch(() => undefined);
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    isNavigationAborted(request.signal) ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
   if (context === undefined) {
+    if (
+      isNavigationAborted(request.signal) ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
+      return null;
+    }
     queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
+    if (
+      isNavigationAborted(request.signal) ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
+      return null;
+    }
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    if (!hasContextPublicationClaim(queryClient, claim)) {
+    if (
+      isNavigationAborted(request.signal) ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ["tenant"] });
     return null;
   }
   if (!hasSameMembershipScope(previousContext, context)) {
+    if (
+      isNavigationAborted(request.signal) ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
+      return null;
+    }
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    if (!hasContextPublicationClaim(queryClient, claim)) {
+    if (
+      isNavigationAborted(request.signal) ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ["tenant"] });
   }
+  if (
+    isNavigationAborted(request.signal) ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
+    return null;
+  }
   queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+  if (
+    isNavigationAborted(request.signal) ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
+    return null;
+  }
   publishContextPublication(queryClient, claim);
   const membership = context.organizations.find(
     (organization) => organization.id === organizationId,
@@ -231,17 +291,42 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    isNavigationAborted(request.signal) ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
-  await queryClient
-    .query({
-      queryKey: memberListQueryKey(organizationId, 50, 0),
-      queryFn: () => fetchOrganizationMembers(organizationId, 50, 0),
-    })
-    .catch(() => undefined);
-  if (!hasContextPublicationClaim(queryClient, claim)) {
-    return null;
+  const memberKey: readonly unknown[] = memberListQueryKey(
+    organizationId,
+    50,
+    0,
+  );
+  const memberQuery = queryClient.getQueryCache().find({
+    queryKey: memberKey,
+    exact: true,
+  });
+  const staleTime = queryClient.defaultQueryOptions({
+    queryKey: memberKey,
+  }).staleTime;
+  if (
+    memberQuery === undefined ||
+    memberQuery.isStaleByTime(
+      typeof staleTime === "function" ? staleTime(memberQuery) : staleTime,
+    )
+  ) {
+    const members = await fetchOrganizationMembers(organizationId, 50, 0).catch(
+      () => undefined,
+    );
+    if (
+      isNavigationAborted(request.signal) ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
+      return null;
+    }
+    if (members !== undefined) {
+      queryClient.setQueryData(memberKey, members);
+    }
   }
   return null;
 }
