@@ -12,9 +12,9 @@ modelRoles:
   # Architecture/contracts, heaviest reasoning
   architect: openai-codex/gpt-6-sol:medium
   # Code and infrastructure implementation
-  implement: openai-codex/gpt-6-terra:medium
+  implement: openai-codex/gpt-6-sol:medium
   # Read-only correctness/security review, evidence-heavy
-  review: openai-codex/gpt-6-sol:low
+  review: openai-codex/gpt-6-sol:medium
   # Direction/epic/story/delivery writing
   product: openai-codex/gpt-6-sol:high
   # Feature UI flow, interaction and accessibility
