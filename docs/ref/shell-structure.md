@@ -140,8 +140,7 @@ shell, never their own `<main>`. `BrandMark.tsx` is the one product mark
 disable, `PasswordCard`), `SessionsPage` (better-auth sessions, revoke one or
 all others; prefetched by `sessionsLoader`) and `DisplayPage` (theme +
 browser-stored language/time preferences from `lib/preferences.ts`). `/settings`
-lands on the profile tab. Capability decisions remain in `CAPABILITY-MAP.md`;
-e2e coverage lives in `e2e/tests/settings.spec.ts`.
+lands on the profile tab. e2e coverage lives in `e2e/tests/settings.spec.ts`.
 
 ## Theme
 
