@@ -179,9 +179,9 @@ describe("OrganizationMembersPage", () => {
     expect(heading).toHaveFocus();
     expect(heading).toHaveAttribute("tabindex", "-1");
     expect(heading).toHaveClass(
-      "focus-visible:outline-2",
-      "focus-visible:outline-offset-2",
-      "focus-visible:outline-primary",
+      "focus:outline-2",
+      "focus:outline-offset-2",
+      "focus:outline-primary",
     );
 
     restoredPage.resolve(response);
@@ -197,6 +197,28 @@ describe("OrganizationMembersPage", () => {
       50,
       0,
     );
+  });
+  it("moves focus to the heading after pointer Previous from a failed page", async () => {
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(response);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
+
+    const heading = await screen.findByRole("heading", { name: "สมาชิก" });
+    expect(heading).toHaveFocus();
+    expect(heading).toHaveClass(
+      "focus:outline-2",
+      "focus:outline-offset-2",
+      "focus:outline-primary",
+    );
+    expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
   });
 
   it("resets an invalid later page before success rendering and refetches page one once", async () => {

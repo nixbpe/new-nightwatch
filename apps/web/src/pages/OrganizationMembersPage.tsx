@@ -257,7 +257,7 @@ function OrganizationMembersPageForOrganization({
           title="สมาชิก"
           titleRef={memberPageHeadingRef}
           titleTabIndex={-1}
-          titleClassName="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
         />
         <p role="status">กำลังโหลดสมาชิก</p>
         <Skeleton className="h-64 w-full" />
@@ -272,7 +272,7 @@ function OrganizationMembersPageForOrganization({
           title="สมาชิก"
           titleRef={memberPageHeadingRef}
           titleTabIndex={-1}
-          titleClassName="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
         />
         <Alert tone="error">โหลดสมาชิกไม่สำเร็จ</Alert>
         {offset > 0 ? (
@@ -307,7 +307,7 @@ function OrganizationMembersPageForOrganization({
           title="สมาชิก"
           titleRef={memberPageHeadingRef}
           titleTabIndex={-1}
-          titleClassName="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
         />
         <p role="status">กำลังโหลดสมาชิก</p>
         <Skeleton className="h-64 w-full" />
@@ -324,7 +324,7 @@ function OrganizationMembersPageForOrganization({
         description={`สมาชิกทั้งหมด ${String(data.page.total)} คน`}
         titleRef={memberPageHeadingRef}
         titleTabIndex={-1}
-        titleClassName="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
       />
       <div className="overflow-x-auto rounded-md border border-foreground/10 bg-surface">
         <table className="w-full min-w-[560px] text-left text-sm">
