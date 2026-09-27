@@ -1,74 +1,53 @@
 # NightWatch Design Rules
 
-## Overview
-
-Design for calm, precise security operations: readable evidence, clear scope, obvious next actions. These are UX/UI rules, not an implementation inventory or a technology prescription.
-
-- Use one visual language across operational and marketing surfaces. Operations prioritize scanning dense data; marketing uses more whitespace and a simpler narrative.
-- Keep Organization and Project context visible. Distinguish observed results, incomplete data, and illustrative content.
-- Prefer neutral surfaces with one emerald primary accent. Avoid neon, decorative gradients, excessive cards, and color used merely to fill space.
+Calm, precise security operations: readable evidence, clear scope, obvious next actions. One visual language for operational and marketing surfaces; operations favor dense scanning, marketing more whitespace. Token values live in `apps/web/src/index.css`; this file holds the rules.
 
 ## Colors
 
-Use the same semantic roles in both themes. Values below are opaque colors; they are not interchangeable foreground/background pairs.
+Semantic roles, same in both themes: Canvas, Surface, Text, Secondary text, Control boundary, Primary/positive (one emerald accent), On primary, Caution, Danger, Divider.
 
-| Role | Light | Dark | Use |
-| --- | --- | --- | --- |
-| Canvas | `#F7F8FA` | `#000000` | Page background |
-| Surface | `#FFFFFF` | `#121316` | Panels, fields, overlays |
-| Text | `#171A1F` | `#F3F4F6` | Primary content |
-| Secondary text | `#5B6470` | `#ADB5BF` | Supporting content, metadata |
-| Control boundary | `#7B8490` | `#5B6470` | Essential field/control outlines, not every panel |
-| Primary / positive | `#087A55` | `#3ECF8E` | Primary action, links, focus; positive status with a label |
-| On primary | `#FFFFFF` | `#11251C` | Text on a solid primary button only |
-| Caution | `#8A5A00` | `#F2BE5C` | Warning text/icons on Canvas or Surface |
-| Danger | `#BE123C` | `#FB7185` | Critical/high severity and destructive-action text/icons on Canvas or Surface |
-
-- Primary buttons use Primary + On primary. Status badges use a neutral Surface with colored text/icon; never put white text on bright dark-theme emerald or reuse these text colors as arbitrary badge fills.
-- Critical/high share Danger but retain distinct labels and ordering; medium uses Caution; low/information/unknown/stale use neutral text with explicit labels. Severity, health and freshness remain distinct concepts.
-- Use color with text, icons, position or line styles. Do not imply success from a green primary action or classify business risk through an invented numeric threshold.
-- Charts reuse these roles for status; use direct labels and line/marker distinctions for unrelated series. Avoid adding a rainbow palette.
-- Preserve hierarchy and state meaning across themes; respect the user's theme preference.
-- Divider (alpha, not an opaque swatch): a translucent hairline — roughly Light `rgba(23, 26, 31, 0.06–0.10)` / Dark `rgba(255, 255, 255, 0.07–0.10)` — for row/table separators, card and panel edges, and secondary/outline button borders. Not a substitute for Control boundary on essential field/control outlines, and never the sole way to convey meaning.
-- Opaque pairs above were checked using WCAG contrast. Rounded minimums: text/status colors on Canvas/Surface **5.03:1**; On primary **5.35:1**; control boundaries **3.10:1** — this is the floor of the ≥ 3:1 rule below; do not darken the Dark control boundary further. Recheck actual combinations, states and any transparency; this is not a claim of whole-interface accessibility.
+- Neutral surfaces with one emerald accent; no neon, decorative gradients, excess cards or filler color.
+- Solid primary buttons use Primary + On primary. Status badges are neutral Surface with colored text/icon; never white text on dark-theme emerald, never status colors as arbitrary fills.
+- Critical/high share Danger with distinct labels and order; medium uses Caution; low/info/unknown/stale are neutral with explicit labels. Severity, health and freshness stay separate concepts.
+- Pair color with text, icon, position or line style. A green action does not mean success; never invent numeric risk thresholds.
+- Charts reuse the status roles; unrelated series use direct labels and line/marker styles, not a rainbow palette.
+- Divider is a translucent hairline (about 6–10% of Text in light, 7–10% white in dark) for row separators, card/panel edges and secondary button borders; it never replaces Control boundary on essential controls or carries meaning alone.
+- Contrast floors: text ≥ 4.5:1; essential control and focus boundaries ≥ 3:1. The dark Control boundary sits at the 3:1 floor, so never darken it. Recheck real combinations, states and transparency.
+- Respect the user's theme preference and keep hierarchy and state meaning in both themes.
+- Keep Organization and Project context visible; distinguish observed, incomplete and illustrative data.
 
 ## Typography
 
-- Use a readable sans-serif with compatible Thai and Latin forms; prefer Inter for Latin and Noto Sans Thai for Thai. Use a monospace face (e.g., JetBrains Mono) for identifiers, code, timestamps and numeric counts; keep all other text — full sentences and all Thai — in the sans-serif.
-- Slight letter-spacing (tracking) is permitted only on small Latin/numeric labels; never on Thai text, and never enough to risk clipping Thai marks.
-- Body and data: **14–16 px**, supporting labels: **12–14 px**, section/page headings: **20–28 px**; marketing display may reach **36–56 px**. Do not shrink essential content to fit a layout.
-- Use regular body text and medium/semibold emphasis; comfortable line height around **1.5**, allowing Thai marks without clipping. Keep casing natural.
-- Align numeric columns; show units, timezone and measurement window where needed. Never sacrifice legibility for density.
+- Sans-serif with compatible Thai and Latin: Inter for Latin, Noto Sans Thai for Thai. Monospace (JetBrains Mono) only for identifiers, code, timestamps and counts; sentences and all Thai stay sans-serif.
+- Tracking only on small Latin/numeric labels, never on Thai or enough to clip Thai marks.
+- Sizes: body/data 14–16 px, labels 12–14 px, headings 20–28 px, marketing display up to 36–56 px. Never shrink essential content to fit.
+- Regular body, medium/semibold emphasis, line height about 1.5 so Thai marks never clip; natural casing.
+- Align numeric columns; show units, timezone and measurement window where needed.
 
 ## Layout
 
-- Use a **4 px** spacing rhythm: **8 / 16 / 24 / 32 px** for related controls, groups, panels and sections. Group by purpose before adding a container.
-- Keep a clear page title, scope and one dominant next action. Navigation remains understandable without hover; active location needs more than color.
-- Reflow to narrow screens and **200% text enlargement** without losing actions or labels. Contain necessary two-dimensional table scrolling; avoid whole-page horizontal scrolling.
-- Controls need usable targets: at least **24 × 24 px** or equivalent spacing; prefer **44 × 44 px** for touch. Offer density without tiny text or targets.
-- Show depth through Canvas/Surface, spacing and a hairline border on cards and panels (see Divider) in place of a shadow. Reserve shadows for floating overlays (menus, popovers, the command palette), which may carry a stronger multi-layer shadow than a card ever does; no glow as a hierarchy device — a live-data indicator and the focus ring are the only sanctioned uses of a small state-only glow.
-- Use **4 px** corners for controls, panels and overlays; use a full pill/circular radius only for compact status badges/tags, counters and avatars.
-- Avatars stay circular (people); organization marks, folder/notification icons and step indicators use the 4 px corner (system) — keep this distinction consistent.
-- Canvas may carry a very subtle grain texture (roughly 4–5% opacity, tonal to the surface ink) for atmosphere on data-dense views; keep it off Surface panels and never let it compete with content or reduce export legibility.
+- 4 px rhythm (8 / 16 / 24 / 32 px); group by purpose before adding a container.
+- Each page has a clear title, visible scope and one dominant next action. Navigation works without hover, and the active location uses more than color.
+- Reflow to narrow screens and 200% text without losing actions or labels; contain table scrolling, never the whole page horizontally.
+- Targets at least 24 × 24 px (44 × 44 px preferred for touch); density never means tiny text or targets.
+- Depth comes from Canvas/Surface, spacing and a hairline edge, not shadows. Shadows only on floating overlays (menus, popovers, command palette). Glow only for a live-data indicator or alongside the focus ring.
+- 4 px corners for controls, panels and overlays; full radius only for status badges/tags, counters and avatars. Avatars (people) are circular; organization marks, icons and step indicators (system) use 4 px.
+- An optional subtle Canvas grain (about 4–5% opacity) on data-dense views; never on Surface or competing with content.
 
 ## Components
 
-| Pattern | UX rule |
-| --- | --- |
-| Actions | One visually dominant action per group; secondary actions stay quiet. Distinguish destructive actions by wording and consequence, not red alone. |
-| Forms | Persistent labels, examples only when helpful, errors next to the relevant field. Retain input on failure; expose pending state and prevent accidental duplicate actions. |
-| Tables | Clear headers, aligned values, visible sort/filter context, correct count meaning. Preserve ownership/context and access to important data on small screens. |
-| Navigation | Stable labels and current location. Collapsed navigation remains keyboard-accessible and understandable; closed items must not remain reachable. |
-| Overlays | Clear title, dismissal and return path. Modal interactions keep focus inside while open and restore it on close; content and actions fit the viewport. |
-| Feedback | Distinguish loading, no data, no filter matches, restricted access, failure, pending and success. Unknown/stale data must not look healthy, current or empty. |
-| Evidence | Label chart units, timeframe, source and missing data; provide a readable non-color summary. Do not present demonstrations as live telemetry. |
+- Actions: one dominant action per group; destructive actions are marked by wording and consequence, not red alone.
+- Forms: persistent labels, errors next to the field, input kept on failure, visible pending state, no accidental duplicate submits.
+- Tables: clear headers, aligned values, visible sort/filter context, correct count meaning; keep ownership/context on small screens.
+- Navigation: stable labels and current location; collapsed navigation stays keyboard-usable and closed items are unreachable.
+- Overlays: clear title, dismissal and return path; modals trap and restore focus and fit the viewport.
+- Feedback: distinguish loading, no data, no filter matches, restricted, failure, pending and success. Unknown or stale data never looks healthy, current or empty.
+- Evidence: label chart units, timeframe, source and missing data with a non-color summary; never present demos as live telemetry.
+- Use only the states the assigned flow needs; a pattern is not permission to add features.
 
-Apply only states and interactions relevant to the assigned flow; a pattern is not permission to add features.
+## Accessibility
 
-## Do's and Don'ts
-
-- Support keyboard operation with visible focus, a logical order and meaningful control names. Never rely on hover, placeholder text or color alone.
-- Keep normal text contrast ≥ **4.5:1**, essential control/focus distinctions ≥ **3:1**. A focus indicator must remain visible against adjacent surfaces, including primary buttons; separate it from the button fill — a state-only glow may accompany the ring but never substitutes for that offset.
-- Keep motion brief and purposeful; respect reduced-motion preferences and never require animation to reveal essential content.
-- Before accepting a design, review both themes, narrow layouts, enlarged text, keyboard/focus and relevant error/empty/permission states. Palette math alone does not prove those behaviors.
-- Do not prescribe libraries, markup, storage, build tooling or deployment here. Do not claim a design is implemented merely because it is documented.
+- Keyboard operation with visible focus, logical order and meaningful names; never rely on hover, placeholders or color alone.
+- The focus indicator stays visible against adjacent surfaces, including primary buttons, with an offset from the fill; a glow never replaces it.
+- Brief, purposeful motion that respects reduced-motion and never hides essential content.
+- Before accepting a design, review both themes, narrow layouts, enlarged text, keyboard/focus and relevant error, empty and permission states.
