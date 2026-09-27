@@ -512,4 +512,144 @@ describe("OrganizationMembersPage", () => {
       0,
     );
   });
+
+  it("routes a permission-denied directory to workspace when fresh memberships are not list-readable", async () => {
+    const viewerOrganization = {
+      ...organizationA,
+      role: "viewer" as const,
+    };
+    const auditorOrganization = {
+      id: organizationBId,
+      name: "Beta",
+      slug: "beta",
+      role: "auditor" as const,
+    };
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => {
+        tenant = {
+          ...tenant,
+          me: { organizations: [viewerOrganization, auditorOrganization] },
+          activeOrg: viewerOrganization,
+        };
+        return Promise.resolve({
+          organizations: [viewerOrganization, auditorOrganization],
+          lastActiveTenantId: organizationId,
+        });
+      }),
+    };
+    vi.mocked(fetchOrganizationMembers).mockRejectedValueOnce(
+      new ApiError("PERMISSION_DENIED", "role downgraded", 403),
+    );
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+            <Route path="/workspace" element={<p>workspace</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+  });
+
+  it("uses a fresh owner organization instead of a fresh viewer last-active organization", async () => {
+    const viewerOrganization = {
+      ...organizationA,
+      role: "viewer" as const,
+    };
+    const bPage: OrganizationMemberListResponse = {
+      organizationId: organizationBId,
+      members: [
+        {
+          id: "member-b",
+          userId: "user-b",
+          name: "B-confirmed",
+          email: "b@example.test",
+          role: "owner",
+        },
+      ],
+      page: { limit: 50, offset: 0, total: 1 },
+    };
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => {
+        tenant = {
+          ...tenant,
+          me: { organizations: [viewerOrganization, organizationB] },
+          activeOrg: organizationB,
+        };
+        return Promise.resolve({
+          organizations: [viewerOrganization, organizationB],
+          lastActiveTenantId: organizationId,
+        });
+      }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      )
+      .mockResolvedValueOnce(bPage);
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("B-confirmed")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${organizationBId}/members`,
+    );
+    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
+      1,
+      organizationId,
+      50,
+      0,
+    );
+    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
+      2,
+      organizationBId,
+      50,
+      0,
+    );
+  });
 });

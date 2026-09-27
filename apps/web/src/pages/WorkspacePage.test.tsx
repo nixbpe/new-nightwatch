@@ -1,4 +1,7 @@
-import type { MeContextResponse } from "@nightwatch/api-contract";
+import type {
+  MeContextResponse,
+  OrganizationMemberListResponse,
+} from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -6,7 +9,10 @@ import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";
-import { fetchOrganizationMembers } from "../lib/api/members";
+import {
+  fetchOrganizationMembers,
+  memberListQueryKey,
+} from "../lib/api/members";
 import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
 import { TenantProvider } from "../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
@@ -84,6 +90,20 @@ const viewerOrg = {
   role: "viewer" as const,
 };
 
+const staleMemberPage: OrganizationMemberListResponse = {
+  organizationId: ORG_A,
+  members: [
+    {
+      id: "member-1",
+      userId: "user-1",
+      name: "Cached member",
+      email: "cached@example.test",
+      role: "owner",
+    },
+  ],
+  page: { limit: 50, offset: 0, total: 51 },
+};
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -110,6 +130,7 @@ function renderDeniedMembershipPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  queryClient.setQueryData(memberListQueryKey(ORG_A, 50, 0), staleMemberPage);
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[`/organizations/${ORG_A}/members`]}>
@@ -198,24 +219,30 @@ describe("WorkspacePage context states", () => {
   it.each([
     {
       name: "B",
+      error: new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
       retryContext: meContext([viewerOrg], ORG_B),
       expected: "Org B · ผู้ชม",
     },
     {
+      name: "downgraded role",
+      error: new ApiError("PERMISSION_DENIED", "role downgraded", 403),
+      retryContext: meContext([{ ...ownerOrg, role: "viewer" }], ORG_A),
+      expected: "Org A · ผู้ชม",
+    },
+    {
       name: "no-access",
+      error: new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
       retryContext: meContext([]),
       expected: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
     },
   ])(
     "does not republish denied A before retry confirms $name",
-    async ({ retryContext, expected }) => {
+    async ({ error, retryContext, expected }) => {
       fetchMeContextMock
         .mockResolvedValueOnce(meContext([ownerOrg], ORG_A))
         .mockRejectedValueOnce(new Error("context unavailable"))
         .mockResolvedValueOnce(retryContext);
-      fetchOrganizationMembersMock.mockRejectedValueOnce(
-        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
-      );
+      fetchOrganizationMembersMock.mockRejectedValueOnce(error);
       const user = userEvent.setup();
       const queryClient = renderDeniedMembershipPage();
 
@@ -239,6 +266,7 @@ describe("WorkspacePage context states", () => {
       await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
 
       expect(await screen.findByText(expected)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
       expect(
         screen.queryByRole("heading", {
           name: "โหลดข้อมูลองค์กรไม่สำเร็จ",

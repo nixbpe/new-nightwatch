@@ -15,6 +15,8 @@ import { InboxScopeChangedError } from "../../lib/api/notifications";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import { NotificationsPage } from "../../pages/NotificationsPage";
 import { WorkspacePage } from "../../pages/WorkspacePage";
+import { fetchOrganizationMembers } from "../../lib/api/members";
+import { OrganizationMembersPage } from "../../pages/OrganizationMembersPage";
 import { AppShell } from "./AppShell";
 
 const {
@@ -57,6 +59,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => {
     updateActiveOrganization: vi.fn(),
   };
 });
+vi.mock("../../lib/api/members", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationMembers: vi.fn(),
+}));
 vi.mock("../../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {
@@ -70,6 +76,7 @@ vi.mock("../../lib/api/notifications", async (importOriginal) => {
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
+const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -126,6 +133,10 @@ function renderShell(
         ),
         children: [
           { path: "/workspace", element: workspaceElement },
+          {
+            path: "/organizations/:organizationId/members",
+            element: <OrganizationMembersPage />,
+          },
           { path: "/notifications", element: <NotificationsPage /> },
           { path: "/settings/security", element: <p>หน้าความปลอดภัย</p> },
           { path: "/settings/sessions", element: <p>หน้าเซสชัน</p> },
@@ -168,6 +179,7 @@ describe("AppShell", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
+    fetchOrganizationMembersMock.mockReset();
     fetchNotificationsMock.mockReset();
     fetchUnreadCountMock.mockReset();
     markAllNotificationsReadMock.mockReset();
@@ -547,6 +559,28 @@ describe("AppShell", () => {
     });
     expect(screen.getByText("Org A · เจ้าของ")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Org A/ })).toBeInTheDocument();
+  });
+
+  it("retires role-dependent shell controls after a permission denial refreshes an owner to viewer", async () => {
+    const downgradedOrg = { ...ownerOrg, role: "viewer" as const };
+    const denial = Promise.withResolvers<never>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(meContext([ownerOrg], ORG_A))
+      .mockResolvedValueOnce(meContext([downgradedOrg], ORG_A));
+    fetchOrganizationMembersMock.mockImplementationOnce(() => denial.promise);
+
+    renderShell(<WorkspacePage />, `/organizations/${ORG_A}/members`);
+
+    expect(
+      await screen.findByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+    ).toBeInTheDocument();
+    denial.reject(new ApiError("PERMISSION_DENIED", "role downgraded", 403));
+    expect(await screen.findByText("Org A · ผู้ชม")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
+    expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
   });
 
   it("⌘K includes every owner destination and navigates from a filtered result", async () => {

@@ -14,8 +14,15 @@ import { useTenant } from "../lib/tenant/TenantProvider";
 
 const LIMIT = 50;
 
-function isMembershipDenied(error: unknown): boolean {
-  return error instanceof ApiError && error.code === "MEMBERSHIP_DENIED";
+function isMemberDirectoryReadable({ role }: { role: string }): boolean {
+  return role === "owner" || role === "admin";
+}
+
+function isAuthorizationDenied(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === "MEMBERSHIP_DENIED" || error.code === "PERMISSION_DENIED")
+  );
 }
 
 export function OrganizationMembersPage() {
@@ -44,14 +51,14 @@ function OrganizationMembersPageForOrganization({
     (item) => item.id === organizationId,
   );
   const canRead =
-    organization?.role === "owner" || organization?.role === "admin";
+    organization !== undefined && isMemberDirectoryReadable(organization);
   const list = useQuery({
     queryKey: memberListQueryKey(organizationId, LIMIT, offset),
     queryFn: () => fetchOrganizationMembers(organizationId, LIMIT, offset),
     enabled: canRead,
   });
 
-  const refreshAfterMembershipDenied = useCallback(async () => {
+  const refreshAfterAuthorizationDenied = useCallback(async () => {
     setMembershipRefreshState("refreshing");
     const context = await refreshMembershipContext();
     if (context === null) {
@@ -60,8 +67,10 @@ function OrganizationMembersPageForOrganization({
     }
     const nextOrganizationId =
       context.organizations.find(
-        (organization) => organization.id === context.lastActiveTenantId,
-      )?.id ?? context.organizations[0]?.id;
+        (organization) =>
+          organization.id === context.lastActiveTenantId &&
+          isMemberDirectoryReadable(organization),
+      )?.id ?? context.organizations.find(isMemberDirectoryReadable)?.id;
     await navigate(
       nextOrganizationId === undefined
         ? "/workspace"
@@ -71,18 +80,21 @@ function OrganizationMembersPageForOrganization({
   }, [navigate, refreshMembershipContext]);
 
   useEffect(() => {
-    if (!isMembershipDenied(list.error) || membershipRefreshState !== "idle") {
+    if (
+      !isAuthorizationDenied(list.error) ||
+      membershipRefreshState !== "idle"
+    ) {
       return;
     }
-    void refreshAfterMembershipDenied();
-  }, [list.error, membershipRefreshState, refreshAfterMembershipDenied]);
+    void refreshAfterAuthorizationDenied();
+  }, [list.error, membershipRefreshState, refreshAfterAuthorizationDenied]);
   if (membershipRefreshState !== "idle") {
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
         <Alert tone="error">ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้</Alert>
         {membershipRefreshState === "failed" ? (
-          <Button onClick={() => void refreshAfterMembershipDenied()}>
+          <Button onClick={() => void refreshAfterAuthorizationDenied()}>
             ลองอีกครั้ง
           </Button>
         ) : null}
