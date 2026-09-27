@@ -48,7 +48,10 @@ export function Header({
           label:
             me?.organizations.find((org) => org.id === routeOrgId)?.name ??
             routeOrgId,
-          path: "/workspace",
+          // /workspace shows the active organization, so the crumb links
+          // there only when that is this organization; otherwise it is a
+          // plain label rather than a link to another tenant's page.
+          ...(routeOrgId === activeOrg?.id ? { path: "/workspace" } : {}),
         };
   const trail = rootCrumb === null ? pageTrail : [rootCrumb, ...pageTrail];
 
@@ -106,7 +109,11 @@ export function Header({
                 ) : (
                   <span
                     aria-current={isLast ? "page" : undefined}
-                    className="truncate font-medium text-foreground"
+                    className={
+                      isLast
+                        ? "truncate font-medium text-foreground"
+                        : "truncate text-foreground-secondary"
+                    }
                   >
                     {crumb.label}
                   </span>

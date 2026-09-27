@@ -274,9 +274,12 @@ describe("AppShell", () => {
     const breadcrumb = screen.getByRole("navigation", {
       name: "ตำแหน่งปัจจุบัน",
     });
+    // B is not the active organization, so the crumb names it without
+    // linking to /workspace, which would open A's workspace.
+    expect(await within(breadcrumb).findByText("Org B")).toBeInTheDocument();
     expect(
-      await within(breadcrumb).findByRole("link", { name: "Org B" }),
-    ).toBeInTheDocument();
+      within(breadcrumb).queryByRole("link", { name: "Org B" }),
+    ).toBeNull();
     expect(within(breadcrumb).queryByText("Org A")).toBeNull();
     expect(within(breadcrumb).getByText("ตั้งค่าการแจ้งเตือน")).toHaveAttribute(
       "aria-current",
