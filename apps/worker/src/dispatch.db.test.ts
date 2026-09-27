@@ -97,8 +97,7 @@ async function publishedPort(
   return Number(port);
 }
 
-// Docker readiness is an external integration boundary; wait for its explicit
-// service signal rather than guessing a startup delay in the test process.
+// Wait for the service readiness signal instead of a fixed startup delay.
 async function waitFor(
   container: string,
   readinessCommand: string,
@@ -225,9 +224,8 @@ beforeAll(async () => {
     `${initRolesScript}:/docker-entrypoint-initdb.d/001-roles.sh:ro`,
     "postgres:17.11-alpine",
   ]);
-  // Probe over TCP: the image's init-time server listens only on the unix
-  // socket and restarts after init scripts, so a socket probe can pass
-  // before the published port serves the final server.
+  // Probe over TCP: the init-time server is socket-only and restarts after init
+  // scripts, so a socket probe can pass before the final server is up.
   await waitFor(
     postgresContainer,
     "pg_isready -h 127.0.0.1 -U nightwatch_owner -d nightwatch >/dev/null && " +

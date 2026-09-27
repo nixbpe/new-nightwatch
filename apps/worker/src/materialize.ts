@@ -45,10 +45,7 @@ export function assertMaterializeJobData(
   materializeJobDataSchema.parse(value);
 }
 
-/**
- * Payload scope is transport metadata only. The ledger resolver is the sole
- * source of the transaction context and every payload/claim mismatch fails.
- */
+// Payload scope is untrusted transport metadata; the ledger claim is authoritative.
 export async function processMaterialization(
   job: MaterializeJobData,
   dependencies: MaterializationDependencies,

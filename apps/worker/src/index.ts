@@ -58,10 +58,6 @@ function requireEnvironment(name: "DATABASE_URL" | "REDIS_URL"): string {
   return value;
 }
 
-/**
- * Roles are selected explicitly. The default starts only the main
- * consumer; a combined consumer+scheduler process must opt in.
- */
 function workerRoles(value: string | undefined): Set<"consumer" | "scheduler"> {
   const roles = new Set<"consumer" | "scheduler">();
   for (const token of (value ?? "consumer").split(",")) {
