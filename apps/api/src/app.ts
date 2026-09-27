@@ -68,12 +68,9 @@ function logSafeOrganizationPath(path: string): string {
     return `${safePrefix}${suffix}`;
   }
 
-  const memberStart = membersEnd + 1;
-  if (
-    suffix[membersEnd] !== "/" ||
-    suffix[memberStart] === undefined ||
-    suffix[memberStart] === "/"
-  ) {
+  let memberStart = membersEnd;
+  while (suffix[memberStart] === "/") memberStart += 1;
+  if (memberStart === membersEnd || suffix[memberStart] === undefined) {
     return `${safePrefix}${suffix}`;
   }
 

@@ -158,8 +158,9 @@ describe("request completion logging", () => {
         expected: "/api/organizations/:organizationId/members/",
       },
       {
-        input: `/api/organizations/${organizationId}/members//role/extra`,
-        expected: "/api/organizations/:organizationId/members//role/extra",
+        input: `/api/organizations/${organizationId}/members//${memberId}/role/extra`,
+        expected:
+          "/api/organizations/:organizationId/members//:memberId/role/extra",
       },
       {
         input: `/api/organizations/${organizationId}//members`,
@@ -199,12 +200,8 @@ describe("request completion logging", () => {
         expected: "/api/organizations/",
       },
       {
-        input: `/api/organizations//members/${memberId}`,
-        expected: "/api/organizations//members/:memberId",
-      },
-      {
-        input: `/api/organizations///members/${memberId}`,
-        expected: "/api/organizations///members/:memberId",
+        input: `/api/organizations//members//${memberId}/role`,
+        expected: "/api/organizations//members//:memberId/role",
       },
       {
         input: `/api/projects/${organizationId}/members/${memberId}`,
