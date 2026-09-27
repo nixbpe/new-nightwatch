@@ -1,3 +1,7 @@
+import {
+  organizationMemberListQuerySchema,
+  organizationMemberListResponseSchema,
+} from "@nightwatch/api-contract";
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { MiddlewareHandler } from "hono";
 import type { Database } from "@nightwatch/db";
@@ -10,6 +14,7 @@ import { notificationRouteDeclarations } from "../notifications/contract";
 import { invalidInputHook } from "../notifications/invalid-input";
 import {
   leaveOrganization,
+  listOrganizationMembers,
   revokeOrganizationMember,
   updateOrganizationMemberRole,
 } from "./members";
@@ -141,6 +146,24 @@ const memberSelfLeaveRoute = createRoute({
   },
 });
 
+const memberListRoute = createRoute({
+  method: "get",
+  path: "/api/organizations/{organizationId}/members",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid() }),
+    query: organizationMemberListQuerySchema,
+  },
+  responses: {
+    200: {
+      description: "Paginated organization members",
+      content: {
+        "application/json": { schema: organizationMemberListResponseSchema },
+      },
+    },
+  },
+});
+
 export function registerOrganizationNotificationSettingsRoutes(
   app: OpenAPIHono,
   deps: { auth: Auth; authEnv: AuthEnv; database: Database; logger: Logger },
@@ -199,6 +222,25 @@ export function registerOrganizationMemberRoutes(
   app: OpenAPIHono,
   deps: { auth: Auth; database: Database; logger: Logger },
 ): void {
+
+  app.openapi(memberListRoute, async (c) => {
+    const { organizationId } = c.req.valid("param");
+    const { limit, offset } = c.req.valid("query");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    const body = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.member.list",
+      () =>
+        listOrganizationMembers(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          limit,
+          offset,
+        }),
+    );
+    return c.json(body, 200);
+  });
   app.openapi(memberRoleUpdateRoute, async (c) => {
     const { organizationId, memberId } = c.req.valid("param");
     const { role } = c.req.valid("json");

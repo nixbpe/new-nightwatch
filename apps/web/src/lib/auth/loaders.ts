@@ -8,6 +8,10 @@ import {
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
+import {
+  fetchOrganizationMembers,
+  memberListQueryKey,
+} from "../api/members";
 import { authClient } from "../auth-client";
 import {
   fetchNotifications,
@@ -137,6 +141,34 @@ export async function notificationSettingsLoader({
     .query({
       queryKey: organizationNotificationSettingsQueryKey(organizationId),
       queryFn: () => fetchOrganizationNotificationSettings(organizationId),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
+}
+
+export async function organizationMembersLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const organizationId = params.organizationId;
+  if (organizationId === undefined) return null;
+  const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (
+    context?.organizations.some((organization) => organization.id === organizationId) !==
+    true
+  ) {
+    return null;
+  }
+  await queryClient
+    .query({
+      queryKey: memberListQueryKey(organizationId, 50, 0),
+      queryFn: () => fetchOrganizationMembers(organizationId, 50, 0),
       staleTime: "static",
     })
     .catch(() => undefined);

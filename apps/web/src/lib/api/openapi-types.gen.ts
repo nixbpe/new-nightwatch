@@ -1033,6 +1033,63 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/organizations/{organizationId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated organization members */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            organizationId: string;
+                            members: {
+                                id: string;
+                                userId: string;
+                                name: string;
+                                /** Format: email */
+                                email: string;
+                                /** @enum {string} */
+                                role: "owner" | "admin" | "viewer" | "auditor";
+                            }[];
+                            page: {
+                                limit: number;
+                                offset: number;
+                                total: number;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{organizationId}/members/{memberId}/role": {
         parameters: {
             query?: never;
