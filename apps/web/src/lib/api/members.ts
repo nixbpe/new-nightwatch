@@ -11,12 +11,7 @@ export const memberListQueryKey = (
   organizationId: string,
   limit: number,
   offset: number,
-) =>
-  [
-    ...MEMBER_LIST_QUERY_PREFIX,
-    organizationId,
-    { limit, offset },
-  ] as const;
+) => [...MEMBER_LIST_QUERY_PREFIX, organizationId, { limit, offset }] as const;
 
 export function fetchOrganizationMembers(
   organizationId: string,

@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { request } from "./client";
-import {
-  fetchOrganizationMembers,
-  memberListQueryKey,
-} from "./members";
+import { fetchOrganizationMembers, memberListQueryKey } from "./members";
 
 vi.mock("./client", () => ({ request: vi.fn() }));
 
@@ -36,9 +33,9 @@ describe("organization members API", () => {
   it("requests and validates the paginated organization member directory", async () => {
     vi.mocked(request).mockResolvedValueOnce(response);
 
-    await expect(fetchOrganizationMembers(organizationId, 50, 0)).resolves.toEqual(
-      response,
-    );
+    await expect(
+      fetchOrganizationMembers(organizationId, 50, 0),
+    ).resolves.toEqual(response);
     expect(request).toHaveBeenCalledWith(
       "/api/organizations/{organizationId}/members",
       expect.anything(),

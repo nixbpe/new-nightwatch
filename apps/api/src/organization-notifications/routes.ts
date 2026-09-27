@@ -222,7 +222,6 @@ export function registerOrganizationMemberRoutes(
   app: OpenAPIHono,
   deps: { auth: Auth; database: Database; logger: Logger },
 ): void {
-
   app.openapi(memberListRoute, async (c) => {
     const { organizationId } = c.req.valid("param");
     const { limit, offset } = c.req.valid("query");
