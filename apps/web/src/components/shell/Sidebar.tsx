@@ -58,7 +58,9 @@ export function Sidebar({
               leaf={leaf}
               href={href}
               collapsed={collapsed}
-              active={isLeafActive(leaf, pathname)}
+              // Matched on the resolved href, so an organization leaf is
+              // current only for the organization it links to.
+              active={isLeafActive({ path: href }, pathname)}
               onNavigate={onNavigate}
             />
           ));

@@ -93,11 +93,14 @@ placeholder routes (confirmed with the user).
 
 ## Header
 
-`Header.tsx`: sidebar toggle (hamburger below `sm`), breadcrumb rooted at the
-active organization (`breadcrumb.ts` derives the page crumb from
-`NAV_ITEMS`, matching organization-scoped leaves on their route shape so an
-id never shows; section labels are not crumbs), the search-all field with a
-⌘K hint, and notifications. Below `lg` the breadcrumb shows only the current
+`Header.tsx`: sidebar toggle (hamburger below `sm`), the breadcrumb, the
+search-all field with a ⌘K hint, and notifications. The breadcrumb's root
+is the organization the page acts on: on an organization-scoped route the
+one named in the URL (`getRouteOrganizationId`; a bookmark may name an
+organization other than the account-global active one), elsewhere the
+active organization. `breadcrumb.ts` derives the page crumb from
+`NAV_ITEMS`, matching organization-scoped leaves on their route shape so
+an id never shows; section labels are not crumbs. Below `lg` the breadcrumb shows only the current
 page and search is icon-only, matching the 768px reference. No product logo
 or avatar in the header.
 

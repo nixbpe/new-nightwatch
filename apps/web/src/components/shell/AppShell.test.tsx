@@ -107,7 +107,10 @@ function ThrowingPage(): never {
   throw new Error("boom");
 }
 
-function renderShell(workspaceElement: ReactNode = <p>เนื้อหาหน้า</p>) {
+function renderShell(
+  workspaceElement: ReactNode = <p>เนื้อหาหน้า</p>,
+  initialPath = "/workspace",
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -126,10 +129,14 @@ function renderShell(workspaceElement: ReactNode = <p>เนื้อหาห�
           { path: "/notifications", element: <NotificationsPage /> },
           { path: "/settings/security", element: <p>หน้าความปลอดภัย</p> },
           { path: "/settings/sessions", element: <p>หน้าเซสชัน</p> },
+          {
+            path: "/organizations/:organizationId/notification-settings",
+            element: <p>หน้าตั้งค่าองค์กร</p>,
+          },
         ],
       },
     ],
-    { initialEntries: ["/workspace"] },
+    { initialEntries: [initialPath] },
   );
   return render(<RouterProvider router={router} />);
 }
@@ -251,6 +258,40 @@ describe("AppShell", () => {
     expect(
       within(nav).queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
     ).toBeNull();
+  });
+
+  it("an organization-scoped route names its own organization even when another one is active", async () => {
+    // A bookmarked URL for Org B while Org A is the account-global active
+    // organization: the page acts on B, so the crumb must say B, and the
+    // sidebar's organization leaf (which links to A) is not current.
+    fetchMeContextMock.mockResolvedValue(
+      meContext([ownerOrg, { ...viewerOrg, role: "owner" as const }], ORG_A),
+    );
+    renderShell(undefined, `/organizations/${ORG_B}/notification-settings`);
+    expect(await screen.findByText("หน้าตั้งค่าองค์กร")).toBeInTheDocument();
+
+    // Until me/context resolves the crumb shows the raw id; then the name.
+    const breadcrumb = screen.getByRole("navigation", {
+      name: "ตำแหน่งปัจจุบัน",
+    });
+    expect(
+      await within(breadcrumb).findByRole("link", { name: "Org B" }),
+    ).toBeInTheDocument();
+    expect(within(breadcrumb).queryByText("Org A")).toBeNull();
+    expect(within(breadcrumb).getByText("ตั้งค่าการแจ้งเตือน")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+
+    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    const orgLeaf = within(nav).getByRole("link", {
+      name: "ตั้งค่าการแจ้งเตือน",
+    });
+    expect(orgLeaf).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/notification-settings`,
+    );
+    expect(orgLeaf).not.toHaveAttribute("aria-current");
   });
 
   it("a crashing page is caught without losing the shell chrome", async () => {

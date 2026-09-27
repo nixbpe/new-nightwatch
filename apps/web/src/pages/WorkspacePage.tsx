@@ -73,6 +73,13 @@ export function WorkspacePage() {
       <PageHeader
         eyebrow={`${activeOrg.name} · ${ROLE_LABELS[activeOrg.role] ?? activeOrg.role}`}
         title="ภาพรวม"
+        // Names are not unique across organizations (only the slug is), so
+        // the slug stays visible as the identifier of the active tenant.
+        description={
+          <>
+            slug <span className="font-mono">{activeOrg.slug}</span>
+          </>
+        }
       />
       <EmptyState
         icon={<GridIcon size={20} />}

@@ -12,6 +12,7 @@ import {
   organizationNotificationSettingsQueryKey,
   updateOrganizationNotificationSettings,
 } from "../lib/api/notifications";
+import { useTenant } from "../lib/tenant/TenantProvider";
 
 export function OrganizationNotificationSettingsPage() {
   const organizationId = useParams().organizationId;
@@ -59,11 +60,21 @@ function OrganizationNotificationSettingsForOrganization({
       });
     },
   });
+  // The page acts on the route's organization, which a bookmarked URL may
+  // make differ from the active one, so the scope line names it.
+  const { me } = useTenant();
+  const organizationName = me?.organizations.find(
+    (org) => org.id === organizationId,
+  )?.name;
   const header = (
     <PageHeader
-      eyebrow="ตั้งค่าองค์กร"
+      eyebrow={
+        organizationName === undefined
+          ? "ตั้งค่าองค์กร"
+          : `${organizationName} · ตั้งค่าองค์กร`
+      }
       title="ตั้งค่าการแจ้งเตือน"
-      description="ใช้กับสมาชิกทุกคนขององค์กรที่เลือกอยู่"
+      description="ใช้กับสมาชิกทุกคนขององค์กรนี้"
     />
   );
   if (settings.isPending)

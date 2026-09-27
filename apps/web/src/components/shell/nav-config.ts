@@ -133,6 +133,27 @@ export function getNavDestinations(context: NavContext): NavDestination[] {
   });
 }
 
+/**
+ * The organization an organization-scoped route names, from the pathname
+ * itself; null off such routes. A bookmarked URL may name a different
+ * organization than the account-global active one, and the shell must
+ * then present the route's organization as the scope the page acts on.
+ */
+export function getRouteOrganizationId(pathname: string): string | null {
+  for (const leaf of getAllNavLeaves()) {
+    if (!leaf.path.includes(ORG_PARAM)) {
+      continue;
+    }
+    const match = new RegExp(
+      `^${leaf.path.replace(ORG_PARAM, "([^/]+)")}(/|$)`,
+    ).exec(pathname);
+    if (match?.[1] !== undefined) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
 /** Every leaf (own and palette) regardless of context, for label lookups. */
 export function getAllNavLeaves(): NavLeaf[] {
   return NAV_ITEMS.flatMap((item) =>
