@@ -44,7 +44,7 @@ function OrganizationMembersPageForOrganization({
   const { me, mePending, refreshMembershipContext } = useTenant();
   const navigate = useNavigate();
   const [membershipRefreshState, setMembershipRefreshState] = useState<
-    "idle" | "refreshing" | "failed"
+    "idle" | "refreshing" | "failed" | "list-failed"
   >("idle");
   const [offset, setOffset] = useState(0);
   const organization = me?.organizations.find(
@@ -57,12 +57,23 @@ function OrganizationMembersPageForOrganization({
     queryFn: () => fetchOrganizationMembers(organizationId, LIMIT, offset),
     enabled: canRead,
   });
+  const { refetch: refetchList } = list;
 
   const refreshAfterAuthorizationDenied = useCallback(async () => {
     setMembershipRefreshState("refreshing");
     const context = await refreshMembershipContext();
     if (context === null) {
       setMembershipRefreshState("failed");
+      return;
+    }
+    const sameOrganizationIsReadable = context.organizations.some(
+      (organization) =>
+        organization.id === organizationId &&
+        isMemberDirectoryReadable(organization),
+    );
+    if (sameOrganizationIsReadable) {
+      const result = await refetchList();
+      setMembershipRefreshState(result.isError ? "list-failed" : "idle");
       return;
     }
     const nextOrganizationId =
@@ -77,7 +88,7 @@ function OrganizationMembersPageForOrganization({
         : `/organizations/${nextOrganizationId}/members`,
       { replace: true },
     );
-  }, [navigate, refreshMembershipContext]);
+  }, [navigate, organizationId, refetchList, refreshMembershipContext]);
 
   useEffect(() => {
     if (
@@ -88,7 +99,10 @@ function OrganizationMembersPageForOrganization({
     }
     void refreshAfterAuthorizationDenied();
   }, [list.error, membershipRefreshState, refreshAfterAuthorizationDenied]);
-  if (membershipRefreshState !== "idle") {
+  if (
+    membershipRefreshState === "refreshing" ||
+    membershipRefreshState === "failed"
+  ) {
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
@@ -98,6 +112,23 @@ function OrganizationMembersPageForOrganization({
             ลองอีกครั้ง
           </Button>
         ) : null}
+      </Page>
+    );
+  }
+  if (membershipRefreshState === "list-failed") {
+    return (
+      <Page>
+        <PageHeader title="สมาชิก" />
+        <Alert tone="error">โหลดสมาชิกไม่สำเร็จ</Alert>
+        <Button
+          onClick={() =>
+            void refetchList().then((result) => {
+              if (!result.isError) setMembershipRefreshState("idle");
+            })
+          }
+        >
+          ลองอีกครั้ง
+        </Button>
       </Page>
     );
   }

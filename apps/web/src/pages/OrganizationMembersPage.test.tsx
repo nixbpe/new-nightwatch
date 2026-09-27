@@ -433,6 +433,67 @@ describe("OrganizationMembersPage", () => {
     expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
   });
 
+  it("refetches once after fresh owner confirmation for the same organization", async () => {
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn().mockResolvedValue({
+        organizations: [organizationA],
+        lastActiveTenantId: organizationId,
+      }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
+      )
+      .mockResolvedValueOnce(response);
+
+    renderPage();
+
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
+      1,
+      organizationId,
+      50,
+      0,
+    );
+    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
+      2,
+      organizationId,
+      50,
+      0,
+    );
+    expect(
+      screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows normal retry after the bounded same-organization refetch fails", async () => {
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn().mockResolvedValue({
+        organizations: [organizationA],
+        lastActiveTenantId: organizationId,
+      }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
+      )
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(response);
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
+  });
+
   it("retires revoked A scope after the next list denial and routes to confirmed B", async () => {
     const bPage: OrganizationMemberListResponse = {
       organizationId: organizationBId,
