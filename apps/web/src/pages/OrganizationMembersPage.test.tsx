@@ -250,6 +250,65 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("Ada")).toBeInTheDocument();
   });
 
+  it("recovers membership when an initial list retry is denied", async () => {
+    const viewerOrganization = {
+      ...organizationA,
+      role: "viewer" as const,
+    };
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => {
+        tenant = {
+          ...tenant,
+          me: { organizations: [viewerOrganization] },
+          activeOrg: viewerOrganization,
+        };
+        return Promise.resolve({
+          organizations: [viewerOrganization],
+          lastActiveTenantId: organizationId,
+        });
+      }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      );
+    const user = userEvent.setup();
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+            <Route path="/workspace" element={<p>workspace</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    expect(await screen.findByText("workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+  });
+
   it("keeps a delayed A page and its offset out of confirmed B scope", async () => {
     let resolveASecondPage!: (value: OrganizationMemberListResponse) => void;
     const delayedASecondPage = new Promise<OrganizationMemberListResponse>(

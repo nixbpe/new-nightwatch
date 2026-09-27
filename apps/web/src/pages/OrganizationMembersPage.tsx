@@ -255,7 +255,9 @@ function OrganizationMembersPageForOrganization({
           title="สมาชิก"
         />
         <Alert tone="error">โหลดสมาชิกไม่สำเร็จ</Alert>
-        <Button onClick={() => void list.refetch()}>ลองอีกครั้ง</Button>
+        <Button onClick={() => void retryAfterListFailure()}>
+          ลองอีกครั้ง
+        </Button>
       </Page>
     );
   }
