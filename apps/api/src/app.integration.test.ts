@@ -125,7 +125,7 @@ describe("error contract", () => {
 });
 
 describe("request completion logging", () => {
-  it("normalizes member directory paths and every member suffix", async () => {
+  it("normalizes member directory paths, suffixes, and malformed separators", async () => {
     const organizationId = "11111111-1111-4111-8111-111111111111";
     const memberId = "22222222-2222-4222-8222-222222222222";
     const logLines: string[] = [];
@@ -153,11 +153,24 @@ describe("request completion logging", () => {
         expected:
           "/api/organizations/:organizationId/members/:memberId/role/extra",
       },
+      {
+        input: `/api/organizations/${organizationId}/members/`,
+        expected: "/api/organizations/:organizationId/members/",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members//role/extra`,
+        expected: "/api/organizations/:organizationId/members//role/extra",
+      },
     ];
 
+    const responses: Response[] = [];
     for (const { input } of paths) {
-      await app.request(input);
+      responses.push(await app.request(input));
     }
+
+    expect(responses.slice(-2).map((response) => response.status)).toEqual([
+      404, 404,
+    ]);
 
     const completions = logLines
       .map((line) => JSON.parse(line) as Record<string, unknown>)
