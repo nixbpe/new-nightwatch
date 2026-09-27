@@ -531,7 +531,12 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
       const freshContext: MeContextResponse = {
         ...cachedOwnerContext,
         organizations: [
-          { id: organizationId, name: "Fresh Acme", slug: "acme", role: "owner" },
+          {
+            id: organizationId,
+            name: "Fresh Acme",
+            slug: "acme",
+            role: "owner",
+          },
         ],
       };
       fetchMeContextMock.mockResolvedValue(freshContext);
