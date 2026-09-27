@@ -424,7 +424,9 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
         { signal: abortController.signal },
       ),
     } as never);
-    await vi.waitFor(() => expect(fetchMeContextMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledOnce();
+    });
 
     abortController.abort();
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, destinationContext);
@@ -457,7 +459,9 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
         { signal: abortController.signal },
       ),
     } as never);
-    await vi.waitFor(() => expect(fetchMeContextMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledOnce();
+    });
 
     abortController.abort();
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, cachedOwnerContext);
@@ -613,9 +617,9 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
         { signal: abortController.signal },
       ),
     } as never);
-    await vi.waitFor(() =>
-      expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce(),
-    );
+    await vi.waitFor(() => {
+      expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
+    });
 
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, destinationContext);
     queryClient.setQueryData(
@@ -668,9 +672,9 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
         { signal: abortController.signal },
       ),
     } as never);
-    await vi.waitFor(() =>
-      expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce(),
-    );
+    await vi.waitFor(() => {
+      expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
+    });
 
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, destinationContext);
     queryClient.setQueryData(

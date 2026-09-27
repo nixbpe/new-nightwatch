@@ -168,6 +168,11 @@ export async function notificationSettingsLoader({
   return null;
 }
 
+// AbortSignal changes across awaits; keep each check as a fresh read.
+function isNavigationAborted(signal: AbortSignal): boolean {
+  return signal.aborted;
+}
+
 export async function organizationMembersLoader({
   params,
   request,
@@ -177,11 +182,14 @@ export async function organizationMembersLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
-  if (request.signal.aborted) return null;
+  if (isNavigationAborted(request.signal)) return null;
   const organizationId = params.organizationId;
   if (organizationId === undefined) return null;
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
-  if (request.signal.aborted || !claimContextPublication(queryClient, claim)) {
+  if (
+    isNavigationAborted(request.signal) ||
+    !claimContextPublication(queryClient, claim)
+  ) {
     return null;
   }
   const previousContext =
@@ -189,7 +197,7 @@ export async function organizationMembersLoader({
   // A prior context or member query may have started before this membership
   // gate. Cancel it before the direct request can publish.
   if (
-    request.signal.aborted ||
+    isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
@@ -199,14 +207,14 @@ export async function organizationMembersLoader({
     exact: true,
   });
   if (
-    request.signal.aborted ||
+    isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
   }
   await queryClient.cancelQueries({ queryKey: ["tenant"] });
   if (
-    request.signal.aborted ||
+    isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
@@ -215,28 +223,28 @@ export async function organizationMembersLoader({
   // static context cache that could predate a revocation or role change.
   const context = await fetchMeContext().catch(() => undefined);
   if (
-    request.signal.aborted ||
+    isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
   }
   if (context === undefined) {
     if (
-      request.signal.aborted ||
+      isNavigationAborted(request.signal) ||
       !hasContextPublicationClaim(queryClient, claim)
     ) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
     if (
-      request.signal.aborted ||
+      isNavigationAborted(request.signal) ||
       !hasContextPublicationClaim(queryClient, claim)
     ) {
       return null;
     }
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
     if (
-      request.signal.aborted ||
+      isNavigationAborted(request.signal) ||
       !hasContextPublicationClaim(queryClient, claim)
     ) {
       return null;
@@ -246,14 +254,14 @@ export async function organizationMembersLoader({
   }
   if (!hasSameMembershipScope(previousContext, context)) {
     if (
-      request.signal.aborted ||
+      isNavigationAborted(request.signal) ||
       !hasContextPublicationClaim(queryClient, claim)
     ) {
       return null;
     }
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
     if (
-      request.signal.aborted ||
+      isNavigationAborted(request.signal) ||
       !hasContextPublicationClaim(queryClient, claim)
     ) {
       return null;
@@ -261,14 +269,14 @@ export async function organizationMembersLoader({
     queryClient.removeQueries({ queryKey: ["tenant"] });
   }
   if (
-    request.signal.aborted ||
+    isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
   }
   queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
   if (
-    request.signal.aborted ||
+    isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
@@ -284,12 +292,16 @@ export async function organizationMembersLoader({
     return null;
   }
   if (
-    request.signal.aborted ||
+    isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
   }
-  const memberKey = memberListQueryKey(organizationId, 50, 0);
+  const memberKey: readonly unknown[] = memberListQueryKey(
+    organizationId,
+    50,
+    0,
+  );
   const memberQuery = queryClient.getQueryCache().find({
     queryKey: memberKey,
     exact: true,
@@ -307,7 +319,7 @@ export async function organizationMembersLoader({
       () => undefined,
     );
     if (
-      request.signal.aborted ||
+      isNavigationAborted(request.signal) ||
       !hasContextPublicationClaim(queryClient, claim)
     ) {
       return null;
