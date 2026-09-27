@@ -59,7 +59,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [membershipContextUnavailable, setMembershipContextUnavailable] =
     useState(false);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
-  const latestSwitchClaim = useRef<bigint | null>(null);
+  const switchQueue = useRef<Promise<void>>(Promise.resolve());
+  const latestSwitchIntent = useRef(0);
   const publication = useSyncExternalStore(
     useCallback(
       (listener) => subscribeToContextPublication(queryClient, listener),
@@ -181,34 +182,41 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     ) {
       return false;
     }
-    const claim = createContextPublicationClaim();
-    if (!claimContextPublication(queryClient, claim)) {
-      return false;
-    }
-    latestSwitchClaim.current = claim;
+    const intent = ++latestSwitchIntent.current;
     setOrgSwitchPending(true);
-    try {
-      const updated = await updateActiveOrganization({ organizationId });
-      if (!hasContextPublicationClaim(queryClient, claim)) {
+    const switchOperation = switchQueue.current.then(async () => {
+      const claim = createContextPublicationClaim();
+      if (!claimContextPublication(queryClient, claim)) {
         return false;
       }
-      await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
-      if (!hasContextPublicationClaim(queryClient, claim)) {
+      try {
+        const updated = await updateActiveOrganization({ organizationId });
+        if (!hasContextPublicationClaim(queryClient, claim)) {
+          return false;
+        }
+        await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
+        if (!hasContextPublicationClaim(queryClient, claim)) {
+          return false;
+        }
+        queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
+        publishContextPublication(queryClient, claim);
+        setMembershipContextUnavailable(false);
+        setSelectedOrgId(organizationId);
+        return latestSwitchIntent.current === intent;
+      } catch {
         return false;
       }
-      queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-      publishContextPublication(queryClient, claim);
-      setMembershipContextUnavailable(false);
-      setSelectedOrgId(organizationId);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      if (latestSwitchClaim.current === claim) {
+    });
+    switchQueue.current = switchOperation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return switchOperation.finally(() => {
+      if (latestSwitchIntent.current === intent) {
         setOrgSwitchPending(false);
       }
-    }
+    });
   };
 
   const retryMe = async (): Promise<void> => {
