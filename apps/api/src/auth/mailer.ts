@@ -8,15 +8,9 @@ export type OutboundMail = {
   html: string;
 };
 
-/**
- * SMTP delivery with real failure semantics: send() rejects when the
- * server cannot deliver, and there is no fake transport fallback.
- * Recipients and message bodies (which may contain single-use links) are
- * never logged.
- */
+// Never log recipients or bodies: they may contain single-use links.
 export type Mailer = {
   send: (mail: OutboundMail) => Promise<void>;
-  /** Fail-fast startup check against the configured SMTP server. */
   verify: () => Promise<void>;
 };
 

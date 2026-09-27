@@ -2,29 +2,13 @@ import { APIError } from "better-auth/api";
 import type { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { DBAdapter, DBTransactionAdapter } from "better-auth/types";
 
-/**
- * Concurrent invitation acceptance (SEC-005/QA-9, SEC-C4-001/QA-C4-01).
- *
- * Drizzle 1.6.23's incrementOne selects an id in a subquery, which can
- * become stale while waiting on a concurrent acceptance. For status-only
- * invitation mutations bounded by one id, update keeps the entire guard
- * on the target row so losers cannot roll an accepted invitation back.
- *
- * The separate member-uniqueness fallback translates only SQLSTATE 23505
- * for member_organization_user_key, including DrizzleQueryError causes,
- * into the native denial. Every unrelated database error stays visible.
- */
-
-/** SQL unique constraint making one-membership-per-(organization,user). */
 export const MEMBER_UNIQUENESS_CONSTRAINT = "member_organization_user_key";
 
-/** Native denial every non-winning acceptance already receives. */
+// The same native denial every losing concurrent acceptance receives.
 const MEMBER_RACE_DENIAL_MESSAGE = "Invitation not found";
 
-/** Cause chains from driver wrappers are shallow; bound the walk. */
 const CAUSE_CHAIN_LIMIT = 8;
 
-/** First object in the cause chain carrying a database error `code`. */
 function findDatabaseError(
   error: unknown,
 ): { code?: unknown; constraint?: unknown } | null {
@@ -51,11 +35,7 @@ export function isMemberUniquenessRace(error: unknown): boolean {
   );
 }
 
-/**
- * Rethrow `error`: the proven member-uniqueness race becomes the native
- * Better Auth denial (which Better Call renders as a 400 response);
- * everything else is rethrown unchanged. Never returns.
- */
+// Only the member-uniqueness race becomes the 400 denial; others stay visible.
 export function translateMemberUniquenessRace(error: unknown): never {
   if (isMemberUniquenessRace(error)) {
     throw new APIError("BAD_REQUEST", {
@@ -66,9 +46,7 @@ export function translateMemberUniquenessRace(error: unknown): never {
 }
 
 type AdapterFactory = ReturnType<typeof drizzleAdapter>;
-/** Core adapter contract produced by the factory wrapper. */
 type Adapter = DBAdapter;
-/** Transaction-scoped adapter the core hands to `transaction` callbacks. */
 type TransactionAdapter = DBTransactionAdapter;
 
 function wrapAdapter(adapter: Adapter | TransactionAdapter): Adapter {
@@ -78,6 +56,9 @@ function wrapAdapter(adapter: Adapter | TransactionAdapter): Adapter {
       .catch((error: unknown) =>
         translateMemberUniquenessRace(error),
       )) as unknown as Adapter["create"];
+  // Better Auth 1.6.23's drizzle incrementOne selects the id in a subquery that
+  // can go stale behind a concurrent accept; a single-id status update keeps
+  // the guard on the row itself.
   const incrementOne: Adapter["incrementOne"] = <T>(
     data: Parameters<Adapter["incrementOne"]>[0],
   ): Promise<T | null> => {
@@ -114,11 +95,7 @@ function wrapAdapter(adapter: Adapter | TransactionAdapter): Adapter {
     create,
     incrementOne,
   };
-  // Inside Better Auth transactions the core adapter hands out a
-  // transaction-scoped adapter; wrap it too so claim prevention and
-  // member-uniqueness translation hold on every transaction path.
-  // Factory adapters always carry `transaction` (real or run-as-is);
-  // presence is a narrowing concern, not a truthiness one.
+  // Wrap transaction-scoped adapters too so the guards hold on every path.
   if ("transaction" in wrapped) {
     const transaction = wrapped.transaction;
     wrapped.transaction = <R>(
@@ -128,11 +105,6 @@ function wrapAdapter(adapter: Adapter | TransactionAdapter): Adapter {
   return wrapped as Adapter;
 }
 
-/**
- * Wrap a Better Auth adapter factory (e.g. drizzleAdapter(...)) to prevent
- * stale invitation claims and translate the proven member-insert race.
- * Other mutations, including all numeric increments, pass through.
- */
 export function withMemberRaceTranslation(
   factory: AdapterFactory,
 ): AdapterFactory {

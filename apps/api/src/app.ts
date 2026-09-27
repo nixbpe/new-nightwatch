@@ -32,20 +32,12 @@ export type AppDeps = {
   env: Env;
   authEnv: AuthEnv;
   logger: Logger;
-  /**
-   * Auth/database are optional so system routes and error-contract tests
-   * can build the app without a database. The real server (src/index.ts)
-   * always composes and passes both.
-   */
+  // Optional so tests can build the app without a database.
   auth?: Auth;
   database?: Database;
 };
 
-/**
- * Collapse bearer-capability segments before a path reaches the logs:
- * invitation IDs admit signups, reset tokens set passwords. Logged paths
- * must identify the route, never the secret.
- */
+// Invitation IDs and reset tokens are bearer secrets; never log them.
 function logSafePath(path: string): string {
   return path
     .replace(/^(\/api\/onboarding\/invitations\/)[^/]+$/, "$1:invitationId")
@@ -160,8 +152,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
 
   if (deps.auth && deps.database) {
     const { auth, database } = deps;
-    // Credentialed, explicit CORS: exact frontend origin only, invitation
-    // header allow-listed. Must run before the auth handler.
+    // Must run before the auth handler.
     const authCors = cors({
       origin: deps.authEnv.CORS_ORIGIN,
       credentials: true,
@@ -224,7 +215,6 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       };
       return c.json(body, err.statusCode as ContentfulStatusCode);
     }
-    // Never leak internals: unknown errors become a generic 500.
     deps.logger.error(
       { requestId: c.get("requestId"), err },
       "unhandled error",

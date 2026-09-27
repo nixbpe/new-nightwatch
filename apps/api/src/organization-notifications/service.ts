@@ -62,12 +62,8 @@ async function membershipFor(
   return result.rows[0];
 }
 
-/**
- * Pre-tenant membership resolution scoped by the verified actor.
- * Runs before any tenant context exists, so a nonmember never sets
- * `app.tenant_id` or contends on another organization's locks. Callers
- * recheck membership under their locks inside the scoped transaction.
- */
+// Runs before tenant context so a nonmember never sets `app.tenant_id` or
+// contends on another organization's locks; callers recheck under their locks.
 export async function assertMemberBeforeTenantContext(
   database: Database,
   organizationId: string,
@@ -85,7 +81,6 @@ export async function assertMemberBeforeTenantContext(
   }
 }
 
-/** Reads settings only for a current owner or administrator. */
 export async function getOrganizationNotificationSettings(
   database: Database,
   input: { organizationId: string; userId: string },
@@ -124,12 +119,8 @@ export async function getOrganizationNotificationSettings(
   );
 }
 
-/**
- * Compare-and-swap settings update. The organization row is the single lock
- * ordering settings changes with every membership mutation. Recipients are a
- * commit-time snapshot of other current owners/admins, so a later promotion
- * cannot see an old intent and a demotion/revocation cannot receive one.
- */
+// The organization row lock orders settings changes with membership mutations,
+// so recipients are a commit-time snapshot of current owners/admins.
 export async function updateOrganizationNotificationSettings(
   database: Database,
   input: {

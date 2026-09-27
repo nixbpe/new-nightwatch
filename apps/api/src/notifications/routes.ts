@@ -14,7 +14,6 @@ import {
   openInboxItem,
 } from "./service";
 
-/** Registers only inbox operations; organization settings belong to N3. */
 export function registerNotificationInboxRoutes(
   app: OpenAPIHono,
   deps: { auth: Auth; authEnv: AuthEnv; database: Database },

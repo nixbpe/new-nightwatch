@@ -1,12 +1,5 @@
-/**
- * Emit the OpenAPI document without serving HTTP. Composes the real app
- * exactly like src/index.ts — minus the SMTP probe and Bun.serve — so
- * codegen needs no live database, mail server, or running API: the pg
- * pool connects lazily and no query is ever issued.
- *
- * Usage: bun run emit-openapi [output-file]
- * Writes compact JSON to the file argument, or stdout when omitted.
- */
+// Composes the real app without SMTP or Bun.serve so codegen needs no database,
+// mail server or running API. Usage: bun run emit-openapi [output-file]
 import { createDatabase } from "@nightwatch/db";
 import { createLogger, loadAuthEnv, loadEnv } from "@nightwatch/shared";
 

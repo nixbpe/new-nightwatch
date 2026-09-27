@@ -269,7 +269,7 @@ describe("organization member HTTP mutations", () => {
         },
       });
     }
-    // Legacy-path denials are audited with the actor, like the new routes.
+    // Blocked native-path denials are audited with the actor too.
     expect(
       auditLines
         .map((line) => JSON.parse(line) as Record<string, unknown>)

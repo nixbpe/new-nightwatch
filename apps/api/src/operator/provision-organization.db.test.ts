@@ -9,26 +9,10 @@ import {
   type ProvisionArgs,
 } from "./provision-organization";
 
-/**
- * Real-DB concurrent provisioning regression (SEC-004).
- *
- * Environment contract (the explicit integration project supplies these;
- * missing vars throw — this test never silently skips):
- * - DATABASE_URL — runtime connection; required by the shared contract
- *   (requireIntegrationDatabaseUrls refuses otherwise).
- * - DATABASE_OWNER_URL — owner connection used for migrations and
- *   provisioning DDL; required, never falls back to the runtime role
- *   (CONFIG-001).
- * - MIGRATIONS_DIR — optional; defaults to the repo's packages/db/migrations.
- *
- * No SMTP is exercised: only the persisted provisioning core is tested
- * (the post-commit mail step stays a QA CLI smoke concern). Fixtures use
- * per-run unique slugs/emails so concurrent workers and re-runs against a
- * shared dev database never collide with QA's nw-qa-* users.
- */
+// Tests only the persisted core; SMTP is covered by the CLI smoke. Per-run
+// unique slugs/emails keep parallel workers and shared dev databases from
+// colliding.
 
-// Provisioning is owner-role work: the contract requires BOTH URLs up front
-// and this suite connects with the owner — never a runtime-role fallback.
 const { ownerUrl: OWNER_URL } = requireIntegrationDatabaseUrls();
 const MIGRATIONS_DIR =
   process.env.MIGRATIONS_DIR ??
@@ -41,12 +25,10 @@ const email = (suffix: string) => `orgretry-${runId}-${suffix}@example.test`;
 const createdSlugs: string[] = [];
 const createdUserIds: string[] = [];
 
-// Inferred from the provisioning core itself; the production type stays
-// unexported (tests must not drive new public API surface).
+// Inferred so the production type stays unexported.
 type ProvisionOutcome = Awaited<ReturnType<typeof provisionOrganization>>;
 
-// The pool is created at module scope but connects lazily on first query;
-// beforeAll applies migrations before any test touches it.
+// Connects lazily, so beforeAll migrates before first use.
 const database: Database = createDatabase(OWNER_URL);
 
 type OrgRow = { id: string; name: string };
@@ -80,11 +62,7 @@ async function liveInvitations(
   return result.rows;
 }
 
-/**
- * Drives the provisioning core the way the operator CLI does: the core
- * opens the transaction, the caller commits deliberately, and a failure
- * rolls back — including the serialized advisory-lock window.
- */
+// Mirrors the CLI: the core opens the transaction and the caller commits.
 async function provision(args: ProvisionArgs): Promise<ProvisionOutcome> {
   const client = await database.sql.connect();
   try {
@@ -152,8 +130,7 @@ describe("provisionOrganization against real PostgreSQL", () => {
     expect(live[0]?.inviter_id).toBe(INTERNAL_PROVISIONING_USER_ID);
     expect(Date.parse(live[0]?.expires_at ?? "")).toBeGreaterThan(Date.now());
 
-    // Two further concurrent retries while the invitation is still live
-    // both re-send the same single invitation — never a second row.
+    // Concurrent retries while it is live re-send it, never add another.
     const [retryA, retryB] = await Promise.all([
       provision(args),
       provision(args),
@@ -182,8 +159,7 @@ describe("provisionOrganization against real PostgreSQL", () => {
       [created.invitationId],
     );
 
-    // Read all invitation history, not only live rows: cancellation,
-    // deletion, promotion and replacement must all remain observable.
+    // All history, not only live rows, so replacement stays observable.
     type StoredInvitation = InvitationRow & {
       organization_id: string;
       email: string;
@@ -204,8 +180,7 @@ describe("provisionOrganization against real PostgreSQL", () => {
     });
     expect(await liveInvitations(org.id, args.ownerEmail)).toHaveLength(1);
 
-    // A rejected core operation cannot supply an invitation to the CLI's
-    // post-commit mail step; SMTP itself is exercised by the CLI smoke.
+    // A rejected core call gives the post-commit mail step nothing to send.
     await expect(provision(args)).rejects.toThrow();
 
     const after = await database.sql.query<StoredInvitation>(invitationQuery, [
@@ -230,9 +205,7 @@ describe("provisionOrganization against real PostgreSQL", () => {
     const created = await provision(args);
     expect(created.resent).toBe(false);
 
-    // Age the pending invitation beyond its TTL (owner-role fixture
-    // aging, the same mechanism QA used); the expired historical row
-    // keeps status 'pending' by design and must not block a fresh one.
+    // An expired row stays 'pending' by design and must not block a new one.
     await database.sql.query(
       "update invitation set expires_at = now() - interval '1 hour' where id = $1",
       [created.invitationId],
@@ -258,8 +231,7 @@ describe("provisionOrganization against real PostgreSQL", () => {
     };
     createdSlugs.push(args.slug);
 
-    // Provision first, then materialize the invited user and their
-    // membership as an accepted invitation would.
+    // Materialize the membership an accepted invitation would create.
     const created = await provision(args);
     const org = await findOrganization(args.slug);
     expect(org).not.toBeNull();

@@ -1,12 +1,7 @@
 import type { Database } from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 
-/**
- * Invitation boundary: the single place that decides whether an invitation
- * admits a signup or renders a public preview. Raw SQL is intentional —
- * the email match must be case-insensitive and the queries stay unit
- * testable against a narrow `sql` seam without a live database.
- */
+// Raw SQL keeps these unit-testable against the narrow `sql` seam.
 
 export type InvitationRecord = {
   id: string;
@@ -42,14 +37,7 @@ function lookup(
     .then((result) => result.rows[0] ?? null);
 }
 
-/**
- * Server-side gate for the raw `POST /api/auth/sign-up/email` endpoint:
- * signup must present a pending, unexpired invitation whose email matches
- * the signup email (case-insensitively). Any violation fails closed with
- * one safe message — the response never distinguishes missing, expired,
- * cancelled, replayed or email-mismatched invitations, and leaks nothing
- * about other tenants.
- */
+// One message for every failure so the response never reveals the reason.
 export async function assertInvitationAdmitsSignup(
   database: Database,
   input: { invitationId: string | null; email: string },
@@ -67,11 +55,6 @@ export async function assertInvitationAdmitsSignup(
   }
 }
 
-/**
- * Public preview for the accept-invitation page. Returns null for unknown,
- * cancelled, accepted or expired invitations so the route can answer a
- * safe not-found regardless of the underlying reason.
- */
 export async function findInvitationPreview(
   database: Database,
   invitationId: string,

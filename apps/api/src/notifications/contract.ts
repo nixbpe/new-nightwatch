@@ -86,10 +86,6 @@ const notificationSettingsReadErrorResponses = {
   401: unauthenticatedResponse,
   403: notificationSettingsErrorResponses[403],
 } as const;
-/**
- * `notification-api/1` route declarations. The notifications domain owns
- * handler registration; this module deliberately contains no business logic.
- */
 export const notificationRouteDeclarations = {
   list: createRoute({
     method: "get",

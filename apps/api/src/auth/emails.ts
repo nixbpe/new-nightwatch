@@ -2,12 +2,8 @@ import type { AuthEnv } from "@nightwatch/shared";
 
 import type { OutboundMail } from "./mailer";
 
-/**
- * Transactional auth email content (Thai product language). Links point at
- * the frontend origin (APP_URL); the API origin never appears in mail.
- */
+// Links point at APP_URL; the API origin never appears in mail.
 
-/** Minimal HTML escaping for user-provided values interpolated into mail. */
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")

@@ -41,13 +41,8 @@ const BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS: Record<string, true> = {
   "/organization/leave": true,
 };
 
-/**
- * Extract the invitation continuation ID from the signup's callbackURL.
- * Only a same-origin callbackURL qualifies, and only the invitationId
- * value itself is ever forwarded — never the raw callbackURL — so the
- * verification email cannot become an open redirect into arbitrary
- * origins.
- */
+// Forwards only a same-origin invitationId, never the raw callbackURL, so the
+// verification email cannot become an open redirect.
 export function extractInvitationContinuation(
   authEnv: AuthEnv,
   verifyUrl: string,
@@ -74,7 +69,6 @@ export function extractInvitationContinuation(
   }
 }
 
-/** Session view exposed to the app and the later OrgAccess slice. */
 export type AuthSession = {
   user: {
     id: string;
@@ -90,12 +84,7 @@ export type AuthSession = {
   };
 };
 
-/**
- * Composed authentication boundary. `handler` mounts the raw Better Auth
- * endpoints at /api/auth/*; `getSession` is the only session entry point
- * application code may use (auth.api.getSession with request headers).
- */
-
+// `getSession` is the only session entry point application code may use.
 export type Auth = {
   handler: (request: Request) => Promise<Response>;
   getSession: (headers: Headers) => Promise<AuthSession | null>;
@@ -149,20 +138,11 @@ export function createAuth(deps: AuthDeps) {
     },
   );
 
-  // Invitation-only admission: organizations are provisioned by the
-  // operator, never created through the browser. Typed explicitly so the
-  // of relying on generic overload inference. The default access-control
-  // instance is deliberately not passed: permission evaluation merges the
-  // plugin's default roles with `roles` below and reads each role's own
-  // statements, so the default AC (permissions.ts `organizationAccess`) is
-  // redundant — and its statement-bound `newRole` generic cannot be
-  // assigned to the plugin's `ac` slot anyway. The only `ac`-gated
-  // feature, dynamic access control, stays disabled.
+  // No `ac`: evaluation reads each role's own statements, and the default AC's
+  // `newRole` generic doesn't fit the `ac` slot.
   const organizationOptions = {
     roles: organizationRoles,
     allowUserToCreateOrganization: false,
-    // Native acceptance boundary: acceptInvitation refuses until the
-    // recipient's email is verified.
     requireEmailVerificationOnInvitation: true,
     sendInvitationEmail: async (data) => {
       const mail = buildInvitationEmail(authEnv, {
@@ -174,8 +154,6 @@ export function createAuth(deps: AuthDeps) {
   } satisfies OrganizationOptions;
   const plugins = [
     organization(organizationOptions),
-    // Optional TOTP second factor with encrypted backup-code recovery;
-    // enrollment stays off until the user enables it.
     twoFactor({ issuer: "NightWatch" }),
   ];
 
@@ -185,9 +163,7 @@ export function createAuth(deps: AuthDeps) {
     basePath: "/api/auth",
     secret: authEnv.BETTER_AUTH_SECRET,
     trustedOrigins: [authEnv.CORS_ORIGIN],
-    // Better Auth's default logger forwards arbitrary error arguments, which
-    // can include database causes, SQL text, parameters, and invitation IDs.
-    // All unexpected API failures are reported by the sanitized hook below.
+    // The default logger can leak SQL, parameters and invitation IDs.
     logger: { disabled: true },
     onAPIError: {
       onError: (error) => {
@@ -196,9 +172,7 @@ export function createAuth(deps: AuthDeps) {
           { component: "better-auth", event: "api_error" },
           "authentication API request failed",
         );
-        // Throwing a sanitized APIError from Better Auth's supported error
-        // hook prevents the underlying router from falling back to logging
-        // the original exception while retaining its native response shape.
+        // Rethrowing sanitized stops the router logging the original error.
         throw new APIError("INTERNAL_SERVER_ERROR", {
           code: "AUTH_INTERNAL_ERROR",
           message: "ไม่สามารถดำเนินการยืนยันตัวตนได้",
@@ -222,8 +196,6 @@ export function createAuth(deps: AuthDeps) {
         },
       },
     },
-    // UUID IDs for every model; user IDs stay text columns carrying UUID
-    // values, organizations are native UUID tenant keys.
     advanced: {
       database: {
         generateId: () => crypto.randomUUID(),
@@ -234,9 +206,7 @@ export function createAuth(deps: AuthDeps) {
       requireEmailVerification: true,
       sendResetPassword: ({ user, token }) => {
         const mail = buildResetPasswordEmail(authEnv, token);
-        // Fire-and-forget: response timing must not reveal whether the
-        // account exists. Failures are logged loudly, never swallowed
-        // silently.
+        // Not awaited: timing must not reveal whether the account exists.
         void mailer
           .send({ ...mail, to: user.email })
           .catch((error: unknown) => {
@@ -261,10 +231,7 @@ export function createAuth(deps: AuthDeps) {
             message: "ใช้เส้นทางจัดการสมาชิกใหม่",
           });
         }
-        // Invitation gate on the RAW signup endpoint: the UI sending the
-        // header is not the boundary — this hook is. Without a matching
-        // pending, unexpired invitation for the signup email, signup is
-        // refused before any user row is written.
+        // This hook, not the UI header, is the invitation gate on raw signup.
         if (ctx.path !== "/sign-up/email") return;
         const body = ctx.body as { email?: unknown } | undefined;
         const email = typeof body?.email === "string" ? body.email : "";

@@ -21,32 +21,11 @@ import type { Mailer, OutboundMail } from "./mailer";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 
 import { withAccountNotificationOrigins } from "./auth-origin-intents";
-/**
- * Real database integration for the auth boundary (QA-8/QA-9, SEC-005).
- * Runs only under the explicit `integration` project
- * (`bun run test:integration`) against a dedicated test database; the unit
- * project never touches a database.
- *
- * Environment contract (see src/testing/db-integration.ts):
- * - DATABASE_URL — runtime-role test database (required; refusal, no skip)
- * - DATABASE_OWNER_URL — owner role, used to apply migrations (required;
- *   never falls back to the runtime role)
- * - MIGRATIONS_DIR — optional override; defaults to the repo's
- *   packages/db/migrations resolved from this file
- *
- * Coverage intent: exercise the real factory and native endpoints for the
- * invitation-gated signup, verification continuation, explicit acceptance,
- * the concurrent-acceptance membership race (exactly one membership, zero
- * 5xx), password recovery and the TOTP challenge/session boundary. No
- * hooks/copy/forwarded-argument pinning — every assertion is an observable
- * HTTP or SQL outcome. The unrelated-failure negative provokes its error
- * on a dedicated read-only connection (per-session
- * default_transaction_read_only), never by mutating shared grants.
- */
+// Integration project only; assertions are observable HTTP or SQL outcomes,
+// never hook internals.
 
-// Both URLs are required before any database work — no owner fallback
-// (CONFIG-001). The refusal throws at module load, so a misconfigured run
-// fails loudly instead of silently skipping or borrowing runtime grants.
+// Throws at module load so a misconfigured run fails instead of skipping or
+// borrowing runtime grants.
 const { runtimeUrl: DATABASE_URL, ownerUrl: OWNER_URL } =
   requireIntegrationDatabaseUrls();
 const MIGRATIONS_DIR =
@@ -83,8 +62,7 @@ const mailer: Mailer = {
   verify: () => Promise.resolve(),
 };
 
-// The pool is created at module scope but connects lazily on first query;
-// beforeAll applies migrations and seeds before any test touches it.
+// Connects lazily, so beforeAll migrates and seeds before first use.
 const database: Database = createDatabase(DATABASE_URL);
 const ownerDatabase: Database = createDatabase(OWNER_URL);
 const orgName = "Auth IT Org";
@@ -99,12 +77,7 @@ function userEmail(local: string): string {
 }
 
 type ApiRequestOptions = {
-  /**
-   * Pending invitation admitting an intentional raw signup, sent as the
-   * `X-Invitation-ID` header exactly the way the onboarding UI sends it.
-   * Negative fixtures omit it (or pass an unknown/expired id) to prove the
-   * gate stays fail-closed.
-   */
+  /** Sent as `X-Invitation-ID`, like the onboarding UI. */
   invitationId?: string;
 };
 
@@ -116,11 +89,10 @@ type ApiRequest = ((
   body?: Record<string, unknown>,
   options?: ApiRequestOptions,
 ) => Promise<ApiResponse>) & {
-  /** Snapshot of the current cookie jar (for carrying a session across apps). */
   cookies: () => Record<string, string>;
 };
 
-/** HTTP client with a cookie jar and the trusted SPA origin on writes. */
+// Sends the trusted SPA origin on writes.
 function client(
   targetApp?: OpenAPIHono,
   initialCookies?: Record<string, string>,
@@ -200,7 +172,6 @@ function linkQuery(mailText: string, param: string): string {
   return decodeURIComponent(value);
 }
 
-/** Invitation id parsed from the accept link in the invitation mail text. */
 function invitationIdFromMail(mailText: string): string {
   const link = /https?:\/\/[^\s<>'"]+/.exec(mailText)?.[0];
   if (!link) throw new Error("no link in invitation mail");
@@ -209,10 +180,8 @@ function invitationIdFromMail(mailText: string): string {
   return decodeURIComponent(id);
 }
 
-// --- TOTP (RFC 6238, SHA-1, 6 digits, 30 s step) -----------------------
-// The real algorithm an authenticator app runs, so enrollment and
-// challenge exercise the native two-factor endpoints end to end. The
-// secret is never logged.
+// Real RFC 6238 TOTP (SHA-1, 6 digits, 30 s) so two-factor runs end to end;
+// never log the secret.
 function base32Decode(secret: string): Buffer {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   const clean = secret.replace(/=+$/, "").toUpperCase();
@@ -405,19 +374,12 @@ async function invitationStatus(invitationId: string): Promise<string | null> {
   return result.rows[0]?.status ?? null;
 }
 
-/**
- * Full admission path: invitation-gated signup, captured verification mail,
- * token verification, sign-in with a verified session. Returns the email
- * and the cookie-bound client that holds the verified session.
- */
 async function admitUser(
   local: string,
   invitationId: string,
 ): Promise<{ email: string; request: ApiRequest }> {
   const request = client();
   const email = userEmail(local);
-  // Intentional valid signup: presents the pending invitation id in the
-  // X-Invitation-ID header, as the onboarding UI does (SEC-C2-TEST-001).
   const signup = await request(
     "POST",
     "/api/auth/sign-up/email",
@@ -468,12 +430,8 @@ async function createInvitation(
   return invitationId;
 }
 
-/**
- * Sign in as the admitted gate owner and select the seeded organization as
- * active — the same PATCH /api/me/active-org path the workspace UI drives
- * before org-scoped Better Auth APIs (invite-member resolves the session's
- * active organization when no explicit organizationId is passed).
- */
+// Org-scoped Better Auth APIs such as invite-member resolve the session's
+// active organization.
 async function signInOwner(): Promise<ApiRequest> {
   const owner = client();
   const signIn = await owner("POST", "/api/auth/sign-in/email", {
@@ -489,8 +447,6 @@ async function signInOwner(): Promise<ApiRequest> {
 }
 
 beforeAll(async () => {
-  // Migrations are owner work and require the explicit owner URL — never a
-  // runtime-role fallback (CONFIG-001).
   await runMigrations({ url: OWNER_URL, migrationsDir: MIGRATIONS_DIR });
   await database.sql.query(
     "insert into organization (id, name, slug, created_at) values ($1, $2, $3, now())",
@@ -507,9 +463,8 @@ beforeAll(async () => {
      values ($1, $2, $3, 'owner', 'pending', $4, now() + interval '2 days', now())`,
     [crypto.randomUUID(), ORG_ID, userEmail("gate"), inviterId],
   );
-  // Two pending invitations for the same mailbox drive the duplicate-signup
-  // negative: the first signup creates the account, the second must surface
-  // the native duplicate-account conflict (never the invitation denial).
+  // Two invitations for one mailbox: the second signup must hit the
+  // duplicate-account path, not the invitation denial.
   await database.sql.query(
     `insert into invitation
        (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
@@ -522,8 +477,7 @@ beforeAll(async () => {
      values ($1, $2, $3, 'viewer', 'pending', $4, now() + interval '2 days', now())`,
     [crypto.randomUUID(), ORG_ID, userEmail("dup"), inviterId],
   );
-  // Expired pending invitation: presenting its header must still be denied
-  // by the signup gate, exactly like a missing or unknown one.
+  // An expired invitation must be denied exactly like a missing or unknown one.
   await database.sql.query(
     `insert into invitation
        (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
@@ -654,9 +608,8 @@ describe("Better Auth failure diagnostics", () => {
 });
 
 describe("invitation-gated signup against the real boundary", () => {
-  // The fail-closed contract: every denial returns the same generic Thai
-  // message, so the response never distinguishes missing, unknown or
-  // expired invitations, and no user row is written.
+  // Every denial returns the same generic message (no enumeration) and writes
+  // no user row.
   const DENIAL_MESSAGE = "การสมัครสมาชิกต้องได้รับคำเชิญ";
 
   async function expectDenied(
@@ -744,8 +697,6 @@ describe("verification continuation and explicit acceptance", () => {
     const invitationId = invitations.rows[0]?.id;
     if (!invitationId) throw new Error("seeded gate invitation missing");
 
-    // Intentional valid signup: the pending invitation id rides the
-    // X-Invitation-ID header, as the onboarding UI sends it.
     const signup = await gate(
       "POST",
       "/api/auth/sign-up/email",
@@ -801,8 +752,7 @@ describe("verification continuation and explicit acceptance", () => {
     const userId = await sqlUserId(userEmail("gate"));
     expect(await membershipCount(ORG_ID, userId)).toBe(1);
 
-    // A replayed acceptance now receives the same deterministic native
-    // denial as every non-winning concurrent request.
+    // A replay gets the same native denial as a losing concurrent request.
     const replay = await gate(
       "POST",
       "/api/auth/organization/accept-invitation",
@@ -852,8 +802,7 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
           }),
         ),
       );
-      // Include indirect blockers: later row-lock waiters can queue behind
-      // another accept, rather than directly behind this transaction.
+      // Count indirect blockers: later waiters may queue behind another accept.
       const deadline = Date.now() + 10_000;
       let blocked = 0;
       while (blocked !== 4 && Date.now() < deadline) {
@@ -883,8 +832,8 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
         if (transactionOpen) await holder.query("rollback");
       } finally {
         holder.release();
-        // On a barrier failure, settle requests only after releasing their
-        // blocker so no in-flight fixture work leaks into another test.
+        // Settle only after releasing the blocker so no in-flight work leaks
+        // into another test.
         await accepts?.catch(() => undefined);
       }
     }
@@ -918,8 +867,7 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
       lastActiveTenantId: null,
     });
 
-    // Denial must come from the consumed invitation, not its expiry or an
-    // existing membership: this is the same still-live invitation id.
+    // Same live id: the denial must come from consumption, not expiry.
     const invitation = await database.sql.query<{ unexpired: boolean }>(
       "select expires_at > now() as unexpired from invitation where id = $1",
       [invitationId],
@@ -954,10 +902,8 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 
     const preset = await admitUser("preset", invitationId);
     const userId = await sqlUserId(preset.email);
-    // Pre-existing membership (e.g. created by a concurrently committed
-    // accept) while the invitation is still pending: the member INSERT must
-    // hit member_organization_user_key and surface as the native denial,
-    // never as a 5xx.
+    // Existing membership, pending invitation: member_organization_user_key
+    // must surface as the native denial, not a 5xx.
     await database.sql.query(
       `insert into member (id, organization_id, user_id, role, created_at)
        values ($1, $2, $3, 'viewer', now())`,
@@ -985,12 +931,8 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
     );
     const denied = await admitUser("denied", invitationId);
 
-    // Provoke the unrelated failure on a DEDICATED read-only connection
-    // (default_transaction_read_only is a per-session startup option for
-    // this pool only) — never by mutating shared role/table grants on the
-    // integration database, which would leak into parallel scenarios. The
-    // option rides the copied connection string; pg passes it through the
-    // startup packet, so no extra pool/drizzle imports are needed.
+    // A dedicated read-only connection, not shared grant changes that would
+    // leak into parallel scenarios.
     const readOnlyUrl = new URL(DATABASE_URL);
     readOnlyUrl.searchParams.set(
       "options",
@@ -1018,11 +960,8 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
         auth: readOnlyAuth,
         database: readOnlyDatabase,
       });
-      // The verified session is carried over from the writable app; the
-      // read-only connection fails the very first write (the guarded
-      // pending -> accepted invitation update, SQLSTATE 25006) — which is
-      // not the acceptance race and must stay a visible failure, never the
-      // 400 invitation denial.
+      // The first write fails with SQLSTATE 25006; it is not the race and must
+      // not become the 400 denial.
       const accept = await client(readOnlyApp, denied.request.cookies())(
         "POST",
         "/api/auth/organization/accept-invitation",
@@ -1036,9 +975,7 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
       const capturedOutput = JSON.stringify(consoleErrors);
       expect(capturedOutput).not.toContain(invitationId);
       expect(capturedOutput).not.toContain('update "invitation"');
-      // The invitation stays pending and no membership was created: the
-      // translation boundary only ever re-labels the member uniqueness
-      // violation, nothing else.
+      // Only the member uniqueness violation is translated; nothing else.
       expect(await invitationStatus(invitationId)).toBe("pending");
     } finally {
       consoleError.mockRestore();
@@ -1417,8 +1354,7 @@ describe("TOTP challenge and session boundary", () => {
     if (!backupCode)
       throw new Error("two-factor enable returned no backup codes");
 
-    // Enable alone stays pending (SEC-001): enrollment is not active until
-    // the first TOTP against the issued secret verifies.
+    // Enable alone stays pending until the first TOTP verifies.
     const sessionAfterEnable = await totp.request(
       "GET",
       "/api/auth/get-session",
@@ -1430,8 +1366,7 @@ describe("TOTP challenge and session boundary", () => {
     ).user;
     expect(enabledUser.twoFactorEnabled).not.toBe(true);
 
-    // Complete enrollment with the first real TOTP; only now may sign-in
-    // gate behind the two-factor challenge (SEC-C2-TEST-002).
+    // Only now may sign-in require the two-factor challenge.
     const secret = totpSecretFromUri(enableBody.totpURI);
     const firstVerify = await totp.request(
       "POST",
@@ -1748,9 +1683,8 @@ describe("MFA re-enrollment atomicity", () => {
       );
     }
 
-    // A missing projection models a verified legacy credential created before
-    // its projection migration. The adapter derives the credential state
-    // before replacing it, so re-enrollment does not invent MFA_ENABLED.
+    // A missing projection models a legacy verified credential; re-enrollment
+    // must not invent MFA_ENABLED.
     await ownerDatabase.sql.query(
       "delete from notification_account_mfa_state where user_id = $1",
       [userId],
@@ -2031,14 +1965,10 @@ describe("duplicate-account signup stays enumeration-safe and harmless", () => {
     if (!first || !second)
       throw new Error("seeded duplicate invitations missing");
 
-    // First admission with this mailbox succeeds and creates the account.
     await admitUser("dup", first.id);
 
-    // A second signup for the same mailbox passes the invitation gate but
-    // the account exists: with requireEmailVerification the native boundary
-    // answers the enumeration-safe generic success (synthetic user echo,
-    // token: null). Observable contract: no session, no second user row,
-    // existing credentials untouched — and never the member-race denial.
+    // requireEmailVerification makes a duplicate signup an enumeration-safe
+    // generic success: no session or second user row.
     const attackerPassword = "Auth-It-DupPassw0rd!";
     const duplicate = await client()(
       "POST",
@@ -2059,8 +1989,7 @@ describe("duplicate-account signup stays enumeration-safe and harmless", () => {
     );
     expect(users.rows[0]?.n).toBe(1);
 
-    // The original account still authenticates with its original password;
-    // the duplicate attempt's password never lands.
+    // The duplicate attempt's password never lands.
     const original = await client()("POST", "/api/auth/sign-in/email", {
       email: userEmail("dup"),
       password: PASSWORD,

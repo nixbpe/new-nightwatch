@@ -7,12 +7,7 @@ import { AppError } from "@nightwatch/shared";
 
 import { findInvitationPreview } from "../auth/invitations";
 
-/**
- * Public invitation preview for the accept-invitation page. The bearer
- * capability is the unguessable invitation ID; every invalid, expired,
- * cancelled, accepted or cross-tenant ID collapses into one safe not-found
- * error so the endpoint cannot be used to enumerate invitations.
- */
+// Every unusable or cross-tenant ID gets one not-found: no enumeration.
 export async function getInvitationPreview(
   database: Database,
   invitationId: string,

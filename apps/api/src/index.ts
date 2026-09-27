@@ -5,13 +5,11 @@ import { createApp } from "./app";
 import { createAuth } from "./auth";
 import { createMailer } from "./auth/mailer";
 
-// Fail-fast: an invalid environment must not start the server.
 const env = loadEnv();
 const authEnv = loadAuthEnv();
 const logger = createLogger({ level: env.LOG_LEVEL, name: "nightwatch-api" });
 const database = createDatabase(authEnv.DATABASE_URL);
 const mailer = createMailer(authEnv, logger);
-// Fail-fast: refuse to serve when the SMTP server is unreachable.
 await mailer.verify();
 const auth = createAuth({ env, authEnv, logger, database, mailer });
 const app = createApp({ env, authEnv, logger, auth, database });

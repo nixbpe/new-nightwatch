@@ -1,25 +1,6 @@
-/**
- * Shared entry contract for explicit database integration tests
- * (`*.db.test.ts`, run by the `integration` vitest project via
- * `bun run test:integration`).
- *
- * Refusal, never silence: integration tests REQUIRE an explicitly supplied
- * test database. A missing variable throws with the exact contract instead
- * of skipping — a silently skipped integration run would fake a green gate.
- *
- * Environment contract — BOTH URLs are required before any database work:
- * - DATABASE_URL — runtime-role connection (non-owner, NOBYPASSRLS) against
- *   a disposable/dedicated test database. Required.
- * - DATABASE_OWNER_URL — owner-role connection for paths that must exercise
- *   owner privileges (migrations, provisioning DDL). Required; the runtime
- *   role must never be borrowed for owner work, so there is no fallback.
- * - MIGRATIONS_DIR — override for the ordered `NNNN_*.sql` directory when
- *   the default repo-relative resolution does not apply.
- */
+// Throws, never skips: a skipped integration run would fake a green gate.
 export function requireIntegrationDatabaseUrls(): {
-  /** Runtime-role connection (non-owner, NOBYPASSRLS). */
   runtimeUrl: string;
-  /** Owner-role connection for migrations/provisioning DDL. */
   ownerUrl: string;
 } {
   const runtimeUrl = process.env.DATABASE_URL;

@@ -95,9 +95,7 @@ async function resolveActiveScopeOnClient(
     return { userId, organizationId: null };
   }
 
-  // Actor-scoped membership lookup before any organization lock:
-  // a former member with a stale mirror never contends on that
-  // organization's locks. A current member is rechecked under the locks.
+  // Before any lock so a former member never contends on that org's locks.
   const preMembership = await client.query(
     `select 1 from member where organization_id = $1 and user_id = $2`,
     [organizationId, userId],
@@ -139,12 +137,8 @@ async function resolveActiveScopeOnClient(
   return { userId, organizationId: null };
 }
 
-/**
- * Resolves the active scope and runs `fn` in the SAME transaction. The
- * resolver holds the user row FOR UPDATE, which an organization switch also
- * updates, so a switch cannot commit between scope resolution and the read
- * or mutation: every response reflects one consistent scope.
- */
+// Same transaction: the user row is held FOR UPDATE, so an organization switch
+// cannot commit between scope resolution and `fn`.
 async function withResolvedScope<T>(
   database: Database,
   userId: string,
@@ -257,8 +251,7 @@ export async function listInbox(
     cursor?: string;
   },
 ): Promise<NotificationListResponse> {
-  // Only the queries run under the scope locks; sorting, item conversion and
-  // cursor signing happen after commit.
+  // Only the queries hold the scope locks; the rest runs after commit.
   const { scope, account, tenant, unreadCount } = await withResolvedScope(
     deps.database,
     input.userId,

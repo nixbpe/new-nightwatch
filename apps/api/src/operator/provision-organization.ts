@@ -11,27 +11,10 @@ import { z } from "zod";
 import { buildInvitationEmail } from "../auth/emails";
 import { createMailer } from "../auth/mailer";
 
-/**
- * Operator-only first-organization provisioning. Organizations are never
- * created over HTTP (`allowUserToCreateOrganization: false`); this command
- * is the single provisioning path, run against the OWNER connection
- * (migrations/provisioning only — the runtime role is non-owner
- * NOBYPASSRLS).
- *
- * It transactionally creates the organization and one pending owner
- * invitation with an unguessable ID, then sends the standard invitation
- * email via the real SMTP helper AFTER commit. A delivery failure is
- * reported loudly with a retry path: re-running the same command finds
- * the pending invitation and re-sends it — never a duplicate
- * organization, never a silent success, and the invitation URL/token is
- * never logged.
- *
- * Better Auth's `invitation.inviterId` is a hard user FK, so invitations
- * are attributed to a reserved INTERNAL provisioning principal: a real
- * `user` row with a deterministic internal id, an unverified `.invalid`
- * email, and no account, password or session — audit provenance only,
- * not a login or backdoor, and never a fabricated customer.
- */
+// The only path that creates organizations (never over HTTP); never log the
+// invitation URL. invitation.inviterId is a hard user FK, so a reserved
+// internal user with no account, password or session is the inviter: provenance
+// only, not a login.
 
 export const INTERNAL_PROVISIONING_USER_ID = "nw-internal-provisioning";
 export const INTERNAL_PROVISIONING_EMAIL =
@@ -111,35 +94,20 @@ type ProvisionOutcome = {
   alreadyMember: boolean;
 };
 
-/**
- * Transactional provisioning core: ensures the internal principal, then
- * creates the organization and a pending owner invitation, or resolves the
- * retry path (existing pending invitation re-send / already-member no-op).
- * Returns what the post-commit email step needs; sends nothing itself.
- */
+// The caller commits; mail is sent only after commit.
 export async function provisionOrganization(
   client: PoolClient,
   args: ProvisionArgs,
 ): Promise<ProvisionOutcome> {
   await client.query("begin");
   try {
-    // Serialize the whole create-or-resend decision per normalized slug
-    // before any check: two concurrent operator retries for the same
-    // existing organization must never both observe "no pending
-    // invitation" and both insert. The lock is transaction-scoped
-    // (pg_advisory_xact_lock) and released by this transaction's
-    // commit/rollback, so a crashed process can never wedge provisioning,
-    // and unrelated slugs provision in parallel. Because every later read
-    // happens after the lock is held, the membership/pending checks below
-    // are the serialized recheck — a concurrent commit lands before the
-    // loser proceeds.
+    // Per-slug lock before any check so concurrent retries can't both see no
+    // pending invitation and insert; xact-scoped, so a crashed process can't
+    // wedge provisioning.
     await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
       `provision-organization:${args.slug}`,
     ]);
 
-    // The reserved principal is the inviter for provenance only: it can
-    // never authenticate (no account/password) and its .invalid email can
-    // never receive mail.
     await client.query(
       `insert into "user" (id, name, email, email_verified, created_at, updated_at)
        values ($1, $2, $3, false, now(), now())
@@ -187,7 +155,6 @@ export async function provisionOrganization(
             "A pending invitation exists with a non-owner role; owner provisioning cannot reuse it.",
           );
         }
-        // Retry path: the invitation already exists; only re-send mail.
         return {
           organizationName: organization.name,
           ownerEmail: args.ownerEmail,
@@ -267,8 +234,6 @@ async function main(): Promise<void> {
     name: "nightwatch-provisioning",
   });
 
-  // Provisioning uses the owner connection; it is not available to the
-  // runtime role and is never used by request handling.
   const url = authEnv.DATABASE_OWNER_URL ?? authEnv.DATABASE_URL;
   const database = createDatabase(url);
   try {
@@ -295,9 +260,7 @@ async function main(): Promise<void> {
       client.release();
     }
 
-    // Post-commit delivery with real failure semantics. A failure here is
-    // visible and retryable: the pending invitation persists, and
-    // re-running this command re-sends it.
+    // On failure the committed invitation persists and a re-run re-sends it.
     const mailer = createMailer(authEnv, logger);
     const mail = buildInvitationEmail(authEnv, {
       organizationName: outcome.organizationName,

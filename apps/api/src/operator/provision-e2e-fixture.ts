@@ -107,8 +107,7 @@ export async function resetFixture(
       throw new Error("E2E fixture identity is shared with non-fixture data");
     }
 
-    // Replacing the bounded fixture clears sessions, MFA state, and any
-    // interrupted password lifecycle while retaining all non-fixture data.
+    // Recreating the fixture resets its sessions, MFA and password state.
     await client.query(`delete from "user" where id = $1`, [identity.userId]);
     await client.query(`delete from organization where id = $1`, [
       identity.organizationId,

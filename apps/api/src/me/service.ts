@@ -9,14 +9,8 @@ import type { PoolClient } from "pg";
 
 import type { Auth, AuthSession } from "../auth";
 
-/**
- * Organization access boundary for the authenticated `/me` context.
- * Raw, parameterized pool queries are intentional: the global auth tables
- * are pre-tenant (no RLS by explicit architecture decision), so isolation
- * comes entirely from these verified-membership lookups filtered by the
- * session's user id — never from browser selection, session
- * `activeOrganizationId`, or request bodies.
- */
+// Auth tables have no RLS: isolation comes only from membership lookups by the
+// session user id, never browser selection, activeOrganizationId or bodies.
 
 type MembershipRow = {
   organizationId: string;
@@ -34,8 +28,7 @@ const ROLE_PRIORITY: Record<MeContextOrganization["role"], number> = {
   auditor: 3,
 };
 
-// `/me` projects composite storage roles into the finite UI contract. It does
-// not write or otherwise change the authorization role stored by Better Auth.
+// Projects composite stored roles for the UI; never rewrites the stored role.
 export function normalizeOrganizationRole(
   rawRole: string,
 ): MeContextOrganization["role"] | null {
@@ -67,11 +60,7 @@ const MEMBERSHIPS_SELECT = `
   order by m.created_at asc, o.id asc
 `;
 
-/**
- * The only session entry point for this slice. A missing session is 401;
- * an unverified email is 403. A pending TOTP challenge never yields a
- * full session from `auth.getSession`, so it cannot bypass this boundary.
- */
+// A pending TOTP challenge never yields a full session, so it cannot pass here.
 export async function requireVerifiedSession(
   auth: Auth,
   headers: Headers,
@@ -129,9 +118,7 @@ function toContext(
       });
     }
   }
-  // The stored selection is only ever exposed while it still resolves to
-  // a live membership: a revoked membership can never retain the active
-  // selection in a response.
+  // A revoked membership must never keep the active selection in a response.
   const active =
     lastActiveTenantId !== null &&
     organizations.some((org) => org.id === lastActiveTenantId)
@@ -150,11 +137,6 @@ function toContext(
   };
 }
 
-/**
- * Verified-session context for tenant selection: the user's memberships
- * (ordered by membership `created_at` for determinism) and their active
- * selection filtered through live membership.
- */
 export async function getMeContext(
   database: Database,
   session: AuthSession,
@@ -182,16 +164,8 @@ function denyNotMember(logger: Logger): never {
   throw new AppError(403, "MEMBERSHIP_DENIED", "คุณไม่ใช่สมาชิกขององค์กรนี้");
 }
 
-/**
- * Switch the active organization. Membership is re-verified inside the
- * transaction with `FOR UPDATE` on the membership row: an in-flight
- * revocation blocks the switch and is re-checked, and a revocation that
- * lands after the commit is invisible to responses because reads filter
- * the stored selection through live membership. The session's
- * `activeOrganizationId` is mirrored in the same transaction for Better
- * Auth org-scoped APIs but is never trusted for membership itself.
- * Denials are audit-logged without tenant data or secrets.
- */
+// FOR UPDATE makes an in-flight revocation block the switch. The session
+// mirror serves Better Auth org APIs and is never trusted for membership.
 export async function setActiveOrganization(
   database: Database,
   logger: Logger,
@@ -201,9 +175,7 @@ export async function setActiveOrganization(
   const client = await database.sql.connect();
   let inTransaction = false;
   try {
-    // Pre-tenant, actor-scoped membership lookup before any organization lock:
-    // a nonmember never contends on another organization's rows.
-    // Membership is rechecked under the locks below.
+    // Before any lock so a nonmember never contends on another org's rows.
     const preMembership = await client.query(
       "select 1 from member where organization_id = $1 and user_id = $2",
       [organizationId, session.user.id],
@@ -241,10 +213,7 @@ export async function setActiveOrganization(
        where id = $2`,
       [organizationId, session.user.id],
     );
-    // Organization selection is account-global (last_active_tenant_id), so
-    // every session mirror of the user moves with it in this transaction;
-    // otherwise another live session's mirror would disagree with
-    // the scope its inbox requests resolve.
+    // Selection is account-global, so every session mirror moves with it.
     await client.query(
       `update session
        set active_organization_id = $1

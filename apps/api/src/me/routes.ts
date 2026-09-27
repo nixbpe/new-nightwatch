@@ -68,11 +68,6 @@ const activeOrgRoute = createRoute({
   },
 });
 
-/**
- * HTTP translation for the organization access boundary. Mounts at
- * /api/me/*; credentialed CORS for these paths is applied by the app
- * composer alongside the other auth-adjacent routes.
- */
 export function registerMeRoutes(
   app: OpenAPIHono,
   deps: { auth: Auth; database: Database; logger?: Logger },

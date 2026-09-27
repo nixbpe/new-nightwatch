@@ -36,13 +36,11 @@ function captureThrow(fn: () => unknown): unknown {
 describe("isMemberUniquenessRace", () => {
   it("matches only the proven member-uniqueness 23505 conflict", () => {
     expect(isMemberUniquenessRace(RACE_ERROR)).toBe(true);
-    // drizzle wraps query failures; the pg error sits in the cause chain.
     expect(isMemberUniquenessRace(drizzleWrapped(RACE_ERROR))).toBe(true);
     expect(
       isMemberUniquenessRace(drizzleWrapped(drizzleWrapped(RACE_ERROR))),
     ).toBe(true);
-    // Same SQLSTATE on a different constraint must NOT be treated as the
-    // acceptance race (e.g. concurrent signups on user_email_lower_key).
+    // Same SQLSTATE on another constraint (user_email_lower_key) is no race.
     expect(
       isMemberUniquenessRace({
         ...RACE_ERROR,
@@ -136,9 +134,7 @@ describe("withMemberRaceTranslation", () => {
   });
 
   it("translates the race on transaction-scoped adapters too", async () => {
-    // Better Auth runs acceptance in runWithTransaction; the core adapter
-    // hands the callback a transaction-scoped adapter whose create must be
-    // wrapped as well.
+    // Better Auth accepts via runWithTransaction with a transaction adapter.
     const trxAdapter = fakeAdapter({
       create: () => Promise.reject(drizzleWrapped(RACE_ERROR)),
     });

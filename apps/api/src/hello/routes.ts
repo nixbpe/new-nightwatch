@@ -16,7 +16,6 @@ export const helloRoute = createRoute({
   },
 });
 
-/** HTTP translation only: wire the route to the pure service. */
 export function registerHelloRoutes(app: OpenAPIHono): void {
   app.openapi(helloRoute, (c) => c.json(getHello(), 200));
 }

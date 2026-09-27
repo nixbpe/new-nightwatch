@@ -28,7 +28,6 @@ export const invitationPreviewRoute = createRoute({
   },
 });
 
-/** HTTP translation only: wire the route to the transport-free service. */
 export function registerOnboardingRoutes(
   app: OpenAPIHono,
   deps: { database: Database },

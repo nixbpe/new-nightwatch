@@ -32,10 +32,7 @@ const session: AuthSession = {
 
 type SqlResult = { rows: Record<string, unknown>[] };
 
-/**
- * Narrow sql seam: route-level tests drive the pool with canned results
- * and assert only observable responses/audits, never recorded SQL.
- */
+// Canned results; tests assert responses and audits, never the recorded SQL.
 function stubDatabase(
   queryHandler: (text: string, params: unknown[]) => SqlResult,
   clientHandler?: () => SqlResult,

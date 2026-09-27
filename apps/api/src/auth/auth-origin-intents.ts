@@ -21,11 +21,7 @@ export type MfaTransitionInput = {
   userId: string;
 };
 
-/**
- * Account-domain writes supplied by the notification data foundation. Every
- * method receives the Drizzle transaction that performed the auth mutation;
- * it must not create a transaction of its own.
- */
+// Each method runs in the auth mutation's transaction; never open another.
 export type AccountNotificationOriginWriter<Tx extends AuthOriginTransaction> =
   {
     insertPasswordChanged: (
@@ -70,11 +66,8 @@ type OriginDependencies<Tx extends AuthOriginTransaction> = {
 
 const resetCredentialWrites = new WeakSet<object>();
 
-/**
- * The Better Auth database hook receives the same account data object later
- * passed to the adapter. A WeakSet classifies reset-only credential creation
- * without adding an unknown column to the Drizzle insert payload.
- */
+// The hook sees the same object the adapter later gets, so a WeakSet tags reset
+// writes without adding an unknown column to the insert payload.
 export function markResetCredentialWrite(data: object): void {
   resetCredentialWrites.add(data);
 }
@@ -185,13 +178,9 @@ function isVerifiedTwoFactor(
   );
 }
 
-/**
- * Decorates a Better Auth adapter at its write boundary. It opens exactly one
- * Drizzle transaction for every qualifying write, rebuilds the Better Auth
- * adapter over that transaction, and invokes the account-domain writer before
- * commit. The supplied transaction-bound adapter is used recursively so an
- * outer Better Auth transaction never falls back to the pool adapter.
- */
+// The notification write commits with the auth write; inside an outer Better
+// Auth transaction the transaction-bound adapter is reused, never the pool
+// adapter.
 export function withAccountNotificationOrigins<
   Tx extends AuthOriginTransaction,
 >(

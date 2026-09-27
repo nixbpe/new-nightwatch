@@ -18,7 +18,7 @@ import {
   updateOrganizationNotificationSettings,
 } from "./service";
 
-/** App-owned guard installed before Better Auth's native organization routes. */
+// Must be installed before Better Auth's native organization routes.
 export type NativeOrganizationMutationGuard = MiddlewareHandler;
 
 export function createNativeOrganizationMutationGuard(deps: {
@@ -59,10 +59,7 @@ export function createNativeOrganizationMutationGuard(deps: {
 
 const DENIAL_CODES = new Set(["MEMBERSHIP_DENIED", "PERMISSION_DENIED"]);
 
-/**
- * Audits organization authorization denials with the actor
- * and action only — never the target organization or member data.
- */
+// Logs actor and action only, never the target organization or member data.
 async function auditDenials<T>(
   logger: Logger,
   actorUserId: string,
@@ -144,11 +141,6 @@ const memberSelfLeaveRoute = createRoute({
   },
 });
 
-/**
- * Registers only first-party organization notification-settings endpoints.
- * The app composer owns mounting beside Better Auth and supplies its existing
- * CORS policy.
- */
 export function registerOrganizationNotificationSettingsRoutes(
   app: OpenAPIHono,
   deps: { auth: Auth; authEnv: AuthEnv; database: Database; logger: Logger },

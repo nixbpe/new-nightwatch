@@ -7,14 +7,13 @@ import { assertMemberBeforeTenantContext } from "./service";
 
 type OrganizationRole = "owner" | "admin" | "viewer" | "auditor";
 
-/** A stored member row; `role` may be a comma-separated composite. */
+// `role` may be a comma-separated composite.
 type MemberRow = {
   id: string;
   userId: string;
   organizationId: string;
   role: string;
 };
-/** A member as returned by the API, projected to one contract role. */
 export type MemberResponse = Omit<MemberRow, "role"> & {
   role: OrganizationRole;
 };
@@ -29,8 +28,7 @@ function deny(message: string): never {
   throw new AppError(403, "PERMISSION_DENIED", message);
 }
 
-// One denial for a missing organization and a non-member actor, so a
-// nonmember cannot probe which organizations exist.
+// Same denial for a missing org, so a nonmember cannot probe which exist.
 function notMember(): never {
   throw new AppError(403, "MEMBERSHIP_DENIED", "คุณไม่ใช่สมาชิกขององค์กรนี้");
 }
@@ -56,8 +54,7 @@ function isOwnerOrAdmin(member: MemberRow): boolean {
   );
 }
 
-// Projected inside the transaction so an unrecognized stored role rolls the
-// mutation back instead of committing it behind a failed response.
+// Called in the transaction so an unknown stored role rolls it back.
 function toMemberResponse(member: MemberRow): MemberResponse {
   const role = normalizeOrganizationRole(member.role);
   if (role === null) {
@@ -166,8 +163,7 @@ export async function updateOrganizationMemberRole(
         input.organizationId,
         input.actorUserId,
       );
-      // Authorize before touching the target, so an unauthorized caller can
-      // neither probe which members exist nor contend on their rows.
+      // Before the target lookup so an unauthorized caller can't probe members.
       if (!isOwnerOrAdmin(actor)) deny("คุณไม่มีสิทธิ์เปลี่ยนบทบาทสมาชิก");
       const target = await lockedTarget(
         client,
@@ -214,8 +210,7 @@ export async function revokeOrganizationMember(
         input.organizationId,
         input.actorUserId,
       );
-      // Authorize before touching the target, so an unauthorized caller can
-      // neither probe which members exist nor contend on their rows.
+      // Before the target lookup so an unauthorized caller can't probe members.
       if (!isOwnerOrAdmin(actor)) deny("คุณไม่มีสิทธิ์ลบสมาชิก");
       const target = await lockedTarget(
         client,
@@ -251,7 +246,7 @@ export async function revokeOrganizationMember(
   );
 }
 
-/** A current member may leave without holding member-delete permission. */
+// Needs no member-delete permission.
 export async function leaveOrganization(
   database: Database,
   input: { organizationId: string; actorUserId: string },
