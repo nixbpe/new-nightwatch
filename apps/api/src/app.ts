@@ -46,11 +46,16 @@ function logSafeOrganizationPath(path: string): string {
 
   const afterPrefix = path.slice(organizationPathPrefix.length);
   const organizationEnd = afterPrefix.indexOf("/");
-  if (afterPrefix.length === 0 || organizationEnd === 0) return path;
-
+  const hasOrganizationId = afterPrefix.length > 0 && organizationEnd !== 0;
   const suffix =
-    organizationEnd === -1 ? "" : afterPrefix.slice(organizationEnd);
-  const safePrefix = `${organizationPathPrefix}:organizationId`;
+    hasOrganizationId && organizationEnd !== -1
+      ? afterPrefix.slice(organizationEnd)
+      : hasOrganizationId
+        ? ""
+        : afterPrefix;
+  const safePrefix = hasOrganizationId
+    ? `${organizationPathPrefix}:organizationId`
+    : organizationPathPrefix;
   let membersStart = 0;
   while (suffix[membersStart] === "/") membersStart += 1;
 
