@@ -564,6 +564,45 @@ describe("OrganizationMembersPage", () => {
     expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
   });
 
+  it("announces a pending membership refresh and recovers after a denied list", async () => {
+    const context = Promise.withResolvers<{
+      organizations: TenantOrganization[];
+      lastActiveTenantId: string;
+    }>();
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => context.promise),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
+      )
+      .mockResolvedValueOnce(response);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("status", {
+        name: "กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+    ).not.toBeInTheDocument();
+
+    context.resolve({
+      organizations: [organizationA],
+      lastActiveTenantId: organizationId,
+    });
+
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(
+      screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+    ).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+  });
+
   it("refetches once after fresh owner confirmation for the same organization", async () => {
     tenant = {
       ...tenant,
@@ -748,7 +787,9 @@ describe("OrganizationMembersPage", () => {
     const page = renderPage();
 
     expect(
-      await screen.findByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+      await screen.findByRole("status", {
+        name: "กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก",
+      }),
     ).toBeInTheDocument();
     page.unmount();
     context.resolve({

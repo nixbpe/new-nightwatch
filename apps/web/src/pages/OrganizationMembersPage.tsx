@@ -186,19 +186,29 @@ function OrganizationMembersPageForOrganization({
     });
     setOffset(0);
   }, [invalidPage, organizationId, queryClient]);
-  if (
-    membershipRefreshState === "refreshing" ||
-    membershipRefreshState === "failed"
-  ) {
+  if (membershipRefreshState === "refreshing") {
+    return (
+      <Page>
+        <PageHeader title="สมาชิกองค์กร" />
+        <div
+          role="status"
+          aria-label="กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"
+          className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
+        >
+          <Skeleton className="h-4 w-72 max-w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </Page>
+    );
+  }
+  if (membershipRefreshState === "failed") {
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
         <Alert tone="error">ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้</Alert>
-        {membershipRefreshState === "failed" ? (
-          <Button onClick={() => void refreshAfterAuthorizationDenied()}>
-            ลองอีกครั้ง
-          </Button>
-        ) : null}
+        <Button onClick={() => void refreshAfterAuthorizationDenied()}>
+          ลองอีกครั้ง
+        </Button>
       </Page>
     );
   }
