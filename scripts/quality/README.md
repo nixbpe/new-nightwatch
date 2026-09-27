@@ -47,6 +47,18 @@ bun run provision:organization -- \
   invitation for the same organization/email. A pending invitation with a
   different role is visibly refused, unchanged, without sending mail.
 
+- `db:seed` is a local demo-only wrapper. It requires this worktree's generated
+  `.env.compose.local` and refuses any owner or runtime URL other than its exact
+  loopback Compose pair. Run `bun run db:migrate` first, then `bun run db:seed`.
+  It converges two demo organizations, four verified `.invalid` users and their
+  memberships: `owner@nightwatch.invalid` (owner), `admin@nightwatch.invalid`
+  (admin), `viewer@nightwatch.invalid` (viewer), and `auditor@nightwatch.invalid`
+  (auditor). The password is `nightwatch-demo-password`, public only for local
+  Compose demos: never reuse it outside local Compose. It refreshes 16 notification
+  intents, 28 inbox items, and 16 completed dispatch ledgers through runtime
+  tenant/account RLS contexts plus a bounded owner-only fixture ledger insert.
+  It does not enqueue work or mutate ambient notification ledgers.
+
 - Every worktree gets an isolated compose project (`nw-dev-<slot>`) and
   loopback-only ports from `scripts/ports.mjs`: PostgreSQL `127.0.0.1:5400+slot`,
   Mailpit SMTP `127.0.0.1:7400+slot`, Mailpit UI `127.0.0.1:7500+slot`, and

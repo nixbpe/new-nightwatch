@@ -365,6 +365,7 @@ type MemberMutationSnapshot = {
 
 async function memberMutationSnapshot(
   organizationId: string,
+  ownerId: string,
   targetMemberId: string,
   targetUserId: string,
   leaverUserId: string,
@@ -378,9 +379,18 @@ async function memberMutationSnapshot(
        (select last_active_tenant_id from "user" where id::text = $4) as "leaverLastActiveOrganizationId",
        (select count(*)::int from session where user_id::text = $3 and active_organization_id::text = $2) as "targetActiveOrganizationSessions",
        (select count(*)::int from session where user_id::text = $4 and active_organization_id::text = $2) as "leaverActiveOrganizationSessions",
-       (select count(*)::int from notification_intents) as "notificationIntentCount",
-       (select count(*)::int from notification_dispatch_ledger) as "notificationLedgerCount"`,
-    [targetMemberId, organizationId, targetUserId, leaverUserId],
+       (select count(*)::int from notification_intents
+        where tenant_id::text = $2 or user_id::text = any($5::text[])) as "notificationIntentCount",
+       (select count(*)::int from notification_dispatch_ledger as ledger
+        join notification_intents as intent on intent.id = ledger.intent_id
+        where intent.tenant_id::text = $2 or intent.user_id::text = any($5::text[])) as "notificationLedgerCount"`,
+    [
+      targetMemberId,
+      organizationId,
+      targetUserId,
+      leaverUserId,
+      [ownerId, targetUserId, leaverUserId],
+    ],
   );
   const snapshot = result.rows[0];
   if (!snapshot) throw new Error("member mutation snapshot missing");
@@ -1899,6 +1909,7 @@ describe("native organization membership mutation guard", () => {
     });
     const before = await memberMutationSnapshot(
       organizationId,
+      ownerId,
       targetMemberId,
       targetId,
       leaverId,
@@ -1959,6 +1970,7 @@ describe("native organization membership mutation guard", () => {
     expect(
       await memberMutationSnapshot(
         organizationId,
+        ownerId,
         targetMemberId,
         targetId,
         leaverId,
@@ -1990,6 +2002,7 @@ describe("native organization membership mutation guard", () => {
 
     const afterFirstParty = await memberMutationSnapshot(
       organizationId,
+      ownerId,
       targetMemberId,
       targetId,
       leaverId,

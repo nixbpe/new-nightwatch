@@ -329,6 +329,13 @@ async function expectUnreadBadge(page: Page, unreadCount: number) {
   }
 }
 
+async function expectReadStatus(page: Page) {
+  const statusValue = page
+    .locator("dt", { hasText: /^สถานะ$/ })
+    .locator("xpath=following-sibling::dd[1]");
+  await expect(statusValue).toHaveText("อ่านแล้ว");
+}
+
 async function applyTextZoom(page: Page) {
   await page.evaluate(() => {
     document.documentElement.style.fontSize = "200%";
@@ -509,9 +516,9 @@ test("password-change notification is materialized, scope switches across organi
     .first()
     .click();
   await expect(page).toHaveURL(/\/notifications$/);
-  await expect(page.getByText("สถานะ: อ่านแล้ว")).toBeVisible();
+  await expectReadStatus(page);
   await page.reload();
-  await expect(page.getByText("สถานะ: อ่านแล้ว")).toBeVisible();
+  await expectReadStatus(page);
   await page.getByRole("button", { name: "กลับไปที่การแจ้งเตือน" }).click();
 
   await seedNotificationFixtures();
@@ -621,7 +628,7 @@ test("password-change notification is materialized, scope switches across organi
       .getByRole("button", { name: new RegExp(primaryActor) })
       .first()
       .click();
-    await expect(page.getByText("สถานะ: อ่านแล้ว")).toBeVisible();
+    await expectReadStatus(page);
     await attachSurface(
       page,
       testInfo,
@@ -1042,7 +1049,7 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
       .getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" })
       .click();
     await page.getByRole("button", { name: new RegExp(pageTwoActor) }).click();
-    await expect(page.getByText("สถานะ: อ่านแล้ว")).toBeVisible();
+    await expectReadStatus(page);
     await page.getByRole("button", { name: "กลับไปที่การแจ้งเตือน" }).click();
 
     const clientForExpiry = await database.sql.connect();
@@ -1079,8 +1086,13 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
       .click();
     await expiredInitialOpen;
     await expect(page).toHaveURL(/\/notifications$/);
-    await expect(page.getByText("สถานะ: อ่านแล้ว")).toBeVisible();
-    await expect(page.getByText(expiredActor)).toBeVisible();
+    await expectReadStatus(page);
+    await expect(
+      page.getByRole("heading", {
+        name: `การตั้งค่าการแจ้งเตือนเปลี่ยนโดย ${expiredActor}`,
+        exact: true,
+      }),
+    ).toBeVisible();
     await database.sql.query(
       "update notification_inbox_items set expires_at = now() - interval '1 minute' where id = $1",
       [expiredId],
@@ -1125,8 +1137,13 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
       .click();
     await deletedInitialOpen;
     await expect(page).toHaveURL(/\/notifications$/);
-    await expect(page.getByText("สถานะ: อ่านแล้ว")).toBeVisible();
-    await expect(page.getByText(deletedActor)).toBeVisible();
+    await expectReadStatus(page);
+    await expect(
+      page.getByRole("heading", {
+        name: `การตั้งค่าการแจ้งเตือนเปลี่ยนโดย ${deletedActor}`,
+        exact: true,
+      }),
+    ).toBeVisible();
     await database.sql.query("delete from notification_intents where id = $1", [
       deletedId,
     ]);
