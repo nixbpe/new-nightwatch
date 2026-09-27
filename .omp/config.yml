@@ -14,11 +14,11 @@ modelRoles:
   # Code and infrastructure implementation
   implement: openai-codex/gpt-6-terra:medium
   # Read-only correctness/security review, evidence-heavy
-  review: openai-codex/gpt-5.6-sol:medium
+  review: openai-codex/gpt-6-sol:low
   # Direction/epic/story/delivery writing
-  product: openai-codex/gpt-5.6-sol:high
+  product: openai-codex/gpt-6-sol:high
   # PDD interaction and accessibility specs
-  design: openai-codex/gpt-5.6-astra:high
+  design: openai-codex/gpt-6-astra:medium
 
 providers:
   openai-codex:
