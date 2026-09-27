@@ -44,16 +44,22 @@ type SessionUser = {
   emailVerified: boolean;
 };
 
-const { sessionState } = vi.hoisted(() => ({
-  sessionState: {
+const { sessionState, getSessionMock } = vi.hoisted(() => {
+  const sessionState = {
     data: null as { user: SessionUser } | null,
-  },
-}));
+  };
+  return {
+    sessionState,
+    getSessionMock: vi.fn(() =>
+      Promise.resolve({ data: sessionState.data, error: null }),
+    ),
+  };
+});
 
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
     useSession: () => ({ data: sessionState.data, isPending: false }),
-    getSession: () => Promise.resolve({ data: sessionState.data, error: null }),
+    getSession: getSessionMock,
   }),
 }));
 
@@ -392,6 +398,10 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     resetQueryClientRegistry();
     fetchMeContextMock.mockReset();
     fetchOrganizationMembersMock.mockReset();
+    getSessionMock.mockReset();
+    getSessionMock.mockImplementation(() =>
+      Promise.resolve({ data: sessionState.data, error: null }),
+    );
   });
 
   it("retires cached membership and directory data when the fresh decision fails", async () => {
@@ -507,6 +517,99 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
       queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
     ).toEqual(membersB);
     expect(fetchOrganizationMembersMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps B's tenant cache when delayed A resolves its session after B", async () => {
+    const organizationA = "11111111-1111-4111-8111-111111111111";
+    const organizationB = "22222222-2222-4222-8222-222222222222";
+    const staleContextA: MeContextResponse = {
+      ...cachedOwnerContext,
+      organizations: [
+        {
+          id: organizationA,
+          name: "Alpha",
+          slug: "alpha",
+          role: "owner",
+        },
+      ],
+      lastActiveTenantId: organizationA,
+    };
+    const freshContextB: MeContextResponse = {
+      ...cachedOwnerContext,
+      organizations: [
+        {
+          id: organizationB,
+          name: "Bravo",
+          slug: "bravo",
+          role: "owner",
+        },
+      ],
+      lastActiveTenantId: organizationB,
+    };
+    const membersB: OrganizationMemberListResponse = {
+      organizationId: organizationB,
+      members: [],
+      page: { limit: 50, offset: 0, total: 0 },
+    };
+    const sessionA = Promise.withResolvers<{
+      data: { user: SessionUser };
+      error: null;
+    }>();
+    const sessionB = Promise.withResolvers<{
+      data: { user: SessionUser };
+      error: null;
+    }>();
+    const contextB = Promise.withResolvers<MeContextResponse>();
+    const contextA = Promise.withResolvers<MeContextResponse>();
+    getSessionMock
+      .mockImplementationOnce(() => sessionA.promise)
+      .mockImplementationOnce(() => sessionB.promise);
+    fetchMeContextMock
+      .mockImplementationOnce(() => contextB.promise)
+      .mockImplementationOnce(() => contextA.promise);
+    fetchOrganizationMembersMock.mockResolvedValueOnce(membersB);
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+
+    const olderA = organizationMembersLoader({
+      params: { organizationId: organizationA },
+      request: new Request(
+        `http://localhost/organizations/${organizationA}/members`,
+      ),
+    } as never);
+    const newerB = organizationMembersLoader({
+      params: { organizationId: organizationB },
+      request: new Request(
+        `http://localhost/organizations/${organizationB}/members`,
+      ),
+    } as never);
+    sessionB.resolve({ data: { user: VERIFIED }, error: null });
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    });
+    contextB.resolve(freshContextB);
+    await newerB;
+
+    const cancelSpy = vi.spyOn(queryClient, "cancelQueries");
+    sessionA.resolve({ data: { user: VERIFIED }, error: null });
+    contextA.resolve(staleContextA);
+    await olderA;
+
+    expect(cancelSpy).not.toHaveBeenCalled();
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    expect(fetchOrganizationMembersMock).toHaveBeenCalledWith(
+      organizationB,
+      50,
+      0,
+    );
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+      freshContextB,
+    );
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationB, 50, 0)),
+    ).toEqual(membersB);
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationA, 50, 0)),
+    ).toBeUndefined();
   });
 
   it("keeps the unavailable state when newer B fails before older A resolves", async () => {

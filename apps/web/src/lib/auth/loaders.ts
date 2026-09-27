@@ -30,7 +30,8 @@ import {
 
 type Session = typeof authClient.$Infer.Session;
 
-const organizationMembersLoaderGenerations = new WeakMap<QueryClient, number>();
+const organizationMembersLoaderClaims = new WeakMap<QueryClient, bigint>();
+let organizationMembersLoaderOrdinal = 0n;
 
 // Asks the server, not the cached client atom; any auth error counts as signed out.
 async function loadSession(): Promise<Session | null> {
@@ -171,6 +172,7 @@ export async function organizationMembersLoader({
   params,
   request,
 }: LoaderFunctionArgs): Promise<null | Response> {
+  const invocationOrdinal = ++organizationMembersLoaderOrdinal;
   const sessionOrRedirect = await gateVerifiedSession(request);
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
@@ -178,9 +180,13 @@ export async function organizationMembersLoader({
   const organizationId = params.organizationId;
   if (organizationId === undefined) return null;
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
-  const generation =
-    (organizationMembersLoaderGenerations.get(queryClient) ?? 0) + 1;
-  organizationMembersLoaderGenerations.set(queryClient, generation);
+  if (
+    (organizationMembersLoaderClaims.get(queryClient) ?? -1n) >=
+    invocationOrdinal
+  ) {
+    return null;
+  }
+  organizationMembersLoaderClaims.set(queryClient, invocationOrdinal);
   const previousContext =
     queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
   // A prior context or member query may have started before this membership
@@ -189,23 +195,25 @@ export async function organizationMembersLoader({
     queryKey: ME_CONTEXT_QUERY_KEY,
     exact: true,
   });
-  if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+  if (organizationMembersLoaderClaims.get(queryClient) !== invocationOrdinal) {
     return null;
   }
   await queryClient.cancelQueries({ queryKey: ["tenant"] });
-  if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+  if (organizationMembersLoaderClaims.get(queryClient) !== invocationOrdinal) {
     return null;
   }
   // A bookmarked tenant route needs a fresh server membership decision, not a
   // static context cache that could predate a revocation or role change.
   const context = await fetchMeContext().catch(() => undefined);
-  if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+  if (organizationMembersLoaderClaims.get(queryClient) !== invocationOrdinal) {
     return null;
   }
   if (context === undefined) {
     queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+    if (
+      organizationMembersLoaderClaims.get(queryClient) !== invocationOrdinal
+    ) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ["tenant"] });
@@ -213,7 +221,9 @@ export async function organizationMembersLoader({
   }
   if (!hasSameMembershipScope(previousContext, context)) {
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+    if (
+      organizationMembersLoaderClaims.get(queryClient) !== invocationOrdinal
+    ) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ["tenant"] });
@@ -228,7 +238,7 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+  if (organizationMembersLoaderClaims.get(queryClient) !== invocationOrdinal) {
     return null;
   }
   await queryClient
@@ -238,6 +248,9 @@ export async function organizationMembersLoader({
       staleTime: "static",
     })
     .catch(() => undefined);
+  if (organizationMembersLoaderClaims.get(queryClient) !== invocationOrdinal) {
+    return null;
+  }
   return null;
 }
 
