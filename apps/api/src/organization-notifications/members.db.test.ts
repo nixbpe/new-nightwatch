@@ -213,7 +213,7 @@ describe("listOrganizationMembers", () => {
         const organization = organizationFor(count);
         const ownerUser = crypto.randomUUID();
         insertedUsers.push(ownerUser);
-        await addUser(ownerUser, `Owner ${count}`);
+        await addUser(ownerUser, `Owner ${String(count)}`);
         await addMember(organization, ownerUser, "owner");
         await addMember(organization, actorAB, "admin");
       }
@@ -223,7 +223,7 @@ describe("listOrganizationMembers", () => {
           insertedUsers.push(userId);
           await addUser(
             userId,
-            `Tenant-${organization.count}-${String(organization.userIds.length).padStart(3, "0")}`,
+            `Tenant-${String(organization.count)}-${String(organization.userIds.length).padStart(3, "0")}`,
           );
           await addMember(organization, userId, "viewer");
         }
@@ -253,7 +253,7 @@ describe("listOrganizationMembers", () => {
         expect(
           first.members.every(
             (member) =>
-              member.name.includes(`${count}`) ||
+              member.name.includes(String(count)) ||
               member.name.includes("only") ||
               member.name === "A+B admin" ||
               member.name === "Viewer" ||

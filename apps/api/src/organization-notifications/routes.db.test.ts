@@ -1,3 +1,4 @@
+import { organizationMemberListResponseSchema } from "@nightwatch/api-contract";
 import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
 import { createLogger, type AuthEnv, type Env } from "@nightwatch/shared";
 import { fileURLToPath } from "node:url";
@@ -294,13 +295,14 @@ describe("organization member HTTP mutations", () => {
       `/api/organizations/${organizationId}/members?limit=50&offset=0`,
     );
     expect(list.status).toBe(200);
-    expect(list.json).toMatchObject({
-      organizationId,
-      members: expect.arrayContaining([
+    const listBody = organizationMemberListResponseSchema.parse(list.json);
+    expect(listBody.organizationId).toBe(organizationId);
+    expect(listBody.members).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({ id: memberIds.owner, role: "owner" }),
       ]),
-      page: { limit: 50, offset: 0, total: 3 },
-    });
+    );
+    expect(listBody.page).toEqual({ limit: 50, offset: 0, total: 3 });
     for (const clientForDeniedList of [targetClient, leaverClient]) {
       const deniedList = await clientForDeniedList(
         "GET",
@@ -380,11 +382,9 @@ describe("organization member HTTP mutations", () => {
       (entry) => entry.msg === "organization access denied",
     )) {
       const { action, actorUserId, code, ...metadata } = audit;
-      expect({ action, actorUserId, code }).toEqual({
-        action: "organization.member.list",
-        actorUserId: expect.any(String),
-        code: expect.stringMatching(/^(MEMBERSHIP|PERMISSION)_DENIED$/),
-      });
+      expect(action).toBe("organization.member.list");
+      expect(typeof actorUserId).toBe("string");
+      expect(code).toMatch(/^(MEMBERSHIP|PERMISSION)_DENIED$/);
       expect(Object.keys(metadata).sort()).toEqual([
         "hostname",
         "level",
