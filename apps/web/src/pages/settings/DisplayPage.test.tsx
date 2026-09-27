@@ -74,7 +74,7 @@ describe("DisplayPage", () => {
     await user.click(save);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "บันทึกแล้ว — ใช้กับเบราว์เซอร์นี้",
+      "บันทึกแล้ว ใช้กับเบราว์เซอร์นี้",
     );
     const stored = JSON.parse(
       localStorage.getItem(PREFERENCES_KEY) ?? "{}",

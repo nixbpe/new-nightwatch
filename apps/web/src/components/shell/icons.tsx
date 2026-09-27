@@ -1,7 +1,6 @@
 /**
- * Inline stroke-based icons for the app shell (sidebar nav, org switcher,
- * account menu, header controls, overlays) — same style already
- * established in pages/LoginPage.tsx, no new icon library dependency.
+ * Inline stroke-based icons for the whole web app (shell, auth pages,
+ * settings): one 24px grid, one stroke width, no icon library dependency.
  */
 function iconProps(size: number) {
   return {
@@ -255,9 +254,39 @@ export function LaptopIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function InboxIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </svg>
+  );
+}
+
+export function LayersIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="m12 2 9 5-9 5-9-5 9-5Z" />
+      <path d="m3 12 9 5 9-5" />
+      <path d="m3 17 9 5 9-5" />
+    </svg>
+  );
+}
+
+export function LockIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 /** Registry keyed by the string name used in nav-config.ts's NavItem.icon. */
 export const NAV_ICONS = {
   grid: GridIcon,
+  inbox: InboxIcon,
+  bell: BellIcon,
   shield: ShieldIcon,
   sliders: SlidersIcon,
   user: UserIcon,

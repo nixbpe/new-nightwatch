@@ -11,6 +11,7 @@ import {
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { NotificationRows } from "../../pages/NotificationsPage";
 import { BellIcon, SlidersIcon } from "./icons";
+import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
 
 export function NotificationsPopover() {
@@ -75,7 +76,7 @@ export function NotificationsPopover() {
         {unreadCount ? (
           <span
             aria-label={`${String(unreadCount)} รายการยังไม่อ่าน`}
-            className="absolute -top-1 -right-1 min-w-4 rounded-full bg-primary px-1 text-[10px] text-on-primary"
+            className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-xs leading-none text-on-primary"
           >
             {unreadCount}
           </span>
@@ -117,12 +118,18 @@ export function NotificationsPopover() {
               </p>
             ) : null}
             {list.isPending ? (
-              <p
-                role="status"
-                className="p-4 text-sm text-foreground-secondary"
-              >
-                กำลังโหลด…
-              </p>
+              <div role="status" className="divide-y divide-foreground/10">
+                <span className="sr-only">กำลังโหลด…</span>
+                {[0, 1].map((row) => (
+                  <div key={row} className="flex gap-3 px-4 py-3">
+                    <Skeleton className="ml-5 h-8 w-8 shrink-0" />
+                    <span className="flex flex-1 flex-col gap-2">
+                      <Skeleton className="h-4 w-48 max-w-full" />
+                      <Skeleton className="h-3 w-32" />
+                    </span>
+                  </div>
+                ))}
+              </div>
             ) : list.isError ? (
               <p role="alert" className="p-4 text-sm text-danger">
                 โหลดการแจ้งเตือนไม่สำเร็จ

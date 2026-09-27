@@ -45,8 +45,11 @@ org switcher, account menu and breadcrumb all read the active organization.
   user has no membership. Skeleton while `/me/context` is pending.
 - **`Sidebar.tsx`** — renders `NAV_ITEMS` from `nav-config.ts`
   (`NavLeaf | NavGroup`). Groups are labelled sections, not accordions; the
-  rail shows a divider in their place. Active row: alpha fill, medium
-  weight, primary-coloured icon, `aria-current="page"`.
+  rail shows a divider in their place. A leaf may carry `:organizationId`
+  in its path (resolved against the active organization) and `roles`
+  (hidden from other roles); a group with nothing visible disappears.
+  Active row: alpha fill, medium weight, primary-coloured icon,
+  `aria-current="page"`.
 - **`AccountMenu.tsx`** (bottom) — avatar (circle), name, email; opens
   upward: role pill + org, one link **การตั้งค่าส่วนตัว** → `/settings/profile`
   (its tabs hold profile, security, sessions and display), theme segmented
@@ -55,16 +58,23 @@ org switcher, account menu and breadcrumb all read the active organization.
 ```ts
 export const NAV_ITEMS: NavItem[] = [
   { label: "ภาพรวม", icon: "grid", path: "/workspace" },
+  { label: "การแจ้งเตือน", icon: "inbox", path: "/notifications" },
   {
-    label: "ตั้งค่า",
+    label: "การตั้งค่าส่วนตัว",
+    icon: "sliders",
+    path: "/settings",
+    palette: [
+      /* โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล → /settings/<tab> */
+    ],
+  },
+  {
+    label: "องค์กร",
     children: [
       {
-        label: "การตั้งค่าส่วนตัว",
-        icon: "sliders",
-        path: "/settings",
-        palette: [
-          /* โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล → /settings/<tab> */
-        ],
+        label: "ตั้งค่าการแจ้งเตือน",
+        icon: "bell",
+        path: "/organizations/:organizationId/notification-settings",
+        roles: ["owner", "admin"],
       },
     ],
   },
@@ -77,33 +87,49 @@ derives the settings tab strip from them, so one definition feeds the
 sidebar, the palette and the tabs. `/settings` is prefix-active on every
 tab, which is what the breadcrumb shows.
 
-Only the two real destinations are listed; the reference's illustrative
+Only real destinations are listed; the reference's illustrative
 Projects/Activity/Reports/Members sections were deliberately not added as
 placeholder routes (confirmed with the user).
 
 ## Header
 
-`Header.tsx`: sidebar toggle (hamburger below `sm`), breadcrumb rooted at the
-active organization (`breadcrumb.ts` derives the page crumb from
-`NAV_ITEMS`; section labels are not crumbs), the search-all field with a ⌘K
-hint, and notifications. Below `lg` the breadcrumb shows only the current
+`Header.tsx`: sidebar toggle (hamburger below `sm`), the breadcrumb, the
+search-all field with a ⌘K hint, and notifications. The breadcrumb's root
+is the organization the page acts on: on an organization-scoped route the
+one named in the URL (`getRouteOrganizationId`; a bookmark may name an
+organization other than the account-global active one), elsewhere the
+active organization. `breadcrumb.ts` derives the page crumb from
+`NAV_ITEMS`, matching organization-scoped leaves on their route shape so
+an id never shows; section labels are not crumbs. Below `lg` the breadcrumb shows only the current
 page and search is icon-only, matching the 768px reference. No product logo
 or avatar in the header.
 
 ## Overlays
 
 - **`CommandPalette.tsx`** — modal search-all. Its only index today is the
-  nav config (section "หน้าและการตั้งค่า"), so results are real and
-  navigate. ↑↓ select, ↵ opens, esc closes, Tab stays inside; focus returns
-  to whatever opened it. Footer shows `ค้นหาใน <org>`.
-- **`NotificationsPopover.tsx`** — title row, list area, footer actions.
-  There is no notification source yet, so the list is an honest
-  `EmptyState` and the bulk actions are disabled (no sample items, no fake
-  unread badge — the design system forbids demonstrations that read as live
-  data).
+  nav config (section "หน้าและการตั้งค่า"), resolved for the active
+  organization and the user's role, so results are real and navigate. ↑↓
+  select, ↵ opens, esc closes, Tab stays inside; focus returns to whatever
+  opened it. Footer shows `ค้นหาใน <org>`.
+- **`NotificationsPopover.tsx`** — title row, the five most recent inbox
+  rows (shared `NotificationRows`, two lines each), footer links to the
+  inbox page and, for owners/admins, the organization's notification
+  settings. Loading is a skeleton, no data an honest empty line; the unread
+  badge is the server's count.
 - **`usePopover.ts`** — shared menu-button behaviour for the three
   popovers: focus moves in on open, ↑↓ rove between items, Escape /
   outside click / item select return focus to the trigger.
+
+## Page frame
+
+Every routed page inside the shell uses `Page.tsx`: `Page` (one 960px
+left-aligned column, 24px rhythm) and `PageHeader` (eyebrow for scope, the
+title, an optional description, actions on the right). Cards are hairline
+`border-foreground/10` panels, never shadows; forms bound their fields
+(`max-w-md` or a two-column grid) and put actions in a row under a
+hairline. Page-level loading and error states render as cards inside the
+shell, never their own `<main>`. `BrandMark.tsx` is the one product mark
+(login panel, auth card pages, 404, no-membership sidebar fallback).
 
 ## Personal settings (`/settings/*`)
 
@@ -142,7 +168,8 @@ design system (`#000000` canvas / `#121316` surface) and all corners are
 
 `AppShell.test.tsx` renders the real shell (TenantProvider + mocked
 `/me/context`) and covers: structure (org switcher, org-rooted breadcrumb,
-labelled nav section with no accordion, account block, skip link), the
+labelled nav section with no accordion, role-gated organization leaf,
+account block, skip link), the
 scoped error boundary, account-menu focus + Escape return, org switch
 success and denied, ⌘K → grouped palette result → Enter navigation,
 field-open / Escape focus return, the notifications empty state, and the
@@ -158,10 +185,12 @@ the settings frame (header, tabs, index redirect, security tab).
   plain content inside `AppShell` with a local heading. Since moved to
   `pages/settings/SecurityPage.tsx` as the security tab of `/settings`.
 - `NotFoundPage` — brand mark added, link points at `/workspace`.
-
-Not touched (page content, outside this scope): page cards still use
-`shadow-sm` rather than the design system's hairline border, and the
-workspace error/loading states still render their own `<main>`.
+- UI refinement pass (branch `refine-ui`): the design-system faces are
+  self-hosted through `@fontsource`; `Card`/`Input`/`Button`/`Alert` follow
+  the token rules in one place (hairline cards, 40px controls); every page
+  shares `Page`/`PageHeader`; the workspace shows a real page header and an
+  `EmptyState` instead of a slug line; the inbox and organization settings
+  are in the sidebar; no em-dashes in visible copy.
 
 ## History
 

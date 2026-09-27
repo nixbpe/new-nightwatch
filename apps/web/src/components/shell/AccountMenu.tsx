@@ -169,7 +169,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "light", label: "สว่าง" },
   { value: "dark", label: "มืด" },
-  { value: "system", label: "ระบบ" },
+  { value: "system", label: "ตามระบบ" },
 ];
 
 function ThemeSegmentedControl({
@@ -195,7 +195,7 @@ function ThemeSegmentedControl({
             onClick={() => {
               onChange(option.value);
             }}
-            className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+            className={`h-6 rounded-md px-2 text-xs font-medium ${
               active
                 ? "bg-foreground/8 text-foreground"
                 : "text-foreground-secondary hover:text-foreground"

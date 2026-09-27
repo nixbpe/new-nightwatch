@@ -1,4 +1,12 @@
 @import "tailwindcss";
+/* Self-hosted faces from docs/design-system.md (Typography): Inter for
+   Latin, Noto Sans Thai for Thai (regular / medium / semibold), JetBrains
+   Mono for identifiers, timestamps and counts. No runtime font CDN. */
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource/noto-sans-thai/400.css";
+@import "@fontsource/noto-sans-thai/500.css";
+@import "@fontsource/noto-sans-thai/600.css";
+@import "@fontsource-variable/jetbrains-mono/index.css";
 
 /*
  * NightWatch design tokens (docs/design-system.md): semantic roles only.
@@ -89,7 +97,10 @@
   --color-border: var(--control-border);
   --color-input: var(--control-border);
   --color-ring: var(--primary);
-  --font-sans: Inter, "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif;
+  --font-sans:
+    "Inter Variable", "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
   /* One 4px corner for controls, panels and overlays (docs/design-system.md,
      Layout); pills stay reserved for badges, counters and avatars. */
   --radius: 4px;
@@ -103,4 +114,17 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   line-height: 1.5;
+}
+
+/* Motion is brief and never required (docs/design-system.md): under a
+   reduced-motion preference, skeleton pulses and hover transitions settle
+   immediately instead of animating. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -33,7 +33,23 @@ describe("ErrorBoundary", () => {
         <Bomb />
       </ErrorBoundary>,
     );
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("เกิดข้อผิดพลาดที่ไม่คาดคิด")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
+    // The root boundary may be all that is on the page: it is the landmark.
+    expect(screen.getByRole("main")).toContainElement(
+      screen.getByRole("alert"),
+    );
+  });
+
+  it("renders no landmark of its own when nested inside one", () => {
+    render(
+      <main>
+        <ErrorBoundary landmark={false}>
+          <Bomb />
+        </ErrorBoundary>
+      </main>,
+    );
+    expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
   });
 
@@ -43,7 +59,7 @@ describe("ErrorBoundary", () => {
         <Bomb />
       </ErrorBoundary>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
     // Bomb throws again, so the fallback returns — proving the reset ran.
     expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
   });

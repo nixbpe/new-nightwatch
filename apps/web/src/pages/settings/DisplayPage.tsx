@@ -123,7 +123,7 @@ export function DisplayPage() {
     <div className="flex flex-col gap-6">
       <section
         aria-labelledby="theme-card-title"
-        className="flex flex-col gap-4 rounded-md border border-foreground/10 bg-surface p-6"
+        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
       >
         <div>
           <h2 id="theme-card-title" className="text-base font-semibold">
@@ -164,25 +164,25 @@ export function DisplayPage() {
 
       <section
         aria-labelledby="locale-card-title"
-        className="flex flex-col gap-5 rounded-md border border-foreground/10 bg-surface p-6"
+        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
       >
         <div>
           <h2 id="locale-card-title" className="text-base font-semibold">
             ภาษาและเวลา
           </h2>
           <p className="mt-1 text-sm text-foreground-secondary">
-            ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป ·
+            ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป
             เก็บไว้ในเบราว์เซอร์นี้เท่านั้น
           </p>
         </div>
 
         {saved ? (
-          <Alert tone="success">บันทึกแล้ว — ใช้กับเบราว์เซอร์นี้</Alert>
+          <Alert tone="success">บันทึกแล้ว ใช้กับเบราว์เซอร์นี้</Alert>
         ) : null}
 
         <div className="grid max-w-3xl gap-4 sm:grid-cols-2">
           <div>
-            <Label htmlFor={ids.language} className="mb-1 block">
+            <Label htmlFor={ids.language} className="mb-2 block">
               ภาษา
             </Label>
             <select
@@ -198,11 +198,11 @@ export function DisplayPage() {
               id={`${ids.language}-help`}
               className="mt-1 text-xs text-foreground-secondary"
             >
-              ตอนนี้มีภาษาไทยภาษาเดียว — ภาษาอังกฤษจะเพิ่มในภายหลัง
+              ตอนนี้มีภาษาไทยภาษาเดียว ภาษาอังกฤษจะเพิ่มในภายหลัง
             </p>
           </div>
           <div>
-            <Label htmlFor={ids.timeZone} className="mb-1 block">
+            <Label htmlFor={ids.timeZone} className="mb-2 block">
               โซนเวลา
             </Label>
             <select
@@ -228,7 +228,7 @@ export function DisplayPage() {
             </p>
           </div>
           <div>
-            <Label htmlFor={ids.hourCycle} className="mb-1 block">
+            <Label htmlFor={ids.hourCycle} className="mb-2 block">
               รูปแบบเวลา
             </Label>
             <select
@@ -250,7 +250,7 @@ export function DisplayPage() {
             </select>
           </div>
           <div>
-            <Label htmlFor={ids.weekStart} className="mb-1 block">
+            <Label htmlFor={ids.weekStart} className="mb-2 block">
               วันแรกของสัปดาห์
             </Label>
             <select

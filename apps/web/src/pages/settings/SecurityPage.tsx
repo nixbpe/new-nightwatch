@@ -23,7 +23,7 @@ export function SecurityPage() {
       <div
         role="status"
         aria-label="กำลังโหลดข้อมูลความปลอดภัย"
-        className="flex flex-col gap-4 rounded-md border border-foreground/10 bg-surface p-6"
+        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
       >
         <Skeleton className="h-4 w-48" />
         <Skeleton className="h-3 w-full max-w-lg" />

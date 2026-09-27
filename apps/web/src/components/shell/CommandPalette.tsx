@@ -4,16 +4,14 @@ import { useNavigate } from "react-router";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { NAV_ICONS, SearchIcon } from "./icons";
 import { Kbd } from "./Kbd";
-import { getNavDestinations } from "./nav-config";
+import { getNavDestinations, type NavDestination } from "./nav-config";
 
-const DESTINATIONS = getNavDestinations();
-
-function matches(query: string) {
+function matches(destinations: NavDestination[], query: string) {
   const needle = query.trim().toLowerCase();
   if (needle === "") {
-    return DESTINATIONS;
+    return destinations;
   }
-  return DESTINATIONS.filter(
+  return destinations.filter(
     (destination) =>
       destination.label.toLowerCase().includes(needle) ||
       destination.path.toLowerCase().includes(needle) ||
@@ -24,7 +22,8 @@ function matches(query: string) {
 /**
  * Search-all (⌘K) overlay, per the reference: a modal command palette
  * anchored near the top. Today its only index is the nav config — pages
- * and settings — so that section is real and navigates; the reference's
+ * and settings, resolved for the active organization and the user's role
+ * in it — so that section is real and navigates; the reference's
  * project/member results wait on those features existing. Mounted only
  * while open, so state resets naturally; focus returns to whatever opened
  * it when it unmounts.
@@ -32,6 +31,10 @@ function matches(query: string) {
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { activeOrg } = useTenant();
+  const destinations = getNavDestinations({
+    organizationId: activeOrg?.id ?? null,
+    role: activeOrg?.role ?? null,
+  });
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -47,7 +50,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const results = matches(query);
+  const results = matches(destinations, query);
   const selectedIndex = Math.min(selected, Math.max(results.length - 1, 0));
 
   const choose = (index: number) => {
@@ -168,7 +171,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                       onClick={() => {
                         choose(index);
                       }}
-                      className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm ${
+                      className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 text-sm ${
                         isSelected
                           ? "bg-foreground/8 text-foreground"
                           : "text-foreground"
