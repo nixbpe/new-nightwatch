@@ -497,6 +497,53 @@ describe("TenantProvider", () => {
     });
   });
 
+  it("restores the shell context when a newer directory loader republishes a deep-equal context", async () => {
+    const olderRefresh = Promise.withResolvers<MeContextResponse>();
+    const deepEqualContext: MeContextResponse = {
+      ...me,
+      user: { ...me.user },
+      organizations: me.organizations.map((organization) => ({
+        ...organization,
+      })),
+    };
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockImplementationOnce(() => olderRefresh.promise)
+      .mockResolvedValueOnce(deepEqualContext);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    publishActiveQueryClient(me.user.id, queryClient);
+    renderProvider(queryClient);
+    const user = userEvent.setup();
+    await screen.findByText("org-b");
+
+    await user.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+    });
+
+    await organizationMembersLoader({
+      params: { organizationId: "org-a" },
+      request: new Request("http://localhost/organizations/org-a/members"),
+    } as never);
+
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBe(me);
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b");
+      expect(screen.getByTestId("server-active")).toHaveTextContent(
+        "server:org-b",
+      );
+    });
+
+    olderRefresh.resolve({ ...me, lastActiveTenantId: "org-a" });
+    await olderRefresh.promise;
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBe(me);
+  });
+
   it("keeps membership unavailable when the newest refresh fails before an older refresh resolves", async () => {
     const privilegedContext: MeContextResponse = {
       ...me,

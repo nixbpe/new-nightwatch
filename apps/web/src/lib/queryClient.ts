@@ -19,6 +19,57 @@ let staged: ClientSlot | null = null;
 const contextPublicationClaims = new WeakMap<QueryClient, bigint>();
 let contextPublicationOrdinal = 0n;
 
+type ContextPublicationSignal = {
+  version: number;
+  listeners: Set<() => void>;
+};
+
+const contextPublicationSignals = new WeakMap<
+  QueryClient,
+  ContextPublicationSignal
+>();
+
+function contextPublicationSignal(
+  queryClient: QueryClient,
+): ContextPublicationSignal {
+  let signal = contextPublicationSignals.get(queryClient);
+  if (signal === undefined) {
+    signal = { version: 0, listeners: new Set() };
+    contextPublicationSignals.set(queryClient, signal);
+  }
+  return signal;
+}
+
+export function getContextPublicationVersion(queryClient: QueryClient): number {
+  return contextPublicationSignal(queryClient).version;
+}
+
+export function subscribeToContextPublication(
+  queryClient: QueryClient,
+  listener: () => void,
+): () => void {
+  const signal = contextPublicationSignal(queryClient);
+  signal.listeners.add(listener);
+  return () => {
+    signal.listeners.delete(listener);
+  };
+}
+
+export function publishContextPublication(
+  queryClient: QueryClient,
+  claim: bigint,
+): boolean {
+  if (!hasContextPublicationClaim(queryClient, claim)) {
+    return false;
+  }
+  const signal = contextPublicationSignal(queryClient);
+  signal.version += 1;
+  for (const listener of signal.listeners) {
+    listener();
+  }
+  return true;
+}
+
 export function createContextPublicationClaim(): bigint {
   return ++contextPublicationOrdinal;
 }

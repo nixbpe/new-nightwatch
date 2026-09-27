@@ -22,6 +22,7 @@ import {
   createContextPublicationClaim,
   hasContextPublicationClaim,
   peekActiveQueryClientIdentity,
+  publishContextPublication,
   resolveQueryClientForIdentity,
 } from "../queryClient";
 import {
@@ -220,6 +221,7 @@ export async function organizationMembersLoader({
     queryClient.removeQueries({ queryKey: ["tenant"] });
   }
   queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+  publishContextPublication(queryClient, claim);
   const membership = context.organizations.find(
     (organization) => organization.id === organizationId,
   );

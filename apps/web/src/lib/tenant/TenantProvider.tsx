@@ -18,8 +18,10 @@ import { isInboxScopeChanged } from "../api/notifications";
 import {
   claimContextPublication,
   createContextPublicationClaim,
+  getContextPublicationVersion,
   hasContextPublicationClaim,
   publishTenantScope,
+  subscribeToContextPublication,
 } from "../queryClient";
 
 type Membership = MeContextResponse["organizations"][number];
@@ -55,6 +57,15 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [membershipContextUnavailable, setMembershipContextUnavailable] =
     useState(false);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
+  const [contextPublicationVersion, setContextPublicationVersion] = useState(
+    () => getContextPublicationVersion(queryClient),
+  );
+
+  useEffect(() => {
+    return subscribeToContextPublication(queryClient, () => {
+      setContextPublicationVersion(getContextPublicationVersion(queryClient));
+    });
+  }, [queryClient]);
 
   const meQuery = useQuery({
     queryKey: ME_CONTEXT_QUERY_KEY,
@@ -65,7 +76,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     if (meQuery.data !== undefined) {
       setMembershipContextUnavailable(false);
     }
-  }, [meQuery.data]);
+  }, [contextPublicationVersion, meQuery.data]);
 
   useEffect(() => {
     const refreshOnScopeChange = (error: unknown) => {
