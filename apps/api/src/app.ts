@@ -38,46 +38,58 @@ export type AppDeps = {
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
-const organizationPathPrefix = "/api/organizations/";
+const organizationPathBase = "/api/organizations";
 const membersSegment = "members";
+const notificationSettingsSegment = "notification-settings";
 
 function logSafeOrganizationPath(path: string): string {
-  if (!path.startsWith(organizationPathPrefix)) return path;
-
-  const afterPrefix = path.slice(organizationPathPrefix.length);
-  const organizationEnd = afterPrefix.indexOf("/");
-  const hasOrganizationId = afterPrefix.length > 0 && organizationEnd !== 0;
-  const suffix =
-    hasOrganizationId && organizationEnd !== -1
-      ? afterPrefix.slice(organizationEnd)
-      : hasOrganizationId
-        ? ""
-        : afterPrefix;
-  const safePrefix = hasOrganizationId
-    ? `${organizationPathPrefix}:organizationId`
-    : organizationPathPrefix;
-  let membersStart = 0;
-  while (suffix[membersStart] === "/") membersStart += 1;
-
-  const membersEnd = membersStart + membersSegment.length;
-  if (
-    membersStart === 0 ||
-    !suffix.startsWith(membersSegment, membersStart) ||
-    (suffix[membersEnd] !== undefined && suffix[membersEnd] !== "/")
-  ) {
-    return `${safePrefix}${suffix}`;
+  if (!path.startsWith(organizationPathBase)) return path;
+  if (path === organizationPathBase) return path;
+  if (path[organizationPathBase.length] !== "/") {
+    return `${organizationPathBase}/:ambiguous`;
   }
 
-  let memberStart = membersEnd;
-  while (suffix[memberStart] === "/") memberStart += 1;
-  if (memberStart === membersEnd || suffix[memberStart] === undefined) {
-    return `${safePrefix}${suffix}`;
-  }
+  let state:
+    | "organization"
+    | "organization-route"
+    | "member"
+    | "member-route"
+    | "other" = "organization";
+  const safeSegments = path
+    .slice(organizationPathBase.length)
+    .split("/")
+    .map((segment) => {
+      if (segment === "") return segment;
 
-  const memberEnd = suffix.indexOf("/", memberStart);
-  return `${safePrefix}${suffix.slice(0, memberStart)}:memberId${
-    memberEnd === -1 ? "" : suffix.slice(memberEnd)
-  }`;
+      if (state === "organization") {
+        state = "organization-route";
+        return ":organizationId";
+      }
+      if (state === "organization-route" && segment === membersSegment) {
+        state = "member";
+        return membersSegment;
+      }
+      if (
+        state === "organization-route" &&
+        segment === notificationSettingsSegment
+      ) {
+        state = "other";
+        return notificationSettingsSegment;
+      }
+      if (state === "member") {
+        state = "member-route";
+        return ":memberId";
+      }
+      if (state === "member-route" && segment === "role") {
+        state = "other";
+        return "role";
+      }
+
+      state = "other";
+      return ":segment";
+    });
+
+  return `${organizationPathBase}${safeSegments.join("/")}`;
 }
 
 function logSafePath(path: string): string {

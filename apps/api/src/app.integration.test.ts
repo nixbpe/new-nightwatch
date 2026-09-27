@@ -125,7 +125,7 @@ describe("error contract", () => {
 });
 
 describe("request completion logging", () => {
-  it("normalizes organization paths, exact member segments, and malformed separators", async () => {
+  it("redacts organization namespace audit inputs in actual completion logs", async () => {
     const organizationId = "11111111-1111-4111-8111-111111111111";
     const memberId = "22222222-2222-4222-8222-222222222222";
     const logLines: string[] = [];
@@ -141,6 +141,10 @@ describe("request completion logging", () => {
         expected: "/api/organizations/:organizationId/members",
       },
       {
+        input: `/api/organizations/${organizationId}/members/`,
+        expected: "/api/organizations/:organizationId/members/",
+      },
+      {
         input: `/api/organizations/${organizationId}/members/${memberId}`,
         expected: "/api/organizations/:organizationId/members/:memberId",
       },
@@ -151,57 +155,91 @@ describe("request completion logging", () => {
       {
         input: `/api/organizations/${organizationId}/members/${memberId}/role/extra`,
         expected:
-          "/api/organizations/:organizationId/members/:memberId/role/extra",
-      },
-      {
-        input: `/api/organizations/${organizationId}/members/`,
-        expected: "/api/organizations/:organizationId/members/",
-      },
-      {
-        input: `/api/organizations/${organizationId}/members//${memberId}/role/extra`,
-        expected:
-          "/api/organizations/:organizationId/members//:memberId/role/extra",
-      },
-      {
-        input: `/api/organizations/${organizationId}//members`,
-        expected: "/api/organizations/:organizationId//members",
-      },
-      {
-        input: `/api/organizations/${organizationId}///members/${memberId}`,
-        expected: "/api/organizations/:organizationId///members/:memberId",
-      },
-      {
-        input: `/api/organizations/${organizationId}////members/${memberId}/role`,
-        expected:
-          "/api/organizations/:organizationId////members/:memberId/role",
+          "/api/organizations/:organizationId/members/:memberId/role/:segment",
       },
       {
         input: `/api/organizations/${organizationId}/notification-settings`,
         expected: "/api/organizations/:organizationId/notification-settings",
       },
       {
-        input: `/api/organizations/${organizationId}//notification-settings`,
-        expected: "/api/organizations/:organizationId//notification-settings",
+        input: `/api/organizations/${organizationId}//members//${memberId}/role`,
+        expected: "/api/organizations/:organizationId//members//:memberId/role",
       },
       {
-        input: `/api/organizations/${organizationId}/memberships`,
-        expected: "/api/organizations/:organizationId/memberships",
+        input: `/api/organizations//members//${memberId}/role`,
+        expected: "/api/organizations//:organizationId//:segment/:segment",
       },
       {
-        input: `/api/organizations/${organizationId}/members-extra`,
-        expected: "/api/organizations/:organizationId/members-extra",
+        input: `/api/organizations/${organizationId}/members%2F${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
       },
       {
-        input: `/api/organizations/${organizationId}/unknown//suffix`,
-        expected: "/api/organizations/:organizationId/unknown//suffix",
+        input: `/api/organizations/${organizationId}/members%2f${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}%2Fmembers/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}%2fmembers/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations%2F${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:ambiguous",
+      },
+      {
+        input: `/api/organizations%2f${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:ambiguous",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%5C${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%5c${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations%5C${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:ambiguous",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%252F${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members;v=1/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%3Bv=1/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%3F${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/${memberId}?limit=50`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%ZZ/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/unknown/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment/:segment",
       },
       {
         input: "/api/organizations/",
         expected: "/api/organizations/",
       },
       {
-        input: `/api/organizations//members//${memberId}/role`,
-        expected: "/api/organizations//members//:memberId/role",
+        input: "/api/organizations",
+        expected: "/api/organizations",
       },
       {
         input: `/api/projects/${organizationId}/members/${memberId}`,
@@ -225,14 +263,7 @@ describe("request completion logging", () => {
       paths.map(({ expected }) => expected),
     );
     for (const [index, completion] of completions.entries()) {
-      const expected = paths[index]?.expected;
-      if (
-        expected === undefined ||
-        (!expected.includes(":organizationId") &&
-          !expected.includes(":memberId"))
-      ) {
-        continue;
-      }
+      if (!paths[index]?.input.startsWith("/api/organizations")) continue;
       expect(JSON.stringify(completion)).not.toContain(organizationId);
       expect(JSON.stringify(completion)).not.toContain(memberId);
     }
