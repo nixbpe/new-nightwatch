@@ -201,8 +201,8 @@ export async function setActiveOrganization(
   const client = await database.sql.connect();
   let inTransaction = false;
   try {
-    // Pre-tenant, actor-scoped membership lookup before any organization lock
-    // (ORG-02): a nonmember never contends on another organization's rows.
+    // Pre-tenant, actor-scoped membership lookup before any organization lock:
+    // a nonmember never contends on another organization's rows.
     // Membership is rechecked under the locks below.
     const preMembership = await client.query(
       "select 1 from member where organization_id = $1 and user_id = $2",
@@ -242,8 +242,8 @@ export async function setActiveOrganization(
       [organizationId, session.user.id],
     );
     // Organization selection is account-global (last_active_tenant_id), so
-    // every session mirror of the user moves with it in this transaction
-    // (ORG-04); otherwise another live session's mirror would disagree with
+    // every session mirror of the user moves with it in this transaction;
+    // otherwise another live session's mirror would disagree with
     // the scope its inbox requests resolve.
     await client.query(
       `update session

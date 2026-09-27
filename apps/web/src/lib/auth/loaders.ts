@@ -181,7 +181,7 @@ export function settingsIndexLoader(): Response {
 }
 
 /**
- * /settings/sessions — prefetch the tab's primary query (FE-12) into the
+ * /settings/sessions — prefetch the tab's primary query into the
  * identity's client. Parent and child loaders run in parallel, so this
  * re-reads the session rather than relying on the layout gate having run;
  * anonymous/unverified arrivals are bounced by settingsLoader regardless.

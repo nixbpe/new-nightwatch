@@ -30,7 +30,7 @@ function deny(message: string): never {
 }
 
 // One denial for a missing organization and a non-member actor, so a
-// nonmember cannot probe which organizations exist (ORG-02).
+// nonmember cannot probe which organizations exist.
 function notMember(): never {
   throw new AppError(403, "MEMBERSHIP_DENIED", "คุณไม่ใช่สมาชิกขององค์กรนี้");
 }

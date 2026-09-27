@@ -59,7 +59,7 @@ function requireEnvironment(name: "DATABASE_URL" | "REDIS_URL"): string {
 }
 
 /**
- * DEP-01: roles are selected explicitly. The default starts only the main
+ * Roles are selected explicitly. The default starts only the main
  * consumer; a combined consumer+scheduler process must opt in.
  */
 function workerRoles(value: string | undefined): Set<"consumer" | "scheduler"> {

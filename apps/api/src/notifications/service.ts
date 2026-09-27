@@ -95,7 +95,7 @@ async function resolveActiveScopeOnClient(
     return { userId, organizationId: null };
   }
 
-  // Actor-scoped membership lookup before any organization lock (ORG-02):
+  // Actor-scoped membership lookup before any organization lock:
   // a former member with a stale mirror never contends on that
   // organization's locks. A current member is rechecked under the locks.
   const preMembership = await client.query(
@@ -258,7 +258,7 @@ export async function listInbox(
   },
 ): Promise<NotificationListResponse> {
   // Only the queries run under the scope locks; sorting, item conversion and
-  // cursor signing happen after commit (REQ-08).
+  // cursor signing happen after commit.
   const { scope, account, tenant, unreadCount } = await withResolvedScope(
     deps.database,
     input.userId,

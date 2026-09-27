@@ -60,7 +60,7 @@ export function createNativeOrganizationMutationGuard(deps: {
 const DENIAL_CODES = new Set(["MEMBERSHIP_DENIED", "PERMISSION_DENIED"]);
 
 /**
- * Audits organization authorization denials (REQ-05/ORG-05) with the actor
+ * Audits organization authorization denials with the actor
  * and action only — never the target organization or member data.
  */
 async function auditDenials<T>(

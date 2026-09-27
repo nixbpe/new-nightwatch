@@ -79,7 +79,7 @@ Stop and return the decision to the user, instead of working around it, when:
 Report the blocker and the exact decision needed, for example:
 
 ```text
-Blocked: XC-06 requires a Redis rate limiter, but the repository has no
+Blocked: REQ-09 requires a Redis rate limiter, but the repository has no
 backend, threshold or failure policy configured.
 
 Decision needed:

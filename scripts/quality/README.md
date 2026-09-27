@@ -72,7 +72,7 @@ NOCREATEDB NOCREATEROLE NOBYPASSRLS`). The runtime role is created by
   `scripts/db/init/001-roles.sh` (also used by CI); table grants are applied by
   migrations. `DATABASE_URL` must use the runtime role, `DATABASE_OWNER_URL`
   the owner; the migration runner resolves owner before app URL.
-- Notification migration `0008_notification_function_owners.sql` creates cluster-global NOLOGIN function-owner roles. A clean migration must use a fresh dedicated PostgreSQL cluster, not a second database on a cluster where NightWatch migrations already ran; only one NightWatch database per cluster is supported by this migration. The DDL owner needs `CREATEROLE` or superuser privileges for initial creation; runtime stays unprivileged. The isolated Worker scheduler integration test must provision and remove only its own ephemeral cluster. Deployment still requires a separate approval gate (architecture DEP-05/DEP-06).
+- Notification migration `0008_notification_function_owners.sql` creates cluster-global NOLOGIN function-owner roles. A clean migration must use a fresh dedicated PostgreSQL cluster, not a second database on a cluster where NightWatch migrations already ran; only one NightWatch database per cluster is supported by this migration. The DDL owner needs `CREATEROLE` or superuser privileges for initial creation; runtime stays unprivileged. The isolated Worker scheduler integration test must provision and remove only its own ephemeral cluster. Deployment still requires a separate approval gate (architecture DB-18).
 - Development secrets (role passwords, `BETTER_AUTH_SECRET`) are generated on
   first `bun run db:up` into `.env.compose.local` — gitignored, mode 0600,
   never committed. `scripts/dev.mjs` forwards them with the computed
@@ -161,7 +161,7 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   isolated Worker clean-migration test is an exception: it provisions a
   task-owned fresh PostgreSQL cluster, reuses the same role bootstrap, and
   removes only its own cluster. Migration `0008_notification_function_owners.sql`
-  cannot be clean-applied to a second database on the shared cluster (DEP-06).
+  cannot be clean-applied to a second database on the shared cluster (architecture DB-18).
 
 ## OpenAPI client drift
 
@@ -182,8 +182,8 @@ bun run codegen:check          # check committed output without changing it
   `typecheck` runs the same command after a frozen install, so stale output
   blocks pull requests.
 - Turbo caching is off because Web reads API sources outside its package. A
-  cache could miss API-only changes. Architecture requirements remain in FE-01
-  and FE-02. This section defines only drift checks.
+  cache could miss API-only changes. Architecture requirements remain in WEB-01
+  and WEB-02. This section defines only drift checks.
 
 ## Playwright E2E
 

@@ -103,7 +103,7 @@ const apiContractRootOnlyPattern = {
 /**
  * NightWatch flat-config factory.
  *
- * Every workspace declares its PKG-01 importer kind. The kind selects a
+ * Every workspace declares its importer kind (the architecture import rules). The kind selects a
  * centralized workspace-import allowlist, while `react` and `apiService`
  * retain their framework-specific rules.
  */

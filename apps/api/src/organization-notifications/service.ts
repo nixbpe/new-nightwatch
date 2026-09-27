@@ -63,7 +63,7 @@ async function membershipFor(
 }
 
 /**
- * Pre-tenant membership resolution scoped by the verified actor (ORG-02).
+ * Pre-tenant membership resolution scoped by the verified actor.
  * Runs before any tenant context exists, so a nonmember never sets
  * `app.tenant_id` or contends on another organization's locks. Callers
  * recheck membership under their locks inside the scoped transaction.
