@@ -11,7 +11,7 @@ Before anyone writes code, the Product Owner and the Technical Lead agree on a n
 
 ## The Acceptance matrix
 
-agent:`product-owner` writes the matrix. It covers at least:
+agent:`product-owner` writes the matrix with only the categories the change touches:
 
 - **Scope**: routes, APIs and user journeys in scope.
 - **Authorization**: which actor may or may not do which operation on which target.

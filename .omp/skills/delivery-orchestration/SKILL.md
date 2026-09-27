@@ -7,7 +7,7 @@ description: How the Technical Lead splits a ready Feature or Story into Tasks, 
 
 ## What this is for
 
-This is the Technical Lead's day-to-day playbook for building a change: cut the work into Tasks that one owner can finish, hand them out with clear limits, wait for short reports instead of watching agents, and bring the result to the point where a person can review it. Validation to full technical sign-off continues in skill:`candidate-validation`.
+This is the Technical Lead's day-to-day playbook for building a change: cut the work into Tasks that one owner can finish, hand them out with clear limits, wait for short reports instead of watching agents, and bring the result to review-ready or merge-ready. Release preparation is a separate flow in skill:`release-preparation`.
 
 ## 1. Split the work into Tasks
 
@@ -63,6 +63,23 @@ Every dispatch:
    - When relevant, stateful proof names one trigger, the mutation or interleaving it reached, and the state it preserved.
    - Integration tests that write data need run-unique fixtures and owned cleanup.
    - If evidence misses an applicable requirement, mark the handoff source-complete, not author-verified.
-3. After sibling writers stop, owners run focused verification and smoke-test their behavior, including DB/RLS and security checks the change requires. The integration owner then settles lockfiles, generated files, formatting, docs and environment prerequisites. Close every proof gap now, not after binding.
+3. After sibling writers stop, owners run focused verification and smoke-test their behavior, including DB/RLS and security checks the change requires. The integration owner then settles lockfiles, generated files, formatting and docs. Close every proof gap now.
 
-With `STOP_AT: review-ready`, stop here and report. With `STOP_AT: verified`, continue with skill:`candidate-validation`.
+With `STOP_AT: review-ready`, stop here and report each check as passed, failed or not run.
+
+## 5. Finish at merge-ready
+
+With `STOP_AT: merge-ready`, continue after step 3:
+
+1. Send the change to agent:`code-reviewer` for one review.
+2. Run the same gates as PR CI:
+   ```text
+   bun run validate
+   COVERAGE_GATE=1 bun run test:coverage
+   bun run build
+   bun run security
+   ```
+3. Put review findings and gate failures into one batch and repair once. Fix only in-scope defects that break a criterion or contract; record the rest. Repairs run focused checks only (formatter on touched files, lint and typecheck for the affected package, the regression test, a DB scenario or targeted security check only when the finding needs it), then rerun the failed gates.
+4. Report merge-ready with the reviewed commit or diff. If a Blocker, Major or red gate remains after that repair, stop and give the user the evidence and the decision needed.
+
+Merge-ready means review and PR CI gates pass. Full E2E, the image scan, candidate binding and environment checks belong to skill:`release-preparation`.

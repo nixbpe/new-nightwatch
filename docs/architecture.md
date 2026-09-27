@@ -11,7 +11,7 @@ NightWatch is one multi-tenant application (a modular monolith) whose organizati
 
 Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app notifications only. Deferred: other Worker roles and queues, a shared queue package, and a marketing site.
 
-**Principle.** PostgreSQL holds all state; Redis only carries jobs. Users reach data only through the Web app calling the API with a session cookie, and only the API and Worker call outside systems. The marketing site gets no login data, cookies or internal data. Platform-admin access is checked per operation and never bypasses tenant isolation. Commit to the database before enqueueing, and record enqueue failures in the database. Check TLS, origins, secrets, credentials and database permissions in each environment.
+**Principle.** PostgreSQL holds all state; Redis only carries jobs. Users reach data only through the Web app calling the API with a session cookie, and only the API and Worker call outside systems. The marketing site gets no login data, cookies or internal data. Platform-admin access is checked per operation and never bypasses tenant isolation. Commit to the database before enqueueing, and record enqueue failures in the database.
 
 - SYS-01 Keep one API application split into domain modules: no service split, DI container or speculative repository layer. The Worker never calls the API over HTTP; they share code through packages.
 - SYS-02 Containers run as non-root with pinned runtime dependencies and matching build/runtime environments.
