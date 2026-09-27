@@ -289,17 +289,32 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  await queryClient
-    .query({
-      queryKey: memberListQueryKey(organizationId, 50, 0),
-      queryFn: () => fetchOrganizationMembers(organizationId, 50, 0),
-    })
-    .catch(() => undefined);
+  const memberKey = memberListQueryKey(organizationId, 50, 0);
+  const memberQuery = queryClient.getQueryCache().find({
+    queryKey: memberKey,
+    exact: true,
+  });
+  const staleTime = queryClient.defaultQueryOptions({
+    queryKey: memberKey,
+  }).staleTime;
   if (
-    request.signal.aborted ||
-    !hasContextPublicationClaim(queryClient, claim)
+    memberQuery === undefined ||
+    memberQuery.isStaleByTime(
+      typeof staleTime === "function" ? staleTime(memberQuery) : staleTime,
+    )
   ) {
-    return null;
+    const members = await fetchOrganizationMembers(organizationId, 50, 0).catch(
+      () => undefined,
+    );
+    if (
+      request.signal.aborted ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
+      return null;
+    }
+    if (members !== undefined) {
+      queryClient.setQueryData(memberKey, members);
+    }
   }
   return null;
 }
