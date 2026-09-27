@@ -470,6 +470,26 @@ describe("organization member HTTP mutations", () => {
       ).rows.every((session) => session.active_organization_id === null),
     ).toBe(true);
 
+    const revokedList = await targetClient(
+      "GET",
+      `/api/organizations/${organizationId}/members`,
+    );
+    expect(revokedList).toEqual({
+      status: 403,
+      json: {
+        error: {
+          code: "MEMBERSHIP_DENIED",
+          message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+        },
+      },
+    });
+    const revokedContext = await targetClient("GET", "/api/me/context");
+    expect(revokedContext.status).toBe(200);
+    expect(revokedContext.json).toMatchObject({
+      organizations: [],
+      lastActiveTenantId: null,
+    });
+
     const leave = await leaverClient(
       "DELETE",
       `/api/organizations/${organizationId}/members/me`,

@@ -2,9 +2,12 @@ import type { OrganizationMemberListResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import { OrgSwitcher } from "../components/shell/OrgSwitcher";
+import { ApiError } from "../lib/api/client";
 import { fetchOrganizationMembers } from "../lib/api/members";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 
@@ -23,14 +26,48 @@ const response: OrganizationMemberListResponse = {
   page: { limit: 50, offset: 0, total: 51 },
 };
 
-let tenant = {
+const firstMember = response.members[0];
+if (firstMember === undefined) {
+  throw new Error("directory test fixture needs a first member");
+}
+
+const organizationBId = "22222222-2222-4222-8222-222222222222";
+const organizationA = {
+  id: organizationId,
+  name: "Acme",
+  slug: "acme",
+  role: "owner" as const,
+};
+const organizationB = {
+  id: organizationBId,
+  name: "Beta",
+  slug: "beta",
+  role: "owner" as const,
+};
+
+type TenantOrganization = {
+  id: string;
+  name: string;
+  slug: string;
+  role: "owner" | "admin" | "viewer" | "auditor";
+};
+
+type TenantStub = {
+  mePending: boolean;
+  me: { organizations: TenantOrganization[] };
+  refreshMembershipContext: Mock;
+  activeOrg: TenantOrganization;
+  orgSwitchPending: boolean;
+  switchOrg: (organizationId: string) => Promise<boolean>;
+};
+
+let tenant: TenantStub = {
   mePending: false,
-  me: {
-    organizations: [
-      { id: organizationId, name: "Acme", slug: "acme", role: "owner" },
-    ],
-  },
+  me: { organizations: [organizationA] },
   refreshMembershipContext: vi.fn(),
+  activeOrg: organizationA,
+  orgSwitchPending: false,
+  switchOrg: async () => false,
 };
 
 vi.mock("../lib/tenant/TenantProvider", () => ({
@@ -66,12 +103,11 @@ afterEach(() => {
   vi.resetAllMocks();
   tenant = {
     mePending: false,
-    me: {
-      organizations: [
-        { id: organizationId, name: "Acme", slug: "acme", role: "owner" },
-      ],
-    },
+    me: { organizations: [organizationA] },
     refreshMembershipContext: vi.fn(),
+    activeOrg: organizationA,
+    orgSwitchPending: false,
+    switchOrg: async () => false,
   };
 });
 
@@ -140,5 +176,257 @@ describe("OrganizationMembersPage", () => {
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
     expect(await screen.findByText("Ada")).toBeInTheDocument();
+  });
+
+  it("keeps a delayed A page and its offset out of confirmed B scope", async () => {
+    let resolveASecondPage!: (value: OrganizationMemberListResponse) => void;
+    const delayedASecondPage = new Promise<OrganizationMemberListResponse>(
+      (resolve) => {
+        resolveASecondPage = resolve;
+      },
+    );
+    const aFirstPage: OrganizationMemberListResponse = {
+      ...response,
+      members: [{ ...firstMember, name: "A-first" }],
+    };
+    const bPage: OrganizationMemberListResponse = {
+      organizationId: organizationBId,
+      members: [
+        {
+          id: "member-b",
+          userId: "user-b",
+          name: "B-only",
+          email: "b@example.test",
+          role: "owner",
+        },
+      ],
+      page: { limit: 50, offset: 0, total: 1 },
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(aFirstPage)
+      .mockImplementationOnce(() => delayedASecondPage)
+      .mockResolvedValueOnce(bPage);
+    const user = userEvent.setup();
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    function SwitchableDirectory() {
+      const [, setRevision] = useState(0);
+      tenant = {
+        ...tenant,
+        me: { organizations: [organizationA, organizationB] },
+        activeOrg: organizationA,
+        switchOrg: async (nextOrganizationId: string) => {
+          if (nextOrganizationId !== organizationBId) return false;
+          tenant = { ...tenant, activeOrg: organizationB };
+          setRevision((value) => value + 1);
+          return true;
+        },
+      };
+      return (
+        <>
+          <OrgSwitcher collapsed={false} />
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+          </Routes>
+        </>
+      );
+    }
+
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <SwitchableDirectory />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("A-first")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(await screen.findByText("กำลังโหลดสมาชิก")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    await user.click(screen.getByRole("button", { name: /Acme/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+
+    expect(await screen.findByText("B-only")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${organizationBId}/members`,
+    );
+    expect(screen.getByText("Beta · beta")).toBeInTheDocument();
+    expect(screen.getByText("แสดง 1–1 จาก 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+
+    resolveASecondPage({
+      ...response,
+      members: [{ ...firstMember, name: "A-late" }],
+      page: { limit: 50, offset: 50, total: 51 },
+    });
+    await Promise.resolve();
+
+    expect(screen.queryByText("A-late")).not.toBeInTheDocument();
+    expect(screen.queryByText("A-first")).not.toBeInTheDocument();
+    expect(screen.getByText("B-only")).toBeInTheDocument();
+  });
+
+  it("keeps A scope, route, list, and offset when an A to B switch is denied", async () => {
+    const aSecondPage: OrganizationMemberListResponse = {
+      ...response,
+      members: [{ ...firstMember, name: "A-second" }],
+      page: { limit: 50, offset: 50, total: 51 },
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce({
+        ...response,
+        members: [{ ...firstMember, name: "A-first" }],
+      })
+      .mockResolvedValueOnce(aSecondPage);
+    const user = userEvent.setup();
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    function DeniedSwitchDirectory() {
+      tenant = {
+        ...tenant,
+        me: { organizations: [organizationA, organizationB] },
+        activeOrg: organizationA,
+        switchOrg: async () => false,
+      };
+      return (
+        <>
+          <OrgSwitcher collapsed={false} />
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+          </Routes>
+        </>
+      );
+    }
+
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <DeniedSwitchDirectory />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("A-first")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(await screen.findByText("A-second")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Acme/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${organizationId}/members`,
+    );
+    expect(screen.getByText("Acme · acme")).toBeInTheDocument();
+    expect(screen.getByText("A-second")).toBeInTheDocument();
+    expect(screen.queryByText("B-only")).not.toBeInTheDocument();
+    expect(screen.getByText("แสดง 51–51 จาก 51")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeEnabled();
+  });
+
+  it("retires revoked A scope after the next list denial and routes to confirmed B", async () => {
+    const bPage: OrganizationMemberListResponse = {
+      organizationId: organizationBId,
+      members: [
+        {
+          id: "member-b",
+          userId: "user-b",
+          name: "B-confirmed",
+          email: "b@example.test",
+          role: "owner",
+        },
+      ],
+      page: { limit: 50, offset: 0, total: 1 },
+    };
+    tenant = {
+      ...tenant,
+      me: { organizations: [organizationA, organizationB] },
+      activeOrg: organizationA,
+      refreshMembershipContext: vi.fn(async () => {
+        tenant = {
+          ...tenant,
+          me: { organizations: [organizationB] },
+          activeOrg: organizationB,
+        };
+        return {
+          organizations: [organizationB],
+          lastActiveTenantId: organizationBId,
+        };
+      }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      )
+      .mockResolvedValueOnce(bPage);
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("B-confirmed")).toBeInTheDocument();
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${organizationBId}/members`,
+    );
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.getByText("Beta · beta")).toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
+      1,
+      organizationId,
+      50,
+      0,
+    );
+    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
+      2,
+      organizationBId,
+      50,
+      0,
+    );
   });
 });
