@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -18,7 +19,7 @@ import { isInboxScopeChanged } from "../api/notifications";
 import {
   claimContextPublication,
   createContextPublicationClaim,
-  getContextPublicationVersion,
+  getContextPublicationSnapshot,
   hasContextPublicationClaim,
   publishTenantScope,
   subscribeToContextPublication,
@@ -57,15 +58,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [membershipContextUnavailable, setMembershipContextUnavailable] =
     useState(false);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
-  const [contextPublicationVersion, setContextPublicationVersion] = useState(
-    () => getContextPublicationVersion(queryClient),
+  const publication = useSyncExternalStore(
+    useCallback(
+      (listener) => subscribeToContextPublication(queryClient, listener),
+      [queryClient],
+    ),
+    useCallback(
+      () => getContextPublicationSnapshot(queryClient),
+      [queryClient],
+    ),
   );
-
-  useEffect(() => {
-    return subscribeToContextPublication(queryClient, () => {
-      setContextPublicationVersion(getContextPublicationVersion(queryClient));
-    });
-  }, [queryClient]);
 
   const meQuery = useQuery({
     queryKey: ME_CONTEXT_QUERY_KEY,
@@ -73,10 +75,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (meQuery.data !== undefined) {
+    if (
+      meQuery.data !== undefined &&
+      (!membershipContextUnavailable ||
+        publication.claim === publication.publishedClaim)
+    ) {
       setMembershipContextUnavailable(false);
     }
-  }, [contextPublicationVersion, meQuery.data]);
+  }, [meQuery.data, membershipContextUnavailable, publication]);
 
   useEffect(() => {
     const refreshOnScopeChange = (error: unknown) => {

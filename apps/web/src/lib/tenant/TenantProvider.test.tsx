@@ -1,7 +1,14 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLayoutEffect, useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/client";
@@ -11,8 +18,13 @@ import {
   updateActiveOrganization,
 } from "../api/me";
 import {
+  claimContextPublication,
+  createContextPublicationClaim,
+  getContextPublicationSnapshot,
   publishActiveQueryClient,
+  publishContextPublication,
   resetQueryClientRegistry,
+  subscribeToContextPublication,
 } from "../queryClient";
 import { organizationMembersLoader } from "../auth/loaders";
 import { TenantProvider, useTenant } from "./TenantProvider";
@@ -542,6 +554,120 @@ describe("TenantProvider", () => {
     olderRefresh.resolve({ ...me, lastActiveTenantId: "org-a" });
     await olderRefresh.promise;
     expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBe(me);
+  });
+
+  it("keeps membership unavailable when a newer refresh supersedes a published directory context before effects run", async () => {
+    const firstRefresh = Promise.withResolvers<MeContextResponse>();
+    const currentRefresh = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockImplementationOnce(() => firstRefresh.promise)
+      .mockImplementationOnce(() => currentRefresh.promise);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    publishActiveQueryClient(me.user.id, queryClient);
+    renderProvider(queryClient);
+    await screen.findByText("org-b");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+    });
+
+    act(() => {
+      const loaderClaim = createContextPublicationClaim();
+      expect(claimContextPublication(queryClient, loaderClaim)).toBe(true);
+      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, me);
+      expect(publishContextPublication(queryClient, loaderClaim)).toBe(true);
+      fireEvent.click(
+        screen.getByRole("button", { name: "refresh membership" }),
+      );
+    });
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+    });
+
+    currentRefresh.resolve({ ...me, lastActiveTenantId: "org-a" });
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("org-a");
+    });
+    firstRefresh.resolve(me);
+  });
+
+  it("observes a directory publication between render and subscription", async () => {
+    const queryClient = new QueryClient();
+    const claim = createContextPublicationClaim();
+    expect(claimContextPublication(queryClient, claim)).toBe(true);
+
+    function SnapshotProbe() {
+      const publication = useSyncExternalStore(
+        (listener) => subscribeToContextPublication(queryClient, listener),
+        () => getContextPublicationSnapshot(queryClient),
+      );
+      return (
+        <span data-testid="publication-version">{publication.version}</span>
+      );
+    }
+
+    function LayoutPublisher() {
+      useLayoutEffect(() => {
+        publishContextPublication(queryClient, claim);
+      }, []);
+      return null;
+    }
+
+    render(
+      <>
+        <SnapshotProbe />
+        <LayoutPublisher />
+      </>,
+    );
+
+    expect(await screen.findByTestId("publication-version")).toHaveTextContent(
+      "1",
+    );
+  });
+
+  it("ignores old query client publications after changing identity clients", async () => {
+    const oldClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const newClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const stalledRefresh = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockImplementationOnce(() => stalledRefresh.promise);
+    const view = renderProvider(oldClient);
+    await screen.findByText("org-b");
+    newClient.setQueryData(ME_CONTEXT_QUERY_KEY, me);
+
+    view.rerender(
+      <QueryClientProvider client={newClient}>
+        <TenantProvider>
+          <Probe />
+        </TenantProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText("org-b");
+    await userEvent.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+    });
+
+    const oldClaim = createContextPublicationClaim();
+    expect(claimContextPublication(oldClient, oldClaim)).toBe(true);
+    expect(publishContextPublication(oldClient, oldClaim)).toBe(true);
+
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
   });
 
   it("keeps membership unavailable when the newest refresh fails before an older refresh resolves", async () => {

@@ -16,42 +16,58 @@ type ClientSlot = {
 let active: ClientSlot | null = null;
 let staged: ClientSlot | null = null;
 
-const contextPublicationClaims = new WeakMap<QueryClient, bigint>();
 let contextPublicationOrdinal = 0n;
 
-type ContextPublicationSignal = {
+export type ContextPublicationSnapshot = {
+  claim: bigint | null;
+  publishedClaim: bigint | null;
   version: number;
+};
+
+type ContextPublicationStore = {
+  snapshot: ContextPublicationSnapshot;
   listeners: Set<() => void>;
 };
 
-const contextPublicationSignals = new WeakMap<
+const contextPublicationStores = new WeakMap<
   QueryClient,
-  ContextPublicationSignal
+  ContextPublicationStore
 >();
 
-function contextPublicationSignal(
+function contextPublicationStore(
   queryClient: QueryClient,
-): ContextPublicationSignal {
-  let signal = contextPublicationSignals.get(queryClient);
-  if (signal === undefined) {
-    signal = { version: 0, listeners: new Set() };
-    contextPublicationSignals.set(queryClient, signal);
+): ContextPublicationStore {
+  let store = contextPublicationStores.get(queryClient);
+  if (store === undefined) {
+    store = {
+      snapshot: { claim: null, publishedClaim: null, version: 0 },
+      listeners: new Set(),
+    };
+    contextPublicationStores.set(queryClient, store);
   }
-  return signal;
+  return store;
 }
 
-export function getContextPublicationVersion(queryClient: QueryClient): number {
-  return contextPublicationSignal(queryClient).version;
+function notifyContextPublication(store: ContextPublicationStore): void {
+  for (const listener of store.listeners) {
+    listener();
+  }
+}
+
+export function getContextPublicationSnapshot(
+  queryClient: QueryClient,
+): ContextPublicationSnapshot {
+  return contextPublicationStore(queryClient).snapshot;
 }
 
 export function subscribeToContextPublication(
   queryClient: QueryClient,
   listener: () => void,
 ): () => void {
-  const signal = contextPublicationSignal(queryClient);
-  signal.listeners.add(listener);
+  const store = contextPublicationStore(queryClient);
+  store.listeners.add(listener);
   return () => {
-    signal.listeners.delete(listener);
+    store.listeners.delete(listener);
   };
 }
 
@@ -59,14 +75,16 @@ export function publishContextPublication(
   queryClient: QueryClient,
   claim: bigint,
 ): boolean {
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  const store = contextPublicationStore(queryClient);
+  if (store.snapshot.claim !== claim) {
     return false;
   }
-  const signal = contextPublicationSignal(queryClient);
-  signal.version += 1;
-  for (const listener of signal.listeners) {
-    listener();
-  }
+  store.snapshot = {
+    claim,
+    publishedClaim: claim,
+    version: store.snapshot.version + 1,
+  };
+  notifyContextPublication(store);
   return true;
 }
 
@@ -78,10 +96,15 @@ export function claimContextPublication(
   queryClient: QueryClient,
   claim: bigint,
 ): boolean {
-  if ((contextPublicationClaims.get(queryClient) ?? -1n) >= claim) {
+  const store = contextPublicationStore(queryClient);
+  if (store.snapshot.claim !== null && store.snapshot.claim >= claim) {
     return false;
   }
-  contextPublicationClaims.set(queryClient, claim);
+  store.snapshot = {
+    ...store.snapshot,
+    claim,
+  };
+  notifyContextPublication(store);
   return true;
 }
 
@@ -89,7 +112,7 @@ export function hasContextPublicationClaim(
   queryClient: QueryClient,
   claim: bigint,
 ): boolean {
-  return contextPublicationClaims.get(queryClient) === claim;
+  return contextPublicationStore(queryClient).snapshot.claim === claim;
 }
 
 // A server-confirmed organization scope retires every older context publisher.
