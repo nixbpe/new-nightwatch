@@ -125,7 +125,7 @@ describe("error contract", () => {
 });
 
 describe("request completion logging", () => {
-  it("normalizes exact member directory and mutation paths only", async () => {
+  it("normalizes member directory paths and every member suffix", async () => {
     const organizationId = "11111111-1111-4111-8111-111111111111";
     const memberId = "22222222-2222-4222-8222-222222222222";
     const logLines: string[] = [];
@@ -150,7 +150,8 @@ describe("request completion logging", () => {
       },
       {
         input: `/api/organizations/${organizationId}/members/${memberId}/role/extra`,
-        expected: `/api/organizations/${organizationId}/members/${memberId}/role/extra`,
+        expected:
+          "/api/organizations/:organizationId/members/:memberId/role/extra",
       },
     ];
 
@@ -164,7 +165,7 @@ describe("request completion logging", () => {
     expect(completions.map((entry) => entry.path)).toEqual(
       paths.map(({ expected }) => expected),
     );
-    for (const completion of completions.slice(0, 3)) {
+    for (const completion of completions) {
       expect(JSON.stringify(completion)).not.toContain(organizationId);
       expect(JSON.stringify(completion)).not.toContain(memberId);
     }
