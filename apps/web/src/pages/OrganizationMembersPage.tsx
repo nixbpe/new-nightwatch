@@ -49,6 +49,7 @@ function OrganizationMembersPageForOrganization({
   >("idle");
   const membershipRecoveryOperation = useRef(0);
   const [offset, setOffset] = useState(0);
+  const memberPageHeadingRef = useRef<HTMLHeadingElement>(null);
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
   );
@@ -254,6 +255,9 @@ function OrganizationMembersPageForOrganization({
         <PageHeader
           eyebrow={`${organization.name} · ${organization.slug}`}
           title="สมาชิก"
+          titleRef={memberPageHeadingRef}
+          titleTabIndex={-1}
+          titleClassName="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         />
         <p role="status">กำลังโหลดสมาชิก</p>
         <Skeleton className="h-64 w-full" />
@@ -266,6 +270,9 @@ function OrganizationMembersPageForOrganization({
         <PageHeader
           eyebrow={`${organization.name} · ${organization.slug}`}
           title="สมาชิก"
+          titleRef={memberPageHeadingRef}
+          titleTabIndex={-1}
+          titleClassName="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         />
         <Alert tone="error">โหลดสมาชิกไม่สำเร็จ</Alert>
         {offset > 0 ? (
@@ -275,6 +282,7 @@ function OrganizationMembersPageForOrganization({
             </Button>
             <Button
               onClick={() => {
+                memberPageHeadingRef.current?.focus();
                 setOffset((value) => Math.max(0, value - LIMIT));
               }}
             >
@@ -297,6 +305,9 @@ function OrganizationMembersPageForOrganization({
         <PageHeader
           eyebrow={`${organization.name} · ${organization.slug}`}
           title="สมาชิก"
+          titleRef={memberPageHeadingRef}
+          titleTabIndex={-1}
+          titleClassName="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         />
         <p role="status">กำลังโหลดสมาชิก</p>
         <Skeleton className="h-64 w-full" />
@@ -311,6 +322,9 @@ function OrganizationMembersPageForOrganization({
         eyebrow={`${organization.name} · ${organization.slug}`}
         title="สมาชิก"
         description={`สมาชิกทั้งหมด ${String(data.page.total)} คน`}
+        titleRef={memberPageHeadingRef}
+        titleTabIndex={-1}
+        titleClassName="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       />
       <div className="overflow-x-auto rounded-md border border-foreground/10 bg-surface">
         <table className="w-full min-w-[560px] text-left text-sm">

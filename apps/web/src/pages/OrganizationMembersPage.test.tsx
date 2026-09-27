@@ -8,7 +8,10 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { ApiError } from "../lib/api/client";
-import { fetchOrganizationMembers } from "../lib/api/members";
+import {
+  fetchOrganizationMembers,
+  memberListQueryKey,
+} from "../lib/api/members";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -81,24 +84,26 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
 }));
 
 function renderPage() {
-  return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      <MemoryRouter
-        initialEntries={[`/organizations/${organizationId}/members`]}
-      >
-        <Routes>
-          <Route
-            path="/organizations/:organizationId/members"
-            element={<OrganizationMembersPage />}
-          />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 afterEach(() => {
@@ -143,12 +148,14 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
   });
   it("returns to first-page rows by keyboard after the next page fails", async () => {
+    const restoredPage =
+      Promise.withResolvers<OrganizationMemberListResponse>();
     vi.mocked(fetchOrganizationMembers)
       .mockResolvedValueOnce(response)
       .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValueOnce(response);
+      .mockImplementationOnce(() => restoredPage.promise);
     const user = userEvent.setup();
-    renderPage();
+    const { queryClient } = renderPage();
 
     expect(await screen.findByText("Ada")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
@@ -159,9 +166,28 @@ describe("OrganizationMembersPage", () => {
     expect(previous).toBeEnabled();
     previous.focus();
     expect(previous).toHaveFocus();
+    queryClient.removeQueries({
+      queryKey: memberListQueryKey(organizationId, 50, 0),
+      exact: true,
+    });
     await user.keyboard("{Enter}");
 
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "กำลังโหลดสมาชิก",
+    );
+    const heading = screen.getByRole("heading", { name: "สมาชิก" });
+    expect(heading).toHaveFocus();
+    expect(heading).toHaveAttribute("tabindex", "-1");
+    expect(heading).toHaveClass(
+      "focus-visible:outline-2",
+      "focus-visible:outline-offset-2",
+      "focus-visible:outline-primary",
+    );
+
+    restoredPage.resolve(response);
+
     expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(heading).toHaveFocus();
     expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
     expect(screen.queryByText("โหลดสมาชิกไม่สำเร็จ")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);

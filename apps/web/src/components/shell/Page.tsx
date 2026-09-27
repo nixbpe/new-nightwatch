@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -22,11 +22,17 @@ export function PageHeader({
   title,
   description,
   actions,
+  titleRef,
+  titleTabIndex,
+  titleClassName,
 }: {
   eyebrow?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  titleRef?: Ref<HTMLHeadingElement>;
+  titleTabIndex?: number;
+  titleClassName?: string;
 }) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-4 pb-2">
@@ -34,7 +40,16 @@ export function PageHeader({
         {eyebrow === undefined ? null : (
           <p className="text-xs text-foreground-secondary">{eyebrow}</p>
         )}
-        <h1 className="mt-2 text-[28px] leading-9 font-semibold">{title}</h1>
+        <h1
+          className={cn(
+            "mt-2 text-[28px] leading-9 font-semibold",
+            titleClassName,
+          )}
+          ref={titleRef}
+          tabIndex={titleTabIndex}
+        >
+          {title}
+        </h1>
         {description === undefined ? null : (
           <p className="mt-2 text-sm text-foreground-secondary">
             {description}
