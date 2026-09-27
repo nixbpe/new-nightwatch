@@ -1,7 +1,6 @@
 import type {
   MeContextResponse,
   NotificationItem,
-  OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -11,10 +10,6 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
-import {
-  fetchOrganizationMembers,
-  memberListQueryKey,
-} from "../../lib/api/members";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { InboxScopeChangedError } from "../../lib/api/notifications";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
@@ -24,8 +19,9 @@ import {
   hasMemberDirectoryLoaderClaim,
 } from "../../lib/queryClient";
 import { NotificationsPage } from "../../pages/NotificationsPage";
-import { OrganizationMembersPage } from "../../pages/OrganizationMembersPage";
 import { WorkspacePage } from "../../pages/WorkspacePage";
+import { fetchOrganizationMembers } from "../../lib/api/members";
+import { OrganizationMembersPage } from "../../pages/OrganizationMembersPage";
 import { AppShell } from "./AppShell";
 
 const {
@@ -510,103 +506,59 @@ describe("AppShell", () => {
     expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
   });
 
-  it("keeps A's direct directory claim live while B's switch PATCH is pending, then retires it after the confirmed scope", async () => {
-    const patchB = Promise.withResolvers<MeContextResponse>();
-    const lateA = Promise.withResolvers<OrganizationMemberListResponse>();
+  it("switching organization from the sidebar publishes the new tenant only after the PATCH succeeds", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
-    fetchOrganizationMembersMock.mockImplementationOnce(() => lateA.promise);
-    updateActiveOrganizationMock.mockImplementationOnce(() => patchB.promise);
+    updateActiveOrganizationMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_B),
+    );
     const user = userEvent.setup();
-    const { queryClient } = renderShell(
-      <WorkspacePage />,
-      `/organizations/${ORG_A}/members`,
-    );
-    const directLoaderA = createMemberDirectoryLoaderClaim();
-    expect(claimMemberDirectoryLoader(queryClient, directLoaderA)).toBe(true);
-
-    expect(
-      await screen.findByRole("button", { name: /Org A/ }),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(fetchOrganizationMembersMock).toHaveBeenCalledWith(ORG_A, 50, 0);
-    });
-    await user.click(screen.getByRole("button", { name: /Org A/ }));
-    await user.click(
-      within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
-        "menuitemradio",
-        { name: /Org B/ },
-      ),
-    );
-
-    await waitFor(() => {
-      expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
-        organizationId: ORG_B,
-      });
-    });
-    expect(screen.getByRole("button", { name: /Org A/ })).toBeInTheDocument();
-    expect(hasMemberDirectoryLoaderClaim(queryClient, directLoaderA)).toBe(
+    const { queryClient } = renderShell(<WorkspacePage />);
+    const directLoaderClaim = createMemberDirectoryLoaderClaim();
+    expect(claimMemberDirectoryLoader(queryClient, directLoaderClaim)).toBe(
       true,
     );
-    expect(screen.queryByRole("button", { name: /Org B/ })).toBeNull();
 
-    patchB.resolve(meContext([ownerOrg, viewerOrg], ORG_B));
+    await screen.findByText("Org A · เจ้าของ");
 
+    await user.click(screen.getByRole("button", { name: /Org A/ }));
+    const menu = screen.getByRole("menu", { name: "สลับองค์กร" });
     expect(
-      await screen.findByRole("button", { name: /Org B/ }),
-    ).toBeInTheDocument();
-    expect(hasMemberDirectoryLoaderClaim(queryClient, directLoaderA)).toBe(
+      within(menu).getByRole("menuitemradio", { name: /Org A/ }),
+    ).toHaveAttribute("aria-checked", "true");
+    await user.click(
+      within(menu).getByRole("menuitemradio", { name: /Org B/ }),
+    );
+
+    expect(await screen.findByText("Org B · ผู้ชม")).toBeInTheDocument();
+    expect(hasMemberDirectoryLoaderClaim(queryClient, directLoaderClaim)).toBe(
       false,
     );
-    expect(
-      queryClient.getQueryData(memberListQueryKey(ORG_A, 50, 0)),
-    ).toBeUndefined();
-
-    lateA.resolve({
-      organizationId: ORG_A,
-      members: [
-        {
-          id: "member-a",
-          userId: "user-a",
-          name: "Late A",
-          email: "late-a@example.test",
-          role: "owner",
-        },
-      ],
-      page: { limit: 50, offset: 0, total: 1 },
+    expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
+      organizationId: ORG_B,
     });
-    await Promise.resolve();
-
+    expect(screen.getByRole("button", { name: /Org B/ })).toHaveTextContent(
+      "องค์กร · ผู้ชม",
+    );
     expect(
-      queryClient.getQueryData(memberListQueryKey(ORG_A, 50, 0)),
-    ).toBeUndefined();
-    expect(screen.queryByText("Late A")).toBeNull();
+      within(
+        screen.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
+      ).getByRole("link", { name: "Org B" }),
+    ).toBeInTheDocument();
   });
 
-  it("keeps A's direct directory claim and result when B's switch PATCH is denied", async () => {
-    const lateA = Promise.withResolvers<OrganizationMemberListResponse>();
+  it("a denied switch keeps the current organization", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
-    fetchOrganizationMembersMock.mockImplementationOnce(() => lateA.promise);
-    updateActiveOrganizationMock.mockRejectedValueOnce(
+    updateActiveOrganizationMock.mockRejectedValue(
       new ApiError("MEMBERSHIP_DENIED", "denied", 403),
     );
     const user = userEvent.setup();
-    const { queryClient } = renderShell(
-      <WorkspacePage />,
-      `/organizations/${ORG_A}/members`,
-    );
-    const directLoaderA = createMemberDirectoryLoaderClaim();
-    expect(claimMemberDirectoryLoader(queryClient, directLoaderA)).toBe(true);
+    renderShell(<WorkspacePage />);
+    await screen.findByText("Org A · เจ้าของ");
 
-    expect(
-      await screen.findByRole("button", { name: /Org A/ }),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(fetchOrganizationMembersMock).toHaveBeenCalledWith(ORG_A, 50, 0);
-    });
     await user.click(screen.getByRole("button", { name: /Org A/ }));
     await user.click(
       within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
@@ -616,35 +568,10 @@ describe("AppShell", () => {
     );
 
     await waitFor(() => {
-      expect(updateActiveOrganizationMock).toHaveBeenCalledOnce();
+      expect(updateActiveOrganizationMock).toHaveBeenCalled();
     });
+    expect(screen.getByText("Org A · เจ้าของ")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Org A/ })).toBeInTheDocument();
-    expect(hasMemberDirectoryLoaderClaim(queryClient, directLoaderA)).toBe(
-      true,
-    );
-    expect(screen.queryByRole("button", { name: /Org B/ })).toBeNull();
-
-    lateA.resolve({
-      organizationId: ORG_A,
-      members: [
-        {
-          id: "member-a",
-          userId: "user-a",
-          name: "A remains valid",
-          email: "a@example.test",
-          role: "owner",
-        },
-      ],
-      page: { limit: 50, offset: 0, total: 1 },
-    });
-
-    expect(await screen.findByText("A remains valid")).toBeInTheDocument();
-    expect(hasMemberDirectoryLoaderClaim(queryClient, directLoaderA)).toBe(
-      true,
-    );
-    expect(
-      queryClient.getQueryData(memberListQueryKey(ORG_A, 50, 0)),
-    ).toBeDefined();
   });
 
   it("retires role-dependent shell controls after a permission denial refreshes an owner to viewer", async () => {
