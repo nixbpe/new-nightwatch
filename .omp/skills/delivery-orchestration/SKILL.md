@@ -11,7 +11,7 @@ This is the Technical Lead's day-to-day playbook for building a change: cut the 
 
 ## 1. Split the work into Tasks
 
-Show and update the breakdown before dispatch. Do not create planning files or delegate top-level planning.
+The breakdown lives in the user-approved Technical Spec (skill:`technical-spec`); do not create other planning files or delegate top-level planning.
 
 Each Task declares:
 - `OWNER`, `READY`, `OUTCOME` and `SOURCE`

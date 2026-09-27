@@ -17,7 +17,7 @@ modelRoles:
   review: openai-codex/gpt-6-sol:low
   # Direction/epic/story/delivery writing
   product: openai-codex/gpt-6-sol:high
-  # PDD interaction and accessibility specs
+  # Feature UI flow, interaction and accessibility
   design: openai-codex/gpt-6-astra:medium
 
 providers:

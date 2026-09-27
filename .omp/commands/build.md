@@ -41,7 +41,7 @@ Pick the next pending task and use the implementation assignment. If no accepted
 
 ## Autonomous plan
 
-1. Require `SOURCE` to name one approved spec path and revision matching `SPEC*.md`, `docs/SPEC*.md` or `spec/**`; a README is not a spec. Stop when `SOURCE` is absent, unresolved or ambiguous—never select among matching specs.
+1. Require `SOURCE` to name one user-approved Technical Spec at `docs/features/<Feature>/spec.md`. Stop when `SOURCE` is absent, unresolved or ambiguous—never select among matching specs.
 2. Require a clean baseline outside `tasks/plan.md`, `tasks/todo.md` and the approved spec. Never absorb unrelated work.
 3. Derive `tasks/plan.md` from the spec when absent; do not invoke an undefined planning skill.
 4. Present the plan once and require unambiguous approval.

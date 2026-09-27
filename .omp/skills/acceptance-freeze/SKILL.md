@@ -15,18 +15,18 @@ agent:`product-owner` writes the matrix with only the categories the change touc
 
 - **Scope**: routes, APIs and user journeys in scope.
 - **Authorization**: which actor may or may not do which operation on which target.
-- **State**: loading, empty, success, denied, revoked and failure.
+- **State**: loading, empty, success, denied, revoked and failure, matching the Feature's UI flow state table.
 - **Concurrency**: races to handle and the accepted outcome.
 - **Security**: data never disclosed, log redaction, fresh-auth boundary.
 - **Accessibility**: focus, keyboard, dialog, zoom/reflow.
 - **Verification**: the scenario or command that proves each item.
 - **Out of scope**: known items deliberately excluded.
 
-Number each criterion `AC-<NN>` under its Feature or Story.
+The matrix lives in the Feature file (file:`docs/templates/feature.md`). Number criteria `AC-01`, `AC-02`… across the whole Feature; each Story lists the ACs it covers.
 
 ## Freezing
 
-When the Product Owner and the Technical Lead approve the matrix, set `acceptanceVersion: <Feature-id>-AC-<n>` and `status: frozen`. Frozen fixes the criteria only; it does not authorize starting work or releasing.
+After the user approves the Feature's scope and the Product Owner and the Technical Lead approve the matrix, set `acceptanceVersion: <Feature-id>-AC-<n>` and `status: frozen`. Frozen fixes the criteria only; it does not authorize starting work or releasing.
 
 ## After freeze
 

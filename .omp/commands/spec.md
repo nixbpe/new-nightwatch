@@ -1,17 +1,7 @@
 ---
-description: Start spec-driven development — write a structured specification before writing code
+description: Write the Technical Spec for an approved Feature before implementation
 ---
 
-Use skill:`spec-driven-development`.
+Use skill:`technical-spec`.
 
-Begin by understanding what the user wants to build. Ask clarifying questions about:
-1. The objective and target users
-2. Core features and acceptance criteria
-3. Tech stack preferences and constraints
-4. Known boundaries (what to always do, ask first about, and never do)
-
-Then generate a structured spec covering all six core areas: objective, commands, project structure, code style, testing strategy, and boundaries.
-
-If the request bundles several independently testable capabilities, first propose a capability map (module ids, dependency direction, build order) per the skill's Phase 0 and get it approved, then spec each module in dependency order.
-
-Save the spec as SPEC.md in the project root and confirm with the user before proceeding.
+Name the Feature (e.g. `F-002`). Its scope must be approved and its acceptance frozen. Write `docs/features/<Feature>/spec.md` from file:`docs/templates/spec.md`, then ask the user to approve it before any implementation starts.

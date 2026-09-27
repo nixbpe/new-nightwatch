@@ -77,7 +77,7 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 | 1 | Broken Access Control | Auth checks on every endpoint, ownership verification |
 | 2 | Cryptographic Failures | HTTPS, strong hashing, no secrets in code |
 | 3 | Injection | Parameterized queries, input validation |
-| 4 | Insecure Design | Threat modeling, spec-driven development |
+| 4 | Insecure Design | Threat modeling, a technical spec before building |
 | 5 | Security Misconfiguration | Security headers, minimal permissions, audit deps |
 | 6 | Vulnerable Components | Dependency audit, keep deps updated, minimal deps |
 | 7 | Auth Failures | Rate limiting, session management |
