@@ -162,6 +162,19 @@ describe("request completion logging", () => {
         expected: "/api/organizations/:organizationId/members//role/extra",
       },
       {
+        input: `/api/organizations/${organizationId}//members`,
+        expected: "/api/organizations/:organizationId//members",
+      },
+      {
+        input: `/api/organizations/${organizationId}///members/${memberId}`,
+        expected: "/api/organizations/:organizationId///members/:memberId",
+      },
+      {
+        input: `/api/organizations/${organizationId}////members/${memberId}/role`,
+        expected:
+          "/api/organizations/:organizationId////members/:memberId/role",
+      },
+      {
         input: `/api/organizations/${organizationId}/memberships`,
         expected: `/api/organizations/${organizationId}/memberships`,
       },
@@ -186,7 +199,9 @@ describe("request completion logging", () => {
     expect(completions.map((entry) => entry.path)).toEqual(
       paths.map(({ expected }) => expected),
     );
-    for (const completion of completions.slice(0, 6)) {
+    for (const completion of completions.filter((completion) =>
+      String(completion.path).includes(":organizationId"),
+    )) {
       expect(JSON.stringify(completion)).not.toContain(organizationId);
       expect(JSON.stringify(completion)).not.toContain(memberId);
     }
