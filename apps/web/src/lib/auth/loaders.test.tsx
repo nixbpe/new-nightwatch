@@ -1,6 +1,7 @@
 import type {
   InvitationResponse,
   MeContextResponse,
+  OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
 import { render, screen } from "@testing-library/react";
 import {
@@ -415,6 +416,142 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     expect(
       queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
     ).toBeUndefined();
+  });
+
+  it("keeps B's fresh context and directory when older A resolves after B", async () => {
+    sessionState.data = { user: VERIFIED };
+    const staleA: MeContextResponse = {
+      ...cachedOwnerContext,
+      organizations: [
+        {
+          id: organizationId,
+          name: "Alpha",
+          slug: "acme",
+          role: "owner",
+        },
+      ],
+    };
+    const freshB: MeContextResponse = {
+      ...cachedOwnerContext,
+      organizations: [
+        {
+          id: organizationId,
+          name: "Bravo",
+          slug: "acme",
+          role: "owner",
+        },
+      ],
+    };
+    const membersB: OrganizationMemberListResponse = {
+      organizationId,
+      members: [
+        {
+          id: "member-b",
+          userId: "user-b",
+          name: "Bravo member",
+          email: "bravo@example.test",
+          role: "owner",
+        },
+      ],
+      page: { limit: 50, offset: 0, total: 1 },
+    };
+    const membersA: OrganizationMemberListResponse = {
+      organizationId,
+      members: [
+        {
+          id: "member-a",
+          userId: "user-a",
+          name: "Alpha member",
+          email: "alpha@example.test",
+          role: "owner",
+        },
+      ],
+      page: { limit: 50, offset: 0, total: 1 },
+    };
+    const oldRequest = Promise.withResolvers<MeContextResponse>();
+    const newRequest = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockImplementationOnce(() => oldRequest.promise)
+      .mockImplementationOnce(() => newRequest.promise);
+    fetchOrganizationMembersMock
+      .mockResolvedValueOnce(membersB)
+      .mockResolvedValueOnce(membersA);
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+
+    const oldDecision = organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    });
+    const newDecision = organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+
+    newRequest.resolve(freshB);
+    await newDecision;
+    oldRequest.resolve(staleA);
+    await oldDecision;
+
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(freshB);
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toEqual(membersB);
+    expect(fetchOrganizationMembersMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the unavailable state when newer B fails before older A resolves", async () => {
+    sessionState.data = { user: VERIFIED };
+    const oldRequest = Promise.withResolvers<MeContextResponse>();
+    const newRequest = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockImplementationOnce(() => oldRequest.promise)
+      .mockImplementationOnce(() => newRequest.promise);
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, cachedOwnerContext);
+    queryClient.setQueryData(
+      memberListQueryKey(organizationId, 50, 0),
+      cachedMembers,
+    );
+
+    const oldDecision = organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    });
+    const newDecision = organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+
+    newRequest.reject(new Error("context unavailable"));
+    await newDecision;
+    oldRequest.resolve(cachedOwnerContext);
+    await oldDecision;
+
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toBeUndefined();
+    expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
   });
 
   it("keeps the fresh no-A decision when an older context query resolves stale A", async () => {

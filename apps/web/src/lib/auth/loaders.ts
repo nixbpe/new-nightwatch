@@ -5,6 +5,7 @@ import {
   replace,
   type LoaderFunctionArgs,
 } from "react-router";
+import type { QueryClient } from "@tanstack/react-query";
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
@@ -28,6 +29,8 @@ import {
 } from "./continuation";
 
 type Session = typeof authClient.$Infer.Session;
+
+const organizationMembersLoaderGenerations = new WeakMap<QueryClient, number>();
 
 // Asks the server, not the cached client atom; any auth error counts as signed out.
 async function loadSession(): Promise<Session | null> {
@@ -175,35 +178,57 @@ export async function organizationMembersLoader({
   const organizationId = params.organizationId;
   if (organizationId === undefined) return null;
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
+  const generation =
+    (organizationMembersLoaderGenerations.get(queryClient) ?? 0) + 1;
+  organizationMembersLoaderGenerations.set(queryClient, generation);
   const previousContext =
     queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
-  // A prior context query may have started before this membership gate. Cancel
-  // and remove precisely that query before the direct request can publish.
+  // A prior context or member query may have started before this membership
+  // gate. Cancel it before the direct request can publish.
   await queryClient.cancelQueries({
     queryKey: ME_CONTEXT_QUERY_KEY,
     exact: true,
   });
+  if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+    return null;
+  }
+  await queryClient.cancelQueries({ queryKey: ["tenant"] });
+  if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+    return null;
+  }
   // A bookmarked tenant route needs a fresh server membership decision, not a
   // static context cache that could predate a revocation or role change.
   const context = await fetchMeContext().catch(() => undefined);
+  if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+    return null;
+  }
   if (context === undefined) {
     queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    queryClient.removeQueries({ queryKey: ["tenant"] });
-  } else {
-    if (!hasSameMembershipScope(previousContext, context)) {
-      await queryClient.cancelQueries({ queryKey: ["tenant"] });
-      queryClient.removeQueries({ queryKey: ["tenant"] });
+    if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+      return null;
     }
-    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+    queryClient.removeQueries({ queryKey: ["tenant"] });
+    return null;
   }
-  const membership = context?.organizations.find(
+  if (!hasSameMembershipScope(previousContext, context)) {
+    await queryClient.cancelQueries({ queryKey: ["tenant"] });
+    if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
+      return null;
+    }
+    queryClient.removeQueries({ queryKey: ["tenant"] });
+  }
+  queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+  const membership = context.organizations.find(
     (organization) => organization.id === organizationId,
   );
   if (
     membership === undefined ||
     (membership.role !== "owner" && membership.role !== "admin")
   ) {
+    return null;
+  }
+  if (organizationMembersLoaderGenerations.get(queryClient) !== generation) {
     return null;
   }
   await queryClient
