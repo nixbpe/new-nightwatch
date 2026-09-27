@@ -268,9 +268,24 @@ function OrganizationMembersPageForOrganization({
           title="สมาชิก"
         />
         <Alert tone="error">โหลดสมาชิกไม่สำเร็จ</Alert>
-        <Button onClick={() => void retryAfterListFailure()}>
-          ลองอีกครั้ง
-        </Button>
+        {offset > 0 ? (
+          <div className="flex gap-2">
+            <Button onClick={() => void retryAfterListFailure()}>
+              ลองอีกครั้ง
+            </Button>
+            <Button
+              onClick={() => {
+                setOffset((value) => Math.max(0, value - LIMIT));
+              }}
+            >
+              ก่อนหน้า
+            </Button>
+          </div>
+        ) : (
+          <Button onClick={() => void retryAfterListFailure()}>
+            ลองอีกครั้ง
+          </Button>
+        )}
       </Page>
     );
   }

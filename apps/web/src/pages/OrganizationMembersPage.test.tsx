@@ -142,6 +142,36 @@ describe("OrganizationMembersPage", () => {
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
   });
+  it("returns to first-page rows by keyboard after the next page fails", async () => {
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(response);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+
+    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ลองอีกครั้ง" })).toBeEnabled();
+    const previous = screen.getByRole("button", { name: "ก่อนหน้า" });
+    expect(previous).toBeEnabled();
+    previous.focus();
+    expect(previous).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
+    expect(screen.queryByText("โหลดสมาชิกไม่สำเร็จ")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
+    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
+      3,
+      organizationId,
+      50,
+      0,
+    );
+  });
 
   it("resets an invalid later page before success rendering and refetches page one once", async () => {
     const invalidSecondPage: OrganizationMemberListResponse = {
@@ -245,6 +275,9 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "โหลดสมาชิกไม่สำเร็จ",
     );
+    expect(
+      screen.queryByRole("button", { name: "ก่อนหน้า" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
     expect(await screen.findByText("Ada")).toBeInTheDocument();
