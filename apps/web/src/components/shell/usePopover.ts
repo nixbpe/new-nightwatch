@@ -3,12 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const ITEM_SELECTOR =
   '[role="menuitem"]:not([aria-disabled="true"]), [role="menuitemradio"]:not([aria-disabled="true"]), [data-popover-item]:not([disabled])';
 
-/**
- * Anchored popover behaviour shared by the org switcher, account menu and
- * notifications panel: focus moves to the first usable control on open,
- * ↑/↓ roves between controls, and Escape / an outside click / `close()`
- * return focus to the trigger — the design system's overlay-dismissal rule.
- */
+// Every dismissal (Escape, outside click, `close()`) returns focus to the trigger.
 export function usePopover<TTrigger extends HTMLElement = HTMLButtonElement>() {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<TTrigger>(null);

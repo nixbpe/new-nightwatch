@@ -16,10 +16,6 @@ if (settingsLeaf?.palette === undefined) {
   );
 }
 
-/**
- * Tab strip of the personal-settings page — the nav leaf's palette entries,
- * so the sidebar, the command palette and this strip share one definition.
- */
 export const SETTINGS_TABS: SettingsTab[] = settingsLeaf.palette.map(
   ({ label, icon, path }) => ({ label, icon, path }),
 );

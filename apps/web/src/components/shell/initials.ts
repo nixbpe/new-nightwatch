@@ -1,9 +1,4 @@
-/**
- * Two-character mark for an avatar or organization badge. Multi-word names
- * take the first character of the first two words ("Orbit Digital" → "OD");
- * single words take their first two code points, which for Thai keeps the
- * base consonants and drops trailing marks ("นภัส" → "นภ").
- */
+// Single words take their first two code points, which for Thai keeps base consonants ("นภัส" → "นภ").
 export function initialsOf(name: string): string {
   const words = name
     .trim()

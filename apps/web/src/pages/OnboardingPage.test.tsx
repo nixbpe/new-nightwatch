@@ -91,7 +91,7 @@ describe("OnboardingPage transitions", () => {
   });
 
   it("existing member without an invitation lands on the workspace", async () => {
-    // INT-WEB-1: must not wait on any (disabled/invitation) query status.
+    // Must not wait on any (disabled/invitation) query status.
     sessionState.data = { user: VERIFIED_USER };
     renderAt("/onboarding");
 
@@ -101,7 +101,7 @@ describe("OnboardingPage transitions", () => {
   });
 
   it("holds the callback while the token verifies, then routes to explicit acceptance", async () => {
-    // INT-WEB-2: no redirect may happen while verifyEmail/refetch are pending.
+    // No redirect may happen while verifyEmail/refetch are pending.
     const pending = Promise.withResolvers<{ error: null }>();
     verifyEmailMock.mockReturnValue(pending.promise);
     sessionState.refetch.mockResolvedValue(undefined);
@@ -121,7 +121,7 @@ describe("OnboardingPage transitions", () => {
   });
 
   it("an unsuccessful token renders a retry-safe error instead of redirecting", async () => {
-    // INT-WEB-2: network/API failure stays on this page with recovery actions.
+    // A network/API failure stays on this page with recovery actions.
     verifyEmailMock.mockResolvedValue({
       error: { message: "ลิงก์ยืนยันหมดอายุแล้ว" },
     });
@@ -140,7 +140,6 @@ describe("OnboardingPage transitions", () => {
     await waitFor(() =>
       expect(screen.getByTestId("search")).toHaveTextContent(/^$/),
     );
-    // Still on the hub: no redirect occurred.
     expect(screen.queryByTestId("location")).toBeNull();
   });
 
@@ -158,8 +157,7 @@ describe("OnboardingPage transitions", () => {
     expect(
       screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
     ).toBeInTheDocument();
-    // The token strip is a router navigation that can land after the
-    // failure render; wait for it rather than racing it.
+    // The token strip is a router navigation that can land after the failure render; wait for it.
     await waitFor(() => {
       expect(screen.getByTestId("search")).toHaveTextContent(
         "?invitationId=inv-9",

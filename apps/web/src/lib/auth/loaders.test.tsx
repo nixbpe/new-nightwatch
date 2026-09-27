@@ -118,7 +118,6 @@ const invitation: InvitationResponse = {
   },
 };
 
-/** Reports the landed route plus the login continuation parameter. */
 function LocationProbe() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -191,8 +190,7 @@ describe("requireAnonLoader (anonymous-only gate)", () => {
       "/settings/security?tab=sessions#current",
     );
 
-    // Consumed: a later signed-in arrival at the gate falls back to the
-    // workspace instead of replaying the stale return.
+    // Consumed: a later arrival falls back to the workspace instead of replaying the stale return.
     first.unmount();
     renderAt([anonOnly], "/anon-only");
     expect(await screen.findByTestId("location")).toHaveTextContent(
@@ -226,7 +224,6 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     renderAt([protectedWorkspace], "/workspace?tab=security");
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/login");
-    // The intended destination survives the round trip, query included.
     expect(screen.getByTestId("from")).toHaveTextContent(
       "/workspace?tab=security",
     );
@@ -234,8 +231,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
   });
 
   it("redirects / to /workspace and remembers /workspace as the bounce origin", async () => {
-    // "/" itself redirects to /workspace; remembering "/" would loop the
-    // login continuation back onto the bounce.
+    // Remembering "/" would loop the login continuation back onto the redirect.
     renderAt([{ path: "/", loader: rootLoader }, protectedWorkspace], "/");
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/login");
@@ -277,8 +273,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
 
     expect(await screen.findByText("protected-area")).toBeInTheDocument();
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
-    // The prefetch landed in a client keyed to THIS identity, staged for
-    // SessionQueryProvider to adopt — never a shared singleton.
+    // The prefetch landed in a client staged for THIS identity, never a shared singleton.
     const staged = peekStagedQueryClient();
     expect(staged?.identity).toBe("user-1");
     expect(staged?.client.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
@@ -343,13 +338,12 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
   });
 
   it("a failed prefetch does not become a router-level error", async () => {
-    // The in-tree query surfaces the error with its retry UI instead; the
+    // The in-tree query surfaces the error with its retry UI instead.
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockRejectedValue(new Error("api down"));
     renderAt([protectedWorkspace], "/workspace");
 
-    // The client retries once (session-client default), so the loader takes
-    // a retry backoff before resolving to the page.
+    // The session client retries once, so the loader waits out a backoff.
     expect(
       await screen.findByText("protected-area", undefined, { timeout: 3000 }),
     ).toBeInTheDocument();

@@ -6,11 +6,7 @@ import { Card } from "./ui/card";
 
 type ErrorBoundaryProps = {
   children: ReactNode;
-  /**
-   * Render the fallback as the document's <main> (default: the root
-   * boundary may be all that is on the page). Pass false where a <main>
-   * already surrounds the boundary, such as the AppShell's routed content.
-   */
+  /** Pass false where a <main> already surrounds the boundary (e.g. AppShell's routed content). */
   landmark?: boolean;
 };
 
@@ -18,11 +14,6 @@ type ErrorBoundaryState = {
   error: Error | null;
 };
 
-/**
- * Render-error fallback: a centered card. Around the whole router it is the
- * page's <main>; nested inside the AppShell (landmark={false}) it is a
- * plain block inside the shell's own <main>.
- */
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   ErrorBoundaryState

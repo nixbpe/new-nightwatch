@@ -4,13 +4,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * NightWatch button (shadcn/ui new-york, Tailwind v4).
- * Tokens: primary/on-primary fills, control-boundary outlines, 4px radius.
- * Focus uses an offset outline so the indicator stays visible against a
- * solid primary fill (docs/design-system.md). The default height matches
- * <Input> (40px) so a field and its button sit on one baseline.
- */
+// Offset focus outline stays visible against the solid primary fill; 40px height matches <Input>.
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors " +
     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +

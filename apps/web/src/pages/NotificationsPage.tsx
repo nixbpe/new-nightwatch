@@ -175,8 +175,7 @@ function NotificationsPageForOrganization({
 }) {
   const client = useQueryClient();
   const [detailId, setDetailId] = useState(initialDetailId);
-  // Later pages are only valid for the first page whose cursor chain they
-  // continue; a refetched first page with new data drops them.
+  // Later pages are valid only for the first page whose cursor chain they continue; a refetched first page drops them.
   const [retained, setRetained] = useState<{
     firstPage: NotificationPage;
     pages: NotificationPage[];

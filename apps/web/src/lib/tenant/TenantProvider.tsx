@@ -17,11 +17,7 @@ import { isInboxScopeChanged } from "../api/notifications";
 
 type Membership = MeContextResponse["organizations"][number];
 
-/**
- * All tenant-scoped query caches live under this prefix. Switching the
- * active organization cancels and clears the whole prefix so an in-flight
- * response for the previous tenant can never repopulate the new view.
- */
+// Switching organization clears this whole prefix so an in-flight response for the old tenant can't repopulate the new view.
 export const TENANT_QUERY_PREFIX = ["tenant"] as const;
 
 type TenantContextValue = {
@@ -80,8 +76,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const memberships = meQuery.data?.organizations;
   const lastActiveTenantId = meQuery.data?.lastActiveTenantId ?? null;
 
-  // A refreshed server mirror (e.g. another session switched the
-  // account-global organization) supersedes this tab's earlier local choice;
+  // A refreshed server mirror (another session switched org) supersedes this tab's local choice,
   // otherwise the header and notifications would show different tenants.
   const [mirrorSeen, setMirrorSeen] = useState(lastActiveTenantId);
   if (mirrorSeen !== lastActiveTenantId) {
@@ -89,10 +84,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setSelectedOrgId(null);
   }
 
-  // Selection precedence: valid in-memory choice, then the persisted
-  // last-active tenant when still a membership, then the first membership.
-  // React Compiler memoizes this derivation; the precedence order is
-  // load-bearing and must not change.
+  // Precedence is load-bearing: in-memory choice, then persisted last-active membership, then the first.
   const activeOrg: Membership | null =
     memberships === undefined || memberships.length === 0
       ? null
@@ -101,16 +93,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         memberships[0] ??
         null);
 
-  // Inbox scope comes only from the server-confirmed active mirror. The UI
-  // falls back to a membership for navigation, but that fallback must never
-  // make organization notifications visible or alter an inbox request.
+  // Inbox scope uses only the server-confirmed org; the UI fallback must never widen notification visibility.
   const serverActiveOrgId =
     memberships?.some((org) => org.id === lastActiveTenantId) === true
       ? lastActiveTenantId
       : null;
 
-  // Guard, tenant-cache retirement and success ordering are behavioral
-  // contracts; React Compiler handles render-performance memoization.
   const switchOrg = async (organizationId: string): Promise<boolean> => {
     if (
       memberships?.some((org) => org.id === organizationId) !== true ||
@@ -121,16 +109,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setOrgSwitchPending(true);
     try {
       const updated = await updateActiveOrganization({ organizationId });
-      // PATCH succeeded: retire the previous tenant's queries before
-      // any new state publishes, so an in-flight response for the old
-      // organization can never repopulate the new view.
+      // Retire the old tenant's queries before publishing new state (see TENANT_QUERY_PREFIX).
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
       setSelectedOrgId(organizationId);
       return true;
     } catch {
-      // Keep the previous tenant; the caller surfaces the error.
       return false;
     } finally {
       setOrgSwitchPending(false);

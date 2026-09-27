@@ -34,8 +34,7 @@ const updateSettingsMock = vi.mocked(updateOrganizationNotificationSettings);
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 
 function renderPage(extra: React.ReactNode = null) {
-  // The page names the route organization from the tenant context; the
-  // account's memberships include ORG_A only, ORG_B stays unknown.
+  // Memberships include ORG_A only; ORG_B stays unknown.
   fetchMeContextMock.mockResolvedValue({
     user: {
       id: "user-1",

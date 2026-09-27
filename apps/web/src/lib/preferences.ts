@@ -23,7 +23,7 @@ const preferencesSchema = z.object({
   weekStart: z.enum(["monday", "sunday"]),
 });
 
-/** Per-device display preferences; browser storage only, by decision. */
+/** Per-device; browser storage only, by decision. */
 export type Preferences = z.infer<typeof preferencesSchema>;
 
 export function defaultPreferences(): Preferences {
@@ -59,7 +59,6 @@ function parse(raw: string | null): Preferences {
   }
 }
 
-/** Corrupt, missing or unreadable storage all fall back to the defaults. */
 export function readPreferences(): Preferences {
   return parse(readRaw());
 }
@@ -70,8 +69,7 @@ export function writePreferences(next: Preferences): void {
   try {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(next));
   } catch {
-    // Storage unavailable (private mode, quota): the choice still applies
-    // to subscribers for this page view.
+    // Storage unavailable (private mode, quota): the choice still applies for this page view.
     cache = { raw: null, value: next, forced: true };
   }
   for (const listener of listeners) {
@@ -79,8 +77,7 @@ export function writePreferences(next: Preferences): void {
   }
 }
 
-// Snapshot cache so useSyncExternalStore sees a stable reference while the
-// stored string is unchanged.
+// useSyncExternalStore needs a stable reference while the stored string is unchanged.
 let cache: { raw: string | null; value: Preferences; forced: boolean } | null =
   null;
 
@@ -119,10 +116,7 @@ export function usePreferences(): {
   return { preferences, save: writePreferences };
 }
 
-/**
- * Absolute date-time in the user's zone and hour cycle, Thai locale (Buddhist
- * year, abbreviated month) — e.g. "10 ก.ย. 2569 14:12".
- */
+// Thai locale (Buddhist year), e.g. "10 ก.ย. 2569 14:12".
 export function formatDateTime(date: Date, preferences: Preferences): string {
   const options: Intl.DateTimeFormatOptions = {
     timeZone: preferences.timeZone,

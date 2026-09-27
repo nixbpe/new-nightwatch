@@ -105,7 +105,6 @@ describe("PasswordCard", () => {
       "Invalid password",
     );
     expect(current).toHaveAttribute("aria-invalid", "true");
-    // The typed values are kept for a retry.
     expect(current).toHaveValue("WrongPassw0rd!");
     expect(screen.getByLabelText("รหัสผ่านใหม่")).toHaveValue("NewPassw0rd!!");
   });

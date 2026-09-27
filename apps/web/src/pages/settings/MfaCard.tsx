@@ -25,7 +25,6 @@ import { authClient, authErrorMessage } from "../../lib/auth-client";
 
 type EnrollmentDraft = { totpURI: string; backupCodes: string[] };
 
-/** Where the not-yet-enabled side of the card is. */
 type Stage = "idle" | "password" | "scan" | "verify";
 
 const REFRESH_GUARD_MESSAGE =
@@ -57,14 +56,8 @@ function downloadCodes(codes: string[]): void {
   URL.revokeObjectURL(url);
 }
 
-/**
- * Two-factor (TOTP) card. Enrolment runs inline as three steps — password,
- * scan + save recovery codes, verify the first code — and the enabled
- * state offers recovery-code regeneration. `enabled` is the server's word
- * (me/context); nothing here claims "enabled" before `refreshStatus`
- * confirms it. The enrolment draft (secret, codes, QR) lives only in this
- * component's state and is dropped on cancel, back, success or unmount.
- */
+// `enabled` comes from the server; nothing claims enabled before `refreshStatus` confirms it.
+// The enrolment draft (secret, codes, QR) lives only in component state and is dropped on exit.
 export function MfaCard({
   enabled,
   refreshStatus,
@@ -93,14 +86,10 @@ export function MfaCard({
   const enableTriggerRef = useRef<HTMLButtonElement>(null);
   const regenTriggerRef = useRef<HTMLButtonElement>(null);
   const disableTriggerRef = useRef<HTMLButtonElement>(null);
-  // Inline panels are not overlays, but focus still moves into an opened
-  // panel (autoFocus on its field) and back to the button that opened it
-  // when it closes — that button remounts, so the return happens after
-  // the next render.
+  // Focus returns to the opener after the next render, since that button remounts.
   const pendingFocus = useRef<RefObject<HTMLButtonElement | null> | null>(null);
   useEffect(() => {
-    // Stays pending until the target button is actually mounted (e.g. the
-    // enable button only appears once the parent reports enabled=false).
+    // Stays pending until the target is mounted (the enable button appears only after enabled=false).
     const target = pendingFocus.current?.current;
     if (target !== null && target !== undefined) {
       target.focus();
@@ -116,7 +105,7 @@ export function MfaCard({
     }
   }, [enabled]);
 
-  // The QR is derived from the draft's URI and never stored anywhere else.
+  // The QR is derived from the draft's URI and never stored.
   useEffect(() => {
     if (draft === null) {
       return;
@@ -791,8 +780,7 @@ export function MfaCard({
                 type="button"
                 variant="ghost"
                 onClick={() => {
-                  // A new enable call issues a new secret; the current draft
-                  // is therefore discarded here, not kept around.
+                  // A new enable call issues a new secret, so the current draft is discarded.
                   setDraft(null);
                   setAcknowledged(false);
                   setStage("password");

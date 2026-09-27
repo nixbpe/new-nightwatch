@@ -13,10 +13,7 @@ export function fetchMeContext(): Promise<MeContextResponse> {
   return request("/api/me/context", meContextResponseSchema);
 }
 
-/**
- * Persist the user's active organization. Only a resolved success may
- * publish the new tenant — callers keep the previous selection on failure.
- */
+// Only a resolved success may publish the new tenant; callers keep the previous selection on failure.
 export function updateActiveOrganization(
   input: ActiveOrganizationInput,
 ): Promise<MeContextResponse> {

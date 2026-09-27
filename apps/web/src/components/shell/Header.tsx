@@ -8,14 +8,6 @@ import { Kbd } from "./Kbd";
 import { getRouteOrganizationId } from "./nav-config";
 import { NotificationsPopover } from "./NotificationsPopover";
 
-/**
- * Topbar, per the reference: sidebar toggle, breadcrumb rooted at the
- * active organization, the search-all field and notifications. Below `lg`
- * — the same breakpoint that turns the sidebar into a rail — the
- * breadcrumb shows only the current page and search is icon-only, matching
- * the reference's 768px render. Organization identity
- * and the account menu live in the sidebar, so neither appears here.
- */
 export function Header({
   collapsed,
   onToggleSidebar,
@@ -33,11 +25,8 @@ export function Header({
   const { activeOrg, me } = useTenant();
 
   const pageTrail = getBreadcrumbTrail(pathname);
-  // The root crumb is the organization the page acts on: the one named in
-  // an organization-scoped URL (a bookmark may name one that is not the
-  // account-global active organization), the active organization elsewhere.
-  // An id outside the user's memberships is shown as-is rather than
-  // dressed up as a membership; the page itself reports the denial.
+  // Root crumb is the org the page acts on (a bookmarked URL may name a non-active org); an id
+  // outside the user's memberships is shown as-is and the page reports the denial.
   const routeOrgId = getRouteOrganizationId(pathname);
   const rootCrumb =
     routeOrgId === null
@@ -48,9 +37,7 @@ export function Header({
           label:
             me?.organizations.find((org) => org.id === routeOrgId)?.name ??
             routeOrgId,
-          // /workspace shows the active organization, so the crumb links
-          // there only when that is this organization; otherwise it is a
-          // plain label rather than a link to another tenant's page.
+          // Link only for the active org; /workspace would otherwise open another tenant's page.
           ...(routeOrgId === activeOrg?.id ? { path: "/workspace" } : {}),
         };
   const trail = rootCrumb === null ? pageTrail : [rootCrumb, ...pageTrail];
@@ -128,8 +115,7 @@ export function Header({
         <button
           type="button"
           onClick={onOpenSearch}
-          // Field-shaped control, so it keeps the control-boundary token
-          // (>= 3:1 against the header), not the divider hairline.
+          // Field-shaped, so it uses the control-border token (>= 3:1 contrast), not the divider hairline.
           className="hidden h-9 w-80 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-sm text-foreground-secondary hover:bg-foreground/5 hover:text-foreground lg:flex"
         >
           <SearchIcon size={16} />

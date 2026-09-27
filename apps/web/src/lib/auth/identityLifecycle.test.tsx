@@ -32,8 +32,7 @@ const { sessionStore, transport } = vi.hoisted(() => {
   };
   let freshSession: TestSessionData = null;
   return {
-    // Reactive stand-in for the better-auth session atom: mutations notify
-    // subscribers so hooks re-read, exactly like the real client.
+    // Reactive stand-in for the better-auth session atom: mutations notify subscribers.
     sessionStore: {
       get: () => snapshot,
       getFresh: () => freshSession,
@@ -63,8 +62,7 @@ const { sessionStore, transport } = vi.hoisted(() => {
 });
 
 vi.mock("better-auth/react", async () => {
-  // Dynamic import: vi.mock factories are hoisted above static imports, so
-  // react can only be reached lazily inside the factory.
+  // vi.mock factories are hoisted above static imports, so react must be imported lazily.
   const { useSyncExternalStore } = await import("react");
   return {
     createAuthClient: () => ({
@@ -117,17 +115,10 @@ function meContextFor(user: SessionUser): MeContextResponse {
   };
 }
 
-/**
- * Every committed frame, in order. A layout effect observes exactly what
- * users could see; a post-hoc DOM assertion alone could miss a transient
- * frame served from the previous identity's cache.
- */
+// Records every committed frame; a post-hoc DOM assertion could miss a transient frame from the previous identity's cache.
 const commitLog: string[] = [];
 
-/**
- * Stands in for the workspace's tenant consumer (TenantProvider's /me
- * query): reads its data through the provider-supplied QueryClient only.
- */
+// Stands in for TenantProvider's /me query; reads only through the provider's QueryClient.
 function ContextProbe() {
   const query = useQuery<MeContextResponse>({
     queryKey: ME_CONTEXT_QUERY_KEY,
@@ -146,10 +137,7 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-/**
- * The real gate loaders and the real RootLayout wiring (SessionQueryProvider
- * + revalidation-on-identity-change); only the page bodies are probes.
- */
+// Real gate loaders and RootLayout wiring; only the page bodies are probes.
 const lifecycleRoutes: RouteObject[] = [
   {
     element: <RootLayout />,
@@ -179,24 +167,19 @@ describe("per-identity cache lifecycle across logout → login", () => {
   });
 
   it("user B never receives user A's cached data, and each loader prefetch lands in that identity's own client", async () => {
-    // The transport answers for whoever the server session currently is,
-    // logging which identity each fetch served; a cache leak would surface
-    // A's payload without a new fetch.
+    // Logs which identity each fetch served; a cache leak would surface A's payload without a new fetch.
     const fetchLog: string[] = [];
     transport.mockImplementation(() => {
       const user = sessionStore.get().data?.user;
       fetchLog.push(user?.id ?? "anonymous");
       if (user === undefined) {
-        // The epoch remount during the logout bounce window briefly mounts
-        // the probe under the fresh anonymous client; that fetch fails and
-        // is cancelled with the retired client. It never carries user data.
+        // The logout epoch remount briefly mounts the probe under the anonymous client; that fetch
+        // fails and is cancelled. It never carries user data.
         return Promise.reject(new Error("anonymous transport call"));
       }
       return Promise.resolve(meContextFor(user));
     });
 
-    // Hard load of /workspace as user A: the loader prefetches me/context
-    // and the committed tree consumes exactly that client.
     sessionStore.set({ user: USER_A });
     const router = createMemoryRouter(lifecycleRoutes, {
       initialEntries: ["/workspace"],
@@ -206,8 +189,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     expect(await screen.findByTestId("view")).toHaveTextContent("User A");
     // The ONLY fetch so far is the loader's — the in-tree query hit cache.
     expect(fetchLog).toEqual(["user-a"]);
-    // Logout: the session drops without any navigation. The identity swap
-    // revalidates the active loader, which bounces to the login gate.
+    // Logout without navigation: revalidation bounces to the login gate.
     act(() => {
       sessionStore.set(null);
     });
@@ -215,18 +197,14 @@ describe("per-identity cache lifecycle across logout → login", () => {
     expect(await screen.findByTestId("login-page")).toBeInTheDocument();
     const commitsBeforeB = commitLog.length;
 
-    // Login as user B, again without an explicit navigation: the anonymous
-    // gate's loader re-runs, continues to /workspace, and its prefetch must
-    // land in B's own client — the one B's committed tree consumes.
+    // Login as B without navigation: B's loader prefetch must land in the client B's tree consumes.
     act(() => {
       sessionStore.set({ user: USER_B });
     });
 
     expect(await screen.findByTestId("view")).toHaveTextContent("User B");
-    // Exactly one fetch per identity: B's loader prefetch was consumed by
-    // B's tree (no waterfall refetch), and no singleton served A's cache
-    // (which would have suppressed B's fetch entirely). Any "anonymous"
-    // entry is the failed bounce-window fetch described above.
+    // One fetch per identity: B's prefetch was consumed (no refetch) and no singleton served A's
+    // cache. Any "anonymous" entry is the bounce-window fetch above.
     expect(fetchLog.filter((id) => id === "user-a")).toHaveLength(1);
     expect(fetchLog.filter((id) => id === "user-b")).toHaveLength(1);
     // No committed frame after the switch ever showed A's data.
@@ -255,8 +233,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     expect(fetchLog).toEqual(["user-a"]);
     const commitsBeforeFreshB = commitLog.length;
 
-    // Exact race: the cookie-backed loader snapshot has advanced to B, but
-    // the client session atom and committed QueryClient boundary are still A.
+    // Race: the cookie-backed loader sees B while the session atom and committed boundary are still A.
     sessionStore.setFresh({ user: USER_B });
     const conflictingRequest = new Request(
       "http://localhost/workspace?account=user-b",
@@ -277,8 +254,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
       "http://localhost/workspace?account=user-b",
     );
     expect(result.headers.get("X-Remix-Reload-Document")).toBe("true");
-    // The conflicting loader never stages or prefetches B, and nothing can
-    // commit under A after it: the browser is instructed to reload instead.
+    // The conflicting loader never stages B; the browser reloads instead.
     expect(fetchLog).toEqual(["user-a"]);
     expect(commitLog.slice(commitsBeforeFreshB)).not.toContain("User B");
   });

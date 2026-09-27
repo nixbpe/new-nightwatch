@@ -24,8 +24,7 @@ const { sessionStore, signInEmailMock } = vi.hoisted(() => {
     isPending: false,
   };
   return {
-    // Reactive stand-in for the better-auth session atom: mutations notify
-    // subscribers so hooks re-read, exactly like the real client.
+    // Reactive stand-in for the better-auth session atom: mutations notify subscribers.
     sessionStore: {
       get: () => snapshot,
       set(data: TestSessionData) {
@@ -48,8 +47,7 @@ const { sessionStore, signInEmailMock } = vi.hoisted(() => {
   };
 });
 vi.mock("better-auth/react", async () => {
-  // Dynamic import: vi.mock factories are hoisted above static imports, so
-  // react can only be reached lazily inside the factory.
+  // vi.mock factories are hoisted above static imports, so react must be imported lazily.
   const { useSyncExternalStore } = await import("react");
   return {
     createAuthClient: () => ({
@@ -79,11 +77,7 @@ function LocationProbe() {
   );
 }
 
-/**
- * Data-mode harness: the real anonymous-gate loader and the real root
- * layout (per-identity query boundary + revalidation on identity change),
- * so a session resolving mid-sign-in continues exactly as the app does.
- */
+// Real anonymous-gate loader and root layout, so a session resolving mid-sign-in continues as in the app.
 function renderPage(from?: string) {
   const router = createMemoryRouter(
     [
@@ -197,8 +191,7 @@ describe("LoginPage", () => {
   });
 
   it("invalid credentials keep the entered form and show the error", async () => {
-    // A failed attempt must not wipe the form or navigate away: the user
-    // corrects a typo, not retypes everything.
+    // A failed attempt must not wipe the form or navigate away.
     signInEmailMock.mockResolvedValue({
       data: null,
       error: { message: "อีเมลหรือรหัสผ่านไม่ถูกต้อง", status: 401 },
@@ -212,14 +205,12 @@ describe("LoginPage", () => {
     );
     expect(screen.getByLabelText("อีเมล")).toHaveValue("member@example.com");
     expect(screen.getByLabelText("รหัสผ่าน")).toHaveValue("wrong-password");
-    // Still on the login page, ready for another attempt.
     expect(screen.queryByTestId("location")).toBeNull();
     expect(screen.getByRole("button", { name: "เข้าสู่ระบบ" })).toBeEnabled();
   });
 
   it("an unverified account is offered the resend page instead of a dead end", async () => {
-    // EMAIL_NOT_VERIFIED (403) is recoverable: the error links to the
-    // anonymous-safe resend hub rather than stranding the user.
+    // EMAIL_NOT_VERIFIED is recoverable: the error links to the anonymous-safe resend hub.
     signInEmailMock.mockResolvedValue({
       data: null,
       error: { message: "กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ", status: 403 },
@@ -274,8 +265,7 @@ describe("LoginPage", () => {
   });
 
   it("resumes explicit invitation acceptance before the old login request settles", async () => {
-    // The invitation survives signup/verification. Resolving the full session
-    // replaces the anonymous QueryClient subtree while onSubmit still awaits.
+    // Resolving the full session replaces the anonymous QueryClient subtree while onSubmit still awaits.
     rememberInvitation("inv-9");
     const finishSignIn = deferSignIn();
     const page = renderPage("/settings/security");
@@ -310,9 +300,8 @@ describe("LoginPage", () => {
   });
 
   it("a pending second-factor challenge stays put and keeps the return path", async () => {
-    // The two-factor plugin owns the redirect to /two-factor; the page must
-    // not navigate on its own, must not show an error, and must leave the
-    // remembered destination for the post-challenge return.
+    // The two-factor plugin owns the redirect; the page must not navigate or show an error, and
+    // must keep the remembered destination for the post-challenge return.
     signInEmailMock.mockResolvedValue({
       data: { twoFactorRedirect: true },
       error: null,
@@ -321,15 +310,11 @@ describe("LoginPage", () => {
 
     await submitLogin("member@example.com", "correct-password");
 
-    // No client-side navigation and no error: the challenge is pending.
-    // (Heading text follows the split-layout redesign — "NightWatch" now
-    // lives in the brand panel/compact row, not the form heading itself.)
     expect(
       await screen.findByRole("heading", { name: "เข้าสู่ระบบ" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByTestId("location")).toBeNull();
-    // The intended page survives for TwoFactorPage to return to.
     expect(readReturnTo()).toBe("/settings/security");
   });
 

@@ -65,7 +65,6 @@ describe("ResetPasswordPage", () => {
 
     await fillAndSubmit("brand-new-pass-1");
 
-    // Observable continuation: a consumed token routes back to login.
     expect(await screen.findByTestId("location")).toHaveTextContent("/login");
   });
 
@@ -93,8 +92,7 @@ describe("ResetPasswordPage", () => {
   it("a link without a token offers a safe path to request a new one", () => {
     renderAt("/reset-password");
 
-    // Safe state: an error alert with the recovery action and no password
-    // form to submit against a missing token.
+    // No password form to submit against a missing token.
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "ขอลิงก์ใหม่" }),

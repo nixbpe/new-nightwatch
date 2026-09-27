@@ -20,12 +20,7 @@ import {
 
 const OTHERS = "__others__";
 
-/**
- * Sessions tab: every session signed in to the account, the current one
- * marked and un-revokable, the rest revocable one at a time or all at
- * once (always behind an inline confirm). Session tokens are used only as
- * the revoke argument and never rendered.
- */
+// Session tokens are used only as the revoke argument and never rendered.
 export function SessionsPage() {
   const queryClient = useQueryClient();
   const { data: session, isPending: isSessionPending } =
@@ -37,8 +32,6 @@ export function SessionsPage() {
     queryFn: fetchSessions,
   });
 
-  // Which confirm is open (a session token, or OTHERS), and where focus
-  // returns when it closes.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<{
@@ -350,7 +343,6 @@ function registerTrigger(
   }
 }
 
-/** Current session first, then most recently active. */
 function sortSessions(rows: SessionRow[], currentToken: string | null) {
   return [...rows].sort((a, b) => {
     if (a.token === currentToken) return -1;

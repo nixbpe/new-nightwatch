@@ -22,11 +22,7 @@ function validateName(value: string): string | null {
   return null;
 }
 
-/**
- * Profile tab: the display name (the one thing a user can change about how
- * they appear) and the account's email, read-only with its verification
- * badge. The avatar is derived from the name — no upload, by decision.
- */
+// The avatar is derived from the name; no upload, by decision.
 export function ProfilePage() {
   const queryClient = useQueryClient();
   const meQuery = useQuery({

@@ -27,11 +27,7 @@ const SYSTEMS: { name: string; pattern: RegExp; kind: DeviceKind }[] = [
   { name: "Linux", pattern: /\bLinux\b/, kind: "desktop" },
 ];
 
-/**
- * Turn a session's user agent into "Chrome 129 · macOS" plus a phone/desktop
- * hint for the icon. Deliberately small: the common browsers and systems,
- * and an honest "unknown" for everything else — no dependency, no guessing.
- */
+// Deliberately small: common browsers and systems, and an honest "unknown" otherwise.
 export function deviceLabel(userAgent: string | null | undefined): DeviceLabel {
   if (
     userAgent === null ||

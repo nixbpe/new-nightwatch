@@ -5,7 +5,6 @@ import type { ZodType } from "zod";
 import { env } from "../env";
 import type { paths } from "./openapi-types.gen";
 
-/** Client-side API failure; mirrors the api-contract error envelope. */
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
@@ -25,10 +24,9 @@ export class ApiError extends Error {
   }
 }
 
-/** HTTP verbs the OpenAPI document can declare. */
 export type RequestMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
-/** Contract paths that declare the given verb (undeclared verbs are `?: never`). */
+// Undeclared verbs appear as `?: never`, hence the undefined check.
 type PathsFor<M extends RequestMethod> = {
   [P in keyof paths]: Lowercase<M> extends keyof paths[P]
     ? [paths[P][Lowercase<M>]] extends [undefined]
@@ -37,13 +35,11 @@ type PathsFor<M extends RequestMethod> = {
     : never;
 }[keyof paths];
 
-/** Operation object for a declared path+verb pair; never when undeclared. */
 type OperationFor<P extends keyof paths, M extends RequestMethod> =
   Lowercase<M> extends keyof paths[P]
     ? Exclude<paths[P][Lowercase<M>], undefined>
     : never;
 
-/** Declared path-template parameters; never when the operation takes none. */
 type PathParamsFor<P extends keyof paths, M extends RequestMethod> =
   OperationFor<P, M> extends { parameters?: infer TParameters }
     ? TParameters extends { path: infer TPathParams }
@@ -51,7 +47,6 @@ type PathParamsFor<P extends keyof paths, M extends RequestMethod> =
       : never
     : never;
 
-/** Declared query parameters; never when an operation takes none. */
 type QueryParamsFor<P extends keyof paths, M extends RequestMethod> =
   OperationFor<P, M> extends { parameters?: infer TParameters }
     ? TParameters extends { query?: infer TQuery }
@@ -59,7 +54,6 @@ type QueryParamsFor<P extends keyof paths, M extends RequestMethod> =
       : never
     : never;
 
-/** Declared JSON request body; never when the operation takes none. */
 type RequestBodyFor<P extends keyof paths, M extends RequestMethod> =
   OperationFor<P, M> extends { requestBody?: infer TRequestBody }
     ? TRequestBody extends { content: { "application/json": infer TBody } }
@@ -67,7 +61,6 @@ type RequestBodyFor<P extends keyof paths, M extends RequestMethod> =
       : never
     : never;
 
-/** Successful operation JSON payload from 2xx responses; never if no content is defined. */
 type OperationSuccessPayload<TOperation> = TOperation extends {
   responses: infer TResponses;
 }
@@ -113,8 +106,7 @@ export type RequestOptions<
 const client = createClient<paths>({
   baseUrl: env.VITE_API_BASE_URL,
   credentials: "include",
-  // Resolve fetch per call: capturing the global here would freeze it
-  // before test doubles or polyfills can replace it.
+  // Resolve fetch per call: capturing the global would freeze it before test doubles replace it.
   fetch: (...args) => globalThis.fetch(...args),
 });
 
@@ -124,14 +116,7 @@ type ClientOutcome = {
   response: Response;
 };
 
-/**
- * Typed JSON request against the API. Path, verb, path params and body
- * are checked against the generated OpenAPI types at compile time; the
- * zod schema still validates the response at runtime. Always sends
- * credentials so the host-only session cookie travels with same-origin
- * (or proxied) calls. Pass `schema: undefined` for endpoints that answer
- * 204 No Content.
- */
+// Pass `schema: undefined` for endpoints that answer 204 No Content.
 export async function request<
   M extends RequestMethod = "GET",
   P extends PathsFor<M> = PathsFor<M>,
@@ -177,8 +162,7 @@ export async function request<
               ...(query === undefined ? {} : { query }),
             },
       body: requestBody,
-      // Raw text keeps JSON parsing here, preserving the previous layer's
-      // `res.json().catch(() => null)` failure semantics.
+      // Raw text so an unparsable body becomes null instead of throwing.
       parseAs: "text",
     });
   } catch {
@@ -199,9 +183,6 @@ export async function request<
   }
 
   if (!response.ok) {
-    // openapi-fetch yields the parsed envelope for JSON error bodies and
-    // raw text otherwise; both fail envelope parsing exactly like the
-    // previous layer's null-on-parse-failure did.
     const parsed = errorResponseSchema.safeParse(error ?? null);
     if (parsed.success) {
       const { code, message, details } = parsed.data.error;

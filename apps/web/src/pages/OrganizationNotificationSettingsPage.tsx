@@ -60,10 +60,7 @@ function OrganizationNotificationSettingsForOrganization({
       });
     },
   });
-  // The page acts on the route's organization, which a bookmarked URL may
-  // make differ from the active one, so the scope line names it.
-  // Names may repeat across organizations; the slug is the unique one, so
-  // it stays visible next to the name.
+  // A bookmarked URL may name a non-active org, so the scope line names it, with the slug since names repeat.
   const { me } = useTenant();
   const organization = me?.organizations.find(
     (org) => org.id === organizationId,

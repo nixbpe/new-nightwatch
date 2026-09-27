@@ -19,15 +19,7 @@ function matches(destinations: NavDestination[], query: string) {
   );
 }
 
-/**
- * Search-all (⌘K) overlay, per the reference: a modal command palette
- * anchored near the top. Today its only index is the nav config — pages
- * and settings, resolved for the active organization and the user's role
- * in it — so that section is real and navigates; the reference's
- * project/member results wait on those features existing. Mounted only
- * while open, so state resets naturally; focus returns to whatever opened
- * it when it unmounts.
- */
+// Mounted only while open, so state resets naturally.
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { activeOrg } = useTenant();
@@ -85,8 +77,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         choose(selectedIndex);
         break;
       case "Tab":
-        // The input is the palette's only tab stop; the list is driven by
-        // the arrow keys, so Tab must not escape the modal.
+        // The input is the only tab stop (the list uses arrow keys), so Tab must not escape the modal.
         event.preventDefault();
         break;
       default:

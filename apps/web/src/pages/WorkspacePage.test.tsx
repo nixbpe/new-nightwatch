@@ -109,8 +109,7 @@ describe("WorkspacePage context states", () => {
   });
 
   it("shows loading only while the context is actually pending, then renders the organization", async () => {
-    // QA-12 regression: a slow /me response is a pending state that
-    // resolves into content — never a permanent spinner.
+    // A slow /me response is a pending state that resolves into content, never a permanent spinner.
     const pending = Promise.withResolvers<MeContextResponse>();
     fetchMeContextMock.mockImplementation(() => pending.promise);
     renderPage();
@@ -126,8 +125,7 @@ describe("WorkspacePage context states", () => {
   });
 
   it("a failed context load offers an explicit retry that recovers", async () => {
-    // SEC-C2-UI-002 regression: a /me failure is a retryable error state —
-    // not the loading spinner, not the zero-membership screen.
+    // A /me failure is a retryable error state, not the spinner or the zero-membership screen.
     fetchMeContextMock.mockRejectedValueOnce(
       new ApiError("INTERNAL", "server exploded", 500),
     );
@@ -177,8 +175,7 @@ describe("WorkspacePage organization views", () => {
   });
 
   it("a viewer membership sees no invite controls", async () => {
-    // Role boundary: invitation is owner/admin-only in the UI, matching the
-    // server-side 403 for lesser roles.
+    // Invitation is owner/admin-only in the UI, matching the server-side 403 for lesser roles.
     fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
     renderPage();
 
@@ -204,7 +201,6 @@ describe("WorkspacePage organization views", () => {
     expect(
       await screen.findByText(/ส่งคำเชิญถึง new@example\.com/),
     ).toBeInTheDocument();
-    // The form resets after a confirmed send.
     expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
   });
 
@@ -231,7 +227,4 @@ describe("WorkspacePage organization views", () => {
       "new@example.com",
     );
   });
-
-  // Organization switching moved into the shell sidebar (components/shell/
-  // OrgSwitcher.tsx); its UI-level tests live in AppShell.test.tsx.
 });

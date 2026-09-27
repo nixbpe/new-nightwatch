@@ -23,13 +23,8 @@ const MODE_OPTIONS: ReadonlyArray<{
   { value: "recovery", label: "รหัสกู้คืนบัญชี (ใช้ได้ครั้งเดียว)" },
 ];
 
-/**
- * Second-factor challenge after sign-in. Reached via twoFactorClient's
- * onTwoFactorRedirect; while the challenge is pending the server issues no
- * session, so this page must render the challenge (and never the workspace)
- * until verification succeeds. The user picks the mode explicitly — the code
- * is never routed by guessing its shape.
- */
+// No session exists until verification succeeds, so never render the workspace here. The user
+// picks the mode explicitly; the code is never routed by guessing its shape.
 export function TwoFactorPage() {
   const { data, isPending } = authClient.useSession();
   const [error, setError] = useState<string | null>(null);

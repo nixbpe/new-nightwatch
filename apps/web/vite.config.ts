@@ -5,23 +5,19 @@ import { defineConfig } from "vite";
 
 import { resolvePorts } from "../../scripts/ports.mjs";
 
-// Per-worktree ports keep parallel checkouts from colliding (scripts/ports.mjs).
+// Per-worktree ports keep parallel checkouts from colliding.
 const { webPort, apiPort } = resolvePorts();
 
 export default defineConfig({
-  // React Compiler (babel-plugin-react-compiler via plugin-react's
-  // reactCompilerPreset) owns render-performance memoization;
-  // apps/web/src intentionally carries no manual useMemo/useCallback.
+  // React Compiler owns memoization; src intentionally has no manual useMemo/useCallback.
   plugins: [
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     tailwindcss(),
   ],
-  // Workspace contracts ship as TypeScript source; keep them out of
-  // pre-bundling so Vite transforms them as regular source.
+  // Workspace contracts ship as TypeScript source, so Vite must transform them rather than pre-bundle.
   optimizeDeps: { exclude: ["@nightwatch/api-contract"] },
   resolve: {
-    // shadcn/ui alias (components.json); "@/*" -> src, mirroring tsconfig paths.
     alias: { "@": new URL("./src", import.meta.url).pathname },
   },
   server: {

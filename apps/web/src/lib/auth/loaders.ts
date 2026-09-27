@@ -28,15 +28,7 @@ import {
 
 type Session = typeof authClient.$Infer.Session;
 
-/**
- * Fresh server-side session snapshot for loader gating. Unlike the
- * component guards, which read the (possibly stale) client-side session
- * atom, a loader always asks the server — so the forced recheck
- * RequireVerified performed after the email-verification callback is
- * inherent here: one fresh read, then admit or bounce. An unreachable or
- * erroring auth endpoint resolves to anonymous, matching the old guard's
- * data-null bounce.
- */
+// Asks the server, not the cached client atom; any auth error counts as signed out.
 async function loadSession(): Promise<Session | null> {
   try {
     const { data, error } = await authClient.getSession();
@@ -46,18 +38,10 @@ async function loadSession(): Promise<Session | null> {
   }
 }
 
-/** "/" carries no page of its own; the workspace decides admission. */
 export function rootLoader(): Response {
   return replace("/workspace");
 }
 
-/**
- * Anonymous-only gate (login, forgot/reset password). A signed-in arrival
- * continues to its post-auth destination — a remembered pending invitation
- * wins over the return path — consuming the return path exactly once, as
- * PostAuthRedirect did for in-page transitions. Redirects REPLACE the
- * history entry, matching the old <Navigate replace> guards.
- */
 export async function requireAnonLoader(): Promise<null | Response> {
   const session = await loadSession();
   if (session === null) {
@@ -68,13 +52,6 @@ export async function requireAnonLoader(): Promise<null | Response> {
   return replace(destination);
 }
 
-/**
- * Auth + verified-email gate for protected routes. Bounces anonymous
- * arrivals to /login carrying the intended path (query included) so the
- * login continuation can resume it; bounces the unverified to the resend
- * hub. Redirect targets and replace semantics are identical to the old
- * RequireAuth/RequireVerified component guards.
- */
 async function gateVerifiedSession(
   request: Request,
 ): Promise<Session | Response> {
@@ -88,21 +65,15 @@ async function gateVerifiedSession(
     return replace("/verify-email");
   }
   const activeIdentity = peekActiveQueryClientIdentity();
+  // Another user's cache is loaded: reload the document to drop it.
   if (activeIdentity !== undefined && activeIdentity !== session.user.id) {
     return redirectDocument(request.url);
   }
   return session;
 }
 
-/**
- * Prefetch the me/context contract — the primary data of both protected
- * pages — into the current identity's client, so the in-tree useQuery
- * consumes the cache instead of render-then-fetching. `staleTime: "static"`
- * is the non-deprecated ensureQueryData: return cached data when present,
- * fetch once when absent. A failed prefetch must not replace the page with
- * the router error boundary: the in-tree query surfaces the same error
- * state (with retry UI) as before.
- */
+// staleTime "static" reuses cached data; a failed prefetch is left to the
+// page's own query error state instead of the router error boundary.
 async function prefetchMeContext(
   userId: string,
 ): Promise<MeContextResponse | undefined> {
@@ -115,7 +86,6 @@ async function prefetchMeContext(
     .catch(() => undefined);
 }
 
-/** /workspace — TenantProvider's me/context query is the prefetched primary data. */
 export async function workspaceLoader({
   request,
 }: LoaderFunctionArgs): Promise<null | Response> {
@@ -127,7 +97,6 @@ export async function workspaceLoader({
   return null;
 }
 
-/** /notifications — gates and prefetches the Center's primary inbox page. */
 export async function notificationsLoader({
   request,
 }: LoaderFunctionArgs): Promise<null | Response> {
@@ -152,7 +121,6 @@ export async function notificationsLoader({
   return null;
 }
 
-/** Organization notification settings — primary data is prefetched before commit. */
 export async function notificationSettingsLoader({
   params,
   request,
@@ -175,17 +143,11 @@ export async function notificationSettingsLoader({
   return null;
 }
 
-/** "/settings" carries no page of its own; the first tab is the landing. */
 export function settingsIndexLoader(): Response {
   return replace("/settings/profile");
 }
 
-/**
- * /settings/sessions — prefetch the tab's primary query into the
- * identity's client. Parent and child loaders run in parallel, so this
- * re-reads the session rather than relying on the layout gate having run;
- * anonymous/unverified arrivals are bounced by settingsLoader regardless.
- */
+// Runs in parallel with settingsLoader, which does the redirecting.
 export async function sessionsLoader(): Promise<null> {
   const session = await loadSession();
   if (session === null || !session.user.emailVerified) {
@@ -201,7 +163,6 @@ export async function sessionsLoader(): Promise<null> {
   return null;
 }
 
-/** /settings/* layout route — verified-session gate + me/context prefetch shared by every settings tab. */
 export async function settingsLoader({
   request,
 }: LoaderFunctionArgs): Promise<null | Response> {
@@ -213,12 +174,6 @@ export async function settingsLoader({
   return null;
 }
 
-/**
- * /verify-email — reachable anonymously (resend hub), so no gate. The one
- * prefetchable fetch is the remembered invitation's public preview that
- * prefills the anonymous email entry; signed-in visitors never run that
- * query, so nothing is staged for them.
- */
 export async function verifyEmailLoader(): Promise<null> {
   const session = await loadSession();
   const invitationId = session === null ? readInvitation() : null;
@@ -232,8 +187,6 @@ export async function verifyEmailLoader(): Promise<null> {
       retry: false,
       staleTime: "static",
     })
-    // An unknown/expired invitation safely yields no prefill on the page;
-    // it must not become a router-level error.
     .catch(() => undefined);
   return null;
 }

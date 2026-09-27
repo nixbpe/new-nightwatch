@@ -14,24 +14,14 @@ const EMAIL_VERIFICATION_FAILURE_TEXT =
 
 type TokenPhase = "none" | "running" | "failed" | "done";
 
-/**
- * Post-verification hub. The server's verification email links here as
- * /onboarding?emailVerificationToken=<token> (optionally carrying
- * &invitationId=<id> so a new-tab verification keeps the invitation).
- *
- * Contract: consume the token once, then redirect — to /login,
- * /verify-email, the explicit acceptance page /accept-invitation/:id, or the
- * workspace. Acceptance is never performed here; it stays an explicit user
- * action on the acceptance page. Holds all redirects until the token call and
- * session refetch settle so an in-flight callback is never unmounted.
- */
+// Acceptance is never performed here; it stays an explicit user action on the acceptance page.
 export function OnboardingPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const verificationToken = searchParams.get("emailVerificationToken");
-  // Emailed-link continuation wins over same-tab storage; both are sanitized.
+  // The emailed-link invitation wins over same-tab storage; both are sanitized.
   const invitationParam = searchParams.get("invitationId");
   const invitationId =
     invitationParam !== null && /^[A-Za-z0-9_-]+$/.test(invitationParam)
@@ -51,9 +41,8 @@ export function OnboardingPage() {
   } = authClient.useSession();
   const user = session?.user;
 
-  // Consume the emailed token exactly once; hold every redirect until the
-  // verification call and the session refetch have settled. A rejection
-  // renders a retry-safe error instead of bouncing away.
+  // Consume the token once and hold redirects until verification and session refetch settle,
+  // so an in-flight callback is never unmounted.
   useEffect(() => {
     if (verificationToken === null || tokenStarted.current) {
       return;
@@ -97,7 +86,7 @@ export function OnboardingPage() {
     invitationId,
   ]);
 
-  // Post-verification routing. Pure redirects: idempotent under StrictMode.
+  // Pure redirects, so idempotent under StrictMode.
   useEffect(() => {
     if (tokenPhase === "running" || tokenPhase === "failed") {
       return;
@@ -161,6 +150,5 @@ export function OnboardingPage() {
     return <PostAuthRedirect />;
   }
 
-  // Every remaining outcome is a redirect handled by the routing effect.
   return <FullPageLoading label="กำลังตั้งค่าบัญชีของคุณ…" />;
 }

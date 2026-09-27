@@ -18,7 +18,6 @@ function stubFetch(response: Response): void {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
 }
 
-/** The single fetch call openapi-fetch issued, as a Request instance. */
 function issuedRequest(fetchMock: ReturnType<typeof vi.fn>): Request {
   expect(fetchMock).toHaveBeenCalledOnce();
   const [input] = fetchMock.mock.calls[0] as [Request];

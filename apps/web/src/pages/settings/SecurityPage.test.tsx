@@ -43,12 +43,7 @@ vi.mock("../../lib/api/me", () => ({
 const TOTP_URI =
   "otpauth://totp/NightWatch:member@example.com?secret=JBSWY3DPEHPK3PXP&issuer=NightWatch";
 
-/**
- * Schema-valid me/context fixture. The server contract alone decides the
- * visible two-factor status, so the mock transport re-reads the flag on
- * every call: a refetch after verification observes the real
- * pending→verified transition instead of a client-side success shortcut.
- */
+// Re-reads the flag on every call so a refetch observes the real pending→verified transition.
 function meContextFixture(): MeContextResponse {
   return {
     user: {
@@ -93,12 +88,11 @@ function renderPage() {
   );
 }
 
-/** The MFA card is a labelled region; the password card below shares field labels. */
+// The password card below shares field labels, so scope to the MFA region.
 function mfaCard() {
   return within(screen.getByRole("region", { name: "ยืนยันสองขั้นตอน (MFA)" }));
 }
 
-/** Walk the inline enrolment to the verification step. */
 async function enroll() {
   const user = userEvent.setup();
   twoFactorMock.enable.mockResolvedValue({
@@ -127,8 +121,7 @@ describe("SecurityPage enrollment", () => {
   beforeEach(resetAuthMocks);
 
   it("reports pending after enable alone — never claims enabled before first-code verification", async () => {
-    // SEC-001: enable returns URI + backup codes but the server keeps
-    // twoFactorEnabled=false until verifyTotp succeeds.
+    // The server keeps twoFactorEnabled=false until verifyTotp succeeds.
     await enroll();
 
     expect(screen.getByText("กำลังตั้งค่า")).toBeInTheDocument();
@@ -156,7 +149,6 @@ describe("SecurityPage enrollment", () => {
       "true",
     );
     expect(screen.getByText("กำลังตั้งค่า")).toBeInTheDocument();
-    // Retry stays possible without re-enrolling; no enabled/recovery UI.
     expect(
       screen.getByRole("button", { name: /ยืนยันและเปิดใช้งาน/ }),
     ).toBeInTheDocument();
@@ -183,15 +175,13 @@ describe("SecurityPage enrollment", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "เปิดใช้งานยืนยันสองขั้นตอนแล้ว",
     );
-    // The enrolment draft (secret, codes) is gone with the step UI.
     expect(screen.queryByText(/JBSW Y3DP/)).toBeNull();
     expect(screen.queryByText("code-1")).toBeNull();
     expect(screen.queryByLabelText(/รหัสยืนยัน 6 หลัก/)).toBeNull();
   });
 
   it("a failed status lookup shows a retryable error instead of enrollment controls", async () => {
-    // A pending/failed me/context lookup must not masquerade as a known
-    // "disabled" status with an active enable button.
+    // A failed me/context lookup must not masquerade as a known "disabled" status.
     fetchMeContextMock.mockRejectedValueOnce(new Error("network down"));
     const user = userEvent.setup();
     renderPage();
@@ -240,7 +230,6 @@ describe("SecurityPage recovery regeneration", () => {
     expect(twoFactorMock.generateBackupCodes).toHaveBeenCalledWith({
       password: "CurrentPassw0rd!",
     });
-    // One-time reveal: "เรียบร้อย" puts the codes away.
     await user.click(screen.getByRole("button", { name: "เรียบร้อย" }));
     expect(screen.queryByText("new-1")).toBeNull();
     expect(
@@ -275,7 +264,6 @@ describe("SecurityPage recovery regeneration", () => {
     );
     expect(password).toHaveAttribute("aria-invalid", "true");
     expect(screen.queryByText("kept-1")).toBeNull();
-    // The panel stays open for a retry with the right password.
     await user.clear(password);
     await user.type(password, "CurrentPassw0rd!");
     await user.click(

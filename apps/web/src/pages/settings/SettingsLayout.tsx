@@ -6,11 +6,6 @@ import { Skeleton } from "../../components/shell/Skeleton";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { SETTINGS_TABS } from "./settings-tabs";
 
-/**
- * Personal-settings page frame: header, tab strip, and the routed tab. The
- * settings apply to the account across organizations, so the description
- * says so explicitly (design-system: keep scope visible).
- */
 export function SettingsLayout() {
   const { me, mePending, activeOrg } = useTenant();
   const { pathname } = useLocation();
@@ -51,7 +46,6 @@ export function SettingsLayout() {
               to={tab.path}
               role="tab"
               aria-selected={active}
-              // Text flush with the page's left edge, like the reference tabs.
               className={`-mb-px inline-flex h-10 items-center gap-2 border-b-2 px-1 text-sm whitespace-nowrap ${
                 active
                   ? "border-primary font-medium text-foreground"

@@ -9,11 +9,6 @@ import { authClient, authErrorMessage } from "../../lib/auth-client";
 
 const MIN_LENGTH = 8;
 
-/**
- * Change password. Other sessions are revoked on success (better-auth
- * `revokeOtherSessions`), which the footer says up front. A rejected
- * current password is reported on that field; other failures as an alert.
- */
 export function PasswordCard() {
   const [notice, setNotice] = useState<string | null>(null);
   const [currentPasswordError, setCurrentPasswordError] = useState<

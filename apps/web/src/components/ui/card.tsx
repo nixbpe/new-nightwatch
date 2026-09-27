@@ -2,12 +2,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * NightWatch card (shadcn/ui new-york, Tailwind v4).
- * Surface fill, 4px panel radius and a hairline divider border — depth
- * comes from Canvas/Surface, never a shadow; shadows are reserved for
- * floating overlays (docs/design-system.md, Layout).
- */
+// Depth comes from Canvas/Surface, never a shadow; shadows are reserved for floating overlays.
 function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div

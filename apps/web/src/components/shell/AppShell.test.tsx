@@ -188,13 +188,11 @@ describe("AppShell", () => {
     );
     renderShell();
 
-    // Sidebar top: the active organization and the user's role in it.
     const orgSwitcher = await screen.findByRole("button", {
       name: /Org A/,
     });
     expect(orgSwitcher).toHaveTextContent("องค์กร · เจ้าของ");
 
-    // Header breadcrumb is rooted at the organization.
     const breadcrumb = screen.getByRole("navigation", {
       name: "ตำแหน่งปัจจุบัน",
     });
@@ -206,8 +204,7 @@ describe("AppShell", () => {
       "page",
     );
 
-    // Nav: top-level pages, then a labelled section, not an accordion — no
-    // expandable control. The organization leaf resolves against ORG_A.
+    // A labelled section, not an accordion: no expandable control.
     const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
     expect(within(nav).getByRole("link", { name: "ภาพรวม" })).toHaveAttribute(
       "href",
@@ -229,7 +226,6 @@ describe("AppShell", () => {
     ).toBeNull();
     expect(within(nav).queryByRole("button")).toBeNull();
 
-    // Sidebar bottom: the account block.
     expect(
       screen.getByRole("button", { name: "เมนูบัญชีผู้ใช้" }),
     ).toHaveTextContent("napat@example.com");
@@ -238,7 +234,6 @@ describe("AppShell", () => {
       screen.getByRole("link", { name: "ข้ามไปที่เนื้อหาหลัก" }),
     ).toHaveAttribute("href", "#main-content");
     expect(screen.getByText("เนื้อหาหน้า")).toBeInTheDocument();
-    // The header shows the search-all field and notifications only.
     expect(screen.getByText("ค้นหาทั้งหมด...")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "การแจ้งเตือน" }),
@@ -261,21 +256,18 @@ describe("AppShell", () => {
   });
 
   it("an organization-scoped route names its own organization even when another one is active", async () => {
-    // A bookmarked URL for Org B while Org A is the account-global active
-    // organization: the page acts on B, so the crumb must say B, and the
-    // sidebar's organization leaf (which links to A) is not current.
+    // A bookmarked URL for Org B while Org A is active: the page acts on B, so the crumb says B
+    // and the sidebar's org leaf (linking to A) is not current.
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, { ...viewerOrg, role: "owner" as const }], ORG_A),
     );
     renderShell(undefined, `/organizations/${ORG_B}/notification-settings`);
     expect(await screen.findByText("หน้าตั้งค่าองค์กร")).toBeInTheDocument();
 
-    // Until me/context resolves the crumb shows the raw id; then the name.
     const breadcrumb = screen.getByRole("navigation", {
       name: "ตำแหน่งปัจจุบัน",
     });
-    // B is not the active organization, so the crumb names it without
-    // linking to /workspace, which would open A's workspace.
+    // No /workspace link: it would open A's workspace.
     expect(await within(breadcrumb).findByText("Org B")).toBeInTheDocument();
     expect(
       within(breadcrumb).queryByRole("link", { name: "Org B" }),
@@ -305,7 +297,6 @@ describe("AppShell", () => {
 
     renderShell(<ThrowingPage />);
 
-    // Header breadcrumb (org link) and sidebar nav survive.
     expect(
       await screen.findByRole("link", { name: "Org A" }),
     ).toBeInTheDocument();
@@ -325,14 +316,11 @@ describe("AppShell", () => {
     await user.click(trigger);
 
     const menu = screen.getByRole("menu", { name: "บัญชีของฉัน" });
-    // One settings link (its tabs hold profile/security/sessions/display);
-    // it is the first enabled item, so focus lands there.
     const settings = within(menu).getByRole("menuitem", {
       name: "การตั้งค่าส่วนตัว",
     });
     expect(settings).toHaveFocus();
     expect(settings).toHaveAttribute("href", "/settings/profile");
-    // Exactly two actionable items: the settings link and sign-out.
     expect(within(menu).getAllByRole("menuitem")).toHaveLength(2);
     expect(within(menu).queryByText(/2FA/)).toBeNull();
     expect(within(menu).getByText("เจ้าของ")).toBeInTheDocument();
@@ -480,8 +468,7 @@ describe("AppShell", () => {
     renderShell(<WorkspacePage />);
     await screen.findByText("Org A · เจ้าของ");
 
-    // After this tab selects Org B, another session switches back to Org A:
-    // the next inbox request sees the scope change and /me reports Org A.
+    // Another session switches back to Org A after this tab selected B.
     fetchUnreadCountMock.mockRejectedValue(new InboxScopeChangedError());
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
@@ -525,7 +512,6 @@ describe("AppShell", () => {
     expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
       organizationId: ORG_B,
     });
-    // The switcher and breadcrumb follow the published tenant.
     expect(screen.getByRole("button", { name: /Org B/ })).toHaveTextContent(
       "องค์กร · ผู้ชม",
     );
@@ -574,8 +560,7 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    // 4 sidebar destinations (the owner sees the organization leaf) + the
-    // 4 settings tabs (palette-only entries).
+    // 4 sidebar destinations (owner sees the org leaf) + 4 palette-only settings tabs.
     expect(within(dialog).getAllByRole("option")).toHaveLength(8);
     expect(dialog).toHaveTextContent("ค้นหาใน Org A");
 
@@ -583,7 +568,6 @@ describe("AppShell", () => {
     const options = within(dialog).getAllByRole("option");
     expect(options).toHaveLength(1);
     expect(options[0]).toHaveTextContent("เซสชันและอุปกรณ์");
-    // Grouped under the leaf it belongs to.
     expect(options[0]).toHaveTextContent("การตั้งค่าส่วนตัว");
 
     await user.keyboard("{Enter}");

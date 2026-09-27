@@ -1,6 +1,6 @@
 import { authClient, authErrorMessage } from "../auth-client";
 
-/** Personal (not tenant) data, so no organizationId in the key — like me/context. */
+// Personal (not tenant) data, so no organizationId in the key.
 export const SESSIONS_QUERY_KEY = ["me", "sessions"] as const;
 
 export type SessionRow = {
@@ -13,7 +13,6 @@ export type SessionRow = {
   userAgent?: string | null;
 };
 
-/** Every session signed in to the account, straight from better-auth. */
 export async function fetchSessions(): Promise<SessionRow[]> {
   const { data, error } = await authClient.listSessions();
   if (error != null) {

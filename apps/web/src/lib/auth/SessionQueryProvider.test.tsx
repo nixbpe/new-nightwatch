@@ -29,18 +29,11 @@ vi.mock("better-auth/client/plugins", () => ({
   twoFactorClient: () => ({}),
 }));
 
-/**
- * Every committed frame, in order. A layout effect observes exactly what
- * users could see; an effect-phase client swap would commit the new
- * identity against the old cache for one frame, which a post-hoc DOM
- * assertion alone could miss.
- */
+// Records every committed frame: an effect-phase client swap would show the new identity
+// against the old cache for one frame, which a post-hoc DOM assertion could miss.
 const commitLog: string[] = [];
 
-/**
- * Stands in for the tenant context consumer (TenantProvider's /me query):
- * reads its data through the provider-supplied QueryClient only.
- */
+// Stands in for TenantProvider's /me query; reads only through the provider's QueryClient.
 function ContextProbe() {
   const query = useQuery<{ org: string }>({
     queryKey: ["me", "context"],
@@ -54,7 +47,6 @@ function ContextProbe() {
   return <div data-testid="view">{view}</div>;
 }
 
-/** Mirrors the app shell: session state changes re-render the provider. */
 function Harness({
   userId,
   pending,
@@ -81,8 +73,7 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("adopts a loader-staged client on hydration so the prefetch survives (data mode)", async () => {
-    // A loader of the initial URL prefetched into the staged client before
-    // the first render; the boundary must start from exactly that client.
+    // A loader of the initial URL prefetched into the staged client before the first render.
     resolveQueryClientForIdentity("user-a").setQueryData(["me", "context"], {
       org: "Org A",
     });
@@ -114,10 +105,7 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("never relabels a loader-staged client when hydration resolves a different identity", async () => {
-    // Loader/session race: the loader of the initial URL prefetched A's
-    // me/context into A's staged client, but the session atom resolves to
-    // user B. The adopted staged client must be discarded — never served
-    // to B, never published as B's active client.
+    // Loader/session race: the initial loader staged A's prefetch but the session resolves to B.
     const stagedClient = resolveQueryClientForIdentity("user-a");
     stagedClient.setQueryData(["me", "context"], { org: "Org A" });
     const cancelSpy = vi.spyOn(stagedClient, "cancelQueries");
@@ -134,9 +122,7 @@ describe("SessionQueryProvider identity boundaries", () => {
       expect(cancelSpy).toHaveBeenCalled();
       expect(clearSpy).toHaveBeenCalled();
     });
-    // (c) The registry never serves A's client as B's: resolving B's client
-    // yields the tree's own client holding B's payload, and A's staged slot
-    // is gone.
+    // (c) The registry never serves A's client as B's, and A's staged slot is gone.
     const activeForB = resolveQueryClientForIdentity("user-b");
     expect(activeForB).not.toBe(stagedClient);
     expect(activeForB.getQueryData(["me", "context"])).toEqual({
@@ -146,9 +132,8 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("initial hydration keeps the in-flight context query (QA-12)", async () => {
-    // Hard reload: the session resolves after the tree (and its /me query)
-    // has already mounted. Treating that first resolution as a user switch
-    // cancels/clears the fresh query and strands the page on loading.
+    // Hard reload: the session resolves after the /me query mounted; treating that as a user
+    // switch would cancel the fresh query and strand the page on loading.
     const first = Promise.withResolvers<{ org: string }>();
     transport.mockImplementationOnce(() => first.promise);
     // If hydration wrongly re-issues the query, the retry never resolves.
@@ -167,9 +152,7 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("a late response from the signed-out identity never reaches the next user", async () => {
-    // User A signs out and user B signs in before A's /me response lands.
-    // The retired identity's cache must be dead: A's late data can never
-    // surface in B's view (same query key, different identity).
+    // A's late /me response (same query key) must never surface in B's view.
     const staleA = Promise.withResolvers<{ org: string }>();
     transport.mockImplementationOnce(() => staleA.promise);
     transport.mockImplementation(() => Promise.resolve({ org: "Org B" }));
@@ -193,9 +176,8 @@ describe("SessionQueryProvider identity boundaries", () => {
   });
 
   it("a direct A→B account switch never commits a frame with A's cached data", async () => {
-    // No logged-out intermediate: the resolved identity flips A→B in one
-    // step. An effect-phase client swap would commit B's first frame
-    // against A's cache — observable only via a commit observer.
+    // A→B flips in one step with no logged-out frame; only a commit observer can catch an
+    // effect-phase swap here.
     transport.mockImplementationOnce(() => Promise.resolve({ org: "Org A" }));
     transport.mockImplementation(() => Promise.resolve({ org: "Org B" }));
 

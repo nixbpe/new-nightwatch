@@ -13,12 +13,7 @@ import {
 import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
-/**
- * Target of the reset-password email link: /reset-password?token=<token>.
- * The token is submitted with the new password and consumed atomically by
- * the server — a missing, expired, or replayed token is refused with a
- * safe error and a path to request a fresh link.
- */
+// The server consumes the token atomically and refuses missing, expired or replayed tokens.
 export function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

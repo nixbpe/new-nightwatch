@@ -2,11 +2,6 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * Column for every routed page inside the AppShell: one content width for
- * forms and detail views (960px, left-aligned like the reference renders)
- * and one vertical rhythm between header and sections.
- */
 export function Page({
   className,
   children,
@@ -21,14 +16,7 @@ export function Page({
   );
 }
 
-/**
- * The reference page header: a small scope line (organization, account),
- * the page title, an optional one-line description and the page's actions
- * on the right (docs/design-system.md, Layout: clear title, scope, one
- * dominant next action). Title 28/36 like the reference renders, 8px
- * between the three lines, 32px to the first section; no tracking on the
- * title, it is Thai text.
- */
+// No letter tracking on the title: it is Thai text.
 export function PageHeader({
   eyebrow,
   title,

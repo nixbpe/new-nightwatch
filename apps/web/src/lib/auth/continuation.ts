@@ -1,8 +1,4 @@
-/**
- * Same-origin, session-scoped carry-over for interrupted auth journeys:
- * the invitation being accepted survives email verification and login, and
- * the intended destination survives the two-factor round trip.
- */
+// Session-scoped carry-over: the invitation survives verification and login, the destination survives two-factor.
 
 const INVITATION_KEY = "nightwatch.pendingInvitation";
 const RETURN_TO_KEY = "nightwatch.auth.returnTo";
@@ -31,11 +27,8 @@ export function clearInvitation(): void {
   sessionStorage.removeItem(INVITATION_KEY);
 }
 
-/**
- * Canonicalizes a same-origin absolute path. The fixed base makes URL
- * parsing independent of runtime globals and exposes protocol-relative or
- * slash/backslash inputs whose canonical origin would escape the app.
- */
+// The fixed base keeps parsing independent of globals and exposes protocol-relative or backslash
+// inputs whose origin would escape the app.
 export function normalizeReturnTo(path: string | null): string {
   if (path === null || !path.startsWith("/")) {
     return DEFAULT_RETURN_TO;
@@ -77,11 +70,7 @@ export function clearReturnTo(): void {
   sessionStorage.removeItem(RETURN_TO_KEY);
 }
 
-/**
- * Where a signed-in arrival at an anonymous-only gate continues: a
- * remembered pending invitation wins over the return path. Pure read —
- * the caller decides when to consume (clearReturnTo) after commit.
- */
+// A remembered invitation wins over the return path. Pure read: the caller consumes after commit.
 export function readPostAuthDestination(): string {
   return readInvitation() === null ? readReturnTo() : "/onboarding";
 }

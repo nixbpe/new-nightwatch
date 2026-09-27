@@ -3,11 +3,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * NightWatch label (shadcn/ui new-york, Tailwind v4) on Radix Label.
- * Renders a real <label>, preserving implicit input association for
- * getByLabelText and assistive tech.
- */
+// Renders a real <label>, preserving implicit input association for assistive tech.
 function Label({
   className,
   ...props

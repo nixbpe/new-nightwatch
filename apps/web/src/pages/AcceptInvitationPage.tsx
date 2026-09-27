@@ -246,12 +246,10 @@ function SignupGate({
             name: value.name.trim(),
             email,
             password: value.password,
-            // The server forwards this invitationId into the emailed
-            // verification link so a new-tab verification can resume it.
+            // The server forwards invitationId into the verification link so a new-tab verification can resume it.
             callbackURL: `/onboarding?invitationId=${invitationId}`,
           },
-          // Second argument is the fetch-options object itself: the header
-          // must ride the real request for the server-side invitation gate.
+          // Fetch options: the header must ride the real request for the server-side invitation gate.
           { headers: { "X-Invitation-ID": invitationId } },
         );
         if (signUpError != null) {

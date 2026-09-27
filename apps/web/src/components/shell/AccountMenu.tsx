@@ -14,12 +14,6 @@ import { initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
 
-/**
- * Pinned to the bottom of the sidebar, per the reference: avatar, name and
- * email, opening the account menu upward. One link into the personal
- * settings (whose tabs hold profile, security, sessions and display), the
- * theme choice, and sign-out.
- */
 export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
   const { me, mePending, activeOrg } = useTenant();
@@ -152,7 +146,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** People stay circular (design system: avatars are the one circular mark). */
+/** Avatars are the one circular mark. */
 function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
   return (
     <span

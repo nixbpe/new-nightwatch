@@ -10,8 +10,7 @@ if (!container) {
   throw new Error("Missing #root element");
 }
 
-// Module scope: the router outlives every render, so auth-driven remounts
-// inside SessionQueryProvider can never reset navigation state.
+// Module scope so auth-driven remounts inside SessionQueryProvider never reset navigation state.
 const router = createAppRouter();
 
 createRoot(container).render(

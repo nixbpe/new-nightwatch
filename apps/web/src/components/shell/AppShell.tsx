@@ -22,14 +22,7 @@ const FOCUSABLE_DRAWER_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-/**
- * Authenticated app shell, per the reference: a full-height sidebar
- * (expanded at `lg`+, an icon rail below that, a drawer below `sm`) beside
- * a column of header + scrollable main. The shared ErrorBoundary is scoped
- * to the routed content so a crashing page leaves the chrome usable. The
- * header toggle overrides the breakpoint default until the breakpoint
- * itself changes, so resizing never leaves a stale override behind.
- */
+// The header toggle overrides the breakpoint default only until the breakpoint changes, so no stale override remains.
 export function AppShell() {
   const isLarge = useMediaQuery("(min-width: 1024px)", true);
   const isDesktop = useMediaQuery("(min-width: 640px)", false);

@@ -6,13 +6,7 @@ import { initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
 
-/**
- * Top of the sidebar, per the reference: the active organization's mark,
- * name and the user's role in it, opening a switcher over every
- * membership. This is the shell's "logo slot" — organization identity
- * when there is one, the product mark when the user has no membership
- * yet (or the context failed to load; the page surfaces that error).
- */
+// Falls back to the product mark with no membership or a failed context load; the page surfaces the error.
 export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   const { me, mePending, activeOrg, switchOrg, orgSwitchPending } = useTenant();
   const popover = usePopover();
@@ -145,7 +139,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** Organization mark: system object, so the 4px corner rather than a circle. */
+/** A system object, so the 4px corner rather than a circle. */
 function OrgMark({ name }: { name: string }) {
   return (
     <span

@@ -5,27 +5,14 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Label } from "./ui/label";
 
-/**
- * NightWatch primitives, composed from shadcn/ui base components
- * (src/components/ui/*, generated per components.json). Pages keep
- * importing from this barrel; NODE-6+ may use the shadcn pieces directly.
- */
 export { Input } from "./ui/input";
 
-/**
- * Shared class for non-Input controls (e.g. the workspace role <select>)
- * that take the same field styling; text inputs use <Input> instead.
- */
+// For non-Input controls (e.g. <select>) that share the field styling.
 export const textInputClass =
   "h-10 w-full rounded-md border border-control-border bg-surface px-3 text-base font-normal text-foreground " +
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
-/**
- * Centered single-card page used by every auth form except the login
- * split layout: the product mark above the card keeps the brand present
- * on recovery, verification and invitation pages (docs/design-system.md).
- */
 export function AuthPageShell({
   title,
   subtitle,
@@ -130,9 +117,7 @@ export function Alert({
   tone: "error" | "success" | "info";
   children: ReactNode;
 }) {
-  // One construction for every tone: a soft wash of the tone colour so the
-  // state reads at a glance, while text stays the only fully-saturated use
-  // of that colour (docs/design-system.md). Info is neutral by design.
+  // Text stays the only fully-saturated use of the tone colour; info is neutral by design.
   const className =
     tone === "error"
       ? "border-danger/40 bg-danger/8 text-danger"

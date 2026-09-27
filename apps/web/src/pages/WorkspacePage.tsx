@@ -38,9 +38,7 @@ export function WorkspacePage() {
   }
 
   if (me === undefined) {
-    // The context request failed before any data arrived: a server error
-    // or network failure is never "zero memberships". Offer an explicit
-    // retry instead of spinning forever.
+    // A failed request is never "zero memberships"; offer an explicit retry.
     return (
       <Page>
         <section className={CARD}>
@@ -73,8 +71,7 @@ export function WorkspacePage() {
       <PageHeader
         eyebrow={`${activeOrg.name} · ${ROLE_LABELS[activeOrg.role] ?? activeOrg.role}`}
         title="ภาพรวม"
-        // Names are not unique across organizations (only the slug is), so
-        // the slug stays visible as the identifier of the active tenant.
+        // Names are not unique across organizations, so the slug stays visible.
         description={
           <>
             slug <span className="font-mono">{activeOrg.slug}</span>

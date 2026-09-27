@@ -1,12 +1,10 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 // Coverage is always measured; thresholds gate only when COVERAGE_GATE=1.
-// The gate turns on at the first domain feature (see scripts/quality).
 const gate = process.env.COVERAGE_GATE === "1";
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // Same "@/*" -> src alias as vite.config.ts and tsconfig paths.
     alias: { "@": new URL("./src", import.meta.url).pathname },
   },
   test: {

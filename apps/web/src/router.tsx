@@ -41,18 +41,8 @@ import { TwoFactorPage } from "./pages/TwoFactorPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 
-/**
- * App shell for every route. The router lives OUTSIDE the per-identity
- * query boundary, so auth transitions never invalidate navigation or
- * pending invitation flows — the boundary remounts only the routed tree.
- *
- * The revalidation wiring closes the loop the component guards used to
- * close: an in-page auth transition (sign-in on /login, sign-out on a
- * protected page) changes the resolved identity without any navigation,
- * so the boundary asks the router to re-run the active loaders — the
- * anonymous gate then continues a fresh sign-in, the verified gate bounces
- * a dropped session.
- */
+// Lives outside the per-identity query boundary so auth transitions keep navigation state.
+// An in-page sign-in/sign-out changes identity without navigating, so loaders must be re-run.
 export function RootLayout() {
   const revalidator = useRevalidator();
   return (
@@ -66,11 +56,8 @@ export function RootLayout() {
   );
 }
 
-// Deliberately standalone (not nested under AppShell): a bad URL is
-// reachable by anonymous and signed-in visitors alike, and the shell's
-// header shows session state that would be misleading for the former.
-// The one link resolves correctly either way — /workspace redirects an
-// anonymous visitor on to /login via its own loader.
+// Standalone, not under AppShell: anonymous visitors reach bad URLs too, and the shell's
+// header would show misleading session state.
 function NotFoundPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
@@ -88,21 +75,12 @@ function NotFoundPage() {
   );
 }
 
-/**
- * Data-mode route table. Auth gating lives in loaders (lib/auth/loaders.ts)
- * with redirect rules identical to the old component guards; pages still
- * consume their data through useQuery hooks backed by the loader-prefetched
- * per-identity cache.
- */
 export const routes: RouteObject[] = [
   {
     element: <RootLayout />,
     hydrateFallbackElement: <div role="status">กำลังเปิดหน้า…</div>,
     children: [
       { path: "/", loader: rootLoader },
-      // Every route with no sidebar/header shares AuthLayout (Step 5 — see
-      // components/shell/AuthLayout.tsx for how "layout switching" works
-      // here). Each keeps its own existing loader gate unchanged.
       {
         element: <AuthLayout />,
         children: [
@@ -125,29 +103,19 @@ export const routes: RouteObject[] = [
             path: "/accept-invitation/:invitationId",
             element: <AcceptInvitationPage />,
           },
-          // The two-factor plugin owns arrivals here via a full navigation;
-          // the page applies its own challenge rules.
+          // The two-factor plugin arrives via a full navigation; the page applies its own challenge rules.
           { path: "/two-factor", element: <TwoFactorPage /> },
-          // Resend hub for the not-yet-verified. Signup issues no session
-          // before verification, so this page must stay reachable for
-          // anonymous arrivals: it offers explicit, safe email entry itself
-          // (see VerifyEmailPage).
+          // No loader gate: signup issues no session before verification, so anonymous arrivals must reach it.
           {
             path: "/verify-email",
             loader: verifyEmailLoader,
             element: <VerifyEmailPage />,
           },
-          // Onboarding handles anonymous, unverified and token-carrying
-          // arrivals itself, so it stays outside the loader gates.
+          // Handles anonymous, unverified and token-carrying arrivals itself, so no loader gate.
           { path: "/onboarding", element: <OnboardingPage /> },
         ],
       },
-      // Authenticated app pages share the AppShell layout (header/sidebar/
-      // main/footer — see components/shell/AppShell.tsx); each still runs
-      // its own loader gate exactly as before nesting.
-      // TenantProvider wraps the shell, not just the workspace page: the
-      // sidebar's org switcher, account menu and the header breadcrumb all
-      // read the active organization.
+      // TenantProvider wraps the shell: the org switcher, account menu and breadcrumb read the active org.
       {
         element: (
           <TenantProvider>
@@ -170,9 +138,7 @@ export const routes: RouteObject[] = [
             loader: notificationSettingsLoader,
             element: <OrganizationNotificationSettingsPage />,
           },
-          // Personal settings: one layout loader gates the session and
-          // prefetches me/context for every tab; the index lands on the
-          // first tab. Unknown children fall through to the "*" route.
+          // The layout loader gates the session and prefetches me/context for every tab.
           {
             path: "/settings",
             loader: settingsLoader,

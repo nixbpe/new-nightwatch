@@ -91,8 +91,7 @@ describe("TwoFactorPage challenge", () => {
   });
 
   it("a pending challenge renders the form and cannot show the workspace", () => {
-    // Server issues no session while the challenge is pending: the page must
-    // stay on the challenge instead of bouncing to /workspace.
+    // No session exists while the challenge is pending; the page must not bounce to /workspace.
     sessionState.data = null;
     renderPage();
 

@@ -21,17 +21,8 @@ import { Label } from "../components/ui/label";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { normalizeReturnTo, rememberReturnTo } from "../lib/auth/continuation";
 
-/**
- * Split layout picked from the login redesign (see docs/ref/designs/): a
- * fixed dark brand panel states the product's value in the user's own words
- * from docs/product-direction.md, independent of the app's light/dark theme;
- * the form panel follows the current theme via the shared tokens every other
- * page already uses. Below the `lg` breakpoint the brand panel collapses to
- * the compact row so the page reflows instead of losing content.
- */
 export function LoginPage() {
-  // The protected-route loaders bounce here as /login?from=<path+query>;
-  // same-origin paths only, anything else falls back to the workspace.
+  // Loaders bounce here as /login?from=<path+query>; only same-origin paths are honored.
   const [searchParams] = useSearchParams();
   const fromParam = searchParams.get("from");
   const from = normalizeReturnTo(fromParam);
@@ -160,12 +151,7 @@ export function LoginPage() {
                 }}
               >
                 {(field) => (
-                  // Not <Field>: the show/hide button must be a sibling of
-                  // the label, not nested inside it — a <label> wraps both
-                  // implicitly, and getByLabelText("รหัสผ่าน") would then
-                  // match the button too. Explicit htmlFor/id keeps the same
-                  // accessible association (and the same visual output) with
-                  // only the <input> associated to the label.
+                  // Not <Field>: a wrapping <label> would also label the show/hide button.
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="login-password" className="mb-2 block">
                       รหัสผ่าน
@@ -197,10 +183,7 @@ export function LoginPage() {
                         className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-foreground-secondary hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
                       >
                         {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                        {/* Visible/accessible name via inner text, not
-                            aria-label: an aria-label containing "รหัสผ่าน"
-                            gets matched by getByLabelText too, colliding
-                            with the password field's own label. */}
+                        {/* Inner text, not aria-label: an aria-label containing "รหัสผ่าน" collides with the field's label. */}
                         <span className="sr-only">
                           {showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
                         </span>
@@ -258,11 +241,7 @@ const BULLETS = [
   },
 ] as const;
 
-/**
- * Fixed dark brand panel — deliberately independent of the app's light/dark
- * theme tokens (a fixed identity panel, not a themed surface); hidden below
- * `lg`, where the compact top row in LoginPage takes over.
- */
+// Fixed dark panel, deliberately independent of the light/dark theme tokens.
 function BrandPanel() {
   return (
     <aside className="hidden flex-col justify-between overflow-hidden bg-[#05060a] p-14 text-[#f3f4f6] lg:flex">

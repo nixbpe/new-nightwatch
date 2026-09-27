@@ -1,11 +1,5 @@
 import type { ReactNode } from "react";
 
-/**
- * Reusable no-data primitive matching docs/design-system.md's Feedback
- * rule ("distinguish loading, no data, no filter matches…"). Used by the
- * shell's notifications panel; any page's genuine no-data state can reach
- * for it instead of inventing its own.
- */
 export function EmptyState({
   icon,
   title,

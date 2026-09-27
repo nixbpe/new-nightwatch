@@ -1,11 +1,5 @@
 import { ShieldIcon } from "./icons";
 
-/**
- * The product mark: the shield on a solid primary square with the 4px
- * system corner (docs/design-system.md), optionally followed by the
- * wordmark. One definition for the login panel, the auth card pages, the
- * 404 page and the sidebar's no-membership fallback.
- */
 export function BrandMark({
   size = 32,
   withName = false,

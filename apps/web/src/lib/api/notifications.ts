@@ -28,12 +28,8 @@ export const organizationNotificationSettingsQueryKey = (
 
 export type NotificationPage = NotificationListResponse;
 
-/**
- * Organization selection is account-global, so another session can switch it
- * after this client loaded. A response resolved for a different scope is
- * rejected (never cached under this client's key); the tenant provider then
- * refreshes the context so the view follows the server's scope.
- */
+// Org selection is account-global, so another session may switch it; a response for a different
+// scope is rejected (never cached) and TenantProvider refreshes the context.
 export class InboxScopeChangedError extends Error {
   constructor() {
     super("inbox scope changed");

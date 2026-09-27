@@ -49,8 +49,7 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("a submitted email is answered with the generic confirmation", async () => {
-    // Enumeration-safe: the same confirmation whatever the account state,
-    // and the form is replaced by it.
+    // Enumeration-safe: the same confirmation whatever the account state.
     requestPasswordResetMock.mockResolvedValue({ data: {}, error: null });
     const user = userEvent.setup();
     renderPage();
@@ -72,8 +71,7 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("a failed request keeps the form with a retryable error", async () => {
-    // Transport/server failure must not swallow the entered email nor
-    // strand the user: the error shows and a retry can succeed.
+    // A failure must not swallow the entered email; a retry can succeed.
     requestPasswordResetMock.mockResolvedValueOnce({
       data: null,
       error: { message: "ส่งอีเมลไม่สำเร็จ" },

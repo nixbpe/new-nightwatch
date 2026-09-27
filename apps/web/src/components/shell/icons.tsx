@@ -1,7 +1,3 @@
-/**
- * Inline stroke-based icons for the whole web app (shell, auth pages,
- * settings): one 24px grid, one stroke width, no icon library dependency.
- */
 function iconProps(size: number) {
   return {
     width: size,
@@ -282,7 +278,6 @@ export function LockIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-/** Registry keyed by the string name used in nav-config.ts's NavItem.icon. */
 export const NAV_ICONS = {
   grid: GridIcon,
   inbox: InboxIcon,

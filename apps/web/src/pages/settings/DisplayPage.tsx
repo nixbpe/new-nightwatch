@@ -26,9 +26,7 @@ const WEEK_STARTS: { value: Preferences["weekStart"]; label: string }[] = [
 type ZoneOption = { id: string; label: string; offsetMinutes: number };
 
 function zoneOffsetMinutes(timeZone: string, at: Date): number {
-  // Compare at whole-minute precision: the formatted parts carry no
-  // seconds, so a raw timestamp in the second half of a minute would round
-  // the offset down (GMT+6:59 for Bangkok).
+  // Whole-minute precision: the parts carry no seconds, so a raw timestamp would round the offset down (GMT+6:59).
   const minute = new Date(Math.floor(at.getTime() / 60_000) * 60_000);
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -59,7 +57,6 @@ function offsetLabel(minutes: number): string {
   return `GMT${sign}${String(hours)}${rest === 0 ? "" : `:${String(rest).padStart(2, "0")}`}`;
 }
 
-/** IANA zones sorted by current offset, labelled "City (GMT+7)". */
 function zoneOptions(extra: string): ZoneOption[] {
   const now = new Date();
   const ids = new Set<string>(Intl.supportedValuesOf("timeZone"));
@@ -75,7 +72,7 @@ function zoneOptions(extra: string): ZoneOption[] {
         label: `${city} (${offsetLabel(offsetMinutes)})`,
       });
     } catch {
-      // Unknown to this runtime: leave it out rather than mislabel it.
+      // Unknown to this runtime: omit rather than mislabel.
     }
   }
   return options.sort(
@@ -92,11 +89,6 @@ function samePreferences(a: Preferences, b: Preferences): boolean {
   );
 }
 
-/**
- * Display tab: theme (shared with the account menu through useTheme) and
- * per-device language/time preferences (lib/preferences.ts). Everything
- * here is stored in this browser only, and the copy says so.
- */
 export function DisplayPage() {
   const { theme, setTheme } = useTheme();
   const { preferences, save } = usePreferences();

@@ -13,15 +13,6 @@ import {
 } from "./nav-config";
 import { OrgSwitcher } from "./OrgSwitcher";
 
-/**
- * Left menubar, per the reference: org switcher on top, the config-driven
- * menu (nav-config.ts) with labelled sections in the middle, the account
- * menu pinned to the bottom. Organization-scoped leaves resolve their href
- * against the active organization and hide for roles they do not admit; a
- * section with nothing visible disappears with them. `collapsed` is the
- * icon rail (default below `lg`, or by the header toggle); the same
- * component fills the mobile drawer, where `onNavigate` closes it.
- */
 export function Sidebar({
   collapsed,
   onNavigate,
@@ -58,8 +49,7 @@ export function Sidebar({
               leaf={leaf}
               href={href}
               collapsed={collapsed}
-              // Matched on the resolved href, so an organization leaf is
-              // current only for the organization it links to.
+              // Matched on the resolved href, so an org leaf is current only for the org it links to.
               active={isLeafActive({ path: href }, pathname)}
               onNavigate={onNavigate}
             />

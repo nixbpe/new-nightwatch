@@ -7,11 +7,7 @@ import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import { MfaCard } from "./MfaCard";
 import { PasswordCard } from "./PasswordCard";
 
-/**
- * Security tab of /settings. The layout's loader already gates the
- * session and prefetches me/context; the server's twoFactorEnabled flag
- * is the only source of the card's enabled state.
- */
+// The server's twoFactorEnabled flag is the only source of the card's enabled state.
 export function SecurityPage() {
   const meQuery = useQuery({
     queryKey: ME_CONTEXT_QUERY_KEY,
@@ -54,9 +50,7 @@ export function SecurityPage() {
     );
   }
 
-  // Refetching the shared me/context query is what flips the card (and
-  // the shell's account block, which reads the same cache) to the server's
-  // current answer.
+  // Refetching the shared me/context query also updates the shell's account block, which reads the same cache.
   const refreshStatus = async (): Promise<boolean | undefined> => {
     const refreshed = await meQuery.refetch();
     return refreshed.data?.user.twoFactorEnabled;

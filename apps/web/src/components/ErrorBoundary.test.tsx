@@ -35,7 +35,6 @@ describe("ErrorBoundary", () => {
     );
     expect(screen.getByText("เกิดข้อผิดพลาดที่ไม่คาดคิด")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
-    // The root boundary may be all that is on the page: it is the landmark.
     expect(screen.getByRole("main")).toContainElement(
       screen.getByRole("alert"),
     );

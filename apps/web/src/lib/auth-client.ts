@@ -11,19 +11,8 @@ import {
 
 import { env } from "./env";
 
-/**
- * Custom organization roles, mirroring apps/api/src/auth/permissions.ts.
- * Passing them here types native organization calls (inviteMember role,
- * accepted memberships) as owner/admin/viewer/auditor instead of the
- * plugin defaults (which know nothing about "viewer"/"auditor").
- * The access constants are plain data — no server-only imports.
- *
- * The `ac` option is deliberately omitted: better-auth's organization
- * plugin already falls back to `defaultAc`, and client-side
- * checkRolePermission only reads the roles map (hasPermissionFn ignores
- * options.ac). Passing it explicitly only re-triggers a generic-variance
- * mismatch (TS2322) against the widened `AccessControl` parameter.
- */
+// Mirrors apps/api/src/auth/permissions.ts so organization calls are typed with viewer/auditor.
+// `ac` is omitted: the plugin already falls back to `defaultAc`, and passing it triggers a TS2322 variance mismatch.
 const organizationRoles = {
   owner: ownerAc,
   admin: adminAc,
@@ -31,11 +20,7 @@ const organizationRoles = {
   auditor: defaultAc.newRole({}),
 } as const;
 
-/**
- * Better Auth browser client. `basePath` defaults to `/api/auth` (mutual pin
- * better-auth@1.6.23 with AuthServer); `baseURL` is the API origin, or the
- * page origin when the Vite dev proxy serves `/api` same-origin.
- */
+// `baseURL` falls back to the page origin when the Vite dev proxy serves `/api` same-origin.
 export const authClient = createAuthClient({
   baseURL: env.VITE_API_BASE_URL || window.location.origin,
   plugins: [
@@ -44,9 +29,7 @@ export const authClient = createAuthClient({
     }),
     twoFactorClient({
       onTwoFactorRedirect: () => {
-        // Full navigation keeps the challenge reachable even when the login
-        // form unmounted before the server answered; the intended return path
-        // is carried in sessionStorage (see lib/auth/continuation.ts).
+        // Full navigation keeps the challenge reachable even if the login form unmounted first.
         window.location.assign("/two-factor");
       },
     }),
@@ -55,12 +38,10 @@ export const authClient = createAuthClient({
 
 export type Session = typeof authClient.$Infer.Session;
 
-/** Case-insensitive email comparison for invitation/account matching. */
 export function sameEmail(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-/** Display-safe message from a Better Auth client error. */
 export function authErrorMessage(error: unknown, fallback: string): string {
   if (
     typeof error === "object" &&

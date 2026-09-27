@@ -18,18 +18,8 @@ import { readInvitation } from "../lib/auth/continuation";
 
 const RESEND_COOLDOWN_MS = 60_000;
 
-/**
- * Resend hub for not-yet-verified accounts. Signup issues no session before
- * the email is verified (and unverified sign-in is refused), so a freshly
- * signed-up invitation holder arrives here anonymous. Signed-in users resend
- * to their session email; anonymous visitors get an explicit, safe email
- * entry form — prefilled from the remembered pending invitation when one
- * exists — so the resend affordance is reachable on the real flow.
- *
- * The sent confirmation stays generic (no account enumeration); any pending
- * invitation continuation is carried into the verification callback target
- * and consumed by /onboarding.
- */
+// Signup issues no session before verification, so arrivals may be anonymous and get an email form.
+// The sent confirmation stays generic to avoid account enumeration.
 export function VerifyEmailPage() {
   const navigate = useNavigate();
   const { data, isPending, refetch } = authClient.useSession();
@@ -39,8 +29,7 @@ export function VerifyEmailPage() {
 
   const signedIn = data !== null;
 
-  // The email-verification callback lands here with a possibly stale session
-  // snapshot; force one refresh so a just-verified user is not stuck.
+  // The verification callback lands here with a possibly stale session; refresh once so the user isn't stuck.
   useEffect(() => {
     if (data !== null && !data.user.emailVerified) {
       void refetch();

@@ -83,9 +83,7 @@ describe("VerifyEmailPage", () => {
   });
 
   it("anonymous signup resends to the invited email", async () => {
-    // No session exists before verification (requireEmailVerification), so
-    // the resend hub must serve anonymous arrivals from the remembered
-    // pending invitation.
+    // No session exists before verification, so the hub serves anonymous arrivals from the remembered invitation.
     rememberInvitation("inv-123");
     fetchInvitationMock.mockResolvedValue({
       invitation: {
@@ -106,7 +104,7 @@ describe("VerifyEmailPage", () => {
       screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
     );
 
-    // Generic confirmation only — no account-existence signal.
+    // Generic confirmation only: no account-existence signal.
     expect(
       await screen.findByText(/ส่งอีเมลยืนยันใหม่แล้ว/),
     ).toBeInTheDocument();
@@ -125,7 +123,6 @@ describe("VerifyEmailPage", () => {
     expect(
       await screen.findByText(/เราส่งลิงก์ยืนยันไปที่ member@example\.com/),
     ).toBeInTheDocument();
-    // No email form for a signed-in user: the session email is authoritative.
     expect(screen.queryByLabelText("อีเมลที่ใช้สมัครบัญชี")).toBeNull();
     await userEvent.click(
       screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
@@ -152,8 +149,7 @@ describe("VerifyEmailPage", () => {
       screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
     );
 
-    // Generic confirmation; the pending invitation stays in storage for the
-    // post-verification continuation.
+    // Generic confirmation; the invitation stays stored for the post-verification continuation.
     expect(
       await screen.findByText(/ส่งอีเมลยืนยันใหม่แล้ว/),
     ).toBeInTheDocument();
@@ -261,7 +257,6 @@ describe("VerifyEmailPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "ส่งอีเมลยืนยันไม่สำเร็จ",
     );
-    // Retry-safe: the resend affordance is still there, no redirect away.
     expect(
       screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
     ).toBeInTheDocument();

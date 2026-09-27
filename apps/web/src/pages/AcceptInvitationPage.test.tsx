@@ -25,8 +25,7 @@ const { sessionStore, signUpEmailMock, signInEmailMock, acceptInvitationMock } =
       isPending: false,
     };
     return {
-      // Reactive stand-in for the better-auth session atom: mutations notify
-      // subscribers so hooks re-read, exactly like the real client.
+      // Reactive stand-in for the better-auth session atom: mutations notify subscribers.
       sessionStore: {
         get: () => snapshot,
         set(data: TestSessionData) {
@@ -52,8 +51,7 @@ const { sessionStore, signUpEmailMock, signInEmailMock, acceptInvitationMock } =
   });
 
 vi.mock("better-auth/react", async () => {
-  // Dynamic import: vi.mock factories are hoisted above static imports, so
-  // react can only be reached lazily inside the factory.
+  // vi.mock factories are hoisted above static imports, so react must be imported lazily.
   const { useSyncExternalStore } = await import("react");
   return {
     createAuthClient: () => ({
@@ -99,11 +97,7 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-/**
- * Data-mode harness: the real anonymous-gate loader and the real root
- * layout (per-identity query boundary + revalidation on identity change),
- * so a session resolving mid-sign-in continues exactly as the app does.
- */
+// Real anonymous-gate loader and root layout, so a session resolving mid-sign-in continues as in the app.
 function renderPage(path = "/accept-invitation/inv-123") {
   const router = createMemoryRouter(
     [
@@ -166,8 +160,7 @@ describe("AcceptInvitationPage", () => {
       screen.getByRole("button", { name: "สร้างบัญชีและรอการยืนยันอีเมล" }),
     );
 
-    // Observable continuation: successful signup routes to the resend hub
-    // with the invitation remembered for post-verification acceptance.
+    // Signup routes to the resend hub with the invitation remembered for post-verification acceptance.
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/verify-email",
     );
@@ -189,8 +182,6 @@ describe("AcceptInvitationPage", () => {
     await user.click(
       await screen.findByRole("link", { name: "เข้าสู่ระบบเพื่อรับคำเชิญ" }),
     );
-    // Heading text follows the login page's split-layout redesign —
-    // "NightWatch" now lives in its brand panel/compact row, not this heading.
     await screen.findByRole("heading", { name: "เข้าสู่ระบบ" });
 
     await user.type(screen.getByLabelText("อีเมล"), "new@example.com");
@@ -198,8 +189,7 @@ describe("AcceptInvitationPage", () => {
     await user.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
     page.resolveSession();
 
-    // No manual link recovery: the remounted anonymous guard must resume
-    // the invitation automatically while the original sign-in still awaits.
+    // The remounted anonymous guard must resume the invitation while the original sign-in still awaits.
     expect(
       await screen.findByRole("heading", { name: "ยอมรับคำเชิญ" }),
     ).toBeInTheDocument();
@@ -224,7 +214,6 @@ describe("AcceptInvitationPage", () => {
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/workspace",
     );
-    // Acceptance consumed the pending invitation; nothing lingers.
     expect(readInvitation()).toBeNull();
   });
 
@@ -242,7 +231,6 @@ describe("AcceptInvitationPage", () => {
     expect(
       await screen.findByText("บัญชีนี้ไม่ตรงกับคำเชิญ"),
     ).toBeInTheDocument();
-    // Denied: the acceptance form never renders for the wrong account.
     expect(screen.queryByRole("button", { name: "เข้าร่วมองค์กร" })).toBeNull();
   });
 
@@ -257,7 +245,6 @@ describe("AcceptInvitationPage", () => {
         "ไม่พบคำเชิญนี้ ตรวจสอบลิงก์จากอีเมลอีกครั้งหรือติดต่อผู้เชิญ",
       ),
     ).toBeInTheDocument();
-    // Safe state offers a way back to login, with no signup form exposed.
     expect(
       screen.getByRole("link", { name: "ไปที่หน้าเข้าสู่ระบบ" }),
     ).toBeInTheDocument();
