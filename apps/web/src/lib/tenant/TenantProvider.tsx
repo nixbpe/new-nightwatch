@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -21,7 +22,7 @@ import {
   createContextPublicationClaim,
   getContextPublicationSnapshot,
   hasContextPublicationClaim,
-  publishTenantScope,
+  publishContextPublication,
   subscribeToContextPublication,
 } from "../queryClient";
 
@@ -58,6 +59,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [membershipContextUnavailable, setMembershipContextUnavailable] =
     useState(false);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
+  const latestSwitchClaim = useRef<bigint | null>(null);
   const publication = useSyncExternalStore(
     useCallback(
       (listener) => subscribeToContextPublication(queryClient, listener),
@@ -179,23 +181,33 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     ) {
       return false;
     }
+    const claim = createContextPublicationClaim();
+    if (!claimContextPublication(queryClient, claim)) {
+      return false;
+    }
+    latestSwitchClaim.current = claim;
     setOrgSwitchPending(true);
     try {
       const updated = await updateActiveOrganization({ organizationId });
-      const claim = publishTenantScope(queryClient);
+      if (!hasContextPublicationClaim(queryClient, claim)) {
+        return false;
+      }
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
       if (!hasContextPublicationClaim(queryClient, claim)) {
         return false;
       }
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
+      publishContextPublication(queryClient, claim);
       setMembershipContextUnavailable(false);
       setSelectedOrgId(organizationId);
       return true;
     } catch {
       return false;
     } finally {
-      setOrgSwitchPending(false);
+      if (latestSwitchClaim.current === claim) {
+        setOrgSwitchPending(false);
+      }
     }
   };
 

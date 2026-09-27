@@ -85,6 +85,7 @@ function Probe() {
     activeOrg,
     serverActiveOrgId,
     switchOrg,
+    orgSwitchPending,
     mePending,
     meError,
     refreshMembershipContext,
@@ -93,6 +94,7 @@ function Probe() {
   return (
     <div>
       <span data-testid="pending">{String(mePending)}</span>
+      <span data-testid="switch-pending">{String(orgSwitchPending)}</span>
       <span data-testid="error">{meError?.message ?? "none"}</span>
       <span data-testid="active">{activeOrg?.id ?? "none"}</span>
       <span data-testid="server-active">
@@ -100,6 +102,9 @@ function Probe() {
       </span>
       <button type="button" onClick={() => void switchOrg("org-a")}>
         switch-a
+      </button>
+      <button type="button" onClick={() => void switchOrg("org-b")}>
+        switch-b
       </button>
       <button type="button" onClick={() => void switchOrg("org-c")}>
         switch-unknown
@@ -229,19 +234,25 @@ describe("TenantProvider", () => {
     ).toBeUndefined();
   });
 
-  it("clears an unavailable membership latch when a pending PATCH confirms a switch", async () => {
-    const confirmedB: MeContextResponse = {
+  it("keeps a newer revoked context when an earlier switch response resolves last", async () => {
+    const staleSwitchContext: MeContextResponse = {
       ...me,
       lastActiveTenantId: "org-a",
+    };
+    const revokedContext: MeContextResponse = {
+      ...me,
+      organizations: [],
+      lastActiveTenantId: null,
     };
     const pendingSwitch = Promise.withResolvers<MeContextResponse>();
     fetchMeContextMock
       .mockResolvedValueOnce(me)
-      .mockRejectedValueOnce(new Error("context unavailable"));
+      .mockResolvedValueOnce(revokedContext);
     updateActiveOrganizationMock.mockImplementationOnce(
       () => pendingSwitch.promise,
     );
-    renderProvider();
+    const queryClient = new QueryClient();
+    renderProvider(queryClient);
     const user = userEvent.setup();
     await screen.findByText("org-b");
 
@@ -255,25 +266,83 @@ describe("TenantProvider", () => {
       screen.getByRole("button", { name: "refresh membership" }),
     );
     await waitFor(() => {
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+        revokedContext,
+      );
       expect(screen.getByTestId("active")).toHaveTextContent("none");
     });
+    const publicationAfterRefresh = getContextPublicationSnapshot(queryClient);
 
-    pendingSwitch.resolve(confirmedB);
+    pendingSwitch.resolve(staleSwitchContext);
+    await pendingSwitch.promise;
 
     await waitFor(() => {
-      expect(screen.getByTestId("active")).toHaveTextContent("org-a");
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+        revokedContext,
+      );
     });
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
     expect(screen.getByTestId("server-active")).toHaveTextContent(
-      "server:org-a",
+      "server:none",
+    );
+    expect(getContextPublicationSnapshot(queryClient)).toBe(
+      publicationAfterRefresh,
     );
   });
 
-  it("keeps the previous tenant when the PATCH fails", async () => {
+  it("keeps the latest overlapping switch when the earlier response resolves last", async () => {
+    const initialContext: MeContextResponse = {
+      ...me,
+      organizations: [
+        ...me.organizations,
+        { id: "org-c", name: "Org C", slug: "org-c", role: "viewer" },
+      ],
+      lastActiveTenantId: "org-c",
+    };
+    const switchA = Promise.withResolvers<MeContextResponse>();
+    const switchB = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock.mockResolvedValue(initialContext);
+    updateActiveOrganizationMock
+      .mockImplementationOnce(() => switchA.promise)
+      .mockImplementationOnce(() => switchB.promise);
+    const queryClient = new QueryClient();
+    renderProvider(queryClient);
+    const user = userEvent.setup();
+    await screen.findByText("org-c");
+
+    await user.click(screen.getByRole("button", { name: "switch-a" }));
+    await user.click(screen.getByRole("button", { name: "switch-b" }));
+    await waitFor(() => {
+      expect(updateActiveOrganizationMock).toHaveBeenNthCalledWith(1, {
+        organizationId: "org-a",
+      });
+      expect(updateActiveOrganizationMock).toHaveBeenNthCalledWith(2, {
+        organizationId: "org-b",
+      });
+    });
+
+    switchB.resolve({ ...initialContext, lastActiveTenantId: "org-b" });
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b");
+      expect(screen.getByTestId("switch-pending")).toHaveTextContent("false");
+    });
+    switchA.resolve({ ...initialContext, lastActiveTenantId: "org-a" });
+    await switchA.promise;
+
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual({
+      ...initialContext,
+      lastActiveTenantId: "org-b",
+    });
+    expect(screen.getByTestId("active")).toHaveTextContent("org-b");
+  });
+
+  it("keeps the previous tenant and cached context when the PATCH fails", async () => {
     fetchMeContextMock.mockResolvedValue(me);
     updateActiveOrganizationMock.mockRejectedValue(
       new ApiError("FORBIDDEN", "denied", 403),
     );
-    renderProvider();
+    const queryClient = new QueryClient();
+    renderProvider(queryClient);
     await screen.findByText("org-b");
 
     await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
@@ -281,6 +350,7 @@ describe("TenantProvider", () => {
     await waitFor(() => {
       expect(updateActiveOrganizationMock).toHaveBeenCalled();
     });
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(me);
     expect(screen.getByTestId("active")).toHaveTextContent("org-b");
   });
 
