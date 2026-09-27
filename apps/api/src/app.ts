@@ -38,14 +38,61 @@ export type AppDeps = {
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
-const organizationPathBase = "/api/organizations";
+const apiPathPrefix = "/api/";
+const organizationNamespace = "organizations";
+const organizationPathBase = `${apiPathPrefix}${organizationNamespace}`;
 const membersSegment = "members";
 const notificationSettingsSegment = "notification-settings";
 
+function matchesEncodedCharacter(
+  path: string,
+  offset: number,
+  expectedCharacter: number,
+): boolean {
+  if (
+    path.charCodeAt(offset) !== 37 ||
+    offset + 2 >= path.length ||
+    path.charCodeAt(offset + 1) !== 48 + (expectedCharacter >> 4)
+  ) {
+    return false;
+  }
+
+  const expectedLowNibble = expectedCharacter & 15;
+  const encodedLowNibble = path.charCodeAt(offset + 2);
+  if (expectedLowNibble < 10) {
+    return encodedLowNibble === 48 + expectedLowNibble;
+  }
+
+  return (
+    encodedLowNibble === 65 + expectedLowNibble - 10 ||
+    encodedLowNibble === 97 + expectedLowNibble - 10
+  );
+}
+
+function organizationNamespaceEnd(path: string): number | undefined {
+  if (!path.startsWith(apiPathPrefix)) return undefined;
+
+  let offset = apiPathPrefix.length;
+  for (let index = 0; index < organizationNamespace.length; index += 1) {
+    const expectedCharacter = organizationNamespace.charCodeAt(index);
+    if (path.charCodeAt(offset) === expectedCharacter) {
+      offset += 1;
+      continue;
+    }
+    if (!matchesEncodedCharacter(path, offset, expectedCharacter)) {
+      return undefined;
+    }
+    offset += 3;
+  }
+
+  return offset;
+}
+
 function logSafeOrganizationPath(path: string): string {
-  if (!path.startsWith(organizationPathBase)) return path;
-  if (path === organizationPathBase) return path;
-  if (path[organizationPathBase.length] !== "/") {
+  const namespaceEnd = organizationNamespaceEnd(path);
+  if (namespaceEnd === undefined) return path;
+  if (path.length === namespaceEnd) return organizationPathBase;
+  if (path[namespaceEnd] !== "/") {
     return `${organizationPathBase}/:ambiguous`;
   }
 
@@ -56,7 +103,7 @@ function logSafeOrganizationPath(path: string): string {
     | "member-route"
     | "other" = "organization";
   const safeSegments = path
-    .slice(organizationPathBase.length)
+    .slice(namespaceEnd)
     .split("/")
     .map((segment) => {
       if (segment === "") return segment;
