@@ -90,6 +90,8 @@ describe("OrganizationNotificationSettingsPage", () => {
     expect(
       await screen.findByText("Org A · ตั้งค่าองค์กร"),
     ).toBeInTheDocument();
+    // The slug is the unique identifier; names may repeat.
+    expect(screen.getByText("org-a")).toBeInTheDocument();
   });
 
   it("sends the loaded version with a changed owner setting", async () => {

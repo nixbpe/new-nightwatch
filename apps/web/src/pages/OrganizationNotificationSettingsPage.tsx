@@ -62,19 +62,30 @@ function OrganizationNotificationSettingsForOrganization({
   });
   // The page acts on the route's organization, which a bookmarked URL may
   // make differ from the active one, so the scope line names it.
+  // Names may repeat across organizations; the slug is the unique one, so
+  // it stays visible next to the name.
   const { me } = useTenant();
-  const organizationName = me?.organizations.find(
+  const organization = me?.organizations.find(
     (org) => org.id === organizationId,
-  )?.name;
+  );
   const header = (
     <PageHeader
       eyebrow={
-        organizationName === undefined
+        organization === undefined
           ? "ตั้งค่าองค์กร"
-          : `${organizationName} · ตั้งค่าองค์กร`
+          : `${organization.name} · ตั้งค่าองค์กร`
       }
       title="ตั้งค่าการแจ้งเตือน"
-      description="ใช้กับสมาชิกทุกคนขององค์กรนี้"
+      description={
+        organization === undefined ? (
+          "ใช้กับสมาชิกทุกคนขององค์กรนี้"
+        ) : (
+          <>
+            slug <span className="font-mono">{organization.slug}</span> ·
+            ใช้กับสมาชิกทุกคนขององค์กรนี้
+          </>
+        )
+      }
     />
   );
   if (settings.isPending)
