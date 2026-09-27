@@ -303,6 +303,18 @@ describe("organization member HTTP mutations", () => {
       ]),
     );
     expect(listBody.page).toEqual({ limit: 50, offset: 0, total: 3 });
+    const beyondSafeInteger = await ownerClient(
+      "GET",
+      `/api/organizations/${organizationId}/members?limit=50&offset=9007199254740991`,
+    );
+    expect(beyondSafeInteger.status).toBe(200);
+    expect(
+      organizationMemberListResponseSchema.parse(beyondSafeInteger.json),
+    ).toMatchObject({
+      members: [],
+      page: { limit: 50, offset: Number.MAX_SAFE_INTEGER, total: 3 },
+    });
+
     for (const clientForDeniedList of [targetClient, leaverClient]) {
       const deniedList = await clientForDeniedList(
         "GET",
@@ -328,6 +340,24 @@ describe("organization member HTTP mutations", () => {
       const invalid = await ownerClient(
         "GET",
         `/api/organizations/${organizationId}/members?limit=${encodeURIComponent(value)}&offset=0`,
+      );
+      expect(invalid.status).toBe(400);
+      expect(invalid.json).toEqual({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+        },
+      });
+    }
+    for (const offset of [
+      "9007199254740992",
+      "9223372036854775808",
+      "1e2",
+      "1.5",
+    ]) {
+      const invalid = await ownerClient(
+        "GET",
+        `/api/organizations/${organizationId}/members?limit=50&offset=${encodeURIComponent(offset)}`,
       );
       expect(invalid.status).toBe(400);
       expect(invalid.json).toEqual({
@@ -383,7 +413,7 @@ describe("organization member HTTP mutations", () => {
     const completionLogs = logEntries.filter(
       (entry) => entry.msg === "request completed",
     );
-    expect(completionLogs).toHaveLength(13);
+    expect(completionLogs).toHaveLength(18);
     for (const completion of completionLogs) {
       expect(completion.path).toBe(
         "/api/organizations/:organizationId/members",

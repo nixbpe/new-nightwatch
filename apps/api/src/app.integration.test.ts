@@ -404,6 +404,38 @@ describe("auth boundary wiring", () => {
     expect(serializedBody).not.toContain(submittedOrganizationId);
   });
 
+  it.each(["9007199254740992", "9223372036854775808", "1e2", "1.5"])(
+    "rejects invalid member offset %j before opening a database connection",
+    async (offset) => {
+      const connect = vi.fn(() => {
+        throw new Error("member list database access must not occur");
+      });
+      const query = vi.fn(() => {
+        throw new Error("member list database access must not occur");
+      });
+      const database = {
+        db: undefined as unknown as Database["db"],
+        sql: { connect, query } as unknown as Database["sql"],
+        close: () => Promise.resolve(),
+      } satisfies Database;
+      const app = makeApp({ auth: stubAuth, database });
+
+      const res = await app.request(
+        `/api/organizations/11111111-1111-4111-8111-111111111111/members?offset=${offset}`,
+      );
+
+      expect(res.status).toBe(400);
+      expect(errorResponseSchema.parse(await res.json())).toEqual({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+        },
+      });
+      expect(connect).not.toHaveBeenCalled();
+      expect(query).not.toHaveBeenCalled();
+    },
+  );
+
   it("routes /api/auth/* through the composed auth handler", async () => {
     const app = makeApp({
       auth: stubAuth,
