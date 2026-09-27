@@ -125,7 +125,7 @@ describe("error contract", () => {
 });
 
 describe("request completion logging", () => {
-  it("normalizes member directory paths, suffixes, and malformed separators", async () => {
+  it("normalizes organization paths, exact member segments, and malformed separators", async () => {
     const organizationId = "11111111-1111-4111-8111-111111111111";
     const memberId = "22222222-2222-4222-8222-222222222222";
     const logLines: string[] = [];
@@ -175,12 +175,24 @@ describe("request completion logging", () => {
           "/api/organizations/:organizationId////members/:memberId/role",
       },
       {
+        input: `/api/organizations/${organizationId}/notification-settings`,
+        expected: "/api/organizations/:organizationId/notification-settings",
+      },
+      {
+        input: `/api/organizations/${organizationId}//notification-settings`,
+        expected: "/api/organizations/:organizationId//notification-settings",
+      },
+      {
         input: `/api/organizations/${organizationId}/memberships`,
-        expected: `/api/organizations/${organizationId}/memberships`,
+        expected: "/api/organizations/:organizationId/memberships",
       },
       {
         input: `/api/organizations/${organizationId}/members-extra`,
-        expected: `/api/organizations/${organizationId}/members-extra`,
+        expected: "/api/organizations/:organizationId/members-extra",
+      },
+      {
+        input: `/api/organizations/${organizationId}/unknown//suffix`,
+        expected: "/api/organizations/:organizationId/unknown//suffix",
       },
     ];
 
@@ -199,9 +211,7 @@ describe("request completion logging", () => {
     expect(completions.map((entry) => entry.path)).toEqual(
       paths.map(({ expected }) => expected),
     );
-    for (const completion of completions.filter((completion) =>
-      String(completion.path).includes(":organizationId"),
-    )) {
+    for (const completion of completions) {
       expect(JSON.stringify(completion)).not.toContain(organizationId);
       expect(JSON.stringify(completion)).not.toContain(memberId);
     }

@@ -38,25 +38,48 @@ export type AppDeps = {
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
-const organizationMemberPath =
-  /^(\/api\/organizations\/)[^/]+(\/+members)(?=\/|$)(\/[^/]*)?(.*)$/;
+const organizationPathPrefix = "/api/organizations/";
+const membersSegment = "members";
 
-function logSafeMemberPath(
-  _match: string,
-  prefix: string,
-  members: string,
-  member: string | undefined,
-  suffix: string,
-): string {
-  if (member === undefined || member === "/") {
-    return `${prefix}:organizationId${members}${member ?? ""}${suffix}`;
+function logSafeOrganizationPath(path: string): string {
+  if (!path.startsWith(organizationPathPrefix)) return path;
+
+  const afterPrefix = path.slice(organizationPathPrefix.length);
+  const organizationEnd = afterPrefix.indexOf("/");
+  if (afterPrefix.length === 0 || organizationEnd === 0) return path;
+
+  const suffix =
+    organizationEnd === -1 ? "" : afterPrefix.slice(organizationEnd);
+  const safePrefix = `${organizationPathPrefix}:organizationId`;
+  let membersStart = 0;
+  while (suffix[membersStart] === "/") membersStart += 1;
+
+  const membersEnd = membersStart + membersSegment.length;
+  if (
+    membersStart === 0 ||
+    !suffix.startsWith(membersSegment, membersStart) ||
+    (suffix[membersEnd] !== undefined && suffix[membersEnd] !== "/")
+  ) {
+    return `${safePrefix}${suffix}`;
   }
-  return `${prefix}:organizationId${members}/:memberId${suffix}`;
+
+  const memberStart = membersEnd + 1;
+  if (
+    suffix[membersEnd] !== "/" ||
+    suffix[memberStart] === undefined ||
+    suffix[memberStart] === "/"
+  ) {
+    return `${safePrefix}${suffix}`;
+  }
+
+  const memberEnd = suffix.indexOf("/", memberStart);
+  return `${safePrefix}${suffix.slice(0, memberStart)}:memberId${
+    memberEnd === -1 ? "" : suffix.slice(memberEnd)
+  }`;
 }
 
 function logSafePath(path: string): string {
-  return path
-    .replace(organizationMemberPath, logSafeMemberPath)
+  return logSafeOrganizationPath(path)
     .replace(/^(\/api\/onboarding\/invitations\/)[^/]+$/, "$1:invitationId")
     .replace(/^(\/api\/auth\/reset-password\/)[^/]+$/, "$1:token");
 }
