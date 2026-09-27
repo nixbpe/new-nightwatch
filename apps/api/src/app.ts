@@ -44,29 +44,40 @@ const organizationPathBase = `${apiPathPrefix}${organizationNamespace}`;
 const membersSegment = "members";
 const notificationSettingsSegment = "notification-settings";
 
-function matchesEncodedCharacter(
+function encodedCharacterLength(
   path: string,
   offset: number,
   expectedCharacter: number,
-): boolean {
-  if (
-    path.charCodeAt(offset) !== 37 ||
-    offset + 2 >= path.length ||
-    path.charCodeAt(offset + 1) !== 48 + (expectedCharacter >> 4)
+): number | undefined {
+  if (path.charCodeAt(offset) !== 37) return undefined;
+
+  let encodedOffset = offset + 1;
+  while (
+    path.charCodeAt(encodedOffset) === 50 &&
+    path.charCodeAt(encodedOffset + 1) === 53
   ) {
-    return false;
+    encodedOffset += 2;
+  }
+
+  if (
+    encodedOffset + 1 >= path.length ||
+    path.charCodeAt(encodedOffset) !== 48 + (expectedCharacter >> 4)
+  ) {
+    return undefined;
   }
 
   const expectedLowNibble = expectedCharacter & 15;
-  const encodedLowNibble = path.charCodeAt(offset + 2);
+  const encodedLowNibble = path.charCodeAt(encodedOffset + 1);
   if (expectedLowNibble < 10) {
-    return encodedLowNibble === 48 + expectedLowNibble;
+    return encodedLowNibble === 48 + expectedLowNibble
+      ? encodedOffset + 2 - offset
+      : undefined;
   }
 
-  return (
+  const matchesLowNibble =
     encodedLowNibble === 65 + expectedLowNibble - 10 ||
-    encodedLowNibble === 97 + expectedLowNibble - 10
-  );
+    encodedLowNibble === 97 + expectedLowNibble - 10;
+  return matchesLowNibble ? encodedOffset + 2 - offset : undefined;
 }
 
 function organizationNamespaceEnd(path: string): number | undefined {
@@ -79,10 +90,13 @@ function organizationNamespaceEnd(path: string): number | undefined {
       offset += 1;
       continue;
     }
-    if (!matchesEncodedCharacter(path, offset, expectedCharacter)) {
-      return undefined;
-    }
-    offset += 3;
+    const encodedLength = encodedCharacterLength(
+      path,
+      offset,
+      expectedCharacter,
+    );
+    if (encodedLength === undefined) return undefined;
+    offset += encodedLength;
   }
 
   return offset;

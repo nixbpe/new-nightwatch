@@ -258,6 +258,22 @@ describe("request completion logging", () => {
         expected: "/api/organizations/:organizationId/members/:memberId",
       },
       {
+        input: `/api/organizatio%256Es/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizatio%25256Es/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizatio%252525256Es/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/%256Frg%252561nization%252573/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
         input: `/api/org%6bnizations/${organizationId}/members/${memberId}`,
         expected: `/api/orgknizations/${organizationId}/members/${memberId}`,
       },
