@@ -2,12 +2,14 @@ import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";
+import { fetchOrganizationMembers } from "../lib/api/members";
 import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
 import { TenantProvider } from "../lib/tenant/TenantProvider";
+import { OrganizationMembersPage } from "./OrganizationMembersPage";
 import { WorkspacePage } from "./WorkspacePage";
 
 const { sessionState, signOutMock, inviteMemberMock } = vi.hoisted(() => ({
@@ -40,9 +42,14 @@ vi.mock("../lib/api/me", async (importOriginal) => {
     updateActiveOrganization: vi.fn(),
   };
 });
+vi.mock("../lib/api/members", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationMembers: vi.fn(),
+}));
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
+const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -99,6 +106,29 @@ function renderPage() {
   );
 }
 
+function renderDeniedMembershipPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[`/organizations/${ORG_A}/members`]}>
+        <TenantProvider>
+          <Link to="/workspace">ไปภาพรวม</Link>
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+            <Route path="/workspace" element={<WorkspacePage />} />
+          </Routes>
+        </TenantProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return queryClient;
+}
+
 describe("WorkspacePage context states", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
@@ -106,6 +136,7 @@ describe("WorkspacePage context states", () => {
     inviteMemberMock.mockReset();
     signOutMock.mockReset();
     sessionState.data = null;
+    fetchOrganizationMembersMock.mockReset();
   });
 
   it("shows loading only while the context is actually pending, then renders the organization", async () => {
@@ -163,6 +194,59 @@ describe("WorkspacePage context states", () => {
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
   });
+
+  it.each([
+    {
+      name: "B",
+      retryContext: meContext([viewerOrg], ORG_B),
+      expected: "Org B · ผู้ชม",
+    },
+    {
+      name: "no-access",
+      retryContext: meContext([]),
+      expected: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
+    },
+  ])(
+    "does not republish denied A before retry confirms $name",
+    async ({ retryContext, expected }) => {
+      fetchMeContextMock
+        .mockResolvedValueOnce(meContext([ownerOrg], ORG_A))
+        .mockRejectedValueOnce(new Error("context unavailable"))
+        .mockResolvedValueOnce(retryContext);
+      fetchOrganizationMembersMock.mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      );
+      const user = userEvent.setup();
+      const queryClient = renderDeniedMembershipPage();
+
+      expect(
+        await screen.findByRole("button", { name: "ลองอีกครั้ง" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Org A · org-a")).toBeNull();
+      expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).toBeNull();
+      expect(
+        queryClient.getQueryData(["tenant", "members", ORG_A]),
+      ).toBeUndefined();
+      expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
+
+      await user.click(screen.getByRole("link", { name: "ไปภาพรวม" }));
+      expect(
+        await screen.findByRole("heading", {
+          name: "โหลดข้อมูลองค์กรไม่สำเร็จ",
+        }),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
+
+      expect(await screen.findByText(expected)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", {
+          name: "โหลดข้อมูลองค์กรไม่สำเร็จ",
+        }),
+      ).toBeNull();
+      expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
+    },
+  );
 });
 
 describe("WorkspacePage organization views", () => {

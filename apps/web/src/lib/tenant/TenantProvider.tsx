@@ -146,9 +146,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const { refetch: refetchMe } = meQuery;
   const retryMe = async (): Promise<void> => {
-    await refetchMe();
+    await refreshMembershipContext();
   };
 
   const value: TenantContextValue = {
