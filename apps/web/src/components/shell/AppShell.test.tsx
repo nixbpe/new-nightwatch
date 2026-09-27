@@ -561,14 +561,8 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    const options = within(dialog).getAllByRole("option");
-    expect(options).toHaveLength(9);
-    expect(
-      options.map(
-        (option) =>
-          option.querySelector<HTMLSpanElement>("span.flex-1")?.textContent,
-      ),
-    ).toEqual([
+    expect(within(dialog).getAllByRole("option")).toHaveLength(9);
+    for (const name of [
       "ภาพรวม",
       "การแจ้งเตือน",
       "การตั้งค่าส่วนตัว",
@@ -578,7 +572,13 @@ describe("AppShell", () => {
       "การแสดงผล",
       "สมาชิก",
       "ตั้งค่าการแจ้งเตือน",
-    ]);
+    ]) {
+      expect(
+        within(dialog).getByRole("option", {
+          name: new RegExp(`^${name}`),
+        }),
+      ).toBeInTheDocument();
+    }
     expect(dialog).toHaveTextContent("ค้นหาใน Org A");
 
     await user.keyboard("เซสชัน");

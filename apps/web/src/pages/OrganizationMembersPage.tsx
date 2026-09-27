@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
@@ -40,9 +40,6 @@ function OrganizationMembersPageForOrganization({
     "idle" | "refreshing" | "failed"
   >("idle");
   const [offset, setOffset] = useState(0);
-  const pendingPaginationFocus = useRef<"previous" | "next" | null>(null);
-  const previousPageButtonRef = useRef<HTMLButtonElement>(null);
-  const nextPageButtonRef = useRef<HTMLButtonElement>(null);
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
   );
@@ -79,30 +76,6 @@ function OrganizationMembersPageForOrganization({
     }
     void refreshAfterMembershipDenied();
   }, [list.error, membershipRefreshState, refreshAfterMembershipDenied]);
-  useEffect(() => {
-    const pendingFocus = pendingPaginationFocus.current;
-    if (!list.isSuccess || pendingFocus === null) return;
-
-    const target =
-      pendingFocus === "previous"
-        ? previousPageButtonRef.current
-        : nextPageButtonRef.current;
-    const source =
-      pendingFocus === "previous"
-        ? nextPageButtonRef.current
-        : previousPageButtonRef.current;
-    if (target === null) return;
-    if (
-      document.activeElement !== document.body &&
-      document.activeElement !== source
-    ) {
-      pendingPaginationFocus.current = null;
-      return;
-    }
-
-    target.focus();
-    pendingPaginationFocus.current = null;
-  }, [list.isSuccess, offset]);
   if (membershipRefreshState !== "idle") {
     return (
       <Page>
@@ -196,21 +169,13 @@ function OrganizationMembersPageForOrganization({
         <div className="flex gap-2">
           <Button
             disabled={!hasPrevious}
-            onClick={() => {
-              pendingPaginationFocus.current = "next";
-              setOffset((value) => Math.max(0, value - LIMIT));
-            }}
-            ref={previousPageButtonRef}
+            onClick={() => setOffset((value) => Math.max(0, value - LIMIT))}
           >
             ก่อนหน้า
           </Button>
           <Button
             disabled={!hasNext}
-            onClick={() => {
-              pendingPaginationFocus.current = "previous";
-              setOffset((value) => value + LIMIT);
-            }}
-            ref={nextPageButtonRef}
+            onClick={() => setOffset((value) => value + LIMIT)}
           >
             ถัดไป
           </Button>
