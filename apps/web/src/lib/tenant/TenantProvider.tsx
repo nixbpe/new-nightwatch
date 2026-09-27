@@ -75,14 +75,17 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    const livePublication = getContextPublicationSnapshot(queryClient);
     if (
       meQuery.data !== undefined &&
       (!membershipContextUnavailable ||
-        publication.claim === publication.publishedClaim)
+        (publication.publishedClaim !== null &&
+          livePublication.claim === publication.publishedClaim &&
+          livePublication.publishedClaim === publication.publishedClaim))
     ) {
       setMembershipContextUnavailable(false);
     }
-  }, [meQuery.data, membershipContextUnavailable, publication]);
+  }, [meQuery.data, membershipContextUnavailable, publication, queryClient]);
 
   useEffect(() => {
     const refreshOnScopeChange = (error: unknown) => {
