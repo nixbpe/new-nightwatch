@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
-import { memberListQueryKey } from "../api/members";
+import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import {
   fetchNotifications,
   fetchOrganizationNotificationSettings,
@@ -79,6 +79,10 @@ vi.mock("../api/notifications", async (importOriginal) => {
     fetchOrganizationNotificationSettings: vi.fn(),
   };
 });
+vi.mock("../api/members", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return { ...original, fetchOrganizationMembers: vi.fn() };
+});
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const fetchInvitationMock = vi.mocked(fetchInvitation);
@@ -86,6 +90,7 @@ const fetchNotificationsMock = vi.mocked(fetchNotifications);
 const fetchOrganizationNotificationSettingsMock = vi.mocked(
   fetchOrganizationNotificationSettings,
 );
+const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 
 const VERIFIED: SessionUser = {
   id: "user-1",
@@ -385,6 +390,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     sessionState.data = null;
     resetQueryClientRegistry();
     fetchMeContextMock.mockReset();
+    fetchOrganizationMembersMock.mockReset();
   });
 
   it("retires cached membership and directory data when the fresh decision fails", async () => {
@@ -403,6 +409,94 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
         `http://localhost/organizations/${organizationId}/members`,
       ),
     } as never);
+
+    expect(result).toBeNull();
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toBeUndefined();
+  });
+
+  it("keeps the fresh no-A decision when an older context query resolves stale A", async () => {
+    sessionState.data = { user: VERIFIED };
+    const staleA: MeContextResponse = {
+      ...cachedOwnerContext,
+      lastActiveTenantId: organizationId,
+    };
+    const freshB: MeContextResponse = {
+      ...meContext,
+      organizations: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          name: "Bravo",
+          slug: "bravo",
+          role: "viewer",
+        },
+      ],
+      lastActiveTenantId: "22222222-2222-4222-8222-222222222222",
+    };
+    const oldRequest = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockImplementationOnce(() => oldRequest.promise)
+      .mockResolvedValueOnce(freshB);
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+    queryClient.setQueryData(
+      memberListQueryKey(organizationId, 50, 0),
+      cachedMembers,
+    );
+
+    const oldQuery = queryClient
+      .query({
+        queryKey: ME_CONTEXT_QUERY_KEY,
+        queryFn: fetchMeContext,
+      })
+      .catch(() => undefined);
+
+    const result = await organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+
+    oldRequest.resolve(staleA);
+    await oldQuery;
+
+    expect(result).toBeNull();
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(freshB);
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toBeUndefined();
+    expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
+  });
+
+  it("retires membership data when a fresh decision fails during an older context query", async () => {
+    sessionState.data = { user: VERIFIED };
+    const oldRequest = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockImplementationOnce(() => oldRequest.promise)
+      .mockRejectedValueOnce(new Error("context unavailable"));
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+    queryClient.setQueryData(
+      memberListQueryKey(organizationId, 50, 0),
+      cachedMembers,
+    );
+    const oldQuery = queryClient
+      .query({
+        queryKey: ME_CONTEXT_QUERY_KEY,
+        queryFn: fetchMeContext,
+      })
+      .catch(() => undefined);
+
+    const result = await organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+
+    oldRequest.resolve(cachedOwnerContext);
+    await oldQuery;
 
     expect(result).toBeNull();
     expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();

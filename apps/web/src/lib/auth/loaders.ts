@@ -87,6 +87,26 @@ async function prefetchMeContext(
     .catch(() => undefined);
 }
 
+function hasSameMembershipScope(
+  previous: MeContextResponse | undefined,
+  fresh: MeContextResponse,
+): boolean {
+  if (
+    previous === undefined ||
+    previous.lastActiveTenantId !== fresh.lastActiveTenantId ||
+    previous.organizations.length !== fresh.organizations.length
+  ) {
+    return false;
+  }
+  return previous.organizations.every((previousOrganization) =>
+    fresh.organizations.some(
+      (freshOrganization) =>
+        freshOrganization.id === previousOrganization.id &&
+        freshOrganization.role === previousOrganization.role,
+    ),
+  );
+}
+
 export async function workspaceLoader({
   request,
 }: LoaderFunctionArgs): Promise<null | Response> {
@@ -155,14 +175,27 @@ export async function organizationMembersLoader({
   const organizationId = params.organizationId;
   if (organizationId === undefined) return null;
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
+  const previousContext =
+    queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
+  // A prior context query may have started before this membership gate. Cancel
+  // and remove precisely that query before the direct request can publish.
+  await queryClient.cancelQueries({
+    queryKey: ME_CONTEXT_QUERY_KEY,
+    exact: true,
+  });
   // A bookmarked tenant route needs a fresh server membership decision, not a
   // static context cache that could predate a revocation or role change.
   const context = await fetchMeContext().catch(() => undefined);
-  if (context !== undefined) {
-    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
-  } else {
+  if (context === undefined) {
     queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
+    await queryClient.cancelQueries({ queryKey: ["tenant"] });
     queryClient.removeQueries({ queryKey: ["tenant"] });
+  } else {
+    if (!hasSameMembershipScope(previousContext, context)) {
+      await queryClient.cancelQueries({ queryKey: ["tenant"] });
+      queryClient.removeQueries({ queryKey: ["tenant"] });
+    }
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
   }
   const membership = context?.organizations.find(
     (organization) => organization.id === organizationId,
