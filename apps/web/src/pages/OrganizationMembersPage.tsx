@@ -195,6 +195,9 @@ function OrganizationMembersPageForOrganization({
           aria-label="กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"
           className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
         >
+          <p className="text-sm text-foreground-secondary">
+            กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก
+          </p>
           <Skeleton className="h-4 w-72 max-w-full" />
           <Skeleton className="h-64 w-full" />
         </div>

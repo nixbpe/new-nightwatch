@@ -586,6 +586,7 @@ describe("OrganizationMembersPage", () => {
         name: "กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก",
       }),
     ).toBeInTheDocument();
+    expect(screen.getByText("กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก")).toBeVisible();
     expect(
       screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
     ).not.toBeInTheDocument();
