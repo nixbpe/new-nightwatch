@@ -38,9 +38,7 @@ export type AppDeps = {
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
-const apiPathPrefix = "/api/";
-const organizationNamespace = "organizations";
-const organizationPathBase = `${apiPathPrefix}${organizationNamespace}`;
+const organizationPathBase = "/api/organizations";
 const membersSegment = "members";
 const notificationSettingsSegment = "notification-settings";
 
@@ -80,12 +78,26 @@ function encodedCharacterLength(
   return matchesLowNibble ? encodedOffset + 2 - offset : undefined;
 }
 
-function organizationNamespaceEnd(path: string): number | undefined {
-  if (!path.startsWith(apiPathPrefix)) return undefined;
-
-  let offset = apiPathPrefix.length;
-  for (let index = 0; index < organizationNamespace.length; index += 1) {
-    const expectedCharacter = organizationNamespace.charCodeAt(index);
+function organizationPathEnd(path: string): number | undefined {
+  let offset = 0;
+  for (let index = 0; index < organizationPathBase.length; index += 1) {
+    const expectedCharacter = organizationPathBase.charCodeAt(index);
+    // Hono preserves the encoded leading slash after its request-path separator.
+    if (
+      index === 0 &&
+      path.charCodeAt(offset) === 47 &&
+      path.charCodeAt(offset + 1) === 37
+    ) {
+      const encodedLength = encodedCharacterLength(
+        path,
+        offset + 1,
+        expectedCharacter,
+      );
+      if (encodedLength !== undefined) {
+        offset += encodedLength + 1;
+        continue;
+      }
+    }
     if (path.charCodeAt(offset) === expectedCharacter) {
       offset += 1;
       continue;
@@ -103,7 +115,7 @@ function organizationNamespaceEnd(path: string): number | undefined {
 }
 
 function logSafeOrganizationPath(path: string): string {
-  const namespaceEnd = organizationNamespaceEnd(path);
+  const namespaceEnd = organizationPathEnd(path);
   if (namespaceEnd === undefined) return path;
   if (path.length === namespaceEnd) return organizationPathBase;
   if (path[namespaceEnd] !== "/") {

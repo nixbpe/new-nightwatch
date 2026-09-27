@@ -274,6 +274,34 @@ describe("request completion logging", () => {
         expected: "/api/organizations/:organizationId/members/:memberId",
       },
       {
+        input: `/%61pi/organizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api%2Forganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `%2Fapi%2Forganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/%2561pi%252Forganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/%2561p%69%252Forganiz%2561tions/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `%252Fapi%252Forganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api%2Gorganizations/${organizationId}/members/${memberId}`,
+        expected: `/api%2Gorganizations/${organizationId}/members/${memberId}`,
+      },
+      {
         input: `/api/org%6bnizations/${organizationId}/members/${memberId}`,
         expected: `/api/orgknizations/${organizationId}/members/${memberId}`,
       },
