@@ -11,6 +11,7 @@ import {
   createLogger,
   type AuthEnv,
   type Env,
+  type Logger,
 } from "@nightwatch/shared";
 import { describe, expect, it, vi } from "vitest";
 
@@ -30,7 +31,11 @@ const authEnv: AuthEnv = {
   SMTP_FROM: "NightWatch Test <no-reply@nightwatch.test>",
 };
 
-function makeApp(options?: { auth?: Auth; database?: Database }) {
+function makeApp(options?: {
+  auth?: Auth;
+  database?: Database;
+  logger?: Logger;
+}) {
   const app = createApp({
     env,
     authEnv,
@@ -116,6 +121,53 @@ describe("error contract", () => {
     expect(errorResponseSchema.parse(await res.json()).error.code).toBe(
       "NOT_FOUND",
     );
+  });
+});
+
+describe("request completion logging", () => {
+  it("normalizes exact member directory and mutation paths only", async () => {
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const memberId = "22222222-2222-4222-8222-222222222222";
+    const logLines: string[] = [];
+    const app = makeApp({
+      logger: createLogger(
+        { level: "info", name: "request-completion-test" },
+        { write: (line: string) => void logLines.push(line) },
+      ),
+    });
+    const paths = [
+      {
+        input: `/api/organizations/${organizationId}/members`,
+        expected: "/api/organizations/:organizationId/members",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/${memberId}/role`,
+        expected: "/api/organizations/:organizationId/members/:memberId/role",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/${memberId}/role/extra`,
+        expected: `/api/organizations/${organizationId}/members/${memberId}/role/extra`,
+      },
+    ];
+
+    for (const { input } of paths) {
+      await app.request(input);
+    }
+
+    const completions = logLines
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.msg === "request completed");
+    expect(completions.map((entry) => entry.path)).toEqual(
+      paths.map(({ expected }) => expected),
+    );
+    for (const completion of completions.slice(0, 3)) {
+      expect(JSON.stringify(completion)).not.toContain(organizationId);
+      expect(JSON.stringify(completion)).not.toContain(memberId);
+    }
   });
 });
 

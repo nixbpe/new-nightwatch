@@ -38,12 +38,23 @@ export type AppDeps = {
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
+const organizationMemberPath =
+  /^(\/api\/organizations\/)[^/]+(\/members)(\/[^/]+)?(\/role)?$/;
+
+function logSafeMemberPath(
+  _match: string,
+  prefix: string,
+  members: string,
+  member: string | undefined,
+  role: string | undefined,
+): string {
+  if (member === undefined) return `${prefix}:organizationId${members}`;
+  return `${prefix}:organizationId${members}/:memberId${role ?? ""}`;
+}
+
 function logSafePath(path: string): string {
   return path
-    .replace(
-      /^(\/api\/organizations\/)[^/]+(\/members)(?:\/[^/]+)?$/,
-      "$1:organizationId$2",
-    )
+    .replace(organizationMemberPath, logSafeMemberPath)
     .replace(/^(\/api\/onboarding\/invitations\/)[^/]+$/, "$1:invitationId")
     .replace(/^(\/api\/auth\/reset-password\/)[^/]+$/, "$1:token");
 }
