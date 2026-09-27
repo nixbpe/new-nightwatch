@@ -37,9 +37,136 @@ export type AppDeps = {
   database?: Database;
 };
 
-// Invitation IDs and reset tokens are bearer secrets; never log them.
+// Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
+const organizationPathBase = "/api/organizations";
+const membersSegment = "members";
+const notificationSettingsSegment = "notification-settings";
+
+function encodedCharacterLength(
+  path: string,
+  offset: number,
+  expectedCharacter: number,
+): number | undefined {
+  if (path.charCodeAt(offset) !== 37) return undefined;
+
+  let encodedOffset = offset + 1;
+  while (
+    path.charCodeAt(encodedOffset) === 50 &&
+    path.charCodeAt(encodedOffset + 1) === 53
+  ) {
+    encodedOffset += 2;
+  }
+
+  if (
+    encodedOffset + 1 >= path.length ||
+    path.charCodeAt(encodedOffset) !== 48 + (expectedCharacter >> 4)
+  ) {
+    return undefined;
+  }
+
+  const expectedLowNibble = expectedCharacter & 15;
+  const encodedLowNibble = path.charCodeAt(encodedOffset + 1);
+  if (expectedLowNibble < 10) {
+    return encodedLowNibble === 48 + expectedLowNibble
+      ? encodedOffset + 2 - offset
+      : undefined;
+  }
+
+  const matchesLowNibble =
+    encodedLowNibble === 65 + expectedLowNibble - 10 ||
+    encodedLowNibble === 97 + expectedLowNibble - 10;
+  return matchesLowNibble ? encodedOffset + 2 - offset : undefined;
+}
+
+function organizationPathEnd(path: string): number | undefined {
+  let offset = 0;
+  for (let index = 0; index < organizationPathBase.length; index += 1) {
+    const expectedCharacter = organizationPathBase.charCodeAt(index);
+    // Hono preserves the encoded leading slash after its request-path separator.
+    if (
+      index === 0 &&
+      path.charCodeAt(offset) === 47 &&
+      path.charCodeAt(offset + 1) === 37
+    ) {
+      const encodedLength = encodedCharacterLength(
+        path,
+        offset + 1,
+        expectedCharacter,
+      );
+      if (encodedLength !== undefined) {
+        offset += encodedLength + 1;
+        continue;
+      }
+    }
+    if (path.charCodeAt(offset) === expectedCharacter) {
+      offset += 1;
+      continue;
+    }
+    const encodedLength = encodedCharacterLength(
+      path,
+      offset,
+      expectedCharacter,
+    );
+    if (encodedLength === undefined) return undefined;
+    offset += encodedLength;
+  }
+
+  return offset;
+}
+
+function logSafeOrganizationPath(path: string): string {
+  const namespaceEnd = organizationPathEnd(path);
+  if (namespaceEnd === undefined) return path;
+  if (path.length === namespaceEnd) return organizationPathBase;
+  if (path[namespaceEnd] !== "/") {
+    return `${organizationPathBase}/:ambiguous`;
+  }
+
+  let state:
+    | "organization"
+    | "organization-route"
+    | "member"
+    | "member-route"
+    | "other" = "organization";
+  const safeSegments = path
+    .slice(namespaceEnd)
+    .split("/")
+    .map((segment) => {
+      if (segment === "") return segment;
+
+      if (state === "organization") {
+        state = "organization-route";
+        return ":organizationId";
+      }
+      if (state === "organization-route" && segment === membersSegment) {
+        state = "member";
+        return membersSegment;
+      }
+      if (
+        state === "organization-route" &&
+        segment === notificationSettingsSegment
+      ) {
+        state = "other";
+        return notificationSettingsSegment;
+      }
+      if (state === "member") {
+        state = "member-route";
+        return ":memberId";
+      }
+      if (state === "member-route" && segment === "role") {
+        state = "other";
+        return "role";
+      }
+
+      state = "other";
+      return ":segment";
+    });
+
+  return `${organizationPathBase}${safeSegments.join("/")}`;
+}
+
 function logSafePath(path: string): string {
-  return path
+  return logSafeOrganizationPath(path)
     .replace(/^(\/api\/onboarding\/invitations\/)[^/]+$/, "$1:invitationId")
     .replace(/^(\/api\/auth\/reset-password\/)[^/]+$/, "$1:token");
 }

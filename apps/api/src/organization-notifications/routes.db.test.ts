@@ -1,3 +1,4 @@
+import { organizationMemberListResponseSchema } from "@nightwatch/api-contract";
 import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
 import { createLogger, type AuthEnv, type Env } from "@nightwatch/shared";
 import { fileURLToPath } from "node:url";
@@ -74,7 +75,7 @@ const app = createApp({
   auth,
   database: runtime,
   logger: createLogger(
-    { level: "warn", name: "member-routes-db-test" },
+    { level: "info", name: "member-routes-db-test" },
     { write: (line: string) => void auditLines.push(line) },
   ),
 });
@@ -288,6 +289,156 @@ describe("organization member HTTP mutations", () => {
       }),
     ]);
 
+    auditLines.length = 0;
+    const list = await ownerClient(
+      "GET",
+      `/api/organizations/${organizationId}/members?limit=50&offset=0`,
+    );
+    expect(list.status).toBe(200);
+    const listBody = organizationMemberListResponseSchema.parse(list.json);
+    expect(listBody.organizationId).toBe(organizationId);
+    expect(listBody.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: memberIds.owner, role: "owner" }),
+      ]),
+    );
+    expect(listBody.page).toEqual({ limit: 50, offset: 0, total: 3 });
+    const beyondSafeInteger = await ownerClient(
+      "GET",
+      `/api/organizations/${organizationId}/members?limit=50&offset=9007199254740991`,
+    );
+    expect(beyondSafeInteger.status).toBe(200);
+    expect(
+      organizationMemberListResponseSchema.parse(beyondSafeInteger.json),
+    ).toMatchObject({
+      members: [],
+      page: { limit: 50, offset: Number.MAX_SAFE_INTEGER, total: 3 },
+    });
+
+    for (const clientForDeniedList of [targetClient, leaverClient]) {
+      const deniedList = await clientForDeniedList(
+        "GET",
+        `/api/organizations/${organizationId}/members`,
+      );
+      expect(deniedList.status).toBe(403);
+      expect(deniedList.json).toEqual({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก",
+        },
+      });
+    }
+    for (const value of [
+      "",
+      " ",
+      "0x32",
+      "1e2",
+      "1.5",
+      "-1",
+      "9007199254740992",
+    ]) {
+      const invalid = await ownerClient(
+        "GET",
+        `/api/organizations/${organizationId}/members?limit=${encodeURIComponent(value)}&offset=0`,
+      );
+      expect(invalid.status).toBe(400);
+      expect(invalid.json).toEqual({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+        },
+      });
+    }
+    for (const offset of [
+      "9007199254740992",
+      "9223372036854775808",
+      "1e2",
+      "1.5",
+    ]) {
+      const invalid = await ownerClient(
+        "GET",
+        `/api/organizations/${organizationId}/members?limit=50&offset=${encodeURIComponent(offset)}`,
+      );
+      expect(invalid.status).toBe(400);
+      expect(invalid.json).toEqual({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+        },
+      });
+    }
+    const missing = await leaverClient(
+      "GET",
+      `/api/organizations/${crypto.randomUUID()}/members`,
+    );
+    expect(missing.status).toBe(403);
+    expect(missing.json).toEqual({
+      error: {
+        code: "MEMBERSHIP_DENIED",
+        message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+      },
+    });
+    await owner.sql.query("update member set role = 'unknown' where id = $1", [
+      memberIds.leaver,
+    ]);
+    const failure = await ownerClient(
+      "GET",
+      `/api/organizations/${organizationId}/members`,
+    );
+    expect(failure.status).toBe(500);
+    expect(failure.json).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    });
+    await owner.sql.query(
+      "update member set role = 'viewer,auditor' where id = $1",
+      [memberIds.leaver],
+    );
+    await owner.sql.query("update member set role = 'unknown' where id = $1", [
+      memberIds.owner,
+    ]);
+    const actorRoleFailure = await ownerClient(
+      "GET",
+      `/api/organizations/${organizationId}/members`,
+    );
+    expect(actorRoleFailure.status).toBe(500);
+    expect(actorRoleFailure.json).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    });
+    await owner.sql.query("update member set role = 'owner' where id = $1", [
+      memberIds.owner,
+    ]);
+    const logEntries = auditLines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>,
+    );
+    const completionLogs = logEntries.filter(
+      (entry) => entry.msg === "request completed",
+    );
+    expect(completionLogs).toHaveLength(18);
+    for (const completion of completionLogs) {
+      expect(completion.path).toBe(
+        "/api/organizations/:organizationId/members",
+      );
+      expect(JSON.stringify(completion)).not.toContain(organizationId);
+    }
+    expect(JSON.stringify(logEntries)).not.toContain(organizationId);
+    expect(JSON.stringify(logEntries)).not.toContain(memberIds.leaver);
+    for (const audit of logEntries.filter(
+      (entry) => entry.msg === "organization access denied",
+    )) {
+      const { action, actorUserId, code, ...metadata } = audit;
+      expect(action).toBe("organization.member.list");
+      expect(typeof actorUserId).toBe("string");
+      expect(code).toMatch(/^(MEMBERSHIP|PERMISSION)_DENIED$/);
+      expect(Object.keys(metadata).sort()).toEqual([
+        "hostname",
+        "level",
+        "msg",
+        "name",
+        "pid",
+        "time",
+      ]);
+    }
+
     expect(
       (
         await ownerClient("POST", "/api/auth/sign-in/email", {
@@ -362,6 +513,26 @@ describe("organization member HTTP mutations", () => {
         )
       ).rows.every((session) => session.active_organization_id === null),
     ).toBe(true);
+
+    const revokedList = await targetClient(
+      "GET",
+      `/api/organizations/${organizationId}/members`,
+    );
+    expect(revokedList).toEqual({
+      status: 403,
+      json: {
+        error: {
+          code: "MEMBERSHIP_DENIED",
+          message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+        },
+      },
+    });
+    const revokedContext = await targetClient("GET", "/api/me/context");
+    expect(revokedContext.status).toBe(200);
+    expect(revokedContext.json).toMatchObject({
+      organizations: [],
+      lastActiveTenantId: null,
+    });
 
     const leave = await leaverClient(
       "DELETE",

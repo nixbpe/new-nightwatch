@@ -16,6 +16,112 @@ type ClientSlot = {
 let active: ClientSlot | null = null;
 let staged: ClientSlot | null = null;
 
+let contextPublicationOrdinal = 0n;
+
+export type ContextPublicationSnapshot = {
+  claim: bigint | null;
+  publishedClaim: bigint | null;
+  version: number;
+};
+
+type ContextPublicationStore = {
+  snapshot: ContextPublicationSnapshot;
+  listeners: Set<() => void>;
+};
+
+const contextPublicationStores = new WeakMap<
+  QueryClient,
+  ContextPublicationStore
+>();
+
+function contextPublicationStore(
+  queryClient: QueryClient,
+): ContextPublicationStore {
+  let store = contextPublicationStores.get(queryClient);
+  if (store === undefined) {
+    store = {
+      snapshot: { claim: null, publishedClaim: null, version: 0 },
+      listeners: new Set(),
+    };
+    contextPublicationStores.set(queryClient, store);
+  }
+  return store;
+}
+
+function notifyContextPublication(store: ContextPublicationStore): void {
+  for (const listener of store.listeners) {
+    listener();
+  }
+}
+
+export function getContextPublicationSnapshot(
+  queryClient: QueryClient,
+): ContextPublicationSnapshot {
+  return contextPublicationStore(queryClient).snapshot;
+}
+
+export function subscribeToContextPublication(
+  queryClient: QueryClient,
+  listener: () => void,
+): () => void {
+  const store = contextPublicationStore(queryClient);
+  store.listeners.add(listener);
+  return () => {
+    store.listeners.delete(listener);
+  };
+}
+
+export function publishContextPublication(
+  queryClient: QueryClient,
+  claim: bigint,
+): boolean {
+  const store = contextPublicationStore(queryClient);
+  if (store.snapshot.claim !== claim) {
+    return false;
+  }
+  store.snapshot = {
+    claim,
+    publishedClaim: claim,
+    version: store.snapshot.version + 1,
+  };
+  notifyContextPublication(store);
+  return true;
+}
+
+export function createContextPublicationClaim(): bigint {
+  return ++contextPublicationOrdinal;
+}
+
+export function claimContextPublication(
+  queryClient: QueryClient,
+  claim: bigint,
+): boolean {
+  const store = contextPublicationStore(queryClient);
+  if (store.snapshot.claim !== null && store.snapshot.claim >= claim) {
+    return false;
+  }
+  store.snapshot = {
+    ...store.snapshot,
+    claim,
+  };
+  notifyContextPublication(store);
+  return true;
+}
+
+export function hasContextPublicationClaim(
+  queryClient: QueryClient,
+  claim: bigint,
+): boolean {
+  return contextPublicationStore(queryClient).snapshot.claim === claim;
+}
+
+// A server-confirmed organization scope retires every older context publisher.
+export function publishTenantScope(queryClient: QueryClient): bigint {
+  const claim = createContextPublicationClaim();
+  claimContextPublication(queryClient, claim);
+  return claim;
+}
+
 export function createSessionQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {

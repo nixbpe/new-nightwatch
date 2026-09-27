@@ -11,6 +11,7 @@ import {
   createLogger,
   type AuthEnv,
   type Env,
+  type Logger,
 } from "@nightwatch/shared";
 import { describe, expect, it, vi } from "vitest";
 
@@ -30,7 +31,11 @@ const authEnv: AuthEnv = {
   SMTP_FROM: "NightWatch Test <no-reply@nightwatch.test>",
 };
 
-function makeApp(options?: { auth?: Auth; database?: Database }) {
+function makeApp(options?: {
+  auth?: Auth;
+  database?: Database;
+  logger?: Logger;
+}) {
   const app = createApp({
     env,
     authEnv,
@@ -119,6 +124,220 @@ describe("error contract", () => {
   });
 });
 
+describe("request completion logging", () => {
+  it("redacts organization namespace audit inputs in actual completion logs", async () => {
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const memberId = "22222222-2222-4222-8222-222222222222";
+    const logLines: string[] = [];
+    const app = makeApp({
+      logger: createLogger(
+        { level: "info", name: "request-completion-test" },
+        { write: (line: string) => void logLines.push(line) },
+      ),
+    });
+    const paths = [
+      {
+        input: `/api/organizations/${organizationId}/members`,
+        expected: "/api/organizations/:organizationId/members",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/`,
+        expected: "/api/organizations/:organizationId/members/",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/${memberId}/role`,
+        expected: "/api/organizations/:organizationId/members/:memberId/role",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/${memberId}/role/extra`,
+        expected:
+          "/api/organizations/:organizationId/members/:memberId/role/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/notification-settings`,
+        expected: "/api/organizations/:organizationId/notification-settings",
+      },
+      {
+        input: `/api/organizations/${organizationId}//members//${memberId}/role`,
+        expected: "/api/organizations/:organizationId//members//:memberId/role",
+      },
+      {
+        input: `/api/organizations//members//${memberId}/role`,
+        expected: "/api/organizations//:organizationId//:segment/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%2F${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%2f${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}%2Fmembers/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}%2fmembers/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations%2F${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:ambiguous",
+      },
+      {
+        input: `/api/organizations%2f${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:ambiguous",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%5C${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%5c${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations%5C${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:ambiguous",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%252F${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members;v=1/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%3Bv=1/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%3F${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members/${memberId}?limit=50`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizations/${organizationId}/members%ZZ/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment/:segment",
+      },
+      {
+        input: `/api/organizations/${organizationId}/unknown/${memberId}`,
+        expected: "/api/organizations/:organizationId/:segment/:segment",
+      },
+      {
+        input: "/api/organizations/",
+        expected: "/api/organizations/",
+      },
+      {
+        input: "/api/organizations",
+        expected: "/api/organizations",
+      },
+      {
+        input: `/api/%6frganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/org%61nizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organization%73/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/%6Frg%61nization%73/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizatio%256Es/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizatio%25256Es/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/organizatio%252525256Es/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api/%256Frg%252561nization%252573/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/%61pi/organizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api%2Forganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `%2Fapi%2Forganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/%2561pi%252Forganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/%2561p%69%252Forganiz%2561tions/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `%252Fapi%252Forganizations/${organizationId}/members/${memberId}`,
+        expected: "/api/organizations/:organizationId/members/:memberId",
+      },
+      {
+        input: `/api%2Gorganizations/${organizationId}/members/${memberId}`,
+        expected: `/api%2Gorganizations/${organizationId}/members/${memberId}`,
+      },
+      {
+        input: `/api/org%6bnizations/${organizationId}/members/${memberId}`,
+        expected: `/api/orgknizations/${organizationId}/members/${memberId}`,
+      },
+      {
+        input: `/api/organizat%6Gions/${organizationId}/members/${memberId}`,
+        expected: `/api/organizat%6Gions/${organizationId}/members/${memberId}`,
+      },
+      {
+        input: `/api/projects/${organizationId}/members/${memberId}`,
+        expected: `/api/projects/${organizationId}/members/${memberId}`,
+      },
+    ];
+
+    const responses: Response[] = [];
+    for (const { input } of paths) {
+      responses.push(await app.request(input));
+    }
+
+    expect(responses.map((response) => response.status)).toEqual(
+      paths.map(() => 404),
+    );
+
+    const completions = logLines
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.msg === "request completed");
+    expect(completions.map((entry) => entry.path)).toEqual(
+      paths.map(({ expected }) => expected),
+    );
+    for (const [index, completion] of completions.entries()) {
+      if (!paths[index]?.expected.includes(":")) continue;
+      expect(JSON.stringify(completion)).not.toContain(organizationId);
+      expect(JSON.stringify(completion)).not.toContain(memberId);
+    }
+  });
+});
+
 describe("OpenAPI", () => {
   it("serves the spec containing the hello route", async () => {
     const res = await makeApp().request("/api/v1/openapi.json");
@@ -184,6 +403,38 @@ describe("auth boundary wiring", () => {
     expect(serializedBody).not.toContain("ZodError");
     expect(serializedBody).not.toContain(submittedOrganizationId);
   });
+
+  it.each(["9007199254740992", "9223372036854775808", "1e2", "1.5"])(
+    "rejects invalid member offset %j before opening a database connection",
+    async (offset) => {
+      const connect = vi.fn(() => {
+        throw new Error("member list database access must not occur");
+      });
+      const query = vi.fn(() => {
+        throw new Error("member list database access must not occur");
+      });
+      const database = {
+        db: undefined as unknown as Database["db"],
+        sql: { connect, query } as unknown as Database["sql"],
+        close: () => Promise.resolve(),
+      } satisfies Database;
+      const app = makeApp({ auth: stubAuth, database });
+
+      const res = await app.request(
+        `/api/organizations/11111111-1111-4111-8111-111111111111/members?offset=${offset}`,
+      );
+
+      expect(res.status).toBe(400);
+      expect(errorResponseSchema.parse(await res.json())).toEqual({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+        },
+      });
+      expect(connect).not.toHaveBeenCalled();
+      expect(query).not.toHaveBeenCalled();
+    },
+  );
 
   it("routes /api/auth/* through the composed auth handler", async () => {
     const app = makeApp({

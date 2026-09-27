@@ -8,6 +8,7 @@ import {
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
+import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import { authClient } from "../auth-client";
 import {
   fetchNotifications,
@@ -17,7 +18,11 @@ import {
 } from "../api/notifications";
 import { fetchSessions, SESSIONS_QUERY_KEY } from "../sessions/sessions";
 import {
+  claimContextPublication,
+  createContextPublicationClaim,
+  hasContextPublicationClaim,
   peekActiveQueryClientIdentity,
+  publishContextPublication,
   resolveQueryClientForIdentity,
 } from "../queryClient";
 import {
@@ -86,6 +91,26 @@ async function prefetchMeContext(
     .catch(() => undefined);
 }
 
+function hasSameMembershipScope(
+  previous: MeContextResponse | undefined,
+  fresh: MeContextResponse,
+): boolean {
+  if (
+    previous === undefined ||
+    previous.lastActiveTenantId !== fresh.lastActiveTenantId ||
+    previous.organizations.length !== fresh.organizations.length
+  ) {
+    return false;
+  }
+  return previous.organizations.every((previousOrganization) =>
+    fresh.organizations.some(
+      (freshOrganization) =>
+        freshOrganization.id === previousOrganization.id &&
+        freshOrganization.role === previousOrganization.role,
+    ),
+  );
+}
+
 export async function workspaceLoader({
   request,
 }: LoaderFunctionArgs): Promise<null | Response> {
@@ -140,6 +165,84 @@ export async function notificationSettingsLoader({
       staleTime: "static",
     })
     .catch(() => undefined);
+  return null;
+}
+
+export async function organizationMembersLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const claim = createContextPublicationClaim();
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const organizationId = params.organizationId;
+  if (organizationId === undefined) return null;
+  const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
+  if (!claimContextPublication(queryClient, claim)) {
+    return null;
+  }
+  const previousContext =
+    queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
+  // A prior context or member query may have started before this membership
+  // gate. Cancel it before the direct request can publish.
+  await queryClient.cancelQueries({
+    queryKey: ME_CONTEXT_QUERY_KEY,
+    exact: true,
+  });
+  if (!hasContextPublicationClaim(queryClient, claim)) {
+    return null;
+  }
+  await queryClient.cancelQueries({ queryKey: ["tenant"] });
+  if (!hasContextPublicationClaim(queryClient, claim)) {
+    return null;
+  }
+  // A bookmarked tenant route needs a fresh server membership decision, not a
+  // static context cache that could predate a revocation or role change.
+  const context = await fetchMeContext().catch(() => undefined);
+  if (!hasContextPublicationClaim(queryClient, claim)) {
+    return null;
+  }
+  if (context === undefined) {
+    queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
+    await queryClient.cancelQueries({ queryKey: ["tenant"] });
+    if (!hasContextPublicationClaim(queryClient, claim)) {
+      return null;
+    }
+    queryClient.removeQueries({ queryKey: ["tenant"] });
+    return null;
+  }
+  if (!hasSameMembershipScope(previousContext, context)) {
+    await queryClient.cancelQueries({ queryKey: ["tenant"] });
+    if (!hasContextPublicationClaim(queryClient, claim)) {
+      return null;
+    }
+    queryClient.removeQueries({ queryKey: ["tenant"] });
+  }
+  queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+  publishContextPublication(queryClient, claim);
+  const membership = context.organizations.find(
+    (organization) => organization.id === organizationId,
+  );
+  if (
+    membership === undefined ||
+    (membership.role !== "owner" && membership.role !== "admin")
+  ) {
+    return null;
+  }
+  if (!hasContextPublicationClaim(queryClient, claim)) {
+    return null;
+  }
+  await queryClient
+    .query({
+      queryKey: memberListQueryKey(organizationId, 50, 0),
+      queryFn: () => fetchOrganizationMembers(organizationId, 50, 0),
+    })
+    .catch(() => undefined);
+  if (!hasContextPublicationClaim(queryClient, claim)) {
+    return null;
+  }
   return null;
 }
 

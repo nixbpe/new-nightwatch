@@ -1,3 +1,5 @@
+import { useLocation, useNavigate } from "react-router";
+
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { BrandMark } from "./BrandMark";
@@ -9,6 +11,8 @@ import { usePopover } from "./usePopover";
 // Falls back to the product mark with no membership or a failed context load; the page surfaces the error.
 export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   const { me, mePending, activeOrg, switchOrg, orgSwitchPending } = useTenant();
+  const location = useLocation();
+  const navigate = useNavigate();
   const popover = usePopover();
 
   if (mePending) {
@@ -112,7 +116,18 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                 disabled={orgSwitchPending}
                 onClick={() => {
                   popover.close();
-                  void switchOrg(org.id);
+                  void switchOrg(org.id).then((switched) => {
+                    if (
+                      switched &&
+                      /^\/organizations\/[^/]+\/members$/.test(
+                        location.pathname,
+                      )
+                    ) {
+                      void navigate(`/organizations/${org.id}/members`, {
+                        replace: true,
+                      });
+                    }
+                  });
                 }}
                 className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-start text-sm hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-60"
               >

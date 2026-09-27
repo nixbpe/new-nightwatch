@@ -13,8 +13,15 @@ import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { InboxScopeChangedError } from "../../lib/api/notifications";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
+import {
+  claimContextPublication,
+  createContextPublicationClaim,
+  hasContextPublicationClaim,
+} from "../../lib/queryClient";
 import { NotificationsPage } from "../../pages/NotificationsPage";
 import { WorkspacePage } from "../../pages/WorkspacePage";
+import { fetchOrganizationMembers } from "../../lib/api/members";
+import { OrganizationMembersPage } from "../../pages/OrganizationMembersPage";
 import { AppShell } from "./AppShell";
 
 const {
@@ -57,6 +64,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => {
     updateActiveOrganization: vi.fn(),
   };
 });
+vi.mock("../../lib/api/members", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationMembers: vi.fn(),
+}));
 vi.mock("../../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {
@@ -70,6 +81,7 @@ vi.mock("../../lib/api/notifications", async (importOriginal) => {
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
+const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -126,6 +138,10 @@ function renderShell(
         ),
         children: [
           { path: "/workspace", element: workspaceElement },
+          {
+            path: "/organizations/:organizationId/members",
+            element: <OrganizationMembersPage />,
+          },
           { path: "/notifications", element: <NotificationsPage /> },
           { path: "/settings/security", element: <p>หน้าความปลอดภัย</p> },
           { path: "/settings/sessions", element: <p>หน้าเซสชัน</p> },
@@ -138,7 +154,7 @@ function renderShell(
     ],
     { initialEntries: [initialPath] },
   );
-  return render(<RouterProvider router={router} />);
+  return { queryClient, ...render(<RouterProvider router={router} />) };
 }
 
 function mockMobileViewport(): void {
@@ -168,6 +184,7 @@ describe("AppShell", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
+    fetchOrganizationMembersMock.mockReset();
     fetchNotificationsMock.mockReset();
     fetchUnreadCountMock.mockReset();
     markAllNotificationsReadMock.mockReset();
@@ -240,16 +257,17 @@ describe("AppShell", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides the organization section from roles it does not admit", async () => {
+  it("shows the organization member destination to a viewer without notification settings", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
     renderShell();
     await screen.findByRole("link", { name: "Org B" });
 
     const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
-    expect(
-      within(nav).getByRole("link", { name: "ภาพรวม" }),
-    ).toBeInTheDocument();
-    expect(within(nav).queryByText("องค์กร")).toBeNull();
+    expect(within(nav).getByText("องค์กร")).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "สมาชิก" })).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_B}/members`,
+    );
     expect(
       within(nav).queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
     ).toBeNull();
@@ -496,7 +514,10 @@ describe("AppShell", () => {
       meContext([ownerOrg, viewerOrg], ORG_B),
     );
     const user = userEvent.setup();
-    renderShell(<WorkspacePage />);
+    const { queryClient } = renderShell(<WorkspacePage />);
+    const directLoaderClaim = createContextPublicationClaim();
+    expect(claimContextPublication(queryClient, directLoaderClaim)).toBe(true);
+
     await screen.findByText("Org A · เจ้าของ");
 
     await user.click(screen.getByRole("button", { name: /Org A/ }));
@@ -509,6 +530,9 @@ describe("AppShell", () => {
     );
 
     expect(await screen.findByText("Org B · ผู้ชม")).toBeInTheDocument();
+    expect(hasContextPublicationClaim(queryClient, directLoaderClaim)).toBe(
+      false,
+    );
     expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
       organizationId: ORG_B,
     });
@@ -548,7 +572,29 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: /Org A/ })).toBeInTheDocument();
   });
 
-  it("⌘K opens search-all; a filtered page result navigates and the palette closes", async () => {
+  it("retires role-dependent shell controls after a permission denial refreshes an owner to viewer", async () => {
+    const downgradedOrg = { ...ownerOrg, role: "viewer" as const };
+    const denial = Promise.withResolvers<never>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(meContext([ownerOrg], ORG_A))
+      .mockResolvedValueOnce(meContext([downgradedOrg], ORG_A));
+    fetchOrganizationMembersMock.mockImplementationOnce(() => denial.promise);
+
+    renderShell(<WorkspacePage />, `/organizations/${ORG_A}/members`);
+
+    expect(
+      await screen.findByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+    ).toBeInTheDocument();
+    denial.reject(new ApiError("PERMISSION_DENIED", "role downgraded", 403));
+    expect(await screen.findByText("Org A · ผู้ชม")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
+    expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
+  });
+
+  it("⌘K includes every owner destination and navigates from a filtered result", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
     renderShell();
@@ -560,15 +606,31 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    // 4 sidebar destinations (owner sees the org leaf) + 4 palette-only settings tabs.
-    expect(within(dialog).getAllByRole("option")).toHaveLength(8);
+    expect(within(dialog).getAllByRole("option")).toHaveLength(9);
+    for (const name of [
+      "ภาพรวม",
+      "การแจ้งเตือน",
+      "การตั้งค่าส่วนตัว",
+      "โปรไฟล์",
+      "ความปลอดภัย",
+      "เซสชันและอุปกรณ์",
+      "การแสดงผล",
+      "สมาชิก",
+      "ตั้งค่าการแจ้งเตือน",
+    ]) {
+      expect(
+        within(dialog).getByRole("option", {
+          name: new RegExp(`^${name}`),
+        }),
+      ).toBeInTheDocument();
+    }
     expect(dialog).toHaveTextContent("ค้นหาใน Org A");
 
     await user.keyboard("เซสชัน");
-    const options = within(dialog).getAllByRole("option");
-    expect(options).toHaveLength(1);
-    expect(options[0]).toHaveTextContent("เซสชันและอุปกรณ์");
-    expect(options[0]).toHaveTextContent("การตั้งค่าส่วนตัว");
+    const filteredOptions = within(dialog).getAllByRole("option");
+    expect(filteredOptions).toHaveLength(1);
+    expect(filteredOptions[0]).toHaveTextContent("เซสชันและอุปกรณ์");
+    expect(filteredOptions[0]).toHaveTextContent("การตั้งค่าส่วนตัว");
 
     await user.keyboard("{Enter}");
     expect(screen.queryByRole("dialog", { name: "ค้นหาทั้งหมด" })).toBeNull();

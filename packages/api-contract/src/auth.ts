@@ -15,6 +15,45 @@ export const organizationRoleSchema = z.enum([
 
 export type OrganizationRole = z.infer<typeof organizationRoleSchema>;
 
+const decimalInteger = z.preprocess(
+  (value) =>
+    typeof value === "string" && /^(?:0|[1-9]\d*)$/.test(value)
+      ? Number(value)
+      : value,
+  z.int(),
+);
+
+export const organizationMemberListQuerySchema = z.object({
+  limit: decimalInteger.pipe(z.number().min(1).max(50)).default(50),
+  offset: decimalInteger.pipe(z.number().min(0)).default(0),
+});
+
+export const organizationMemberSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+  name: z.string(),
+  email: z.email(),
+  role: organizationRoleSchema,
+});
+
+export const organizationMemberListResponseSchema = z.object({
+  organizationId: z.uuid(),
+  members: z.array(organizationMemberSchema).max(50),
+  page: z.object({
+    limit: z.number().int().min(1).max(50),
+    offset: z.number().int().min(0),
+    total: z.number().int().min(0),
+  }),
+});
+
+export type OrganizationMemberListQuery = z.infer<
+  typeof organizationMemberListQuerySchema
+>;
+export type OrganizationMember = z.infer<typeof organizationMemberSchema>;
+export type OrganizationMemberListResponse = z.infer<
+  typeof organizationMemberListResponseSchema
+>;
+
 /**
  * Public invitation preview for the accept-invitation page.
  * The unguessable invitation ID is the bearer capability; invalid,

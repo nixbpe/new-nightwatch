@@ -2,9 +2,12 @@ import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -14,6 +17,14 @@ import {
   updateActiveOrganization,
 } from "../api/me";
 import { isInboxScopeChanged } from "../api/notifications";
+import {
+  claimContextPublication,
+  createContextPublicationClaim,
+  getContextPublicationSnapshot,
+  hasContextPublicationClaim,
+  publishContextPublication,
+  subscribeToContextPublication,
+} from "../queryClient";
 
 type Membership = MeContextResponse["organizations"][number];
 
@@ -25,6 +36,7 @@ type TenantContextValue = {
   mePending: boolean;
   meError: Error | null;
   retryMe: () => Promise<void>;
+  refreshMembershipContext: () => Promise<MeContextResponse | null>;
   activeOrg: Membership | null;
   serverActiveOrgId: string | null;
   switchOrg: (organizationId: string) => Promise<boolean>;
@@ -44,12 +56,39 @@ export function useTenant(): TenantContextValue {
 export function TenantProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [membershipContextUnavailable, setMembershipContextUnavailable] =
+    useState(false);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
+  const switchQueue = useRef<Promise<void>>(Promise.resolve());
+  const latestSwitchIntent = useRef(0);
+  const publication = useSyncExternalStore(
+    useCallback(
+      (listener) => subscribeToContextPublication(queryClient, listener),
+      [queryClient],
+    ),
+    useCallback(
+      () => getContextPublicationSnapshot(queryClient),
+      [queryClient],
+    ),
+  );
 
   const meQuery = useQuery({
     queryKey: ME_CONTEXT_QUERY_KEY,
     queryFn: fetchMeContext,
   });
+
+  useEffect(() => {
+    const livePublication = getContextPublicationSnapshot(queryClient);
+    if (
+      meQuery.data !== undefined &&
+      (!membershipContextUnavailable ||
+        (publication.publishedClaim !== null &&
+          livePublication.claim === publication.publishedClaim &&
+          livePublication.publishedClaim === publication.publishedClaim))
+    ) {
+      setMembershipContextUnavailable(false);
+    }
+  }, [meQuery.data, membershipContextUnavailable, publication, queryClient]);
 
   useEffect(() => {
     const refreshOnScopeChange = (error: unknown) => {
@@ -73,8 +112,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  const memberships = meQuery.data?.organizations;
-  const lastActiveTenantId = meQuery.data?.lastActiveTenantId ?? null;
+  const memberships = membershipContextUnavailable
+    ? undefined
+    : meQuery.data?.organizations;
+  const lastActiveTenantId = membershipContextUnavailable
+    ? null
+    : (meQuery.data?.lastActiveTenantId ?? null);
 
   // A refreshed server mirror (another session switched org) supersedes this tab's local choice,
   // otherwise the header and notifications would show different tenants.
@@ -99,6 +142,39 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       ? lastActiveTenantId
       : null;
 
+  const refreshMembershipContext =
+    useCallback(async (): Promise<MeContextResponse | null> => {
+      const claim = createContextPublicationClaim();
+      if (!claimContextPublication(queryClient, claim)) {
+        return null;
+      }
+      setMembershipContextUnavailable(true);
+      await queryClient.cancelQueries({
+        queryKey: ME_CONTEXT_QUERY_KEY,
+        exact: true,
+      });
+      if (!hasContextPublicationClaim(queryClient, claim)) {
+        return null;
+      }
+      await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
+      if (!hasContextPublicationClaim(queryClient, claim)) {
+        return null;
+      }
+      queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+      try {
+        const updated = await fetchMeContext();
+        if (!hasContextPublicationClaim(queryClient, claim)) {
+          return null;
+        }
+        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
+        setSelectedOrgId(null);
+        setMembershipContextUnavailable(false);
+        return updated;
+      } catch {
+        return null;
+      }
+    }, [queryClient]);
+
   const switchOrg = async (organizationId: string): Promise<boolean> => {
     if (
       memberships?.some((org) => org.id === organizationId) !== true ||
@@ -106,32 +182,53 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     ) {
       return false;
     }
+    const intent = ++latestSwitchIntent.current;
     setOrgSwitchPending(true);
-    try {
-      const updated = await updateActiveOrganization({ organizationId });
-      // Retire the old tenant's queries before publishing new state (see TENANT_QUERY_PREFIX).
-      await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
-      queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-      setSelectedOrgId(organizationId);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setOrgSwitchPending(false);
-    }
+    const switchOperation = switchQueue.current.then(async () => {
+      const claim = createContextPublicationClaim();
+      if (!claimContextPublication(queryClient, claim)) {
+        return false;
+      }
+      try {
+        const updated = await updateActiveOrganization({ organizationId });
+        if (!hasContextPublicationClaim(queryClient, claim)) {
+          return false;
+        }
+        await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
+        if (!hasContextPublicationClaim(queryClient, claim)) {
+          return false;
+        }
+        queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
+        publishContextPublication(queryClient, claim);
+        setMembershipContextUnavailable(false);
+        setSelectedOrgId(organizationId);
+        return latestSwitchIntent.current === intent;
+      } catch {
+        return false;
+      }
+    });
+    switchQueue.current = switchOperation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return switchOperation.finally(() => {
+      if (latestSwitchIntent.current === intent) {
+        setOrgSwitchPending(false);
+      }
+    });
   };
 
-  const { refetch: refetchMe } = meQuery;
   const retryMe = async (): Promise<void> => {
-    await refetchMe();
+    await refreshMembershipContext();
   };
 
   const value: TenantContextValue = {
-    me: meQuery.data,
+    me: membershipContextUnavailable ? undefined : meQuery.data,
     mePending: meQuery.isPending,
     meError: meQuery.error,
     retryMe,
+    refreshMembershipContext,
     activeOrg,
     serverActiveOrgId,
     switchOrg,

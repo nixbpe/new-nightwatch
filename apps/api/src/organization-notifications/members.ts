@@ -1,3 +1,4 @@
+import type { OrganizationMemberListResponse } from "@nightwatch/api-contract";
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import type { PoolClient } from "pg";
 import { AppError } from "@nightwatch/shared";
@@ -58,9 +59,114 @@ function isOwnerOrAdmin(member: MemberRow): boolean {
 function toMemberResponse(member: MemberRow): MemberResponse {
   const role = normalizeOrganizationRole(member.role);
   if (role === null) {
-    throw new Error(`member ${member.id} has no recognized role`);
+    throw new Error("member has no recognized role");
   }
   return { ...member, role };
+}
+
+type MemberListRow = {
+  member: boolean;
+  actorRoleValid: boolean;
+  authorized: boolean;
+  total: number;
+  members: {
+    id: string;
+    userId: string;
+    name: string;
+    email: string;
+    role: string;
+  }[];
+};
+
+export async function listOrganizationMembers(
+  database: Database,
+  input: {
+    organizationId: string;
+    actorUserId: string;
+    limit: number;
+    offset: number;
+  },
+): Promise<OrganizationMemberListResponse> {
+  return withTenantContextRaw(
+    database,
+    input.organizationId,
+    async (client) => {
+      const result = await client.query<MemberListRow>(
+        `with authorization_state as (
+           select exists(
+                    select 1
+                    from member actor
+                    where actor.organization_id = $1
+                      and actor.user_id = $2
+                  ) as member,
+                  exists(
+                    select 1
+                    from member actor
+                    where actor.organization_id = $1
+                      and actor.user_id = $2
+                      and actor.role ~ '(^|,)[[:space:]]*(owner|admin|viewer|auditor)[[:space:]]*(,|$)'
+                  ) as "actorRoleValid",
+                  exists(
+                    select 1
+                    from member actor
+                    where actor.organization_id = $1
+                      and actor.user_id = $2
+                      and actor.role ~ '(^|,)[[:space:]]*(owner|admin)[[:space:]]*(,|$)'
+                  ) as authorized
+         ),
+         scoped as (
+           select m.id, m.user_id as "userId", u.name, u.email, m.role
+           from member m
+           join "user" u on u.id = m.user_id
+           cross join authorization_state
+           where m.organization_id = $1 and authorization_state.authorized
+         ),
+         page as (
+           select * from scoped
+           order by lower(name), id
+           limit $3 offset $4
+         )
+         select authorization_state.member,
+                authorization_state."actorRoleValid",
+                authorization_state.authorized,
+                (select count(*)::int from scoped) as total,
+                coalesce(
+                  (
+                    select json_agg(
+                      json_build_object(
+                        'id', id, 'userId', "userId", 'name', name,
+                        'email', email, 'role', role
+                      )
+                      order by lower(name), id
+                    )
+                    from page
+                  ),
+                  '[]'::json
+                ) as members
+         from authorization_state`,
+        [input.organizationId, input.actorUserId, input.limit, input.offset],
+      );
+      const row = result.rows[0];
+      if (!row) throw new Error("member list query returned no row");
+      if (row.member && !row.actorRoleValid) {
+        throw new Error("member has no recognized role");
+      }
+      if (!row.member) notMember();
+      if (!row.authorized) deny("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก");
+      const members = row.members.map((member) => {
+        const role = normalizeOrganizationRole(member.role);
+        if (role === null) {
+          throw new Error("member has no recognized role");
+        }
+        return { ...member, role };
+      });
+      return {
+        organizationId: input.organizationId,
+        members,
+        page: { limit: input.limit, offset: input.offset, total: row.total },
+      };
+    },
+  );
 }
 
 async function lockedMember(

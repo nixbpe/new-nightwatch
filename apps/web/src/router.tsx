@@ -15,6 +15,7 @@ import { Card } from "./components/ui/card";
 import {
   notificationSettingsLoader,
   notificationsLoader,
+  organizationMembersLoader,
   requireAnonLoader,
   rootLoader,
   sessionsLoader,
@@ -32,6 +33,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
+import { OrganizationMembersPage } from "./pages/OrganizationMembersPage";
 import { DisplayPage } from "./pages/settings/DisplayPage";
 import { ProfilePage } from "./pages/settings/ProfilePage";
 import { SecurityPage } from "./pages/settings/SecurityPage";
@@ -137,6 +139,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/notification-settings",
             loader: notificationSettingsLoader,
             element: <OrganizationNotificationSettingsPage />,
+          },
+          {
+            path: "/organizations/:organizationId/members",
+            loader: organizationMembersLoader,
+            element: <OrganizationMembersPage />,
           },
           // The layout loader gates the session and prefetches me/context for every tab.
           {
