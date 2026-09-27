@@ -18,9 +18,9 @@ import {
 } from "../api/notifications";
 import { fetchSessions, SESSIONS_QUERY_KEY } from "../sessions/sessions";
 import {
-  claimMemberDirectoryLoader,
-  createMemberDirectoryLoaderClaim,
-  hasMemberDirectoryLoaderClaim,
+  claimContextPublication,
+  createContextPublicationClaim,
+  hasContextPublicationClaim,
   peekActiveQueryClientIdentity,
   resolveQueryClientForIdentity,
 } from "../queryClient";
@@ -171,7 +171,7 @@ export async function organizationMembersLoader({
   params,
   request,
 }: LoaderFunctionArgs): Promise<null | Response> {
-  const claim = createMemberDirectoryLoaderClaim();
+  const claim = createContextPublicationClaim();
   const sessionOrRedirect = await gateVerifiedSession(request);
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
@@ -179,7 +179,7 @@ export async function organizationMembersLoader({
   const organizationId = params.organizationId;
   if (organizationId === undefined) return null;
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
-  if (!claimMemberDirectoryLoader(queryClient, claim)) {
+  if (!claimContextPublication(queryClient, claim)) {
     return null;
   }
   const previousContext =
@@ -190,23 +190,23 @@ export async function organizationMembersLoader({
     queryKey: ME_CONTEXT_QUERY_KEY,
     exact: true,
   });
-  if (!hasMemberDirectoryLoaderClaim(queryClient, claim)) {
+  if (!hasContextPublicationClaim(queryClient, claim)) {
     return null;
   }
   await queryClient.cancelQueries({ queryKey: ["tenant"] });
-  if (!hasMemberDirectoryLoaderClaim(queryClient, claim)) {
+  if (!hasContextPublicationClaim(queryClient, claim)) {
     return null;
   }
   // A bookmarked tenant route needs a fresh server membership decision, not a
   // static context cache that could predate a revocation or role change.
   const context = await fetchMeContext().catch(() => undefined);
-  if (!hasMemberDirectoryLoaderClaim(queryClient, claim)) {
+  if (!hasContextPublicationClaim(queryClient, claim)) {
     return null;
   }
   if (context === undefined) {
     queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    if (!hasMemberDirectoryLoaderClaim(queryClient, claim)) {
+    if (!hasContextPublicationClaim(queryClient, claim)) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ["tenant"] });
@@ -214,7 +214,7 @@ export async function organizationMembersLoader({
   }
   if (!hasSameMembershipScope(previousContext, context)) {
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    if (!hasMemberDirectoryLoaderClaim(queryClient, claim)) {
+    if (!hasContextPublicationClaim(queryClient, claim)) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ["tenant"] });
@@ -229,7 +229,7 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  if (!hasMemberDirectoryLoaderClaim(queryClient, claim)) {
+  if (!hasContextPublicationClaim(queryClient, claim)) {
     return null;
   }
   await queryClient
@@ -238,7 +238,7 @@ export async function organizationMembersLoader({
       queryFn: () => fetchOrganizationMembers(organizationId, 50, 0),
     })
     .catch(() => undefined);
-  if (!hasMemberDirectoryLoaderClaim(queryClient, claim)) {
+  if (!hasContextPublicationClaim(queryClient, claim)) {
     return null;
   }
   return null;

@@ -14,9 +14,9 @@ import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { InboxScopeChangedError } from "../../lib/api/notifications";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import {
-  claimMemberDirectoryLoader,
-  createMemberDirectoryLoaderClaim,
-  hasMemberDirectoryLoaderClaim,
+  claimContextPublication,
+  createContextPublicationClaim,
+  hasContextPublicationClaim,
 } from "../../lib/queryClient";
 import { NotificationsPage } from "../../pages/NotificationsPage";
 import { WorkspacePage } from "../../pages/WorkspacePage";
@@ -515,10 +515,8 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     const { queryClient } = renderShell(<WorkspacePage />);
-    const directLoaderClaim = createMemberDirectoryLoaderClaim();
-    expect(claimMemberDirectoryLoader(queryClient, directLoaderClaim)).toBe(
-      true,
-    );
+    const directLoaderClaim = createContextPublicationClaim();
+    expect(claimContextPublication(queryClient, directLoaderClaim)).toBe(true);
 
     await screen.findByText("Org A · เจ้าของ");
 
@@ -532,7 +530,7 @@ describe("AppShell", () => {
     );
 
     expect(await screen.findByText("Org B · ผู้ชม")).toBeInTheDocument();
-    expect(hasMemberDirectoryLoaderClaim(queryClient, directLoaderClaim)).toBe(
+    expect(hasContextPublicationClaim(queryClient, directLoaderClaim)).toBe(
       false,
     );
     expect(updateActiveOrganizationMock).toHaveBeenCalledWith({

@@ -16,62 +16,36 @@ type ClientSlot = {
 let active: ClientSlot | null = null;
 let staged: ClientSlot | null = null;
 
-const memberDirectoryLoaderClaims = new WeakMap<QueryClient, bigint>();
-let memberDirectoryLoaderOrdinal = 0n;
-const membershipContextRefreshClaims = new WeakMap<QueryClient, bigint>();
-let membershipContextRefreshOrdinal = 0n;
+const contextPublicationClaims = new WeakMap<QueryClient, bigint>();
+let contextPublicationOrdinal = 0n;
 
-export function createMembershipContextRefreshClaim(): bigint {
-  return ++membershipContextRefreshOrdinal;
+export function createContextPublicationClaim(): bigint {
+  return ++contextPublicationOrdinal;
 }
 
-export function claimMembershipContextRefresh(
+export function claimContextPublication(
   queryClient: QueryClient,
   claim: bigint,
 ): boolean {
-  if ((membershipContextRefreshClaims.get(queryClient) ?? -1n) >= claim) {
+  if ((contextPublicationClaims.get(queryClient) ?? -1n) >= claim) {
     return false;
   }
-  membershipContextRefreshClaims.set(queryClient, claim);
+  contextPublicationClaims.set(queryClient, claim);
   return true;
 }
 
-export function hasMembershipContextRefreshClaim(
+export function hasContextPublicationClaim(
   queryClient: QueryClient,
   claim: bigint,
 ): boolean {
-  return membershipContextRefreshClaims.get(queryClient) === claim;
+  return contextPublicationClaims.get(queryClient) === claim;
 }
 
-export function createMemberDirectoryLoaderClaim(): bigint {
-  return ++memberDirectoryLoaderOrdinal;
-}
-
-export function claimMemberDirectoryLoader(
-  queryClient: QueryClient,
-  claim: bigint,
-): boolean {
-  if ((memberDirectoryLoaderClaims.get(queryClient) ?? -1n) >= claim) {
-    return false;
-  }
-  memberDirectoryLoaderClaims.set(queryClient, claim);
-  return true;
-}
-
-export function hasMemberDirectoryLoaderClaim(
-  queryClient: QueryClient,
-  claim: bigint,
-): boolean {
-  return memberDirectoryLoaderClaims.get(queryClient) === claim;
-}
-
-// A server-confirmed organization scope makes older directory gates and membership refreshes stale.
-export function publishTenantScope(queryClient: QueryClient): void {
-  memberDirectoryLoaderClaims.set(queryClient, ++memberDirectoryLoaderOrdinal);
-  membershipContextRefreshClaims.set(
-    queryClient,
-    ++membershipContextRefreshOrdinal,
-  );
+// A server-confirmed organization scope retires every older context publisher.
+export function publishTenantScope(queryClient: QueryClient): bigint {
+  const claim = createContextPublicationClaim();
+  claimContextPublication(queryClient, claim);
+  return claim;
 }
 
 export function createSessionQueryClient(): QueryClient {

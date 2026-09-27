@@ -16,11 +16,12 @@ import {
 } from "../api/me";
 import { isInboxScopeChanged } from "../api/notifications";
 import {
-  claimMembershipContextRefresh,
-  createMembershipContextRefreshClaim,
-  hasMembershipContextRefreshClaim,
+  claimContextPublication,
+  createContextPublicationClaim,
+  hasContextPublicationClaim,
   publishTenantScope,
 } from "../queryClient";
+
 type Membership = MeContextResponse["organizations"][number];
 
 // Switching organization clears this whole prefix so an in-flight response for the old tenant can't repopulate the new view.
@@ -59,6 +60,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     queryKey: ME_CONTEXT_QUERY_KEY,
     queryFn: fetchMeContext,
   });
+
+  useEffect(() => {
+    if (meQuery.data !== undefined) {
+      setMembershipContextUnavailable(false);
+    }
+  }, [meQuery.data]);
 
   useEffect(() => {
     const refreshOnScopeChange = (error: unknown) => {
@@ -114,8 +121,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const refreshMembershipContext =
     useCallback(async (): Promise<MeContextResponse | null> => {
-      const claim = createMembershipContextRefreshClaim();
-      if (!claimMembershipContextRefresh(queryClient, claim)) {
+      const claim = createContextPublicationClaim();
+      if (!claimContextPublication(queryClient, claim)) {
         return null;
       }
       setMembershipContextUnavailable(true);
@@ -123,20 +130,19 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         queryKey: ME_CONTEXT_QUERY_KEY,
         exact: true,
       });
-      if (!hasMembershipContextRefreshClaim(queryClient, claim)) {
+      if (!hasContextPublicationClaim(queryClient, claim)) {
         return null;
       }
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
-      if (!hasMembershipContextRefreshClaim(queryClient, claim)) {
+      if (!hasContextPublicationClaim(queryClient, claim)) {
         return null;
       }
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       try {
         const updated = await fetchMeContext();
-        if (!hasMembershipContextRefreshClaim(queryClient, claim)) {
+        if (!hasContextPublicationClaim(queryClient, claim)) {
           return null;
         }
-        publishTenantScope(queryClient);
         queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
         setSelectedOrgId(null);
         setMembershipContextUnavailable(false);
@@ -156,11 +162,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setOrgSwitchPending(true);
     try {
       const updated = await updateActiveOrganization({ organizationId });
-      // Retire the old tenant's queries before publishing new state (see TENANT_QUERY_PREFIX).
-      publishTenantScope(queryClient);
+      const claim = publishTenantScope(queryClient);
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
+      if (!hasContextPublicationClaim(queryClient, claim)) {
+        return false;
+      }
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
+      setMembershipContextUnavailable(false);
       setSelectedOrgId(organizationId);
       return true;
     } catch {

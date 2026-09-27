@@ -10,7 +10,36 @@ import {
   ME_CONTEXT_QUERY_KEY,
   updateActiveOrganization,
 } from "../api/me";
+import {
+  publishActiveQueryClient,
+  resetQueryClientRegistry,
+} from "../queryClient";
+import { organizationMembersLoader } from "../auth/loaders";
 import { TenantProvider, useTenant } from "./TenantProvider";
+
+const { getSessionMock } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(() =>
+    Promise.resolve({
+      data: {
+        user: {
+          id: "user-1",
+          email: "user@example.com",
+          emailVerified: true,
+        },
+      },
+      error: null,
+    }),
+  ),
+}));
+
+vi.mock("better-auth/react", () => ({
+  createAuthClient: () => ({ getSession: getSessionMock }),
+}));
+
+vi.mock("better-auth/client/plugins", () => ({
+  organizationClient: () => ({}),
+  twoFactorClient: () => ({}),
+}));
 
 vi.mock("../api/me", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
@@ -87,6 +116,8 @@ describe("TenantProvider", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
+    getSessionMock.mockReset();
+    resetQueryClientRegistry();
   });
 
   it("prefers lastActiveTenantId over the first membership", async () => {
@@ -184,6 +215,45 @@ describe("TenantProvider", () => {
     expect(
       queryClient.getQueryData(["tenant", "org-b", "notifications"]),
     ).toBeUndefined();
+  });
+
+  it("clears an unavailable membership latch when a pending PATCH confirms a switch", async () => {
+    const confirmedB: MeContextResponse = {
+      ...me,
+      lastActiveTenantId: "org-a",
+    };
+    const pendingSwitch = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockRejectedValueOnce(new Error("context unavailable"));
+    updateActiveOrganizationMock.mockImplementationOnce(
+      () => pendingSwitch.promise,
+    );
+    renderProvider();
+    const user = userEvent.setup();
+    await screen.findByText("org-b");
+
+    await user.click(screen.getByRole("button", { name: "switch-a" }));
+    await waitFor(() => {
+      expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
+        organizationId: "org-a",
+      });
+    });
+    await user.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+    });
+
+    pendingSwitch.resolve(confirmedB);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("org-a");
+    });
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:org-a",
+    );
   });
 
   it("keeps the previous tenant when the PATCH fails", async () => {
@@ -372,6 +442,59 @@ describe("TenantProvider", () => {
     expect(screen.getByTestId("server-active")).toHaveTextContent(
       "server:none",
     );
+  });
+
+  it("keeps a newer restricted directory context when an older membership refresh resolves last", async () => {
+    const privilegedA: MeContextResponse = {
+      ...me,
+      organizations: [
+        { id: "org-a", name: "Org A", slug: "org-a", role: "owner" },
+      ],
+      lastActiveTenantId: "org-a",
+    };
+    const restrictedB: MeContextResponse = {
+      ...me,
+      organizations: [
+        { id: "org-b", name: "Org B", slug: "org-b", role: "viewer" },
+      ],
+      lastActiveTenantId: "org-b",
+    };
+    const olderRefresh = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockImplementationOnce(() => olderRefresh.promise)
+      .mockResolvedValueOnce(restrictedB);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    publishActiveQueryClient(me.user.id, queryClient);
+    renderProvider(queryClient);
+    const user = userEvent.setup();
+    await screen.findByText("org-b");
+
+    await user.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+
+    await organizationMembersLoader({
+      params: { organizationId: "org-a" },
+      request: new Request("http://localhost/organizations/org-a/members"),
+    } as never);
+    olderRefresh.resolve(privilegedA);
+    await olderRefresh.promise;
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+        restrictedB,
+      );
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b");
+      expect(screen.getByTestId("server-active")).toHaveTextContent(
+        "server:org-b",
+      );
+    });
   });
 
   it("keeps membership unavailable when the newest refresh fails before an older refresh resolves", async () => {
