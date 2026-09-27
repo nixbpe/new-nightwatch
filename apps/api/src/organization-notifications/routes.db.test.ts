@@ -344,8 +344,8 @@ describe("organization member HTTP mutations", () => {
     expect(missing.status).toBe(403);
     expect(missing.json).toEqual({
       error: {
-        code: "MEMBERSHIP_DENIED",
-        message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+        code: "PERMISSION_DENIED",
+        message: "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก",
       },
     });
     await owner.sql.query("update member set role = 'unknown' where id = $1", [
@@ -363,13 +363,27 @@ describe("organization member HTTP mutations", () => {
       "update member set role = 'viewer,auditor' where id = $1",
       [memberIds.leaver],
     );
+    await owner.sql.query("update member set role = 'unknown' where id = $1", [
+      memberIds.owner,
+    ]);
+    const actorRoleFailure = await ownerClient(
+      "GET",
+      `/api/organizations/${organizationId}/members`,
+    );
+    expect(actorRoleFailure.status).toBe(500);
+    expect(actorRoleFailure.json).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    });
+    await owner.sql.query("update member set role = 'owner' where id = $1", [
+      memberIds.owner,
+    ]);
     const logEntries = auditLines.map(
       (line) => JSON.parse(line) as Record<string, unknown>,
     );
     const completionLogs = logEntries.filter(
       (entry) => entry.msg === "request completed",
     );
-    expect(completionLogs).toHaveLength(12);
+    expect(completionLogs).toHaveLength(13);
     for (const completion of completionLogs) {
       expect(completion.path).toBe(
         "/api/organizations/:organizationId/members",
@@ -478,8 +492,8 @@ describe("organization member HTTP mutations", () => {
       status: 403,
       json: {
         error: {
-          code: "MEMBERSHIP_DENIED",
-          message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+          code: "PERMISSION_DENIED",
+          message: "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก",
         },
       },
     });

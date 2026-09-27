@@ -66,6 +66,7 @@ function toMemberResponse(member: MemberRow): MemberResponse {
 
 type MemberListRow = {
   member: boolean;
+  actorRoleValid: boolean;
   authorized: boolean;
   total: number;
   members: {
@@ -103,6 +104,13 @@ export async function listOrganizationMembers(
                     from member actor
                     where actor.organization_id = $1
                       and actor.user_id = $2
+                      and actor.role ~ '(^|,)[[:space:]]*(owner|admin|viewer|auditor)[[:space:]]*(,|$)'
+                  ) as "actorRoleValid",
+                  exists(
+                    select 1
+                    from member actor
+                    where actor.organization_id = $1
+                      and actor.user_id = $2
                       and actor.role ~ '(^|,)[[:space:]]*(owner|admin)[[:space:]]*(,|$)'
                   ) as authorized
          ),
@@ -119,6 +127,7 @@ export async function listOrganizationMembers(
            limit $3 offset $4
          )
          select authorization_state.member,
+                authorization_state."actorRoleValid",
                 authorization_state.authorized,
                 (select count(*)::int from scoped) as total,
                 coalesce(
@@ -139,7 +148,9 @@ export async function listOrganizationMembers(
       );
       const row = result.rows[0];
       if (!row) throw new Error("member list query returned no row");
-      if (!row.member) notMember();
+      if (row.member && !row.actorRoleValid) {
+        throw new Error("member has no recognized role");
+      }
       if (!row.authorized) deny("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก");
       const members = row.members.map((member) => {
         const role = normalizeOrganizationRole(member.role);
