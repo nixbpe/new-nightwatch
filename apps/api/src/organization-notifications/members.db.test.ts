@@ -1,5 +1,10 @@
 import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
-import { Client } from "pg";
+import {
+  Client,
+  type PoolClient,
+  type QueryResult,
+  type QueryResultRow,
+} from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
@@ -138,6 +143,50 @@ describe("listOrganizationMembers", () => {
         offset: 0,
       }),
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+  });
+
+  it("denies without returning directory rows when the actor is downgraded after authorization starts", async () => {
+    const hook = (client: PoolClient) => {
+      const originalQuery = client.query.bind(client);
+      const query = client.query.bind(client) as <T extends QueryResultRow>(
+        text: string,
+        values?: unknown[],
+      ) => Promise<QueryResult<T>>;
+      const release = client.release.bind(client);
+      let downgraded = false;
+      client.query = (async (text: string, values?: unknown[]) => {
+        if (!downgraded && text.includes("with authorization_state as")) {
+          downgraded = true;
+          await owner.query(
+            "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+            [organizationId, ownerId],
+          );
+        }
+        return query(text, values);
+      }) as typeof client.query;
+      client.release = (...args: Parameters<typeof client.release>) => {
+        client.query = originalQuery;
+        client.release = release;
+        release(...args);
+      };
+    };
+    database.sql.on("acquire", hook);
+    try {
+      await expect(
+        listOrganizationMembers(database, {
+          organizationId,
+          actorUserId: ownerId,
+          limit: 50,
+          offset: 0,
+        }),
+      ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    } finally {
+      database.sql.off("acquire", hook);
+      await owner.query(
+        "update member set role = 'owner' where organization_id = $1 and user_id = $2",
+        [organizationId, ownerId],
+      );
+    }
   });
 
   it("keeps exact bounded pages and tenant rows isolated for 49, 50, 51, and 101 members", async () => {

@@ -65,6 +65,8 @@ function toMemberResponse(member: MemberRow): MemberResponse {
 }
 
 type MemberListRow = {
+  member: boolean;
+  authorized: boolean;
   total: number;
   members: {
     id: string;
@@ -84,53 +86,61 @@ export async function listOrganizationMembers(
     offset: number;
   },
 ): Promise<OrganizationMemberListResponse> {
-  await assertMemberBeforeTenantContext(
-    database,
-    input.organizationId,
-    input.actorUserId,
-  );
   return withTenantContextRaw(
     database,
     input.organizationId,
     async (client) => {
-      const actor = await client.query<MemberRow>(
-        `select id, user_id as "userId", organization_id as "organizationId", role
-       from member where organization_id = $1 and user_id = $2`,
-        [input.organizationId, input.actorUserId],
-      );
-      const actorMember = actor.rows[0];
-      if (!actorMember) notMember();
-      if (!isOwnerOrAdmin(actorMember)) {
-        deny("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก");
-      }
       const result = await client.query<MemberListRow>(
-        `with scoped as (
-         select m.id, m.user_id as "userId", u.name, u.email, m.role
-         from member m
-         join "user" u on u.id = m.user_id
-         where m.organization_id = $1
-       ),
-       page as (
-         select * from scoped
-         order by lower(name), id
-         limit $2 offset $3
-       )
-       select (select count(*)::int from scoped) as total,
-              coalesce(
-                json_agg(
-                  json_build_object(
-                    'id', id, 'userId', "userId", 'name', name,
-                    'email', email, 'role', role
-                  )
-                  order by lower(name), id
-                ),
-                '[]'::json
-              ) as members
-       from page`,
-        [input.organizationId, input.limit, input.offset],
+        `with authorization_state as (
+           select exists(
+                    select 1
+                    from member actor
+                    where actor.organization_id = $1
+                      and actor.user_id = $2
+                  ) as member,
+                  exists(
+                    select 1
+                    from member actor
+                    where actor.organization_id = $1
+                      and actor.user_id = $2
+                      and actor.role ~ '(^|,)[[:space:]]*(owner|admin)[[:space:]]*(,|$)'
+                  ) as authorized
+         ),
+         scoped as (
+           select m.id, m.user_id as "userId", u.name, u.email, m.role
+           from member m
+           join "user" u on u.id = m.user_id
+           cross join authorization_state
+           where m.organization_id = $1 and authorization_state.authorized
+         ),
+         page as (
+           select * from scoped
+           order by lower(name), id
+           limit $3 offset $4
+         )
+         select authorization_state.member,
+                authorization_state.authorized,
+                (select count(*)::int from scoped) as total,
+                coalesce(
+                  (
+                    select json_agg(
+                      json_build_object(
+                        'id', id, 'userId', "userId", 'name', name,
+                        'email', email, 'role', role
+                      )
+                      order by lower(name), id
+                    )
+                    from page
+                  ),
+                  '[]'::json
+                ) as members
+         from authorization_state`,
+        [input.organizationId, input.actorUserId, input.limit, input.offset],
       );
       const row = result.rows[0];
       if (!row) throw new Error("member list query returned no row");
+      if (!row.member) notMember();
+      if (!row.authorized) deny("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก");
       const members = row.members.map((member) => {
         const role = normalizeOrganizationRole(member.role);
         if (role === null) {
