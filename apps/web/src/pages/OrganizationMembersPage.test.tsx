@@ -1,6 +1,6 @@
 import type { OrganizationMemberListResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -85,7 +85,7 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
 
 function renderPage() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
   });
   return {
     queryClient,
@@ -146,6 +146,88 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("Zoe")).toBeInTheDocument();
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+  });
+  it("hides stale first-page member data while revisiting it refetches", async () => {
+    const secondPage: OrganizationMemberListResponse = {
+      ...response,
+      members: [
+        {
+          ...firstMember,
+          id: "member-51",
+          name: "Zoe",
+          email: "zoe@example.test",
+        },
+      ],
+      page: { limit: 50, offset: 50, total: 51 },
+    };
+    const freshFirstPage =
+      Promise.withResolvers<OrganizationMemberListResponse>();
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockResolvedValueOnce(secondPage)
+      .mockImplementationOnce(() => freshFirstPage.promise);
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(await screen.findByText("Zoe")).toBeInTheDocument();
+    queryClient.setQueryData(
+      memberListQueryKey(organizationId, 50, 0),
+      response,
+      {
+        updatedAt: Date.now() - 30_001,
+      },
+    );
+    await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "กำลังโหลดสมาชิก",
+    );
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
+    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(screen.queryByText("แสดง 1–1 จาก 51")).not.toBeInTheDocument();
+
+    freshFirstPage.resolve({
+      ...response,
+      members: [{ ...firstMember, name: "Fresh Ada" }],
+    });
+
+    expect(await screen.findByText("Fresh Ada")).toBeInTheDocument();
+    expect(screen.getByText("สมาชิกทั้งหมด 51 คน")).toBeInTheDocument();
+    expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
+  });
+
+  it("hides current-page member data during a background refetch", async () => {
+    const freshPage = Promise.withResolvers<OrganizationMemberListResponse>();
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockImplementationOnce(() => freshPage.promise);
+    const { queryClient } = renderPage();
+
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    act(() => {
+      void queryClient.invalidateQueries({
+        queryKey: memberListQueryKey(organizationId, 50, 0),
+        exact: true,
+      });
+    });
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "กำลังโหลดสมาชิก",
+    );
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
+    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(screen.queryByText("แสดง 1–1 จาก 51")).not.toBeInTheDocument();
+
+    freshPage.resolve({
+      ...response,
+      members: [{ ...firstMember, name: "Fresh Ada" }],
+    });
+
+    expect(await screen.findByText("Fresh Ada")).toBeInTheDocument();
   });
   it("returns to first-page rows by keyboard after the next page fails", async () => {
     const restoredPage =

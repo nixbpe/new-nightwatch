@@ -249,7 +249,7 @@ function OrganizationMembersPageForOrganization({
       </Page>
     );
   }
-  if (list.isPending) {
+  if (list.isFetching) {
     return (
       <Page>
         <PageHeader
@@ -298,7 +298,7 @@ function OrganizationMembersPageForOrganization({
     );
   }
   const data = list.data;
-  if (data.organizationId !== organizationId) return null;
+  if (data === undefined || data.organizationId !== organizationId) return null;
   if (invalidPage) {
     return (
       <Page>
