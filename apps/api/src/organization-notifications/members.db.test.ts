@@ -381,7 +381,7 @@ describe("listOrganizationMembers", () => {
             limit: 50,
             offset: 0,
           }),
-        ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+        ).rejects.toMatchObject({ code: "MEMBERSHIP_DENIED" });
       }
     } finally {
       await owner.query("delete from organization where id = any($1::uuid[])", [

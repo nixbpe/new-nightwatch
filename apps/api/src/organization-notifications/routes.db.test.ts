@@ -344,8 +344,8 @@ describe("organization member HTTP mutations", () => {
     expect(missing.status).toBe(403);
     expect(missing.json).toEqual({
       error: {
-        code: "PERMISSION_DENIED",
-        message: "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก",
+        code: "MEMBERSHIP_DENIED",
+        message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
       },
     });
     await owner.sql.query("update member set role = 'unknown' where id = $1", [
@@ -492,8 +492,8 @@ describe("organization member HTTP mutations", () => {
       status: 403,
       json: {
         error: {
-          code: "PERMISSION_DENIED",
-          message: "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก",
+          code: "MEMBERSHIP_DENIED",
+          message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
         },
       },
     });

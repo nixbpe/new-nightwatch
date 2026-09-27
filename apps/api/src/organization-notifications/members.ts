@@ -151,6 +151,7 @@ export async function listOrganizationMembers(
       if (row.member && !row.actorRoleValid) {
         throw new Error("member has no recognized role");
       }
+      if (!row.member) notMember();
       if (!row.authorized) deny("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก");
       const members = row.members.map((member) => {
         const role = normalizeOrganizationRole(member.role);
