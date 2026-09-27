@@ -177,50 +177,102 @@ export async function organizationMembersLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
+  if (request.signal.aborted) return null;
   const organizationId = params.organizationId;
   if (organizationId === undefined) return null;
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
-  if (!claimContextPublication(queryClient, claim)) {
+  if (request.signal.aborted || !claimContextPublication(queryClient, claim)) {
     return null;
   }
   const previousContext =
     queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
   // A prior context or member query may have started before this membership
   // gate. Cancel it before the direct request can publish.
+  if (
+    request.signal.aborted ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
+    return null;
+  }
   await queryClient.cancelQueries({
     queryKey: ME_CONTEXT_QUERY_KEY,
     exact: true,
   });
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    request.signal.aborted ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
   await queryClient.cancelQueries({ queryKey: ["tenant"] });
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    request.signal.aborted ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
   // A bookmarked tenant route needs a fresh server membership decision, not a
   // static context cache that could predate a revocation or role change.
   const context = await fetchMeContext().catch(() => undefined);
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    request.signal.aborted ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
   if (context === undefined) {
+    if (
+      request.signal.aborted ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
+      return null;
+    }
     queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
+    if (
+      request.signal.aborted ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
+      return null;
+    }
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    if (!hasContextPublicationClaim(queryClient, claim)) {
+    if (
+      request.signal.aborted ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ["tenant"] });
     return null;
   }
   if (!hasSameMembershipScope(previousContext, context)) {
+    if (
+      request.signal.aborted ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
+      return null;
+    }
     await queryClient.cancelQueries({ queryKey: ["tenant"] });
-    if (!hasContextPublicationClaim(queryClient, claim)) {
+    if (
+      request.signal.aborted ||
+      !hasContextPublicationClaim(queryClient, claim)
+    ) {
       return null;
     }
     queryClient.removeQueries({ queryKey: ["tenant"] });
   }
+  if (
+    request.signal.aborted ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
+    return null;
+  }
   queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+  if (
+    request.signal.aborted ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
+    return null;
+  }
   publishContextPublication(queryClient, claim);
   const membership = context.organizations.find(
     (organization) => organization.id === organizationId,
@@ -231,7 +283,10 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    request.signal.aborted ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
   await queryClient
@@ -240,7 +295,10 @@ export async function organizationMembersLoader({
       queryFn: () => fetchOrganizationMembers(organizationId, 50, 0),
     })
     .catch(() => undefined);
-  if (!hasContextPublicationClaim(queryClient, claim)) {
+  if (
+    request.signal.aborted ||
+    !hasContextPublicationClaim(queryClient, claim)
+  ) {
     return null;
   }
   return null;

@@ -405,6 +405,78 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     );
   });
 
+  it("leaves destination context and member cache untouched after an aborted late success", async () => {
+    sessionState.data = { user: VERIFIED };
+    const pendingContext = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock.mockImplementationOnce(() => pendingContext.promise);
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+    const destinationContext: MeContextResponse = {
+      ...cachedOwnerContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+    };
+    const abortController = new AbortController();
+    const loading = organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+        { signal: abortController.signal },
+      ),
+    } as never);
+    await vi.waitFor(() => expect(fetchMeContextMock).toHaveBeenCalledOnce());
+
+    abortController.abort();
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, destinationContext);
+    queryClient.setQueryData(
+      memberListQueryKey(organizationId, 50, 0),
+      cachedMembers,
+    );
+    pendingContext.resolve(cachedOwnerContext);
+    await loading;
+
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+      destinationContext,
+    );
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toEqual(cachedMembers);
+    expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves destination context and member cache untouched after an aborted late failure", async () => {
+    sessionState.data = { user: VERIFIED };
+    const pendingContext = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock.mockImplementationOnce(() => pendingContext.promise);
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+    const abortController = new AbortController();
+    const loading = organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+        { signal: abortController.signal },
+      ),
+    } as never);
+    await vi.waitFor(() => expect(fetchMeContextMock).toHaveBeenCalledOnce());
+
+    abortController.abort();
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, cachedOwnerContext);
+    queryClient.setQueryData(
+      memberListQueryKey(organizationId, 50, 0),
+      cachedMembers,
+    );
+    pendingContext.reject(new Error("context unavailable"));
+    await loading;
+
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+      cachedOwnerContext,
+    );
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toEqual(cachedMembers);
+    expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
+  });
+
   it("retires cached membership and directory data when the fresh decision fails", async () => {
     sessionState.data = { user: VERIFIED };
     const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
@@ -456,7 +528,13 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
       };
       const freshRequest =
         Promise.withResolvers<OrganizationMemberListResponse>();
-      fetchMeContextMock.mockResolvedValue(cachedOwnerContext);
+      const freshContext: MeContextResponse = {
+        ...cachedOwnerContext,
+        organizations: [
+          { id: organizationId, name: "Fresh Acme", slug: "acme", role: "owner" },
+        ],
+      };
+      fetchMeContextMock.mockResolvedValue(freshContext);
       fetchOrganizationMembersMock.mockImplementationOnce(
         () => freshRequest.promise,
       );
@@ -478,6 +556,9 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
       freshRequest.resolve(freshMembers);
       await decision;
 
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+        freshContext,
+      );
       expect(
         queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
       ).toEqual(freshMembers);
