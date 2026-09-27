@@ -240,16 +240,17 @@ describe("AppShell", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides the organization section from roles it does not admit", async () => {
+  it("shows the organization member destination to a viewer without notification settings", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
     renderShell();
     await screen.findByRole("link", { name: "Org B" });
 
     const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
-    expect(
-      within(nav).getByRole("link", { name: "ภาพรวม" }),
-    ).toBeInTheDocument();
-    expect(within(nav).queryByText("องค์กร")).toBeNull();
+    expect(within(nav).getByText("องค์กร")).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "สมาชิก" })).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_B}/members`,
+    );
     expect(
       within(nav).queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
     ).toBeNull();
@@ -548,7 +549,7 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: /Org A/ })).toBeInTheDocument();
   });
 
-  it("⌘K opens search-all; a filtered page result navigates and the palette closes", async () => {
+  it("⌘K includes every owner destination and navigates from a filtered result", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
     renderShell();
@@ -560,15 +561,31 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    // 4 sidebar destinations (owner sees the org leaf) + 4 palette-only settings tabs.
-    expect(within(dialog).getAllByRole("option")).toHaveLength(8);
+    const options = within(dialog).getAllByRole("option");
+    expect(options).toHaveLength(9);
+    expect(
+      options.map(
+        (option) =>
+          option.querySelector<HTMLSpanElement>("span.flex-1")?.textContent,
+      ),
+    ).toEqual([
+      "ภาพรวม",
+      "การแจ้งเตือน",
+      "การตั้งค่าส่วนตัว",
+      "โปรไฟล์",
+      "ความปลอดภัย",
+      "เซสชันและอุปกรณ์",
+      "การแสดงผล",
+      "สมาชิก",
+      "ตั้งค่าการแจ้งเตือน",
+    ]);
     expect(dialog).toHaveTextContent("ค้นหาใน Org A");
 
     await user.keyboard("เซสชัน");
-    const options = within(dialog).getAllByRole("option");
-    expect(options).toHaveLength(1);
-    expect(options[0]).toHaveTextContent("เซสชันและอุปกรณ์");
-    expect(options[0]).toHaveTextContent("การตั้งค่าส่วนตัว");
+    const filteredOptions = within(dialog).getAllByRole("option");
+    expect(filteredOptions).toHaveLength(1);
+    expect(filteredOptions[0]).toHaveTextContent("เซสชันและอุปกรณ์");
+    expect(filteredOptions[0]).toHaveTextContent("การตั้งค่าส่วนตัว");
 
     await user.keyboard("{Enter}");
     expect(screen.queryByRole("dialog", { name: "ค้นหาทั้งหมด" })).toBeNull();

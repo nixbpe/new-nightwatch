@@ -140,6 +140,35 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
   });
 
+  it("returns keyboard pagination focus to the available control after each page loads", async () => {
+    const firstPage: OrganizationMemberListResponse = {
+      ...response,
+      members: [{ ...firstMember, name: "Member 1" }],
+      page: { limit: 50, offset: 0, total: 51 },
+    };
+    const secondPage: OrganizationMemberListResponse = {
+      ...response,
+      members: [{ ...firstMember, id: "member-51", name: "Member 51" }],
+      page: { limit: 50, offset: 50, total: 51 },
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage)
+      .mockResolvedValueOnce(firstPage);
+    const user = userEvent.setup();
+    renderPage();
+
+    const next = await screen.findByRole("button", { name: "ถัดไป" });
+    next.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("Member 51")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toHaveFocus();
+
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("Member 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ถัดไป" })).toHaveFocus();
+  });
+
   it("announces denied access without requesting or rendering directory data", () => {
     tenant = {
       ...tenant,
