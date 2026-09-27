@@ -59,7 +59,7 @@ Every dispatch:
 ## 4. Build to review-ready
 
 1. Dispatch bounded, ready Tasks together only when ownership is disjoint; owners build in slices per skill:`incremental-implementation`, and one slice may cover several ACs. No candidate exists yet.
-2. Read every handoff; evidence must exercise each claim.
+2. As each handoff arrives, send that Task's diff to agent:`code-reviewer` against its criteria, contracts and non-goals, and return Blocker/Major findings to the owner before dependent Tasks start. Evidence must exercise each claim.
    - When relevant, stateful proof names one trigger, the mutation or interleaving it reached, and the state it preserved.
    - Integration tests that write data need run-unique fixtures and owned cleanup.
    - If evidence misses an applicable requirement, mark the handoff source-complete, not author-verified.
@@ -71,7 +71,7 @@ With `STOP_AT: review-ready`, stop here and report each check as passed, failed 
 
 With `STOP_AT: merge-ready`, continue after step 3:
 
-1. Send the change to agent:`code-reviewer` for one review.
+1. Send the whole change to agent:`code-reviewer` for one final review of how the Tasks fit together and of changes made after their step 2 reviews.
 2. Run the same gates as PR CI:
    ```text
    bun run validate
@@ -79,7 +79,7 @@ With `STOP_AT: merge-ready`, continue after step 3:
    bun run build
    bun run security
    ```
-3. Put review findings and gate failures into one batch and repair once. Fix only in-scope defects that break a criterion or contract; record the rest. Repairs run focused checks only (formatter on touched files, lint and typecheck for the affected package, the regression test, a DB scenario or targeted security check only when the finding needs it), then rerun the failed gates.
+3. Put review findings and gate failures into one batch and repair once. Fix only in-scope defects that break a criterion or contract; record the rest. Find the cause with skill:`debugging-and-error-recovery` before fixing. Repairs run focused checks only (formatter on touched files, lint and typecheck for the affected package, the regression test, a DB scenario or targeted security check only when the finding needs it), then rerun the failed gates.
 4. Report merge-ready with the reviewed commit or diff. If a Blocker, Major or red gate remains after that repair, stop and give the user the evidence and the decision needed.
 
 Merge-ready means review and PR CI gates pass. Full E2E, the image scan, candidate binding and environment checks belong to skill:`release-preparation`.

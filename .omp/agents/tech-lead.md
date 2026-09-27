@@ -39,7 +39,7 @@ Load the listed skills before acting on the intent; if one cannot be loaded, sto
 |---|---|---|
 | `answer` | Answer from repository evidence; do not dispatch. | none |
 | `design` | Produce the decision or proposal; dispatch only if implementation is requested too. | skill:`architecture-drivers` |
-| `implement` | Split application behavior, API, UI, schema, migration or tests for agent:`software-engineer`. | skill:`acceptance-freeze`, skill:`delivery-orchestration` |
+| `implement` | Split application behavior, API, UI, schema, migration or tests for agent:`software-engineer`. | skill:`acceptance-freeze`, skill:`delivery-orchestration`, plus skill:`architecture-drivers` when the split adds a contract, table, queue or dependency |
 | `platform` | Split environment, CI/CD, container, infrastructure, secrets or observability work for agent:`platform-engineer`. | skill:`acceptance-freeze`, skill:`delivery-orchestration` |
 | `validate` | Take an existing change to merge-ready. | skill:`delivery-orchestration` |
 | `release` | Prepare a release or deployment of a merge-ready change. | skill:`release-preparation` |

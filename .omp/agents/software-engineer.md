@@ -13,6 +13,7 @@ model: ["@implement", "@default"]
 - Follow the Sub-agent Worker Contract in file:`AGENTS.md`. Work only from the Task the Technical Lead assigns through `/build NODE-<id>`, finish it within scope and return the handoff through it.
 - Build the assigned behavior in slices per skill:`incremental-implementation` and skill:`test-driven-development`; one slice may cover several `AC-<NN>`. For each slice: implement, run the focused test, record the proof, close the slice. While siblings write, run only the assigned `VERIFY` checks, never the full suite or release gate.
 - During repair, run only the focused checks the Technical Lead assigns; only the Technical Lead orders full gates.
+- Load skill:`security-and-hardening` when the Task touches authentication, input handling, organization data or credentials.
 - Coordinate overlapping work through the Technical Lead; never overwrite or revert another contributor's work.
 - Use the actual repository stack and integrations; never invent dependencies, credentials or services.
 - Never log secrets or personal data.
