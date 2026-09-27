@@ -6,6 +6,12 @@ import { Card } from "./ui/card";
 
 type ErrorBoundaryProps = {
   children: ReactNode;
+  /**
+   * Render the fallback as the document's <main> (default: the root
+   * boundary may be all that is on the page). Pass false where a <main>
+   * already surrounds the boundary, such as the AppShell's routed content.
+   */
+  landmark?: boolean;
 };
 
 type ErrorBoundaryState = {
@@ -13,9 +19,9 @@ type ErrorBoundaryState = {
 };
 
 /**
- * Render-error fallback. Used both around the whole router and around the
- * AppShell's routed content, so it is a plain centered card, never its
- * own <main>, and it sits inside the shell's landmark when nested.
+ * Render-error fallback: a centered card. Around the whole router it is the
+ * page's <main>; nested inside the AppShell (landmark={false}) it is a
+ * plain block inside the shell's own <main>.
  */
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
@@ -33,8 +39,9 @@ export class ErrorBoundary extends Component<
 
   render(): ReactNode {
     if (this.state.error) {
+      const Wrapper = this.props.landmark === false ? "div" : "main";
       return (
-        <div className="mx-auto w-full max-w-md px-4 py-16">
+        <Wrapper className="mx-auto w-full max-w-md px-4 py-16">
           <Card className="gap-4 p-6 sm:p-8">
             <h1 className="text-xl font-semibold">
               เกิดข้อผิดพลาดที่ไม่คาดคิด
@@ -51,7 +58,7 @@ export class ErrorBoundary extends Component<
               </Button>
             </div>
           </Card>
-        </div>
+        </Wrapper>
       );
     }
     return this.props.children;

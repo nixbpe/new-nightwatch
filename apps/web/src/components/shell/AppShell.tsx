@@ -174,7 +174,7 @@ export function AppShell() {
           >
             <div className="flex min-h-full flex-col">
               <div className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
-                <ErrorBoundary>
+                <ErrorBoundary landmark={false}>
                   <Outlet />
                 </ErrorBoundary>
               </div>
