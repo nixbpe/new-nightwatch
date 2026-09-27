@@ -220,9 +220,15 @@ describe("TenantProvider", () => {
       ...me,
       lastActiveTenantId: "org-a",
     };
+    const organizationB = me.organizations.find(
+      (organization) => organization.id === "org-b",
+    );
+    if (organizationB === undefined) {
+      throw new Error("Org B fixture is required for this test");
+    }
     const bContext: MeContextResponse = {
       ...me,
-      organizations: [me.organizations[1]!],
+      organizations: [organizationB],
       lastActiveTenantId: "org-b",
     };
     fetchMeContextMock

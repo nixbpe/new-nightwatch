@@ -67,7 +67,7 @@ let tenant: TenantStub = {
   refreshMembershipContext: vi.fn(),
   activeOrg: organizationA,
   orgSwitchPending: false,
-  switchOrg: async () => false,
+  switchOrg: () => Promise.resolve(false),
 };
 
 vi.mock("../lib/tenant/TenantProvider", () => ({
@@ -107,7 +107,7 @@ afterEach(() => {
     refreshMembershipContext: vi.fn(),
     activeOrg: organizationA,
     orgSwitchPending: false,
-    switchOrg: async () => false,
+    switchOrg: () => Promise.resolve(false),
   };
 });
 
@@ -217,11 +217,12 @@ describe("OrganizationMembersPage", () => {
         ...tenant,
         me: { organizations: [organizationA, organizationB] },
         activeOrg: organizationA,
-        switchOrg: async (nextOrganizationId: string) => {
-          if (nextOrganizationId !== organizationBId) return false;
+        switchOrg: (nextOrganizationId: string) => {
+          if (nextOrganizationId !== organizationBId)
+            return Promise.resolve(false);
           tenant = { ...tenant, activeOrg: organizationB };
           setRevision((value) => value + 1);
-          return true;
+          return Promise.resolve(true);
         },
       };
       return (
@@ -304,7 +305,7 @@ describe("OrganizationMembersPage", () => {
         ...tenant,
         me: { organizations: [organizationA, organizationB] },
         activeOrg: organizationA,
-        switchOrg: async () => false,
+        switchOrg: () => Promise.resolve(false),
       };
       return (
         <>
@@ -369,16 +370,16 @@ describe("OrganizationMembersPage", () => {
       refreshMembershipContext: vi
         .fn()
         .mockResolvedValueOnce(null)
-        .mockImplementationOnce(async () => {
+        .mockImplementationOnce(() => {
           tenant = {
             ...tenant,
             me: { organizations: [organizationB] },
             activeOrg: organizationB,
           };
-          return {
+          return Promise.resolve({
             organizations: [organizationB],
             lastActiveTenantId: organizationBId,
-          };
+          });
         }),
     };
     vi.mocked(fetchOrganizationMembers)
@@ -450,16 +451,16 @@ describe("OrganizationMembersPage", () => {
       ...tenant,
       me: { organizations: [organizationA, organizationB] },
       activeOrg: organizationA,
-      refreshMembershipContext: vi.fn(async () => {
+      refreshMembershipContext: vi.fn(() => {
         tenant = {
           ...tenant,
           me: { organizations: [organizationB] },
           activeOrg: organizationB,
         };
-        return {
+        return Promise.resolve({
           organizations: [organizationB],
           lastActiveTenantId: organizationBId,
-        };
+        });
       }),
     };
     vi.mocked(fetchOrganizationMembers)

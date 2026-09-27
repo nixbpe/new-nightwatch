@@ -123,7 +123,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                         location.pathname,
                       )
                     ) {
-                      navigate(`/organizations/${org.id}/members`, {
+                      void navigate(`/organizations/${org.id}/members`, {
                         replace: true,
                       });
                     }

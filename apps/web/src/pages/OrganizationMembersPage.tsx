@@ -62,7 +62,7 @@ function OrganizationMembersPageForOrganization({
       context.organizations.find(
         (organization) => organization.id === context.lastActiveTenantId,
       )?.id ?? context.organizations[0]?.id;
-    navigate(
+    await navigate(
       nextOrganizationId === undefined
         ? "/workspace"
         : `/organizations/${nextOrganizationId}/members`,
@@ -125,7 +125,7 @@ function OrganizationMembersPageForOrganization({
     );
   }
   const data = list.data;
-  if (data === undefined || data.organizationId !== organizationId) return null;
+  if (data.organizationId !== organizationId) return null;
   const hasPrevious = offset > 0;
   const hasNext = offset + data.members.length < data.page.total;
   return (
@@ -133,7 +133,7 @@ function OrganizationMembersPageForOrganization({
       <PageHeader
         eyebrow={`${organization.name} · ${organization.slug}`}
         title="สมาชิก"
-        description={`สมาชิกทั้งหมด ${data.page.total} คน`}
+        description={`สมาชิกทั้งหมด ${String(data.page.total)} คน`}
       />
       <div className="overflow-x-auto rounded-md border border-foreground/10 bg-surface">
         <table className="w-full min-w-[560px] text-left text-sm">
@@ -169,13 +169,17 @@ function OrganizationMembersPageForOrganization({
         <div className="flex gap-2">
           <Button
             disabled={!hasPrevious}
-            onClick={() => setOffset((value) => Math.max(0, value - LIMIT))}
+            onClick={() => {
+              setOffset((value) => Math.max(0, value - LIMIT));
+            }}
           >
             ก่อนหน้า
           </Button>
           <Button
             disabled={!hasNext}
-            onClick={() => setOffset((value) => value + LIMIT)}
+            onClick={() => {
+              setOffset((value) => value + LIMIT);
+            }}
           >
             ถัดไป
           </Button>
