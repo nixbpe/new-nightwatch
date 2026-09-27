@@ -1,13 +1,28 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { Alert } from "./ui";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
+
 type ErrorBoundaryProps = {
   children: ReactNode;
+  /**
+   * Render the fallback as the document's <main> (default: the root
+   * boundary may be all that is on the page). Pass false where a <main>
+   * already surrounds the boundary, such as the AppShell's routed content.
+   */
+  landmark?: boolean;
 };
 
 type ErrorBoundaryState = {
   error: Error | null;
 };
 
+/**
+ * Render-error fallback: a centered card. Around the whole router it is the
+ * page's <main>; nested inside the AppShell (landmark={false}) it is a
+ * plain block inside the shell's own <main>.
+ */
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
@@ -24,24 +39,26 @@ export class ErrorBoundary extends Component<
 
   render(): ReactNode {
     if (this.state.error) {
+      const Wrapper = this.props.landmark === false ? "div" : "main";
       return (
-        <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-4 p-8">
-          <h1 className="text-2xl font-semibold">Something went wrong</h1>
-          <p role="alert" className="text-danger">
-            {this.state.error.message}
-          </p>
-          <div>
-            <button
-              type="button"
-              className="rounded-md bg-primary px-4 py-2 text-on-primary"
-              onClick={() => {
-                this.setState({ error: null });
-              }}
-            >
-              Try again
-            </button>
-          </div>
-        </main>
+        <Wrapper className="mx-auto w-full max-w-md px-4 py-16">
+          <Card className="gap-4 p-6 sm:p-8">
+            <h1 className="text-xl font-semibold">
+              เกิดข้อผิดพลาดที่ไม่คาดคิด
+            </h1>
+            <Alert tone="error">{this.state.error.message}</Alert>
+            <div>
+              <Button
+                type="button"
+                onClick={() => {
+                  this.setState({ error: null });
+                }}
+              >
+                ลองใหม่
+              </Button>
+            </div>
+          </Card>
+        </Wrapper>
       );
     }
     return this.props.children;

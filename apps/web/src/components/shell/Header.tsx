@@ -5,6 +5,7 @@ import { useTenant } from "../../lib/tenant/TenantProvider";
 import { getBreadcrumbTrail } from "./breadcrumb";
 import { ChevronRightIcon, MenuIcon, PanelLeftIcon, SearchIcon } from "./icons";
 import { Kbd } from "./Kbd";
+import { getRouteOrganizationId } from "./nav-config";
 import { NotificationsPopover } from "./NotificationsPopover";
 
 /**
@@ -29,13 +30,30 @@ export function Header({
   onOpenSearch: () => void;
 }) {
   const { pathname } = useLocation();
-  const { activeOrg } = useTenant();
+  const { activeOrg, me } = useTenant();
 
   const pageTrail = getBreadcrumbTrail(pathname);
-  const trail =
-    activeOrg === null
-      ? pageTrail
-      : [{ label: activeOrg.name, path: "/workspace" }, ...pageTrail];
+  // The root crumb is the organization the page acts on: the one named in
+  // an organization-scoped URL (a bookmark may name one that is not the
+  // account-global active organization), the active organization elsewhere.
+  // An id outside the user's memberships is shown as-is rather than
+  // dressed up as a membership; the page itself reports the denial.
+  const routeOrgId = getRouteOrganizationId(pathname);
+  const rootCrumb =
+    routeOrgId === null
+      ? activeOrg === null
+        ? null
+        : { label: activeOrg.name, path: "/workspace" }
+      : {
+          label:
+            me?.organizations.find((org) => org.id === routeOrgId)?.name ??
+            routeOrgId,
+          // /workspace shows the active organization, so the crumb links
+          // there only when that is this organization; otherwise it is a
+          // plain label rather than a link to another tenant's page.
+          ...(routeOrgId === activeOrg?.id ? { path: "/workspace" } : {}),
+        };
+  const trail = rootCrumb === null ? pageTrail : [rootCrumb, ...pageTrail];
 
   const iconButton =
     "inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground";
@@ -91,7 +109,11 @@ export function Header({
                 ) : (
                   <span
                     aria-current={isLast ? "page" : undefined}
-                    className="truncate font-medium text-foreground"
+                    className={
+                      isLast
+                        ? "truncate font-medium text-foreground"
+                        : "truncate text-foreground-secondary"
+                    }
                   >
                     {crumb.label}
                   </span>
@@ -106,7 +128,9 @@ export function Header({
         <button
           type="button"
           onClick={onOpenSearch}
-          className="hidden h-9 w-80 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-sm text-foreground-secondary hover:bg-foreground/5 lg:flex"
+          // Field-shaped control, so it keeps the control-boundary token
+          // (>= 3:1 against the header), not the divider hairline.
+          className="hidden h-9 w-80 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-sm text-foreground-secondary hover:bg-foreground/5 hover:text-foreground lg:flex"
         >
           <SearchIcon size={16} />
           <span className="flex-1 text-start">ค้นหาทั้งหมด...</span>

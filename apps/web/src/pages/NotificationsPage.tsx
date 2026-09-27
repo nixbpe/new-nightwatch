@@ -14,6 +14,7 @@ import {
   ShieldIcon,
   SlidersIcon,
 } from "../components/shell/icons";
+import { Page, PageHeader } from "../components/shell/Page";
 import { Skeleton } from "../components/shell/Skeleton";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
@@ -131,20 +132,20 @@ export function NotificationRows({
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span
-                className={item.readAt === null ? "font-medium" : undefined}
+                className={`text-sm ${item.readAt === null ? "font-medium" : ""}`}
               >
                 {itemTitle(item)}
               </span>
-              <span className="text-sm text-foreground-secondary">
-                {itemContext(item)}
+              <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-foreground-secondary">
+                <span>{itemContext(item)}</span>
+                <time
+                  dateTime={item.occurredAt}
+                  title={itemTime(item.occurredAt)}
+                  className="font-mono text-xs"
+                >
+                  {relativeTime(item.occurredAt)}
+                </time>
               </span>
-              <time
-                dateTime={item.occurredAt}
-                title={itemTime(item.occurredAt)}
-                className="font-mono text-xs text-foreground-secondary"
-              >
-                {relativeTime(item.occurredAt)}
-              </time>
             </span>
           </button>
         </li>
@@ -253,7 +254,11 @@ function NotificationsPageForOrganization({
 
   if (detailId !== null) {
     const backButton = (
-      <Button variant="ghost" className="-ml-3 gap-1" onClick={closeDetail}>
+      <Button
+        variant="ghost"
+        className="-ml-3 gap-1 self-start"
+        onClick={closeDetail}
+      >
         <ChevronLeftIcon />
         กลับไปที่การแจ้งเตือน
       </Button>
@@ -264,11 +269,11 @@ function NotificationsPageForOrganization({
       (open.data !== undefined && open.data.id !== detailId)
     ) {
       return (
-        <section className="max-w-3xl">
+        <Page>
           {backButton}
           <div
             role="status"
-            className="mt-4 flex gap-4 rounded-md border border-foreground/10 bg-surface p-6"
+            className="flex gap-4 rounded-md border border-foreground/10 bg-surface p-6"
           >
             <span className="sr-only">กำลังเปิดการแจ้งเตือน…</span>
             <Skeleton className="h-10 w-10 shrink-0" />
@@ -277,24 +282,22 @@ function NotificationsPageForOrganization({
               <Skeleton className="h-6 w-64 max-w-full" />
             </span>
           </div>
-        </section>
+        </Page>
       );
     }
     if (open.isError) {
       return (
-        <section className="max-w-3xl">
+        <Page>
           {backButton}
-          <div className="mt-4">
-            <Alert tone="error">{problem(open.error)}</Alert>
-          </div>
-        </section>
+          <Alert tone="error">{problem(open.error)}</Alert>
+        </Page>
       );
     }
     const detail = open.data;
     return (
-      <section className="max-w-3xl">
+      <Page>
         {backButton}
-        <article className="mt-4 rounded-md border border-foreground/10 bg-surface">
+        <article className="rounded-md border border-foreground/10 bg-surface">
           <header className="flex items-start gap-4 border-b border-foreground/10 p-6">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground-secondary">
               <ItemIcon item={detail} size={20} />
@@ -347,12 +350,12 @@ function NotificationsPageForOrganization({
             ) : null}
           </dl>
         </article>
-      </section>
+      </Page>
     );
   }
   if (list.isPending)
     return (
-      <section className="max-w-3xl">
+      <Page>
         <div
           role="status"
           className="rounded-md border border-foreground/10 bg-surface"
@@ -371,63 +374,57 @@ function NotificationsPageForOrganization({
             </div>
           ))}
         </div>
-      </section>
+      </Page>
     );
   if (list.isError)
     return (
-      <section className="max-w-3xl">
+      <Page>
         <Alert tone="error">{problem(list.error)}</Alert>
-        <Button
-          className="mt-4"
-          variant="secondary"
-          onClick={() => void list.refetch()}
-        >
-          ลองใหม่
-        </Button>
-      </section>
+        <div>
+          <Button variant="secondary" onClick={() => void list.refetch()}>
+            ลองใหม่
+          </Button>
+        </div>
+      </Page>
     );
   const { unreadCount } = list.data;
   return (
-    <section className="max-w-3xl">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-foreground-secondary">
-            บัญชีของคุณ
-            {serverActiveOrgId === null
-              ? " · ไม่มีองค์กรที่ใช้งาน"
-              : " · องค์กรที่ใช้งาน"}
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold">การแจ้งเตือน</h1>
-          <p className="mt-1 text-sm text-foreground-secondary">
-            {unreadCount === 0 ? (
-              "อ่านครบทุกรายการแล้ว"
-            ) : (
-              <>
-                ยังไม่อ่าน <span className="font-mono">{unreadCount}</span>{" "}
-                รายการ
-              </>
-            )}
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          className="h-auto min-h-9 w-full max-w-full break-words whitespace-normal sm:w-auto"
-          disabled={unreadCount === 0 || all.isPending}
-          onClick={() => {
-            all.mutate(serverActiveOrgId);
-          }}
-        >
-          ทำเครื่องหมายว่าอ่านทั้งหมด
-        </Button>
-      </header>
+    <Page>
+      <PageHeader
+        eyebrow={
+          serverActiveOrgId === null
+            ? "บัญชีของคุณ · ไม่มีองค์กรที่ใช้งาน"
+            : "บัญชีของคุณ · องค์กรที่ใช้งาน"
+        }
+        title="การแจ้งเตือน"
+        description={
+          unreadCount === 0 ? (
+            "อ่านครบทุกรายการแล้ว"
+          ) : (
+            <>
+              ยังไม่อ่าน <span className="font-mono">{unreadCount}</span> รายการ
+            </>
+          )
+        }
+        actions={
+          <Button
+            variant="secondary"
+            className="h-auto min-h-10 w-full max-w-full break-words whitespace-normal sm:w-auto"
+            disabled={unreadCount === 0 || all.isPending}
+            onClick={() => {
+              all.mutate(serverActiveOrgId);
+            }}
+          >
+            ทำเครื่องหมายว่าอ่านทั้งหมด
+          </Button>
+        }
+      />
       {all.isError ? (
-        <div className="mt-4">
-          <Alert tone="error">
-            ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
-          </Alert>
-        </div>
+        <Alert tone="error">
+          ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
+        </Alert>
       ) : null}
-      <div className="mt-6">
+      <div>
         {items.length === 0 ? (
           <EmptyState
             icon={<BellIcon size={20} />}
@@ -459,6 +456,6 @@ function NotificationsPageForOrganization({
           </div>
         )}
       </div>
-    </section>
+    </Page>
   );
 }

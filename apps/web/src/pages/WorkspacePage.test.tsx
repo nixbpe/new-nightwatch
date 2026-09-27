@@ -121,9 +121,7 @@ describe("WorkspacePage context states", () => {
 
     pending.resolve(meContext([ownerOrg], ORG_A));
 
-    expect(
-      await screen.findByRole("heading", { name: "Org A" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -150,9 +148,7 @@ describe("WorkspacePage context states", () => {
 
     await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Org A" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
   });
 
   it("a successful context with zero memberships shows the access-needed state", async () => {
@@ -186,9 +182,7 @@ describe("WorkspacePage organization views", () => {
     fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
     renderPage();
 
-    expect(
-      await screen.findByRole("heading", { name: "Org B" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Org B · ผู้ชม")).toBeInTheDocument();
     expect(screen.getByText(/ผู้ชม/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
     expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
@@ -200,7 +194,7 @@ describe("WorkspacePage organization views", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByRole("heading", { name: "Org A" });
+    await screen.findByText("Org A · เจ้าของ");
     await user.type(
       screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
       "new@example.com",
@@ -223,7 +217,7 @@ describe("WorkspacePage organization views", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByRole("heading", { name: "Org A" });
+    await screen.findByText("Org A · เจ้าของ");
     await user.type(
       screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
       "new@example.com",

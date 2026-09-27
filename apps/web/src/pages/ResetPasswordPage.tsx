@@ -10,6 +10,7 @@ import {
   Input,
   SubmitButton,
 } from "../components/ui";
+import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
 /**
@@ -63,12 +64,9 @@ export function ResetPasswordPage() {
             ลิงก์นี้ไม่ถูกต้องหรือไม่สมบูรณ์
             กรุณาขอลิงก์ตั้งรหัสผ่านใหม่จากอีเมล
           </Alert>
-          <Link
-            to="/forgot-password"
-            className="w-full rounded-md bg-primary px-4 py-2.5 text-center font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            ขอลิงก์ใหม่
-          </Link>
+          <Button asChild className="w-full">
+            <Link to="/forgot-password">ขอลิงก์ใหม่</Link>
+          </Button>
         </div>
       </AuthPageShell>
     );

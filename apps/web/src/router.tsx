@@ -9,7 +9,9 @@ import {
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppShell } from "./components/shell/AppShell";
 import { AuthLayout } from "./components/shell/AuthLayout";
-import { ShieldIcon } from "./components/shell/icons";
+import { BrandMark } from "./components/shell/BrandMark";
+import { Button } from "./components/ui/button";
+import { Card } from "./components/ui/card";
 import {
   notificationSettingsLoader,
   notificationsLoader,
@@ -71,22 +73,17 @@ export function RootLayout() {
 // anonymous visitor on to /login via its own loader.
 function NotFoundPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-lg bg-surface p-6 text-center shadow-sm">
-        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-md bg-primary text-on-primary">
-          <ShieldIcon size={20} />
-        </span>
-        <h1 className="mt-3 text-2xl font-semibold">ไม่พบหน้านี้</h1>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
+      <BrandMark withName />
+      <Card className="w-full max-w-md items-center p-6 text-center sm:p-8">
+        <h1 className="text-2xl font-semibold">ไม่พบหน้านี้</h1>
         <p className="mt-2 text-sm text-foreground-secondary">
           ตรวจสอบที่อยู่หรือกลับไปยังพื้นที่ทำงาน
         </p>
-        <Link
-          to="/workspace"
-          className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          ไปที่พื้นที่ทำงาน
-        </Link>
-      </div>
+        <Button asChild className="mt-6">
+          <Link to="/workspace">ไปที่พื้นที่ทำงาน</Link>
+        </Button>
+      </Card>
     </main>
   );
 }

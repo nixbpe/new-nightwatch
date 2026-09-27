@@ -5,10 +5,12 @@ import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";
+import { fetchMeContext } from "../lib/api/me";
 import {
   fetchOrganizationNotificationSettings,
   updateOrganizationNotificationSettings,
 } from "../lib/api/notifications";
+import { TenantProvider } from "../lib/tenant/TenantProvider";
 import { OrganizationNotificationSettingsPage } from "./OrganizationNotificationSettingsPage";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
@@ -22,31 +24,51 @@ vi.mock("../lib/api/notifications", async (importOriginal) => {
     updateOrganizationNotificationSettings: vi.fn(),
   };
 });
+vi.mock("../lib/api/me", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return { ...original, fetchMeContext: vi.fn() };
+});
 
 const fetchSettingsMock = vi.mocked(fetchOrganizationNotificationSettings);
 const updateSettingsMock = vi.mocked(updateOrganizationNotificationSettings);
+const fetchMeContextMock = vi.mocked(fetchMeContext);
 
 function renderPage(extra: React.ReactNode = null) {
+  // The page names the route organization from the tenant context; the
+  // account's memberships include ORG_A only, ORG_B stays unknown.
+  fetchMeContextMock.mockResolvedValue({
+    user: {
+      id: "user-1",
+      name: "นภัส วงศ์สกุล",
+      email: "napat@example.com",
+      emailVerified: true,
+      twoFactorEnabled: false,
+    },
+    organizations: [{ id: ORG_A, name: "Org A", slug: "org-a", role: "owner" }],
+    lastActiveTenantId: ORG_A,
+  });
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter
-        initialEntries={[`/organizations/${ORG_A}/notification-settings`]}
-      >
-        <Routes>
-          <Route
-            path="/organizations/:organizationId/notification-settings"
-            element={
-              <>
-                {extra}
-                <OrganizationNotificationSettingsPage />
-              </>
-            }
-          />
-        </Routes>
-      </MemoryRouter>
+      <TenantProvider>
+        <MemoryRouter
+          initialEntries={[`/organizations/${ORG_A}/notification-settings`]}
+        >
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/notification-settings"
+              element={
+                <>
+                  {extra}
+                  <OrganizationNotificationSettingsPage />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </TenantProvider>
     </QueryClientProvider>,
   );
 }
@@ -54,9 +76,24 @@ function renderPage(extra: React.ReactNode = null) {
 afterEach(() => {
   fetchSettingsMock.mockReset();
   updateSettingsMock.mockReset();
+  fetchMeContextMock.mockReset();
 });
 
 describe("OrganizationNotificationSettingsPage", () => {
+  it("names the route organization in the page scope line", async () => {
+    fetchSettingsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      version: 1,
+    });
+    renderPage();
+    expect(
+      await screen.findByText("Org A · ตั้งค่าองค์กร"),
+    ).toBeInTheDocument();
+    // The slug is the unique identifier; names may repeat.
+    expect(screen.getByText("org-a")).toBeInTheDocument();
+  });
+
   it("sends the loaded version with a changed owner setting", async () => {
     fetchSettingsMock
       .mockResolvedValueOnce({

@@ -12,6 +12,7 @@ import {
   Input,
   SubmitButton,
 } from "../components/ui";
+import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage, sameEmail } from "../lib/auth-client";
 import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
 import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
@@ -73,22 +74,22 @@ export function AcceptInvitationPage() {
       return (
         <AuthPageShell
           title="ยืนยันอีเมลก่อนเข้าร่วม"
-          subtitle={`คำเชิญสำหรับ ${invitation.email} — กรุณายืนยันอีเมลของบัญชีนี้ก่อนรับคำเชิญ`}
+          subtitle={`คำเชิญสำหรับ ${invitation.email} กรุณายืนยันอีเมลของบัญชีนี้ก่อนรับคำเชิญ`}
         >
           <div className="flex flex-col gap-4">
             <Alert tone="info">
               เราส่งลิงก์ยืนยันไปที่อีเมลของคุณแล้ว
               คำเชิญจะรอการยอมรับหลังยืนยันสำเร็จ
             </Alert>
-            <button
+            <Button
               type="button"
-              className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="w-full"
               onClick={() => {
                 void navigate("/verify-email");
               }}
             >
               ไปที่หน้ายืนยันอีเมล
-            </button>
+            </Button>
           </div>
         </AuthPageShell>
       );
@@ -105,9 +106,9 @@ export function AcceptInvitationPage() {
               เข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญ
               หรือออกจากระบบเพื่อสร้างบัญชีใหม่
             </Alert>
-            <button
+            <Button
               type="button"
-              className="w-full rounded-md bg-primary px-4 py-2.5 font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="w-full"
               onClick={() => {
                 void authClient.signOut({
                   fetchOptions: {
@@ -119,7 +120,7 @@ export function AcceptInvitationPage() {
               }}
             >
               ออกจากระบบและใช้บัญชีอื่น
-            </button>
+            </Button>
           </div>
         </AuthPageShell>
       );

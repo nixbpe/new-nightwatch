@@ -67,7 +67,7 @@ export function PasswordCard() {
   return (
     <section
       aria-labelledby="password-card-title"
-      className="flex flex-col gap-5 rounded-md border border-foreground/10 bg-surface p-6"
+      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
     >
       <div>
         <h2 id="password-card-title" className="text-base font-semibold">
@@ -88,7 +88,7 @@ export function PasswordCard() {
           void form.handleSubmit();
         }}
         noValidate
-        className="flex flex-col gap-5"
+        className="flex flex-col gap-6"
       >
         <div className="flex max-w-md flex-col gap-4">
           <form.Field
@@ -252,7 +252,7 @@ function PasswordField({
   const errorId = `${id}-error`;
   return (
     <div>
-      <Label htmlFor={id} className="mb-1 block">
+      <Label htmlFor={id} className="mb-2 block">
         {label}
       </Label>
       <div className="relative">
