@@ -85,3 +85,26 @@ The final integration owner collects producer evidence and reviews all five vert
 | ให้ start authorization และกำหนด `COMMIT_MODE` ก่อน dispatch | ผู้ใช้ |
 
 ไม่มี open technical contract หรือ product behavior decision เพิ่มจาก `F-004-AC-2` การอนุมัติ Epic, Feature และ Spec ไม่ใช่ implementation หรือ release authorization
+
+## Issue #16 hotfix: aborted directory navigation
+
+| Field | Value |
+| --- | --- |
+| Source | [#16](https://github.com/nixbpe/new-nightwatch/issues/16), `NODE-F004-01`, `F-004-AC-2` AC-16 and directory scope of AC-01–AC-04, AC-17 |
+| Authorization | Scope and this spec pre-approved by the issue #16 assignment; `COMMIT_MODE: owned-slice`; `STOP_AT: merge-ready` |
+| Boundary | The aborted `organizationMembersLoader` must not publish, remove or clear destination context/member cache, or initiate a member-list fetch after abort. Non-aborted fresh membership and stale-publication checks remain unchanged. |
+
+### Contracts and decision
+
+- No API endpoint, schema, DB/RLS, queue or dependency change. The existing Web request helper does not expose `signal`; abort safety is therefore enforced at the loader's asynchronous boundaries and before cache effects. Propagate `request.signal` to `fetchMeContext` only if the API helper supports it without expanding this hotfix into unrelated request behavior.
+- Use the existing per-identity publication claim to reject superseded publishers, plus `request.signal.aborted` to reject navigation abandoned without a newer claim. An abandoned loader must not run any later cache cancellation/removal/publication; cancellation that completed before abort is not reversible. Preserve the un-aborted failure path that retires cached membership/member data on fresh-context failure.
+- Isolation driver: WEB-03/WEB-04 and AC-16 prevent abandoned A state from replacing B or `/workspace`; the direct fresh-context response is not itself permission to publish after abort. No DB/RLS change is needed because no server authorization path changes.
+
+### Tasks and acceptance trace
+
+| Task | OWNER / READY / OUTCOME / SOURCE | INVARIANTS / FILES / NON-GOALS | CONTRACTS / VERIFY / PROOF |
+| --- | --- | --- | --- |
+| `ISSUE-16-01` | `software-engineer` (integration owner); ready: this approved spec; prevent aborted directory context response from mutating tenant cache; issue #16 acceptance 1–5, AC-16 | Preserve fresh-membership gate, authorization, page preload and claim protection; `apps/web/src/lib/auth/loaders.ts`, `apps/web/src/lib/auth/loaders.test.tsx`, optionally `apps/web/src/lib/api/me.ts` only if signal supported; exclude invitation/role/revoke/leave and ambient `docs/epics/E-001-project-organization-visibility.md` | Test deferred success and failure after Request abort with destination context/member cache unchanged and zero member fetch; non-aborted successful publication and first-page preload; focused loader tests plus delayed-context `/workspace` browser smoke covering destination, Organization, role controls and cache. |
+| `ISSUE-16-02` | `software-engineer` (same integration owner); ready: `ISSUE-16-01` author proof and review; bind integrated change, gates, PR and handoff evidence; issue #16 verification and delivery | Only hotfix docs/spec and proof; no dependent #11/#12 work or PR merge | Final review, `bun run validate`, `COVERAGE_GATE=1 bun run test:coverage`, `bun run build`, `bun run security`; PR CI checks all green before merge-ready; update #10 / PR #15 handoff with observed hotfix PR proof without accepting `NODE-F004-01` ahead of merge. |
+
+Issue acceptance 1–5 map to `ISSUE-16-01` deferred-success/failure cache and request assertions. Acceptance 6 maps to its non-aborted control and existing directory loader tests. `ISSUE-16-02` owns integration verification and handoff; acceptance of `NODE-F004-01` remains blocked until the hotfix is merged and reviewed. No open decisions.
