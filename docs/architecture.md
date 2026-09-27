@@ -2,7 +2,7 @@
 
 NightWatch is one multi-tenant application (a modular monolith) whose organizations must stay isolated from each other. Each section gives its principle, then only the requirements that are easy to get wrong. This file names no code; the code shows how each rule is met. Feature and API contracts own product behavior. UX/UI rules are in `docs/design-system.md`.
 
-- Findings cite a numbered rule (e.g. `DB-01`) or a section's principle by its heading. Add rules at the end of their section; never reuse a number. Source code does not cite rule IDs.
+- Findings cite a numbered rule (e.g. `DB-01`) or a section's principle by its heading. Rules are numbered in order within each section; after adding or removing one, renumber and update every reference in docs and agent files. Source code does not cite rule IDs.
 - `Implemented` means the code exists (not that it is verified); `Planned` and `Deferred` mean it does not. A `baseline` value is a default for unbuilt parts; once built, code owns it.
 - If code and this file disagree, report it to the Technical Lead instead of changing either.
 - Tenant = Organization.
