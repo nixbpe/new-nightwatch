@@ -16,6 +16,36 @@ type ClientSlot = {
 let active: ClientSlot | null = null;
 let staged: ClientSlot | null = null;
 
+const memberDirectoryLoaderClaims = new WeakMap<QueryClient, bigint>();
+let memberDirectoryLoaderOrdinal = 0n;
+
+export function createMemberDirectoryLoaderClaim(): bigint {
+  return ++memberDirectoryLoaderOrdinal;
+}
+
+export function claimMemberDirectoryLoader(
+  queryClient: QueryClient,
+  claim: bigint,
+): boolean {
+  if ((memberDirectoryLoaderClaims.get(queryClient) ?? -1n) >= claim) {
+    return false;
+  }
+  memberDirectoryLoaderClaims.set(queryClient, claim);
+  return true;
+}
+
+export function hasMemberDirectoryLoaderClaim(
+  queryClient: QueryClient,
+  claim: bigint,
+): boolean {
+  return memberDirectoryLoaderClaims.get(queryClient) === claim;
+}
+
+// A server-confirmed organization scope makes every older directory gate stale.
+export function publishTenantScope(queryClient: QueryClient): void {
+  memberDirectoryLoaderClaims.set(queryClient, ++memberDirectoryLoaderOrdinal);
+}
+
 export function createSessionQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {

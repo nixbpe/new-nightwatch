@@ -143,6 +143,56 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
   });
 
+  it("resets an invalid later page before success rendering and refetches page one once", async () => {
+    const invalidSecondPage: OrganizationMemberListResponse = {
+      organizationId,
+      members: [],
+      page: { limit: 50, offset: 50, total: 49 },
+    };
+    const repairedFirstPage: OrganizationMemberListResponse = {
+      ...response,
+      members: [{ ...firstMember, name: "Repaired first member" }],
+      page: { limit: 50, offset: 0, total: 49 },
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockResolvedValueOnce(invalidSecondPage)
+      .mockResolvedValueOnce(repairedFirstPage);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Ada");
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "กำลังโหลดสมาชิก",
+    );
+    expect(screen.queryByText("แสดง 0–50 จาก 49")).toBeNull();
+    expect(
+      await screen.findByText("Repaired first member"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("แสดง 1–1 จาก 49")).toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
+      3,
+      organizationId,
+      50,
+      0,
+    );
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders a zero-total first page as empty success without refetching", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValueOnce({
+      organizationId,
+      members: [],
+      page: { limit: 50, offset: 0, total: 0 },
+    });
+    renderPage();
+
+    expect(await screen.findByText("แสดง 0–0 จาก 0")).toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(1);
+  });
+
   it("announces denied access without requesting or rendering directory data", () => {
     tenant = {
       ...tenant,

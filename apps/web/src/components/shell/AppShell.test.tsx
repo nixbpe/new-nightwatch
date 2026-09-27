@@ -13,6 +13,11 @@ import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { InboxScopeChangedError } from "../../lib/api/notifications";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
+import {
+  claimMemberDirectoryLoader,
+  createMemberDirectoryLoaderClaim,
+  hasMemberDirectoryLoaderClaim,
+} from "../../lib/queryClient";
 import { NotificationsPage } from "../../pages/NotificationsPage";
 import { WorkspacePage } from "../../pages/WorkspacePage";
 import { fetchOrganizationMembers } from "../../lib/api/members";
@@ -149,7 +154,7 @@ function renderShell(
     ],
     { initialEntries: [initialPath] },
   );
-  return render(<RouterProvider router={router} />);
+  return { queryClient, ...render(<RouterProvider router={router} />) };
 }
 
 function mockMobileViewport(): void {
@@ -509,7 +514,12 @@ describe("AppShell", () => {
       meContext([ownerOrg, viewerOrg], ORG_B),
     );
     const user = userEvent.setup();
-    renderShell(<WorkspacePage />);
+    const { queryClient } = renderShell(<WorkspacePage />);
+    const directLoaderClaim = createMemberDirectoryLoaderClaim();
+    expect(claimMemberDirectoryLoader(queryClient, directLoaderClaim)).toBe(
+      true,
+    );
+
     await screen.findByText("Org A · เจ้าของ");
 
     await user.click(screen.getByRole("button", { name: /Org A/ }));
@@ -522,6 +532,9 @@ describe("AppShell", () => {
     );
 
     expect(await screen.findByText("Org B · ผู้ชม")).toBeInTheDocument();
+    expect(hasMemberDirectoryLoaderClaim(queryClient, directLoaderClaim)).toBe(
+      false,
+    );
     expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
       organizationId: ORG_B,
     });

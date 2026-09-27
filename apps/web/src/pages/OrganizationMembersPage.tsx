@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Alert } from "../components/ui";
@@ -42,6 +42,7 @@ function OrganizationMembersPageForOrganization({
   organizationId: string;
 }) {
   const { me, meError, mePending, refreshMembershipContext } = useTenant();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [membershipRefreshState, setMembershipRefreshState] = useState<
     "idle" | "refreshing" | "failed" | "list-failed"
@@ -99,6 +100,20 @@ function OrganizationMembersPageForOrganization({
     }
     void refreshAfterAuthorizationDenied();
   }, [list.error, membershipRefreshState, refreshAfterAuthorizationDenied]);
+  const invalidPage =
+    list.data?.organizationId === organizationId &&
+    offset > 0 &&
+    list.data.page.total <= offset;
+  useEffect(() => {
+    if (!invalidPage) {
+      return;
+    }
+    queryClient.removeQueries({
+      queryKey: memberListQueryKey(organizationId, LIMIT, 0),
+      exact: true,
+    });
+    setOffset(0);
+  }, [invalidPage, organizationId, queryClient]);
   if (
     membershipRefreshState === "refreshing" ||
     membershipRefreshState === "failed"
@@ -180,6 +195,18 @@ function OrganizationMembersPageForOrganization({
   }
   const data = list.data;
   if (data.organizationId !== organizationId) return null;
+  if (invalidPage) {
+    return (
+      <Page>
+        <PageHeader
+          eyebrow={`${organization.name} · ${organization.slug}`}
+          title="สมาชิก"
+        />
+        <p role="status">กำลังโหลดสมาชิก</p>
+        <Skeleton className="h-64 w-full" />
+      </Page>
+    );
+  }
   const hasPrevious = offset > 0;
   const hasNext = offset + data.members.length < data.page.total;
   return (

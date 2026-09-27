@@ -24,6 +24,7 @@ import {
 } from "../api/notifications";
 import {
   peekStagedQueryClient,
+  publishTenantScope,
   resetQueryClientRegistry,
   resolveQueryClientForIdentity,
 } from "../queryClient";
@@ -610,6 +611,33 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     expect(
       queryClient.getQueryData(memberListQueryKey(organizationA, 50, 0)),
     ).toBeUndefined();
+  });
+
+  it("does not publish an older direct directory decision after a confirmed tenant scope", async () => {
+    sessionState.data = { user: VERIFIED };
+    const staleContext = Promise.withResolvers<MeContextResponse>();
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+    fetchMeContextMock.mockImplementationOnce(() => staleContext.promise);
+
+    const directA = organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledOnce();
+    });
+
+    publishTenantScope(queryClient);
+    staleContext.resolve(cachedOwnerContext);
+    await directA;
+
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toBeUndefined();
+    expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
   });
 
   it("keeps the unavailable state when newer B fails before older A resolves", async () => {

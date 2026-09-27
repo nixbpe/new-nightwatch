@@ -15,6 +15,7 @@ import {
   updateActiveOrganization,
 } from "../api/me";
 import { isInboxScopeChanged } from "../api/notifications";
+import { publishTenantScope } from "../queryClient";
 
 type Membership = MeContextResponse["organizations"][number];
 
@@ -118,6 +119,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       try {
         const updated = await fetchMeContext();
+        publishTenantScope(queryClient);
         queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
         setSelectedOrgId(null);
         setMembershipContextUnavailable(false);
@@ -138,6 +140,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     try {
       const updated = await updateActiveOrganization({ organizationId });
       // Retire the old tenant's queries before publishing new state (see TENANT_QUERY_PREFIX).
+      publishTenantScope(queryClient);
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
