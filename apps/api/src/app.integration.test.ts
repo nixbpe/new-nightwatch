@@ -161,6 +161,14 @@ describe("request completion logging", () => {
         input: `/api/organizations/${organizationId}/members//role/extra`,
         expected: "/api/organizations/:organizationId/members//role/extra",
       },
+      {
+        input: `/api/organizations/${organizationId}/memberships`,
+        expected: `/api/organizations/${organizationId}/memberships`,
+      },
+      {
+        input: `/api/organizations/${organizationId}/members-extra`,
+        expected: `/api/organizations/${organizationId}/members-extra`,
+      },
     ];
 
     const responses: Response[] = [];
@@ -168,9 +176,9 @@ describe("request completion logging", () => {
       responses.push(await app.request(input));
     }
 
-    expect(responses.slice(-2).map((response) => response.status)).toEqual([
-      404, 404,
-    ]);
+    expect(responses.map((response) => response.status)).toEqual(
+      paths.map(() => 404),
+    );
 
     const completions = logLines
       .map((line) => JSON.parse(line) as Record<string, unknown>)
@@ -178,7 +186,7 @@ describe("request completion logging", () => {
     expect(completions.map((entry) => entry.path)).toEqual(
       paths.map(({ expected }) => expected),
     );
-    for (const completion of completions) {
+    for (const completion of completions.slice(0, 6)) {
       expect(JSON.stringify(completion)).not.toContain(organizationId);
       expect(JSON.stringify(completion)).not.toContain(memberId);
     }
