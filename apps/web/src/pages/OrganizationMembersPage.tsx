@@ -143,6 +143,20 @@ function OrganizationMembersPageForOrganization({
     refreshMembershipContext,
   ]);
 
+  const retryAfterListFailure = useCallback(async () => {
+    const operation = membershipRecoveryOperation.current + 1;
+    membershipRecoveryOperation.current = operation;
+    const result = await refetchList();
+    if (membershipRecoveryOperation.current !== operation) return;
+    if (!result.isError) {
+      setMembershipRefreshState("idle");
+      return;
+    }
+    if (isAuthorizationDenied(result.error)) {
+      void refreshAfterAuthorizationDenied();
+    }
+  }, [refetchList, refreshAfterAuthorizationDenied]);
+
   useEffect(() => {
     return () => {
       membershipRecoveryOperation.current += 1;
@@ -193,13 +207,7 @@ function OrganizationMembersPageForOrganization({
       <Page>
         <PageHeader title="สมาชิก" />
         <Alert tone="error">โหลดสมาชิกไม่สำเร็จ</Alert>
-        <Button
-          onClick={() =>
-            void refetchList().then((result) => {
-              if (!result.isError) setMembershipRefreshState("idle");
-            })
-          }
-        >
+        <Button onClick={() => void retryAfterListFailure()}>
           ลองอีกครั้ง
         </Button>
       </Page>

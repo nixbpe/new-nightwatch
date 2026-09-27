@@ -1,6 +1,6 @@
 import type { OrganizationMemberListResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -606,6 +606,102 @@ describe("OrganizationMembersPage", () => {
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
 
+  it("stops at context retry when a second fresh owner context cannot explain denial", async () => {
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi
+        .fn()
+        .mockResolvedValueOnce({
+          organizations: [organizationA],
+          lastActiveTenantId: organizationId,
+        })
+        .mockResolvedValueOnce({
+          organizations: [organizationA],
+          lastActiveTenantId: organizationId,
+        }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
+      )
+      .mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      );
+
+    renderPage();
+
+    expect(
+      await screen.findByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "ลองอีกครั้ง" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops at context retry when the second membership recovery fails", async () => {
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi
+        .fn()
+        .mockResolvedValueOnce({
+          organizations: [organizationA],
+          lastActiveTenantId: organizationId,
+        })
+        .mockResolvedValueOnce(null),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
+      )
+      .mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      );
+
+    renderPage();
+
+    expect(
+      await screen.findByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "ลองอีกครั้ง" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a late membership recovery after the page unmounts", async () => {
+    const context = Promise.withResolvers<{
+      organizations: TenantOrganization[];
+      lastActiveTenantId: string;
+    }>();
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => context.promise),
+    };
+    vi.mocked(fetchOrganizationMembers).mockRejectedValueOnce(
+      new ApiError("PERMISSION_DENIED", "authorization stale", 403),
+    );
+
+    const page = renderPage();
+
+    expect(
+      await screen.findByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+    ).toBeInTheDocument();
+    page.unmount();
+    context.resolve({
+      organizations: [organizationA],
+      lastActiveTenantId: organizationId,
+    });
+
+    await waitFor(() => {
+      expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
+    });
+  });
+
   it("shows normal retry after the bounded same-organization refetch fails", async () => {
     tenant = {
       ...tenant,
@@ -631,6 +727,74 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("Ada")).toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+  });
+
+  it("recovers membership after a manual list retry is denied", async () => {
+    const viewerOrganization = {
+      ...organizationA,
+      role: "viewer" as const,
+    };
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi
+        .fn()
+        .mockResolvedValueOnce({
+          organizations: [organizationA],
+          lastActiveTenantId: organizationId,
+        })
+        .mockImplementationOnce(() => {
+          tenant = {
+            ...tenant,
+            me: { organizations: [viewerOrganization] },
+            activeOrg: viewerOrganization,
+          };
+          return Promise.resolve({
+            organizations: [viewerOrganization],
+            lastActiveTenantId: organizationId,
+          });
+        }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
+      )
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      );
+    const user = userEvent.setup();
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+            <Route path="/workspace" element={<p>workspace</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    expect(await screen.findByText("workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
 
   it("retires revoked A scope after the next list denial and routes to confirmed B", async () => {
