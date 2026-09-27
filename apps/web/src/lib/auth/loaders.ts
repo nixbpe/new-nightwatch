@@ -236,7 +236,6 @@ export async function organizationMembersLoader({
     .query({
       queryKey: memberListQueryKey(organizationId, 50, 0),
       queryFn: () => fetchOrganizationMembers(organizationId, 50, 0),
-      staleTime: "static",
     })
     .catch(() => undefined);
   if (!hasMemberDirectoryLoaderClaim(queryClient, claim)) {

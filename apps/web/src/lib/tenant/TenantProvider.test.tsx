@@ -318,6 +318,112 @@ describe("TenantProvider", () => {
     );
   });
 
+  it("keeps the newest revoked membership context when an older refresh resolves last", async () => {
+    const privilegedContext: MeContextResponse = {
+      ...me,
+      organizations: [
+        { id: "org-a", name: "Org A", slug: "org-a", role: "owner" },
+      ],
+      lastActiveTenantId: "org-a",
+    };
+    const revokedContext: MeContextResponse = {
+      ...me,
+      organizations: [],
+      lastActiveTenantId: null,
+    };
+    const olderRefresh = Promise.withResolvers<MeContextResponse>();
+    const newerRefresh = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockImplementationOnce(() => olderRefresh.promise)
+      .mockImplementationOnce(() => newerRefresh.promise);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderProvider(queryClient);
+    const user = userEvent.setup();
+    await screen.findByText("org-b");
+
+    await user.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+    await user.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+    });
+
+    newerRefresh.resolve(revokedContext);
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+    });
+    olderRefresh.resolve(privilegedContext);
+    await olderRefresh.promise;
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
+        revokedContext,
+      );
+    });
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:none",
+    );
+  });
+
+  it("keeps membership unavailable when the newest refresh fails before an older refresh resolves", async () => {
+    const privilegedContext: MeContextResponse = {
+      ...me,
+      organizations: [
+        { id: "org-a", name: "Org A", slug: "org-a", role: "owner" },
+      ],
+      lastActiveTenantId: "org-a",
+    };
+    const olderRefresh = Promise.withResolvers<MeContextResponse>();
+    const newerRefresh = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockImplementationOnce(() => olderRefresh.promise)
+      .mockImplementationOnce(() => newerRefresh.promise);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderProvider(queryClient);
+    const user = userEvent.setup();
+    await screen.findByText("org-b");
+
+    await user.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+    await user.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+    });
+
+    newerRefresh.reject(new Error("context unavailable"));
+    await newerRefresh.promise.catch(() => undefined);
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+    });
+    olderRefresh.resolve(privilegedContext);
+    await olderRefresh.promise;
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(me);
+    });
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:none",
+    );
+  });
+
   it("a failed context load exposes the error and retryMe recovers", async () => {
     // A failed /me lookup is an explicit, retryable error, never a perpetual pending state.
     fetchMeContextMock.mockRejectedValueOnce(new Error("server exploded"));

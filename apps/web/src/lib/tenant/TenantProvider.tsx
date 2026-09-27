@@ -15,8 +15,12 @@ import {
   updateActiveOrganization,
 } from "../api/me";
 import { isInboxScopeChanged } from "../api/notifications";
-import { publishTenantScope } from "../queryClient";
-
+import {
+  claimMembershipContextRefresh,
+  createMembershipContextRefreshClaim,
+  hasMembershipContextRefreshClaim,
+  publishTenantScope,
+} from "../queryClient";
 type Membership = MeContextResponse["organizations"][number];
 
 // Switching organization clears this whole prefix so an in-flight response for the old tenant can't repopulate the new view.
@@ -110,15 +114,28 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const refreshMembershipContext =
     useCallback(async (): Promise<MeContextResponse | null> => {
+      const claim = createMembershipContextRefreshClaim();
+      if (!claimMembershipContextRefresh(queryClient, claim)) {
+        return null;
+      }
       setMembershipContextUnavailable(true);
       await queryClient.cancelQueries({
         queryKey: ME_CONTEXT_QUERY_KEY,
         exact: true,
       });
+      if (!hasMembershipContextRefreshClaim(queryClient, claim)) {
+        return null;
+      }
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
+      if (!hasMembershipContextRefreshClaim(queryClient, claim)) {
+        return null;
+      }
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       try {
         const updated = await fetchMeContext();
+        if (!hasMembershipContextRefreshClaim(queryClient, claim)) {
+          return null;
+        }
         publishTenantScope(queryClient);
         queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
         setSelectedOrgId(null);

@@ -429,6 +429,91 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     ).toBeUndefined();
   });
 
+  it("waits for a fresh stale directory page before publishing the member route", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:31.000Z"));
+      sessionState.data = { user: VERIFIED };
+      const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, cachedOwnerContext);
+      queryClient.setQueryData(
+        memberListQueryKey(organizationId, 50, 0),
+        cachedMembers,
+        { updatedAt: Date.now() - 30_001 },
+      );
+      const freshMembers: OrganizationMemberListResponse = {
+        organizationId,
+        members: [
+          {
+            id: "member-fresh",
+            userId: "user-fresh",
+            name: "Fresh member",
+            email: "fresh@example.test",
+            role: "admin",
+          },
+        ],
+        page: { limit: 50, offset: 0, total: 7 },
+      };
+      const freshRequest =
+        Promise.withResolvers<OrganizationMemberListResponse>();
+      fetchMeContextMock.mockResolvedValue(cachedOwnerContext);
+      fetchOrganizationMembersMock.mockImplementationOnce(
+        () => freshRequest.promise,
+      );
+
+      let completed = false;
+      const decision = organizationMembersLoader({
+        params: { organizationId },
+        request: new Request(
+          `http://localhost/organizations/${organizationId}/members`,
+        ),
+      } as never).then(() => {
+        completed = true;
+      });
+      await vi.waitFor(() => {
+        expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
+      });
+      expect(completed).toBe(false);
+
+      freshRequest.resolve(freshMembers);
+      await decision;
+
+      expect(
+        queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+      ).toEqual(freshMembers);
+      expect(fetchOrganizationMembersMock).toHaveBeenCalledWith(
+        organizationId,
+        50,
+        0,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reuses a fresh directory page without a duplicate request", async () => {
+    sessionState.data = { user: VERIFIED };
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, cachedOwnerContext);
+    queryClient.setQueryData(
+      memberListQueryKey(organizationId, 50, 0),
+      cachedMembers,
+    );
+    fetchMeContextMock.mockResolvedValue(cachedOwnerContext);
+
+    await organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+
+    expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toEqual(cachedMembers);
+  });
+
   it("keeps B's fresh context and directory when older A resolves after B", async () => {
     sessionState.data = { user: VERIFIED };
     const staleA: MeContextResponse = {

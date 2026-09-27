@@ -18,6 +18,30 @@ let staged: ClientSlot | null = null;
 
 const memberDirectoryLoaderClaims = new WeakMap<QueryClient, bigint>();
 let memberDirectoryLoaderOrdinal = 0n;
+const membershipContextRefreshClaims = new WeakMap<QueryClient, bigint>();
+let membershipContextRefreshOrdinal = 0n;
+
+export function createMembershipContextRefreshClaim(): bigint {
+  return ++membershipContextRefreshOrdinal;
+}
+
+export function claimMembershipContextRefresh(
+  queryClient: QueryClient,
+  claim: bigint,
+): boolean {
+  if ((membershipContextRefreshClaims.get(queryClient) ?? -1n) >= claim) {
+    return false;
+  }
+  membershipContextRefreshClaims.set(queryClient, claim);
+  return true;
+}
+
+export function hasMembershipContextRefreshClaim(
+  queryClient: QueryClient,
+  claim: bigint,
+): boolean {
+  return membershipContextRefreshClaims.get(queryClient) === claim;
+}
 
 export function createMemberDirectoryLoaderClaim(): bigint {
   return ++memberDirectoryLoaderOrdinal;
@@ -41,9 +65,13 @@ export function hasMemberDirectoryLoaderClaim(
   return memberDirectoryLoaderClaims.get(queryClient) === claim;
 }
 
-// A server-confirmed organization scope makes every older directory gate stale.
+// A server-confirmed organization scope makes older directory gates and membership refreshes stale.
 export function publishTenantScope(queryClient: QueryClient): void {
   memberDirectoryLoaderClaims.set(queryClient, ++memberDirectoryLoaderOrdinal);
+  membershipContextRefreshClaims.set(
+    queryClient,
+    ++membershipContextRefreshOrdinal,
+  );
 }
 
 export function createSessionQueryClient(): QueryClient {
