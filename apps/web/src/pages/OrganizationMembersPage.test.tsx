@@ -54,7 +54,8 @@ type TenantOrganization = {
 
 type TenantStub = {
   mePending: boolean;
-  me: { organizations: TenantOrganization[] };
+  me: { organizations: TenantOrganization[] } | undefined;
+  meError: Error | null;
   refreshMembershipContext: Mock;
   activeOrg: TenantOrganization;
   orgSwitchPending: boolean;
@@ -64,6 +65,7 @@ type TenantStub = {
 let tenant: TenantStub = {
   mePending: false,
   me: { organizations: [organizationA] },
+  meError: null,
   refreshMembershipContext: vi.fn(),
   activeOrg: organizationA,
   orgSwitchPending: false,
@@ -104,6 +106,7 @@ afterEach(() => {
   tenant = {
     mePending: false,
     me: { organizations: [organizationA] },
+    meError: null,
     refreshMembershipContext: vi.fn(),
     activeOrg: organizationA,
     orgSwitchPending: false,
@@ -160,6 +163,25 @@ describe("OrganizationMembersPage", () => {
       "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้",
     );
     expect(screen.queryByText("สมาชิกทั้งหมด")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).not.toHaveBeenCalled();
+  });
+
+  it("offers context retry without rendering cached directory data after a fresh decision fails", () => {
+    tenant = {
+      ...tenant,
+      me: undefined,
+      meError: new Error("context unavailable"),
+    };
+    renderPage();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้",
+    );
+    expect(
+      screen.getByRole("button", { name: "ลองอีกครั้ง" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Ada")).toBeNull();
+    expect(screen.queryByText("สมาชิกทั้งหมด")).toBeNull();
     expect(fetchOrganizationMembers).not.toHaveBeenCalled();
   });
 

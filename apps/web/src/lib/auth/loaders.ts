@@ -160,6 +160,9 @@ export async function organizationMembersLoader({
   const context = await fetchMeContext().catch(() => undefined);
   if (context !== undefined) {
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+  } else {
+    queryClient.removeQueries({ queryKey: ME_CONTEXT_QUERY_KEY, exact: true });
+    queryClient.removeQueries({ queryKey: ["tenant"] });
   }
   const membership = context?.organizations.find(
     (organization) => organization.id === organizationId,

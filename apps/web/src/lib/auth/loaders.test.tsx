@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
+import { memberListQueryKey } from "../api/members";
 import {
   fetchNotifications,
   fetchOrganizationNotificationSettings,
@@ -23,11 +24,13 @@ import {
 import {
   peekStagedQueryClient,
   resetQueryClientRegistry,
+  resolveQueryClientForIdentity,
 } from "../queryClient";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
   notificationSettingsLoader,
   notificationsLoader,
+  organizationMembersLoader,
   requireAnonLoader,
   rootLoader,
   settingsLoader,
@@ -347,6 +350,65 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     expect(
       await screen.findByText("protected-area", undefined, { timeout: 3000 }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("organizationMembersLoader (fresh membership gate)", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const cachedOwnerContext: MeContextResponse = {
+    ...meContext,
+    organizations: [
+      {
+        id: organizationId,
+        name: "Acme",
+        slug: "acme",
+        role: "owner",
+      },
+    ],
+    lastActiveTenantId: organizationId,
+  };
+  const cachedMembers = {
+    organizationId,
+    members: [
+      {
+        id: "member-1",
+        userId: "user-1",
+        name: "Cached member",
+        email: "cached@example.test",
+        role: "owner" as const,
+      },
+    ],
+    page: { limit: 50, offset: 0, total: 1 },
+  };
+
+  afterEach(() => {
+    sessionState.data = null;
+    resetQueryClientRegistry();
+    fetchMeContextMock.mockReset();
+  });
+
+  it("retires cached membership and directory data when the fresh decision fails", async () => {
+    sessionState.data = { user: VERIFIED };
+    const queryClient = resolveQueryClientForIdentity(VERIFIED.id);
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, cachedOwnerContext);
+    queryClient.setQueryData(
+      memberListQueryKey(organizationId, 50, 0),
+      cachedMembers,
+    );
+    fetchMeContextMock.mockRejectedValue(new Error("context unavailable"));
+
+    const result = await organizationMembersLoader({
+      params: { organizationId },
+      request: new Request(
+        `http://localhost/organizations/${organizationId}/members`,
+      ),
+    } as never);
+
+    expect(result).toBeNull();
+    expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();
+    expect(
+      queryClient.getQueryData(memberListQueryKey(organizationId, 50, 0)),
+    ).toBeUndefined();
   });
 });
 

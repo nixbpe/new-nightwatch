@@ -110,6 +110,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const refreshMembershipContext =
     useCallback(async (): Promise<MeContextResponse | null> => {
       setMembershipContextUnavailable(true);
+      await queryClient.cancelQueries({
+        queryKey: ME_CONTEXT_QUERY_KEY,
+        exact: true,
+      });
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       try {

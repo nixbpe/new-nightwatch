@@ -41,7 +41,7 @@ function OrganizationMembersPageForOrganization({
 }: {
   organizationId: string;
 }) {
-  const { me, mePending, refreshMembershipContext } = useTenant();
+  const { me, meError, mePending, refreshMembershipContext } = useTenant();
   const navigate = useNavigate();
   const [membershipRefreshState, setMembershipRefreshState] = useState<
     "idle" | "refreshing" | "failed" | "list-failed"
@@ -134,6 +134,17 @@ function OrganizationMembersPageForOrganization({
   }
   if (mePending) {
     return <p role="status">กำลังโหลดสมาชิก</p>;
+  }
+  if (meError !== null) {
+    return (
+      <Page>
+        <PageHeader title="สมาชิกองค์กร" />
+        <Alert tone="error">ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้</Alert>
+        <Button onClick={() => void refreshMembershipContext()}>
+          ลองอีกครั้ง
+        </Button>
+      </Page>
+    );
   }
   if (organization === undefined || !canRead) {
     return (

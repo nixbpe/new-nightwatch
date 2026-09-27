@@ -5,7 +5,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/client";
-import { updateActiveOrganization } from "../api/me";
+import {
+  fetchMeContext,
+  ME_CONTEXT_QUERY_KEY,
+  updateActiveOrganization,
+} from "../api/me";
 import { TenantProvider, useTenant } from "./TenantProvider";
 
 vi.mock("../api/me", async (importOriginal) => {
@@ -16,8 +20,6 @@ vi.mock("../api/me", async (importOriginal) => {
     updateActiveOrganization: vi.fn(),
   };
 });
-
-import { fetchMeContext } from "../api/me";
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
@@ -261,6 +263,56 @@ describe("TenantProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("active")).toHaveTextContent("org-b");
     });
+    expect(screen.getByTestId("server-active")).toHaveTextContent(
+      "server:org-b",
+    );
+  });
+
+  it("keeps a fresh membership context after a cancelled older context query resolves", async () => {
+    const [staleOrganization, freshOrganization] = me.organizations;
+    if (staleOrganization === undefined || freshOrganization === undefined) {
+      throw new Error("race fixture requires organizations A and B");
+    }
+    const staleA: MeContextResponse = {
+      ...me,
+      organizations: [staleOrganization],
+      lastActiveTenantId: "org-a",
+    };
+    const freshB: MeContextResponse = {
+      ...me,
+      organizations: [freshOrganization],
+      lastActiveTenantId: "org-b",
+    };
+    const oldRequest = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockImplementationOnce(() => oldRequest.promise)
+      .mockResolvedValueOnce(freshB);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const oldQuery = queryClient
+      .query({
+        queryKey: ME_CONTEXT_QUERY_KEY,
+        queryFn: fetchMeContext,
+      })
+      .catch(() => undefined);
+    renderProvider(queryClient);
+    const user = userEvent.setup();
+
+    await user.click(
+      screen.getByRole("button", { name: "refresh membership" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b");
+    });
+
+    oldRequest.resolve(staleA);
+    await oldQuery;
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(freshB);
+    });
+    expect(screen.getByTestId("active")).toHaveTextContent("org-b");
     expect(screen.getByTestId("server-active")).toHaveTextContent(
       "server:org-b",
     );
