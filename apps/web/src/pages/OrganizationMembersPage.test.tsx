@@ -541,6 +541,71 @@ describe("OrganizationMembersPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("recovers fresh membership again when the bounded refetch is denied", async () => {
+    const viewerOrganization = {
+      ...organizationA,
+      role: "viewer" as const,
+    };
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi
+        .fn()
+        .mockResolvedValueOnce({
+          organizations: [organizationA],
+          lastActiveTenantId: organizationId,
+        })
+        .mockImplementationOnce(() => {
+          tenant = {
+            ...tenant,
+            me: { organizations: [viewerOrganization] },
+            activeOrg: viewerOrganization,
+          };
+          return Promise.resolve({
+            organizations: [viewerOrganization],
+            lastActiveTenantId: organizationId,
+          });
+        }),
+    };
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(
+        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
+      )
+      .mockRejectedValueOnce(
+        new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
+      );
+
+    function LocationProbe() {
+      return <output data-testid="location">{useLocation().pathname}</output>;
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <LocationProbe />
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+            <Route path="/workspace" element={<p>workspace</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
+    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
+  });
+
   it("shows normal retry after the bounded same-organization refetch fails", async () => {
     tenant = {
       ...tenant,
@@ -561,9 +626,11 @@ describe("OrganizationMembersPage", () => {
 
     expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
     await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
     expect(await screen.findByText("Ada")).toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
+    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });
 
   it("retires revoked A scope after the next list denial and routes to confirmed B", async () => {

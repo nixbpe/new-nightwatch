@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
@@ -47,6 +47,7 @@ function OrganizationMembersPageForOrganization({
   const [membershipRefreshState, setMembershipRefreshState] = useState<
     "idle" | "refreshing" | "failed" | "list-failed"
   >("idle");
+  const membershipRecoveryOperation = useRef(0);
   const [offset, setOffset] = useState(0);
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
@@ -60,9 +61,12 @@ function OrganizationMembersPageForOrganization({
   });
   const { refetch: refetchList } = list;
 
-  const refreshAfterAuthorizationDenied = useCallback(async () => {
+  const recoverAfterBoundedRefetchDenial = useCallback(async () => {
+    const operation = membershipRecoveryOperation.current + 1;
+    membershipRecoveryOperation.current = operation;
     setMembershipRefreshState("refreshing");
     const context = await refreshMembershipContext();
+    if (membershipRecoveryOperation.current !== operation) return;
     if (context === null) {
       setMembershipRefreshState("failed");
       return;
@@ -73,8 +77,7 @@ function OrganizationMembersPageForOrganization({
         isMemberDirectoryReadable(organization),
     );
     if (sameOrganizationIsReadable) {
-      const result = await refetchList();
-      setMembershipRefreshState(result.isError ? "list-failed" : "idle");
+      setMembershipRefreshState("failed");
       return;
     }
     const nextOrganizationId =
@@ -89,7 +92,62 @@ function OrganizationMembersPageForOrganization({
         : `/organizations/${nextOrganizationId}/members`,
       { replace: true },
     );
-  }, [navigate, organizationId, refetchList, refreshMembershipContext]);
+  }, [navigate, organizationId, refreshMembershipContext]);
+
+  const refreshAfterAuthorizationDenied = useCallback(async () => {
+    const operation = membershipRecoveryOperation.current + 1;
+    membershipRecoveryOperation.current = operation;
+    setMembershipRefreshState("refreshing");
+    const context = await refreshMembershipContext();
+    if (membershipRecoveryOperation.current !== operation) return;
+    if (context === null) {
+      setMembershipRefreshState("failed");
+      return;
+    }
+    const sameOrganizationIsReadable = context.organizations.some(
+      (organization) =>
+        organization.id === organizationId &&
+        isMemberDirectoryReadable(organization),
+    );
+    if (sameOrganizationIsReadable) {
+      const result = await refetchList();
+      if (membershipRecoveryOperation.current !== operation) return;
+      if (!result.isError) {
+        setMembershipRefreshState("idle");
+        return;
+      }
+      if (isAuthorizationDenied(result.error)) {
+        void recoverAfterBoundedRefetchDenial();
+        return;
+      }
+      setMembershipRefreshState("list-failed");
+      return;
+    }
+    const nextOrganizationId =
+      context.organizations.find(
+        (organization) =>
+          organization.id === context.lastActiveTenantId &&
+          isMemberDirectoryReadable(organization),
+      )?.id ?? context.organizations.find(isMemberDirectoryReadable)?.id;
+    await navigate(
+      nextOrganizationId === undefined
+        ? "/workspace"
+        : `/organizations/${nextOrganizationId}/members`,
+      { replace: true },
+    );
+  }, [
+    navigate,
+    organizationId,
+    recoverAfterBoundedRefetchDenial,
+    refetchList,
+    refreshMembershipContext,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      membershipRecoveryOperation.current += 1;
+    };
+  }, [organizationId]);
 
   useEffect(() => {
     if (
