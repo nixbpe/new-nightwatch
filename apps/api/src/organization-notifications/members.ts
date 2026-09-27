@@ -59,7 +59,7 @@ function isOwnerOrAdmin(member: MemberRow): boolean {
 function toMemberResponse(member: MemberRow): MemberResponse {
   const role = normalizeOrganizationRole(member.role);
   if (role === null) {
-    throw new Error(`member ${member.id} has no recognized role`);
+    throw new Error("member has no recognized role");
   }
   return { ...member, role };
 }
@@ -89,19 +89,22 @@ export async function listOrganizationMembers(
     input.organizationId,
     input.actorUserId,
   );
-  return withTenantContextRaw(database, input.organizationId, async (client) => {
-    const actor = await client.query<MemberRow>(
-      `select id, user_id as "userId", organization_id as "organizationId", role
+  return withTenantContextRaw(
+    database,
+    input.organizationId,
+    async (client) => {
+      const actor = await client.query<MemberRow>(
+        `select id, user_id as "userId", organization_id as "organizationId", role
        from member where organization_id = $1 and user_id = $2`,
-      [input.organizationId, input.actorUserId],
-    );
-    const actorMember = actor.rows[0];
-    if (!actorMember) notMember();
-    if (!isOwnerOrAdmin(actorMember)) {
-      deny("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก");
-    }
-    const result = await client.query<MemberListRow>(
-      `with scoped as (
+        [input.organizationId, input.actorUserId],
+      );
+      const actorMember = actor.rows[0];
+      if (!actorMember) notMember();
+      if (!isOwnerOrAdmin(actorMember)) {
+        deny("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก");
+      }
+      const result = await client.query<MemberListRow>(
+        `with scoped as (
          select m.id, m.user_id as "userId", u.name, u.email, m.role
          from member m
          join "user" u on u.id = m.user_id
@@ -109,7 +112,7 @@ export async function listOrganizationMembers(
        ),
        page as (
          select * from scoped
-         order by lower(name), "userId"
+         order by lower(name), id
          limit $2 offset $3
        )
        select (select count(*)::int from scoped) as total,
@@ -119,28 +122,29 @@ export async function listOrganizationMembers(
                     'id', id, 'userId', "userId", 'name', name,
                     'email', email, 'role', role
                   )
-                  order by lower(name), "userId"
+                  order by lower(name), id
                 ),
                 '[]'::json
               ) as members
        from page`,
-      [input.organizationId, input.limit, input.offset],
-    );
-    const row = result.rows[0];
-    if (!row) throw new Error("member list query returned no row");
-    const members = row.members.map((member) => {
-      const role = normalizeOrganizationRole(member.role);
-      if (role === null) {
-        throw new Error(`member ${member.id} has no recognized role`);
-      }
-      return { ...member, role };
-    });
-    return {
-      organizationId: input.organizationId,
-      members,
-      page: { limit: input.limit, offset: input.offset, total: row.total },
-    };
-  });
+        [input.organizationId, input.limit, input.offset],
+      );
+      const row = result.rows[0];
+      if (!row) throw new Error("member list query returned no row");
+      const members = row.members.map((member) => {
+        const role = normalizeOrganizationRole(member.role);
+        if (role === null) {
+          throw new Error("member has no recognized role");
+        }
+        return { ...member, role };
+      });
+      return {
+        organizationId: input.organizationId,
+        members,
+        page: { limit: input.limit, offset: input.offset, total: row.total },
+      };
+    },
+  );
 }
 
 async function lockedMember(

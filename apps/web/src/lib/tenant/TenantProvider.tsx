@@ -2,6 +2,7 @@ import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -25,6 +26,7 @@ type TenantContextValue = {
   mePending: boolean;
   meError: Error | null;
   retryMe: () => Promise<void>;
+  refreshMembershipContext: () => Promise<MeContextResponse | null>;
   activeOrg: Membership | null;
   serverActiveOrgId: string | null;
   switchOrg: (organizationId: string) => Promise<boolean>;
@@ -99,6 +101,20 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       ? lastActiveTenantId
       : null;
 
+  const refreshMembershipContext =
+    useCallback(async (): Promise<MeContextResponse | null> => {
+      await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
+      queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+      try {
+        const updated = await fetchMeContext();
+        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
+        setSelectedOrgId(null);
+        return updated;
+      } catch {
+        return null;
+      }
+    }, [queryClient]);
+
   const switchOrg = async (organizationId: string): Promise<boolean> => {
     if (
       memberships?.some((org) => org.id === organizationId) !== true ||
@@ -132,6 +148,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     mePending: meQuery.isPending,
     meError: meQuery.error,
     retryMe,
+    refreshMembershipContext,
     activeOrg,
     serverActiveOrgId,
     switchOrg,

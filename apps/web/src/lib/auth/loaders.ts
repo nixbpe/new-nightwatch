@@ -8,10 +8,7 @@ import {
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
-import {
-  fetchOrganizationMembers,
-  memberListQueryKey,
-} from "../api/members";
+import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import { authClient } from "../auth-client";
 import {
   fetchNotifications,
@@ -158,10 +155,18 @@ export async function organizationMembersLoader({
   const organizationId = params.organizationId;
   if (organizationId === undefined) return null;
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
-  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  // A bookmarked tenant route needs a fresh server membership decision, not a
+  // static context cache that could predate a revocation or role change.
+  const context = await fetchMeContext().catch(() => undefined);
+  if (context !== undefined) {
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+  }
+  const membership = context?.organizations.find(
+    (organization) => organization.id === organizationId,
+  );
   if (
-    context?.organizations.some((organization) => organization.id === organizationId) !==
-    true
+    membership === undefined ||
+    (membership.role !== "owner" && membership.role !== "admin")
   ) {
     return null;
   }

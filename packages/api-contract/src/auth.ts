@@ -15,9 +15,17 @@ export const organizationRoleSchema = z.enum([
 
 export type OrganizationRole = z.infer<typeof organizationRoleSchema>;
 
+const decimalInteger = z.preprocess(
+  (value) =>
+    typeof value === "string" && /^(?:0|[1-9]\d*)$/.test(value)
+      ? Number(value)
+      : value,
+  z.number().int().safe(),
+);
+
 export const organizationMemberListQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(50).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  limit: decimalInteger.pipe(z.number().min(1).max(50)).default(50),
+  offset: decimalInteger.pipe(z.number().min(0)).default(0),
 });
 
 export const organizationMemberSchema = z.object({

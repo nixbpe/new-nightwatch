@@ -37,9 +37,13 @@ export type AppDeps = {
   database?: Database;
 };
 
-// Invitation IDs and reset tokens are bearer secrets; never log them.
+// Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
 function logSafePath(path: string): string {
   return path
+    .replace(
+      /^(\/api\/organizations\/)[^/]+(\/members)(?:\/[^/]+)?$/,
+      "$1:organizationId$2",
+    )
     .replace(/^(\/api\/onboarding\/invitations\/)[^/]+$/, "$1:invitationId")
     .replace(/^(\/api\/auth\/reset-password\/)[^/]+$/, "$1:token");
 }

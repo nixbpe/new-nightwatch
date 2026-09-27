@@ -11,15 +11,30 @@ import { OrganizationMembersPage } from "./OrganizationMembersPage";
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const response: OrganizationMemberListResponse = {
   organizationId,
-  members: [{ id: "member-1", userId: "user-1", name: "Ada", email: "ada@example.test", role: "owner" }],
+  members: [
+    {
+      id: "member-1",
+      userId: "user-1",
+      name: "Ada",
+      email: "ada@example.test",
+      role: "owner",
+    },
+  ],
   page: { limit: 50, offset: 0, total: 51 },
 };
 
+let tenant = {
+  mePending: false,
+  me: {
+    organizations: [
+      { id: organizationId, name: "Acme", slug: "acme", role: "owner" },
+    ],
+  },
+  refreshMembershipContext: vi.fn(),
+};
+
 vi.mock("../lib/tenant/TenantProvider", () => ({
-  useTenant: () => ({
-    mePending: false,
-    me: { organizations: [{ id: organizationId, name: "Acme", slug: "acme", role: "owner" }] },
-  }),
+  useTenant: () => tenant,
 }));
 vi.mock("../lib/api/members", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -28,15 +43,37 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
 
 function renderPage() {
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <MemoryRouter initialEntries={[`/organizations/${organizationId}/members`]}>
-        <Routes><Route path="/organizations/:organizationId/members" element={<OrganizationMembersPage />} /></Routes>
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter
+        initialEntries={[`/organizations/${organizationId}/members`]}
+      >
+        <Routes>
+          <Route
+            path="/organizations/:organizationId/members"
+            element={<OrganizationMembersPage />}
+          />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => {
+  vi.resetAllMocks();
+  tenant = {
+    mePending: false,
+    me: {
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "owner" },
+      ],
+    },
+    refreshMembershipContext: vi.fn(),
+  };
+});
 
 describe("OrganizationMembersPage", () => {
   it("shows total and moves through offset pagination without stale first-page rows", async () => {
@@ -65,5 +102,43 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("Zoe")).toBeInTheDocument();
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+  });
+
+  it("announces denied access without requesting or rendering directory data", () => {
+    tenant = {
+      ...tenant,
+      me: {
+        organizations: [
+          {
+            id: organizationId,
+            name: "Acme",
+            slug: "acme",
+            role: "viewer",
+          },
+        ],
+      },
+    };
+    renderPage();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้",
+    );
+    expect(screen.queryByText("สมาชิกทั้งหมด")).not.toBeInTheDocument();
+    expect(fetchOrganizationMembers).not.toHaveBeenCalled();
+  });
+
+  it("announces loading and a retryable failure without stale rows", async () => {
+    vi.mocked(fetchOrganizationMembers)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(response);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "โหลดสมาชิกไม่สำเร็จ",
+    );
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
   });
 });

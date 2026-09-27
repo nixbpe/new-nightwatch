@@ -1044,7 +1044,7 @@ export interface paths {
             parameters: {
                 query?: {
                     limit?: number;
-                    offset?: number | null;
+                    offset?: number;
                 };
                 header?: never;
                 path: {

@@ -74,7 +74,7 @@ const app = createApp({
   auth,
   database: runtime,
   logger: createLogger(
-    { level: "warn", name: "member-routes-db-test" },
+    { level: "info", name: "member-routes-db-test" },
     { write: (line: string) => void auditLines.push(line) },
   ),
 });
@@ -287,6 +287,113 @@ describe("organization member HTTP mutations", () => {
         action: "legacy:/api/auth/organization/leave",
       }),
     ]);
+
+    auditLines.length = 0;
+    const list = await ownerClient(
+      "GET",
+      `/api/organizations/${organizationId}/members?limit=50&offset=0`,
+    );
+    expect(list.status).toBe(200);
+    expect(list.json).toMatchObject({
+      organizationId,
+      members: expect.arrayContaining([
+        expect.objectContaining({ id: memberIds.owner, role: "owner" }),
+      ]),
+      page: { limit: 50, offset: 0, total: 3 },
+    });
+    for (const clientForDeniedList of [targetClient, leaverClient]) {
+      const deniedList = await clientForDeniedList(
+        "GET",
+        `/api/organizations/${organizationId}/members`,
+      );
+      expect(deniedList.status).toBe(403);
+      expect(deniedList.json).toEqual({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิก",
+        },
+      });
+    }
+    for (const value of [
+      "",
+      " ",
+      "0x32",
+      "1e2",
+      "1.5",
+      "-1",
+      "9007199254740992",
+    ]) {
+      const invalid = await ownerClient(
+        "GET",
+        `/api/organizations/${organizationId}/members?limit=${encodeURIComponent(value)}&offset=0`,
+      );
+      expect(invalid.status).toBe(400);
+      expect(invalid.json).toEqual({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+        },
+      });
+    }
+    const missing = await leaverClient(
+      "GET",
+      `/api/organizations/${crypto.randomUUID()}/members`,
+    );
+    expect(missing.status).toBe(403);
+    expect(missing.json).toEqual({
+      error: {
+        code: "MEMBERSHIP_DENIED",
+        message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+      },
+    });
+    await owner.sql.query("update member set role = 'unknown' where id = $1", [
+      memberIds.leaver,
+    ]);
+    const failure = await ownerClient(
+      "GET",
+      `/api/organizations/${organizationId}/members`,
+    );
+    expect(failure.status).toBe(500);
+    expect(failure.json).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    });
+    await owner.sql.query(
+      "update member set role = 'viewer,auditor' where id = $1",
+      [memberIds.leaver],
+    );
+    const logEntries = auditLines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>,
+    );
+    const completionLogs = logEntries.filter(
+      (entry) => entry.msg === "request completed",
+    );
+    expect(completionLogs).toHaveLength(12);
+    for (const completion of completionLogs) {
+      expect(completion.path).toBe(
+        "/api/organizations/:organizationId/members",
+      );
+      expect(JSON.stringify(completion)).not.toContain(organizationId);
+    }
+    expect(JSON.stringify(logEntries)).not.toContain(organizationId);
+    expect(JSON.stringify(logEntries)).not.toContain(memberIds.leaver);
+    for (const audit of logEntries.filter(
+      (entry) => entry.msg === "organization access denied",
+    )) {
+      const { action, actorUserId, code, ...metadata } = audit;
+      expect({ action, actorUserId, code }).toEqual({
+        action: "organization.member.list",
+        actorUserId: expect.any(String),
+        code: expect.stringMatching(/^(MEMBERSHIP|PERMISSION)_DENIED$/),
+      });
+      expect(Object.keys(metadata).sort()).toEqual([
+        "hostname",
+        "level",
+        "msg",
+        "name",
+        "pid",
+        "time",
+      ]);
+    }
 
     expect(
       (
