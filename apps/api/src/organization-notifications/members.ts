@@ -188,6 +188,7 @@ async function lockedTarget(
   client: PoolClient,
   organizationId: string,
   memberId: string,
+  hideMissingFromAdmin = false,
 ): Promise<MemberRow> {
   const result = await client.query<MemberRow>(
     `select id, user_id as "userId", organization_id as "organizationId", role
@@ -195,7 +196,12 @@ async function lockedTarget(
     [organizationId, memberId],
   );
   const member = result.rows[0];
-  if (!member) memberNotFound();
+  if (!member) {
+    if (hideMissingFromAdmin) {
+      deny("เฉพาะเจ้าขององค์กรเท่านั้นที่เปลี่ยนเจ้าของได้");
+    }
+    memberNotFound();
+  }
   return member;
 }
 
@@ -275,6 +281,7 @@ export async function updateOrganizationMemberRole(
         client,
         input.organizationId,
         input.memberId,
+        !isOwner(actor),
       );
       if (
         (!isOwner(actor) && isOwner(target)) ||
