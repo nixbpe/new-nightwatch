@@ -41,24 +41,30 @@ export function InvitationPanel({
   const initialPublicationVersion = useRef(
     getContextPublicationSnapshot(queryClient).version,
   );
-  const initialServerOrgId = useRef(
+  const lastPublishedServerOrgId = useRef(
     queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
       ?.lastActiveTenantId ?? null,
   );
   const retired = useRef(false);
-  // Latch a confirmed tenant change so a rapid A → B → A cannot revive A's request.
+  // Retire only when a confirmed publication switches away from this panel's
+  // organization. A bookmarked B form may start while A is the active tenant.
   const isCurrentScope = useCallback(() => {
-    if (
-      !retired.current &&
-      getContextPublicationSnapshot(queryClient).version !==
-        initialPublicationVersion.current &&
-      (queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
-        ?.lastActiveTenantId ?? null) !== initialServerOrgId.current
-    ) {
-      retired.current = true;
+    const version = getContextPublicationSnapshot(queryClient).version;
+    if (version !== initialPublicationVersion.current) {
+      const serverOrgId =
+        queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
+          ?.lastActiveTenantId ?? null;
+      if (
+        lastPublishedServerOrgId.current !== serverOrgId &&
+        serverOrgId !== organizationId
+      ) {
+        retired.current = true;
+      }
+      lastPublishedServerOrgId.current = serverOrgId;
+      initialPublicationVersion.current = version;
     }
     return !retired.current;
-  }, [queryClient]);
+  }, [organizationId, queryClient]);
   const currentScope = useSyncExternalStore(
     useCallback(
       (listener) =>

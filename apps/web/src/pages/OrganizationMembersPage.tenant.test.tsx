@@ -191,6 +191,76 @@ it("keeps a bookmarked B draft when A is republished without a switch", async ()
   expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
 });
 
+it("keeps a bookmarked B invitation draft through confirmed A to B publication and settled navigation", async () => {
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(updateActiveOrganization).mockResolvedValue({
+    ...context,
+    lastActiveTenantId: B,
+  });
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
+    Promise.resolve(
+      id === A
+        ? aList
+        : {
+            organizationId: B,
+            members: [
+              {
+                id: "member-b",
+                userId: "user-b",
+                name: "Bea",
+                email: "bea@example.test",
+                role: "owner",
+              },
+            ],
+            page: { limit: 50, offset: 0, total: 1 },
+          },
+    ),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${B}/members`]}>
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("Bea")).toBeInTheDocument();
+  expect(screen.queryByText("Ada")).toBeNull();
+  expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
+  const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
+  await user.type(email, "b-draft@example.test");
+  await user.selectOptions(screen.getByLabelText("บทบาท"), "admin");
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
+  );
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${B}/members`,
+  );
+  expect(
+    screen.getByRole("heading", { name: "เชิญสมาชิกเข้าสู่ Beta" }),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+    "b-draft@example.test",
+  );
+  expect(screen.getByLabelText("บทบาท")).toHaveValue("admin");
+  await user.click(screen.getByRole("button", { name: "navigate B" }));
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${B}/members`,
+  );
+  expect(screen.getByText("Bea")).toBeInTheDocument();
+  expect(screen.queryByText("Ada")).toBeNull();
+  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+    "b-draft@example.test",
+  );
+  expect(screen.getByLabelText("บทบาท")).toHaveValue("admin");
+});
+
 it("retains A on denied B, then rejects old A completion after confirmed B then A", async () => {
   const post = Promise.withResolvers<InvitationCreateResponse>();
   vi.mocked(createInvitation).mockReturnValue(post.promise);
