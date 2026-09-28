@@ -11,7 +11,7 @@
 ## Contracts
 
 - API, data/RLS, jobs: unchanged. No migrations, authorization, queue, dependency, or platform work.
-- UI: `nav[role=tablist]` keeps four labeled route links, `aria-selected`, focus order and visible focus. Tabs reflow into rows within the available width rather than scrolling horizontally; each tab's 2px active underline remains visible over the wrapper hairline. Keep the wrapper hairline and the `nav` negative bottom margin so `scrollHeight === clientHeight` on all four routes and both text scales. The MFA `ol[aria-label="ขั้นตอนการเปิดใช้งาน"]` keeps all three ordered labels and `aria-current="step"` on the active step; its items reflow or stack without horizontal scrolling, clipping or loss of stage controls. No page-level horizontal overflow. API/data/RLS/jobs unchanged.
+- UI: `nav[role=tablist]` keeps four labeled route links, `aria-selected`, focus order and visible focus. Tabs reflow into rows within the available width rather than scrolling horizontally; each active tab keeps its visible 2px underline. On the last row it overlays the wrapper hairline; on an earlier row the underline remains visible above it. Keep the wrapper hairline and the `nav` negative bottom margin so `scrollHeight === clientHeight` on all four routes and both text scales. The MFA `ol[aria-label="ขั้นตอนการเปิดใช้งาน"]` keeps all three ordered labels and `aria-current="step"` on the active step; its items reflow or stack without horizontal scrolling, clipping or loss of stage controls. No page-level horizontal overflow. API/data/RLS/jobs unchanged.
 
 ## Design decisions
 
