@@ -923,7 +923,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
   return (
     <ol
       aria-label="ขั้นตอนการเปิดใช้งาน"
-      className="flex items-center gap-2 overflow-x-auto"
+      className="flex flex-col items-stretch gap-2 lg:flex-row lg:items-center"
     >
       {STEPS.map((label, index) => {
         const n = index + 1;
@@ -933,7 +933,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
           <li
             key={label}
             aria-current={state === "current" ? "step" : undefined}
-            className={`flex items-center gap-2 ${last ? "" : "flex-1"}`}
+            className={`flex min-w-0 items-center gap-2 ${last ? "" : "lg:flex-1"}`}
           >
             <span
               className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold ${
@@ -947,7 +947,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
               {state === "done" ? <CheckIcon size={14} /> : n}
             </span>
             <span
-              className={`text-[13px] font-medium whitespace-nowrap ${
+              className={`min-w-0 text-sm font-medium ${
                 state === "next" ? "text-foreground-secondary" : ""
               }`}
             >
@@ -956,7 +956,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
             {last ? null : (
               <span
                 aria-hidden="true"
-                className={`h-px min-w-4 flex-1 ${
+                className={`hidden h-px min-w-4 flex-1 lg:block ${
                   state === "done" ? "bg-primary" : "bg-foreground/10"
                 }`}
               />
