@@ -76,6 +76,7 @@ export function InvitationPanel({ organizationId, organizationName, actorRole }:
           <div>
             <Field label="อีเมลของผู้ได้รับเชิญ">
               <Input ref={emailRef} type="email" name="invite-email" autoComplete="off" value={email}
+                style={{ outlineColor: "var(--primary)" }}
                 onChange={(event) => { setEmail(event.target.value); setFieldError(null); }}
                 aria-invalid={fieldError !== null} aria-describedby={fieldError ? "invite-email-error" : undefined} />
             </Field>
@@ -89,7 +90,7 @@ export function InvitationPanel({ organizationId, organizationName, actorRole }:
           </Field>
         </div>
         <div className="flex justify-end border-t border-foreground/10 pt-4">
-          <Button type="submit" disabled={pending}>{pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}</Button>
+          <Button type="submit" style={{ outlineColor: "var(--primary)" }} disabled={pending}>{pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}</Button>
         </div>
       </form>
     </section>

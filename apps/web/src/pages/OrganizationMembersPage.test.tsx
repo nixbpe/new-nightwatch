@@ -1,4 +1,4 @@
-import type { OrganizationMemberListResponse } from "@nightwatch/api-contract";
+import type { InvitationCreateResponse, OrganizationMemberListResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -12,6 +12,7 @@ import {
   fetchOrganizationMembers,
   memberListQueryKey,
 } from "../lib/api/members";
+import { createInvitation } from "../lib/api/invitations";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -82,6 +83,10 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchOrganizationMembers: vi.fn(),
 }));
+vi.mock("../lib/api/invitations", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  createInvitation: vi.fn(),
+}));
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -119,7 +124,63 @@ afterEach(() => {
   };
 });
 
+const invitationOutcomes: [string, InvitationCreateResponse | ApiError, string][] = [
+  ["pre-insert failure", new ApiError("INVITATION_LIMIT_REACHED", "limit", 409), "ครบ 100 รายการ"],
+  ["SMTP accepted", { created: true, emailDispatch: "accepted" }, "สร้างคำเชิญแล้ว"],
+  ["SMTP failed", { created: true, emailDispatch: "failed" }, "สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"],
+];
+
 describe("OrganizationMembersPage", () => {
+  it.each(invitationOutcomes)("keeps the A invitation mounted across refetch and pagination: %s", async (_scenario, outcome, message) => {
+    const post = Promise.withResolvers<InvitationCreateResponse>();
+    const nextPage = Promise.withResolvers<OrganizationMemberListResponse>();
+    const refreshedPage = Promise.withResolvers<OrganizationMemberListResponse>();
+    vi.mocked(createInvitation).mockReturnValue(post.promise);
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockImplementationOnce(() => refreshedPage.promise)
+      .mockImplementationOnce(() => nextPage.promise);
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
+    await user.type(email, "new@example.com");
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+    act(() => {
+      void queryClient.invalidateQueries({
+        queryKey: memberListQueryKey(organizationId, 50, 0),
+        exact: true,
+      });
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("กำลังโหลดสมาชิก");
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(email).toBeInTheDocument();
+    expect(email).toHaveValue("new@example.com");
+    expect(screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" })).toBeDisabled();
+    refreshedPage.resolve(response);
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("กำลังโหลดสมาชิก");
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(email).toBeInTheDocument();
+    nextPage.resolve({
+      ...response,
+      members: [{ ...firstMember, id: "member-51", name: "Zoe" }],
+      page: { limit: 50, offset: 50, total: 51 },
+    });
+    expect(await screen.findByText("Zoe")).toBeInTheDocument();
+    if (outcome instanceof Error) {
+      await act(async () => post.reject(outcome));
+      expect(screen.getByRole("alert")).toHaveTextContent(message);
+      expect(email).toHaveValue("new@example.com");
+    } else {
+      await act(async () => post.resolve(outcome));
+      expect(screen.getByRole("status")).toHaveTextContent(message);
+      expect(email).toHaveValue("");
+    }
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+  });
   it("shows total and moves through offset pagination without stale first-page rows", async () => {
     const secondPage: OrganizationMemberListResponse = {
       organizationId,
@@ -414,6 +475,34 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("Ada")).toBeInTheDocument();
   });
 
+  it("unmounts a pending invitation when fresh permission denies A", async () => {
+    const post = Promise.withResolvers<InvitationCreateResponse>();
+    vi.mocked(createInvitation).mockReturnValue(post.promise);
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockRejectedValueOnce(new ApiError("PERMISSION_DENIED", "revoked", 403));
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => {
+        tenant = { ...tenant, me: { organizations: [{ ...organizationA, role: "viewer" }] } };
+        return Promise.resolve({ organizations: tenant.me?.organizations ?? [], lastActiveTenantId: organizationId });
+      }),
+    };
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"), "a-draft@example.test");
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    act(() => {
+      void queryClient.invalidateQueries({ queryKey: memberListQueryKey(organizationId, 50, 0), exact: true });
+    });
+    await waitFor(() => expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).not.toBeInTheDocument());
+    await act(async () => post.resolve({ created: true, emailDispatch: "accepted" }));
+    expect(screen.queryByText("สร้างคำเชิญแล้ว")).not.toBeInTheDocument();
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+  });
+
   it("recovers membership when an initial list retry is denied", async () => {
     const viewerOrganization = {
       ...organizationA,
@@ -474,6 +563,8 @@ describe("OrganizationMembersPage", () => {
   });
 
   it("keeps a delayed A page and its offset out of confirmed B scope", async () => {
+    const pendingInvitation = Promise.withResolvers<InvitationCreateResponse>();
+    vi.mocked(createInvitation).mockReturnValue(pendingInvitation.promise);
     let resolveASecondPage!: (value: OrganizationMemberListResponse) => void;
     const delayedASecondPage = new Promise<OrganizationMemberListResponse>(
       (resolve) => {
@@ -549,6 +640,9 @@ describe("OrganizationMembersPage", () => {
     );
 
     expect(await screen.findByText("A-first")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"), "a-draft@example.test");
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(await screen.findByText("กำลังโหลดสมาชิก")).toHaveAttribute(
       "role",
@@ -558,6 +652,8 @@ describe("OrganizationMembersPage", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
 
     expect(await screen.findByText("B-only")).toBeInTheDocument();
+    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+    expect(screen.queryByText("a-draft@example.test")).not.toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
@@ -572,6 +668,10 @@ describe("OrganizationMembersPage", () => {
       page: { limit: 50, offset: 50, total: 51 },
     });
     await Promise.resolve();
+    await act(async () => pendingInvitation.resolve({ created: true, emailDispatch: "failed" }));
+    expect(screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
 
     expect(screen.queryByText("A-late")).not.toBeInTheDocument();
     expect(screen.queryByText("A-first")).not.toBeInTheDocument();

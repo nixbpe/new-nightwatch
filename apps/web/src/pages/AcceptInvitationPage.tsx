@@ -97,32 +97,35 @@ export function AcceptInvitationPage() {
 
     if (!sameEmail(user.email, invitation.email)) {
       return (
-        <AuthPageShell
-          title="บัญชีนี้ไม่ตรงกับคำเชิญ"
-          subtitle={`คำเชิญส่งถึง ${invitation.email} แต่คุณกำลังเข้าสู่ระบบด้วย ${user.email}`}
-        >
-          <div className="flex flex-col gap-4">
-            <Alert tone="error">
-              เข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญ
-              หรือออกจากระบบเพื่อสร้างบัญชีใหม่
-            </Alert>
-            <Button
-              type="button"
-              className="w-full"
-              onClick={() => {
-                void authClient.signOut({
-                  fetchOptions: {
-                    onSuccess: () => {
-                      void navigate(0);
+        <div className="break-words">
+          <AuthPageShell
+            title="บัญชีนี้ไม่ตรงกับคำเชิญ"
+            subtitle={`คำเชิญส่งถึง ${invitation.email} แต่คุณกำลังเข้าสู่ระบบด้วย ${user.email}`}
+          >
+            <div className="flex flex-col gap-4">
+              <Alert tone="error">
+                เข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญ
+                หรือออกจากระบบเพื่อสร้างบัญชีใหม่
+              </Alert>
+              <Button
+                type="button"
+                className="w-full"
+                style={{ outlineColor: "var(--primary)" }}
+                onClick={() => {
+                  void authClient.signOut({
+                    fetchOptions: {
+                      onSuccess: () => {
+                        void navigate(0);
+                      },
                     },
-                  },
-                });
-              }}
-            >
-              ออกจากระบบและใช้บัญชีอื่น
-            </Button>
-          </div>
-        </AuthPageShell>
+                  });
+                }}
+              >
+                ออกจากระบบและใช้บัญชีอื่น
+              </Button>
+            </div>
+          </AuthPageShell>
+        </div>
       );
     }
 
@@ -232,11 +235,28 @@ function VerifiedAcceptance({
         }}
         className="flex flex-col gap-4"
       >
-        {error === null ? null : <div ref={errorRef} tabIndex={-1}><Alert tone="error">{error}</Alert></div>}
-        {accepted ? <Link to="/workspace" className="text-primary underline">ไปหน้าองค์กร</Link> : (
-          <SubmitButton pending={pending} pendingLabel="กำลังเข้าร่วม…">
-            เข้าร่วมองค์กร
-          </SubmitButton>
+        {error === null ? null : (
+          <div
+            ref={errorRef}
+            tabIndex={-1}
+            className="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+          >
+            <Alert tone="error">{error}</Alert>
+          </div>
+        )}
+        {accepted ? (
+          <Link to="/workspace" className="text-primary underline">
+            ไปหน้าองค์กร
+          </Link>
+        ) : (
+          <Button
+            type="submit"
+            className="w-full"
+            style={{ outlineColor: "var(--primary)" }}
+            disabled={pending}
+          >
+            {pending ? "กำลังเข้าร่วม…" : "เข้าร่วมองค์กร"}
+          </Button>
         )}
       </form>
     </AuthPageShell>
