@@ -505,6 +505,52 @@ describe("organization member HTTP mutations", () => {
         expect(line).not.toContain(protectedValue);
       }
     }
+    // Better Auth member IDs are opaque strings. The route must reach the
+    // locked last-owner decision and update non-UUID targets as well.
+    const opaqueOwnerId = `role-owner-${run}`;
+    const opaqueTargetId = `role-target-${run}`;
+    await owner.sql.query("update member set id = $2 where id = $1", [
+      memberIds.owner, opaqueOwnerId,
+    ]);
+    await owner.sql.query("update member set id = $2 where id = $1", [
+      memberIds.target, opaqueTargetId,
+    ]);
+    try {
+      const lastOwnerRole = await ownerClient(
+        "PATCH",
+        `/api/organizations/${organizationId}/members/${opaqueOwnerId}/role`,
+        { role: "viewer" },
+      );
+      expect(lastOwnerRole).toMatchObject({
+        status: 400, json: { error: { code: "LAST_OWNER" } },
+      });
+      const opaqueUpdate = await ownerClient(
+        "PATCH",
+        `/api/organizations/${organizationId}/members/${opaqueTargetId}/role`,
+        { role: "admin" },
+      );
+      expect(opaqueUpdate).toEqual({
+        status: 200,
+        json: { member: { id: opaqueTargetId, userId: targetId, organizationId, role: "admin" } },
+      });
+      expect(
+        (await owner.sql.query<{ id: string; role: string }>(
+          "select id, role from member where organization_id = $1 and id = any($2::text[]) order by id",
+          [organizationId, [opaqueOwnerId, opaqueTargetId]],
+        )).rows,
+      ).toEqual([
+        { id: opaqueOwnerId, role: "owner" },
+        { id: opaqueTargetId, role: "admin" },
+      ]);
+    } finally {
+      await owner.sql.query("update member set id = $2 where id = $1", [
+        opaqueOwnerId, memberIds.owner,
+      ]);
+      await owner.sql.query("update member set id = $2, role = 'viewer' where id = $1", [
+        opaqueTargetId, memberIds.target,
+      ]);
+    }
+
     const role = await ownerClient(
       "PATCH",
       `/api/organizations/${organizationId}/members/${memberIds.target}/role`,
