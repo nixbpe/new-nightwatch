@@ -293,7 +293,7 @@ export function MfaCard({
       aria-labelledby="mfa-card-title"
       className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
     >
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
         <div className="min-w-0">
           <h2 id="mfa-card-title" className="text-base font-semibold">
             ยืนยันสองขั้นตอน (MFA)
@@ -729,8 +729,8 @@ export function MfaCard({
                 <p className="text-sm text-foreground-secondary">
                   หรือกรอกคีย์นี้ในแอปด้วยตนเองถ้าสแกนไม่ได้
                 </p>
-                <div className="mt-1 flex items-center gap-2">
-                  <code className="block min-w-0 flex-1 truncate rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-sm tracking-wider">
+                <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center [&_button]:h-auto [&_button]:min-w-0 [&_button]:whitespace-normal">
+                  <code className="block min-w-0 flex-1 break-all rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-sm tracking-wider">
                     {secretDisplay}
                   </code>
                   <Button
@@ -873,7 +873,7 @@ export function MfaCard({
                             ? VERIFY_TOTP_SERVER_ERROR_ID
                             : undefined
                       }
-                      className="w-56 text-center font-mono text-2xl tracking-[0.35em]"
+                      className="max-w-56 text-center font-mono text-xl tracking-normal sm:text-2xl sm:tracking-[0.35em]"
                     />
                     <FieldValidationError
                       id={VERIFY_TOTP_CLIENT_ERROR_ID}
@@ -923,7 +923,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
   return (
     <ol
       aria-label="ขั้นตอนการเปิดใช้งาน"
-      className="flex items-center gap-2 overflow-x-auto"
+      className="flex flex-col items-stretch gap-2 lg:flex-row lg:items-center"
     >
       {STEPS.map((label, index) => {
         const n = index + 1;
@@ -933,7 +933,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
           <li
             key={label}
             aria-current={state === "current" ? "step" : undefined}
-            className={`flex items-center gap-2 ${last ? "" : "flex-1"}`}
+            className={`flex min-w-0 items-center gap-2 ${last ? "" : "lg:flex-1"}`}
           >
             <span
               className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold ${
@@ -947,7 +947,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
               {state === "done" ? <CheckIcon size={14} /> : n}
             </span>
             <span
-              className={`text-[13px] font-medium whitespace-nowrap ${
+              className={`min-w-0 text-sm font-medium ${
                 state === "next" ? "text-foreground-secondary" : ""
               }`}
             >
@@ -956,7 +956,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
             {last ? null : (
               <span
                 aria-hidden="true"
-                className={`h-px min-w-4 flex-1 ${
+                className={`hidden h-px min-w-4 flex-1 lg:block ${
                   state === "done" ? "bg-primary" : "bg-foreground/10"
                 }`}
               />
@@ -970,7 +970,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
 
 function StepFooter({ left, right }: { left: ReactNode; right: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-t border-foreground/10 pt-4">
+    <div className="flex flex-col items-stretch gap-2 border-t border-foreground/10 pt-4 sm:flex-row sm:items-center sm:justify-between [&_button]:h-auto [&_button]:min-h-10 [&_button]:min-w-0 [&_button]:whitespace-normal [&_button]:py-2">
       {left}
       {right}
     </div>
@@ -996,7 +996,7 @@ function CodesHeader({
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-foreground-secondary">{description}</p>
       </div>
-      <div className="flex flex-shrink-0 items-center gap-1">
+      <div className="flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:flex-wrap sm:items-center [&_button]:h-auto [&_button]:min-w-0 [&_button]:whitespace-normal">
         <Button type="button" variant="ghost" size="sm" onClick={onCopy}>
           <CopyIcon size={14} />
           {copied ? "คัดลอกแล้ว" : "คัดลอกทั้งหมด"}
@@ -1019,9 +1019,9 @@ function CodesHeader({
 
 function BackupCodes({ codes }: { codes: string[] }) {
   return (
-    <ul className="grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-md border border-foreground/10 bg-foreground/5 px-4 py-3">
+    <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 rounded-md border border-foreground/10 bg-foreground/5 px-4 py-3 sm:grid-cols-2">
       {codes.map((code) => (
-        <li key={code} className="font-mono text-sm">
+        <li key={code} className="min-w-0 break-all font-mono text-sm">
           {code}
         </li>
       ))}
