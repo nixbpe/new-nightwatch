@@ -19,7 +19,7 @@ const logger = createLogger({ level: "silent", name: "emit-openapi" });
 const database = createDatabase(authEnv.DATABASE_URL);
 const mailer = createMailer(authEnv, logger);
 const auth = createAuth({ env, authEnv, logger, database, mailer });
-const app = createApp({ env, authEnv, logger, auth, database });
+const app = createApp({ env, authEnv, logger, auth, database, mailer });
 
 const response = await app.request("/api/v1/openapi.json");
 if (!response.ok) {

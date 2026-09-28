@@ -5,6 +5,7 @@ export const ROLE_LABELS: Record<string, string> = {
   auditor: "ผู้ตรวจสอบ",
 };
 
-export const INVITABLE_ROLES = ["admin", "viewer", "auditor"] as const;
+export const ADMIN_INVITABLE_ROLES = ["admin", "viewer", "auditor"] as const;
+export const INVITABLE_ROLES = ["owner", ...ADMIN_INVITABLE_ROLES] as const;
 
 export type InvitableRole = (typeof INVITABLE_ROLES)[number];

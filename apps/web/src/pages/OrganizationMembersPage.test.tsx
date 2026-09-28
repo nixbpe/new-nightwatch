@@ -1,4 +1,8 @@
-import type { OrganizationMemberListResponse } from "@nightwatch/api-contract";
+import type {
+  InvitationCreateResponse,
+  MeContextResponse,
+  OrganizationMemberListResponse,
+} from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,10 +12,17 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { ApiError } from "../lib/api/client";
+import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
 import {
   fetchOrganizationMembers,
   memberListQueryKey,
 } from "../lib/api/members";
+import { createInvitation } from "../lib/api/invitations";
+import {
+  claimContextPublication,
+  createContextPublicationClaim,
+  publishContextPublication,
+} from "../lib/queryClient";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -82,6 +93,10 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchOrganizationMembers: vi.fn(),
 }));
+vi.mock("../lib/api/invitations", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  createInvitation: vi.fn(),
+}));
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -119,7 +134,95 @@ afterEach(() => {
   };
 });
 
+const invitationOutcomes: [
+  string,
+  InvitationCreateResponse | ApiError,
+  string,
+][] = [
+  [
+    "pre-insert failure",
+    new ApiError("INVITATION_LIMIT_REACHED", "limit", 409),
+    "ครบ 100 รายการ",
+  ],
+  [
+    "SMTP accepted",
+    { created: true, emailDispatch: "accepted" },
+    "สร้างคำเชิญแล้ว",
+  ],
+  [
+    "SMTP failed",
+    { created: true, emailDispatch: "failed" },
+    "สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ",
+  ],
+];
+
 describe("OrganizationMembersPage", () => {
+  it.each(invitationOutcomes)(
+    "keeps the A invitation mounted across refetch and pagination: %s",
+    async (_scenario, outcome, message) => {
+      const post = Promise.withResolvers<InvitationCreateResponse>();
+      const nextPage = Promise.withResolvers<OrganizationMemberListResponse>();
+      const refreshedPage =
+        Promise.withResolvers<OrganizationMemberListResponse>();
+      vi.mocked(createInvitation).mockReturnValue(post.promise);
+      vi.mocked(fetchOrganizationMembers)
+        .mockResolvedValueOnce(response)
+        .mockImplementationOnce(() => refreshedPage.promise)
+        .mockImplementationOnce(() => nextPage.promise);
+      const user = userEvent.setup();
+      const { queryClient } = renderPage();
+      expect(await screen.findByText("Ada")).toBeInTheDocument();
+      const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
+      await user.type(email, "new@example.com");
+      await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+      expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+      act(() => {
+        void queryClient.invalidateQueries({
+          queryKey: memberListQueryKey(organizationId, 50, 0),
+          exact: true,
+        });
+      });
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "กำลังโหลดสมาชิก",
+      );
+      expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+      expect(email).toBeInTheDocument();
+      expect(email).toHaveValue("new@example.com");
+      expect(
+        screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
+      ).toBeDisabled();
+      refreshedPage.resolve(response);
+      expect(await screen.findByText("Ada")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "กำลังโหลดสมาชิก",
+      );
+      expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+      expect(email).toBeInTheDocument();
+      nextPage.resolve({
+        ...response,
+        members: [{ ...firstMember, id: "member-51", name: "Zoe" }],
+        page: { limit: 50, offset: 50, total: 51 },
+      });
+      expect(await screen.findByText("Zoe")).toBeInTheDocument();
+      if (outcome instanceof Error) {
+        await act(async () => {
+          post.reject(outcome);
+          await Promise.resolve();
+        });
+        expect(screen.getByRole("alert")).toHaveTextContent(message);
+        expect(email).toHaveValue("new@example.com");
+      } else {
+        await act(async () => {
+          post.resolve(outcome);
+          await post.promise;
+        });
+        expect(screen.getByRole("status")).toHaveTextContent(message);
+        expect(email).toHaveValue("");
+      }
+      expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+    },
+  );
   it("shows total and moves through offset pagination without stale first-page rows", async () => {
     const secondPage: OrganizationMemberListResponse = {
       organizationId,
@@ -373,6 +476,7 @@ describe("OrganizationMembersPage", () => {
       "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้",
     );
     expect(screen.queryByText("สมาชิกทั้งหมด")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
     expect(fetchOrganizationMembers).not.toHaveBeenCalled();
   });
 
@@ -411,6 +515,55 @@ describe("OrganizationMembersPage", () => {
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
     expect(await screen.findByText("Ada")).toBeInTheDocument();
+  });
+
+  it("unmounts a pending invitation when fresh permission denies A", async () => {
+    const post = Promise.withResolvers<InvitationCreateResponse>();
+    vi.mocked(createInvitation).mockReturnValue(post.promise);
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockRejectedValueOnce(new ApiError("PERMISSION_DENIED", "revoked", 403));
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => {
+        tenant = {
+          ...tenant,
+          me: { organizations: [{ ...organizationA, role: "viewer" }] },
+        };
+        return Promise.resolve({
+          organizations: tenant.me?.organizations ?? [],
+          lastActiveTenantId: organizationId,
+        });
+      }),
+    };
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      "a-draft@example.test",
+    );
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    act(() => {
+      void queryClient.invalidateQueries({
+        queryKey: memberListQueryKey(organizationId, 50, 0),
+        exact: true,
+      });
+    });
+    await waitFor(() => {
+      expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      ).not.toBeInTheDocument();
+    });
+    await act(async () => {
+      post.resolve({ created: true, emailDispatch: "accepted" });
+      await post.promise;
+    });
+    expect(screen.queryByText("สร้างคำเชิญแล้ว")).not.toBeInTheDocument();
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
   });
 
   it("recovers membership when an initial list retry is denied", async () => {
@@ -473,6 +626,8 @@ describe("OrganizationMembersPage", () => {
   });
 
   it("keeps a delayed A page and its offset out of confirmed B scope", async () => {
+    const pendingInvitation = Promise.withResolvers<InvitationCreateResponse>();
+    vi.mocked(createInvitation).mockReturnValue(pendingInvitation.promise);
     let resolveASecondPage!: (value: OrganizationMemberListResponse) => void;
     const delayedASecondPage = new Promise<OrganizationMemberListResponse>(
       (resolve) => {
@@ -548,6 +703,12 @@ describe("OrganizationMembersPage", () => {
     );
 
     expect(await screen.findByText("A-first")).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      "a-draft@example.test",
+    );
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(await screen.findByText("กำลังโหลดสมาชิก")).toHaveAttribute(
       "role",
@@ -557,6 +718,8 @@ describe("OrganizationMembersPage", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
 
     expect(await screen.findByText("B-only")).toBeInTheDocument();
+    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+    expect(screen.queryByText("a-draft@example.test")).not.toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
@@ -571,10 +734,117 @@ describe("OrganizationMembersPage", () => {
       page: { limit: 50, offset: 50, total: 51 },
     });
     await Promise.resolve();
+    await act(async () => {
+      pendingInvitation.resolve({ created: true, emailDispatch: "failed" });
+      await pendingInvitation.promise;
+    });
+    expect(
+      screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
 
     expect(screen.queryByText("A-late")).not.toBeInTheDocument();
     expect(screen.queryByText("A-first")).not.toBeInTheDocument();
     expect(screen.getByText("B-only")).toBeInTheDocument();
+  });
+
+  it("hides A invitation immediately on confirmed B publication before navigation", async () => {
+    const post = Promise.withResolvers<InvitationCreateResponse>();
+    const navigation = Promise.withResolvers<boolean>();
+    vi.mocked(createInvitation).mockReturnValue(post.promise);
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const confirmedContext: MeContextResponse = {
+      user: {
+        id: "user-1",
+        name: "Tester",
+        email: "tester@example.test",
+        emailVerified: true,
+        twoFactorEnabled: false,
+      },
+      organizations: [organizationA, organizationB],
+      lastActiveTenantId: organizationId,
+    };
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, confirmedContext);
+
+    function SwitchableDirectory() {
+      const [, setRevision] = useState(0);
+      tenant = {
+        ...tenant,
+        me: { organizations: [organizationA, organizationB] },
+        activeOrg: tenant.activeOrg,
+        switchOrg: (id: string) => {
+          if (id !== organizationBId) return Promise.resolve(false);
+          const claim = createContextPublicationClaim();
+          claimContextPublication(queryClient, claim);
+          tenant = { ...tenant, activeOrg: organizationB };
+          queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
+            ...confirmedContext,
+            lastActiveTenantId: organizationBId,
+          });
+          publishContextPublication(queryClient, claim);
+          setRevision((value) => value + 1);
+          return navigation.promise;
+        },
+      };
+      return (
+        <>
+          <OrgSwitcher collapsed={false} />
+          <output data-testid="location">{useLocation().pathname}</output>
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+          </Routes>
+        </>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <SwitchableDirectory />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      "a-draft@example.test",
+    );
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: /Acme/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${organizationId}/members`,
+    );
+    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+    await act(async () => {
+      post.resolve({ created: true, emailDispatch: "failed" });
+      await post.promise;
+    });
+    expect(
+      screen.queryByRole("status", { name: /สร้างคำเชิญแล้ว/ }),
+    ).toBeNull();
+    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+    await act(async () => {
+      navigation.resolve(true);
+      await navigation.promise;
+    });
+    expect(await screen.findByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+      "",
+    );
+    expect(
+      screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
+    ).toBeNull();
   });
 
   it("keeps A scope, route, list, and offset when an A to B switch is denied", async () => {
@@ -632,6 +902,10 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("A-first")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(await screen.findByText("A-second")).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      "a-draft@example.test",
+    );
     await user.click(screen.getByRole("button", { name: /Acme/ }));
     await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
 
@@ -641,6 +915,9 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByText("Acme · acme")).toBeInTheDocument();
     expect(screen.getByText("A-second")).toBeInTheDocument();
     expect(screen.queryByText("B-only")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+      "a-draft@example.test",
+    );
     expect(screen.getByText("แสดง 51–51 จาก 51")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeEnabled();
   });

@@ -15,6 +15,21 @@ export const organizationRoleSchema = z.enum([
 
 export type OrganizationRole = z.infer<typeof organizationRoleSchema>;
 
+export const invitationCreateInputSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+  role: organizationRoleSchema,
+});
+
+export const invitationCreateResponseSchema = z.object({
+  created: z.literal(true),
+  emailDispatch: z.enum(["accepted", "failed"]),
+});
+
+export type InvitationCreateInput = z.infer<typeof invitationCreateInputSchema>;
+export type InvitationCreateResponse = z.infer<
+  typeof invitationCreateResponseSchema
+>;
+
 const decimalInteger = z.preprocess(
   (value) =>
     typeof value === "string" && /^(?:0|[1-9]\d*)$/.test(value)
@@ -70,6 +85,14 @@ export const invitationResponseSchema = z.object({
 });
 
 export type InvitationResponse = z.infer<typeof invitationResponseSchema>;
+
+export const invitationAcceptResponseSchema = z.object({
+  organizationId: z.uuid(),
+});
+
+export type InvitationAcceptResponse = z.infer<
+  typeof invitationAcceptResponseSchema
+>;
 
 export const meContextOrganizationSchema = z.object({
   id: z.uuid(),

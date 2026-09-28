@@ -18,20 +18,19 @@ import { TenantProvider } from "../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 import { WorkspacePage } from "./WorkspacePage";
 
-const { sessionState, signOutMock, inviteMemberMock } = vi.hoisted(() => ({
+const { sessionState, signOutMock } = vi.hoisted(() => ({
   sessionState: {
     data: null as { user: Record<string, unknown> } | null,
     isPending: false,
   },
   signOutMock: vi.fn(),
-  inviteMemberMock: vi.fn(),
 }));
 
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
     useSession: () => sessionState,
     signOut: signOutMock,
-    organization: { inviteMember: inviteMemberMock },
+    organization: {},
   }),
 }));
 
@@ -154,7 +153,6 @@ describe("WorkspacePage context states", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
-    inviteMemberMock.mockReset();
     signOutMock.mockReset();
     sessionState.data = null;
     fetchOrganizationMembersMock.mockReset();
@@ -281,7 +279,6 @@ describe("WorkspacePage organization views", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
-    inviteMemberMock.mockReset();
     signOutMock.mockReset();
     sessionState.data = null;
   });
@@ -297,46 +294,11 @@ describe("WorkspacePage organization views", () => {
     expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
   });
 
-  it("an owner sees invite controls and a successful invite confirms", async () => {
+  it("an owner sees overview without the removed invitation form", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    inviteMemberMock.mockResolvedValue({ data: {}, error: null });
-    const user = userEvent.setup();
     renderPage();
-
-    await screen.findByText("Org A · เจ้าของ");
-    await user.type(
-      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
-      "new@example.com",
-    );
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-
-    expect(
-      await screen.findByText(/ส่งคำเชิญถึง new@example\.com/),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
-  });
-
-  it("a failed invite shows the error and keeps the entered email", async () => {
-    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    inviteMemberMock.mockResolvedValue({
-      data: null,
-      error: { message: "ส่งคำเชิญไม่สำเร็จ" },
-    });
-    const user = userEvent.setup();
-    renderPage();
-
-    await screen.findByText("Org A · เจ้าของ");
-    await user.type(
-      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
-      "new@example.com",
-    );
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "ส่งคำเชิญไม่สำเร็จ",
-    );
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
-      "new@example.com",
-    );
+    expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
+    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
   });
 });

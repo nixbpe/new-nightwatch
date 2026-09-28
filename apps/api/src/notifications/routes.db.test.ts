@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../app";
 import type { Auth, AuthSession } from "../auth";
+import { createMailer } from "../auth/mailer";
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 
 const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
@@ -58,6 +59,10 @@ const app = createApp({
   authEnv,
   auth,
   database: runtime,
+  mailer: createMailer(
+    authEnv,
+    createLogger({ level: "silent", name: "notification-db-test" }),
+  ),
   logger: createLogger({ level: "silent", name: "notification-db-test" }),
 });
 

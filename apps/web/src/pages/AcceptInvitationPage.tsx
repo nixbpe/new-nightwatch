@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import {
@@ -14,9 +14,21 @@ import {
 } from "../components/ui";
 import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage, sameEmail } from "../lib/auth-client";
-import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
-import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
-import { clearInvitation, rememberInvitation } from "../lib/auth/continuation";
+import {
+  acceptInvitation,
+  fetchInvitation,
+  invitationQueryKey,
+} from "../lib/api/invitations";
+import {
+  fetchMeContext,
+  ME_CONTEXT_QUERY_KEY,
+  updateActiveOrganization,
+} from "../lib/api/me";
+import {
+  clearInvitation,
+  readInvitation,
+  rememberInvitation,
+} from "../lib/auth/continuation";
 import { ApiError } from "../lib/api/client";
 import { ROLE_LABELS } from "../lib/roles";
 
@@ -97,37 +109,41 @@ export function AcceptInvitationPage() {
 
     if (!sameEmail(user.email, invitation.email)) {
       return (
-        <AuthPageShell
-          title="บัญชีนี้ไม่ตรงกับคำเชิญ"
-          subtitle={`คำเชิญส่งถึง ${invitation.email} แต่คุณกำลังเข้าสู่ระบบด้วย ${user.email}`}
-        >
-          <div className="flex flex-col gap-4">
-            <Alert tone="error">
-              เข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญ
-              หรือออกจากระบบเพื่อสร้างบัญชีใหม่
-            </Alert>
-            <Button
-              type="button"
-              className="w-full"
-              onClick={() => {
-                void authClient.signOut({
-                  fetchOptions: {
-                    onSuccess: () => {
-                      void navigate(0);
+        <div className="break-words">
+          <AuthPageShell
+            title="บัญชีนี้ไม่ตรงกับคำเชิญ"
+            subtitle={`คำเชิญส่งถึง ${invitation.email} แต่คุณกำลังเข้าสู่ระบบด้วย ${user.email}`}
+          >
+            <div className="flex flex-col gap-4">
+              <Alert tone="error">
+                เข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญ
+                หรือออกจากระบบเพื่อสร้างบัญชีใหม่
+              </Alert>
+              <Button
+                type="button"
+                className="w-full"
+                style={{ outlineColor: "var(--primary)" }}
+                onClick={() => {
+                  void authClient.signOut({
+                    fetchOptions: {
+                      onSuccess: () => {
+                        void navigate(0);
+                      },
                     },
-                  },
-                });
-              }}
-            >
-              ออกจากระบบและใช้บัญชีอื่น
-            </Button>
-          </div>
-        </AuthPageShell>
+                  });
+                }}
+              >
+                ออกจากระบบและใช้บัญชีอื่น
+              </Button>
+            </div>
+          </AuthPageShell>
+        </div>
       );
     }
 
     return (
       <VerifiedAcceptance
+        key={invitation.id}
         invitationId={invitation.id}
         organizationName={invitation.organizationName}
         role={invitation.role}
@@ -169,30 +185,62 @@ function VerifiedAcceptance({
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const pendingRef = useRef(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isMounted = () => mounted.current;
+  useEffect(() => {
+    if (error !== null) errorRef.current?.focus();
+  }, [error]);
 
   async function accept() {
-    if (pending) {
-      return;
-    }
+    if (pendingRef.current || accepted) return;
     setError(null);
+    pendingRef.current = true;
     setPending(true);
+    let joined = false;
     try {
-      const { error: acceptError } =
-        await authClient.organization.acceptInvitation({ invitationId });
-      if (acceptError != null) {
-        setError(authErrorMessage(acceptError, "รับคำเชิญไม่สำเร็จ"));
-        return;
+      const { organizationId } = await acceptInvitation(invitationId);
+      joined = true;
+      if (readInvitation() === invitationId) clearInvitation();
+      if (!isMounted()) return;
+      setAccepted(true);
+      const context = await fetchMeContext();
+      if (!isMounted()) return;
+      if (!context.organizations.some((org) => org.id === organizationId)) {
+        throw new Error("Accepted membership is missing from context");
       }
-      clearInvitation();
-      await queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+      const updated = await updateActiveOrganization({ organizationId });
+      if (!isMounted()) return;
+      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
       void navigate("/workspace", { replace: true });
-    } catch {
-      setError("เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง");
+    } catch (cause) {
+      if (!isMounted()) return;
+      setError(
+        cause instanceof ApiError &&
+          cause.code === "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED"
+          ? "องค์กรมีสมาชิกครบ 1,000 คนแล้ว คำเชิญยังรอดำเนินการ กรุณาติดต่อผู้ดูแลองค์กร"
+          : cause instanceof ApiError && cause.status === 404
+            ? "ไม่พบคำเชิญนี้ ตรวจสอบลิงก์จากอีเมลอีกครั้งหรือติดต่อผู้เชิญ"
+            : joined
+              ? "เข้าร่วมองค์กรแล้ว แต่เลือกองค์กรไม่สำเร็จ กรุณาไปหน้าองค์กร"
+              : "รับคำเชิญไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      );
     } finally {
-      setPending(false);
+      if (isMounted()) {
+        pendingRef.current = false;
+        setPending(false);
+      }
     }
   }
-
   return (
     <AuthPageShell
       title="ยอมรับคำเชิญ"
@@ -205,10 +253,29 @@ function VerifiedAcceptance({
         }}
         className="flex flex-col gap-4"
       >
-        {error === null ? null : <Alert tone="error">{error}</Alert>}
-        <SubmitButton pending={pending} pendingLabel="กำลังเข้าร่วม…">
-          เข้าร่วมองค์กร
-        </SubmitButton>
+        {error === null ? null : (
+          <div
+            ref={errorRef}
+            tabIndex={-1}
+            className="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+          >
+            <Alert tone="error">{error}</Alert>
+          </div>
+        )}
+        {accepted ? (
+          <Link to="/workspace" className="text-primary underline">
+            ไปหน้าองค์กร
+          </Link>
+        ) : (
+          <Button
+            type="submit"
+            className="w-full"
+            style={{ outlineColor: "var(--primary)" }}
+            disabled={pending}
+          >
+            {pending ? "กำลังเข้าร่วม…" : "เข้าร่วมองค์กร"}
+          </Button>
+        )}
       </form>
     </AuthPageShell>
   );

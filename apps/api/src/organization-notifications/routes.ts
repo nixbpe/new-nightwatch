@@ -1,4 +1,6 @@
 import {
+  invitationCreateInputSchema,
+  invitationCreateResponseSchema,
   organizationMemberListQuerySchema,
   organizationMemberListResponseSchema,
 } from "@nightwatch/api-contract";
@@ -9,9 +11,12 @@ import { AppError, type AuthEnv, type Logger } from "@nightwatch/shared";
 import { z } from "zod";
 
 import type { Auth } from "../auth";
+import { buildInvitationEmail } from "../auth/emails";
+import type { Mailer } from "../auth/mailer";
 import { requireVerifiedSession } from "../me/service";
 import { notificationRouteDeclarations } from "../notifications/contract";
 import { invalidInputHook } from "../notifications/invalid-input";
+import { createOrganizationInvitation } from "./invitations";
 import {
   leaveOrganization,
   listOrganizationMembers,
@@ -37,6 +42,8 @@ export function createNativeOrganizationMutationGuard(deps: {
         "/api/auth/organization/update-member-role",
         "/api/auth/organization/remove-member",
         "/api/auth/organization/leave",
+        "/api/auth/organization/invite-member",
+        "/api/auth/organization/accept-invitation",
       ].includes(c.req.path)
     ) {
       const session = await deps.auth.getSession(c.req.raw.headers);
@@ -163,6 +170,70 @@ const memberListRoute = createRoute({
     },
   },
 });
+
+const invitationCreateRoute = createRoute({
+  method: "post",
+  path: "/api/organizations/{organizationId}/invitations",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid() }),
+    body: {
+      content: { "application/json": { schema: invitationCreateInputSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      description: "Invitation persisted; SMTP transport result",
+      content: {
+        "application/json": { schema: invitationCreateResponseSchema },
+      },
+    },
+  },
+});
+
+export function registerOrganizationInvitationRoutes(
+  app: OpenAPIHono,
+  deps: {
+    auth: Auth;
+    authEnv: AuthEnv;
+    database: Database;
+    logger: Logger;
+    mailer: Mailer;
+  },
+): void {
+  app.openapi(invitationCreateRoute, async (c) => {
+    const { organizationId } = c.req.valid("param");
+    const { email, role } = c.req.valid("json");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    const invitation = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.invitation.create",
+      () =>
+        createOrganizationInvitation(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          email,
+          role,
+        }),
+    );
+    const message = buildInvitationEmail(deps.authEnv, {
+      organizationName: invitation.organizationName,
+      invitationId: invitation.id,
+    });
+    try {
+      await deps.mailer.send({ ...message, to: invitation.email });
+      return c.json({ created: true, emailDispatch: "accepted" as const }, 201);
+    } catch {
+      deps.logger.warn(
+        { action: "organization.invitation.send", code: "SMTP_FAILED" },
+        "invitation mail failed",
+      );
+      return c.json({ created: true, emailDispatch: "failed" as const }, 201);
+    }
+  });
+}
 
 export function registerOrganizationNotificationSettingsRoutes(
   app: OpenAPIHono,

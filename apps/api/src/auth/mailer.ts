@@ -27,17 +27,14 @@ export function createMailer(authEnv: AuthEnv, logger: Logger): Mailer {
   return {
     send: async (mail) => {
       try {
-        const info = await transport.sendMail({
+        await transport.sendMail({
           from: authEnv.SMTP_FROM,
           ...mail,
         });
-        logger.info({ messageId: info.messageId }, "mail delivered");
-      } catch (error) {
-        logger.warn(
-          { err: error },
-          "mail delivery failed; the auth flow reports the failure",
-        );
-        throw error;
+        logger.info({ component: "smtp" }, "mail accepted by transport");
+      } catch {
+        logger.warn({ component: "smtp" }, "mail transport failed");
+        throw new Error("SMTP transport failed");
       }
     },
     verify: async () => {
