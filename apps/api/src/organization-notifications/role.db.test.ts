@@ -302,8 +302,7 @@ describe("locked organization member role mutations", () => {
       outcomes.filter((outcome) => outcome.status === "rejected"),
     ).toHaveLength(1);
     const rejected = outcomes.find((outcome) => outcome.status === "rejected");
-    if (!rejected || rejected.status !== "rejected")
-      throw new Error("missing losing demotion");
+    if (!rejected) throw new Error("missing losing demotion");
     expect(rejected.reason).toMatchObject({
       statusCode: 400,
       code: "LAST_OWNER",
