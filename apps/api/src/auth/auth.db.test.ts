@@ -743,25 +743,27 @@ describe("verification continuation and explicit acceptance", () => {
 
     const accept = await gate(
       "POST",
-      "/api/auth/organization/accept-invitation",
-      {
-        invitationId,
-      },
+      `/api/onboarding/invitations/${invitationId}/accept`,
     );
     expect(accept.status).toBe(200);
+    expect(accept.json).toEqual({ organizationId: ORG_ID });
     expect(await invitationStatus(invitationId)).toBe("accepted");
     const userId = await sqlUserId(userEmail("gate"));
     expect(await membershipCount(ORG_ID, userId)).toBe(1);
 
-    // A replay gets the same native denial as a losing concurrent request.
     const replay = await gate(
       "POST",
-      "/api/auth/organization/accept-invitation",
-      {
-        invitationId,
-      },
+      `/api/onboarding/invitations/${invitationId}/accept`,
     );
-    expect(replay.status).toBe(400);
+    expect(replay).toEqual({
+      status: 404,
+      json: {
+        error: {
+          code: "INVITATION_NOT_FOUND",
+          message: "ไม่พบคำเชิญ หรือคำเชิญหมดอายุแล้ว",
+        },
+      },
+    });
   });
 });
 
@@ -798,9 +800,10 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 
       accepts = Promise.all(
         Array.from({ length: 4 }, () =>
-          raceUser.request("POST", "/api/auth/organization/accept-invitation", {
-            invitationId,
-          }),
+          raceUser.request(
+            "POST",
+            `/api/onboarding/invitations/${invitationId}/accept`,
+          ),
         ),
       );
       // Count indirect blockers: later waiters may queue behind another accept.
@@ -845,7 +848,7 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
       ).toBeLessThan(500);
     }
     expect(results.filter((result) => result.status === 200)).toHaveLength(1);
-    expect(results.filter((result) => result.status === 400)).toHaveLength(3);
+    expect(results.filter((result) => result.status === 404)).toHaveLength(3);
     expect(await membershipCount(ORG_ID, userId)).toBe(1);
     expect(await invitationStatus(invitationId)).toBe("accepted");
 
@@ -876,10 +879,9 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
     expect(invitation.rows[0]?.unexpired).toBe(true);
     const replay = await raceUser.request(
       "POST",
-      "/api/auth/organization/accept-invitation",
-      { invitationId },
+      `/api/onboarding/invitations/${invitationId}/accept`,
     );
-    expect(replay.status).toBe(400);
+    expect(replay.status).toBe(404);
     expect(await invitationStatus(invitationId)).toBe("accepted");
     expect(await membershipCount(ORG_ID, userId)).toBe(0);
     const replayContext = await raceUser.request("GET", "/api/me/context");
@@ -890,7 +892,7 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
     });
   });
 
-  it("translates a deterministic membership-conflict accept to the native denial", async () => {
+  it("rejects an already-member recipient while preserving the pending invitation", async () => {
     const owner = await signInOwner();
     const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
       email: userEmail("preset"),
@@ -903,8 +905,7 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 
     const preset = await admitUser("preset", invitationId);
     const userId = await sqlUserId(preset.email);
-    // Existing membership, pending invitation: member_organization_user_key
-    // must surface as the native denial, not a 5xx.
+    // Existing membership and pending invitation must yield a conflict.
     await database.sql.query(
       `insert into member (id, organization_id, user_id, role, created_at)
        values ($1, $2, $3, 'viewer', now())`,
@@ -913,10 +914,13 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 
     const accept = await preset.request(
       "POST",
-      "/api/auth/organization/accept-invitation",
-      { invitationId },
+      `/api/onboarding/invitations/${invitationId}/accept`,
     );
-    expect(accept.status).toBe(400);
+    expect(accept.status).toBe(409);
+    expect(accept.json).toMatchObject({
+      error: { code: "USER_ALREADY_MEMBER" },
+    });
+    expect(await invitationStatus(invitationId)).toBe("pending");
     expect(await membershipCount(ORG_ID, userId)).toBe(1);
   });
 
@@ -962,22 +966,17 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
         database: readOnlyDatabase,
         mailer,
       });
-      // The first write fails with SQLSTATE 25006; it is not the race and must
-      // not become the 400 denial.
       const accept = await client(readOnlyApp, denied.request.cookies())(
         "POST",
-        "/api/auth/organization/accept-invitation",
-        { invitationId },
+        `/api/onboarding/invitations/${invitationId}/accept`,
       );
       expect(accept.status).toBe(500);
       expect(accept.json).toEqual({
-        code: "AUTH_INTERNAL_ERROR",
-        message: "ไม่สามารถดำเนินการยืนยันตัวตนได้",
+        error: { code: "INTERNAL_ERROR", message: "Internal server error" },
       });
       const capturedOutput = JSON.stringify(consoleErrors);
       expect(capturedOutput).not.toContain(invitationId);
       expect(capturedOutput).not.toContain('update "invitation"');
-      // Only the member uniqueness violation is translated; nothing else.
       expect(await invitationStatus(invitationId)).toBe("pending");
     } finally {
       consoleError.mockRestore();
@@ -998,9 +997,11 @@ describe("password recovery cycle", () => {
       findMail(userEmail("recover"), "คำเชิญ").text,
     );
     const recover = await admitUser("recover", invitationId);
-    await recover.request("POST", "/api/auth/organization/accept-invitation", {
-      invitationId,
-    });
+    const accepted = await recover.request(
+      "POST",
+      `/api/onboarding/invitations/${invitationId}/accept`,
+    );
+    expect(accepted.status).toBe(200);
 
     const request = await recover.request(
       "POST",
@@ -1341,9 +1342,11 @@ describe("TOTP challenge and session boundary", () => {
       findMail(userEmail("totp"), "คำเชิญ").text,
     );
     const totp = await admitUser("totp", invitationId);
-    await totp.request("POST", "/api/auth/organization/accept-invitation", {
-      invitationId,
-    });
+    const accepted = await totp.request(
+      "POST",
+      `/api/onboarding/invitations/${invitationId}/accept`,
+    );
+    expect(accepted.status).toBe(200);
 
     const enable = await totp.request("POST", "/api/auth/two-factor/enable", {
       password: PASSWORD,
@@ -1456,9 +1459,11 @@ describe("MFA notification intent rollback", () => {
       [ownerInvitationId, ORG_ID, userEmail("mfa-owner"), inviterId],
     );
     const mfaOwner = await admitUser("mfa-owner", ownerInvitationId);
-    await mfaOwner.request("POST", "/api/auth/organization/accept-invitation", {
-      invitationId: ownerInvitationId,
-    });
+    const ownerAccepted = await mfaOwner.request(
+      "POST",
+      `/api/onboarding/invitations/${ownerInvitationId}/accept`,
+    );
+    expect(ownerAccepted.status).toBe(200);
     const active = await mfaOwner.request("PATCH", "/api/me/active-org", {
       organizationId: ORG_ID,
     });
@@ -1473,9 +1478,11 @@ describe("MFA notification intent rollback", () => {
       findMail(userEmail("mfa-intent-failure"), "คำเชิญ").text,
     );
     const pending = await admitUser("mfa-intent-failure", invitationId);
-    await pending.request("POST", "/api/auth/organization/accept-invitation", {
-      invitationId,
-    });
+    const accepted = await pending.request(
+      "POST",
+      `/api/onboarding/invitations/${invitationId}/accept`,
+    );
+    expect(accepted.status).toBe(200);
     const enabled = await pending.request(
       "POST",
       "/api/auth/two-factor/enable",
@@ -1595,9 +1602,11 @@ describe("MFA re-enrollment atomicity", () => {
     mfaReenrollmentFixtureEmails.push(email);
     const invitationId = await createInvitation(email);
     const member = await admitUser("mfa-reenrollment", invitationId);
-    await member.request("POST", "/api/auth/organization/accept-invitation", {
-      invitationId,
-    });
+    const accepted = await member.request(
+      "POST",
+      `/api/onboarding/invitations/${invitationId}/accept`,
+    );
+    expect(accepted.status).toBe(200);
     const initialEnable = await member.request(
       "POST",
       "/api/auth/two-factor/enable",
@@ -2004,5 +2013,293 @@ describe("duplicate-account signup stays enumeration-safe and harmless", () => {
       password: attackerPassword,
     });
     expect(overwritten.status).toBe(401);
+  });
+});
+
+describe("locked invitation acceptance at the member cap", () => {
+  it("serializes two recipients at 999 and keeps the capped invitation pending", async () => {
+    const organizationId = crypto.randomUUID();
+    const prefix = `cap-${RUN}-`;
+    const firstEmail = userEmail("cap-first");
+    const secondEmail = userEmail("cap-second");
+    await database.sql.query(
+      "insert into organization (id, name, slug, created_at) values ($1, 'Cap IT Org', $2, now())",
+      [organizationId, `cap-${RUN}`],
+    );
+    try {
+      const firstInvitation = await createInvitation(
+        firstEmail, "viewer", organizationId,
+      );
+      const secondInvitation = await createInvitation(
+        secondEmail, "viewer", organizationId,
+      );
+      const [first, second] = await Promise.all([
+        admitUser("cap-first", firstInvitation),
+        admitUser("cap-second", secondInvitation),
+      ]);
+      const firstId = await sqlUserId(firstEmail);
+      const secondId = await sqlUserId(secondEmail);
+      await database.sql.query(
+        `insert into "user" (id, name, email, created_at)
+         select $1 || n::text, 'Cap fixture', $1 || n::text || '@example.test', now()
+         from generate_series(1, 999) as n`,
+        [prefix],
+      );
+      await database.sql.query(
+        `insert into member (id, organization_id, user_id, role, created_at)
+         select $1 || n::text, $2, $1 || n::text, 'viewer', now()
+         from generate_series(1, 999) as n`,
+        [prefix, organizationId],
+      );
+      const count = async () => {
+        const result = await database.sql.query<{ total: number }>(
+          "select count(*)::int as total from member where organization_id = $1",
+          [organizationId],
+        );
+        return result.rows[0]?.total;
+      };
+      expect(await count()).toBe(999);
+      expect(await membershipCount(organizationId, firstId)).toBe(0);
+      const before = await first.request("GET", "/api/me/context");
+      expect(meContextResponseSchema.parse(before.json).organizations).toEqual([]);
+      const deniedBefore = await first.request(
+        "PATCH", "/api/me/active-org", { organizationId },
+      );
+      expect(deniedBefore.status).toBe(403);
+      const native = await first.request(
+        "POST",
+        "/api/auth/organization/accept-invitation",
+        { invitationId: firstInvitation },
+      );
+      expect(native.status).toBe(403);
+      expect(await count()).toBe(999);
+      const missing = await first.request(
+        "POST", `/api/onboarding/invitations/${crypto.randomUUID()}/accept`,
+      );
+      const expired = await first.request(
+        "POST", `/api/onboarding/invitations/${EXPIRED_INVITATION_ID}/accept`,
+      );
+      const wrongRecipient = await first.request(
+        "POST", `/api/onboarding/invitations/${secondInvitation}/accept`,
+      );
+      expect(missing).toEqual(expired);
+      expect(expired).toEqual(wrongRecipient);
+      expect(missing.json).toMatchObject({
+        error: { code: "INVITATION_NOT_FOUND" },
+      });
+      const holder = await database.sql.connect();
+      let held = false;
+      let accepts: Promise<ApiResponse[]> | undefined;
+      let outcomes: ApiResponse[];
+      try {
+        await holder.query("begin");
+        held = true;
+        const lock = await holder.query<{ pid: number }>(
+          "select pg_backend_pid() as pid from organization where id = $1 for update",
+          [organizationId],
+        );
+        const pid = lock.rows[0]?.pid;
+        if (pid === undefined) throw new Error("organization lock missing");
+        accepts = Promise.all([
+          first.request(
+            "POST", `/api/onboarding/invitations/${firstInvitation}/accept`,
+          ),
+          second.request(
+            "POST", `/api/onboarding/invitations/${secondInvitation}/accept`,
+          ),
+        ]);
+        const deadline = Date.now() + 10_000;
+        let waiting = 0;
+        while (waiting < 2 && Date.now() < deadline) {
+          const blocked = await database.sql.query<{ total: number }>(
+            `with recursive blocked_by(pid) as (
+               select $1::int
+               union
+               select activity.pid from pg_stat_activity activity
+               join blocked_by blocker on blocker.pid = any(pg_blocking_pids(activity.pid))
+             )
+             select count(*)::int as total from blocked_by where pid <> $1`,
+            [pid],
+          );
+          waiting = blocked.rows[0]?.total ?? 0;
+        }
+        expect(waiting).toBe(2);
+        await holder.query("commit");
+        held = false;
+        outcomes = await accepts;
+      } finally {
+        if (held) await holder.query("rollback");
+        holder.release();
+        await accepts?.catch(() => undefined);
+      }
+      expect(outcomes.map((result) => result.status).sort()).toEqual([
+        200, 409,
+      ]);
+      expect(
+        outcomes.find((result) => result.status === 409)?.json,
+      ).toMatchObject({
+        error: { code: "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED" },
+      });
+      expect(await count()).toBe(1000);
+      const winner = outcomes[0]?.status === 200 ? first : second;
+      const loser = outcomes[0]?.status === 409 ? first : second;
+      const winnerInvitation =
+        winner === first ? firstInvitation : secondInvitation;
+      const loserInvitation =
+        loser === first ? firstInvitation : secondInvitation;
+      expect(await invitationStatus(winnerInvitation)).toBe("accepted");
+      expect(await invitationStatus(loserInvitation)).toBe("pending");
+      expect(
+        await membershipCount(organizationId, winner === first ? firstId : secondId),
+      ).toBe(1);
+      expect(
+        await membershipCount(organizationId, loser === first ? firstId : secondId),
+      ).toBe(0);
+      const winnerContext = await winner.request("GET", "/api/me/context");
+      expect(meContextResponseSchema.parse(winnerContext.json).organizations)
+        .toMatchObject([{ id: organizationId, role: "viewer" }]);
+      const loserContext = await loser.request("GET", "/api/me/context");
+      expect(meContextResponseSchema.parse(loserContext.json).organizations)
+        .toEqual([]);
+      const selected = await winner.request(
+        "PATCH", "/api/me/active-org", { organizationId },
+      );
+      expect(selected.status).toBe(200);
+      const denied = await loser.request(
+        "PATCH", "/api/me/active-org", { organizationId },
+      );
+      expect(denied.status).toBe(403);
+      const replay = await winner.request(
+        "POST", `/api/onboarding/invitations/${winnerInvitation}/accept`,
+      );
+      expect(replay).toEqual(missing);
+    } finally {
+      await database.sql.query(
+        "delete from organization where id = $1",
+        [organizationId],
+      );
+      await database.sql.query(
+        'delete from "user" where email = any($1::text[]) or email like $2',
+        [[firstEmail, secondEmail], `${prefix}%@example.test`],
+      );
+    }
+  }, 120_000);
+});
+
+describe("acceptance rollback after the member insert", () => {
+  it("leaves both the invitation and membership unchanged when the claim fails", async () => {
+    const email = userEmail("accept-rollback");
+    const invitationId = await createInvitation(email);
+    const recipient = await admitUser("accept-rollback", invitationId);
+    const userId = await sqlUserId(email);
+    const trigger = `accept_rollback_${RUN}`;
+    await ownerDatabase.sql.query(
+      `create function ${trigger}() returns trigger language plpgsql as $$
+       begin
+         if old.id = '${invitationId}' then
+           raise exception 'acceptance rollback fixture';
+         end if;
+         return new;
+       end $$`,
+    );
+    try {
+      await ownerDatabase.sql.query(
+        `create trigger ${trigger} before update on invitation
+         for each row execute function ${trigger}()`,
+      );
+      let output = "";
+      const logger = createLogger(
+        { level: "info", name: "accept-rollback" },
+        { write: (chunk: string) => { output += chunk; } },
+      );
+      const loggedApp = createApp({
+        env,
+        authEnv,
+        logger,
+        auth: createAuth({ env, authEnv, logger, database, mailer }),
+        database,
+        mailer,
+      });
+      const response = await client(loggedApp, recipient.request.cookies())(
+        "POST",
+        `/api/onboarding/invitations/${invitationId}/accept`,
+      );
+      expect(response).toEqual({
+        status: 500,
+        json: {
+          error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+        },
+      });
+      expect(output).toContain(
+        '"path":"/api/onboarding/invitations/:invitationId/accept"',
+      );
+      expect(output).not.toContain(invitationId);
+      expect(output).not.toContain(email);
+      expect(output).not.toContain("acceptance rollback fixture");
+      expect(await invitationStatus(invitationId)).toBe("pending");
+      expect(await membershipCount(ORG_ID, userId)).toBe(0);
+      const context = await recipient.request("GET", "/api/me/context");
+      expect(meContextResponseSchema.parse(context.json).organizations)
+        .toEqual([]);
+    } finally {
+      await ownerDatabase.sql.query(
+        `drop trigger if exists ${trigger} on invitation`,
+      );
+      await ownerDatabase.sql.query(`drop function if exists ${trigger}()`);
+      await database.sql.query(
+        "delete from invitation where id = $1",
+        [invitationId],
+      );
+      await database.sql.query('delete from "user" where id = $1', [userId]);
+    }
+  });
+});
+
+describe("acceptance rechecks after waiting for the organization", () => {
+  it("denies an invitation expired while its accept waits", async () => {
+    const email = userEmail("accept-expiry-wait");
+    const invitationId = await createInvitation(email);
+    const recipient = await admitUser("accept-expiry-wait", invitationId);
+    const userId = await sqlUserId(email);
+    const holder = await database.sql.connect();
+    let held = false;
+    let request: Promise<ApiResponse> | undefined;
+    try {
+      await holder.query("begin");
+      held = true;
+      const lock = await holder.query<{ pid: number }>(
+        "select pg_backend_pid() as pid from organization where id = $1 for update",
+        [ORG_ID],
+      );
+      const pid = lock.rows[0]?.pid;
+      if (pid === undefined) throw new Error("organization lock missing");
+      request = recipient.request("POST", `/api/onboarding/invitations/${invitationId}/accept`);
+      const deadline = Date.now() + 10_000;
+      let blocked = 0;
+      while (blocked === 0 && Date.now() < deadline) {
+        const result = await database.sql.query<{ total: number }>(
+          "select count(*)::int as total from pg_stat_activity where $1 = any(pg_blocking_pids(pid))",
+          [pid],
+        );
+        blocked = result.rows[0]?.total ?? 0;
+      }
+      expect(blocked).toBe(1);
+      await database.sql.query(
+        "update invitation set expires_at = now() - interval '1 second' where id = $1",
+        [invitationId],
+      );
+      await holder.query("commit");
+      held = false;
+      const result = await request;
+      expect(result).toMatchObject({ status: 404, json: { error: { code: "INVITATION_NOT_FOUND" } } });
+      expect(await invitationStatus(invitationId)).toBe("pending");
+      expect(await membershipCount(ORG_ID, userId)).toBe(0);
+    } finally {
+      if (held) await holder.query("rollback");
+      holder.release();
+      await request?.catch(() => undefined);
+      await database.sql.query("delete from invitation where id = $1", [invitationId]);
+      await database.sql.query('delete from "user" where id = $1', [userId]);
+    }
   });
 });

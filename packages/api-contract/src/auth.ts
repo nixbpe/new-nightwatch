@@ -84,6 +84,14 @@ export const invitationResponseSchema = z.object({
 
 export type InvitationResponse = z.infer<typeof invitationResponseSchema>;
 
+export const invitationAcceptResponseSchema = z.object({
+  organizationId: z.uuid(),
+});
+
+export type InvitationAcceptResponse = z.infer<
+  typeof invitationAcceptResponseSchema
+>;
+
 export const meContextOrganizationSchema = z.object({
   id: z.uuid(),
   name: z.string().min(1),

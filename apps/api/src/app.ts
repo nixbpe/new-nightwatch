@@ -175,7 +175,7 @@ function logSafeOrganizationPath(path: string): string {
 
 function logSafePath(path: string): string {
   return logSafeOrganizationPath(path)
-    .replace(/^(\/api\/onboarding\/invitations\/)[^/]+$/, "$1:invitationId")
+    .replace(/^(\/api\/onboarding\/invitations\/)[^/]+(?=\/|$)/, "$1:invitationId")
     .replace(/^(\/api\/auth\/reset-password\/)[^/]+$/, "$1:token");
 }
 
@@ -306,7 +306,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       createNativeOrganizationMutationGuard({ auth, logger: deps.logger }),
     );
     app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
-    registerOnboardingRoutes(app, { database });
+    registerOnboardingRoutes(app, { database, auth });
     registerMeRoutes(app, { auth, database, logger: deps.logger });
     registerNotificationInboxRoutes(app, {
       auth,
@@ -344,12 +344,15 @@ export function createApp(deps: AppDeps): OpenAPIHono {
   });
 
   app.onError((err, c) => {
+    const redactedErrorPath =
+      c.req.path.startsWith("/api/organizations/") ||
+      c.req.path.startsWith("/api/onboarding/invitations/");
     if (err instanceof AppError) {
       deps.logger.warn(
         {
           requestId: c.get("requestId"),
           code: err.code,
-          err: c.req.path.startsWith("/api/organizations/") ? undefined : err,
+          err: redactedErrorPath ? undefined : err,
         },
         "request failed",
       );
@@ -365,7 +368,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
     deps.logger.error(
       {
         requestId: c.get("requestId"),
-        err: c.req.path.startsWith("/api/organizations/") ? undefined : err,
+        err: redactedErrorPath ? undefined : err,
       },
       "unhandled error",
     );

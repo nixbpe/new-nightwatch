@@ -40,6 +40,7 @@ const BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS: Record<string, true> = {
   "/organization/remove-member": true,
   "/organization/leave": true,
   "/organization/invite-member": true,
+  "/organization/accept-invitation": true,
 };
 
 // Forwards only a same-origin invitationId, never the raw callbackURL, so the
@@ -144,6 +145,7 @@ export function createAuth(deps: AuthDeps) {
   const organizationOptions = {
     roles: organizationRoles,
     allowUserToCreateOrganization: false,
+    membershipLimit: 1000,
     requireEmailVerificationOnInvitation: true,
     sendInvitationEmail: async (data) => {
       const mail = buildInvitationEmail(authEnv, {

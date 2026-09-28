@@ -43,6 +43,7 @@ export function createNativeOrganizationMutationGuard(deps: {
         "/api/auth/organization/remove-member",
         "/api/auth/organization/leave",
         "/api/auth/organization/invite-member",
+        "/api/auth/organization/accept-invitation",
       ].includes(c.req.path)
     ) {
       const session = await deps.auth.getSession(c.req.raw.headers);

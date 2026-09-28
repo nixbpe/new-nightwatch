@@ -1,5 +1,6 @@
 export {
   activeOrganizationInputSchema,
+  invitationAcceptResponseSchema,
   invitationCreateInputSchema,
   invitationCreateResponseSchema,
   invitationResponseSchema,
@@ -10,6 +11,7 @@ export {
   organizationMemberSchema,
   organizationRoleSchema,
   type ActiveOrganizationInput,
+  type InvitationAcceptResponse,
   type InvitationCreateInput,
   type InvitationCreateResponse,
   type InvitationResponse,
