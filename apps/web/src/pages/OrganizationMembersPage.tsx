@@ -1,5 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useNavigate, useParams } from "react-router";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
@@ -277,7 +283,8 @@ function OrganizationMembersPageForOrganization({
     );
   } else {
     const data = list.data;
-    if (data === undefined || data.organizationId !== organizationId) return null;
+    if (data === undefined || data.organizationId !== organizationId)
+      return null;
     const hasPrevious = offset > 0;
     const hasNext = offset + data.members.length < data.page.total;
     directory = (
@@ -321,13 +328,17 @@ function OrganizationMembersPageForOrganization({
           <div className="flex gap-2">
             <Button
               disabled={!hasPrevious}
-              onClick={() => setOffset((value) => Math.max(0, value - LIMIT))}
+              onClick={() => {
+                setOffset((value) => Math.max(0, value - LIMIT));
+              }}
             >
               ก่อนหน้า
             </Button>
             <Button
               disabled={!hasNext}
-              onClick={() => setOffset((value) => value + LIMIT)}
+              onClick={() => {
+                setOffset((value) => value + LIMIT);
+              }}
             >
               ถัดไป
             </Button>

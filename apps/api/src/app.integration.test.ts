@@ -37,7 +37,10 @@ function makeApp(options?: {
   database?: Database;
   logger?: Logger;
 }) {
-  const mailer = createMailer(authEnv, createLogger({ level: "silent", name: "test" }));
+  const mailer = createMailer(
+    authEnv,
+    createLogger({ level: "silent", name: "test" }),
+  );
   const app = createApp({
     env,
     authEnv,

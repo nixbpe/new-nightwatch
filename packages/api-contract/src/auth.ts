@@ -26,7 +26,9 @@ export const invitationCreateResponseSchema = z.object({
 });
 
 export type InvitationCreateInput = z.infer<typeof invitationCreateInputSchema>;
-export type InvitationCreateResponse = z.infer<typeof invitationCreateResponseSchema>;
+export type InvitationCreateResponse = z.infer<
+  typeof invitationCreateResponseSchema
+>;
 
 const decimalInteger = z.preprocess(
   (value) =>

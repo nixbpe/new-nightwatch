@@ -59,7 +59,10 @@ const app = createApp({
   authEnv,
   auth,
   database: runtime,
-  mailer: createMailer(authEnv, createLogger({ level: "silent", name: "notification-db-test" })),
+  mailer: createMailer(
+    authEnv,
+    createLogger({ level: "silent", name: "notification-db-test" }),
+  ),
   logger: createLogger({ level: "silent", name: "notification-db-test" }),
 });
 

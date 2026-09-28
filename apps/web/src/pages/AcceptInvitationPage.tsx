@@ -14,9 +14,21 @@ import {
 } from "../components/ui";
 import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage, sameEmail } from "../lib/auth-client";
-import { acceptInvitation, fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
-import { fetchMeContext, ME_CONTEXT_QUERY_KEY, updateActiveOrganization } from "../lib/api/me";
-import { clearInvitation, readInvitation, rememberInvitation } from "../lib/auth/continuation";
+import {
+  acceptInvitation,
+  fetchInvitation,
+  invitationQueryKey,
+} from "../lib/api/invitations";
+import {
+  fetchMeContext,
+  ME_CONTEXT_QUERY_KEY,
+  updateActiveOrganization,
+} from "../lib/api/me";
+import {
+  clearInvitation,
+  readInvitation,
+  rememberInvitation,
+} from "../lib/auth/continuation";
 import { ApiError } from "../lib/api/client";
 import { ROLE_LABELS } from "../lib/roles";
 
@@ -179,8 +191,11 @@ function VerifiedAcceptance({
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
+    return () => {
+      mounted.current = false;
+    };
   }, []);
+  const isMounted = () => mounted.current;
   useEffect(() => {
     if (error !== null) errorRef.current?.focus();
   }, [error]);
@@ -195,29 +210,32 @@ function VerifiedAcceptance({
       const { organizationId } = await acceptInvitation(invitationId);
       joined = true;
       if (readInvitation() === invitationId) clearInvitation();
-      if (!mounted.current) return;
+      if (!isMounted()) return;
       setAccepted(true);
       const context = await fetchMeContext();
-      if (!mounted.current) return;
+      if (!isMounted()) return;
       if (!context.organizations.some((org) => org.id === organizationId)) {
         throw new Error("Accepted membership is missing from context");
       }
       queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
       const updated = await updateActiveOrganization({ organizationId });
-      if (!mounted.current) return;
+      if (!isMounted()) return;
       queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
       void navigate("/workspace", { replace: true });
     } catch (cause) {
-      if (!mounted.current) return;
-      setError(cause instanceof ApiError && cause.code === "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED"
-        ? "องค์กรมีสมาชิกครบ 1,000 คนแล้ว คำเชิญยังรอดำเนินการ กรุณาติดต่อผู้ดูแลองค์กร"
-        : cause instanceof ApiError && cause.status === 404
-          ? "ไม่พบคำเชิญนี้ ตรวจสอบลิงก์จากอีเมลอีกครั้งหรือติดต่อผู้เชิญ"
-          : joined
-            ? "เข้าร่วมองค์กรแล้ว แต่เลือกองค์กรไม่สำเร็จ กรุณาไปหน้าองค์กร"
-            : "รับคำเชิญไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      if (!isMounted()) return;
+      setError(
+        cause instanceof ApiError &&
+          cause.code === "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED"
+          ? "องค์กรมีสมาชิกครบ 1,000 คนแล้ว คำเชิญยังรอดำเนินการ กรุณาติดต่อผู้ดูแลองค์กร"
+          : cause instanceof ApiError && cause.status === 404
+            ? "ไม่พบคำเชิญนี้ ตรวจสอบลิงก์จากอีเมลอีกครั้งหรือติดต่อผู้เชิญ"
+            : joined
+              ? "เข้าร่วมองค์กรแล้ว แต่เลือกองค์กรไม่สำเร็จ กรุณาไปหน้าองค์กร"
+              : "รับคำเชิญไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      );
     } finally {
-      if (mounted.current) {
+      if (isMounted()) {
         pendingRef.current = false;
         setPending(false);
       }

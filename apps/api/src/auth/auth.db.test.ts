@@ -770,10 +770,14 @@ describe("verification continuation and explicit acceptance", () => {
 describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
   it("accepts once under concurrency and cannot restore membership after owner removal", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
-      email: userEmail("race"),
-      role: "viewer",
-    });
+    const invite = await owner(
+      "POST",
+      `/api/organizations/${ORG_ID}/invitations`,
+      {
+        email: userEmail("race"),
+        role: "viewer",
+      },
+    );
     expect(invite.status).toBe(201);
 
     const invitationId = invitationIdFromMail(
@@ -894,10 +898,14 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 
   it("rejects an already-member recipient while preserving the pending invitation", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
-      email: userEmail("preset"),
-      role: "viewer",
-    });
+    const invite = await owner(
+      "POST",
+      `/api/organizations/${ORG_ID}/invitations`,
+      {
+        email: userEmail("preset"),
+        role: "viewer",
+      },
+    );
     expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("preset"), "คำเชิญ").text,
@@ -926,10 +934,14 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 
   it("keeps unrelated database failures visible instead of mislabeling them", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
-      email: userEmail("denied"),
-      role: "viewer",
-    });
+    const invite = await owner(
+      "POST",
+      `/api/organizations/${ORG_ID}/invitations`,
+      {
+        email: userEmail("denied"),
+        role: "viewer",
+      },
+    );
     expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("denied"), "คำเชิญ").text,
@@ -988,10 +1000,14 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 describe("password recovery cycle", () => {
   it("issues a reset token by mail and rotates the password exactly", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
-      email: userEmail("recover"),
-      role: "viewer",
-    });
+    const invite = await owner(
+      "POST",
+      `/api/organizations/${ORG_ID}/invitations`,
+      {
+        email: userEmail("recover"),
+        role: "viewer",
+      },
+    );
     expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("recover"), "คำเชิญ").text,
@@ -1333,10 +1349,14 @@ describe("native password notification origins", () => {
 describe("TOTP challenge and session boundary", () => {
   it("never yields a session during a pending challenge and accepts a one-time backup code", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
-      email: userEmail("totp"),
-      role: "viewer",
-    });
+    const invite = await owner(
+      "POST",
+      `/api/organizations/${ORG_ID}/invitations`,
+      {
+        email: userEmail("totp"),
+        role: "viewer",
+      },
+    );
     expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("totp"), "คำเชิญ").text,
@@ -1469,10 +1489,14 @@ describe("MFA notification intent rollback", () => {
     });
     expect(active.status).toBe(200);
     const owner = mfaOwner.request;
-    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
-      email: userEmail("mfa-intent-failure"),
-      role: "viewer",
-    });
+    const invite = await owner(
+      "POST",
+      `/api/organizations/${ORG_ID}/invitations`,
+      {
+        email: userEmail("mfa-intent-failure"),
+        role: "viewer",
+      },
+    );
     expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("mfa-intent-failure"), "คำเชิญ").text,
@@ -2028,10 +2052,14 @@ describe("locked invitation acceptance at the member cap", () => {
     );
     try {
       const firstInvitation = await createInvitation(
-        firstEmail, "owner", organizationId,
+        firstEmail,
+        "owner",
+        organizationId,
       );
       const secondInvitation = await createInvitation(
-        secondEmail, "owner", organizationId,
+        secondEmail,
+        "owner",
+        organizationId,
       );
       const [first, second] = await Promise.all([
         admitUser("cap-first", firstInvitation),
@@ -2061,16 +2089,23 @@ describe("locked invitation acceptance at the member cap", () => {
       expect(await count()).toBe(999);
       expect(await membershipCount(organizationId, firstId)).toBe(0);
       const before = await first.request("GET", "/api/me/context");
-      expect(meContextResponseSchema.parse(before.json).organizations).toEqual([]);
-      const deniedBefore = await first.request(
-        "PATCH", "/api/me/active-org", { organizationId },
+      expect(meContextResponseSchema.parse(before.json).organizations).toEqual(
+        [],
       );
+      const deniedBefore = await first.request("PATCH", "/api/me/active-org", {
+        organizationId,
+      });
       expect(deniedBefore.status).toBe(403);
       const listPath = `/api/organizations/${organizationId}/members?limit=50&offset=999`;
       const protectedBefore = await first.request("GET", listPath);
       expect(protectedBefore).toEqual({
         status: 403,
-        json: { error: { code: "MEMBERSHIP_DENIED", message: "คุณไม่ใช่สมาชิกขององค์กรนี้" } },
+        json: {
+          error: {
+            code: "MEMBERSHIP_DENIED",
+            message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+          },
+        },
       });
       expect(await second.request("GET", listPath)).toEqual(protectedBefore);
       const native = await first.request(
@@ -2081,13 +2116,16 @@ describe("locked invitation acceptance at the member cap", () => {
       expect(native.status).toBe(403);
       expect(await count()).toBe(999);
       const missing = await first.request(
-        "POST", `/api/onboarding/invitations/${crypto.randomUUID()}/accept`,
+        "POST",
+        `/api/onboarding/invitations/${crypto.randomUUID()}/accept`,
       );
       const expired = await first.request(
-        "POST", `/api/onboarding/invitations/${EXPIRED_INVITATION_ID}/accept`,
+        "POST",
+        `/api/onboarding/invitations/${EXPIRED_INVITATION_ID}/accept`,
       );
       const wrongRecipient = await first.request(
-        "POST", `/api/onboarding/invitations/${secondInvitation}/accept`,
+        "POST",
+        `/api/onboarding/invitations/${secondInvitation}/accept`,
       );
       expect(missing).toEqual(expired);
       expect(expired).toEqual(wrongRecipient);
@@ -2109,10 +2147,12 @@ describe("locked invitation acceptance at the member cap", () => {
         if (pid === undefined) throw new Error("organization lock missing");
         accepts = Promise.all([
           first.request(
-            "POST", `/api/onboarding/invitations/${firstInvitation}/accept`,
+            "POST",
+            `/api/onboarding/invitations/${firstInvitation}/accept`,
           ),
           second.request(
-            "POST", `/api/onboarding/invitations/${secondInvitation}/accept`,
+            "POST",
+            `/api/onboarding/invitations/${secondInvitation}/accept`,
           ),
         ]);
         const deadline = Date.now() + 10_000;
@@ -2157,42 +2197,56 @@ describe("locked invitation acceptance at the member cap", () => {
       expect(await invitationStatus(winnerInvitation)).toBe("accepted");
       expect(await invitationStatus(loserInvitation)).toBe("pending");
       expect(
-        await membershipCount(organizationId, winner === first ? firstId : secondId),
+        await membershipCount(
+          organizationId,
+          winner === first ? firstId : secondId,
+        ),
       ).toBe(1);
       expect(
-        await membershipCount(organizationId, loser === first ? firstId : secondId),
+        await membershipCount(
+          organizationId,
+          loser === first ? firstId : secondId,
+        ),
       ).toBe(0);
       const winnerContext = await winner.request("GET", "/api/me/context");
-      expect(meContextResponseSchema.parse(winnerContext.json).organizations)
-        .toMatchObject([{ id: organizationId, role: "owner" }]);
+      expect(
+        meContextResponseSchema.parse(winnerContext.json).organizations,
+      ).toMatchObject([{ id: organizationId, role: "owner" }]);
       const loserContext = await loser.request("GET", "/api/me/context");
-      expect(meContextResponseSchema.parse(loserContext.json).organizations)
-        .toEqual([]);
+      expect(
+        meContextResponseSchema.parse(loserContext.json).organizations,
+      ).toEqual([]);
       const protectedAfter = await winner.request("GET", listPath);
       expect(protectedAfter.status).toBe(200);
       expect(protectedAfter.json).toMatchObject({
         organizationId,
         page: { limit: 50, offset: 999, total: 1000 },
-        members: [{ userId: winner === first ? firstId : secondId, email: winner === first ? firstEmail : secondEmail, role: "owner" }],
+        members: [
+          {
+            userId: winner === first ? firstId : secondId,
+            email: winner === first ? firstEmail : secondEmail,
+            role: "owner",
+          },
+        ],
       });
       expect(await loser.request("GET", listPath)).toEqual(protectedBefore);
-      const selected = await winner.request(
-        "PATCH", "/api/me/active-org", { organizationId },
-      );
+      const selected = await winner.request("PATCH", "/api/me/active-org", {
+        organizationId,
+      });
       expect(selected.status).toBe(200);
-      const denied = await loser.request(
-        "PATCH", "/api/me/active-org", { organizationId },
-      );
+      const denied = await loser.request("PATCH", "/api/me/active-org", {
+        organizationId,
+      });
       expect(denied.status).toBe(403);
       const replay = await winner.request(
-        "POST", `/api/onboarding/invitations/${winnerInvitation}/accept`,
+        "POST",
+        `/api/onboarding/invitations/${winnerInvitation}/accept`,
       );
       expect(replay).toEqual(missing);
     } finally {
-      await database.sql.query(
-        "delete from organization where id = $1",
-        [organizationId],
-      );
+      await database.sql.query("delete from organization where id = $1", [
+        organizationId,
+      ]);
       await database.sql.query(
         'delete from "user" where email = any($1::text[]) or email like $2',
         [[firstEmail, secondEmail], `${prefix}%@example.test`],
@@ -2208,7 +2262,8 @@ describe("locked invitation acceptance at the member cap", () => {
     const recipient = await admitUser("accept-privacy", ownInvitation);
     const userId = await sqlUserId(email);
     const verificationToken = linkQuery(
-      findMail(email, "ยืนยันอีเมล").text, "emailVerificationToken",
+      findMail(email, "ยืนยันอีเมล").text,
+      "emailVerificationToken",
     );
     const unknown = crypto.randomUUID();
     await database.sql.query(
@@ -2221,32 +2276,53 @@ describe("locked invitation acceptance at the member cap", () => {
       { write: (line: string) => void logs.push(line) },
     );
     const loggedApp = createApp({
-      env, authEnv, logger,
+      env,
+      authEnv,
+      logger,
       auth: createAuth({ env, authEnv, logger, database, mailer }),
-      database, mailer,
+      database,
+      mailer,
     });
     const request = client(loggedApp, recipient.request.cookies());
     const attempt = async (invitationId: string) => {
       logs.length = 0;
       const response = await request(
-        "POST", `/api/onboarding/invitations/${invitationId}/accept`,
+        "POST",
+        `/api/onboarding/invitations/${invitationId}/accept`,
       );
-      const entries = logs.map((line) => JSON.parse(line) as Record<string, unknown>);
+      const entries = logs.map(
+        (line) => JSON.parse(line) as Record<string, unknown>,
+      );
       const errors = entries.filter((entry) => entry.msg === "request failed");
-      const completions = entries.filter((entry) => entry.msg === "request completed");
+      const completions = entries.filter(
+        (entry) => entry.msg === "request completed",
+      );
       expect(errors).toHaveLength(1);
       expect(completions).toHaveLength(1);
-      expect(entries.filter((entry) => entry.msg === "organization access denied")).toEqual([]);
+      expect(
+        entries.filter((entry) => entry.msg === "organization access denied"),
+      ).toEqual([]);
       for (const sensitive of [
-        email, otherEmail, unknown, EXPIRED_INVITATION_ID,
-        wrongRecipient, nonPending, ownInvitation, verificationToken, ORG_ID,
+        email,
+        otherEmail,
+        unknown,
+        EXPIRED_INVITATION_ID,
+        wrongRecipient,
+        nonPending,
+        ownInvitation,
+        verificationToken,
+        ORG_ID,
       ]) {
         expect(JSON.stringify(entries)).not.toContain(sensitive);
         expect(JSON.stringify(response)).not.toContain(sensitive);
       }
       return {
         response,
-        error: { code: errors[0]?.code, message: errors[0]?.msg, err: errors[0]?.err },
+        error: {
+          code: errors[0]?.code,
+          message: errors[0]?.msg,
+          err: errors[0]?.err,
+        },
         completion: {
           method: completions[0]?.method,
           path: completions[0]?.path,
@@ -2259,16 +2335,20 @@ describe("locked invitation acceptance at the member cap", () => {
       const missing = await attempt(unknown);
       expect(missing.response).toEqual({
         status: 404,
-        json: { error: {
-          code: "INVITATION_NOT_FOUND",
-          message: "ไม่พบคำเชิญ หรือคำเชิญหมดอายุแล้ว",
-        } },
+        json: {
+          error: {
+            code: "INVITATION_NOT_FOUND",
+            message: "ไม่พบคำเชิญ หรือคำเชิญหมดอายุแล้ว",
+          },
+        },
       });
       for (const id of [EXPIRED_INVITATION_ID, nonPending, wrongRecipient]) {
         expect(await attempt(id)).toEqual(missing);
       }
       expect(missing.error).toEqual({
-        code: "INVITATION_NOT_FOUND", message: "request failed", err: undefined,
+        code: "INVITATION_NOT_FOUND",
+        message: "request failed",
+        err: undefined,
       });
       expect(missing.completion).toEqual({
         method: "POST",
@@ -2278,22 +2358,49 @@ describe("locked invitation acceptance at the member cap", () => {
       });
       logs.length = 0;
       const native = await request(
-        "POST", "/api/auth/organization/accept-invitation",
+        "POST",
+        "/api/auth/organization/accept-invitation",
         { invitationId: ownInvitation },
       );
       expect(native).toEqual({
         status: 403,
-        json: { error: {
-          code: "PERMISSION_DENIED",
-          message: "ใช้เส้นทางจัดการสมาชิกใหม่",
-        } },
+        json: {
+          error: {
+            code: "PERMISSION_DENIED",
+            message: "ใช้เส้นทางจัดการสมาชิกใหม่",
+          },
+        },
       });
-      const nativeLogs = logs.map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(nativeLogs.filter((entry) => entry.msg === "organization access denied"))
-        .toMatchObject([{ actorUserId: userId, action: "legacy:/api/auth/organization/accept-invitation", code: "PERMISSION_DENIED" }]);
-      expect(nativeLogs.filter((entry) => entry.msg === "request completed"))
-        .toMatchObject([{ method: "POST", path: "/api/auth/organization/accept-invitation", status: 403 }]);
-      for (const sensitive of [email, otherEmail, ownInvitation, verificationToken, ORG_ID]) {
+      const nativeLogs = logs.map(
+        (line) => JSON.parse(line) as Record<string, unknown>,
+      );
+      expect(
+        nativeLogs.filter(
+          (entry) => entry.msg === "organization access denied",
+        ),
+      ).toMatchObject([
+        {
+          actorUserId: userId,
+          action: "legacy:/api/auth/organization/accept-invitation",
+          code: "PERMISSION_DENIED",
+        },
+      ]);
+      expect(
+        nativeLogs.filter((entry) => entry.msg === "request completed"),
+      ).toMatchObject([
+        {
+          method: "POST",
+          path: "/api/auth/organization/accept-invitation",
+          status: 403,
+        },
+      ]);
+      for (const sensitive of [
+        email,
+        otherEmail,
+        ownInvitation,
+        verificationToken,
+        ORG_ID,
+      ]) {
         expect(JSON.stringify(nativeLogs)).not.toContain(sensitive);
         expect(JSON.stringify(native)).not.toContain(sensitive);
       }
@@ -2337,7 +2444,11 @@ describe("acceptance rollback after the member insert", () => {
       let output = "";
       const logger = createLogger(
         { level: "info", name: "accept-rollback" },
-        { write: (chunk: string) => { output += chunk; } },
+        {
+          write: (chunk: string) => {
+            output += chunk;
+          },
+        },
       );
       const loggedApp = createApp({
         env,
@@ -2366,17 +2477,17 @@ describe("acceptance rollback after the member insert", () => {
       expect(await invitationStatus(invitationId)).toBe("pending");
       expect(await membershipCount(ORG_ID, userId)).toBe(0);
       const context = await recipient.request("GET", "/api/me/context");
-      expect(meContextResponseSchema.parse(context.json).organizations)
-        .toEqual([]);
+      expect(meContextResponseSchema.parse(context.json).organizations).toEqual(
+        [],
+      );
     } finally {
       await ownerDatabase.sql.query(
         `drop trigger if exists ${trigger} on invitation`,
       );
       await ownerDatabase.sql.query(`drop function if exists ${trigger}()`);
-      await database.sql.query(
-        "delete from invitation where id = $1",
-        [invitationId],
-      );
+      await database.sql.query("delete from invitation where id = $1", [
+        invitationId,
+      ]);
       await database.sql.query('delete from "user" where id = $1', [userId]);
     }
   });
@@ -2400,7 +2511,10 @@ describe("acceptance rechecks after waiting for the organization", () => {
       );
       const pid = lock.rows[0]?.pid;
       if (pid === undefined) throw new Error("organization lock missing");
-      request = recipient.request("POST", `/api/onboarding/invitations/${invitationId}/accept`);
+      request = recipient.request(
+        "POST",
+        `/api/onboarding/invitations/${invitationId}/accept`,
+      );
       const deadline = Date.now() + 10_000;
       let blocked = 0;
       while (blocked === 0 && Date.now() < deadline) {
@@ -2418,14 +2532,19 @@ describe("acceptance rechecks after waiting for the organization", () => {
       await holder.query("commit");
       held = false;
       const result = await request;
-      expect(result).toMatchObject({ status: 404, json: { error: { code: "INVITATION_NOT_FOUND" } } });
+      expect(result).toMatchObject({
+        status: 404,
+        json: { error: { code: "INVITATION_NOT_FOUND" } },
+      });
       expect(await invitationStatus(invitationId)).toBe("pending");
       expect(await membershipCount(ORG_ID, userId)).toBe(0);
     } finally {
       if (held) await holder.query("rollback");
       holder.release();
       await request?.catch(() => undefined);
-      await database.sql.query("delete from invitation where id = $1", [invitationId]);
+      await database.sql.query("delete from invitation where id = $1", [
+        invitationId,
+      ]);
       await database.sql.query('delete from "user" where id = $1', [userId]);
     }
   });

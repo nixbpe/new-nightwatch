@@ -175,7 +175,10 @@ function logSafeOrganizationPath(path: string): string {
 
 function logSafePath(path: string): string {
   return logSafeOrganizationPath(path)
-    .replace(/^(\/api\/onboarding\/invitations\/)[^/]+(?=\/|$)/, "$1:invitationId")
+    .replace(
+      /^(\/api\/onboarding\/invitations\/)[^/]+(?=\/|$)/,
+      "$1:invitationId",
+    )
     .replace(/^(\/api\/auth\/reset-password\/)[^/]+$/, "$1:token");
 }
 

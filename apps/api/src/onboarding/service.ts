@@ -83,7 +83,7 @@ export async function acceptInvitation(
       throw new AppError(409, "USER_ALREADY_MEMBER", "คุณเป็นสมาชิกองค์กรแล้ว");
     }
     const count = await client.query<{ total: number }>(
-      'select count(*)::int as total from member where organization_id = $1',
+      "select count(*)::int as total from member where organization_id = $1",
       [organizationId],
     );
     if ((count.rows[0]?.total ?? 0) >= 1000) {

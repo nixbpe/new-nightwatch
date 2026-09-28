@@ -17,7 +17,10 @@ const orgA = crypto.randomUUID();
 const orgB = crypto.randomUUID();
 const absentOrg = crypto.randomUUID();
 const actorIds = Object.fromEntries(
-  ["owner", "admin", "viewer", "auditor", "other", "both"].map((role) => [role, crypto.randomUUID()]),
+  ["owner", "admin", "viewer", "auditor", "other", "both"].map((role) => [
+    role,
+    crypto.randomUUID(),
+  ]),
 ) as Record<string, string>;
 const env: Env = { PORT: 4000, LOG_LEVEL: "silent", NODE_ENV: "test" };
 const authEnv: AuthEnv = {
@@ -26,7 +29,9 @@ const authEnv: AuthEnv = {
   APP_URL: "http://localhost:5173",
   BETTER_AUTH_URL: "http://localhost:4000",
   CORS_ORIGIN: "http://localhost:5173",
-  SMTP_HOST: "127.0.0.1", SMTP_PORT: 1025, SMTP_SECURE: false,
+  SMTP_HOST: "127.0.0.1",
+  SMTP_PORT: 1025,
+  SMTP_SECURE: false,
   SMTP_FROM: "Invitation <invite@example.test>",
 };
 const mail: OutboundMail[] = [];
@@ -34,7 +39,9 @@ let failMail = false;
 const mailer: Mailer = {
   send: (message) => {
     mail.push(message);
-    return failMail ? Promise.reject(new Error(`smtp ${message.to} ${message.text}`)) : Promise.resolve();
+    return failMail
+      ? Promise.reject(new Error(`smtp ${message.to} ${message.text}`))
+      : Promise.resolve();
   },
   verify: () => Promise.resolve(),
 };
@@ -43,33 +50,73 @@ const auth: Auth = {
   getSession: (headers) => {
     const actor = headers.get("x-test-actor");
     const id = actor ? actorIds[actor] : undefined;
-    return Promise.resolve(id ? {
-      user: { id, email: `${actor}-${run}@example.test`, name: id, emailVerified: true },
-      session: { id, token: "test-session", expiresAt: new Date(Date.now() + 60_000) },
-    } satisfies AuthSession : null);
+    return Promise.resolve(
+      actor && id
+        ? ({
+            user: {
+              id,
+              email: `${actor}-${run}@example.test`,
+              name: id,
+              emailVerified: true,
+            },
+            session: {
+              id,
+              token: "test-session",
+              expiresAt: new Date(Date.now() + 60_000),
+            },
+          } satisfies AuthSession)
+        : null,
+    );
   },
 };
 const logs: string[] = [];
 const app = createApp({
-  env, authEnv, auth, database: runtime, mailer,
-  logger: createLogger({ level: "info", name: "invitation-db-test" }, {
-    write: (line: string) => { logs.push(line); },
-  }),
+  env,
+  authEnv,
+  auth,
+  database: runtime,
+  mailer,
+  logger: createLogger(
+    { level: "info", name: "invitation-db-test" },
+    {
+      write: (line: string) => {
+        logs.push(line);
+      },
+    },
+  ),
 });
-const migrationsDir = fileURLToPath(new URL("../../../../packages/db/migrations", import.meta.url));
+const migrationsDir = fileURLToPath(
+  new URL("../../../../packages/db/migrations", import.meta.url),
+);
 
-async function request(actor: string, org: string, email: string, role = "viewer") {
+async function request(
+  actor: string,
+  org: string,
+  email: string,
+  role = "viewer",
+) {
   const response = await app.request(`/api/organizations/${org}/invitations`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-test-actor": actor },
     body: JSON.stringify({ email, role }),
   });
-  return { status: response.status, body: await response.json() as Record<string, unknown> };
+  return {
+    status: response.status,
+    body: (await response.json()) as Record<string, unknown>,
+  };
 }
 async function rows(org = orgA) {
-  return (await owner.sql.query<{ email: string; role: string; status: string; expiresAt: Date }>(
-    `select email, role, status, expires_at as "expiresAt" from invitation where organization_id = $1`, [org],
-  )).rows;
+  return (
+    await owner.sql.query<{
+      email: string;
+      role: string;
+      status: string;
+      expiresAt: Date;
+    }>(
+      `select email, role, status, expires_at as "expiresAt" from invitation where organization_id = $1`,
+      [org],
+    )
+  ).rows;
 }
 
 beforeAll(async () => {
@@ -84,10 +131,11 @@ beforeAll(async () => {
        values ($1, $2, $3, true, now(), now())`,
       [id, role, `${role}-${run}@example.test`],
     );
-    if (role !== "other") await owner.sql.query(
-      "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, $4)",
-      [crypto.randomUUID(), orgA, id, role === "both" ? "owner" : role],
-    );
+    if (role !== "other")
+      await owner.sql.query(
+        "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, $4)",
+        [crypto.randomUUID(), orgA, id, role === "both" ? "owner" : role],
+      );
   }
   await owner.sql.query(
     "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'admin')",
@@ -96,8 +144,12 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  await owner.sql.query("delete from organization where id = any($1::uuid[])", [[orgA, orgB]]);
-  await owner.sql.query('delete from "user" where id = any($1::text[])', [Object.values(actorIds)]);
+  await owner.sql.query("delete from organization where id = any($1::uuid[])", [
+    [orgA, orgB],
+  ]);
+  await owner.sql.query('delete from "user" where id = any($1::text[])', [
+    Object.values(actorIds),
+  ]);
   await owner.close();
   await runtime.close();
 });
@@ -108,21 +160,41 @@ describe("first-party invitation create", () => {
       for (const role of ["owner", "admin", "viewer", "auditor"]) {
         const email = `${actor}-${role}-${run}@example.test`;
         const result = await request(actor, orgA, email, role);
-        const permitted = actor === "owner" || actor === "admin" && role !== "owner";
+        const permitted =
+          actor === "owner" || (actor === "admin" && role !== "owner");
         expect(result.status).toBe(permitted ? 201 : 403);
-        if (permitted) expect(invitationCreateResponseSchema.parse(result.body)).toEqual({ created: true, emailDispatch: "accepted" });
-        else expect(result.body).toMatchObject({ error: { code: actor === "other" ? "MEMBERSHIP_DENIED" : "PERMISSION_DENIED" } });
-        expect((await rows()).some((row) => row.email === email)).toBe(permitted);
+        if (permitted)
+          expect(invitationCreateResponseSchema.parse(result.body)).toEqual({
+            created: true,
+            emailDispatch: "accepted",
+          });
+        else
+          expect(result.body).toMatchObject({
+            error: {
+              code:
+                actor === "other" ? "MEMBERSHIP_DENIED" : "PERMISSION_DENIED",
+            },
+          });
+        expect((await rows()).some((row) => row.email === email)).toBe(
+          permitted,
+        );
       }
     }
     expect(await request("owner", orgB, `cross-${run}@example.test`)).toEqual(
       await request("owner", absentOrg, `cross-${run}@example.test`),
     );
-    expect((await request("both", orgB, `b-${run}@example.test`, "owner")).status).toBe(403);
-    expect((await request("both", orgB, `b-${run}@example.test`, "auditor")).status).toBe(201);
+    expect(
+      (await request("both", orgB, `b-${run}@example.test`, "owner")).status,
+    ).toBe(403);
+    expect(
+      (await request("both", orgB, `b-${run}@example.test`, "auditor")).status,
+    ).toBe(201);
     expect((await rows(orgB)).map((row) => row.role)).toEqual(["auditor"]);
     const invalid = await request("owner", orgA, `invalid-${run}`);
-    expect(invalid).toMatchObject({ status: 400, body: { error: { code: "VALIDATION_ERROR" } } });
+    expect(invalid).toMatchObject({
+      status: 400,
+      body: { error: { code: "VALIDATION_ERROR" } },
+    });
     const recorded = logs.join("\n");
     expect(recorded).not.toContain(orgA);
     expect(recorded).not.toContain(orgB);
@@ -144,27 +216,49 @@ describe("first-party invitation create", () => {
       logs.length = 0;
       const response = await request("other", organizationId, email);
       const captured = logs.join("\n");
-      for (const privateValue of [orgA, absentOrg, existingEmail, absentEmail, run, "test-session", "accept-invitation/"]) {
+      for (const privateValue of [
+        orgA,
+        absentOrg,
+        existingEmail,
+        absentEmail,
+        run,
+        "test-session",
+        "accept-invitation/",
+      ]) {
         expect(captured).not.toContain(privateValue);
         expect(JSON.stringify(response)).not.toContain(privateValue);
       }
-      const events = logs.map((line) => Object.fromEntries(
-        Object.entries(JSON.parse(line) as Record<string, unknown>)
-          .filter(([key]) => !["time", "pid", "hostname", "requestId", "durationMs"].includes(key)),
-      ));
+      const events = logs.map((line) =>
+        Object.fromEntries(
+          Object.entries(JSON.parse(line) as Record<string, unknown>).filter(
+            ([key]) =>
+              !["time", "pid", "hostname", "requestId", "durationMs"].includes(
+                key,
+              ),
+          ),
+        ),
+      );
       expect(events).toEqual([
         {
-          level: 40, name: "invitation-db-test", actorUserId: actorIds.other,
-          action: "organization.invitation.create", code: "MEMBERSHIP_DENIED",
+          level: 40,
+          name: "invitation-db-test",
+          actorUserId: actorIds.other,
+          action: "organization.invitation.create",
+          code: "MEMBERSHIP_DENIED",
           msg: "organization access denied",
         },
         {
-          level: 40, name: "invitation-db-test", code: "MEMBERSHIP_DENIED",
+          level: 40,
+          name: "invitation-db-test",
+          code: "MEMBERSHIP_DENIED",
           msg: "request failed",
         },
         {
-          level: 30, name: "invitation-db-test", method: "POST",
-          path: "/api/organizations/:organizationId/invitations", status: 403,
+          level: 30,
+          name: "invitation-db-test",
+          method: "POST",
+          path: "/api/organizations/:organizationId/invitations",
+          status: 403,
           msg: "request completed",
         },
       ]);
@@ -172,7 +266,12 @@ describe("first-party invitation create", () => {
     }
     const expectedResponse = {
       status: 403,
-      body: { error: { code: "MEMBERSHIP_DENIED", message: "คุณไม่ใช่สมาชิกขององค์กรนี้" } },
+      body: {
+        error: {
+          code: "MEMBERSHIP_DENIED",
+          message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+        },
+      },
     };
     for (const attempt of observed) {
       expect(attempt.response).toEqual(expectedResponse);
@@ -191,39 +290,67 @@ describe("first-party invitation create", () => {
     expect(mail.length - attempts).toBe(1);
     expect(mail[attempts]?.to).toBe(email);
     expect((await rows()).filter((row) => row.email === email)).toHaveLength(1);
-    const expiresAt = (await rows()).find((row) => row.email === email)?.expiresAt;
-    expect(expiresAt?.getTime()).toBeGreaterThanOrEqual(before + 48 * 60 * 60 * 1000 - 1000);
-    expect(expiresAt?.getTime()).toBeLessThanOrEqual(Date.now() + 48 * 60 * 60 * 1000);
-    expect((await request("admin", orgA, email)).body).toMatchObject({ error: { code: "INVITATION_ALREADY_PENDING" } });
-    expect((await request("owner", orgA, `OWNER-${run}@example.test`)).body).toMatchObject({ error: { code: "USER_ALREADY_MEMBER" } });
-    expect((await request("owner", orgA, `other-${run}@example.test`)).status).toBe(201);
+    const expiresAt = (await rows()).find(
+      (row) => row.email === email,
+    )?.expiresAt;
+    expect(expiresAt?.getTime()).toBeGreaterThanOrEqual(
+      before + 48 * 60 * 60 * 1000 - 1000,
+    );
+    expect(expiresAt?.getTime()).toBeLessThanOrEqual(
+      Date.now() + 48 * 60 * 60 * 1000,
+    );
+    expect((await request("admin", orgA, email)).body).toMatchObject({
+      error: { code: "INVITATION_ALREADY_PENDING" },
+    });
+    expect(
+      (await request("owner", orgA, `OWNER-${run}@example.test`)).body,
+    ).toMatchObject({ error: { code: "USER_ALREADY_MEMBER" } });
+    expect(
+      (await request("owner", orgA, `other-${run}@example.test`)).status,
+    ).toBe(201);
     const otherMembership = await runtime.sql.query(
       "select 1 from member where organization_id = $1 and user_id = $2",
       [orgA, actorIds.other],
     );
     expect(otherMembership.rows).toEqual([]);
-    const context = await app.request("/api/me/context", { headers: { "x-test-actor": "other" } });
-    const protectedRead = await app.request(`/api/organizations/${orgA}/members`, {
+    const context = await app.request("/api/me/context", {
       headers: { "x-test-actor": "other" },
     });
+    const protectedRead = await app.request(
+      `/api/organizations/${orgA}/members`,
+      {
+        headers: { "x-test-actor": "other" },
+      },
+    );
     expect(protectedRead.status).toBe(403);
     expect(await protectedRead.json()).toEqual({
-      error: { code: "MEMBERSHIP_DENIED", message: "คุณไม่ใช่สมาชิกขององค์กรนี้" },
+      error: {
+        code: "MEMBERSHIP_DENIED",
+        message: "คุณไม่ใช่สมาชิกขององค์กรนี้",
+      },
     });
     expect(context.status).toBe(200);
     expect(JSON.stringify(await context.json())).not.toContain(orgA);
-    await owner.sql.query("update invitation set expires_at = now() - interval '1 second' where organization_id = $1 and email = $2", [orgA, email]);
+    await owner.sql.query(
+      "update invitation set expires_at = now() - interval '1 second' where organization_id = $1 and email = $2",
+      [orgA, email],
+    );
     expect((await request("owner", orgA, email)).status).toBe(201);
     expect((await rows()).filter((row) => row.email === email)).toHaveLength(2);
   });
 
   it("serializes concurrent duplicate requests and counts only live pending invitations up to 100", async () => {
     const email = `race-${run}@example.test`;
-    const results = await Promise.all(Array.from({ length: 4 }, () => request("owner", orgA, email)));
-    expect(results.map((result) => result.status).sort()).toEqual([201, 409, 409, 409]);
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => request("owner", orgA, email)),
+    );
+    expect(results.map((result) => result.status).sort()).toEqual([
+      201, 409, 409, 409,
+    ]);
     expect((await rows()).filter((row) => row.email === email)).toHaveLength(1);
     const existing = await runtime.sql.query<{ count: number }>(
-      "select count(*)::int as count from invitation where organization_id = $1 and status = 'pending' and expires_at > now()", [orgA],
+      "select count(*)::int as count from invitation where organization_id = $1 and status = 'pending' and expires_at > now()",
+      [orgA],
     );
     const remaining = 99 - (existing.rows[0]?.count ?? 0);
     await owner.sql.query(
@@ -251,7 +378,10 @@ describe("first-party invitation create", () => {
     const holder = await runtime.sql.connect();
     try {
       await holder.query("begin");
-      await holder.query("select id from organization where id = $1 for update", [orgB]);
+      await holder.query(
+        "select id from organization where id = $1 for update",
+        [orgB],
+      );
       const email = `downgraded-${run}@example.test`;
       const pending = request("both", orgB, email);
       let waiting = false;
@@ -265,14 +395,23 @@ describe("first-party invitation create", () => {
         waiting = activity.rows[0]?.waiting ?? false;
       }
       expect(waiting).toBe(true);
-      await owner.sql.query("update member set role = 'viewer' where organization_id = $1 and user_id = $2", [orgB, actorIds.both]);
+      await owner.sql.query(
+        "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+        [orgB, actorIds.both],
+      );
       await holder.query("commit");
-      expect(await pending).toMatchObject({ status: 403, body: { error: { code: "PERMISSION_DENIED" } } });
+      expect(await pending).toMatchObject({
+        status: 403,
+        body: { error: { code: "PERMISSION_DENIED" } },
+      });
       expect((await rows(orgB)).some((row) => row.email === email)).toBe(false);
     } finally {
       await holder.query("rollback");
       holder.release();
-      await owner.sql.query("update member set role = 'admin' where organization_id = $1 and user_id = $2", [orgB, actorIds.both]);
+      await owner.sql.query(
+        "update member set role = 'admin' where organization_id = $1 and user_id = $2",
+        [orgB, actorIds.both],
+      );
     }
   });
 
@@ -280,7 +419,10 @@ describe("first-party invitation create", () => {
     const holder = await runtime.sql.connect();
     try {
       await holder.query("begin");
-      await holder.query("select id from organization where id = $1 for update", [orgB]);
+      await holder.query(
+        "select id from organization where id = $1 for update",
+        [orgB],
+      );
       const email = `revoked-${run}@example.test`;
       const pending = request("both", orgB, email);
       let waiting = false;
@@ -294,9 +436,15 @@ describe("first-party invitation create", () => {
         waiting = activity.rows[0]?.waiting ?? false;
       }
       expect(waiting).toBe(true);
-      await owner.sql.query("delete from member where organization_id = $1 and user_id = $2", [orgB, actorIds.both]);
+      await owner.sql.query(
+        "delete from member where organization_id = $1 and user_id = $2",
+        [orgB, actorIds.both],
+      );
       await holder.query("commit");
-      expect(await pending).toMatchObject({ status: 403, body: { error: { code: "MEMBERSHIP_DENIED" } } });
+      expect(await pending).toMatchObject({
+        status: 403,
+        body: { error: { code: "MEMBERSHIP_DENIED" } },
+      });
       expect((await rows(orgB)).some((row) => row.email === email)).toBe(false);
     } finally {
       await holder.query("rollback");
@@ -310,13 +458,23 @@ describe("first-party invitation create", () => {
 
   it("denies native creation before the native auth handler while retaining the public preview", async () => {
     const native = await app.request("/api/auth/organization/invite-member", {
-      method: "POST", headers: { "x-test-actor": "owner", "content-type": "application/json" },
-      body: JSON.stringify({ email: `native-${run}@example.test`, role: "viewer" }),
+      method: "POST",
+      headers: { "x-test-actor": "owner", "content-type": "application/json" },
+      body: JSON.stringify({
+        email: `native-${run}@example.test`,
+        role: "viewer",
+      }),
     });
     expect(native.status).toBe(403);
-    expect(await native.json()).toMatchObject({ error: { code: "PERMISSION_DENIED" } });
-    expect((await rows()).some((row) => row.email === `native-${run}@example.test`)).toBe(false);
-    const preview = await app.request("/api/onboarding/invitations/not-an-invitation");
+    expect(await native.json()).toMatchObject({
+      error: { code: "PERMISSION_DENIED" },
+    });
+    expect(
+      (await rows()).some((row) => row.email === `native-${run}@example.test`),
+    ).toBe(false);
+    const preview = await app.request(
+      "/api/onboarding/invitations/not-an-invitation",
+    );
     expect(preview.status).toBe(404);
   });
 
@@ -327,13 +485,18 @@ describe("first-party invitation create", () => {
     const before = mail.length;
     const response = await request("both", orgB, email);
     failMail = false;
-    expect(response).toEqual({ status: 201, body: { created: true, emailDispatch: "failed" } });
+    expect(response).toEqual({
+      status: 201,
+      body: { created: true, emailDispatch: "failed" },
+    });
     expect(mail.length - before).toBe(1);
     expect((await rows(orgB)).some((row) => row.email === email)).toBe(true);
     const recorded = logs.join("\n");
     expect(recorded).not.toContain(email);
     expect(recorded).not.toContain(orgB);
     expect(recorded).not.toContain("accept-invitation/");
-    expect(recorded).toContain("/api/organizations/:organizationId/invitations");
+    expect(recorded).toContain(
+      "/api/organizations/:organizationId/invitations",
+    );
   });
 });

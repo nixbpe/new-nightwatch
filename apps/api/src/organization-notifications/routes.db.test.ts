@@ -309,10 +309,12 @@ describe("organization member HTTP mutations", () => {
     expect(mail.length - sentBefore).toBe(1);
     expect(mail[sentBefore]?.to).toBe(invitationEmail);
     expect(
-      (await owner.sql.query(
-        "select status from invitation where organization_id = $1 and email = $2",
-        [organizationId, invitationEmail],
-      )).rows,
+      (
+        await owner.sql.query(
+          "select status from invitation where organization_id = $1 and email = $2",
+          [organizationId, invitationEmail],
+        )
+      ).rows,
     ).toEqual([{ status: "pending" }]);
     auditLines.length = 0;
     const list = await ownerClient(

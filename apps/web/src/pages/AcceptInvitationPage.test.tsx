@@ -1,4 +1,7 @@
-import type { InvitationResponse, MeContextResponse } from "@nightwatch/api-contract";
+import type {
+  InvitationResponse,
+  MeContextResponse,
+} from "@nightwatch/api-contract";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
@@ -18,37 +21,36 @@ type TestSessionData = {
   user: { id: string; email: string; emailVerified: boolean };
 } | null;
 
-const { sessionStore, signUpEmailMock, signInEmailMock } =
-  vi.hoisted(() => {
-    const listeners = new Set<() => void>();
-    let snapshot: { data: TestSessionData; isPending: boolean } = {
-      data: null,
-      isPending: false,
-    };
-    return {
-      // Reactive stand-in for the better-auth session atom: mutations notify subscribers.
-      sessionStore: {
-        get: () => snapshot,
-        set(data: TestSessionData) {
-          snapshot = { data, isPending: false };
-          for (const listener of listeners) {
-            listener();
-          }
-        },
-        reset() {
-          snapshot = { data: null, isPending: false };
-        },
-        subscribe(listener: () => void) {
-          listeners.add(listener);
-          return () => {
-            listeners.delete(listener);
-          };
-        },
+const { sessionStore, signUpEmailMock, signInEmailMock } = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  let snapshot: { data: TestSessionData; isPending: boolean } = {
+    data: null,
+    isPending: false,
+  };
+  return {
+    // Reactive stand-in for the better-auth session atom: mutations notify subscribers.
+    sessionStore: {
+      get: () => snapshot,
+      set(data: TestSessionData) {
+        snapshot = { data, isPending: false };
+        for (const listener of listeners) {
+          listener();
+        }
       },
-      signUpEmailMock: vi.fn(),
-      signInEmailMock: vi.fn(),
-    };
-  });
+      reset() {
+        snapshot = { data: null, isPending: false };
+      },
+      subscribe(listener: () => void) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+    signUpEmailMock: vi.fn(),
+    signInEmailMock: vi.fn(),
+  };
+});
 
 vi.mock("better-auth/react", async () => {
   // vi.mock factories are hoisted above static imports, so react must be imported lazily.
@@ -93,7 +95,13 @@ const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const context: MeContextResponse = {
-  user: { id: "user-1", name: "User", email: "new@example.com", emailVerified: true, twoFactorEnabled: false },
+  user: {
+    id: "user-1",
+    name: "User",
+    email: "new@example.com",
+    emailVerified: true,
+    twoFactorEnabled: false,
+  },
   organizations: [{ id: ORG, name: "Acme Corp", slug: "acme", role: "viewer" }],
   lastActiveTenantId: null,
 };
@@ -196,7 +204,10 @@ describe("AcceptInvitationPage", () => {
     signInEmailMock.mockReturnValue(signIn.promise);
     acceptInvitationMock.mockReturnValue(acceptance.promise);
     fetchMeContextMock.mockResolvedValue(context);
-    updateActiveOrganizationMock.mockResolvedValue({ ...context, lastActiveTenantId: ORG });
+    updateActiveOrganizationMock.mockResolvedValue({
+      ...context,
+      lastActiveTenantId: ORG,
+    });
     const user = userEvent.setup();
     const page = renderPage();
 
@@ -238,17 +249,27 @@ describe("AcceptInvitationPage", () => {
     expect(readInvitation()).toBeNull();
     expect(acceptInvitationMock).toHaveBeenCalledTimes(1);
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
-    expect(updateActiveOrganizationMock).toHaveBeenCalledWith({ organizationId: ORG });
+    expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
+      organizationId: ORG,
+    });
   });
 
   it("keeps the invitation pending on cap denial, announces the cap, and focuses the error", async () => {
     fetchInvitationMock.mockResolvedValue(invitation);
-    acceptInvitationMock.mockRejectedValue(new ApiError("ORGANIZATION_MEMBERSHIP_LIMIT_REACHED", "cap", 409));
-    sessionStore.set({ user: { id: "user-1", email: "new@example.com", emailVerified: true } });
+    acceptInvitationMock.mockRejectedValue(
+      new ApiError("ORGANIZATION_MEMBERSHIP_LIMIT_REACHED", "cap", 409),
+    );
+    sessionStore.set({
+      user: { id: "user-1", email: "new@example.com", emailVerified: true },
+    });
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }),
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent("ครบ 1,000 คน");
-    await waitFor(() => expect(screen.getByRole("alert").parentElement).toHaveFocus());
+    await waitFor(() =>
+      expect(screen.getByRole("alert").parentElement).toHaveFocus(),
+    );
     expect(updateActiveOrganizationMock).not.toHaveBeenCalled();
   });
 
@@ -256,13 +277,23 @@ describe("AcceptInvitationPage", () => {
     fetchInvitationMock.mockResolvedValue(invitation);
     acceptInvitationMock.mockResolvedValue({ organizationId: ORG });
     fetchMeContextMock.mockResolvedValue(context);
-    updateActiveOrganizationMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "offline", 0));
-    sessionStore.set({ user: { id: "user-1", email: "new@example.com", emailVerified: true } });
+    updateActiveOrganizationMock.mockRejectedValue(
+      new ApiError("NETWORK_ERROR", "offline", 0),
+    );
+    sessionStore.set({
+      user: { id: "user-1", email: "new@example.com", emailVerified: true },
+    });
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("เลือกองค์กรไม่สำเร็จ");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "เลือกองค์กรไม่สำเร็จ",
+    );
     expect(screen.queryByRole("button", { name: "เข้าร่วมองค์กร" })).toBeNull();
-    expect(screen.getByRole("link", { name: "ไปหน้าองค์กร" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "ไปหน้าองค์กร" }),
+    ).toBeInTheDocument();
     expect(acceptInvitationMock).toHaveBeenCalledTimes(1);
   });
 
@@ -271,12 +302,21 @@ describe("AcceptInvitationPage", () => {
     fetchInvitationMock.mockResolvedValue(invitation);
     acceptInvitationMock.mockReturnValue(acceptance.promise);
     fetchMeContextMock.mockResolvedValue(context);
-    sessionStore.set({ user: { id: "user-1", email: "new@example.com", emailVerified: true } });
+    sessionStore.set({
+      user: { id: "user-1", email: "new@example.com", emailVerified: true },
+    });
     const { router } = renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }));
-    await act(async () => { await router.navigate("/workspace"); });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }),
+    );
+    await act(async () => {
+      await router.navigate("/workspace");
+    });
     rememberInvitation("inv-B");
-    await act(async () => acceptance.resolve({ organizationId: ORG }));
+    await act(async () => {
+      acceptance.resolve({ organizationId: ORG });
+      await acceptance.promise;
+    });
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
     expect(readInvitation()).toBe("inv-B");
     expect(fetchMeContextMock).not.toHaveBeenCalled();
