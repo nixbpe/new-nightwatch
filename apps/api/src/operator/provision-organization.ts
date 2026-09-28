@@ -265,6 +265,7 @@ async function main(): Promise<void> {
     const mail = buildInvitationEmail(authEnv, {
       organizationName: outcome.organizationName,
       invitationId: outcome.invitationId,
+      role: "owner",
     });
     try {
       await mailer.verify();

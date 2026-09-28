@@ -221,6 +221,8 @@ export function registerOrganizationInvitationRoutes(
     const message = buildInvitationEmail(deps.authEnv, {
       organizationName: invitation.organizationName,
       invitationId: invitation.id,
+      inviterName: session.user.name,
+      role,
     });
     try {
       await deps.mailer.send({ ...message, to: invitation.email });

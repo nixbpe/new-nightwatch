@@ -49,4 +49,47 @@ describe("auth email builders", () => {
     expect(mail.html).toContain("Acme &lt;Corp&gt; &amp; Co");
     expect(mail.html).not.toContain("<Acme");
   });
+
+  it("renders one HTML frame with a button, a fallback link and the link lifetime", () => {
+    const mail = buildVerificationEmail(authEnv, "tok");
+    const url =
+      "https://app.nightwatch.example/onboarding?emailVerificationToken=tok";
+    expect(mail.html).toContain('<html lang="th">');
+    expect(mail.html).toContain('<meta name="color-scheme" content="light">');
+    expect(mail.html).toContain(
+      `<a href="${url}" style="display:inline-block;padding:12px 24px`,
+    );
+    expect(mail.html).toContain(`word-break:break-all">${url}</a>`);
+    expect(mail.text).toContain("ลิงก์นี้ใช้ได้ 1 ชั่วโมง");
+    expect(buildResetPasswordEmail(authEnv, "t").text).toContain(
+      "ลิงก์นี้ใช้ได้ 1 ชั่วโมง",
+    );
+    expect(mail.subject).not.toContain("—");
+  });
+
+  it("names the inviter and role, escaped in HTML, and reads naturally without them", () => {
+    const named = buildInvitationEmail(authEnv, {
+      organizationName: "Acme",
+      invitationId: "inv_1",
+      inviterName: "<b>Mallory</b>",
+      role: "admin",
+    });
+    expect(named.text).toContain(
+      "<b>Mallory</b> เชิญคุณเข้าร่วมองค์กร Acme บน NightWatch ในบทบาทผู้ดูแล",
+    );
+    expect(named.html).toContain(
+      "&lt;b&gt;Mallory&lt;/b&gt; เชิญคุณเข้าร่วมองค์กร <strong>Acme</strong> บน NightWatch ในบทบาทผู้ดูแล",
+    );
+    expect(named.html).not.toContain("<b>Mallory");
+    expect(named.text).toContain("คำเชิญนี้ใช้ได้ 48 ชั่วโมง");
+
+    const operator = buildInvitationEmail(authEnv, {
+      organizationName: "Acme",
+      invitationId: "inv_2",
+      role: "owner",
+    });
+    expect(operator.text).toContain(
+      "คุณได้รับเชิญให้เข้าร่วมองค์กร Acme บน NightWatch ในบทบาทเจ้าของ",
+    );
+  });
 });

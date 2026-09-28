@@ -151,6 +151,8 @@ export function createAuth(deps: AuthDeps) {
       const mail = buildInvitationEmail(authEnv, {
         organizationName: data.organization.name,
         invitationId: data.id,
+        inviterName: data.inviter.user.name,
+        role: data.role,
       });
       await mailer.send({ ...mail, to: data.email });
     },

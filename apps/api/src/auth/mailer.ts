@@ -14,6 +14,14 @@ export type Mailer = {
   verify: () => Promise<void>;
 };
 
+// A bare address shows only the mailbox in inboxes; give it the product name.
+export function senderAddress(
+  from: string | undefined,
+): string | { name: string; address: string } | undefined {
+  if (!from || from.includes("<")) return from;
+  return { name: "NightWatch", address: from };
+}
+
 export function createMailer(authEnv: AuthEnv, logger: Logger): Mailer {
   const transport: Transporter = nodemailer.createTransport({
     host: authEnv.SMTP_HOST,
@@ -28,7 +36,7 @@ export function createMailer(authEnv: AuthEnv, logger: Logger): Mailer {
     send: async (mail) => {
       try {
         await transport.sendMail({
-          from: authEnv.SMTP_FROM,
+          from: senderAddress(authEnv.SMTP_FROM),
           ...mail,
         });
         logger.info({ component: "smtp" }, "mail accepted by transport");
