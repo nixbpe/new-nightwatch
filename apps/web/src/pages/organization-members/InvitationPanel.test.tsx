@@ -1,6 +1,13 @@
 import type { InvitationCreateResponse } from "@nightwatch/api-contract";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  render as renderWithTestingLibrary,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
@@ -16,6 +23,14 @@ const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
 
 afterEach(() => create.mockReset());
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient();
+  return renderWithTestingLibrary(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
+  });
+}
 
 async function draft(user: UserEvent) {
   await user.type(

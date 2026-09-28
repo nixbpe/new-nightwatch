@@ -1,10 +1,21 @@
 import { invitationCreateInputSchema } from "@nightwatch/api-contract";
-import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { Alert, Field, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { ApiError } from "../../lib/api/client";
 import { createInvitation } from "../../lib/api/invitations";
+import {
+  getContextPublicationSnapshot,
+  subscribeToContextPublication,
+} from "../../lib/queryClient";
 import {
   ADMIN_INVITABLE_ROLES,
   INVITABLE_ROLES,
@@ -24,6 +35,21 @@ export function InvitationPanel({
   organizationName: string;
   actorRole: "owner" | "admin";
 }) {
+  const queryClient = useQueryClient();
+  const publicationVersion = useSyncExternalStore(
+    useCallback(
+      (listener) => subscribeToContextPublication(queryClient, listener),
+      [queryClient],
+    ),
+    useCallback(
+      () => getContextPublicationSnapshot(queryClient).version,
+      [queryClient],
+    ),
+  );
+  const initialPublicationVersion = useRef(publicationVersion);
+  const isCurrentScope = () =>
+    getContextPublicationSnapshot(queryClient).version ===
+    initialPublicationVersion.current;
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InvitableRole>("viewer");
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -57,6 +83,7 @@ export function InvitationPanel({
     setPending(true);
     try {
       const result = await createInvitation(organizationId, parsed.data);
+      if (!isCurrentScope()) return;
       setEmail("");
       setNotice(
         result.emailDispatch === "accepted"
@@ -64,6 +91,7 @@ export function InvitationPanel({
           : { tone: "warning", text: "สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ" },
       );
     } catch (error) {
+      if (!isCurrentScope()) return;
       const text =
         error instanceof ApiError
           ? error.code === "INVITATION_LIMIT_REACHED"
@@ -78,11 +106,14 @@ export function InvitationPanel({
           : "สร้างคำเชิญไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
       setNotice({ tone: "error", text });
     } finally {
-      inFlight.current = false;
-      setPending(false);
+      if (isCurrentScope()) {
+        inFlight.current = false;
+        setPending(false);
+      }
     }
   }
 
+  if (publicationVersion !== initialPublicationVersion.current) return null;
   return (
     <section aria-labelledby="invite-card-title" className={CARD}>
       <div>

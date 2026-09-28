@@ -16,6 +16,11 @@ import {
   memberListQueryKey,
 } from "../lib/api/members";
 import { createInvitation } from "../lib/api/invitations";
+import {
+  claimContextPublication,
+  createContextPublicationClaim,
+  publishContextPublication,
+} from "../lib/queryClient";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -742,6 +747,88 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByText("B-only")).toBeInTheDocument();
   });
 
+  it("hides A invitation immediately on confirmed B publication before navigation", async () => {
+    const post = Promise.withResolvers<InvitationCreateResponse>();
+    const navigation = Promise.withResolvers<boolean>();
+    vi.mocked(createInvitation).mockReturnValue(post.promise);
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    function SwitchableDirectory() {
+      const [, setRevision] = useState(0);
+      tenant = {
+        ...tenant,
+        me: { organizations: [organizationA, organizationB] },
+        activeOrg: tenant.activeOrg,
+        switchOrg: (id: string) => {
+          if (id !== organizationBId) return Promise.resolve(false);
+          const claim = createContextPublicationClaim();
+          claimContextPublication(queryClient, claim);
+          tenant = { ...tenant, activeOrg: organizationB };
+          publishContextPublication(queryClient, claim);
+          setRevision((value) => value + 1);
+          return navigation.promise;
+        },
+      };
+      return (
+        <>
+          <OrgSwitcher collapsed={false} />
+          <output data-testid="location">{useLocation().pathname}</output>
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/members"
+              element={<OrganizationMembersPage />}
+            />
+          </Routes>
+        </>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter
+          initialEntries={[`/organizations/${organizationId}/members`]}
+        >
+          <SwitchableDirectory />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      "a-draft@example.test",
+    );
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: /Acme/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${organizationId}/members`,
+    );
+    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+    await act(async () => {
+      post.resolve({ created: true, emailDispatch: "failed" });
+      await post.promise;
+    });
+    expect(
+      screen.queryByRole("status", { name: /สร้างคำเชิญแล้ว/ }),
+    ).toBeNull();
+    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+    await act(async () => {
+      navigation.resolve(true);
+      await navigation.promise;
+    });
+    expect(await screen.findByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+      "",
+    );
+    expect(
+      screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
+    ).toBeNull();
+  });
+
   it("keeps A scope, route, list, and offset when an A to B switch is denied", async () => {
     const aSecondPage: OrganizationMemberListResponse = {
       ...response,
@@ -797,6 +884,10 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("A-first")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(await screen.findByText("A-second")).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      "a-draft@example.test",
+    );
     await user.click(screen.getByRole("button", { name: /Acme/ }));
     await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
 
@@ -806,6 +897,9 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByText("Acme · acme")).toBeInTheDocument();
     expect(screen.getByText("A-second")).toBeInTheDocument();
     expect(screen.queryByText("B-only")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+      "a-draft@example.test",
+    );
     expect(screen.getByText("แสดง 51–51 จาก 51")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeEnabled();
   });
