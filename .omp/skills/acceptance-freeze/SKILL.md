@@ -18,7 +18,7 @@ agent:`product-owner` writes the matrix with only the categories the change touc
 - **State**: loading, empty, success, denied, revoked and failure, matching the Feature's UI flow state table.
 - **Concurrency**: races to handle and the accepted outcome.
 - **Security**: data never disclosed, log redaction, fresh-auth boundary.
-- **Accessibility**: focus, keyboard, dialog, zoom/reflow.
+- **Accessibility**: focus, keyboard, dialog. Zoom/reflow is a criterion only when the user asks for it; layouts still follow LAY-02 in file:`docs/design-system.md`.
 - **Verification**: the scenario or command that proves each item.
 - **Out of scope**: known items deliberately excluded.
 

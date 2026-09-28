@@ -1,80 +1,73 @@
 <!--
-Every section below is required unless it says "if applicable". The Technical
-Lead's /review-pr command treats an empty required section, or a claim without
-command, result and commit SHA, as a Blocker evidence gap. Write facts a
-reviewer can check; never claim more verification than was run.
+Every section is required. /review-pr treats a missing section, a gate
+without a result, or a claim without proof as a Blocker. State outcomes;
+the reviewer knows what each gate runs, so give results, not procedure.
 -->
 
 ## Summary
 
-<!-- One or two sentences: what changed and why. Reference the issue, Feature or AC it serves. -->
+<!--
+Lead with the result: what works now, for whom, and the issue or AC it serves.
+Then what it enables or what remains, written as the next step, not as a fault.
+-->
 
 Closes #
 
-## Scope and non-goals
-
-- In scope:
-- Out of scope (deliberately untouched):
+Out of scope:
 
 ## Changes
 
-<!-- Per file or per behavior, in the order a reviewer should read them. Name contracts that changed (API, schema, RLS, queue payloads, env names) and the docs updated for them. -->
+<!-- What changed and why, in reading order. Name changed contracts (API, schema, RLS, queue payloads, env names) and the docs updated for them. -->
 
 -
 
-## Acceptance coverage
+## Acceptance
 
-<!-- One row per AC-<NN> or issue requirement this PR claims. "Proof" names the test, scenario or command that exercises it. -->
+<!-- One row per AC-<NN> or issue requirement this PR claims. -->
 
-| Criterion | Proof | Result (observed pass / observed fail / not verified) |
-| --------- | ----- | ----------------------------------------------------- |
-|           |       |                                                       |
+| Criterion | Proof (test, scenario or command) | Result (observed pass / observed fail / not verified) |
+| --------- | --------------------------------- | ----------------------------------------------------- |
+|           |                                   |                                                       |
 
 ## Evidence
 
 <!--
-Runtime behavior, not just tests. Include:
-- For UI changes: before and after screenshots of the changed surface in both
-  themes (light, dark) and at 375×812 with 200% root text (docs/design-system.md
-  LAY-02, A11Y). Attach them here or link the Playwright trace/attachments.
-- For DB/RLS, security or concurrency changes: the scenario, the trigger, the
-  state it reached and the state it preserved.
-- Commands are shown exactly as run. Database-touching commands
-  (test:integration, test:coverage, e2e) run through scripts/dev-env.mjs after
-  `bun run db:up`, never against an ambient or production database.
+- UI: before and after screenshots of the changed surface on desktop
+  (1440×900) in both themes. Narrow screens and 200% text follow
+  docs/design-system.md LAY-02 in implementation, not here.
+- DB/RLS, security or concurrency: the scenario, the trigger, the state it
+  reached and the state it preserved.
 -->
 
-## Quality gates
+## Gates
 
-<!--
-Fill every row. "not run" is an acceptable value; a missing row is not.
-PR CI never runs e2e (release-stage is workflow_dispatch only), so a change that
-touches apps/web, e2e/ or user-facing API behavior needs a local e2e result here.
--->
+<!-- Result only, no command output. "not run" is a valid result; a blank is not. Every gate runs on the head SHA. -->
 
-| Gate                                     | Command                                 | Result (pass / fail / not run) | Commit SHA | Notes |
-| ---------------------------------------- | --------------------------------------- | ------------------------------ | ---------- | ----- |
-| validate                                 | `bun run validate`                      |                                |            |       |
-| integration                              | `bun run test:integration`              |                                |            |       |
-| coverage                                 | `COVERAGE_GATE=1 bun run test:coverage` |                                |            |       |
-| build                                    | `bun run build`                         |                                |            |       |
-| security                                 | `bun run security`                      |                                |            |       |
-| e2e (local; required for UI/e2e changes) | `bun run e2e` or focused spec           |                                |            |       |
+Head SHA:
 
-- PR CI status on the head commit:
+| Gate                                                                         | Result (pass / fail / not run) | Notes |
+| ---------------------------------------------------------------------------- | ------------------------------ | ----- |
+| validate                                                                     |                                |       |
+| integration                                                                  |                                |       |
+| coverage (`COVERAGE_GATE=1`)                                                 |                                |       |
+| build                                                                        |                                |       |
+| security                                                                     |                                |       |
+| e2e (local; required when the diff touches apps/web, e2e or user-facing API) |                                |       |
+
+- PR CI on the head commit:
 - Independent review (agent:code-reviewer): Blocker / Major / Minor counts and IDs:
 
 ## Risks and follow-ups
 
-<!-- Known risks, flaky observations disclosed (even if a retry passed), deferred items with their issue numbers, and any decision still open with its owner. -->
+<!-- Known risks, flaky observations (even if a retry passed), deferred items with issue numbers, open decisions with their owner. -->
 
 -
 
 ## Author checklist
 
-- [ ] Only owned, in-scope files changed; no unrelated refactors or drive-by fixes
-- [ ] Tests and docs updated for every contract that changed
-- [ ] Every gate row above has a result and the SHA it ran on
-- [ ] UI change: screenshots in both themes and at 375×812 + 200% text attached
+- [ ] Only owned, in-scope files changed
+- [ ] Tests and docs updated for every changed contract
+- [ ] Every gate ran on the head SHA; database-touching gates through `scripts/dev-env.mjs`, never an ambient database
+- [ ] UI change: desktop (1440×900) screenshots in both themes attached
 - [ ] No secrets, generated noise or build output committed
-- [ ] This PR is not merged by its author and does not imply release approval
+- [ ] Not merged by the author; no release approval implied

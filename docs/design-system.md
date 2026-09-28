@@ -59,7 +59,7 @@ Divider is Text at 10% opacity in both themes. Faces: Inter for Latin, Noto Sans
 
 ## Accessibility
 
-**Principle.** Everything works by keyboard with visible focus, logical order and meaningful names, and nothing relies on hover, placeholders or color alone. Motion is brief, respects reduced-motion and never hides essential content. Before accepting a design, review both themes, narrow layouts, enlarged text, keyboard and focus, and the relevant error, empty and permission states.
+**Principle.** Everything works by keyboard with visible focus, logical order and meaningful names, and nothing relies on hover, placeholders or color alone. Motion is brief, respects reduced-motion and never hides essential content. Before accepting a design, review both themes on desktop, keyboard and focus, and the relevant error, empty and permission states. Narrow layouts and enlarged text follow LAY-02 in implementation and are checked only when a user reports a problem or asks for it.
 
 - A11Y-01 The focus indicator stays visible against adjacent surfaces, including primary buttons, with an offset from the fill; a glow never replaces it.
 
