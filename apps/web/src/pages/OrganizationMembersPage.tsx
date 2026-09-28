@@ -183,6 +183,8 @@ function OrganizationMembersPageForOrganization({
     // this member while the PATCH was pending.
     const refreshed = await refetchList();
     if (!isCurrentRoleScope()) return;
+    const listAuthorizationDenied =
+      refreshed.isError && isAuthorizationDenied(refreshed.error);
     if (
       refreshed.isError ||
       refreshed.data?.organizationId !== organizationId
@@ -191,8 +193,7 @@ function OrganizationMembersPageForOrganization({
         error: true,
         text: "ไม่สามารถตรวจสอบบทบาทล่าสุดได้ กรุณาลองโหลดสมาชิกอีกครั้ง",
       });
-      if (isAuthorizationDenied(refreshed.error))
-        void refreshAfterAuthorizationDenied();
+      if (listAuthorizationDenied) void refreshAfterAuthorizationDenied();
     } else if (failure !== null) {
       setRoleNotice({
         error: true,
@@ -213,7 +214,11 @@ function OrganizationMembersPageForOrganization({
         text: "บทบาทถูกเปลี่ยนอีกครั้ง โหลดบทบาทล่าสุดแล้ว",
       });
     }
-    if (failure === null && member.userId === me?.user.id) {
+    if (
+      failure === null &&
+      member.userId === me?.user.id &&
+      !listAuthorizationDenied
+    ) {
       const context = await refreshMembershipContext();
       if (!isCurrentRoleScope()) return;
       if (context === null) {

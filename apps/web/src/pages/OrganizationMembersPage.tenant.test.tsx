@@ -15,6 +15,7 @@ import {
 } from "react-router";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { ApiError } from "../lib/api/client";
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { createInvitation } from "../lib/api/invitations";
 import {
@@ -30,7 +31,9 @@ import {
 import {
   claimContextPublication,
   createContextPublicationClaim,
+  getContextPublicationSnapshot,
   publishContextPublication,
+  subscribeToContextPublication,
 } from "../lib/queryClient";
 import { TenantProvider, useTenant } from "../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
@@ -526,6 +529,142 @@ it("keeps A role action on denied switch and discards late A mutation after conf
   expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
 });
+
+it.each([
+  { actorRole: "owner", nextRole: "viewer", readableB: true },
+  { actorRole: "admin", nextRole: "auditor", readableB: false },
+] as const)(
+  "routes a successful $actorRole self-demotion to $nextRole after one denied-list context refresh (readable B: $readableB)",
+  async ({ actorRole, nextRole, readableB }) => {
+    const initial: MeContextResponse = {
+      ...context,
+      organizations: [
+        { id: A, name: "Acme", slug: "acme", role: actorRole },
+        {
+          id: B,
+          name: "Beta",
+          slug: "beta",
+          role: readableB ? "owner" : "viewer",
+        },
+      ],
+    };
+    const refreshed: MeContextResponse = {
+      ...initial,
+      organizations: initial.organizations.map((organization) =>
+        organization.id === A
+          ? { ...organization, role: nextRole }
+          : organization,
+      ),
+    };
+    const nextContext = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext)
+      .mockResolvedValueOnce(initial)
+      .mockReturnValueOnce(nextContext.promise)
+      .mockRejectedValue(new Error("unexpected second context refresh"));
+    let changed = false;
+    vi.mocked(updateOrganizationMemberRole).mockImplementation(() => {
+      changed = true;
+      return Promise.resolve({
+        member: {
+          id: aMember.id,
+          userId: aMember.userId,
+          organizationId: A,
+          role: nextRole,
+        },
+      });
+    });
+    vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
+      if (id === B) {
+        return Promise.resolve({
+          organizationId: B,
+          members: [
+            {
+              ...aMember,
+              id: "member-b",
+              userId: "user-b",
+              name: "Bea",
+              email: "bea@example.test",
+            },
+          ],
+          page: { limit: 50, offset: 0, total: 1 },
+        });
+      }
+      if (changed)
+        return Promise.reject(
+          new ApiError("PERMISSION_DENIED", "role downgraded", 403),
+        );
+      return Promise.resolve({
+        ...aList,
+        members: [{ ...aMember, role: actorRole }],
+      });
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const claims: (bigint | null)[] = [];
+    const unsubscribe = subscribeToContextPublication(queryClient, () => {
+      claims.push(getContextPublicationSnapshot(queryClient).claim);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider>
+          <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+            <TenantView />
+          </MemoryRouter>
+        </TenantProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText("Ada");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "บทบาทของ Ada" }),
+      nextRole,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "บันทึกบทบาทของ Ada" }),
+    );
+    if (actorRole === "owner") {
+      await user.click(
+        screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
+      );
+    }
+    expect(
+      await screen.findByRole("status", {
+        name: "กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("ada@example.test")).toBeNull();
+    expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${A}/members`,
+    );
+    expect(fetchMeContext).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      nextContext.resolve(refreshed);
+      await nextContext.promise;
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        readableB ? `/organizations/${B}/members` : "/workspace",
+      ),
+    );
+    if (readableB) {
+      expect(await screen.findByText("Bea")).toBeInTheDocument();
+      expect(screen.queryByText("Ada")).toBeNull();
+      expect(screen.queryByText("ada@example.test")).toBeNull();
+      expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
+    } else {
+      expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
+    }
+    expect(fetchMeContext).toHaveBeenCalledTimes(2);
+    expect(claims).toHaveLength(1);
+    expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+    expect(
+      screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+    ).toBeNull();
+    unsubscribe();
+  },
+);
 
 it.each(["success", "failure"] as const)(
   "refreshes both cached pages and context after role %s",
