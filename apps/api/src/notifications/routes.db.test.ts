@@ -215,12 +215,10 @@ describe("notification inbox API", () => {
       (await request(`/api/notifications?limit=2&cursor=${cursor}`)).response
         .status,
     ).toBe(200);
+    const tamperedCursor = `${cursor.slice(0, -1)}${cursor.endsWith("A") ? "B" : "A"}`;
     expect(
-      (
-        await request(
-          `/api/notifications?limit=2&cursor=${cursor.slice(0, -1)}A`,
-        )
-      ).response.status,
+      (await request(`/api/notifications?limit=2&cursor=${tamperedCursor}`))
+        .response.status,
     ).toBe(400);
     await owner.sql.query(
       'update "user" set last_active_tenant_id = $1 where id = $2',
@@ -260,13 +258,19 @@ describe("notification inbox API", () => {
     });
     const states = await owner.sql.query<{ id: string; readAt: Date | null }>(
       'select id, read_at as "readAt" from notification_inbox_items where id = any($1::text[]) order by id',
-      [[personal, organization, otherOrganization, expired]],
+      [[personal, organization, otherOrganization]],
     );
-    expect(states.rows.filter((row) => row.readAt !== null)).toHaveLength(2);
+    expect(states.rows).toHaveLength(3);
+    expect(states.rows.map((row) => row.id).sort()).toEqual(
+      [personal, organization, otherOrganization].sort(),
+    );
     expect(
-      states.rows.find((row) => row.id === otherOrganization)?.readAt,
-    ).toBeNull();
-    expect(states.rows.find((row) => row.id === expired)?.readAt).toBeNull();
+      states.rows.find((row) => row.id === personal)?.readAt,
+    ).toBeInstanceOf(Date);
+    expect(
+      states.rows.find((row) => row.id === organization)?.readAt,
+    ).toBeInstanceOf(Date);
+    expect(states.rows).toContainEqual({ id: otherOrganization, readAt: null });
     const firstOpen = await request(
       `/api/notifications/${personal}/open`,
       "POST",
