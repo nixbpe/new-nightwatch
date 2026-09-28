@@ -130,6 +130,57 @@ describe("first-party invitation create", () => {
     expect(recorded).not.toContain(`invalid-${run}`);
   });
 
+  it("returns identical denied responses and audit/log events for existing or absent organization and target", async () => {
+    const absentEmail = `absent-target-${run}@example.test`;
+    const existingEmail = `owner-${run}@example.test`;
+    const attempts = [
+      { organizationId: orgA, email: existingEmail },
+      { organizationId: orgA, email: absentEmail },
+      { organizationId: absentOrg, email: existingEmail },
+      { organizationId: absentOrg, email: absentEmail },
+    ];
+    const observed = [];
+    for (const { organizationId, email } of attempts) {
+      logs.length = 0;
+      const response = await request("other", organizationId, email);
+      const captured = logs.join("\n");
+      for (const privateValue of [orgA, absentOrg, existingEmail, absentEmail, run, "test-session", "accept-invitation/"]) {
+        expect(captured).not.toContain(privateValue);
+        expect(JSON.stringify(response)).not.toContain(privateValue);
+      }
+      const events = logs.map((line) => Object.fromEntries(
+        Object.entries(JSON.parse(line) as Record<string, unknown>)
+          .filter(([key]) => !["time", "pid", "hostname", "requestId", "durationMs"].includes(key)),
+      ));
+      expect(events).toEqual([
+        {
+          level: 40, name: "invitation-db-test", actorUserId: actorIds.other,
+          action: "organization.invitation.create", code: "MEMBERSHIP_DENIED",
+          msg: "organization access denied",
+        },
+        {
+          level: 40, name: "invitation-db-test", code: "MEMBERSHIP_DENIED",
+          msg: "request failed",
+        },
+        {
+          level: 30, name: "invitation-db-test", method: "POST",
+          path: "/api/organizations/:organizationId/invitations", status: 403,
+          msg: "request completed",
+        },
+      ]);
+      observed.push({ response, events });
+    }
+    const expectedResponse = {
+      status: 403,
+      body: { error: { code: "MEMBERSHIP_DENIED", message: "คุณไม่ใช่สมาชิกขององค์กรนี้" } },
+    };
+    for (const attempt of observed) {
+      expect(attempt.response).toEqual(expectedResponse);
+      expect(attempt).toEqual(observed[0]);
+    }
+    expect((await rows()).some((row) => row.email === absentEmail)).toBe(false);
+  });
+
   it("normalizes email, rejects members and live duplicate, ignores expired pending and records 48h expiry", async () => {
     const email = `normalize-${run}@example.test`;
     const before = Date.now();
@@ -152,6 +203,13 @@ describe("first-party invitation create", () => {
     );
     expect(otherMembership.rows).toEqual([]);
     const context = await app.request("/api/me/context", { headers: { "x-test-actor": "other" } });
+    const protectedRead = await app.request(`/api/organizations/${orgA}/members`, {
+      headers: { "x-test-actor": "other" },
+    });
+    expect(protectedRead.status).toBe(403);
+    expect(await protectedRead.json()).toEqual({
+      error: { code: "MEMBERSHIP_DENIED", message: "คุณไม่ใช่สมาชิกขององค์กรนี้" },
+    });
     expect(context.status).toBe(200);
     expect(JSON.stringify(await context.json())).not.toContain(orgA);
     await owner.sql.query("update invitation set expires_at = now() - interval '1 second' where organization_id = $1 and email = $2", [orgA, email]);
