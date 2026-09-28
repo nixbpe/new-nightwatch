@@ -2028,10 +2028,10 @@ describe("locked invitation acceptance at the member cap", () => {
     );
     try {
       const firstInvitation = await createInvitation(
-        firstEmail, "viewer", organizationId,
+        firstEmail, "owner", organizationId,
       );
       const secondInvitation = await createInvitation(
-        secondEmail, "viewer", organizationId,
+        secondEmail, "owner", organizationId,
       );
       const [first, second] = await Promise.all([
         admitUser("cap-first", firstInvitation),
@@ -2066,6 +2066,13 @@ describe("locked invitation acceptance at the member cap", () => {
         "PATCH", "/api/me/active-org", { organizationId },
       );
       expect(deniedBefore.status).toBe(403);
+      const listPath = `/api/organizations/${organizationId}/members?limit=50&offset=999`;
+      const protectedBefore = await first.request("GET", listPath);
+      expect(protectedBefore).toEqual({
+        status: 403,
+        json: { error: { code: "MEMBERSHIP_DENIED", message: "คุณไม่ใช่สมาชิกขององค์กรนี้" } },
+      });
+      expect(await second.request("GET", listPath)).toEqual(protectedBefore);
       const native = await first.request(
         "POST",
         "/api/auth/organization/accept-invitation",
@@ -2157,10 +2164,18 @@ describe("locked invitation acceptance at the member cap", () => {
       ).toBe(0);
       const winnerContext = await winner.request("GET", "/api/me/context");
       expect(meContextResponseSchema.parse(winnerContext.json).organizations)
-        .toMatchObject([{ id: organizationId, role: "viewer" }]);
+        .toMatchObject([{ id: organizationId, role: "owner" }]);
       const loserContext = await loser.request("GET", "/api/me/context");
       expect(meContextResponseSchema.parse(loserContext.json).organizations)
         .toEqual([]);
+      const protectedAfter = await winner.request("GET", listPath);
+      expect(protectedAfter.status).toBe(200);
+      expect(protectedAfter.json).toMatchObject({
+        organizationId,
+        page: { limit: 50, offset: 999, total: 1000 },
+        members: [{ userId: winner === first ? firstId : secondId, email: winner === first ? firstEmail : secondEmail, role: "owner" }],
+      });
+      expect(await loser.request("GET", listPath)).toEqual(protectedBefore);
       const selected = await winner.request(
         "PATCH", "/api/me/active-org", { organizationId },
       );
@@ -2184,6 +2199,118 @@ describe("locked invitation acceptance at the member cap", () => {
       );
     }
   }, 120_000);
+  it("keeps acceptance denials identical across invitation states in response and logs", async () => {
+    const email = userEmail("accept-privacy");
+    const ownInvitation = await createInvitation(email);
+    const otherEmail = userEmail("accept-other");
+    const wrongRecipient = await createInvitation(otherEmail);
+    const nonPending = await createInvitation(email);
+    const recipient = await admitUser("accept-privacy", ownInvitation);
+    const userId = await sqlUserId(email);
+    const verificationToken = linkQuery(
+      findMail(email, "ยืนยันอีเมล").text, "emailVerificationToken",
+    );
+    const unknown = crypto.randomUUID();
+    await database.sql.query(
+      "update invitation set status = 'canceled' where id = $1",
+      [nonPending],
+    );
+    const logs: string[] = [];
+    const logger = createLogger(
+      { level: "info", name: "accept-privacy" },
+      { write: (line: string) => void logs.push(line) },
+    );
+    const loggedApp = createApp({
+      env, authEnv, logger,
+      auth: createAuth({ env, authEnv, logger, database, mailer }),
+      database, mailer,
+    });
+    const request = client(loggedApp, recipient.request.cookies());
+    const attempt = async (invitationId: string) => {
+      logs.length = 0;
+      const response = await request(
+        "POST", `/api/onboarding/invitations/${invitationId}/accept`,
+      );
+      const entries = logs.map((line) => JSON.parse(line) as Record<string, unknown>);
+      const errors = entries.filter((entry) => entry.msg === "request failed");
+      const completions = entries.filter((entry) => entry.msg === "request completed");
+      expect(errors).toHaveLength(1);
+      expect(completions).toHaveLength(1);
+      expect(entries.filter((entry) => entry.msg === "organization access denied")).toEqual([]);
+      for (const sensitive of [
+        email, otherEmail, unknown, EXPIRED_INVITATION_ID,
+        wrongRecipient, nonPending, ownInvitation, verificationToken, ORG_ID,
+      ]) {
+        expect(JSON.stringify(entries)).not.toContain(sensitive);
+        expect(JSON.stringify(response)).not.toContain(sensitive);
+      }
+      return {
+        response,
+        error: { code: errors[0]?.code, message: errors[0]?.msg, err: errors[0]?.err },
+        completion: {
+          method: completions[0]?.method,
+          path: completions[0]?.path,
+          status: completions[0]?.status,
+          message: completions[0]?.msg,
+        },
+      };
+    };
+    try {
+      const missing = await attempt(unknown);
+      expect(missing.response).toEqual({
+        status: 404,
+        json: { error: {
+          code: "INVITATION_NOT_FOUND",
+          message: "ไม่พบคำเชิญ หรือคำเชิญหมดอายุแล้ว",
+        } },
+      });
+      for (const id of [EXPIRED_INVITATION_ID, nonPending, wrongRecipient]) {
+        expect(await attempt(id)).toEqual(missing);
+      }
+      expect(missing.error).toEqual({
+        code: "INVITATION_NOT_FOUND", message: "request failed", err: undefined,
+      });
+      expect(missing.completion).toEqual({
+        method: "POST",
+        path: "/api/onboarding/invitations/:invitationId/accept",
+        status: 404,
+        message: "request completed",
+      });
+      logs.length = 0;
+      const native = await request(
+        "POST", "/api/auth/organization/accept-invitation",
+        { invitationId: ownInvitation },
+      );
+      expect(native).toEqual({
+        status: 403,
+        json: { error: {
+          code: "PERMISSION_DENIED",
+          message: "ใช้เส้นทางจัดการสมาชิกใหม่",
+        } },
+      });
+      const nativeLogs = logs.map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(nativeLogs.filter((entry) => entry.msg === "organization access denied"))
+        .toMatchObject([{ actorUserId: userId, action: "legacy:/api/auth/organization/accept-invitation", code: "PERMISSION_DENIED" }]);
+      expect(nativeLogs.filter((entry) => entry.msg === "request completed"))
+        .toMatchObject([{ method: "POST", path: "/api/auth/organization/accept-invitation", status: 403 }]);
+      for (const sensitive of [email, otherEmail, ownInvitation, verificationToken, ORG_ID]) {
+        expect(JSON.stringify(nativeLogs)).not.toContain(sensitive);
+        expect(JSON.stringify(native)).not.toContain(sensitive);
+      }
+      expect(await membershipCount(ORG_ID, userId)).toBe(0);
+      expect(await invitationStatus(ownInvitation)).toBe("pending");
+      expect(await invitationStatus(nonPending)).toBe("canceled");
+      expect(await invitationStatus(wrongRecipient)).toBe("pending");
+      expect(await invitationStatus(EXPIRED_INVITATION_ID)).toBe("pending");
+      expect(await invitationStatus(unknown)).toBeNull();
+    } finally {
+      await database.sql.query(
+        "delete from invitation where id = any($1::text[])",
+        [[ownInvitation, wrongRecipient, nonPending]],
+      );
+      await database.sql.query('delete from "user" where id = $1', [userId]);
+    }
+  });
 });
 
 describe("acceptance rollback after the member insert", () => {
