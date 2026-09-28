@@ -373,6 +373,7 @@ describe("OrganizationMembersPage", () => {
       "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้",
     );
     expect(screen.queryByText("สมาชิกทั้งหมด")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
     expect(fetchOrganizationMembers).not.toHaveBeenCalled();
   });
 

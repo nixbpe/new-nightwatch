@@ -1,12 +1,13 @@
-import type { InvitationResponse } from "@nightwatch/api-contract";
-import { act, render, screen } from "@testing-library/react";
+import type { InvitationResponse, MeContextResponse } from "@nightwatch/api-contract";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";
-import { fetchInvitation } from "../lib/api/invitations";
-import { readInvitation } from "../lib/auth/continuation";
+import { acceptInvitation, fetchInvitation } from "../lib/api/invitations";
+import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
+import { readInvitation, rememberInvitation } from "../lib/auth/continuation";
 import { requireAnonLoader } from "../lib/auth/loaders";
 import { RootLayout } from "../router";
 import { AcceptInvitationPage } from "./AcceptInvitationPage";
@@ -17,7 +18,7 @@ type TestSessionData = {
   user: { id: string; email: string; emailVerified: boolean };
 } | null;
 
-const { sessionStore, signUpEmailMock, signInEmailMock, acceptInvitationMock } =
+const { sessionStore, signUpEmailMock, signInEmailMock } =
   vi.hoisted(() => {
     const listeners = new Set<() => void>();
     let snapshot: { data: TestSessionData; isPending: boolean } = {
@@ -46,7 +47,6 @@ const { sessionStore, signUpEmailMock, signInEmailMock, acceptInvitationMock } =
       },
       signUpEmailMock: vi.fn(),
       signInEmailMock: vi.fn(),
-      acceptInvitationMock: vi.fn(),
     };
   });
 
@@ -64,7 +64,7 @@ vi.mock("better-auth/react", async () => {
         Promise.resolve({ data: sessionStore.get().data, error: null }),
       signUp: { email: signUpEmailMock },
       signIn: { email: signInEmailMock },
-      organization: { acceptInvitation: acceptInvitationMock },
+      organization: {},
       signOut: vi.fn(),
     }),
   };
@@ -77,10 +77,26 @@ vi.mock("better-auth/client/plugins", () => ({
 
 vi.mock("../lib/api/invitations", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
-  return { ...original, fetchInvitation: vi.fn() };
+  return { ...original, fetchInvitation: vi.fn(), acceptInvitation: vi.fn() };
 });
 
+vi.mock("../lib/api/me", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchMeContext: vi.fn(),
+  updateActiveOrganization: vi.fn(),
+}));
+
 const fetchInvitationMock = vi.mocked(fetchInvitation);
+const acceptInvitationMock = vi.mocked(acceptInvitation);
+const fetchMeContextMock = vi.mocked(fetchMeContext);
+const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
+
+const ORG = "11111111-1111-4111-8111-111111111111";
+const context: MeContextResponse = {
+  user: { id: "user-1", name: "User", email: "new@example.com", emailVerified: true, twoFactorEnabled: false },
+  organizations: [{ id: ORG, name: "Acme Corp", slug: "acme", role: "viewer" }],
+  lastActiveTenantId: null,
+};
 
 const invitation: InvitationResponse = {
   invitation: {
@@ -118,6 +134,7 @@ function renderPage(path = "/accept-invitation/inv-123") {
   );
   render(<RouterProvider router={router} />);
   return {
+    router,
     resolveSession() {
       act(() => {
         sessionStore.set({
@@ -142,6 +159,8 @@ describe("AcceptInvitationPage", () => {
     signUpEmailMock.mockReset();
     signInEmailMock.mockReset();
     acceptInvitationMock.mockReset();
+    fetchMeContextMock.mockReset();
+    updateActiveOrganizationMock.mockReset();
     sessionStorage.clear();
   });
 
@@ -172,10 +191,12 @@ describe("AcceptInvitationPage", () => {
       data: TestSessionData;
       error: null;
     }>();
-    const acceptance = Promise.withResolvers<{ data: object; error: null }>();
+    const acceptance = Promise.withResolvers<{ organizationId: string }>();
     fetchInvitationMock.mockResolvedValue(invitation);
     signInEmailMock.mockReturnValue(signIn.promise);
     acceptInvitationMock.mockReturnValue(acceptance.promise);
+    fetchMeContextMock.mockResolvedValue(context);
+    updateActiveOrganizationMock.mockResolvedValue({ ...context, lastActiveTenantId: ORG });
     const user = userEvent.setup();
     const page = renderPage();
 
@@ -207,7 +228,7 @@ describe("AcceptInvitationPage", () => {
     expect(readInvitation()).toBe("inv-123");
     expect(screen.queryByTestId("location")).toBeNull();
     await act(async () => {
-      acceptance.resolve({ data: {}, error: null });
+      acceptance.resolve({ organizationId: ORG });
       await acceptance.promise;
     });
 
@@ -215,6 +236,51 @@ describe("AcceptInvitationPage", () => {
       "/workspace",
     );
     expect(readInvitation()).toBeNull();
+    expect(acceptInvitationMock).toHaveBeenCalledTimes(1);
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    expect(updateActiveOrganizationMock).toHaveBeenCalledWith({ organizationId: ORG });
+  });
+
+  it("keeps the invitation pending on cap denial, announces the cap, and focuses the error", async () => {
+    fetchInvitationMock.mockResolvedValue(invitation);
+    acceptInvitationMock.mockRejectedValue(new ApiError("ORGANIZATION_MEMBERSHIP_LIMIT_REACHED", "cap", 409));
+    sessionStore.set({ user: { id: "user-1", email: "new@example.com", emailVerified: true } });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ครบ 1,000 คน");
+    await waitFor(() => expect(screen.getByRole("alert").parentElement).toHaveFocus());
+    expect(updateActiveOrganizationMock).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat accepted mutation when later active selection fails", async () => {
+    fetchInvitationMock.mockResolvedValue(invitation);
+    acceptInvitationMock.mockResolvedValue({ organizationId: ORG });
+    fetchMeContextMock.mockResolvedValue(context);
+    updateActiveOrganizationMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "offline", 0));
+    sessionStore.set({ user: { id: "user-1", email: "new@example.com", emailVerified: true } });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("เลือกองค์กรไม่สำเร็จ");
+    expect(screen.queryByRole("button", { name: "เข้าร่วมองค์กร" })).toBeNull();
+    expect(screen.getByRole("link", { name: "ไปหน้าองค์กร" })).toBeInTheDocument();
+    expect(acceptInvitationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not publish A completion or erase B continuation after navigation", async () => {
+    const acceptance = Promise.withResolvers<{ organizationId: string }>();
+    fetchInvitationMock.mockResolvedValue(invitation);
+    acceptInvitationMock.mockReturnValue(acceptance.promise);
+    fetchMeContextMock.mockResolvedValue(context);
+    sessionStore.set({ user: { id: "user-1", email: "new@example.com", emailVerified: true } });
+    const { router } = renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }));
+    await act(async () => { await router.navigate("/workspace"); });
+    rememberInvitation("inv-B");
+    await act(async () => acceptance.resolve({ organizationId: ORG }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
+    expect(readInvitation()).toBe("inv-B");
+    expect(fetchMeContextMock).not.toHaveBeenCalled();
+    expect(updateActiveOrganizationMock).not.toHaveBeenCalled();
   });
 
   it("refuses an invitation addressed to a different email", async () => {

@@ -11,6 +11,7 @@ import {
   memberListQueryKey,
 } from "../lib/api/members";
 import { useTenant } from "../lib/tenant/TenantProvider";
+import { InvitationPanel } from "./organization-members/InvitationPanel";
 
 const LIMIT = 50;
 
@@ -326,7 +327,13 @@ function OrganizationMembersPageForOrganization({
         titleTabIndex={-1}
         titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
       />
-      <div className="overflow-x-auto rounded-md border border-foreground/10 bg-surface">
+      <InvitationPanel
+        key={organization.role}
+        organizationId={organizationId}
+        organizationName={organization.name}
+        actorRole={organization.role === "owner" ? "owner" : "admin"}
+      />
+      <div tabIndex={0} role="region" aria-label="ตารางสมาชิก" className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead className="border-b border-foreground/10 text-foreground-secondary">
             <tr>
