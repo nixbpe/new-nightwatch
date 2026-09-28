@@ -15,6 +15,7 @@ Follow the applicable reference, including its verification requirements. Keep d
 | UI, fonts, themes, components and accessibility | [Design system](docs/design-system.md)       |
 | Quality gates and verification commands         | [Quality scripts](scripts/quality/README.md) |
 | Epics, Features, Stories and Technical Specs    | [Templates](docs/templates/)                 |
+| Pull requests and PR review                     | [PR template](.github/PULL_REQUEST_TEMPLATE.md) |
 
 
 ## Golden Rules
