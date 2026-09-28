@@ -187,10 +187,12 @@ test.describe("signed-in settings", () => {
                 hairlineBottom: hairline.bottom,
               };
             });
-            expect.soft(
-              geometry.scrollHeight,
-              `${theme} /settings/${route} ${width}x${height} ${textScale}%`,
-            ).toBe(geometry.clientHeight);
+            expect
+              .soft(
+                geometry.scrollHeight,
+                `${theme} /settings/${route} ${width}x${height} ${textScale}%`,
+              )
+              .toBe(geometry.clientHeight);
             expect(geometry.underlineWidth).toBe("2px");
             expect(geometry.hairlineWidth).toBe("1px");
             expect(geometry.underlineBottom).toBe(geometry.hairlineBottom);
