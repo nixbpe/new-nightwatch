@@ -75,7 +75,13 @@ function OrganizationMembersPageForOrganization({
   const memberPageHeadingRef = useRef<HTMLHeadingElement>(null);
   const location = useLocation();
   useEffect(() => {
-    if (location.state?.focusMemberHeadingFor === organizationId) {
+    const navigationState: unknown = location.state;
+    if (
+      navigationState !== null &&
+      typeof navigationState === "object" &&
+      "focusMemberHeadingFor" in navigationState &&
+      navigationState.focusMemberHeadingFor === organizationId
+    ) {
       memberPageHeadingRef.current?.focus();
     }
   }, [location.key, location.state, organizationId]);
@@ -559,12 +565,14 @@ function OrganizationMembersPageForOrganization({
       {roleScopeCurrent && confirmation && (
         <MemberActionDialog
           title="ยืนยันการเปลี่ยนบทบาท"
-          description={`เปลี่ยนบทบาทของ ${confirmation.member.name} ในองค์กร ${organization.name} (${organization.slug}) เป็น ${ROLE_LABELS[confirmation.role]} การเปลี่ยนสิทธิ์เจ้าของมีผลต่อการจัดการสมาชิกและการเข้าถึงองค์กร`}
+          description={`เปลี่ยนบทบาทของ ${confirmation.member.name} ในองค์กร ${organization.name} (${organization.slug}) เป็น ${String(ROLE_LABELS[confirmation.role])} การเปลี่ยนสิทธิ์เจ้าของมีผลต่อการจัดการสมาชิกและการเข้าถึงองค์กร`}
           confirmLabel="ยืนยันการเปลี่ยนบทบาท"
           pending={rolePending}
           opener={confirmation.opener}
           fallbackFocus={memberPageHeadingRef}
-          onCancel={() => setConfirmation(null)}
+          onCancel={() => {
+            setConfirmation(null);
+          }}
           onConfirm={() =>
             void submitRole(confirmation.member, confirmation.role)
           }

@@ -27,6 +27,7 @@ export function MemberActionDialog({
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     cancel.current?.focus();
+    const fallbackHeading = fallbackFocus.current;
     const keepFocusInside = (event: FocusEvent) => {
       if (
         event.target instanceof Node &&
@@ -39,8 +40,7 @@ export function MemberActionDialog({
     return () => {
       document.removeEventListener("focusin", keepFocusInside);
       if (opener?.isConnected) opener.focus();
-      else if (fallbackFocus.current?.isConnected)
-        fallbackFocus.current.focus();
+      else if (fallbackHeading?.isConnected) fallbackHeading.focus();
     };
   }, [opener, fallbackFocus]);
 

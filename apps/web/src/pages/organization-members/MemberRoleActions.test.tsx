@@ -13,24 +13,23 @@ import {
 import { OrganizationMembersPage } from "../OrganizationMembersPage";
 
 const org = "11111111-1111-4111-8111-111111111111";
+const ada = {
+  id: "member-1",
+  userId: "user-1",
+  name: "Ada",
+  email: "ada@example.test",
+  role: "owner",
+} as const;
+const bea = {
+  id: "member-2",
+  userId: "user-2",
+  name: "Bea",
+  email: "bea@example.test",
+  role: "viewer",
+} as const;
 const members: OrganizationMemberListResponse = {
   organizationId: org,
-  members: [
-    {
-      id: "member-1",
-      userId: "user-1",
-      name: "Ada",
-      email: "ada@example.test",
-      role: "owner",
-    },
-    {
-      id: "member-2",
-      userId: "user-2",
-      name: "Bea",
-      email: "bea@example.test",
-      role: "viewer",
-    },
-  ],
+  members: [ada, bea],
   page: { limit: 50, offset: 0, total: 2 },
 };
 let actorRole: "owner" | "admin" | "viewer" | "auditor" = "owner";
@@ -76,7 +75,9 @@ function page() {
   );
 }
 function row(name: string) {
-  return screen.getByText(name).closest("tr")!;
+  const matchingRow = screen.getByText(name).closest("tr");
+  if (!matchingRow) throw new Error(`Member row missing for ${name}`);
+  return matchingRow;
 }
 afterEach(() => {
   vi.resetAllMocks();
@@ -129,7 +130,7 @@ it("admin can directly save a non-owner role but has no owner controls or owner 
     .mockResolvedValueOnce(members)
     .mockResolvedValueOnce({
       ...members,
-      members: [members.members[0]!, { ...members.members[1]!, role: "admin" }],
+      members: [ada, { ...bea, role: "admin" }],
     });
   vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
   const user = userEvent.setup();
@@ -210,9 +211,9 @@ it("LAST_OWNER keeps server-confirmed role, disables duplicate submit and never 
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   await act(async () => {
     pending.reject(new ApiError("LAST_OWNER", "last owner", 400));
-    try {
-      await pending.promise;
-    } catch {}
+    await expect(pending.promise).rejects.toMatchObject({
+      code: "LAST_OWNER",
+    });
   });
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent(
@@ -226,12 +227,9 @@ it("LAST_OWNER keeps server-confirmed role, disables duplicate submit and never 
 });
 
 it("refreshes the latest persisted role after a failed mutation without false success", async () => {
-  const changed = {
+  const changed: OrganizationMemberListResponse = {
     ...members,
-    members: [
-      members.members[0]!,
-      { ...members.members[1]!, role: "auditor" as const },
-    ],
+    members: [ada, { ...bea, role: "auditor" }],
   };
   vi.mocked(fetchOrganizationMembers)
     .mockResolvedValueOnce(members)
@@ -260,10 +258,7 @@ it("does not claim the requested role is current when another actor changes it b
     .mockResolvedValueOnce(members)
     .mockResolvedValueOnce({
       ...members,
-      members: [
-        members.members[0]!,
-        { ...members.members[1]!, role: "auditor" },
-      ],
+      members: [ada, { ...bea, role: "auditor" }],
     });
   vi.mocked(updateOrganizationMemberRole).mockResolvedValueOnce({
     member: {
@@ -297,7 +292,7 @@ it("removes admin role controls after a denied request reveals an owner target",
     .mockResolvedValueOnce(members)
     .mockResolvedValueOnce({
       ...members,
-      members: [members.members[0]!, { ...members.members[1]!, role: "owner" }],
+      members: [ada, { ...bea, role: "owner" }],
     });
   vi.mocked(updateOrganizationMemberRole).mockRejectedValueOnce(
     new ApiError("PERMISSION_DENIED", "denied", 403),

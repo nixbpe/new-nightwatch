@@ -38,7 +38,9 @@ export function MemberRoleActions({
           className={`${textInputClass} min-w-32`}
           value={role}
           disabled={pending}
-          onChange={(event) => setRole(event.target.value as OrganizationRole)}
+          onChange={(event) => {
+            setRole(event.target.value as OrganizationRole);
+          }}
         >
           {(actorRole === "owner"
             ? INVITABLE_ROLES
@@ -54,7 +56,9 @@ export function MemberRoleActions({
         type="button"
         variant="secondary"
         disabled={pending || role === member.role}
-        onClick={(event) => onSave(member, role, event.currentTarget)}
+        onClick={(event) => {
+          onSave(member, role, event.currentTarget);
+        }}
         aria-label={`บันทึกบทบาทของ ${member.name}`}
       >
         บันทึก

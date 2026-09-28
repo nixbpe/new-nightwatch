@@ -66,20 +66,18 @@ const context: MeContextResponse = {
   ],
   lastActiveTenantId: A,
 };
+const aMember = {
+  id: "member-1",
+  userId: "user-1",
+  name: "Ada",
+  email: "ada@example.test",
+  role: "owner",
+} as const;
 const aList: OrganizationMemberListResponse = {
   organizationId: A,
-  members: [
-    {
-      id: "member-1",
-      userId: "user-1",
-      name: "Ada",
-      email: "ada@example.test",
-      role: "owner",
-    },
-  ],
+  members: [aMember],
   page: { limit: 50, offset: 0, total: 1 },
 };
-
 function RepublishSameOrganization({
   queryClient,
 }: {
@@ -457,7 +455,7 @@ it("keeps A role action on denied switch and discards late A mutation after conf
             organizationId: B,
             members: [
               {
-                ...aList.members[0]!,
+                ...aMember,
                 id: "member-b",
                 name: "Bea",
                 role: "viewer",
@@ -532,17 +530,16 @@ it("keeps A role action on denied switch and discards late A mutation after conf
 it.each(["success", "failure"] as const)(
   "refreshes both cached pages and context after role %s",
   async (outcome) => {
+    const secondMember = {
+      ...aMember,
+      id: "member-51",
+      userId: "user-51",
+      name: "Bea",
+      role: "admin",
+    } as const;
     const secondPage: OrganizationMemberListResponse = {
       organizationId: A,
-      members: [
-        {
-          ...aList.members[0]!,
-          id: "member-51",
-          userId: "user-51",
-          name: "Bea",
-          role: "admin",
-        },
-      ],
+      members: [secondMember],
       page: { limit: 50, offset: 50, total: 51 },
     };
     const confirmedFirstPage =
@@ -558,7 +555,7 @@ it.each(["success", "failure"] as const)(
                   ...secondPage,
                   members: [
                     {
-                      ...secondPage.members[0]!,
+                      ...secondMember,
                       role: outcome === "success" ? "viewer" : "auditor",
                     },
                   ],
@@ -571,17 +568,18 @@ it.each(["success", "failure"] as const)(
           : Promise.resolve({ ...aList, page: { ...aList.page, total: 51 } });
       },
     );
-    vi.mocked(updateOrganizationMemberRole).mockImplementation(async () => {
+    vi.mocked(updateOrganizationMemberRole).mockImplementation(() => {
       changed = true;
-      if (outcome === "failure") throw new Error("concurrent update");
-      return {
-        member: {
-          id: "member-51",
-          userId: "user-51",
-          organizationId: A,
-          role: "viewer",
-        },
-      };
+      return outcome === "failure"
+        ? Promise.reject(new Error("concurrent update"))
+        : Promise.resolve({
+            member: {
+              id: "member-51",
+              userId: "user-51",
+              organizationId: A,
+              role: "viewer",
+            },
+          });
     });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
@@ -627,7 +625,7 @@ it.each(["success", "failure"] as const)(
     expect(screen.queryByRole("combobox", { name: "บทบาทของ Ada" })).toBeNull();
     confirmedFirstPage.resolve({
       ...aList,
-      members: [{ ...aList.members[0]!, role: "admin" }],
+      members: [{ ...aMember, role: "admin" }],
       page: { ...aList.page, total: 51 },
     });
     expect(
@@ -653,7 +651,7 @@ it("focuses the live B heading after a confirmed switch closes the A role dialog
             organizationId: B,
             members: [
               {
-                ...aList.members[0]!,
+                ...aMember,
                 id: "member-b",
                 userId: "user-b",
                 name: "Bea",
