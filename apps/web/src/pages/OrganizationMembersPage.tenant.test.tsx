@@ -95,6 +95,7 @@ afterEach(() => vi.resetAllMocks());
 
 it("retires an A invitation on real tenant publication while navigation still holds A", async () => {
   const post = Promise.withResolvers<InvitationCreateResponse>();
+  vi.mocked(createInvitation).mockImplementation(() => post.promise);
   vi.mocked(fetchMeContext).mockResolvedValue(context);
   vi.mocked(updateActiveOrganization).mockResolvedValue({
     ...context,
@@ -130,7 +131,17 @@ it("retires an A invitation on real tenant publication while navigation still ho
     "a-draft@example.test",
   );
   await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-  expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(createInvitation)).toHaveBeenCalledWith(A, {
+    email: "a-draft@example.test",
+    role: "viewer",
+  });
+  expect(
+    screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
+  ).toBeDisabled();
+  expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${A}/members`,
+  );
   await user.click(screen.getByRole("button", { name: "confirm B" }));
   await waitFor(() =>
     expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
@@ -139,12 +150,34 @@ it("retires an A invitation on real tenant publication while navigation still ho
     `/organizations/${A}/members`,
   );
   expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+  expect(
+    screen.queryByRole("heading", { name: "เชิญสมาชิกเข้าสู่ Acme" }),
+  ).toBeNull();
+  expect(screen.getByRole("button", { name: "confirm B" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "navigate B" }));
+  const bEmail = await screen.findByLabelText("อีเมลของผู้ได้รับเชิญ");
+  await user.type(bEmail, "b-draft@example.test");
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${B}/members`,
+  );
+  expect(bEmail).toHaveValue("b-draft@example.test");
   await act(async () => {
     post.resolve({ created: true, emailDispatch: "failed" });
     await post.promise;
   });
   expect(screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ")).toBeNull();
-  expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "navigate B" }));
-  expect(await screen.findByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+  expect(
+    screen.queryByRole("heading", { name: "เชิญสมาชิกเข้าสู่ Acme" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("heading", { name: "เชิญสมาชิกเข้าสู่ Beta" }),
+  ).toBeInTheDocument();
+  expect(screen.getByTestId("active-scope")).toHaveTextContent(B);
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${B}/members`,
+  );
+  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+    "b-draft@example.test",
+  );
+  expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
 });
