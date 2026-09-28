@@ -25,6 +25,6 @@ After all writers stop:
 3. Push and open the PR only when all required local checks pass. If any required check fails or is not run, report the blocker without claiming completion or opening a PR.
 4. Wait for required PR CI checks to pass, then report the work as merge-ready.
 
-The PR body follows file:`.github/PULL_REQUEST_TEMPLATE.md` with every section filled: summary with the closing issue and non-goals, changes, acceptance, evidence, gate results on the head SHA, and risks. Where required by the issue or spec, include `PROOF`, security or isolation evidence and downstream handoff contracts. The Technical Lead reviews it with command:`/review-pr`.
+The PR body follows file:`.github/PULL_REQUEST_TEMPLATE.md` with every section filled: summary with the closing issue and non-goals, changes, acceptance, evidence, gate results on the head SHA, and risks. Where the issue or spec requires `PROOF`, security or isolation evidence, the PR body carries one result line per criterion; the full handoff goes to the Technical Lead, never into the PR. The Technical Lead reviews it with command:`/review-pr`.
 
 Return the PR URL, commit SHA, implementation summary, review and verification results, CI status, and confirmation that the PR was not merged and dependent work was not started.

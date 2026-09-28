@@ -32,16 +32,22 @@ Out of scope:
 ## Evidence
 
 <!--
+One line per claim: what was exercised and the observed result. Link the
+trace, screenshot or test name instead of pasting geometry, test counts,
+commands or record paths.
 - UI: before and after screenshots of the changed surface on desktop
   (1440×900) in both themes. Narrow screens and 200% text follow
   docs/design-system.md LAY-02 in implementation, not here.
 - DB/RLS, security or concurrency: the scenario, the trigger, the state it
   reached and the state it preserved.
+Not here: binding or manifest digests, environment slot names, db:up/db:down
+or cleanup narration, historical-head disclaimers. Those stay in the worker
+handoff to the Technical Lead.
 -->
 
 ## Gates
 
-<!-- Result only, no command output. "not run" is a valid result; a blank is not. Every gate runs on the head SHA. -->
+<!-- These six rows only; no extra rows for focused commands, migrations or smoke scripts. Result only, no command output. "not run" is a valid result; a blank is not. Every gate runs on the head SHA. Notes only for fail, not run or a skip, in one clause. -->
 
 Head SHA:
 
