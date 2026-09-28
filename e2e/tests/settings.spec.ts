@@ -158,9 +158,14 @@ test.describe("signed-in settings", () => {
             });
             await expect(activeTab).toBeVisible();
 
-            if (route === "profile") {
+            if (
+              route === "profile" ||
+              (route === "display" && textScale === 200)
+            ) {
               await tablist.locator("..").screenshot({
-                path: testInfo.outputPath(`${theme}-${width}-${textScale}.png`),
+                path: testInfo.outputPath(
+                  `${route}-${theme}-${width}-${textScale}.png`,
+                ),
               });
             }
 
@@ -242,6 +247,14 @@ test.describe("signed-in settings", () => {
             expect(geometry.underlineBottom).toBeLessThanOrEqual(
               geometry.hairlineBottom,
             );
+            if (textScale === 200 && route === "display") {
+              expect(geometry.underlineBottom).toBe(geometry.hairlineBottom);
+            }
+            if (textScale === 200 && route === "profile") {
+              expect(geometry.underlineBottom).toBeLessThan(
+                geometry.hairlineBottom,
+              );
+            }
           }
         }
       }
@@ -341,7 +354,9 @@ test.describe("signed-in settings", () => {
               ),
               withinBounds: steps.every((step) => {
                 const rect = step.getBoundingClientRect();
-                const label = step.querySelectorAll("span")[1]?.getBoundingClientRect();
+                const label = step
+                  .querySelectorAll("span")[1]
+                  ?.getBoundingClientRect();
                 return (
                   rect.left >= bounds.left &&
                   rect.right <= bounds.right &&
@@ -381,7 +396,10 @@ test.describe("signed-in settings", () => {
                 list: geometry.list,
                 card: actions.card,
                 footer: actions.footer,
-                buttons: actions.buttons.map(({ left, right }) => [left, right]),
+                buttons: actions.buttons.map(({ left, right }) => [
+                  left,
+                  right,
+                ]),
               }),
           );
           expect(geometry.page[0]).toBeLessThanOrEqual(geometry.page[1]);
@@ -395,7 +413,9 @@ test.describe("signed-in settings", () => {
           expect(actions.card[0]).toBeLessThanOrEqual(actions.card[1]);
           expect(actions.footer[0]).toBeLessThanOrEqual(actions.footer[1]);
           expect(actions.buttons).toHaveLength(2);
-          expect(actions.buttons.every((button) => button.withinBounds)).toBe(true);
+          expect(actions.buttons.every((button) => button.withinBounds)).toBe(
+            true,
+          );
           await leftAction.focus();
           await page.keyboard.press("Tab");
           await expect(rightAction).toBeFocused();
