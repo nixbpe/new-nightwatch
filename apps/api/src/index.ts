@@ -12,7 +12,7 @@ const database = createDatabase(authEnv.DATABASE_URL);
 const mailer = createMailer(authEnv, logger);
 await mailer.verify();
 const auth = createAuth({ env, authEnv, logger, database, mailer });
-const app = createApp({ env, authEnv, logger, auth, database });
+const app = createApp({ env, authEnv, logger, auth, database, mailer });
 
 const server = Bun.serve({ port: env.PORT, fetch: app.fetch });
 logger.info({ port: env.PORT, nodeEnv: env.NODE_ENV }, "api listening");

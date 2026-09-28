@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createApp } from "./app";
 import type { Auth } from "./auth";
+import { createMailer } from "./auth/mailer";
 
 const env: Env = { PORT: 4000, LOG_LEVEL: "silent", NODE_ENV: "test" };
 const authEnv: AuthEnv = {
@@ -36,10 +37,12 @@ function makeApp(options?: {
   database?: Database;
   logger?: Logger;
 }) {
+  const mailer = createMailer(authEnv, createLogger({ level: "silent", name: "test" }));
   const app = createApp({
     env,
     authEnv,
     logger: createLogger({ level: "silent", name: "test" }),
+    mailer,
     ...options,
   });
   // Test-only probes exercising the centralized error handler.
@@ -160,6 +163,10 @@ describe("request completion logging", () => {
       {
         input: `/api/organizations/${organizationId}/notification-settings`,
         expected: "/api/organizations/:organizationId/notification-settings",
+      },
+      {
+        input: `/api/organizations/${organizationId}/invitations`,
+        expected: "/api/organizations/:organizationId/invitations",
       },
       {
         input: `/api/organizations/${organizationId}//members//${memberId}/role`,

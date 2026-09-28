@@ -498,6 +498,7 @@ beforeAll(async () => {
     logger: createLogger({ level: "silent", name: "auth-it" }),
     auth,
     database,
+    mailer,
   });
 }, 120_000);
 
@@ -767,11 +768,11 @@ describe("verification continuation and explicit acceptance", () => {
 describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
   it("accepts once under concurrency and cannot restore membership after owner removal", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", "/api/auth/organization/invite-member", {
+    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
       email: userEmail("race"),
       role: "viewer",
     });
-    expect(invite.status).toBe(200);
+    expect(invite.status).toBe(201);
 
     const invitationId = invitationIdFromMail(
       findMail(userEmail("race"), "คำเชิญ").text,
@@ -891,11 +892,11 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 
   it("translates a deterministic membership-conflict accept to the native denial", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", "/api/auth/organization/invite-member", {
+    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
       email: userEmail("preset"),
       role: "viewer",
     });
-    expect(invite.status).toBe(200);
+    expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("preset"), "คำเชิญ").text,
     );
@@ -921,11 +922,11 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 
   it("keeps unrelated database failures visible instead of mislabeling them", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", "/api/auth/organization/invite-member", {
+    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
       email: userEmail("denied"),
       role: "viewer",
     });
-    expect(invite.status).toBe(200);
+    expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("denied"), "คำเชิญ").text,
     );
@@ -959,6 +960,7 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
         logger: createLogger({ level: "silent", name: "auth-it" }),
         auth: readOnlyAuth,
         database: readOnlyDatabase,
+        mailer,
       });
       // The first write fails with SQLSTATE 25006; it is not the race and must
       // not become the 400 denial.
@@ -987,11 +989,11 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
 describe("password recovery cycle", () => {
   it("issues a reset token by mail and rotates the password exactly", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", "/api/auth/organization/invite-member", {
+    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
       email: userEmail("recover"),
       role: "viewer",
     });
-    expect(invite.status).toBe(200);
+    expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("recover"), "คำเชิญ").text,
     );
@@ -1214,6 +1216,7 @@ describe("native password notification origins", () => {
       logger: createLogger({ level: "silent", name: "auth-it" }),
       auth: failingAuth,
       database,
+      mailer,
     });
     const failedChange = await client(failingApp, renewed.cookies())(
       "POST",
@@ -1329,11 +1332,11 @@ describe("native password notification origins", () => {
 describe("TOTP challenge and session boundary", () => {
   it("never yields a session during a pending challenge and accepts a one-time backup code", async () => {
     const owner = await signInOwner();
-    const invite = await owner("POST", "/api/auth/organization/invite-member", {
+    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
       email: userEmail("totp"),
       role: "viewer",
     });
-    expect(invite.status).toBe(200);
+    expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("totp"), "คำเชิญ").text,
     );
@@ -1461,11 +1464,11 @@ describe("MFA notification intent rollback", () => {
     });
     expect(active.status).toBe(200);
     const owner = mfaOwner.request;
-    const invite = await owner("POST", "/api/auth/organization/invite-member", {
+    const invite = await owner("POST", `/api/organizations/${ORG_ID}/invitations`, {
       email: userEmail("mfa-intent-failure"),
       role: "viewer",
     });
-    expect(invite.status).toBe(200);
+    expect(invite.status).toBe(201);
     const invitationId = invitationIdFromMail(
       findMail(userEmail("mfa-intent-failure"), "คำเชิญ").text,
     );
@@ -1503,6 +1506,7 @@ describe("MFA notification intent rollback", () => {
       authEnv,
       logger: createLogger({ level: "silent", name: "auth-it" }),
       auth: failingAuth,
+      mailer,
       database,
     });
     const request = client(failingApp, pending.request.cookies());

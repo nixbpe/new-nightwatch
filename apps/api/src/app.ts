@@ -18,12 +18,14 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { QueryConfig } from "pg";
 import pkg from "../package.json";
 import type { Auth } from "./auth";
+import type { Mailer } from "./auth/mailer";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
 import { registerNotificationInboxRoutes } from "./notifications/routes";
 import { registerOnboardingRoutes } from "./onboarding/routes";
 import {
   createNativeOrganizationMutationGuard,
+  registerOrganizationInvitationRoutes,
   registerOrganizationMemberRoutes,
   registerOrganizationNotificationSettingsRoutes,
 } from "./organization-notifications/routes";
@@ -35,11 +37,13 @@ export type AppDeps = {
   // Optional so tests can build the app without a database.
   auth?: Auth;
   database?: Database;
+  mailer?: Mailer;
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
 const organizationPathBase = "/api/organizations";
 const membersSegment = "members";
+const invitationsSegment = "invitations";
 const notificationSettingsSegment = "notification-settings";
 
 function encodedCharacterLength(
@@ -148,6 +152,10 @@ function logSafeOrganizationPath(path: string): string {
       ) {
         state = "other";
         return notificationSettingsSegment;
+      }
+      if (state === "organization-route" && segment === invitationsSegment) {
+        state = "other";
+        return invitationsSegment;
       }
       if (state === "member") {
         state = "member-route";
@@ -278,6 +286,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
   });
 
   if (deps.auth && deps.database) {
+    if (!deps.mailer) throw new Error("mailer required for invitation routes");
     const { auth, database } = deps;
     // Must run before the auth handler.
     const authCors = cors({
@@ -315,13 +324,20 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       database,
       logger: deps.logger,
     });
+    registerOrganizationInvitationRoutes(app, {
+      auth,
+      authEnv: deps.authEnv,
+      database,
+      logger: deps.logger,
+      mailer: deps.mailer,
+    });
   }
 
   app.notFound((c) => {
     const body: ErrorResponse = {
       error: {
         code: "NOT_FOUND",
-        message: `Route ${c.req.method} ${c.req.path} not found`,
+        message: `Route ${c.req.method} ${logSafePath(c.req.path)} not found`,
       },
     };
     return c.json(body, 404);
@@ -330,7 +346,11 @@ export function createApp(deps: AppDeps): OpenAPIHono {
   app.onError((err, c) => {
     if (err instanceof AppError) {
       deps.logger.warn(
-        { requestId: c.get("requestId"), code: err.code, err },
+        {
+          requestId: c.get("requestId"),
+          code: err.code,
+          err: c.req.path.startsWith("/api/organizations/") ? undefined : err,
+        },
         "request failed",
       );
       const body: ErrorResponse = {
@@ -343,7 +363,10 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       return c.json(body, err.statusCode as ContentfulStatusCode);
     }
     deps.logger.error(
-      { requestId: c.get("requestId"), err },
+      {
+        requestId: c.get("requestId"),
+        err: c.req.path.startsWith("/api/organizations/") ? undefined : err,
+      },
       "unhandled error",
     );
     const body: ErrorResponse = {

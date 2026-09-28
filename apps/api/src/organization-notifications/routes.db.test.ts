@@ -74,6 +74,7 @@ const app = createApp({
   authEnv,
   auth,
   database: runtime,
+  mailer,
   logger: createLogger(
     { level: "info", name: "member-routes-db-test" },
     { write: (line: string) => void auditLines.push(line) },
@@ -260,6 +261,7 @@ describe("organization member HTTP mutations", () => {
       "/api/auth/organization/update-member-role",
       "/api/auth/organization/remove-member",
       "/api/auth/organization/leave",
+      "/api/auth/organization/invite-member",
     ]) {
       const denied = await ownerClient("POST", path, {});
       expect(denied.status).toBe(403);
@@ -287,8 +289,31 @@ describe("organization member HTTP mutations", () => {
       expect.objectContaining({
         action: "legacy:/api/auth/organization/leave",
       }),
+      expect.objectContaining({
+        action: "legacy:/api/auth/organization/invite-member",
+      }),
     ]);
 
+    auditLines.length = 0;
+    const invitationEmail = `created-${run}@example.test`;
+    const sentBefore = mail.length;
+    const created = await ownerClient(
+      "POST",
+      `/api/organizations/${organizationId}/invitations`,
+      { email: invitationEmail, role: "viewer" },
+    );
+    expect(created).toEqual({
+      status: 201,
+      json: { created: true, emailDispatch: "accepted" },
+    });
+    expect(mail.length - sentBefore).toBe(1);
+    expect(mail[sentBefore]?.to).toBe(invitationEmail);
+    expect(
+      (await owner.sql.query(
+        "select status from invitation where organization_id = $1 and email = $2",
+        [organizationId, invitationEmail],
+      )).rows,
+    ).toEqual([{ status: "pending" }]);
     auditLines.length = 0;
     const list = await ownerClient(
       "GET",
