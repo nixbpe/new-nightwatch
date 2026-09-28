@@ -80,10 +80,10 @@ export async function createOrganizationInvitation(
       }>(
         `select exists (
          select 1 from invitation where organization_id = $1
-           and lower(email) = $2 and status = 'pending' and expires_at > now()
+           and lower(email) = $2 and status = 'pending' and expires_at > clock_timestamp()
        ) as "emailExists",
        (select count(*)::int from invitation where organization_id = $1
-         and status = 'pending' and expires_at > now()) as count`,
+         and status = 'pending' and expires_at > clock_timestamp()) as count`,
         [input.organizationId, input.email],
       );
       if (pending.rows[0]?.emailExists) {
@@ -102,9 +102,11 @@ export async function createOrganizationInvitation(
       }
       const id = crypto.randomUUID();
       await client.query(
-        `insert into invitation
+        `with creation_time as materialized (select clock_timestamp() as created_at)
+       insert into invitation
        (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
-       values ($1, $2, $3, $4, 'pending', $5, now() + interval '48 hours', now())`,
+       select $1, $2, $3, $4, 'pending', $5, created_at + interval '48 hours', created_at
+       from creation_time`,
         [id, input.organizationId, input.email, input.role, input.actorUserId],
       );
       return { id, email: input.email, organizationName: name };

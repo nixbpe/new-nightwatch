@@ -374,6 +374,88 @@ describe("first-party invitation create", () => {
     expect(count.rows[0]?.count).toBe(100);
   });
 
+  it("ignores invitations expiring during an organization lock wait and starts the 48h window after the wait", async () => {
+    const holder = await runtime.sql.connect();
+    const expiredEmail = `wait-expired-${run}@example.test`;
+    const freshEmail = `wait-fresh-${run}@example.test`;
+    try {
+      const live = await owner.sql.query<{ count: number }>(
+        "select count(*)::int as count from invitation where organization_id = $1 and status = 'pending' and expires_at > clock_timestamp()",
+        [orgB],
+      );
+      const expiring = 100 - (live.rows[0]?.count ?? 0);
+      expect(expiring).toBeGreaterThan(0);
+      await owner.sql.query(
+        `insert into invitation (id, organization_id, email, role, status, inviter_id, expires_at)
+         select gen_random_uuid()::text, $1,
+           case when n = 1 then $2 else 'wait-cap-' || n || $3 end,
+           'viewer', 'pending', $4, clock_timestamp() + interval '2 seconds'
+         from generate_series(1, $5::int) n`,
+        [orgB, expiredEmail, `-${run}@example.test`, actorIds.both, expiring],
+      );
+      await holder.query("begin");
+      await holder.query(
+        "select id from organization where id = $1 for update",
+        [orgB],
+      );
+      const duplicate = request("both", orgB, expiredEmail);
+      const cap = request("both", orgB, freshEmail);
+      let waiting = false;
+      for (let attempt = 0; attempt < 500 && !waiting; attempt += 1) {
+        const activity = await owner.sql.query<{ count: number }>(
+          `select count(*)::int as count from pg_stat_activity
+           where wait_event_type = 'Lock'
+             and query like 'select name from organization where id = $1 for update%'`,
+        );
+        waiting = (activity.rows[0]?.count ?? 0) >= 2;
+      }
+      expect(waiting).toBe(true);
+      const expiry = await owner.sql.query<{
+        observedAt: Date;
+        expiresAt: Date;
+      }>(
+        `select clock_timestamp() as "observedAt", expires_at as "expiresAt"
+         from invitation where organization_id = $1 and email = $2`,
+        [orgB, expiredEmail],
+      );
+      expect(expiry.rows[0]?.expiresAt.getTime()).toBeGreaterThan(
+        expiry.rows[0]?.observedAt.getTime() ?? 0,
+      );
+      await holder.query("select pg_sleep(2.5)");
+      const release = await holder.query<{ releasedAt: Date }>(
+        'select clock_timestamp() as "releasedAt"',
+      );
+      expect(release.rows[0]?.releasedAt.getTime()).toBeGreaterThan(
+        expiry.rows[0]?.expiresAt.getTime() ?? 0,
+      );
+      await holder.query("commit");
+      const outcomes = await Promise.all([duplicate, cap]);
+      expect(outcomes.map((outcome) => outcome.status)).toEqual([201, 201]);
+      const inserted = await owner.sql.query<{
+        email: string;
+        createdAt: Date;
+        expiresAt: Date;
+      }>(
+        `select email, created_at as "createdAt", expires_at as "expiresAt"
+         from invitation where organization_id = $1 and email = any($2::text[])
+         and created_at >= $3 order by email`,
+        [orgB, [expiredEmail, freshEmail], release.rows[0]?.releasedAt],
+      );
+      expect(inserted.rows.map((row) => row.email)).toEqual([
+        expiredEmail,
+        freshEmail,
+      ]);
+      for (const row of inserted.rows) {
+        expect(row.expiresAt.getTime() - row.createdAt.getTime()).toBe(
+          48 * 60 * 60 * 1000,
+        );
+      }
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+    }
+  }, 15_000);
+
   it("rechecks a downgraded actor after waiting for the organization lock", async () => {
     const holder = await runtime.sql.connect();
     try {
