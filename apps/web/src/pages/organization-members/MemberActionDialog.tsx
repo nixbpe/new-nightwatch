@@ -28,7 +28,10 @@ export function MemberActionDialog({
   useEffect(() => {
     cancel.current?.focus();
     const keepFocusInside = (event: FocusEvent) => {
-      if (event.target instanceof Node && !dialog.current?.contains(event.target)) {
+      if (
+        event.target instanceof Node &&
+        !dialog.current?.contains(event.target)
+      ) {
         (cancel.current?.disabled ? dialog.current : cancel.current)?.focus();
       }
     };
@@ -36,7 +39,8 @@ export function MemberActionDialog({
     return () => {
       document.removeEventListener("focusin", keepFocusInside);
       if (opener?.isConnected) opener.focus();
-      else if (fallbackFocus.current?.isConnected) fallbackFocus.current.focus();
+      else if (fallbackFocus.current?.isConnected)
+        fallbackFocus.current.focus();
     };
   }, [opener, fallbackFocus]);
 
@@ -46,14 +50,26 @@ export function MemberActionDialog({
       onCancel();
     }
     if (event.key !== "Tab") return;
-    const controls = Array.from(dialog.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+    const controls = Array.from(
+      dialog.current?.querySelectorAll<HTMLButtonElement>(
+        "button:not(:disabled)",
+      ) ?? [],
+    );
     const first = controls[0];
     const last = controls[controls.length - 1];
     if (!first || !last) return;
-    if (event.shiftKey && (document.activeElement === first || !dialog.current?.contains(document.activeElement))) {
+    if (
+      event.shiftKey &&
+      (document.activeElement === first ||
+        !dialog.current?.contains(document.activeElement))
+    ) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && (document.activeElement === last || !dialog.current?.contains(document.activeElement))) {
+    } else if (
+      !event.shiftKey &&
+      (document.activeElement === last ||
+        !dialog.current?.contains(document.activeElement))
+    ) {
       event.preventDefault();
       first.focus();
     }
@@ -71,12 +87,38 @@ export function MemberActionDialog({
         tabIndex={-1}
         className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-md border border-control-border bg-surface p-4 text-foreground shadow-lg sm:p-6"
       >
-        <h2 id="member-action-title" className="text-xl font-semibold">{title}</h2>
-        <p id="member-action-description" className="mt-4 break-words text-sm leading-relaxed text-foreground-secondary">{description}</p>
-        {pending && <p role="status" className="mt-3 text-sm text-foreground-secondary">กำลังบันทึกบทบาท…</p>}
+        <h2 id="member-action-title" className="text-xl font-semibold">
+          {title}
+        </h2>
+        <p
+          id="member-action-description"
+          className="mt-4 break-words text-sm leading-relaxed text-foreground-secondary"
+        >
+          {description}
+        </p>
+        {pending && (
+          <p role="status" className="mt-3 text-sm text-foreground-secondary">
+            กำลังบันทึกบทบาท…
+          </p>
+        )}
         <div className="mt-6 flex flex-col gap-2 border-t border-foreground/10 pt-4 sm:flex-row sm:justify-end">
-          <Button ref={cancel} type="button" variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button>
-          <Button type="button" className="min-w-0 whitespace-normal break-words" disabled={pending} onClick={onConfirm}>{pending ? "กำลังบันทึกบทบาท…" : confirmLabel}</Button>
+          <Button
+            ref={cancel}
+            type="button"
+            variant="secondary"
+            disabled={pending}
+            onClick={onCancel}
+          >
+            ยกเลิก
+          </Button>
+          <Button
+            type="button"
+            className="min-w-0 whitespace-normal break-words"
+            disabled={pending}
+            onClick={onConfirm}
+          >
+            {pending ? "กำลังบันทึกบทบาท…" : confirmLabel}
+          </Button>
         </div>
       </div>
     </div>,

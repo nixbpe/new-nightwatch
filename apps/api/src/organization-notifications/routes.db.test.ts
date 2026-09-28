@@ -484,24 +484,51 @@ describe("organization member HTTP mutations", () => {
     auditLines.length = 0;
     const probes = [];
     for (const probedMemberId of [memberIds.owner, crypto.randomUUID()]) {
-      probes.push(await targetClient(
-        "PATCH",
-        `/api/organizations/${organizationId}/members/${probedMemberId}/role`,
-        { role: "viewer" },
-      ));
+      probes.push(
+        await targetClient(
+          "PATCH",
+          `/api/organizations/${organizationId}/members/${probedMemberId}/role`,
+          { role: "viewer" },
+        ),
+      );
     }
     expect(probes[0]).toEqual(probes[1]);
     expect(probes[0]).toEqual({
       status: 403,
-      json: { error: { code: "PERMISSION_DENIED", message: "คุณไม่มีสิทธิ์เปลี่ยนบทบาทสมาชิก" } },
+      json: {
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "คุณไม่มีสิทธิ์เปลี่ยนบทบาทสมาชิก",
+        },
+      },
     });
-    const roleDenials = auditLines.map((line) => JSON.parse(line) as Record<string, unknown>);
-    expect(roleDenials.filter((entry) => entry.msg === "organization access denied")).toEqual([
-      expect.objectContaining({ actorUserId: targetId, action: "organization.member.role.update", code: "PERMISSION_DENIED" }),
-      expect.objectContaining({ actorUserId: targetId, action: "organization.member.role.update", code: "PERMISSION_DENIED" }),
+    const roleDenials = auditLines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>,
+    );
+    expect(
+      roleDenials.filter((entry) => entry.msg === "organization access denied"),
+    ).toEqual([
+      expect.objectContaining({
+        actorUserId: targetId,
+        action: "organization.member.role.update",
+        code: "PERMISSION_DENIED",
+      }),
+      expect.objectContaining({
+        actorUserId: targetId,
+        action: "organization.member.role.update",
+        code: "PERMISSION_DENIED",
+      }),
     ]);
     for (const line of auditLines) {
-      for (const protectedValue of [organizationId, memberIds.owner, memberIds.target, emails.owner, emails.target, "Member owner", "Member target"]) {
+      for (const protectedValue of [
+        organizationId,
+        memberIds.owner,
+        memberIds.target,
+        emails.owner,
+        emails.target,
+        "Member owner",
+        "Member target",
+      ]) {
         expect(line).not.toContain(protectedValue);
       }
     }
@@ -510,10 +537,12 @@ describe("organization member HTTP mutations", () => {
     const opaqueOwnerId = `role-owner-${run}`;
     const opaqueTargetId = `role-target-${run}`;
     await owner.sql.query("update member set id = $2 where id = $1", [
-      memberIds.owner, opaqueOwnerId,
+      memberIds.owner,
+      opaqueOwnerId,
     ]);
     await owner.sql.query("update member set id = $2 where id = $1", [
-      memberIds.target, opaqueTargetId,
+      memberIds.target,
+      opaqueTargetId,
     ]);
     try {
       const lastOwnerRole = await ownerClient(
@@ -522,7 +551,8 @@ describe("organization member HTTP mutations", () => {
         { role: "viewer" },
       );
       expect(lastOwnerRole).toMatchObject({
-        status: 400, json: { error: { code: "LAST_OWNER" } },
+        status: 400,
+        json: { error: { code: "LAST_OWNER" } },
       });
       const opaqueUpdate = await ownerClient(
         "PATCH",
@@ -531,24 +561,35 @@ describe("organization member HTTP mutations", () => {
       );
       expect(opaqueUpdate).toEqual({
         status: 200,
-        json: { member: { id: opaqueTargetId, userId: targetId, organizationId, role: "admin" } },
+        json: {
+          member: {
+            id: opaqueTargetId,
+            userId: targetId,
+            organizationId,
+            role: "admin",
+          },
+        },
       });
       expect(
-        (await owner.sql.query<{ id: string; role: string }>(
-          "select id, role from member where organization_id = $1 and id = any($2::text[]) order by id",
-          [organizationId, [opaqueOwnerId, opaqueTargetId]],
-        )).rows,
+        (
+          await owner.sql.query<{ id: string; role: string }>(
+            "select id, role from member where organization_id = $1 and id = any($2::text[]) order by id",
+            [organizationId, [opaqueOwnerId, opaqueTargetId]],
+          )
+        ).rows,
       ).toEqual([
         { id: opaqueOwnerId, role: "owner" },
         { id: opaqueTargetId, role: "admin" },
       ]);
     } finally {
       await owner.sql.query("update member set id = $2 where id = $1", [
-        opaqueOwnerId, memberIds.owner,
+        opaqueOwnerId,
+        memberIds.owner,
       ]);
-      await owner.sql.query("update member set id = $2, role = 'viewer' where id = $1", [
-        opaqueTargetId, memberIds.target,
-      ]);
+      await owner.sql.query(
+        "update member set id = $2, role = 'viewer' where id = $1",
+        [opaqueTargetId, memberIds.target],
+      );
     }
 
     const role = await ownerClient(
@@ -583,10 +624,22 @@ describe("organization member HTTP mutations", () => {
     expect(adminOwnerProbe).toEqual(adminMissingProbe);
     expect(adminOwnerProbe).toEqual({
       status: 403,
-      json: { error: { code: "PERMISSION_DENIED", message: "เฉพาะเจ้าขององค์กรเท่านั้นที่เปลี่ยนเจ้าของได้" } },
+      json: {
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "เฉพาะเจ้าขององค์กรเท่านั้นที่เปลี่ยนเจ้าของได้",
+        },
+      },
     });
     for (const line of auditLines) {
-      for (const protectedValue of [organizationId, memberIds.owner, emails.owner, emails.target, "Member owner", "Member target"]) {
+      for (const protectedValue of [
+        organizationId,
+        memberIds.owner,
+        emails.owner,
+        emails.target,
+        "Member owner",
+        "Member target",
+      ]) {
         expect(line).not.toContain(protectedValue);
       }
     }

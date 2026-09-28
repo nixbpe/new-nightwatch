@@ -40,9 +40,14 @@ async function state() {
 
 async function reset() {
   for (const role of roles) {
-    await owner.query("update member set role = $2 where id = $1", [members[role], role]);
+    await owner.query("update member set role = $2 where id = $1", [
+      members[role],
+      role,
+    ]);
   }
-  await owner.query("update member set role = 'owner' where id = $1", [secondOwner.member]);
+  await owner.query("update member set role = 'owner' where id = $1", [
+    secondOwner.member,
+  ]);
 }
 
 async function changeWhileRoleRequestWaits(
@@ -57,9 +62,14 @@ async function changeWhileRoleRequestWaits(
   let request: Promise<MemberResponse> | undefined;
   try {
     await holder.query("begin");
-    await holder.query("select id from organization where id = $1 for update", [organizationId]);
+    await holder.query("select id from organization where id = $1 for update", [
+      organizationId,
+    ]);
     request = updateOrganizationMemberRole(database, {
-      organizationId, actorUserId, memberId: targetMemberId, role: nextRole,
+      organizationId,
+      actorUserId,
+      memberId: targetMemberId,
+      role: nextRole,
     });
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
@@ -80,7 +90,10 @@ async function changeWhileRoleRequestWaits(
        ) as waiting`,
     );
     expect(waiting.rows[0]?.waiting).toBe(true);
-    await holder.query("update member set role = $2 where id = $1", [changedMemberId, changedRole]);
+    await holder.query("update member set role = $2 where id = $1", [
+      changedMemberId,
+      changedRole,
+    ]);
     await holder.query("commit");
     return await request;
   } finally {
@@ -97,7 +110,10 @@ beforeAll(async () => {
     "insert into organization (id, name, slug, created_at) values ($1, 'Role test', $2, now())",
     [organizationId, `role-${run}`],
   );
-  for (const [id, role] of [...roles.map((role) => [users[role], role]), [secondOwner.user, "owner"]] as const) {
+  for (const [id, role] of [
+    ...roles.map((role) => [users[role], role]),
+    [secondOwner.user, "owner"],
+  ] as const) {
     await owner.query(
       'insert into "user" (id, name, email, email_verified, created_at, updated_at) values ($1, $2, $3, true, now(), now())',
       [id, `Role ${role}`, `${id}@example.test`],
@@ -131,7 +147,9 @@ describe("locked organization member role mutations", () => {
         for (const next of roles) {
           await reset();
           const before = await state();
-          const allowed = actor === "owner" || (actor === "admin" && target !== "owner" && next !== "owner");
+          const allowed =
+            actor === "owner" ||
+            (actor === "admin" && target !== "owner" && next !== "owner");
           const mutation = updateOrganizationMemberRole(database, {
             organizationId,
             actorUserId: users[actor],
@@ -140,18 +158,33 @@ describe("locked organization member role mutations", () => {
           });
           if (allowed) {
             expect(await mutation).toEqual({
-              id: members[target], userId: users[target], organizationId, role: next,
+              id: members[target],
+              userId: users[target],
+              organizationId,
+              role: next,
             });
           } else {
-            await expect(mutation).rejects.toMatchObject({ statusCode: 403, code: "PERMISSION_DENIED" });
+            await expect(mutation).rejects.toMatchObject({
+              statusCode: 403,
+              code: "PERMISSION_DENIED",
+            });
           }
           const after = await state();
-          expect(after).toEqual(allowed
-            ? before.map((member) => member.id === members[target] ? { ...member, role: next } : member)
-            : before);
-          expect(after.filter((member) => member.role === "owner")).toHaveLength(
-            2 + (allowed && target !== "owner" && next === "owner" ? 1 : 0)
-              - (allowed && target === "owner" && next !== "owner" ? 1 : 0),
+          expect(after).toEqual(
+            allowed
+              ? before.map((member) =>
+                  member.id === members[target]
+                    ? { ...member, role: next }
+                    : member,
+                )
+              : before,
+          );
+          expect(
+            after.filter((member) => member.role === "owner"),
+          ).toHaveLength(
+            2 +
+              (allowed && target !== "owner" && next === "owner" ? 1 : 0) -
+              (allowed && target === "owner" && next !== "owner" ? 1 : 0),
           );
         }
       }
@@ -165,61 +198,118 @@ describe("locked organization member role mutations", () => {
     for (const memberId of [members.owner, crypto.randomUUID()]) {
       try {
         await updateOrganizationMemberRole(database, {
-          organizationId, actorUserId: users.admin, memberId, role: "viewer",
+          organizationId,
+          actorUserId: users.admin,
+          memberId,
+          role: "viewer",
         });
         throw new Error("admin unexpectedly changed a protected target");
       } catch (error) {
-        if (error instanceof Error && error.message === "admin unexpectedly changed a protected target") throw error;
+        if (
+          error instanceof Error &&
+          error.message === "admin unexpectedly changed a protected target"
+        )
+          throw error;
         denials.push(error);
       }
     }
-    expect(denials[0]).toMatchObject({ statusCode: 403, code: "PERMISSION_DENIED" });
+    expect(denials[0]).toMatchObject({
+      statusCode: 403,
+      code: "PERMISSION_DENIED",
+    });
     expect(denials[1]).toEqual(denials[0]);
     expect(await state()).toEqual(before);
   });
 
   it("checks the exact owner token and rejects the last-owner demotion without changing state", async () => {
     await reset();
-    await owner.query("update member set role = 'homeowner' where id = $1", [members.viewer]);
-    await owner.query("update member set role = 'viewer' where id = $1", [secondOwner.member]);
+    await owner.query("update member set role = 'homeowner' where id = $1", [
+      members.viewer,
+    ]);
+    await owner.query("update member set role = 'viewer' where id = $1", [
+      secondOwner.member,
+    ]);
     const before = await state();
-    await expect(updateOrganizationMemberRole(database, {
-      organizationId, actorUserId: users.owner, memberId: members.owner, role: "admin",
-    })).rejects.toMatchObject({ statusCode: 400, code: "LAST_OWNER" });
+    await expect(
+      updateOrganizationMemberRole(database, {
+        organizationId,
+        actorUserId: users.owner,
+        memberId: members.owner,
+        role: "admin",
+      }),
+    ).rejects.toMatchObject({ statusCode: 400, code: "LAST_OWNER" });
     expect(await state()).toEqual(before);
   });
 
   it("rechecks a demoted actor after waiting for the organization lock", async () => {
     await reset();
     const before = await state();
-    await expect(changeWhileRoleRequestWaits(
-      users.admin, members.viewer, "auditor", members.admin, "viewer",
-    )).rejects.toMatchObject({ statusCode: 403, code: "PERMISSION_DENIED" });
-    expect(await state()).toEqual(before.map((member) =>
-      member.id === members.admin ? { ...member, role: "viewer" } : member));
+    await expect(
+      changeWhileRoleRequestWaits(
+        users.admin,
+        members.viewer,
+        "auditor",
+        members.admin,
+        "viewer",
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: "PERMISSION_DENIED" });
+    expect(await state()).toEqual(
+      before.map((member) =>
+        member.id === members.admin ? { ...member, role: "viewer" } : member,
+      ),
+    );
   });
 
   it("rechecks a promoted owner target after waiting for the organization lock", async () => {
     await reset();
     const before = await state();
-    await expect(changeWhileRoleRequestWaits(
-      users.admin, members.viewer, "auditor", members.viewer, "owner",
-    )).rejects.toMatchObject({ statusCode: 403, code: "PERMISSION_DENIED" });
-    expect(await state()).toEqual(before.map((member) =>
-      member.id === members.viewer ? { ...member, role: "owner" } : member));
+    await expect(
+      changeWhileRoleRequestWaits(
+        users.admin,
+        members.viewer,
+        "auditor",
+        members.viewer,
+        "owner",
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: "PERMISSION_DENIED" });
+    expect(await state()).toEqual(
+      before.map((member) =>
+        member.id === members.viewer ? { ...member, role: "owner" } : member,
+      ),
+    );
   });
 
   it("serializes simultaneous demotions of two owners so exactly one wins", async () => {
     await reset();
     const outcomes = await Promise.allSettled([
-      updateOrganizationMemberRole(database, { organizationId, actorUserId: users.owner, memberId: members.owner, role: "viewer" }),
-      updateOrganizationMemberRole(database, { organizationId, actorUserId: secondOwner.user, memberId: secondOwner.member, role: "viewer" }),
+      updateOrganizationMemberRole(database, {
+        organizationId,
+        actorUserId: users.owner,
+        memberId: members.owner,
+        role: "viewer",
+      }),
+      updateOrganizationMemberRole(database, {
+        organizationId,
+        actorUserId: secondOwner.user,
+        memberId: secondOwner.member,
+        role: "viewer",
+      }),
     ]);
-    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
-    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    expect(
+      outcomes.filter((outcome) => outcome.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      outcomes.filter((outcome) => outcome.status === "rejected"),
+    ).toHaveLength(1);
     const rejected = outcomes.find((outcome) => outcome.status === "rejected");
-    if (!rejected || rejected.status !== "rejected") throw new Error("missing losing demotion");
-    expect(rejected.reason).toMatchObject({ statusCode: 400, code: "LAST_OWNER" });
-    expect((await state()).filter((member) => member.role === "owner")).toHaveLength(1);
+    if (!rejected || rejected.status !== "rejected")
+      throw new Error("missing losing demotion");
+    expect(rejected.reason).toMatchObject({
+      statusCode: 400,
+      code: "LAST_OWNER",
+    });
+    expect(
+      (await state()).filter((member) => member.role === "owner"),
+    ).toHaveLength(1);
   });
 });

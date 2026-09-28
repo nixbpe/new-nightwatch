@@ -17,8 +17,16 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { createInvitation } from "../lib/api/invitations";
-import { ME_CONTEXT_QUERY_KEY, fetchMeContext, updateActiveOrganization } from "../lib/api/me";
-import { fetchOrganizationMembers, memberListQueryKey, updateOrganizationMemberRole } from "../lib/api/members";
+import {
+  ME_CONTEXT_QUERY_KEY,
+  fetchMeContext,
+  updateActiveOrganization,
+} from "../lib/api/me";
+import {
+  fetchOrganizationMembers,
+  memberListQueryKey,
+  updateOrganizationMemberRole,
+} from "../lib/api/members";
 import {
   claimContextPublication,
   createContextPublicationClaim,
@@ -98,7 +106,10 @@ function SwitcherView() {
       <OrgSwitcher collapsed={false} />
       <output data-testid="location">{useLocation().pathname}</output>
       <Routes>
-        <Route path="/organizations/:organizationId/members" element={<OrganizationMembersPage />} />
+        <Route
+          path="/organizations/:organizationId/members"
+          element={<OrganizationMembersPage />}
+        />
       </Routes>
     </>
   );
@@ -117,7 +128,11 @@ function TenantView() {
       </button>
       <button
         type="button"
-        onClick={() => void navigate(`/organizations/${B}/members`, { state: { focusMemberHeadingFor: B } })}
+        onClick={() =>
+          void navigate(`/organizations/${B}/members`, {
+            state: { focusMemberHeadingFor: B },
+          })
+        }
       >
         navigate B
       </button>
@@ -421,21 +436,41 @@ it("retires an A invitation on real tenant publication while navigation still ho
 });
 
 it("keeps A role action on denied switch and discards late A mutation after confirmed B", async () => {
-  const patch = Promise.withResolvers<{ member: { id: string; userId: string; organizationId: string; role: "admin" } }>();
+  const patch = Promise.withResolvers<{
+    member: {
+      id: string;
+      userId: string;
+      organizationId: string;
+      role: "admin";
+    };
+  }>();
   vi.mocked(updateOrganizationMemberRole).mockReturnValue(patch.promise);
   vi.mocked(fetchMeContext).mockResolvedValue(context);
   vi.mocked(updateActiveOrganization)
     .mockRejectedValueOnce(new Error("denied"))
     .mockResolvedValueOnce({ ...context, lastActiveTenantId: B });
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
-    Promise.resolve(id === A ? aList : {
-      organizationId: B,
-      members: [{ ...aList.members[0]!, id: "member-b", name: "Bea", role: "viewer" }],
-      page: { limit: 50, offset: 0, total: 1 },
-    }),
+    Promise.resolve(
+      id === A
+        ? aList
+        : {
+            organizationId: B,
+            members: [
+              {
+                ...aList.members[0]!,
+                id: "member-b",
+                name: "Bea",
+                role: "viewer",
+              },
+            ],
+            page: { limit: 50, offset: 0, total: 1 },
+          },
+    ),
   );
   const user = userEvent.setup();
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -446,101 +481,192 @@ it("keeps A role action on denied switch and discards late A mutation after conf
     </QueryClientProvider>,
   );
   await screen.findByText("Ada");
-  await user.selectOptions(screen.getByRole("combobox", { name: "บทบาทของ Ada" }), "admin");
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "บทบาทของ Ada" }),
+    "admin",
+  );
   await user.click(screen.getByRole("button", { name: "บันทึกบทบาทของ Ada" }));
   await user.click(screen.getByRole("button", { name: "confirm B" }));
   expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
   expect(screen.getByRole("dialog")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }));
+  await user.click(
+    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
+  );
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   await user.click(screen.getByRole("button", { name: "confirm B" }));
-  await waitFor(() => expect(screen.getByTestId("active-scope")).toHaveTextContent(B));
+  await waitFor(() =>
+    expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
+  );
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.getByTestId("location")).toHaveTextContent(`/organizations/${A}/members`);
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${A}/members`,
+  );
   const oldHeading = screen.getByRole("heading", { name: "สมาชิก" });
   expect(oldHeading).toHaveFocus();
   await user.click(screen.getByRole("button", { name: "navigate B" }));
   expect(await screen.findByText("Bea")).toBeInTheDocument();
   expect(oldHeading.isConnected).toBe(false);
   expect(screen.getByRole("heading", { name: "สมาชิก" })).toHaveFocus();
-  expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue("viewer");
+  expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue(
+    "viewer",
+  );
   await act(async () => {
-    patch.resolve({ member: { id: "member-1", userId: "user-1", organizationId: A, role: "admin" } });
+    patch.resolve({
+      member: {
+        id: "member-1",
+        userId: "user-1",
+        organizationId: A,
+        role: "admin",
+      },
+    });
     await patch.promise;
   });
   expect(screen.getByTestId("active-scope")).toHaveTextContent(B);
-  expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue("viewer");
+  expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue(
+    "viewer",
+  );
   expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
-it.each(["success", "failure"] as const)("refreshes both cached pages and context after role %s", async (outcome) => {
-  const secondPage: OrganizationMemberListResponse = {
-    organizationId: A,
-    members: [{ ...aList.members[0]!, id: "member-51", userId: "user-51", name: "Bea", role: "admin" }],
-    page: { limit: 50, offset: 50, total: 51 },
-  };
-  const confirmedFirstPage = Promise.withResolvers<OrganizationMemberListResponse>();
-  let changed = false;
-  vi.mocked(fetchMeContext).mockResolvedValue(context);
-  vi.mocked(fetchOrganizationMembers).mockImplementation((_id, _limit, offset) => {
-    if (offset === 50) {
-      return Promise.resolve(changed
-        ? { ...secondPage, members: [{ ...secondPage.members[0]!, role: outcome === "success" ? "viewer" : "auditor" }] }
-        : secondPage);
-    }
-    return changed ? confirmedFirstPage.promise : Promise.resolve({ ...aList, page: { ...aList.page, total: 51 } });
-  });
-  vi.mocked(updateOrganizationMemberRole).mockImplementation(async () => {
-    changed = true;
-    if (outcome === "failure") throw new Error("concurrent update");
-    return { member: { id: "member-51", userId: "user-51", organizationId: A, role: "viewer" } };
-  });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
-  const user = userEvent.setup();
-  render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
-          <TenantView />
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
-  );
-  expect(await screen.findByText("Ada")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-  expect(await screen.findByText("Bea")).toBeInTheDocument();
-  await user.selectOptions(screen.getByRole("combobox", { name: "บทบาทของ Bea" }), "viewer");
-  await user.click(screen.getByRole("button", { name: "บันทึกบทบาทของ Bea" }));
-  expect(await screen.findByText(outcome === "success" ? "บันทึกบทบาทแล้ว" : "บันทึกบทบาทไม่สำเร็จ โหลดบทบาทล่าสุดแล้ว")).toBeInTheDocument();
-  expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue(outcome === "success" ? "viewer" : "auditor");
-  expect(queryClient.getQueryState(ME_CONTEXT_QUERY_KEY)?.isInvalidated).toBe(true);
-  expect(queryClient.getQueryState(memberListQueryKey(A, 50, 0))?.isInvalidated).toBe(true);
-  await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
-  expect(screen.getByText("กำลังโหลดสมาชิก")).toBeInTheDocument();
-  expect(screen.queryByRole("combobox", { name: "บทบาทของ Ada" })).toBeNull();
-  confirmedFirstPage.resolve({
-    ...aList,
-    members: [{ ...aList.members[0]!, role: "admin" }],
-    page: { ...aList.page, total: 51 },
-  });
-  expect(await screen.findByRole("combobox", { name: "บทบาทของ Ada" })).toHaveValue("admin");
-  expect(vi.mocked(fetchOrganizationMembers).mock.calls.filter(([, , offset]) => offset === 0)).toHaveLength(2);
-});
+it.each(["success", "failure"] as const)(
+  "refreshes both cached pages and context after role %s",
+  async (outcome) => {
+    const secondPage: OrganizationMemberListResponse = {
+      organizationId: A,
+      members: [
+        {
+          ...aList.members[0]!,
+          id: "member-51",
+          userId: "user-51",
+          name: "Bea",
+          role: "admin",
+        },
+      ],
+      page: { limit: 50, offset: 50, total: 51 },
+    };
+    const confirmedFirstPage =
+      Promise.withResolvers<OrganizationMemberListResponse>();
+    let changed = false;
+    vi.mocked(fetchMeContext).mockResolvedValue(context);
+    vi.mocked(fetchOrganizationMembers).mockImplementation(
+      (_id, _limit, offset) => {
+        if (offset === 50) {
+          return Promise.resolve(
+            changed
+              ? {
+                  ...secondPage,
+                  members: [
+                    {
+                      ...secondPage.members[0]!,
+                      role: outcome === "success" ? "viewer" : "auditor",
+                    },
+                  ],
+                }
+              : secondPage,
+          );
+        }
+        return changed
+          ? confirmedFirstPage.promise
+          : Promise.resolve({ ...aList, page: { ...aList.page, total: 51 } });
+      },
+    );
+    vi.mocked(updateOrganizationMemberRole).mockImplementation(async () => {
+      changed = true;
+      if (outcome === "failure") throw new Error("concurrent update");
+      return {
+        member: {
+          id: "member-51",
+          userId: "user-51",
+          organizationId: A,
+          role: "viewer",
+        },
+      };
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider>
+          <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+            <TenantView />
+          </MemoryRouter>
+        </TenantProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(await screen.findByText("Bea")).toBeInTheDocument();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "บทบาทของ Bea" }),
+      "viewer",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "บันทึกบทบาทของ Bea" }),
+    );
+    expect(
+      await screen.findByText(
+        outcome === "success"
+          ? "บันทึกบทบาทแล้ว"
+          : "บันทึกบทบาทไม่สำเร็จ โหลดบทบาทล่าสุดแล้ว",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue(
+      outcome === "success" ? "viewer" : "auditor",
+    );
+    expect(queryClient.getQueryState(ME_CONTEXT_QUERY_KEY)?.isInvalidated).toBe(
+      true,
+    );
+    expect(
+      queryClient.getQueryState(memberListQueryKey(A, 50, 0))?.isInvalidated,
+    ).toBe(true);
+    await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
+    expect(screen.getByText("กำลังโหลดสมาชิก")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "บทบาทของ Ada" })).toBeNull();
+    confirmedFirstPage.resolve({
+      ...aList,
+      members: [{ ...aList.members[0]!, role: "admin" }],
+      page: { ...aList.page, total: 51 },
+    });
+    expect(
+      await screen.findByRole("combobox", { name: "บทบาทของ Ada" }),
+    ).toHaveValue("admin");
+    expect(
+      vi
+        .mocked(fetchOrganizationMembers)
+        .mock.calls.filter(([, , offset]) => offset === 0),
+    ).toHaveLength(2);
+  },
+);
 
 it("focuses the live B heading after a confirmed switch closes the A role dialog", async () => {
   const switchResponse = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockResolvedValue(context);
   vi.mocked(updateActiveOrganization).mockReturnValue(switchResponse.promise);
-  vi.mocked(fetchOrganizationMembers).mockImplementation((id) => Promise.resolve(
-    id === A ? aList : {
-      organizationId: B,
-      members: [{ ...aList.members[0]!, id: "member-b", userId: "user-b", name: "Bea" }],
-      page: { limit: 50, offset: 0, total: 1 },
-    },
-  ));
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
+    Promise.resolve(
+      id === A
+        ? aList
+        : {
+            organizationId: B,
+            members: [
+              {
+                ...aList.members[0]!,
+                id: "member-b",
+                userId: "user-b",
+                name: "Bea",
+              },
+            ],
+            page: { limit: 50, offset: 0, total: 1 },
+          },
+    ),
+  );
   const user = userEvent.setup();
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -553,7 +679,10 @@ it("focuses the live B heading after a confirmed switch closes the A role dialog
   await screen.findByText("Ada");
   await user.click(screen.getByRole("button", { name: /Acme/ }));
   await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
-  await user.selectOptions(screen.getByRole("combobox", { name: "บทบาทของ Ada" }), "admin");
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "บทบาทของ Ada" }),
+    "admin",
+  );
   await user.click(screen.getByRole("button", { name: "บันทึกบทบาทของ Ada" }));
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "ยกเลิก" })).toHaveFocus();
@@ -561,7 +690,11 @@ it("focuses the live B heading after a confirmed switch closes the A role dialog
     switchResponse.resolve({ ...context, lastActiveTenantId: B });
     await switchResponse.promise;
   });
-  await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent(`/organizations/${B}/members`));
+  await waitFor(() =>
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${B}/members`,
+    ),
+  );
   const heading = screen.getByRole("heading", { name: "สมาชิก" });
   expect(heading).toHaveFocus();
   expect(heading.isConnected).toBe(true);
