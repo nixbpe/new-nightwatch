@@ -1,202 +1,72 @@
-# App shell structure
+# App shell
 
-Shell code lives in `apps/web/src/components/shell/`. It follows the
-reference renders in `docs/ref/designs/` (README there) and the token rules
-in `docs/design-system.md`. Scope is layout and navigation only; page content
-was not redesigned.
+The shell is the chrome around every signed-in page: a sidebar, a header and a scrollable main column. Tokens, type and spacing follow `docs/design-system.md`. Routes without chrome (sign-in, password reset, invitation, two-factor, e-mail verification, onboarding) render in a bare layout; the not-found page stands outside both.
 
 ## Layout
 
 ```
 ┌──────────┬──────────────────────────────────────────────┐
-│ Org      │ ⊟  Org › Page            [ค้นหาทั้งหมด… ⌘K] 🔔 │  header (h-14)
+│ Org      │ ⊟  Org › Page            [ค้นหาทั้งหมด… ⌘K] 🔔 │  header
 │ switcher ├──────────────────────────────────────────────┤
 │          │                                              │
-│ nav      │  <main> — scrollable, full width, 32px pad   │
-│ sections │      routed page (inside ErrorBoundary)      │
+│ nav      │  main: scrollable, full width, 32 px padding │
+│ sections │      routed page inside an error boundary    │
 │          │                                              │
-│ account  │  © NightWatch (footer, bottom of scroll)     │
+│ account  │  footer at the bottom of the scroll          │
 └──────────┴──────────────────────────────────────────────┘
 ```
 
-- **`AppShell.tsx`** — full-height sidebar beside a header + main column.
-  Sidebar width follows the breakpoint: expanded (240px) at `lg`+, icon rail
-  (56px) below `lg`, a slide-in drawer below `sm`. The header toggle
-  overrides the breakpoint default until the breakpoint itself changes.
-  ⌘K / Ctrl+K opens the command palette from anywhere in the shell.
-- **`AuthLayout.tsx`** — plain `<Outlet/>` for every no-chrome route
-  (`/login`, `/forgot-password`, `/reset-password`,
-  `/accept-invitation/:id`, `/two-factor`, `/verify-email`, `/onboarding`).
-  Layout switching is structural: which layout a route nests under in
-  `router.tsx`, gated by the existing loaders in `lib/auth/loaders.ts`. No
-  extra client-side redirect guard was added (see the comment in
-  `AuthLayout.tsx` for why).
-- **`NotFoundPage`** (`*`) stays outside both layouts.
+| Region            | Size and behavior                                                                                                      |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Sidebar, expanded | 240 px at 1024 px and wider                                                                                            |
+| Sidebar, rail     | 56 px icon rail below 1024 px                                                                                          |
+| Sidebar, drawer   | Slide-in over the page below 640 px; modal, focus moves to its close control on open and back to the toggle on close   |
+| Header            | 56 px: sidebar toggle, breadcrumb, search-all field with a ⌘K / Ctrl+K hint, notifications; no product logo or avatar |
+| Main              | Scrollable, 32 px padding; page column 960 px left-aligned with 24 px rhythm                                           |
 
-`TenantProvider` wraps `AppShell` (not just the workspace page) because the
-org switcher, account menu and breadcrumb all read the active organization.
+The header toggle overrides the breakpoint default until the breakpoint itself changes. ⌘K / Ctrl+K opens the command palette from anywhere in the shell. The product mark appears only where there is no organization to show: sign-in, auth cards, not-found, and the sidebar of a user without membership.
+
+## Navigation model
+
+One navigation definition feeds the sidebar, the command palette and the settings tab strip; nothing is defined twice.
+
+- Leaf: label, icon, path, optional roles (hidden from other roles), optional palette entries.
+- Group: label and leaves, rendered as a labelled section, never an accordion; the rail shows a divider in its place; a group with nothing visible disappears.
+- A path may carry an organization parameter resolved against the active organization; a leaf that needs one is hidden when there is none.
+- Palette entries are searchable in ⌘K under the leaf's label and form the leaf's tab strip, but are never sidebar rows. The leaf is active on every one of its tabs.
+- Only real destinations are listed; no placeholder routes.
+- Active row: Text at low opacity as fill, medium weight, Primary icon, `aria-current="page"`.
+
+Example (NightWatch): ภาพรวม; การแจ้งเตือน; การตั้งค่าส่วนตัว with tabs โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล; group องค์กร with สมาชิก and ตั้งค่าการแจ้งเตือน (owner, admin).
 
 ## Sidebar
 
-- **`OrgSwitcher.tsx`** (top) — org mark (initials, 4px corner), name,
-  `องค์กร · <role>`. With more than one membership it is a button opening a
-  `menuitemradio` list; switching goes through `TenantProvider.switchOrg`.
-  This is the shell's logo slot: the product mark appears only when the
-  user has no membership. Skeleton while `/me/context` is pending.
-- **`Sidebar.tsx`** — renders `NAV_ITEMS` from `nav-config.ts`
-  (`NavLeaf | NavGroup`). Groups are labelled sections, not accordions; the
-  rail shows a divider in their place. A leaf may carry `:organizationId`
-  in its path (resolved against the active organization) and `roles`
-  (hidden from other roles); a group with nothing visible disappears.
-  Active row: alpha fill, medium weight, primary-coloured icon,
-  `aria-current="page"`.
-- **`AccountMenu.tsx`** (bottom) — avatar (circle), name, email; opens
-  upward: role pill + org, one link **การตั้งค่าส่วนตัว** → `/settings/profile`
-  (its tabs hold profile, security, sessions and display), theme segmented
-  control (`lib/theme.ts`), sign-out.
-
-```ts
-export const NAV_ITEMS: NavItem[] = [
-  { label: "ภาพรวม", icon: "grid", path: "/workspace" },
-  { label: "การแจ้งเตือน", icon: "inbox", path: "/notifications" },
-  {
-    label: "การตั้งค่าส่วนตัว",
-    icon: "sliders",
-    path: "/settings",
-    palette: [
-      /* โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล → /settings/<tab> */
-    ],
-  },
-  {
-    label: "องค์กร",
-    children: [
-      {
-        label: "ตั้งค่าการแจ้งเตือน",
-        icon: "bell",
-        path: "/organizations/:organizationId/notification-settings",
-        roles: ["owner", "admin"],
-      },
-    ],
-  },
-];
-```
-
-A leaf's `palette` entries are searchable in ⌘K (grouped under the leaf's
-label) but never rendered as sidebar rows; `pages/settings/settings-tabs.ts`
-derives the settings tab strip from them, so one definition feeds the
-sidebar, the palette and the tabs. `/settings` is prefix-active on every
-tab, which is what the breadcrumb shows.
-
-Only real destinations are listed; the reference's illustrative
-Projects/Activity/Reports/Members sections were deliberately not added as
-placeholder routes (confirmed with the user).
+- Organization switcher on top: organization mark (initials, 4 px corner), name, `องค์กร · <role>`. With more than one membership it is a button opening a `menuitemradio` list. Skeleton while the context loads.
+- Account menu at the bottom: avatar (circle), name, e-mail. Opens upward: role pill and organization, one link to personal settings, the theme control, sign-out.
 
 ## Header
 
-`Header.tsx`: sidebar toggle (hamburger below `sm`), the breadcrumb, the
-search-all field with a ⌘K hint, and notifications. The breadcrumb's root
-is the organization the page acts on: on an organization-scoped route the
-one named in the URL (`getRouteOrganizationId`; a bookmark may name an
-organization other than the account-global active one), elsewhere the
-active organization. `breadcrumb.ts` derives the page crumb from
-`NAV_ITEMS`, matching organization-scoped leaves on their route shape so
-an id never shows; section labels are not crumbs. Below `lg` the breadcrumb shows only the current
-page and search is icon-only, matching the 768px reference. No product logo
-or avatar in the header.
+The breadcrumb root is the organization the page acts on: on an organization-scoped route the one named in the URL (a bookmark may name an organization other than the active one), elsewhere the active organization. The page crumb comes from the navigation definition, so an id never shows; section labels are not crumbs. Below 1024 px the breadcrumb shows only the current page and search is icon-only.
 
 ## Overlays
 
-- **`CommandPalette.tsx`** — modal search-all. Its only index today is the
-  nav config (section "หน้าและการตั้งค่า"), resolved for the active
-  organization and the user's role, so results are real and navigate. ↑↓
-  select, ↵ opens, esc closes, Tab stays inside; focus returns to whatever
-  opened it. Footer shows `ค้นหาใน <org>`.
-- **`NotificationsPopover.tsx`** — title row, the five most recent inbox
-  rows (shared `NotificationRows`, two lines each), footer links to the
-  inbox page and, for owners/admins, the organization's notification
-  settings. Loading is a skeleton, no data an honest empty line; the unread
-  badge is the server's count.
-- **`usePopover.ts`** — shared menu-button behaviour for the three
-  popovers: focus moves in on open, ↑↓ rove between items, Escape /
-  outside click / item select return focus to the trigger.
+Shared menu-button behavior: focus moves in on open; ↑↓ move between items; Escape, an outside click or selecting an item returns focus to the trigger.
+
+- Command palette: modal search-all over the navigation definition, resolved for the active organization and the user's role, so every result navigates. ↑↓ select, ↵ opens, Escape closes, Tab stays inside. The footer names the organization being searched.
+- Notifications popover: title row, the five most recent inbox rows (two lines each), footer links to the inbox page and, for owners and admins, the organization's notification settings. Loading is a skeleton, no data an honest empty line; the unread badge is the server's count.
 
 ## Page frame
 
-Every routed page inside the shell uses `Page.tsx`: `Page` (one 960px
-left-aligned column, 24px rhythm) and `PageHeader` (eyebrow for scope, the
-title, an optional description, actions on the right). Cards are hairline
-`border-foreground/10` panels, never shadows; forms bound their fields
-(`max-w-md` or a two-column grid) and put actions in a row under a
-hairline. Page-level loading and error states render as cards inside the
-shell, never their own `<main>`. `BrandMark.tsx` is the one product mark
-(login panel, auth card pages, 404, no-membership sidebar fallback).
-
-## Personal settings (`/settings/*`)
-
-`pages/settings/` holds the personal-settings page: `SettingsLayout.tsx`
-(header + tab strip, gated by `settingsLoader`) with one child route per tab
-— `ProfilePage` (display name, read-only verified email, initials avatar),
-`SecurityPage` (`MfaCard` inline three-step TOTP enrolment / regenerate /
-disable, `PasswordCard`), `SessionsPage` (better-auth sessions, revoke one or
-all others; prefetched by `sessionsLoader`) and `DisplayPage` (theme +
-browser-stored language/time preferences from `lib/preferences.ts`). `/settings`
-lands on the profile tab. e2e coverage lives in `e2e/tests/settings.spec.ts`.
+Every routed page uses one frame: a 960 px left-aligned column with 24 px rhythm and a page header with an eyebrow for scope, the title, an optional description and actions on the right that wrap under the title when the width runs out. Cards are hairline panels, never shadows. Forms bound their fields (about 448 px wide or a two-column grid) and put actions in a row under a hairline. Page-level loading and error states render as cards inside the frame, never as their own main region.
 
 ## Theme
 
-`lib/theme.ts` `useTheme()` is one shared store behind both the account menu's
-segmented control and the display tab's, so a change in either shows in both.
-"system" clears `data-theme`; "light"/"dark" set it. Persisted in
-`localStorage` (`nightwatch-theme`); an inline script in `index.html`
-applies it before first paint. Dark tokens are the near-black pair from the
-design system (`#000000` canvas / `#121316` surface) and all corners are
-4px (`index.css`).
+Three states: system, light, dark. An explicit choice overrides the system preference with the same tokens either way. The choice is persisted per browser and applied before first paint so no page flashes the wrong theme. The account menu and the display settings tab drive one shared state, so a change in either shows in both.
 
-## Hardening
+## Decisions
 
-- Skip-to-content link → `#main-content`.
-- The global `ErrorBoundary` is additionally scoped around the routed
-  `<Outlet/>`, so a crashing page leaves the shell chrome usable.
-- `Skeleton.tsx` (loading) and `EmptyState.tsx` (no data) primitives use
-  foreground-alpha fills so they read on both themes.
-- Mobile drawer: focus moves to its close button on open and back to the
-  hamburger on Escape / backdrop / selection.
-- Verified live at 1440 / 768 / 390 in both themes: zero horizontal overflow.
-
-## Tests
-
-`AppShell.test.tsx` renders the real shell (TenantProvider + mocked
-`/me/context`) and covers: structure (org switcher, org-rooted breadcrumb,
-labelled nav section with no accordion, role-gated organization leaf,
-account block, skip link), the
-scoped error boundary, account-menu focus + Escape return, org switch
-success and denied, ⌘K → grouped palette result → Enter navigation,
-field-open / Escape focus return, the notifications empty state, and the
-no-membership logo fallback. `pages/settings/SettingsLayout.test.tsx` covers
-the settings frame (header, tabs, index redirect, security tab).
-
-## Removed or changed on existing pages
-
-- `WorkspacePage.tsx` — its inline header (earlier) and its org `<select>`
-  (now) are gone; both moved into the shell. Its two org-switching tests
-  moved to `AppShell.test.tsx`.
-- `SecuritySettingsPage.tsx` — `AuthPageShell` wrapper removed; renders as
-  plain content inside `AppShell` with a local heading. Since moved to
-  `pages/settings/SecurityPage.tsx` as the security tab of `/settings`.
-- `NotFoundPage` — brand mark added, link points at `/workspace`.
-- UI refinement pass (branch `refine-ui`): the design-system faces are
-  self-hosted through `@fontsource`; `Card`/`Input`/`Button`/`Alert` follow
-  the token rules in one place (hairline cards, 40px controls); every page
-  shares `Page`/`PageHeader`; the workspace shows a real page header and an
-  `EmptyState` instead of a slug line; the inbox and organization settings
-  are in the sidebar; no em-dashes in visible copy.
-
-## History
-
-```
-c0a1107  step 1/7 layout          d0692f6  step 5/7 AuthLayout
-98086d0  step 2/7 sidebar          0fd8ea9  step 6/7 theme toggle
-35ead77  step 3/7 header           a802980  step 7/7 hardening
-46829d4  step 4/7 routing + 404    9ee0649  tokens to design-system doc
-                                   cea06db  rebuild shell to reference
-```
+- Tenant context is provided at shell level, not per page, because the switcher, the account menu and the breadcrumb all read the active organization.
+- Which routes get chrome is decided by route nesting and the route loaders, not by a client-side redirect guard, so one place decides who may see what.
+- The breadcrumb roots at the organization in the URL so a bookmark to another organization's page names that organization.
+- A skip link targets the main region, and the error boundary around the routed page keeps the chrome usable when a page crashes.
+- Skeleton and empty-state primitives use Text at low opacity so they read on both themes.

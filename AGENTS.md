@@ -16,6 +16,7 @@ Follow the applicable reference, including its verification requirements. Keep d
 | Quality gates and verification commands         | [Quality scripts](scripts/quality/README.md) |
 | Epics, Features, Stories and Technical Specs    | [Templates](docs/templates/)                 |
 | Pull requests and PR review                     | [PR template](.github/PULL_REQUEST_TEMPLATE.md) |
+| App shell layout, navigation and overlays       | [App shell](docs/ref/shell-structure.md)     |
 
 
 ## Golden Rules
