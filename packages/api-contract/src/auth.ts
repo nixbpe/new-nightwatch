@@ -61,6 +61,19 @@ export const organizationMemberListResponseSchema = z.object({
   }),
 });
 
+export const organizationMemberRoleUpdateResponseSchema = z.object({
+  member: z.object({
+    id: z.string().min(1),
+    userId: z.string().min(1),
+    organizationId: z.uuid(),
+    role: organizationRoleSchema,
+  }),
+});
+
+export type OrganizationMemberRoleUpdateResponse = z.infer<
+  typeof organizationMemberRoleUpdateResponseSchema
+>;
+
 export type OrganizationMemberListQuery = z.infer<
   typeof organizationMemberListQuerySchema
 >;

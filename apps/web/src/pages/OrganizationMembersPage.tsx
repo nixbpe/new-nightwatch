@@ -8,13 +8,14 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
 import { Page, PageHeader } from "../components/shell/Page";
 import { Skeleton } from "../components/shell/Skeleton";
 import { ApiError } from "../lib/api/client";
 import {
+  MEMBER_LIST_QUERY_PREFIX,
   fetchOrganizationMembers,
   memberListQueryKey,
   updateOrganizationMemberRole,
@@ -65,6 +66,12 @@ function OrganizationMembersPageForOrganization({
   const membershipRecoveryOperation = useRef(0);
   const [offset, setOffset] = useState(0);
   const memberPageHeadingRef = useRef<HTMLHeadingElement>(null);
+  const location = useLocation();
+  useEffect(() => {
+    if (location.state?.focusMemberHeadingFor === organizationId) {
+      memberPageHeadingRef.current?.focus();
+    }
+  }, [location.key, location.state, organizationId]);
   const [confirmation, setConfirmation] = useState<{ member: OrganizationMember; role: OrganizationRole; opener: HTMLElement } | null>(null);
   const [roleNotice, setRoleNotice] = useState<{ error: boolean; text: string } | null>(null);
   const [rolePending, setRolePending] = useState(false);
@@ -112,6 +119,15 @@ function OrganizationMembersPageForOrganization({
     } catch (error) {
       failure = error;
     }
+    if (!isCurrentRoleScope()) return;
+    await queryClient.invalidateQueries({
+      queryKey: [...MEMBER_LIST_QUERY_PREFIX, organizationId],
+      refetchType: "none",
+    });
+    await queryClient.invalidateQueries({
+      queryKey: ME_CONTEXT_QUERY_KEY,
+      refetchType: "none",
+    });
     if (!isCurrentRoleScope()) return;
     setConfirmation(null);
     // A server-confirmed list is authoritative even if another actor changed
