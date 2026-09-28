@@ -17,7 +17,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { createInvitation } from "../lib/api/invitations";
 import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
-import { fetchOrganizationMembers } from "../lib/api/members";
+import { fetchOrganizationMembers, updateOrganizationMemberRole } from "../lib/api/members";
 import {
   claimContextPublication,
   createContextPublicationClaim,
@@ -38,6 +38,7 @@ vi.mock("../lib/api/me", async (importOriginal) => ({
 vi.mock("../lib/api/members", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchOrganizationMembers: vi.fn(),
+  updateOrganizationMemberRole: vi.fn(),
 }));
 
 const A = "11111111-1111-4111-8111-111111111111";
@@ -404,4 +405,53 @@ it("retires an A invitation on real tenant publication while navigation still ho
     "b-draft@example.test",
   );
   expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+});
+
+it("keeps A role action on denied switch and discards late A mutation after confirmed B", async () => {
+  const patch = Promise.withResolvers<{ member: { id: string; userId: string; organizationId: string; role: "admin" } }>();
+  vi.mocked(updateOrganizationMemberRole).mockReturnValue(patch.promise);
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(updateActiveOrganization)
+    .mockRejectedValueOnce(new Error("denied"))
+    .mockResolvedValueOnce({ ...context, lastActiveTenantId: B });
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
+    Promise.resolve(id === A ? aList : {
+      organizationId: B,
+      members: [{ ...aList.members[0]!, id: "member-b", name: "Bea", role: "viewer" }],
+      page: { limit: 50, offset: 0, total: 1 },
+    }),
+  );
+  const user = userEvent.setup();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("Ada");
+  await user.selectOptions(screen.getByRole("combobox", { name: "บทบาทของ Ada" }), "admin");
+  await user.click(screen.getByRole("button", { name: "บันทึกบทบาทของ Ada" }));
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }));
+  expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() => expect(screen.getByTestId("active-scope")).toHaveTextContent(B));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "navigate B" }));
+  expect(await screen.findByText("Bea")).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue("viewer");
+  await act(async () => {
+    patch.resolve({ member: { id: "member-1", userId: "user-1", organizationId: A, role: "admin" } });
+    await patch.promise;
+  });
+  expect(screen.getByTestId("active-scope")).toHaveTextContent(B);
+  expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue("viewer");
+  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
 });

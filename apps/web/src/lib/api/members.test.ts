@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { request } from "./client";
-import { fetchOrganizationMembers, memberListQueryKey } from "./members";
+import { fetchOrganizationMembers, memberListQueryKey, updateOrganizationMemberRole } from "./members";
 
 vi.mock("./client", () => ({ request: vi.fn() }));
 
@@ -44,5 +44,13 @@ describe("organization members API", () => {
         query: { limit: 50, offset: 0 },
       },
     );
+  });
+  it("rejects a malformed role update response rather than reporting success", async () => {
+    vi.mocked(request).mockResolvedValueOnce({
+      member: { id: "member-1", userId: "user-1", organizationId, role: "root" },
+    });
+    await expect(
+      updateOrganizationMemberRole(organizationId, "member-1", "admin"),
+    ).rejects.toThrow();
   });
 });
