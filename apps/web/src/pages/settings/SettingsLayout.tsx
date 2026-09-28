@@ -31,35 +31,37 @@ export function SettingsLayout() {
         }
       />
 
-      <nav
-        role="tablist"
-        aria-label="หมวดการตั้งค่า"
-        className="flex gap-6 overflow-x-auto border-b border-foreground/10"
-      >
-        {SETTINGS_TABS.map((tab) => {
-          const Icon = NAV_ICONS[tab.icon];
-          const active =
-            pathname === tab.path || pathname.startsWith(`${tab.path}/`);
-          return (
-            <NavLink
-              key={tab.path}
-              to={tab.path}
-              role="tab"
-              aria-selected={active}
-              className={`-mb-px inline-flex h-10 items-center gap-2 border-b-2 px-1 text-sm whitespace-nowrap ${
-                active
-                  ? "border-primary font-medium text-foreground"
-                  : "border-transparent text-foreground-secondary hover:text-foreground"
-              }`}
-            >
-              <span className={active ? "text-primary" : ""}>
-                <Icon size={16} />
-              </span>
-              {tab.label}
-            </NavLink>
-          );
-        })}
-      </nav>
+      <div className="border-b border-foreground/10">
+        <nav
+          role="tablist"
+          aria-label="หมวดการตั้งค่า"
+          className="-mb-px flex gap-6 overflow-x-auto"
+        >
+          {SETTINGS_TABS.map((tab) => {
+            const Icon = NAV_ICONS[tab.icon];
+            const active =
+              pathname === tab.path || pathname.startsWith(`${tab.path}/`);
+            return (
+              <NavLink
+                key={tab.path}
+                to={tab.path}
+                role="tab"
+                aria-selected={active}
+                className={`inline-flex h-10 items-center gap-2 border-b-2 px-1 text-sm whitespace-nowrap ${
+                  active
+                    ? "border-primary font-medium text-foreground"
+                    : "border-transparent text-foreground-secondary hover:text-foreground"
+                }`}
+              >
+                <span className={active ? "text-primary" : ""}>
+                  <Icon size={16} />
+                </span>
+                {tab.label}
+              </NavLink>
+            );
+          })}
+        </nav>
+      </div>
 
       <div className="min-w-0">
         <Outlet />

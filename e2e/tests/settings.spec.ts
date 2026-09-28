@@ -129,6 +129,88 @@ test.describe("signed-in settings", () => {
     await expect(page).toHaveURL(/\/settings\/sessions$/);
   });
 
+  test("settings tabs have no vertical scroll and keep their active underline at both sizes and text scales", async ({
+    page,
+  }, testInfo) => {
+    await signIn(page, PASSWORD!);
+
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((value) => {
+        localStorage.setItem("nightwatch-theme", value);
+      }, theme);
+
+      for (const { width, height } of [
+        { width: 1440, height: 900 },
+        { width: 375, height: 812 },
+      ]) {
+        await page.setViewportSize({ width, height });
+        for (const textScale of [100, 200]) {
+          for (const route of ["profile", "security", "sessions", "display"]) {
+            await page.goto(`/settings/${route}`);
+            await page.evaluate((scale) => {
+              document.documentElement.style.fontSize = `${scale}%`;
+            }, textScale);
+            const tablist = page.getByRole("tablist", {
+              name: "หมวดการตั้งค่า",
+            });
+            const activeTab = tablist.getByRole("tab", {
+              selected: true,
+            });
+            await expect(activeTab).toBeVisible();
+
+            if (
+              route === "profile" &&
+              ((width === 1440 && textScale === 100) ||
+                (width === 375 && textScale === 200))
+            ) {
+              await page.screenshot({
+                path: testInfo.outputPath(`${theme}-${width}-${textScale}.png`),
+                fullPage: true,
+              });
+            }
+
+            const geometry = await tablist.evaluate((nav) => {
+              const selected = nav.querySelector(
+                '[role="tab"][aria-selected="true"]',
+              );
+              if (!selected) throw new Error("Selected settings tab missing");
+              const wrapper = nav.parentElement;
+              if (!wrapper) throw new Error("Settings tab wrapper missing");
+              const underline = selected.getBoundingClientRect();
+              const hairline = wrapper.getBoundingClientRect();
+              return {
+                scrollHeight: nav.scrollHeight,
+                clientHeight: nav.clientHeight,
+                underlineWidth: getComputedStyle(selected).borderBottomWidth,
+                hairlineWidth: getComputedStyle(wrapper).borderBottomWidth,
+                underlineBottom: underline.bottom,
+                hairlineBottom: hairline.bottom,
+              };
+            });
+            expect.soft(
+              geometry.scrollHeight,
+              `${theme} /settings/${route} ${width}x${height} ${textScale}%`,
+            ).toBe(geometry.clientHeight);
+            expect(geometry.underlineWidth).toBe("2px");
+            expect(geometry.hairlineWidth).toBe("1px");
+            expect(geometry.underlineBottom).toBe(geometry.hairlineBottom);
+          }
+        }
+      }
+    }
+
+    await page.goto("/settings/profile");
+    const firstTab = page.getByRole("tab", { name: "โปรไฟล์" });
+    await firstTab.focus();
+    await expect(firstTab).toBeFocused();
+    await page.keyboard.press("Tab");
+    const nextTab = page.getByRole("tab", { name: "ความปลอดภัย" });
+    await expect(nextTab).toBeFocused();
+    await page.screenshot({
+      path: testInfo.outputPath("keyboard-focus.png"),
+    });
+  });
+
   test("MFA can be enabled with a real TOTP and disabled again", async ({
     page,
   }) => {
