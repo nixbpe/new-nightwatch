@@ -1,4 +1,5 @@
 import { invitationCreateInputSchema } from "@nightwatch/api-contract";
+import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
@@ -12,6 +13,7 @@ import { Alert, Field, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { ApiError } from "../../lib/api/client";
 import { createInvitation } from "../../lib/api/invitations";
+import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import {
   getContextPublicationSnapshot,
   subscribeToContextPublication,
@@ -36,20 +38,38 @@ export function InvitationPanel({
   actorRole: "owner" | "admin";
 }) {
   const queryClient = useQueryClient();
-  const publicationVersion = useSyncExternalStore(
-    useCallback(
-      (listener) => subscribeToContextPublication(queryClient, listener),
-      [queryClient],
-    ),
-    useCallback(
-      () => getContextPublicationSnapshot(queryClient).version,
-      [queryClient],
-    ),
+  const initialPublicationVersion = useRef(
+    getContextPublicationSnapshot(queryClient).version,
   );
-  const initialPublicationVersion = useRef(publicationVersion);
-  const isCurrentScope = () =>
-    getContextPublicationSnapshot(queryClient).version ===
-    initialPublicationVersion.current;
+  const initialServerOrgId = useRef(
+    queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
+      ?.lastActiveTenantId ?? null,
+  );
+  const retired = useRef(false);
+  // Latch a confirmed tenant change so a rapid A → B → A cannot revive A's request.
+  const isCurrentScope = useCallback(() => {
+    if (
+      !retired.current &&
+      getContextPublicationSnapshot(queryClient).version !==
+        initialPublicationVersion.current &&
+      (queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
+        ?.lastActiveTenantId ?? null) !== initialServerOrgId.current
+    ) {
+      retired.current = true;
+    }
+    return !retired.current;
+  }, [queryClient]);
+  const currentScope = useSyncExternalStore(
+    useCallback(
+      (listener) =>
+        subscribeToContextPublication(queryClient, () => {
+          isCurrentScope();
+          listener();
+        }),
+      [queryClient, isCurrentScope],
+    ),
+    isCurrentScope,
+  );
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InvitableRole>("viewer");
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -113,7 +133,7 @@ export function InvitationPanel({
     }
   }
 
-  if (publicationVersion !== initialPublicationVersion.current) return null;
+  if (!currentScope) return null;
   return (
     <section aria-labelledby="invite-card-title" className={CARD}>
       <div>

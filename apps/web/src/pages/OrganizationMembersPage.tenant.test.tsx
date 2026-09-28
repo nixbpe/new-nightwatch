@@ -18,6 +18,11 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createInvitation } from "../lib/api/invitations";
 import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
 import { fetchOrganizationMembers } from "../lib/api/members";
+import {
+  claimContextPublication,
+  createContextPublicationClaim,
+  publishContextPublication,
+} from "../lib/queryClient";
 import { TenantProvider, useTenant } from "../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 
@@ -65,6 +70,26 @@ const aList: OrganizationMemberListResponse = {
   page: { limit: 50, offset: 0, total: 1 },
 };
 
+function RepublishSameOrganization({
+  queryClient,
+}: {
+  queryClient: QueryClient;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const claim = createContextPublicationClaim();
+        claimContextPublication(queryClient, claim);
+        queryClient.setQueryData(["me", "context"], { ...context });
+        publishContextPublication(queryClient, claim);
+      }}
+    >
+      republish A
+    </button>
+  );
+}
+
 function TenantView() {
   const { serverActiveOrgId, switchOrg } = useTenant();
   const navigate = useNavigate();
@@ -72,6 +97,9 @@ function TenantView() {
     <>
       <button type="button" onClick={() => void switchOrg(B)}>
         confirm B
+      </button>
+      <button type="button" onClick={() => void switchOrg(A)}>
+        confirm A
       </button>
       <button
         type="button"
@@ -90,6 +118,132 @@ function TenantView() {
     </>
   );
 }
+
+it("keeps an A invitation pending and its draft through a confirmed same-org publication", async () => {
+  const post = Promise.withResolvers<InvitationCreateResponse>();
+  vi.mocked(createInvitation).mockReturnValue(post.promise);
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(fetchOrganizationMembers).mockResolvedValue(aList);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+          <RepublishSameOrganization queryClient={queryClient} />
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("Ada")).toBeInTheDocument();
+  await user.type(
+    screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+    "a-draft@example.test",
+  );
+  await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+  await user.click(screen.getByRole("button", { name: "republish A" }));
+  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+    "a-draft@example.test",
+  );
+  expect(
+    screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
+  ).toBeDisabled();
+  await act(async () => {
+    post.resolve({ created: true, emailDispatch: "failed" });
+    await post.promise;
+  });
+  expect(
+    screen.getByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
+  ).toHaveAttribute("role", "status");
+  await user.click(screen.getByRole("button", { name: "republish A" }));
+  expect(
+    screen.getByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
+  ).toHaveAttribute("role", "status");
+  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+});
+
+it("keeps a bookmarked B draft when A is republished without a switch", async () => {
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
+    Promise.resolve({ ...aList, organizationId: id }),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${B}/members`]}>
+          <RepublishSameOrganization queryClient={queryClient} />
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  const email = await screen.findByLabelText("อีเมลของผู้ได้รับเชิญ");
+  await user.type(email, "bookmarked@example.test");
+  await user.click(screen.getByRole("button", { name: "republish A" }));
+  expect(email).toHaveValue("bookmarked@example.test");
+  expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
+});
+
+it("retains A on denied B, then rejects old A completion after confirmed B then A", async () => {
+  const post = Promise.withResolvers<InvitationCreateResponse>();
+  vi.mocked(createInvitation).mockReturnValue(post.promise);
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(updateActiveOrganization)
+    .mockRejectedValueOnce(new Error("denied"))
+    .mockResolvedValueOnce({ ...context, lastActiveTenantId: B })
+    .mockResolvedValueOnce(context);
+  vi.mocked(fetchOrganizationMembers).mockResolvedValue(aList);
+  const user = userEvent.setup();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("Ada")).toBeInTheDocument();
+  await user.type(
+    screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+    "a-draft@example.test",
+  );
+  await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() => {
+    expect(vi.mocked(updateActiveOrganization)).toHaveBeenCalledTimes(1);
+  });
+  expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
+  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+    "a-draft@example.test",
+  );
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
+  );
+  expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "confirm A" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("active-scope")).toHaveTextContent(A),
+  );
+  expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+  await act(async () => {
+    post.resolve({ created: true, emailDispatch: "failed" });
+    await post.promise;
+  });
+  expect(screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ")).toBeNull();
+  expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+});
 
 afterEach(() => vi.resetAllMocks());
 

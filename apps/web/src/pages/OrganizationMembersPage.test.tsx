@@ -1,5 +1,6 @@
 import type {
   InvitationCreateResponse,
+  MeContextResponse,
   OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -11,6 +12,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { ApiError } from "../lib/api/client";
+import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
 import {
   fetchOrganizationMembers,
   memberListQueryKey,
@@ -756,6 +758,18 @@ describe("OrganizationMembersPage", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    const confirmedContext: MeContextResponse = {
+      user: {
+        id: "user-1",
+        name: "Tester",
+        email: "tester@example.test",
+        emailVerified: true,
+        twoFactorEnabled: false,
+      },
+      organizations: [organizationA, organizationB],
+      lastActiveTenantId: organizationId,
+    };
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, confirmedContext);
 
     function SwitchableDirectory() {
       const [, setRevision] = useState(0);
@@ -768,6 +782,10 @@ describe("OrganizationMembersPage", () => {
           const claim = createContextPublicationClaim();
           claimContextPublication(queryClient, claim);
           tenant = { ...tenant, activeOrg: organizationB };
+          queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
+            ...confirmedContext,
+            lastActiveTenantId: organizationBId,
+          });
           publishContextPublication(queryClient, claim);
           setRevision((value) => value + 1);
           return navigation.promise;
