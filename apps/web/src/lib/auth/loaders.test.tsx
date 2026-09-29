@@ -1,6 +1,7 @@
 import type {
   InvitationResponse,
   MeContextResponse,
+  MonitorListResponse,
   OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
 import { render, screen } from "@testing-library/react";
@@ -16,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
+import { fetchMonitorList, monitorQueryKeys } from "../api/monitors";
 import {
   fetchNotifications,
   fetchOrganizationNotificationSettings,
@@ -30,6 +32,7 @@ import {
 } from "../queryClient";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
+  monitorsOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
   organizationMembersLoader,
@@ -87,6 +90,10 @@ vi.mock("../api/notifications", async (importOriginal) => {
     fetchOrganizationNotificationSettings: vi.fn(),
   };
 });
+vi.mock("../api/monitors", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return { ...original, fetchMonitorList: vi.fn() };
+});
 vi.mock("../api/members", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return { ...original, fetchOrganizationMembers: vi.fn() };
@@ -99,6 +106,7 @@ const fetchOrganizationNotificationSettingsMock = vi.mocked(
   fetchOrganizationNotificationSettings,
 );
 const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
+const fetchMonitorListMock = vi.mocked(fetchMonitorList);
 
 const VERIFIED: SessionUser = {
   id: "user-1",
@@ -365,6 +373,60 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     expect(
       await screen.findByText("protected-area", undefined, { timeout: 3000 }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("monitorsOverviewLoader", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const route: RouteObject = {
+    path: "/organizations/:organizationId/monitors",
+    loader: monitorsOverviewLoader,
+    element: <div>monitors-area</div>,
+  };
+  const emptyList: MonitorListResponse = {
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    monitors: [],
+    page: { limit: 25, offset: 0, total: 0 },
+    dataAsOf: "2026-09-30T07:32:05.000Z",
+  };
+
+  it("stages the first list page in the identity client for a member", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+      lastActiveTenantId: organizationId,
+    });
+    fetchMonitorListMock.mockResolvedValue(emptyList);
+    renderAt([route], `/organizations/${organizationId}/monitors`);
+
+    expect(await screen.findByText("monitors-area")).toBeInTheDocument();
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        monitorQueryKeys.list(organizationId, { limit: 25, offset: 0 }),
+      ),
+    ).toEqual(emptyList);
+  });
+
+  it("requests nothing for an Organization the user does not belong to", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    renderAt([route], `/organizations/${organizationId}/monitors`);
+
+    expect(await screen.findByText("monitors-area")).toBeInTheDocument();
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
+  });
+
+  it("sends an anonymous visitor to sign in with a return path", async () => {
+    sessionState.data = null;
+    renderAt([route], `/organizations/${organizationId}/monitors`);
+
+    expect(await screen.findByTestId("from")).toHaveTextContent(
+      `/organizations/${organizationId}/monitors`,
+    );
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
 });
 

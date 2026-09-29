@@ -524,6 +524,38 @@ describe("AppShell", () => {
     await findScope("Org A", "เจ้าของ");
   });
 
+  it("switching organization on the monitors route moves the page to the new organization", async () => {
+    fetchMeContextMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_A),
+    );
+    updateActiveOrganizationMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_B),
+    );
+    const user = userEvent.setup();
+    renderShell(undefined, `/organizations/${ORG_A}/monitors`);
+    await screen.findByRole("button", { name: /Org A/ });
+
+    await user.click(screen.getByRole("button", { name: /Org A/ }));
+    await user.click(
+      within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
+        "menuitemradio",
+        { name: /Org B/ },
+      ),
+    );
+
+    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    await vi.waitFor(() => {
+      expect(
+        within(nav).getByRole("link", { name: "ตรวจสถานะบริการ" }),
+      ).toHaveAttribute("href", `/organizations/${ORG_B}/monitors`);
+    });
+    // The page acts on the URL's organization, so the crumb follows only if the URL moved.
+    const breadcrumb = screen.getByRole("navigation", {
+      name: "ตำแหน่งปัจจุบัน",
+    });
+    expect(await within(breadcrumb).findByText("Org B")).toBeInTheDocument();
+  });
+
   it("switching organization from the sidebar publishes the new tenant only after the PATCH succeeds", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),

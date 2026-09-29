@@ -8,6 +8,11 @@ import {
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
+import {
+  fetchMonitorList,
+  monitorQueryKeys,
+  MONITOR_LIST_PAGE_SIZE,
+} from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import { authClient } from "../auth-client";
 import {
@@ -162,6 +167,39 @@ export async function notificationSettingsLoader({
     .query({
       queryKey: organizationNotificationSettingsQueryKey(organizationId),
       queryFn: () => fetchOrganizationNotificationSettings(organizationId),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
+}
+
+// Prefetches the first list page only for an Organization the user belongs to;
+// the page renders denied for any other and must not trigger a request for it.
+export async function monitorsOverviewLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const organizationId = params.organizationId;
+  if (organizationId === undefined) {
+    return null;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (
+    context?.organizations.some(
+      (organization) => organization.id === organizationId,
+    ) !== true
+  ) {
+    return null;
+  }
+  const listParams = { limit: MONITOR_LIST_PAGE_SIZE, offset: 0 };
+  await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+    .query({
+      queryKey: monitorQueryKeys.list(organizationId, listParams),
+      queryFn: () => fetchMonitorList(organizationId, listParams),
       staleTime: "static",
     })
     .catch(() => undefined);

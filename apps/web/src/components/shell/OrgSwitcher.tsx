@@ -117,13 +117,12 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                 onClick={() => {
                   popover.close();
                   void switchOrg(org.id).then((switched) => {
-                    if (
-                      switched &&
-                      /^\/organizations\/[^/]+\/members$/.test(
+                    const section =
+                      /^\/organizations\/[^/]+\/(members|monitors)$/.exec(
                         location.pathname,
-                      )
-                    ) {
-                      void navigate(`/organizations/${org.id}/members`, {
+                      )?.[1];
+                    if (switched && section !== undefined) {
+                      void navigate(`/organizations/${org.id}/${section}`, {
                         replace: true,
                       });
                     }
