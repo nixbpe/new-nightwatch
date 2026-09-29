@@ -73,6 +73,8 @@ function OrganizationMembersPageForOrganization({
   const membershipRecoveryOperation = useRef(0);
   const [offset, setOffset] = useState(0);
   const memberPageHeadingRef = useRef<HTMLHeadingElement>(null);
+  const directRoleFocusMemberId = useRef<string | null>(null);
+  const directRoleActionCellRef = useRef<HTMLTableCellElement>(null);
   const location = useLocation();
   useEffect(() => {
     const navigationState: unknown = location.state;
@@ -142,6 +144,36 @@ function OrganizationMembersPageForOrganization({
     enabled: canRead,
   });
   const { refetch: refetchList } = list;
+  useEffect(() => {
+    if (
+      directRoleFocusMemberId.current === null ||
+      rolePending ||
+      list.isFetching ||
+      !isCurrentRoleScope()
+    )
+      return;
+    const target = directRoleActionCellRef.current?.querySelector(
+      "select:not(:disabled), button:not(:disabled)",
+    );
+    if (
+      list.data?.organizationId === organizationId &&
+      !list.isError &&
+      target instanceof HTMLElement &&
+      target.isConnected
+    ) {
+      target.focus();
+    } else {
+      memberPageHeadingRef.current?.focus();
+    }
+    directRoleFocusMemberId.current = null;
+  }, [
+    isCurrentRoleScope,
+    list.data,
+    list.isError,
+    list.isFetching,
+    organizationId,
+    rolePending,
+  ]);
   async function submitRole(
     member: OrganizationMember,
     role: OrganizationRole,
@@ -239,6 +271,7 @@ function OrganizationMembersPageForOrganization({
     if (member.role === "owner" || role === "owner") {
       setConfirmation({ member, role, opener });
     } else {
+      directRoleFocusMemberId.current = member.id;
       void submitRole(member, role);
     }
   }
@@ -487,7 +520,14 @@ function OrganizationMembersPageForOrganization({
                   <td className="p-4">{member.name}</td>
                   <td className="p-4">{member.email}</td>
                   <td className="p-4">{ROLE_LABELS[member.role]}</td>
-                  <td className="p-4">
+                  <td
+                    className="p-4"
+                    ref={
+                      directRoleFocusMemberId.current === member.id
+                        ? directRoleActionCellRef
+                        : undefined
+                    }
+                  >
                     {roleScopeCurrent && (
                       <MemberRoleActions
                         key={`${member.id}:${member.role}`}
