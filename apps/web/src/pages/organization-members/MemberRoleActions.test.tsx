@@ -24,6 +24,7 @@ import {
 } from "../../lib/api/members";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "../OrganizationMembersPage";
+import { MemberActionDialog } from "./MemberActionDialog";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -285,10 +286,9 @@ it("blocks duplicate submits and pagination while a role save is pending", async
   expect(screen.getByRole("button", { name: "ถัดไป" })).toBeEnabled();
   await user.selectOptions(roleSelect("Ann"), "auditor");
   await user.click(save("Ann"));
-  expect(screen.getByText("กำลังบันทึกบทบาท…")).toHaveAttribute(
-    "role",
-    "status",
-  );
+  expect(
+    screen.getByText("กำลังบันทึกบทบาทของ Ann เป็น ผู้ตรวจสอบ…"),
+  ).toHaveAttribute("role", "status");
   expect(save("Ann")).toBeDisabled();
   expect(roleSelect("Ann")).toBeDisabled();
   expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
@@ -453,3 +453,161 @@ it.each(["success", "LAST_OWNER"] as const)(
     expect(listCalls).toEqual(listCallsBeforeLateResponse);
   },
 );
+
+it("ignores Escape while a confirmed change is pending", async () => {
+  const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+  vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
+  const user = await renderAs("owner");
+  await user.selectOptions(roleSelect("Ann"), "owner");
+  await user.click(save("Ann"));
+  await user.click(
+    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
+  );
+  await user.keyboard("{Escape}");
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByRole("dialog")).toHaveFocus();
+  expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    roles["member-ann"] = "owner";
+    pending.resolve({
+      member: {
+        id: "member-ann",
+        userId: "user-ann",
+        organizationId: A,
+        role: "owner",
+      },
+    });
+    await pending.promise;
+  });
+  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("does not leave pagination disabled when a confirmed switch retires A while staying on A", async () => {
+  const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+  vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
+    listCalls.push(id);
+    return Promise.resolve(listFor(id, 120));
+  });
+  vi.mocked(updateActiveOrganization).mockResolvedValue({
+    ...contextFor("owner"),
+    lastActiveTenantId: B,
+  });
+  const user = await renderAs("owner");
+  await user.selectOptions(roleSelect("Ann"), "auditor");
+  await user.click(save("Ann"));
+  expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() => { expect(updateActiveOrganization).toHaveBeenCalled(); });
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "ถัดไป" })).toBeEnabled(),
+  );
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${A}/members`,
+  );
+  expect(
+    screen
+      .queryAllByRole("status")
+      .filter((element) => !element.hasAttribute("data-testid")),
+  ).toEqual([]);
+});
+
+it("keeps A pending, and its result, when the switch to B is denied", async () => {
+  const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+  vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
+  vi.mocked(updateActiveOrganization).mockRejectedValue(new Error("denied"));
+  const user = await renderAs("owner");
+  await user.selectOptions(roleSelect("Ann"), "auditor");
+  await user.click(save("Ann"));
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() => { expect(updateActiveOrganization).toHaveBeenCalled(); });
+  expect(save("Ann")).toBeDisabled();
+  await act(async () => {
+    roles["member-ann"] = "auditor";
+    pending.resolve({
+      member: {
+        id: "member-ann",
+        userId: "user-ann",
+        organizationId: A,
+        role: "auditor",
+      },
+    });
+    await pending.promise;
+  });
+  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+});
+
+it.each([
+  ["a generic failure", () => Promise.reject(new Error("boom")), /ไม่สำเร็จ/],
+  [
+    "a member missing from the refetched list",
+    () => {
+      roles["member-ann"] = "auditor";
+      vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
+        listCalls.push(id);
+        const list = listFor(id);
+        return Promise.resolve({
+          ...list,
+          members: list.members.filter((item) => item.id !== "member-ann"),
+        });
+      });
+      return Promise.resolve({
+        member: {
+          id: "member-ann",
+          userId: "user-ann",
+          organizationId: A,
+          role: "auditor" as const,
+        },
+      });
+    },
+    /ไม่สามารถยืนยันบทบาทได้/,
+  ],
+])("shows an error and no success for %s", async (_name, patch, message) => {
+  vi.mocked(updateOrganizationMemberRole).mockImplementation(patch);
+  const user = await renderAs("owner");
+  await user.selectOptions(roleSelect("Ann"), "auditor");
+  await user.click(save("Ann"));
+  expect(await screen.findByText(message)).toBeInTheDocument();
+  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+  expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
+});
+
+it("keeps Tab inside the generic dialog across links, inputs and buttons", async () => {
+  const user = userEvent.setup();
+  const heading = { current: document.body };
+  render(
+    <MemberActionDialog
+      title="ยืนยัน"
+      description={
+        <>
+          <a href="#more">รายละเอียด</a>
+          <input aria-label="เหตุผล" />
+        </>
+      }
+      confirmLabel="ตกลง"
+      confirmVariant="destructive"
+      pendingLabel="กำลังทำ…"
+      pending={false}
+      opener={null}
+      fallbackFocus={heading}
+      onCancel={() => undefined}
+      onConfirm={() => undefined}
+    />,
+  );
+  const link = screen.getByRole("link", { name: "รายละเอียด" });
+  const input = screen.getByRole("textbox", { name: "เหตุผล" });
+  const confirm = screen.getByRole("button", { name: "ตกลง" });
+  // Initial focus is Cancel; DOM order is link, input, Cancel, confirm.
+  expect(screen.getByRole("button", { name: "ยกเลิก" })).toHaveFocus();
+  await user.tab();
+  expect(confirm).toHaveFocus();
+  await user.tab();
+  expect(link).toHaveFocus();
+  await user.tab();
+  expect(input).toHaveFocus();
+  // Shift+Tab from the first focusable wraps to the last.
+  link.focus();
+  await user.tab({ shift: true });
+  expect(confirm).toHaveFocus();
+});

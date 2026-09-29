@@ -117,6 +117,10 @@ export function useMemberRoleChange({
   }, []);
 
   const [pending, setPending] = useState(false);
+  const [pendingChange, setPendingChange] = useState<{
+    name: string;
+    role: OrganizationRole;
+  } | null>(null);
   const inFlight = useRef(false);
   const [notice, setNotice] = useState<RoleNotice | null>(null);
   const [confirmation, setConfirmation] = useState<RoleConfirmation | null>(
@@ -147,6 +151,7 @@ export function useMemberRoleChange({
     if (inFlight.current || !isCurrentScope()) return;
     inFlight.current = true;
     setPending(true);
+    setPendingChange({ name: member.name, role });
     setNotice(null);
     let failure: unknown = null;
     try {
@@ -242,9 +247,15 @@ export function useMemberRoleChange({
     void submit(member, role);
   }
 
+  // A retired scope never finishes its submit, so it must not stay pending.
+  const livePending = scopeCurrent && pending;
   return {
     scopeCurrent,
-    pending,
+    pending: livePending,
+    pendingText:
+      livePending && pendingChange !== null
+        ? `กำลังบันทึกบทบาทของ ${pendingChange.name} เป็น ${ROLE_LABELS[pendingChange.role] ?? pendingChange.role}…`
+        : null,
     notice,
     confirmation,
     request,

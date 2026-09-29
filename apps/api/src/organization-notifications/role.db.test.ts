@@ -27,7 +27,6 @@ const migrationsDir = new URL(
   "../../../../packages/db/migrations",
   import.meta.url,
 ).pathname;
-const WAITING_QUERY = "select id from organization where id = $1 for update%";
 
 async function state() {
   const result = await owner.query<{ id: string; role: string }>(
@@ -53,20 +52,22 @@ async function reset(withSecondOwner = true) {
   ]);
 }
 
-async function waitUntilBlocked() {
+// Waits until a backend is blocked by this holder's transaction, not by any
+// other session that happens to be waiting on a lock.
+async function waitUntilBlocked(holderPid: number) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     const waiting = await owner.query<{ waiting: boolean }>(
       `select exists (
          select 1 from pg_stat_activity
-         where wait_event_type = 'Lock' and query like $1
+         where $1::int = any(pg_blocking_pids(pid))
        ) as waiting`,
-      [WAITING_QUERY],
+      [holderPid],
     );
     if (waiting.rows[0]?.waiting) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  throw new Error("role request never blocked on the organization lock");
+  throw new Error("role request never blocked on the holder's lock");
 }
 
 // Holds the organization lock, queues a role request behind it, applies a
@@ -81,6 +82,9 @@ async function changeWhileBlocked(
   await holder.connect();
   let request: Promise<MemberResponse> | undefined;
   try {
+    const pid = await holder.query<{ pid: number }>(
+      "select pg_backend_pid() as pid",
+    );
     await holder.query("begin");
     await holder.query("select id from organization where id = $1 for update", [
       organizationId,
@@ -91,7 +95,7 @@ async function changeWhileBlocked(
       memberId: targetMemberId,
       role: nextRole,
     });
-    await waitUntilBlocked();
+    await waitUntilBlocked(pid.rows[0]?.pid ?? -1);
     await change(holder);
     await holder.query("commit");
     return await request;

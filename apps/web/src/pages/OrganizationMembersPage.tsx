@@ -395,8 +395,8 @@ function OrganizationMembersPageForOrganization({
         organizationName={organization.name}
         actorRole={organization.role === "owner" ? "owner" : "admin"}
       />
-      {roleChange.scopeCurrent && roleChange.pending ? (
-        <Notice tone="pending">กำลังบันทึกบทบาท…</Notice>
+      {roleChange.pendingText !== null ? (
+        <Notice tone="pending">{roleChange.pendingText}</Notice>
       ) : null}
       {roleChange.scopeCurrent && roleChange.notice !== null ? (
         roleChange.notice.tone === "success" ? (

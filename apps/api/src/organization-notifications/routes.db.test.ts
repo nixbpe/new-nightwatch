@@ -795,7 +795,7 @@ describe("organization member role HTTP contract", () => {
   it("accepts opaque member IDs, gives an admin identical denials for owner and absent targets, and redacts logs", async () => {
     const ownerClient = await admit("roleOwner");
     const adminClient = await admit("roleAdmin");
-    await admit("roleViewer");
+    const viewerClient = await admit("roleViewer");
     const ids = {
       owner: userIds.get("roleOwner"),
       admin: userIds.get("roleAdmin"),
@@ -857,6 +857,25 @@ describe("organization member role HTTP contract", () => {
     });
     expect(absentTarget).toEqual(ownerTarget);
     expect(ownerGrant).toEqual(ownerTarget);
+    // A viewer gets the same full response for an existing and a missing target.
+    const viewerExisting = await viewerClient(
+      "PATCH",
+      path(memberIds.roleOwner),
+      { role: "viewer" },
+    );
+    const viewerMissing = await viewerClient("PATCH", path(`absent-${run}`), {
+      role: "viewer",
+    });
+    expect(viewerExisting.status).toBe(403);
+    expect(viewerMissing).toEqual(viewerExisting);
+    // An owner learns that a target is absent.
+    const ownerAbsent = await ownerClient("PATCH", path(`absent-${run}`), {
+      role: "viewer",
+    });
+    expect(ownerAbsent.status).toBe(404);
+    expect(ownerAbsent.json).toMatchObject({
+      error: { code: "MEMBER_NOT_FOUND" },
+    });
     expect(
       (
         await owner.sql.query<{ role: string }>(
@@ -897,11 +916,16 @@ describe("organization member role HTTP contract", () => {
     const denials = logEntries.filter(
       (entry) => entry.msg === "organization access denied",
     );
-    expect(denials).toHaveLength(3);
+    expect(denials.map((denial) => denial.actorUserId)).toEqual([
+      ids.admin,
+      ids.admin,
+      ids.admin,
+      ids.viewer,
+      ids.viewer,
+    ]);
     for (const denial of denials) {
       expect(denial).toMatchObject({
         action: "organization.member.role.update",
-        actorUserId: ids.admin,
         code: "PERMISSION_DENIED",
       });
     }

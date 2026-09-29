@@ -10,7 +10,14 @@ import { createPortal } from "react-dom";
 
 import { Button } from "../../components/ui/button";
 
-const FOCUSABLE = "button:not(:disabled)";
+const FOCUSABLE = [
+  "a[href]",
+  "button:not(:disabled)",
+  "input:not(:disabled)",
+  "select:not(:disabled)",
+  "textarea:not(:disabled)",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 /**
  * Confirmation overlay shared by member actions. The caller supplies the
@@ -22,6 +29,7 @@ export function MemberActionDialog({
   title,
   description,
   confirmLabel,
+  confirmVariant = "default",
   pendingLabel,
   pending,
   opener,
@@ -32,6 +40,8 @@ export function MemberActionDialog({
   title: string;
   description: ReactNode;
   confirmLabel: string;
+  /** Use "destructive" for irreversible actions such as revoking access. */
+  confirmVariant?: "default" | "destructive";
   pendingLabel: string;
   pending: boolean;
   opener: HTMLElement | null;
@@ -136,7 +146,13 @@ export function MemberActionDialog({
           >
             ยกเลิก
           </Button>
-          <Button type="button" wrap disabled={pending} onClick={onConfirm}>
+          <Button
+            type="button"
+            variant={confirmVariant}
+            wrap
+            disabled={pending}
+            onClick={onConfirm}
+          >
             {pending ? pendingLabel : confirmLabel}
           </Button>
         </div>
