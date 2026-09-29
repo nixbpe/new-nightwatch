@@ -24,7 +24,7 @@ import {
 } from "../../lib/api/members";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "../OrganizationMembersPage";
-import { MemberActionDialog } from "./MemberActionDialog";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -587,7 +587,7 @@ it("keeps Tab inside the generic dialog across links, inputs and buttons", async
   const user = userEvent.setup();
   const heading = { current: document.body };
   render(
-    <MemberActionDialog
+    <ConfirmDialog
       title="ยืนยัน"
       description={
         <>
