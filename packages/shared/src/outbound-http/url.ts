@@ -61,7 +61,7 @@ export function validateOutboundUrl(raw: string): UrlCheck {
   return { ok: true, url };
 }
 
-/** Replaces every query value with `•••` and drops userinfo and fragment. */
+/** Replaces every query value (or bare pair) with `•••`; drops userinfo and fragment. */
 export function maskUrl(raw: string): string {
   let url: URL;
   try {
@@ -71,12 +71,13 @@ export function maskUrl(raw: string): string {
     return cut === -1 ? raw : `${raw.slice(0, cut)}?${MASK}`;
   }
   const query = url.search.slice(1);
+  // Every pair keeps its position; a bare pair is itself the secret, so it is replaced whole.
   const masked = query
     .split("&")
-    .filter((pair) => pair !== "")
     .map((pair) => {
+      if (pair === "") return pair;
       const eq = pair.indexOf("=");
-      return eq === -1 ? pair : `${pair.slice(0, eq)}=${MASK}`;
+      return eq === -1 ? MASK : `${pair.slice(0, eq)}=${MASK}`;
     })
     .join("&");
   const origin = `${url.protocol}//${url.host}${url.pathname}`;

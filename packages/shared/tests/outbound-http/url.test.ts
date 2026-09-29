@@ -70,9 +70,21 @@ describe("validateOutboundUrl", () => {
 });
 
 describe("maskUrl", () => {
-  it("replaces every query value and keeps keys", () => {
-    expect(maskUrl("https://example.com/p?token=abc&x=1&flag")).toBe(
-      "https://example.com/p?token=•••&x=•••&flag",
+  it("masks values, keeps keys, and replaces a bare pair whole", () => {
+    expect(maskUrl("https://example.com/p?token=abc&x=1&rawtoken")).toBe(
+      "https://example.com/p?token=•••&x=•••&•••",
+    );
+  });
+
+  it("masks an empty value and repeated names, keeping pair order and count", () => {
+    expect(maskUrl("https://example.com/?a=&a=1&b=2&a=3&&c")).toBe(
+      "https://example.com/?a=•••&a=•••&b=•••&a=•••&&•••",
+    );
+  });
+
+  it("masks encoded values and bare pairs without decoding them", () => {
+    expect(maskUrl("https://example.com/?q=%73ecret%26x&%72aw%3Dtoken")).toBe(
+      "https://example.com/?q=•••&•••",
     );
   });
 
