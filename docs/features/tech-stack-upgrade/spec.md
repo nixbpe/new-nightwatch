@@ -37,8 +37,8 @@ Observed on 2026-09-29 by platform-engineer (read-only, no file changed). "Confi
 
 ## Contracts
 
-- Toolchain: one Bun version across `package.json` `packageManager`, `.github/workflows/ci.yml` `BUN_VERSION` and both `FROM` lines of `apps/api/Dockerfile`, which always use a sha256 digest. Runtime security fixes stay explicit apk pins, with no `apk upgrade`. Root `package.json` `engines.node` requires Node 24 (NODE-8).
-- CI: job names, commands and gates in `.github/workflows/ci.yml` stay unchanged. Only action refs, versions, the `runs-on` label (pinned to `ubuntu-24.04` in every job) and service images change.
+- Toolchain: one Bun version across `package.json` `packageManager`, `.github/workflows/ci.yml` `BUN_VERSION` and both `FROM` lines of `apps/api/Dockerfile`, which always use a sha256 digest. Runtime security fixes stay explicit apk pins, with no `apk upgrade`. Root `package.json` `engines.node` requires Node 24, and CI runs Node 24 through `actions/setup-node` (NODE-8).
+- CI: job names, commands and gates in `.github/workflows/ci.yml` stay unchanged. Only action refs, versions, the `runs-on` label (pinned to `ubuntu-24.04` in every job), service images and one `actions/setup-node` step with `node-version: 24` in every job (NODE-8) change.
 - Data (NODE-5 and NODE-6 only): schema changes land as new ordered SQL files in `packages/db/migrations/` run by the checksummed runner (DB-11), each with its constraints, RLS policies and grants (DB-12). Runtime role stays non-owner `NOBYPASSRLS` (DB-03). Login and membership tables keep membership-bound protection (DB-06) and minimal grants (DB-07). No `drizzle-kit push`/`migrate` or better-auth CLI migration.
 - Authorization and security: the better-auth upgrade keeps `logger: { disabled: true }`, `trustedOrigins`, organization roles and `twoFactor` behavior unchanged. No product behavior changes in any Task.
 
@@ -60,7 +60,7 @@ Observed on 2026-09-29 by platform-engineer (read-only, no file changed). "Confi
   - `typescript-eslint` 8.69.0 caps TypeScript at `<6.1.0`, so NODE-4 can target 6.0.x only; TypeScript 7 stays blocked.
   - PG18: existing `pgdata` volumes created by PG17 do not start under a new major. A change in the postgres:18 image PGDATA or mount layout is an unverified recollection that NODE-6 must check.
   - `ubuntu-24.04` pin: the label's own support end date is not checked; the pin must be revisited before it ends.
-  - Node 24 floor: developers on Node 22 fail the `engines` check after NODE-8. The Node version on the `ubuntu-24.04` image is unverified (see Open decisions).
+  - Node 24 floor: developers on Node 22 fail the `engines` check after NODE-8. The `ubuntu-24.04` image ships Node 22.23.2, so CI gets Node 24 from `actions/setup-node` (NODE-8).
 - Assumptions: none of these upgrades changes product behavior; the test suites in `scripts/quality/README.md` are the regression proof.
 - Non-goals: new features, refactors, lowering coverage thresholds, deployment (no cloud environment exists in the repo), upgrading packages marked keep in the review (except `hono` via NODE-10).
 
@@ -73,7 +73,7 @@ Order and ownership:
 | NODE-1 CI actions to v6 and runner pin | now | None | platform-engineer (`.github/workflows/ci.yml`) |
 | NODE-2 Bun 1.3.14 | now | NODE-1 | platform-engineer (`ci.yml`, `apps/api/Dockerfile`, `packageManager` line) |
 | NODE-3 ESLint 10 | now | NODE-2 | software-engineer (root `package.json`, `bun.lock`) |
-| NODE-8 Node engines 24 | now | NODE-3 | software-engineer (root `package.json` `engines`) |
+| NODE-8 Node engines 24 | now | NODE-3 | software-engineer (root `package.json` `engines`); platform-engineer (`ci.yml` `setup-node` steps) |
 | NODE-10 hono and nodemailer advisories | now | NODE-3 (runs after NODE-8, same owner) | software-engineer (`apps/api/package.json`, `bun.lock`) |
 | NODE-4 TypeScript 6.0 | deferred | NODE-3 | software-engineer |
 | NODE-5 better-auth 1.7 | deferred | NODE-4 | software-engineer (`e2e/bun.lock`, `packages/db/migrations/`) |
@@ -130,17 +130,17 @@ Tasks sharing a file never run concurrently; each starts after its dependency's 
 
 ### NODE-8 Node engines 24
 
-- **OWNER:** software-engineer
+- **OWNER:** software-engineer (`engines`); platform-engineer (`ci.yml` `setup-node` steps, as `ci.yml` integration owner)
 - **READY:** NODE-1 merged (runner pinned); NODE-3 owner stopped writing root `package.json`; start authorized
-- **OUTCOME:** `engines.node` requires Node 24; Node-run scripts pass on Node 24
-- **SOURCE:** user decision 2026-09-29; Evidence base row "Node in repo"
-- **INVARIANTS:** runtime for the API image stays Bun; `bun.lock` unchanged
-- **FILES:** `package.json` (`engines`)
-- **NON-GOALS:** switching any runtime from Bun to Node; adding `actions/setup-node` to `ci.yml` (needs a user decision, see Open decisions)
-- **CONTRACTS:** Toolchain contract (`engines.node` on 24)
-- **VERIFY:** `bun run --cwd packages/eslint-config test` under Node 24; `bun run validate`; `bun install --frozen-lockfile`
-- **PROOF:** `bun run validate` green; Node version used in CI on `ubuntu-24.04` named from the PR CI log
-- **ROLLBACK:** revert `engines` to `>=22.12.0`
+- **OUTCOME:** `engines.node` requires Node 24; every `ci.yml` job runs `actions/setup-node` (a `node24` ref) with `node-version: 24` before its first `bun` step; Node-run scripts pass on Node 24 locally and in CI
+- **SOURCE:** user decisions 2026-09-29 (Node 24 now; add `setup-node` because `ubuntu-24.04` ships Node 22.23.2); Evidence base row "Node in repo"
+- **INVARIANTS:** runtime for the API image stays Bun; `bun.lock` unchanged; job names, commands and gates in `ci.yml` unchanged
+- **FILES:** `package.json` (`engines`), `.github/workflows/ci.yml` (one `actions/setup-node` step per job)
+- **NON-GOALS:** switching any runtime from Bun to Node
+- **CONTRACTS:** Toolchain and CI contracts (`engines.node` on 24; `setup-node` Node 24 in every job)
+- **VERIFY:** `bun run --cwd packages/eslint-config test` under Node 24; `bun run validate`; `bun install --frozen-lockfile`; `bun run workflow:test`; `gh api` read of `action.yml` `runs.using` at the `setup-node` ref
+- **PROOF:** `bun run validate` green; Node 24 used in every CI job on `ubuntu-24.04`, named from the PR CI log
+- **ROLLBACK:** revert `engines` to `>=22.12.0` and remove the `setup-node` steps from `ci.yml`
 - **COVERS:** none (no Feature Acceptance matrix)
 
 ### NODE-10 hono and nodemailer moderate advisories
@@ -236,7 +236,7 @@ Tasks sharing a file never run concurrently; each starts after its dependency's 
 ## Integrated verification
 
 - Exit criteria per Task are their VERIFY and PROOF; there is no Acceptance matrix, so no AC is covered here.
-- After all scope-now writers (NODE-1, NODE-2, NODE-3, NODE-8, NODE-10) stop, run once on `ubuntu-24.04` CI and locally on Node 24: `bun run validate`, `COVERAGE_GATE=1 bun run test:coverage`, `bun run build`, `bun run security` (see `scripts/quality/README.md`), then code-reviewer final review of the combined diff.
+- After all scope-now writers (NODE-1, NODE-2, NODE-3, NODE-8, NODE-10) stop, run once on `ubuntu-24.04` CI with Node 24 from `actions/setup-node` and locally on Node 24: `bun run validate`, `COVERAGE_GATE=1 bun run test:coverage`, `bun run build`, `bun run security` (see `scripts/quality/README.md`), then code-reviewer final review of the combined diff.
 - `bun run security:image` and `bun run e2e` belong to the NODE-2 and NODE-5/NODE-9 PROOF and to the dispatch-only `full` job.
 
 ## Open decisions
@@ -247,7 +247,7 @@ Tasks sharing a file never run concurrently; each starts after its dependency's 
 | Start timing for deferred NODE-4, NODE-5, NODE-6, NODE-7, NODE-9, each needing its own authorization | User |
 | PG17 local volume path for NODE-6 (dump/restore or fresh volume) | User |
 | Start authorization and `COMMIT_MODE` for scope-now NODE-1, NODE-2, NODE-3, NODE-8, NODE-10 | User |
-| Unverified: Node version on the `ubuntu-24.04` runner image. If it is below 24, decide whether NODE-8 adds `actions/setup-node` with Node 24 to `ci.yml` (a new `ci.yml` change) | Technical Lead to check; User decides any `ci.yml` addition |
+| Closed 2026-09-29: the `ubuntu-24.04` image ships Node 22.23.2; user decided NODE-8 adds `actions/setup-node` with Node 24 to every `ci.yml` job | User (decided) |
 
 ## Revisions
 
@@ -255,3 +255,4 @@ Tasks sharing a file never run concurrently; each starts after its dependency's 
 | --- | --- | --- | --- |
 | 2026-09-29 | Initial draft | Not yet | None |
 | 2026-09-29 | Recorded user decisions: platform chore with no Feature, Epic or Acceptance matrix; scope-now NODE-1, NODE-2, NODE-3, NODE-8, NODE-10 (NODE-10 confirmed, NODE-8 moved from deferred); `checkout` and `upload-artifact` v6 with `runs-on: ubuntu-24.04` in every job; `engines.node` on 24 now, ordered after NODE-3. Closed the matching open decisions and added the unverified runner Node check. Status set to Approved; Start authorization stays None | 2026-09-29 | n/a (no Feature matrix) |
+| 2026-09-29 | Add `actions/setup-node` Node 24 to `ci.yml` because `ubuntu-24.04` ships Node 22.23.2 per actions/runner-images `Ubuntu2404-Readme.md` image 20260920.314.1. Updated Toolchain and CI contracts, NODE-8, Integrated verification and the matching open decision | Yes | n/a (no Feature matrix) |
