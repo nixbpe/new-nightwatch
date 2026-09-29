@@ -95,6 +95,10 @@ const memberParamsSchema = z.object({
   organizationId: z.uuid(),
   memberId: z.uuid(),
 });
+// Member IDs are opaque text (column type `text`); only Organization IDs are UUIDs.
+const memberRoleParamsSchema = memberParamsSchema.extend({
+  memberId: z.string().min(1),
+});
 const memberResponseSchema = z.object({
   member: z.object({
     id: z.string(),
@@ -108,7 +112,7 @@ const memberRoleUpdateRoute = createRoute({
   path: "/api/organizations/{organizationId}/members/{memberId}/role",
   tags: ["organizations"],
   request: {
-    params: memberParamsSchema,
+    params: memberRoleParamsSchema,
     body: {
       content: {
         "application/json": {

@@ -7,7 +7,9 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useParams } from "react-router";
+import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
+import { Notice } from "../components/ui/notice";
 import { DataTable, DataTablePagination } from "../components/ui/data-table";
 import { StatusPill } from "../components/ui/status-pill";
 import { ROLE_LABELS } from "../lib/roles";
@@ -20,6 +22,11 @@ import {
 } from "../lib/api/members";
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
+import { MemberActionDialog } from "./organization-members/MemberActionDialog";
+import {
+  MemberRoleActions,
+  useMemberRoleChange,
+} from "./organization-members/MemberRoleActions";
 
 const LIMIT = 50;
 
@@ -70,6 +77,15 @@ function OrganizationMembersPageForOrganization({
     enabled: canRead,
   });
   const { refetch: refetchList } = list;
+  const actorRole = organization?.role === "owner" ? "owner" : "admin";
+  const roleChange = useMemberRoleChange({
+    organizationId,
+    actorRole,
+    actorUserId: me?.user.id,
+    listSettled: !list.isFetching && list.data !== undefined,
+    refetchList,
+    refreshMembershipContext,
+  });
 
   const recoverAfterBoundedRefetchDenial = useCallback(async () => {
     const operation = membershipRecoveryOperation.current + 1;
@@ -311,6 +327,21 @@ function OrganizationMembersPageForOrganization({
                 <StatusPill>{ROLE_LABELS[m.role] ?? m.role}</StatusPill>
               ),
             },
+            {
+              key: "change-role",
+              header: "เปลี่ยนบทบาท",
+              align: "end",
+              cell: (m) =>
+                roleChange.scopeCurrent ? (
+                  <MemberRoleActions
+                    key={`${m.id}:${m.role}:${actorRole}`}
+                    member={m}
+                    actorRole={actorRole}
+                    pending={roleChange.pending}
+                    onSave={roleChange.request}
+                  />
+                ) : null,
+            },
           ]}
           rows={data.members}
           rowKey={(m) => m.id}
@@ -326,8 +357,8 @@ function OrganizationMembersPageForOrganization({
           }
           previousLabel="ก่อนหน้า"
           nextLabel="ถัดไป"
-          hasPrevious={hasPrevious}
-          hasNext={hasNext}
+          hasPrevious={hasPrevious && !roleChange.pending}
+          hasNext={hasNext && !roleChange.pending}
           onPrevious={() => {
             setOffset((value) => Math.max(0, value - LIMIT));
           }}
@@ -363,6 +394,47 @@ function OrganizationMembersPageForOrganization({
         organizationName={organization.name}
         actorRole={organization.role === "owner" ? "owner" : "admin"}
       />
+      {roleChange.scopeCurrent && roleChange.pending ? (
+        <Notice tone="pending">กำลังบันทึกบทบาท…</Notice>
+      ) : null}
+      {roleChange.scopeCurrent && roleChange.notice !== null ? (
+        roleChange.notice.tone === "success" ? (
+          <Notice tone="success">{roleChange.notice.text}</Notice>
+        ) : (
+          <Alert tone="error">{roleChange.notice.text}</Alert>
+        )
+      ) : null}
+      {roleChange.scopeCurrent &&
+      actorRole === "owner" &&
+      roleChange.confirmation !== null ? (
+        <MemberActionDialog
+          title="ยืนยันการเปลี่ยนบทบาท"
+          description={
+            <>
+              <p>
+                เปลี่ยนบทบาทของ {roleChange.confirmation.member.name} (
+                {roleChange.confirmation.member.email}) ในองค์กร{" "}
+                {organization.name} ({organization.slug}) จาก{" "}
+                {ROLE_LABELS[roleChange.confirmation.member.role]} เป็น{" "}
+                {ROLE_LABELS[roleChange.confirmation.role]}
+              </p>
+              <p className="mt-2">
+                การเปลี่ยนสิทธิ์เจ้าของมีผลต่อการจัดการสมาชิกและการเข้าถึงองค์กร
+                {roleChange.confirmation.member.userId === me?.user.id
+                  ? " คุณกำลังเปลี่ยนบทบาทของตัวเอง"
+                  : ""}
+              </p>
+            </>
+          }
+          confirmLabel="ยืนยันการเปลี่ยนบทบาท"
+          pendingLabel="กำลังบันทึกบทบาท…"
+          pending={roleChange.pending}
+          opener={roleChange.confirmation.opener}
+          fallbackFocus={memberPageHeadingRef}
+          onCancel={roleChange.cancel}
+          onConfirm={roleChange.confirm}
+        />
+      ) : null}
       {directory}
     </Page>
   );
