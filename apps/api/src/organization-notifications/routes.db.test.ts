@@ -20,6 +20,8 @@ const lastOwnerOrganizationId = crypto.randomUUID();
 const roleOrganizationId = crypto.randomUUID();
 const revokeOrganizationId = crypto.randomUUID();
 const revokeOtherOrganizationId = crypto.randomUUID();
+const leaveOrganizationId = crypto.randomUUID();
+const leaveOtherOrganizationId = crypto.randomUUID();
 const inviterId = crypto.randomUUID();
 const memberIds = {
   owner: crypto.randomUUID(),
@@ -37,6 +39,7 @@ const memberIds = {
   revokeTarget: crypto.randomUUID(),
   revokeTargetB: crypto.randomUUID(),
 };
+const leaveRoles = ["owner", "admin", "viewer", "auditor"] as const;
 const password = "Member-Route-Passw0rd!";
 const appUrl = "http://localhost:5173";
 const emails = {
@@ -53,6 +56,11 @@ const emails = {
   revokeOwner: `revoke-owner-${run}@example.test`,
   revokeAdmin: `revoke-admin-${run}@example.test`,
   revokeTarget: `revoke-target-${run}@example.test`,
+  leaveOwner: `leave-owner-${run}@example.test`,
+  leaveOwner2: `leave-owner2-${run}@example.test`,
+  leaveAdmin: `leave-admin-${run}@example.test`,
+  leaveViewer: `leave-viewer-${run}@example.test`,
+  leaveAuditor: `leave-auditor-${run}@example.test`,
 };
 const userIds = new Map<keyof typeof emails, string>();
 const mail: OutboundMail[] = [];
@@ -209,7 +217,9 @@ beforeAll(async () => {
             ($7, $8, $9, now()),
             ($10, $11, $12, now()),
             ($13, $14, $15, now()),
-            ($16, $17, $18, now())`,
+            ($16, $17, $18, now()),
+            ($19, $20, $21, now()),
+            ($22, $23, $24, now())`,
     [
       organizationId,
       `Member route ${run}`,
@@ -229,6 +239,12 @@ beforeAll(async () => {
       revokeOtherOrganizationId,
       `Revoke route B ${run}`,
       `revoke-route-b-${run}`,
+      leaveOrganizationId,
+      `Leave route A ${run}`,
+      `leave-route-a-${run}`,
+      leaveOtherOrganizationId,
+      `Leave route B ${run}`,
+      `leave-route-b-${run}`,
     ],
   );
   await owner.sql.query(
@@ -246,6 +262,8 @@ afterAll(async () => {
       roleOrganizationId,
       revokeOrganizationId,
       revokeOtherOrganizationId,
+      leaveOrganizationId,
+      leaveOtherOrganizationId,
     ],
   ]);
   await owner.sql.query(
@@ -1280,4 +1298,165 @@ describe("organization member revoke HTTP contract", () => {
       ].sort((left, right) => left.id.localeCompare(right.id)),
     );
   }, 120_000);
+});
+
+describe("organization member self-leave HTTP contract", () => {
+  it("lets every role leave A, keeps B and the account, and denies the same session's next A request without leaking data", async () => {
+    const keys = {
+      owner: "leaveOwner",
+      admin: "leaveAdmin",
+      viewer: "leaveViewer",
+      auditor: "leaveAuditor",
+    } as const;
+    const clients = {
+      owner: await admit("leaveOwner"),
+      admin: await admit("leaveAdmin"),
+      viewer: await admit("leaveViewer"),
+      auditor: await admit("leaveAuditor"),
+    };
+    await admit("leaveOwner2");
+    const a = leaveOrganizationId;
+    const b = leaveOtherOrganizationId;
+    const uid = (key: keyof typeof emails) => {
+      const id = userIds.get(key);
+      if (!id) throw new Error(`${key} user missing`);
+      return id;
+    };
+    const memberOf = (key: keyof typeof emails, org: string) =>
+      `leave-${key}-${org === a ? "a" : "b"}-${run}`;
+    const insertMember = (
+      key: keyof typeof emails,
+      org: string,
+      role: string,
+    ) =>
+      owner.sql.query(
+        `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+         values ($1, $2, $3, $4, now(), now())`,
+        [memberOf(key, org), org, uid(key), role],
+      );
+    await insertMember("leaveOwner2", a, "owner");
+    for (const role of leaveRoles) {
+      await insertMember(keys[role], a, role);
+      await insertMember(keys[role], b, "viewer");
+    }
+    const sensitive = [
+      a,
+      ...Object.keys(emails)
+        .filter((key) => key.startsWith("leave"))
+        .map((key) => emails[key as keyof typeof emails]),
+      ...leaveRoles.map((role) => memberOf(keys[role], a)),
+    ];
+
+    for (const role of leaveRoles) {
+      const key = keys[role];
+      const session = clients[role];
+      expect(
+        (await session("PATCH", "/api/me/active-org", { organizationId: a }))
+          .status,
+      ).toBe(200);
+      auditLines.length = 0;
+      const left = await session(
+        "DELETE",
+        `/api/organizations/${a}/members/me`,
+      );
+      expect(left).toEqual({
+        status: 200,
+        json: {
+          member: {
+            id: memberOf(key, a),
+            userId: uid(key),
+            organizationId: a,
+            role,
+          },
+        },
+      });
+      // Account, B membership and session survive; A mirrors are cleared.
+      expect(
+        (
+          await owner.sql.query<{ organization_id: string }>(
+            "select organization_id from member where user_id = $1",
+            [uid(key)],
+          )
+        ).rows,
+      ).toEqual([{ organization_id: b }]);
+      expect(
+        (
+          await owner.sql.query<{ last_active_tenant_id: string | null }>(
+            'select last_active_tenant_id from "user" where id = $1',
+            [uid(key)],
+          )
+        ).rows,
+      ).toEqual([{ last_active_tenant_id: null }]);
+      expect(
+        (
+          await owner.sql.query<{ active_organization_id: string | null }>(
+            "select active_organization_id from session where user_id = $1",
+            [uid(key)],
+          )
+        ).rows.every((row) => row.active_organization_id === null),
+      ).toBe(true);
+      expect((await session("GET", "/api/auth/get-session")).status).toBe(200);
+
+      // The next A request from the same session is denied identically to a
+      // missing Organization.
+      const denials = [
+        await session("GET", `/api/organizations/${a}/members`),
+        await session("DELETE", `/api/organizations/${a}/members/me`),
+        await session("PATCH", "/api/me/active-org", { organizationId: a }),
+      ];
+      for (const denial of denials) {
+        expect(denial.status).toBe(403);
+        expect(denial.json).toMatchObject({
+          error: { code: "MEMBERSHIP_DENIED" },
+        });
+        expect(JSON.stringify(denial.json)).not.toContain(a);
+      }
+      const missing = await session(
+        "DELETE",
+        `/api/organizations/${crypto.randomUUID()}/members/me`,
+      );
+      expect(missing).toEqual(denials[1]);
+      const context = await session("GET", "/api/me/context");
+      expect(context.status).toBe(200);
+      const body = context.json as {
+        organizations: { id: string }[];
+        lastActiveTenantId: string | null;
+      };
+      expect(body.organizations.map((org) => org.id)).toEqual([b]);
+      expect(body.lastActiveTenantId).toBeNull();
+      expect(JSON.stringify(body)).not.toContain(a);
+      const logs = auditLines.join("\n");
+      for (const value of sensitive) expect(logs).not.toContain(value);
+    }
+
+    // Everyone else left; the remaining owner is now the last owner.
+    const remaining = await owner.sql.query<{ role: string }>(
+      "select role from member where organization_id = $1",
+      [a],
+    );
+    expect(remaining.rows).toEqual([{ role: "owner" }]);
+    const owner2 = client();
+    expect(
+      (
+        await owner2("POST", "/api/auth/sign-in/email", {
+          email: emails.leaveOwner2,
+          password,
+        })
+      ).status,
+    ).toBe(200);
+    const lastOwner = await owner2(
+      "DELETE",
+      `/api/organizations/${a}/members/me`,
+    );
+    expect(lastOwner.status).toBe(400);
+    expect(lastOwner.json).toMatchObject({ error: { code: "LAST_OWNER" } });
+    expect(
+      (
+        await owner.sql.query(
+          "select 1 from member where organization_id = $1",
+          [a],
+        )
+      ).rows,
+    ).toHaveLength(1);
+  }, 180_000);
 });
