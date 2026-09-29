@@ -1,8 +1,8 @@
 import { useId, useMemo, useState } from "react";
 
-import { MonitorIcon } from "../../components/shell/icons";
 import { Alert, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { SegmentedControl } from "../../components/ui/segmented-control";
 import { Label } from "../../components/ui/label";
 import { usePreferences, type Preferences } from "../../lib/preferences";
 import { useTheme, type ThemePreference } from "../../lib/theme";
@@ -120,33 +120,14 @@ export function DisplayPage() {
           title="ธีม"
           description="มีผลทันทีกับอุปกรณ์นี้ และจำไว้สำหรับครั้งถัดไป"
         />
-        <div
-          role="group"
-          aria-label="ธีม"
-          className="inline-flex self-start gap-0.5 rounded-md border border-foreground/10 p-0.5"
-        >
-          {THEME_OPTIONS.map((option) => {
-            const active = option.value === theme;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  setTheme(option.value);
-                }}
-                className={`inline-flex h-8 items-center gap-2 rounded-md px-3.5 text-sm ${
-                  active
-                    ? "bg-foreground/8 font-medium text-foreground"
-                    : "text-foreground-secondary hover:text-foreground"
-                }`}
-              >
-                {option.value === "system" ? <MonitorIcon size={16} /> : null}
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
+        <SegmentedControl
+          label="ธีม"
+          value={theme}
+          options={THEME_OPTIONS}
+          onChange={(value) => {
+            setTheme(value);
+          }}
+        />
       </Card>
 
       <Card as="section" aria-labelledby="locale-card-title" padding="md">

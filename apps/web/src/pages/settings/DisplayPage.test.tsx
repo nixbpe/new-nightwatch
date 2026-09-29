@@ -24,15 +24,15 @@ describe("DisplayPage", () => {
     const user = userEvent.setup();
     render(<DisplayPage />);
 
-    await user.click(screen.getByRole("button", { name: "มืด" }));
+    await user.click(screen.getByRole("radio", { name: "มืด" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     expect(localStorage.getItem("nightwatch-theme")).toBe("dark");
-    expect(screen.getByRole("button", { name: "มืด" })).toHaveAttribute(
-      "aria-pressed",
+    expect(screen.getByRole("radio", { name: "มืด" })).toHaveAttribute(
+      "aria-checked",
       "true",
     );
 
-    await user.click(screen.getByRole("button", { name: "ตามระบบ" }));
+    await user.click(screen.getByRole("radio", { name: "ตามระบบ" }));
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
   });
 
@@ -41,7 +41,7 @@ describe("DisplayPage", () => {
     const other = renderHook(() => useTheme());
     render(<DisplayPage />);
 
-    await user.click(screen.getByRole("button", { name: "มืด" }));
+    await user.click(screen.getByRole("radio", { name: "มืด" }));
 
     expect(other.result.current.theme).toBe("dark");
   });

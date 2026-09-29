@@ -445,7 +445,7 @@ async function selectTheme(page: Page, theme: "dark" | "light") {
   await page.goto("/settings/display");
   await applyTextZoom(page);
   await page
-    .getByRole("button", { name: theme === "dark" ? "มืด" : "สว่าง" })
+    .getByRole("radio", { name: theme === "dark" ? "มืด" : "สว่าง" })
     .click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 }

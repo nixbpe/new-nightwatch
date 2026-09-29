@@ -10,6 +10,7 @@ import { Skeleton } from "../../components/shell/Skeleton";
 import { EmptyState } from "../../components/shell/EmptyState";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Notice } from "../../components/ui/notice";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
 import { formatDateTime, usePreferences } from "../../lib/preferences";
 import { deviceLabel } from "../../lib/sessions/device-label";
@@ -38,6 +39,7 @@ export function SessionsPage() {
 
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [revoked, setRevoked] = useState(false);
   const [failure, setFailure] = useState<{
     key: string;
     message: string;
@@ -66,6 +68,7 @@ export function SessionsPage() {
   ) => {
     setBusy(key);
     setFailure(null);
+    setRevoked(false);
     try {
       const { error } = await run();
       if (error != null) {
@@ -76,6 +79,7 @@ export function SessionsPage() {
         return;
       }
       closeConfirm(null);
+      setRevoked(true);
       await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
     } catch {
       setFailure({
@@ -256,6 +260,7 @@ export function SessionsPage() {
         })}
       </ul>
 
+      <Notice tone="success">{revoked ? "ออกจากระบบอุปกรณ์แล้ว" : null}</Notice>
       {others?.length === 0 ? (
         <EmptyState
           icon={<LaptopIcon size={20} />}
