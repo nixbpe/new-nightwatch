@@ -266,7 +266,7 @@ function connectOnce(
   url: URL,
   deps: OutboundDeps,
   signal: AbortSignal,
-  attemptMs: number,
+  attempt: { ms: number | null; deadline: number },
   track: (socket: net.Socket) => void,
 ): Promise<OpenedSocket> {
   const secure = url.protocol === "https:";
@@ -275,10 +275,25 @@ function connectOnce(
     new Promise<OpenedSocket>((resolve, reject) => {
       let tcpConnected = false;
       let socket: net.Socket;
-      const attemptTimer = setTimeout(() => {
-        socket.destroy();
-        reject(new OutboundError("connect_failed"));
-      }, attemptMs);
+      // The last address has no attempt timer: the global abort reports it as a timeout.
+      const attemptTimer =
+        attempt.ms === null
+          ? undefined
+          : setTimeout(() => {
+              socket.destroy();
+              reject(
+                new OutboundError(
+                  Date.now() >= attempt.deadline ? "timeout" : "connect_failed",
+                ),
+              );
+            }, attempt.ms);
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(attemptTimer);
+        },
+        { once: true },
+      );
       const settle = <T>(finish: (value: T) => void, value: T) => {
         clearTimeout(attemptTimer);
         finish(value);
@@ -358,6 +373,7 @@ async function openSocket(
   let last: OutboundError = new OutboundError("connect_failed");
   for (const [index, address] of addresses.entries()) {
     // Each attempt gets an equal share of what is left, so a blackholed address cannot use it all.
+    const isLast = index === addresses.length - 1;
     const attemptMs = Math.max(
       1,
       (deadline - Date.now()) / (addresses.length - index),
@@ -368,7 +384,7 @@ async function openSocket(
         url,
         deps,
         signal,
-        attemptMs,
+        { ms: isLast ? null : attemptMs, deadline },
         track,
       );
       // Only errors raised after this point belong to the request phase.

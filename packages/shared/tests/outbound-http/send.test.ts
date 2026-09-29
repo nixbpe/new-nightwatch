@@ -844,6 +844,32 @@ describe("connection-time address check", () => {
     }
   });
 
+  it("reports a single blackholed address as timeout every time", async () => {
+    vi.spyOn(netModule, "connect").mockImplementation(() => new net.Socket());
+    const reasons = new Set<string | undefined>();
+    for (let i = 0; i < 20; i++) {
+      const result = await sendOutboundRequest(
+        baseRequest(`http://${TARGET_HOST}:8080/`, { timeoutMs: 200 }),
+        deps(),
+      );
+      reasons.add(result.failure?.reason);
+    }
+    expect([...reasons]).toEqual(["timeout"]);
+  });
+
+  it("reports a stalled TLS handshake after TCP connect as timeout", async () => {
+    const silent = await serve({});
+    const results = new Set<string | undefined>();
+    for (let i = 0; i < 5; i++) {
+      const result = await sendOutboundRequest(
+        baseRequest(at(silent, "/", "https"), { timeoutMs: 200 }),
+        deps(),
+      );
+      results.add(result.failure?.reason);
+    }
+    expect([...results]).toEqual(["timeout"]);
+  });
+
   it("gives each resolved address an equal share of the budget", async () => {
     const server = await serve({
       onRequest: ({ socket }) => {
