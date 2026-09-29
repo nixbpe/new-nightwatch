@@ -12,16 +12,19 @@ export function SettingsLayout() {
   const name = me?.user.name ?? "";
 
   return (
-    <Page>
+    <Page width="form">
       <PageHeader
-        eyebrow={
-          mePending ? (
-            <Skeleton className="h-3 w-40 align-middle" />
-          ) : name === "" ? (
-            "บัญชีของฉัน"
-          ) : (
-            `${name} · บัญชีของฉัน`
-          )
+        scope={
+          mePending
+            ? { label: <Skeleton className="h-3 w-40 align-middle" /> }
+            : name === ""
+              ? { label: "บัญชีของฉัน" }
+              : {
+                  mark: name,
+                  markShape: "person",
+                  label: name,
+                  tag: "บัญชีของฉัน",
+                }
         }
         title="การตั้งค่าส่วนตัว"
         description={

@@ -24,6 +24,20 @@ import { fetchOrganizationMembers } from "../../lib/api/members";
 import { OrganizationMembersPage } from "../../pages/OrganizationMembersPage";
 import { AppShell } from "./AppShell";
 
+// The page header renders scope as a name plus a pill, so match inside the header.
+async function findScope(name: string, tag: string) {
+  // Re-query on every retry: the page remounts its header across context refreshes.
+  return waitFor(() => {
+    const header = screen.getByRole("heading", { level: 1 }).closest("header");
+    if (header === null) {
+      throw new Error("page header missing");
+    }
+    expect(within(header).getByText(name)).toBeInTheDocument();
+    expect(within(header).getByText(tag)).toBeInTheDocument();
+    return header;
+  });
+}
+
 const {
   fetchNotificationsMock,
   fetchUnreadCountMock,
@@ -484,7 +498,7 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     renderShell(<WorkspacePage />);
-    await screen.findByText("Org A · เจ้าของ");
+    await findScope("Org A", "เจ้าของ");
 
     // Another session switches back to Org A after this tab selected B.
     fetchUnreadCountMock.mockRejectedValue(new InboxScopeChangedError());
@@ -503,7 +517,7 @@ describe("AppShell", () => {
     await vi.waitFor(() => {
       expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(1);
     });
-    expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
+    await findScope("Org A", "เจ้าของ");
   });
 
   it("switching organization from the sidebar publishes the new tenant only after the PATCH succeeds", async () => {
@@ -518,7 +532,7 @@ describe("AppShell", () => {
     const directLoaderClaim = createContextPublicationClaim();
     expect(claimContextPublication(queryClient, directLoaderClaim)).toBe(true);
 
-    await screen.findByText("Org A · เจ้าของ");
+    await findScope("Org A", "เจ้าของ");
 
     await user.click(screen.getByRole("button", { name: /Org A/ }));
     const menu = screen.getByRole("menu", { name: "สลับองค์กร" });
@@ -529,7 +543,7 @@ describe("AppShell", () => {
       within(menu).getByRole("menuitemradio", { name: /Org B/ }),
     );
 
-    expect(await screen.findByText("Org B · ผู้ชม")).toBeInTheDocument();
+    await findScope("Org B", "ผู้ชม");
     expect(hasContextPublicationClaim(queryClient, directLoaderClaim)).toBe(
       false,
     );
@@ -555,7 +569,7 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     renderShell(<WorkspacePage />);
-    await screen.findByText("Org A · เจ้าของ");
+    await findScope("Org A", "เจ้าของ");
 
     await user.click(screen.getByRole("button", { name: /Org A/ }));
     await user.click(
@@ -568,7 +582,7 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(updateActiveOrganizationMock).toHaveBeenCalled();
     });
-    expect(screen.getByText("Org A · เจ้าของ")).toBeInTheDocument();
+    await findScope("Org A", "เจ้าของ");
     expect(screen.getByRole("button", { name: /Org A/ })).toBeInTheDocument();
   });
 
@@ -586,7 +600,7 @@ describe("AppShell", () => {
       await screen.findByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
     ).toBeInTheDocument();
     denial.reject(new ApiError("PERMISSION_DENIED", "role downgraded", 403));
-    expect(await screen.findByText("Org A · ผู้ชม")).toBeInTheDocument();
+    await findScope("Org A", "ผู้ชม");
     expect(
       screen.queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
     ).toBeNull();

@@ -3,7 +3,7 @@ import type {
   OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,20 @@ import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
 import { TenantProvider } from "../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 import { WorkspacePage } from "./WorkspacePage";
+
+// The page header renders scope as a name plus a pill, so match inside the header.
+async function findScope(name: string, tag: string) {
+  // Re-query on every retry: the page remounts its header across context refreshes.
+  return waitFor(() => {
+    const header = screen.getByRole("heading", { level: 1 }).closest("header");
+    if (header === null) {
+      throw new Error("page header missing");
+    }
+    expect(within(header).getByText(name)).toBeInTheDocument();
+    expect(within(header).getByText(tag)).toBeInTheDocument();
+    return header;
+  });
+}
 
 const { sessionState, signOutMock } = vi.hoisted(() => ({
   sessionState: {
@@ -170,7 +184,7 @@ describe("WorkspacePage context states", () => {
 
     pending.resolve(meContext([ownerOrg], ORG_A));
 
-    expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
+    await findScope("Org A", "เจ้าของ");
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -196,7 +210,7 @@ describe("WorkspacePage context states", () => {
 
     await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
 
-    expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
+    await findScope("Org A", "เจ้าของ");
   });
 
   it("a successful context with zero memberships shows the access-needed state", async () => {
@@ -219,13 +233,13 @@ describe("WorkspacePage context states", () => {
       name: "B",
       error: new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
       retryContext: meContext([viewerOrg], ORG_B),
-      expected: "Org B · ผู้ชม",
+      expected: ["Org B", "ผู้ชม"] as const,
     },
     {
       name: "downgraded role",
       error: new ApiError("PERMISSION_DENIED", "role downgraded", 403),
       retryContext: meContext([{ ...ownerOrg, role: "viewer" }], ORG_A),
-      expected: "Org A · ผู้ชม",
+      expected: ["Org A", "ผู้ชม"] as const,
     },
     {
       name: "no-access",
@@ -263,7 +277,11 @@ describe("WorkspacePage context states", () => {
 
       await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
 
-      expect(await screen.findByText(expected)).toBeInTheDocument();
+      if (typeof expected === "string") {
+        expect(await screen.findByText(expected)).toBeInTheDocument();
+      } else {
+        await findScope(expected[0], expected[1]);
+      }
       expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
       expect(
         screen.queryByRole("heading", {
@@ -288,7 +306,7 @@ describe("WorkspacePage organization views", () => {
     fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
     renderPage();
 
-    expect(await screen.findByText("Org B · ผู้ชม")).toBeInTheDocument();
+    await findScope("Org B", "ผู้ชม");
     expect(screen.getByText(/ผู้ชม/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
     expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
@@ -297,7 +315,7 @@ describe("WorkspacePage organization views", () => {
   it("an owner sees overview without the removed invitation form", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
-    expect(await screen.findByText("Org A · เจ้าของ")).toBeInTheDocument();
+    await findScope("Org A", "เจ้าของ");
     expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
     expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
   });

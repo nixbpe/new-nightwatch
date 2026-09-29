@@ -59,13 +59,17 @@ export function WorkspacePage() {
   return (
     <Page>
       <PageHeader
-        eyebrow={`${activeOrg.name} · ${ROLE_LABELS[activeOrg.role] ?? activeOrg.role}`}
+        scope={{
+          mark: activeOrg.name,
+          label: activeOrg.name,
+          tag: ROLE_LABELS[activeOrg.role] ?? activeOrg.role,
+        }}
         title="ภาพรวม"
         // Names are not unique across organizations, so the slug stays visible.
-        description={
-          <>
+        status={
+          <span>
             slug <span className="font-mono">{activeOrg.slug}</span>
-          </>
+          </span>
         }
       />
       <EmptyState

@@ -22,7 +22,7 @@ The shell is the chrome around every signed-in page: a sidebar, a header and a s
 | Sidebar, rail     | 56 px icon rail below 1024 px                                                                                          |
 | Sidebar, drawer   | Slide-in over the page below 640 px; modal, focus moves to its close control on open and back to the toggle on close   |
 | Header            | 56 px: sidebar toggle, breadcrumb, search-all field with a ⌘K / Ctrl+K hint, notifications; no product logo or avatar |
-| Main              | Scrollable, 32 px padding; page column 960 px left-aligned with 24 px rhythm                                           |
+| Main              | Scrollable, 32 px padding; data pages fill the column, form pages cap at 720 px; 24 px rhythm                          |
 
 The header toggle overrides the breakpoint default until the breakpoint itself changes. ⌘K / Ctrl+K opens the command palette from anywhere in the shell. The product mark appears only where there is no organization to show: sign-in, auth cards, not-found, and the sidebar of a user without membership.
 
@@ -57,7 +57,7 @@ Shared menu-button behavior: focus moves in on open; ↑↓ move between items; 
 
 ## Page frame
 
-Every routed page uses one frame: a 960 px left-aligned column with 24 px rhythm and a page header with an eyebrow for scope, the title, an optional description and actions on the right that wrap under the title when the width runs out. Cards are hairline panels, never shadows. Forms bound their fields (about 448 px wide or a two-column grid) and put actions in a row under a hairline. Page-level loading and error states render as cards inside the frame, never as their own main region.
+Every routed page uses one frame: a fluid column (forms cap at 720 px) with 24 px rhythm and a page header with a scope row (organization or account mark, name and a role or context pill, no separator characters), the 24 px title, a status line for facts (slug, counts, freshness; identifiers and numbers in monospace), an optional description and actions on the right that wrap under the title when the width runs out. Cards are hairline panels, never shadows. Forms bound their fields (about 448 px wide or a two-column grid) and put actions in a row under a hairline. Page-level loading and error states render as cards inside the frame, never as their own main region.
 
 ## Theme
 

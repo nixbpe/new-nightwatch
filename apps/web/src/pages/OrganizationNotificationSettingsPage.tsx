@@ -68,27 +68,29 @@ function OrganizationNotificationSettingsForOrganization({
   );
   const header = (
     <PageHeader
-      eyebrow={
+      scope={
         organization === undefined
-          ? "ตั้งค่าองค์กร"
-          : `${organization.name} · ตั้งค่าองค์กร`
+          ? { label: "ตั้งค่าองค์กร" }
+          : {
+              mark: organization.name,
+              label: organization.name,
+              tag: "ตั้งค่าองค์กร",
+            }
       }
       title="ตั้งค่าการแจ้งเตือน"
-      description={
-        organization === undefined ? (
-          "ใช้กับสมาชิกทุกคนขององค์กรนี้"
-        ) : (
-          <>
-            slug <span className="font-mono">{organization.slug}</span> ·
-            ใช้กับสมาชิกทุกคนขององค์กรนี้
-          </>
+      status={
+        organization === undefined ? undefined : (
+          <span>
+            slug <span className="font-mono">{organization.slug}</span>
+          </span>
         )
       }
+      description="ใช้กับสมาชิกทุกคนขององค์กรนี้"
     />
   );
   if (settings.isPending)
     return (
-      <Page>
+      <Page width="form">
         {header}
         <Card role="status" padding="md">
           <span className="sr-only">กำลังโหลดการตั้งค่า…</span>
@@ -99,7 +101,7 @@ function OrganizationNotificationSettingsForOrganization({
     );
   if (settings.isError)
     return (
-      <Page>
+      <Page width="form">
         {header}
         <Alert tone="error">
           {settings.error instanceof ApiError &&
@@ -114,7 +116,7 @@ function OrganizationNotificationSettingsForOrganization({
   const settingsData = settings.data;
   const value = enabled ?? settingsData.settingsChangedEnabled;
   return (
-    <Page>
+    <Page width="form">
       {header}
       <Card as="section" padding="md">
         {save.isError ? (

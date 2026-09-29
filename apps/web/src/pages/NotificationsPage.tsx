@@ -379,20 +379,25 @@ function NotificationsPageForOrganization({
   return (
     <Page>
       <PageHeader
-        eyebrow={
-          serverActiveOrgId === null
-            ? "บัญชีของคุณ · ไม่มีองค์กรที่ใช้งาน"
-            : "บัญชีของคุณ · องค์กรที่ใช้งาน"
-        }
+        scope={{
+          label: "บัญชีของคุณ",
+          tag:
+            serverActiveOrgId === null
+              ? "ไม่มีองค์กรที่ใช้งาน"
+              : "องค์กรที่ใช้งาน",
+        }}
         title="การแจ้งเตือน"
-        description={
-          unreadCount === 0 ? (
-            "อ่านครบทุกรายการแล้ว"
-          ) : (
-            <>
-              ยังไม่อ่าน <span className="font-mono">{unreadCount}</span> รายการ
-            </>
-          )
+        status={
+          <span>
+            {unreadCount === 0 ? (
+              "อ่านครบทุกรายการแล้ว"
+            ) : (
+              <>
+                ยังไม่อ่าน <span className="font-mono">{unreadCount}</span>{" "}
+                รายการ
+              </>
+            )}
+          </span>
         }
         actions={
           <Button

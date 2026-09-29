@@ -119,9 +119,7 @@ describe("SettingsLayout", () => {
     expect(
       screen.getByRole("heading", { name: "การตั้งค่าส่วนตัว" }),
     ).toBeInTheDocument();
-    expect(
-      await screen.findByText("นภัส วงศ์สกุล · บัญชีของฉัน"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("นภัส วงศ์สกุล")).toBeInTheDocument();
     expect(
       screen.getByText(/ไม่ใช่การตั้งค่าขององค์กร Org A/),
     ).toBeInTheDocument();

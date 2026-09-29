@@ -351,12 +351,17 @@ function OrganizationMembersPageForOrganization({
   return (
     <Page>
       <PageHeader
-        eyebrow={`${organization.name} · ${organization.slug}`}
+        scope={{ mark: organization.name, label: organization.name }}
         title="สมาชิก"
-        description={
-          !list.isFetching && !list.isError && !invalidPage && list.data
-            ? `สมาชิกทั้งหมด ${String(list.data.page.total)} คน`
-            : undefined
+        status={
+          <>
+            <span>
+              slug <span className="font-mono">{organization.slug}</span>
+            </span>
+            {!list.isFetching && !list.isError && !invalidPage && list.data ? (
+              <span>{`สมาชิกทั้งหมด ${String(list.data.page.total)} คน`}</span>
+            ) : null}
+          </>
         }
         titleRef={memberPageHeadingRef}
         titleTabIndex={-1}

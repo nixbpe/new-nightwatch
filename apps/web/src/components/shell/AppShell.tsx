@@ -171,7 +171,7 @@ export function AppShell() {
                   <Outlet />
                 </ErrorBoundary>
               </div>
-              <footer className="px-4 py-3 text-xs text-foreground-secondary sm:px-8">
+              <footer className="px-4 py-3 font-mono text-xs text-foreground-secondary sm:px-8">
                 © NightWatch
               </footer>
             </div>
