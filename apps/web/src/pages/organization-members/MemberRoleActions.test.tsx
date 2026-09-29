@@ -686,3 +686,52 @@ it("refreshes membership context when the actor changes their own role", async (
     );
   });
 });
+
+const RESTRICTED = "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้";
+
+async function changeOwnRoleToAdmin(
+  user: Awaited<ReturnType<typeof renderAs>>,
+) {
+  await user.selectOptions(roleSelect("Me"), "admin");
+  await user.click(save("Me"));
+  await user.click(
+    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
+  );
+}
+
+it("shows loading, never a restricted state, while context refreshes after an own role change", async () => {
+  const user = await renderAs("owner");
+  const refresh = Promise.withResolvers<MeContextResponse>();
+  vi.mocked(fetchMeContext).mockReturnValue(refresh.promise);
+  await changeOwnRoleToAdmin(user);
+  expect(
+    await screen.findByText("กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(RESTRICTED)).toBeNull();
+  await act(async () => {
+    refresh.resolve(contextFor("admin"));
+    await refresh.promise;
+  });
+  expect(await screen.findByText("Ann")).toBeInTheDocument();
+  expect(screen.queryByText(RESTRICTED)).toBeNull();
+  expect(screen.getByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+});
+
+it("shows a retryable error, not a restricted state, when the context refresh fails after an own role change", async () => {
+  const user = await renderAs("owner");
+  vi.mocked(fetchMeContext).mockRejectedValue(new Error("network"));
+  await changeOwnRoleToAdmin(user);
+  const retry = await screen.findByRole("button", { name: "ลองอีกครั้ง" });
+  expect(
+    screen.getByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(RESTRICTED)).toBeNull();
+  const failedFetches = vi.mocked(fetchMeContext).mock.calls.length;
+  vi.mocked(fetchMeContext).mockResolvedValue(contextFor("admin"));
+  await user.click(retry);
+  expect(await screen.findByText("Ann")).toBeInTheDocument();
+  expect(vi.mocked(fetchMeContext).mock.calls.length).toBeGreaterThan(
+    failedFetches,
+  );
+  expect(screen.queryByText(RESTRICTED)).toBeNull();
+});

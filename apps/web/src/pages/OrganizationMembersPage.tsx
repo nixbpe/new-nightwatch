@@ -77,17 +77,6 @@ function OrganizationMembersPageForOrganization({
     enabled: canRead,
   });
   const { refetch: refetchList } = list;
-  const actorRole = organization?.role === "owner" ? "owner" : "admin";
-  const roleChange = useMemberRoleChange({
-    organizationId,
-    actorRole,
-    actorUserId: me?.user.id,
-    listSettled: !list.isFetching && list.data !== undefined,
-    headingRef: memberPageHeadingRef,
-    refetchList,
-    refreshMembershipContext,
-  });
-
   const recoverAfterBoundedRefetchDenial = useCallback(async () => {
     const operation = membershipRecoveryOperation.current + 1;
     membershipRecoveryOperation.current = operation;
@@ -199,6 +188,19 @@ function OrganizationMembersPageForOrganization({
     }
     void refreshAfterAuthorizationDenied();
   }, [list.error, membershipRefreshState, refreshAfterAuthorizationDenied]);
+  const actorRole = organization?.role === "owner" ? "owner" : "admin";
+  const roleChange = useMemberRoleChange({
+    organizationId,
+    actorRole,
+    actorUserId: me?.user.id,
+    listSettled: !list.isFetching && list.data !== undefined,
+    headingRef: memberPageHeadingRef,
+    refetchList,
+    // Shows loading during the refresh and a retryable error if it fails,
+    // instead of the restricted state a hidden context would render.
+    refreshMembershipContext: refreshAfterAuthorizationDenied,
+  });
+
   const invalidPage =
     list.data?.organizationId === organizationId &&
     offset > 0 &&

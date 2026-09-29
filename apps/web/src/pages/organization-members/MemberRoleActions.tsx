@@ -70,7 +70,7 @@ export function useMemberRoleChange({
     data?: OrganizationMemberListResponse;
     isError: boolean;
   }>;
-  refreshMembershipContext: () => Promise<MeContextResponse | null>;
+  refreshMembershipContext: () => Promise<unknown>;
 }) {
   const queryClient = useQueryClient();
   const publicationVersion = useRef(
