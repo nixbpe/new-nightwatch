@@ -1,9 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { request } from "./client";
-import { fetchOrganizationMembers, memberListQueryKey } from "./members";
+import {
+  fetchOrganizationMembers,
+  memberListQueryKey,
+  updateOrganizationMemberRole,
+} from "./members";
 
-vi.mock("./client", () => ({ request: vi.fn() }));
+afterEach(() => vi.unstubAllGlobals());
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const response = {
@@ -31,18 +34,43 @@ describe("organization members API", () => {
   });
 
   it("requests and validates the paginated organization member directory", async () => {
-    vi.mocked(request).mockResolvedValueOnce(response);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
 
     await expect(
       fetchOrganizationMembers(organizationId, 50, 0),
     ).resolves.toEqual(response);
-    expect(request).toHaveBeenCalledWith(
-      "/api/organizations/{organizationId}/members",
-      expect.anything(),
-      {
-        params: { organizationId },
-        query: { limit: 50, offset: 0 },
-      },
+    const [input] = vi.mocked(fetch).mock.calls[0] as [Request];
+    expect(input.url).toContain(
+      `/api/organizations/${organizationId}/members?limit=50&offset=0`,
     );
+  });
+  it("rejects a malformed role update response with the client contract error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            member: {
+              id: "member-1",
+              userId: "user-1",
+              organizationId,
+              role: "root",
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    await expect(
+      updateOrganizationMemberRole(organizationId, "member-1", "admin"),
+    ).rejects.toMatchObject({ code: "CONTRACT_MISMATCH", status: 200 });
   });
 });

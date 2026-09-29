@@ -125,6 +125,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                     ) {
                       void navigate(`/organizations/${org.id}/members`, {
                         replace: true,
+                        state: { focusMemberHeadingFor: org.id },
                       });
                     }
                   });

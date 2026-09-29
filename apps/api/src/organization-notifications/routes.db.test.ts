@@ -479,18 +479,117 @@ describe("organization member HTTP mutations", () => {
         .status,
     ).toBe(200);
 
-    // An unauthorized actor is denied before any target lookup, so a missing
-    // and an existing target are indistinguishable to a viewer.
+    // Denied PATCH responses and captured audit entries must not identify a
+    // protected target, regardless of whether that target exists.
+    auditLines.length = 0;
+    const probes = [];
     for (const probedMemberId of [memberIds.owner, crypto.randomUUID()]) {
-      const probe = await targetClient(
+      probes.push(
+        await targetClient(
+          "PATCH",
+          `/api/organizations/${organizationId}/members/${probedMemberId}/role`,
+          { role: "viewer" },
+        ),
+      );
+    }
+    expect(probes[0]).toEqual(probes[1]);
+    expect(probes[0]).toEqual({
+      status: 403,
+      json: {
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "คุณไม่มีสิทธิ์เปลี่ยนบทบาทสมาชิก",
+        },
+      },
+    });
+    const roleDenials = auditLines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>,
+    );
+    expect(
+      roleDenials.filter((entry) => entry.msg === "organization access denied"),
+    ).toEqual([
+      expect.objectContaining({
+        actorUserId: targetId,
+        action: "organization.member.role.update",
+        code: "PERMISSION_DENIED",
+      }),
+      expect.objectContaining({
+        actorUserId: targetId,
+        action: "organization.member.role.update",
+        code: "PERMISSION_DENIED",
+      }),
+    ]);
+    for (const line of auditLines) {
+      for (const protectedValue of [
+        organizationId,
+        memberIds.owner,
+        memberIds.target,
+        emails.owner,
+        emails.target,
+        "Member owner",
+        "Member target",
+      ]) {
+        expect(line).not.toContain(protectedValue);
+      }
+    }
+    // Better Auth member IDs are opaque strings. The route must reach the
+    // locked last-owner decision and update non-UUID targets as well.
+    const opaqueOwnerId = `role-owner-${run}`;
+    const opaqueTargetId = `role-target-${run}`;
+    await owner.sql.query("update member set id = $2 where id = $1", [
+      memberIds.owner,
+      opaqueOwnerId,
+    ]);
+    await owner.sql.query("update member set id = $2 where id = $1", [
+      memberIds.target,
+      opaqueTargetId,
+    ]);
+    try {
+      const lastOwnerRole = await ownerClient(
         "PATCH",
-        `/api/organizations/${organizationId}/members/${probedMemberId}/role`,
+        `/api/organizations/${organizationId}/members/${opaqueOwnerId}/role`,
         { role: "viewer" },
       );
-      expect(probe.status).toBe(403);
-      expect(probe.json).toMatchObject({
-        error: { code: "PERMISSION_DENIED" },
+      expect(lastOwnerRole).toMatchObject({
+        status: 400,
+        json: { error: { code: "LAST_OWNER" } },
       });
+      const opaqueUpdate = await ownerClient(
+        "PATCH",
+        `/api/organizations/${organizationId}/members/${opaqueTargetId}/role`,
+        { role: "admin" },
+      );
+      expect(opaqueUpdate).toEqual({
+        status: 200,
+        json: {
+          member: {
+            id: opaqueTargetId,
+            userId: targetId,
+            organizationId,
+            role: "admin",
+          },
+        },
+      });
+      expect(
+        (
+          await owner.sql.query<{ id: string; role: string }>(
+            "select id, role from member where organization_id = $1 and id = any($2::text[]) order by id",
+            [organizationId, [opaqueOwnerId, opaqueTargetId]],
+          )
+        ).rows,
+      ).toEqual([
+        { id: opaqueOwnerId, role: "owner" },
+        { id: opaqueTargetId, role: "admin" },
+      ]);
+    } finally {
+      await owner.sql.query("update member set id = $2 where id = $1", [
+        opaqueOwnerId,
+        memberIds.owner,
+      ]);
+      await owner.sql.query(
+        "update member set id = $2, role = 'viewer' where id = $1",
+        [opaqueTargetId, memberIds.target],
+      );
     }
 
     const role = await ownerClient(
@@ -510,6 +609,40 @@ describe("organization member HTTP mutations", () => {
         )
       ).rows[0]?.role,
     ).toBe("admin");
+
+    auditLines.length = 0;
+    const adminOwnerProbe = await targetClient(
+      "PATCH",
+      `/api/organizations/${organizationId}/members/${memberIds.owner}/role`,
+      { role: "viewer" },
+    );
+    const adminMissingProbe = await targetClient(
+      "PATCH",
+      `/api/organizations/${organizationId}/members/${crypto.randomUUID()}/role`,
+      { role: "viewer" },
+    );
+    expect(adminOwnerProbe).toEqual(adminMissingProbe);
+    expect(adminOwnerProbe).toEqual({
+      status: 403,
+      json: {
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "เฉพาะเจ้าขององค์กรเท่านั้นที่เปลี่ยนเจ้าของได้",
+        },
+      },
+    });
+    for (const line of auditLines) {
+      for (const protectedValue of [
+        organizationId,
+        memberIds.owner,
+        emails.owner,
+        emails.target,
+        "Member owner",
+        "Member target",
+      ]) {
+        expect(line).not.toContain(protectedValue);
+      }
+    }
 
     // Composite stored roles are projected to one contract role.
     await owner.sql.query(

@@ -1,23 +1,39 @@
+import type {
+  OrganizationMember,
+  OrganizationRole,
+  MeContextResponse,
+} from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
 import { Page, PageHeader } from "../components/shell/Page";
 import { Skeleton } from "../components/shell/Skeleton";
 import { ApiError } from "../lib/api/client";
 import {
+  MEMBER_LIST_QUERY_PREFIX,
   fetchOrganizationMembers,
   memberListQueryKey,
+  updateOrganizationMemberRole,
 } from "../lib/api/members";
+import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
+import {
+  getContextPublicationSnapshot,
+  subscribeToContextPublication,
+} from "../lib/queryClient";
+import { ROLE_LABELS } from "../lib/roles";
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
+import { MemberActionDialog } from "./organization-members/MemberActionDialog";
+import { MemberRoleActions } from "./organization-members/MemberRoleActions";
 
 const LIMIT = 50;
 
@@ -57,17 +73,233 @@ function OrganizationMembersPageForOrganization({
   const membershipRecoveryOperation = useRef(0);
   const [offset, setOffset] = useState(0);
   const memberPageHeadingRef = useRef<HTMLHeadingElement>(null);
+  const directRoleFocusMemberId = useRef<string | null>(null);
+  const directRoleActionCellRef = useRef<HTMLTableCellElement>(null);
+  const location = useLocation();
+  useEffect(() => {
+    const navigationState: unknown = location.state;
+    if (
+      navigationState !== null &&
+      typeof navigationState === "object" &&
+      "focusMemberHeadingFor" in navigationState &&
+      navigationState.focusMemberHeadingFor === organizationId
+    ) {
+      memberPageHeadingRef.current?.focus();
+    }
+  }, [location.key, location.state, organizationId]);
+  const [confirmation, setConfirmation] = useState<{
+    member: OrganizationMember;
+    role: OrganizationRole;
+    opener: HTMLElement;
+  } | null>(null);
+  const [roleNotice, setRoleNotice] = useState<{
+    error: boolean;
+    text: string;
+  } | null>(null);
+  const [rolePending, setRolePending] = useState(false);
+  const roleInFlight = useRef(false);
+  const publicationVersion = useRef(
+    getContextPublicationSnapshot(queryClient).version,
+  );
+  const lastPublishedOrgId = useRef(
+    queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
+      ?.lastActiveTenantId ?? null,
+  );
+  const retiredRoleScope = useRef(false);
+  const isCurrentRoleScope = useCallback(() => {
+    const version = getContextPublicationSnapshot(queryClient).version;
+    if (version !== publicationVersion.current) {
+      const serverOrgId =
+        queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
+          ?.lastActiveTenantId ?? null;
+      if (
+        serverOrgId !== lastPublishedOrgId.current &&
+        serverOrgId !== organizationId
+      )
+        retiredRoleScope.current = true;
+      publicationVersion.current = version;
+      lastPublishedOrgId.current = serverOrgId;
+    }
+    return !retiredRoleScope.current;
+  }, [organizationId, queryClient]);
+  const roleScopeCurrent = useSyncExternalStore(
+    useCallback(
+      (listener) =>
+        subscribeToContextPublication(queryClient, () => {
+          isCurrentRoleScope();
+          listener();
+        }),
+      [queryClient, isCurrentRoleScope],
+    ),
+    isCurrentRoleScope,
+  );
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
   );
   const canRead =
     organization !== undefined && isMemberDirectoryReadable(organization);
+  useEffect(() => {
+    if (organization?.role !== "owner" && confirmation !== null) {
+      setConfirmation(null);
+    }
+  }, [organization?.role, confirmation]);
   const list = useQuery({
     queryKey: memberListQueryKey(organizationId, LIMIT, offset),
     queryFn: () => fetchOrganizationMembers(organizationId, LIMIT, offset),
     enabled: canRead,
   });
   const { refetch: refetchList } = list;
+  useEffect(() => {
+    if (
+      directRoleFocusMemberId.current === null ||
+      rolePending ||
+      list.isFetching ||
+      !isCurrentRoleScope()
+    )
+      return;
+    if (document.activeElement !== document.body) {
+      directRoleFocusMemberId.current = null;
+      return;
+    }
+    const target = directRoleActionCellRef.current?.querySelector(
+      "select:not(:disabled), button:not(:disabled)",
+    );
+    if (
+      list.data?.organizationId === organizationId &&
+      !list.isError &&
+      target instanceof HTMLElement &&
+      target.isConnected
+    ) {
+      target.focus();
+    } else {
+      memberPageHeadingRef.current?.focus();
+    }
+    directRoleFocusMemberId.current = null;
+  }, [
+    isCurrentRoleScope,
+    list.data,
+    list.isError,
+    list.isFetching,
+    organizationId,
+    rolePending,
+  ]);
+  async function submitRole(
+    member: OrganizationMember,
+    role: OrganizationRole,
+  ) {
+    if (roleInFlight.current || !isCurrentRoleScope()) return;
+    roleInFlight.current = true;
+    setRolePending(true);
+    setRoleNotice(null);
+    let failure: unknown = null;
+    try {
+      const response = await updateOrganizationMemberRole(
+        organizationId,
+        member.id,
+        role,
+      );
+      if (!isCurrentRoleScope()) return;
+      if (
+        response.member.organizationId !== organizationId ||
+        response.member.id !== member.id ||
+        response.member.role !== role
+      ) {
+        throw new Error("Role response does not match the requested member");
+      }
+    } catch (error) {
+      failure = error;
+    }
+    if (!isCurrentRoleScope()) return;
+    await queryClient.invalidateQueries({
+      queryKey: [...MEMBER_LIST_QUERY_PREFIX, organizationId],
+      refetchType: "none",
+    });
+    await queryClient.invalidateQueries({
+      queryKey: ME_CONTEXT_QUERY_KEY,
+      refetchType: "none",
+    });
+    if (!isCurrentRoleScope()) return;
+    setConfirmation(null);
+    // A server-confirmed list is authoritative even if another actor changed
+    // this member while the PATCH was pending.
+    const refreshed = await refetchList();
+    if (!isCurrentRoleScope()) return;
+    const listAuthorizationDenied =
+      refreshed.isError && isAuthorizationDenied(refreshed.error);
+    if (
+      refreshed.isError ||
+      refreshed.data?.organizationId !== organizationId
+    ) {
+      setRoleNotice({
+        error: true,
+        text: "ไม่สามารถตรวจสอบบทบาทล่าสุดได้ กรุณาลองโหลดสมาชิกอีกครั้ง",
+      });
+      if (listAuthorizationDenied) void refreshAfterAuthorizationDenied();
+    } else if (failure !== null) {
+      setRoleNotice({
+        error: true,
+        text:
+          failure instanceof ApiError && failure.code === "LAST_OWNER"
+            ? "ต้องมีเจ้าขององค์กรอย่างน้อยหนึ่งคน บทบาทล่าสุดได้รับการโหลดแล้ว"
+            : "บันทึกบทบาทไม่สำเร็จ โหลดบทบาทล่าสุดแล้ว",
+      });
+    } else {
+      const current = refreshed.data.members.find(
+        (item) => item.id === member.id,
+      );
+      setRoleNotice(
+        current === undefined
+          ? {
+              error: true,
+              text: "ไม่สามารถตรวจสอบบทบาทล่าสุดได้ กรุณาลองโหลดสมาชิกอีกครั้ง",
+            }
+          : current.role === role
+            ? { error: false, text: "บันทึกบทบาทแล้ว" }
+            : {
+                error: true,
+                text: "บทบาทถูกเปลี่ยนอีกครั้ง โหลดบทบาทล่าสุดแล้ว",
+              },
+      );
+    }
+    const refreshedActor = refreshed.data?.members.find(
+      (current) => current.userId === me?.user.id,
+    );
+    if (
+      !listAuthorizationDenied &&
+      (refreshedActor === undefined ||
+        refreshedActor.role !== organization?.role)
+    ) {
+      const context = await refreshMembershipContext();
+      if (!isCurrentRoleScope()) return;
+      if (context === null) {
+        setMembershipRefreshState("failed");
+        setRoleNotice(null);
+      }
+    }
+    roleInFlight.current = false;
+    setRolePending(false);
+  }
+
+  function requestRoleChange(
+    member: OrganizationMember,
+    role: OrganizationRole,
+    opener: HTMLElement,
+  ) {
+    if (
+      roleInFlight.current ||
+      !isCurrentRoleScope() ||
+      (organization?.role !== "owner" &&
+        (member.role === "owner" || role === "owner"))
+    )
+      return;
+    if (member.role === "owner" || role === "owner") {
+      setConfirmation({ member, role, opener });
+    } else {
+      directRoleFocusMemberId.current =
+        document.activeElement === opener ? member.id : null;
+      void submitRole(member, role);
+    }
+  }
 
   const recoverAfterBoundedRefetchDenial = useCallback(async () => {
     const operation = membershipRecoveryOperation.current + 1;
@@ -266,6 +498,7 @@ function OrganizationMembersPageForOrganization({
               ลองอีกครั้ง
             </Button>
             <Button
+              disabled={rolePending}
               onClick={() => {
                 memberPageHeadingRef.current?.focus();
                 setOffset((value) => Math.max(0, value - LIMIT));
@@ -301,6 +534,7 @@ function OrganizationMembersPageForOrganization({
                 <th className="p-4">ชื่อ</th>
                 <th className="p-4">อีเมล</th>
                 <th className="p-4">บทบาท</th>
+                <th className="p-4">เปลี่ยนบทบาท</th>
               </tr>
             </thead>
             <tbody>
@@ -311,7 +545,27 @@ function OrganizationMembersPageForOrganization({
                 >
                   <td className="p-4">{member.name}</td>
                   <td className="p-4">{member.email}</td>
-                  <td className="p-4">{member.role}</td>
+                  <td className="p-4">{ROLE_LABELS[member.role]}</td>
+                  <td
+                    className="p-4"
+                    ref={
+                      directRoleFocusMemberId.current === member.id
+                        ? directRoleActionCellRef
+                        : undefined
+                    }
+                  >
+                    {roleScopeCurrent && (
+                      <MemberRoleActions
+                        key={`${member.id}:${member.role}:${organization.role}`}
+                        member={member}
+                        actorRole={
+                          organization.role === "owner" ? "owner" : "admin"
+                        }
+                        pending={rolePending}
+                        onSave={requestRoleChange}
+                      />
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -327,7 +581,7 @@ function OrganizationMembersPageForOrganization({
           </p>
           <div className="flex gap-2">
             <Button
-              disabled={!hasPrevious}
+              disabled={!hasPrevious || rolePending}
               onClick={() => {
                 setOffset((value) => Math.max(0, value - LIMIT));
               }}
@@ -335,7 +589,7 @@ function OrganizationMembersPageForOrganization({
               ก่อนหน้า
             </Button>
             <Button
-              disabled={!hasNext}
+              disabled={!hasNext || rolePending}
               onClick={() => {
                 setOffset((value) => value + LIMIT);
               }}
@@ -367,6 +621,34 @@ function OrganizationMembersPageForOrganization({
         organizationName={organization.name}
         actorRole={organization.role === "owner" ? "owner" : "admin"}
       />
+      {roleScopeCurrent &&
+        roleNotice &&
+        (roleNotice.error ? (
+          <Alert tone="error">{roleNotice.text}</Alert>
+        ) : (
+          <p role="status" className="text-sm text-primary">
+            {roleNotice.text}
+          </p>
+        ))}
+      {roleScopeCurrent && rolePending && (
+        <p role="status">กำลังบันทึกบทบาท…</p>
+      )}
+      {roleScopeCurrent && organization.role === "owner" && confirmation && (
+        <MemberActionDialog
+          title="ยืนยันการเปลี่ยนบทบาท"
+          description={`เปลี่ยนบทบาทของ ${confirmation.member.name} ในองค์กร ${organization.name} (${organization.slug}) เป็น ${String(ROLE_LABELS[confirmation.role])} การเปลี่ยนสิทธิ์เจ้าของมีผลต่อการจัดการสมาชิกและการเข้าถึงองค์กร`}
+          confirmLabel="ยืนยันการเปลี่ยนบทบาท"
+          pending={rolePending}
+          opener={confirmation.opener}
+          fallbackFocus={memberPageHeadingRef}
+          onCancel={() => {
+            setConfirmation(null);
+          }}
+          onConfirm={() =>
+            void submitRole(confirmation.member, confirmation.role)
+          }
+        />
+      )}
       {directory}
     </Page>
   );

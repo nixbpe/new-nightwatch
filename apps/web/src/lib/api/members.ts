@@ -1,6 +1,8 @@
 import {
   organizationMemberListResponseSchema,
+  organizationMemberRoleUpdateResponseSchema,
   type OrganizationMemberListResponse,
+  type OrganizationRole,
 } from "@nightwatch/api-contract";
 
 import { request } from "./client";
@@ -26,4 +28,16 @@ export function fetchOrganizationMembers(
       query: { limit, offset },
     },
   ).then((response) => organizationMemberListResponseSchema.parse(response));
+}
+
+export function updateOrganizationMemberRole(
+  organizationId: string,
+  memberId: string,
+  role: OrganizationRole,
+) {
+  return request(
+    "/api/organizations/{organizationId}/members/{memberId}/role",
+    organizationMemberRoleUpdateResponseSchema,
+    { method: "PATCH", params: { organizationId, memberId }, body: { role } },
+  );
 }

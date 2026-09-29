@@ -9,6 +9,7 @@ export {
   organizationMemberListQuerySchema,
   organizationMemberListResponseSchema,
   organizationMemberSchema,
+  organizationMemberRoleUpdateResponseSchema,
   organizationRoleSchema,
   type ActiveOrganizationInput,
   type InvitationAcceptResponse,
@@ -19,6 +20,7 @@ export {
   type MeContextResponse,
   type OrganizationMember,
   type OrganizationMemberListQuery,
+  type OrganizationMemberRoleUpdateResponse,
   type OrganizationMemberListResponse,
   type OrganizationRole,
 } from "./auth";
