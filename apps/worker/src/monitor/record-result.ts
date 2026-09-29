@@ -69,6 +69,7 @@ type LockedMonitor = {
   ssl_host: string | null;
   ssl_issuer: string | null;
   ssl_not_after: Date | null;
+  ssl_state: string | null;
   last_check_at: Date | null;
 };
 
@@ -121,7 +122,7 @@ function attempt(
     }
     const monitorRows = await client.query<LockedMonitor>(
       `select name, consecutive_failures, last_passed_config_version,
-              ssl_host, ssl_issuer, ssl_not_after, last_check_at
+              ssl_host, ssl_issuer, ssl_not_after, ssl_state, last_check_at
        from monitors where id = $1 and tenant_id = $2 for update`,
       [input.monitorId, input.tenantId],
     );
@@ -228,14 +229,27 @@ function attempt(
 }
 
 /**
- * Level the stored certificate had at the previous check. ssl_state cannot
- * answer this: an unreadable handshake overwrites it while the identity stays.
+ * Level last observed from a readable certificate. Non-TLS results (timeout,
+ * refused, check_error) leave ssl_state alone, so it is the answer unless an
+ * unreadable handshake overwrote it. Only then the stored expiry is
+ * evaluated at the previous check; a boundary crossed between the last
+ * readable check and that check is not reported.
  */
 function previousLevel(
   monitor: LockedMonitor,
   result: CheckResult,
 ): string | null {
-  if (monitor.ssl_not_after === null) return null;
+  if (
+    monitor.ssl_state === "ok" ||
+    monitor.ssl_state === "caution" ||
+    monitor.ssl_state === "danger" ||
+    monitor.ssl_state === "expired"
+  ) {
+    return monitor.ssl_state;
+  }
+  if (monitor.ssl_state !== "unreadable" || monitor.ssl_not_after === null) {
+    return null;
+  }
   return sslLevel(
     monitor.ssl_not_after,
     monitor.last_check_at ?? result.checkedAt,
@@ -317,13 +331,15 @@ function nextSsl(
             : null,
       };
     }
-    // The stored certificate identity stays, so the same certificate seen
-    // again after a failed handshake does not enter its level a second time.
+    // The stored certificate identity stays for the same host, so the same
+    // certificate seen again after a failed handshake does not enter its level
+    // a second time. Another host has no known identity yet.
+    const sameHost = monitor.ssl_host === tls.host;
     return {
       update: {
-        host: monitor.ssl_host ?? tls.host,
-        issuer: monitor.ssl_issuer,
-        notAfter: monitor.ssl_not_after,
+        host: tls.host,
+        issuer: sameHost ? monitor.ssl_issuer : null,
+        notAfter: sameHost ? monitor.ssl_not_after : null,
         state: "unreadable",
         reason: result.tlsReason,
       },

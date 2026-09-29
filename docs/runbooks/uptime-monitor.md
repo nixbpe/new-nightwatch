@@ -11,7 +11,7 @@ need the user's approval for that target.
 | `CREDENTIAL_ENCRYPTION_KEYS` | JSON map of key version to base64 of 32 random bytes. Required in production. |
 | `CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION` | Version used for new encryption. Must exist in the map. |
 | `REDIS_URL` | Required by API and Worker. |
-| `MONITOR_EGRESS_CANARY_URLS` | Optional, comma-separated http(s) URLs. Unset means canary result is "unknown". |
+| `MONITOR_EGRESS_CANARY_URLS` | Optional, comma-separated http(s) URLs. Unset means canary result is "unknown". Prefer https URLs: an http canary behind a transparent proxy that answers 403 reads as reachable. |
 | `OUTBOUND_TEST_ALLOWED_HOSTS` | Optional, hostnames only, CI and e2e. CI uses `target.nw-test.internal`, mapped to 127.0.0.1 in `/etc/hosts`, because the SSRF helper blocks `localhost`. Never set in production (startup fails). |
 
 Generate a key: `openssl rand -base64 32`. Store it in the approved secret

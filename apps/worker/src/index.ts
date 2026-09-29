@@ -160,6 +160,7 @@ function startMonitorChecker(monitor: MonitorEnv): Worker<MonitorCheckJob> {
     canary: createEgressCanary({
       urls: monitor.MONITOR_EGRESS_CANARY_URLS,
       outbound: { testAllowedHosts: monitor.OUTBOUND_TEST_ALLOWED_HOSTS },
+      signal: checkerShutdown.signal,
     }),
     signal: checkerShutdown.signal,
   };

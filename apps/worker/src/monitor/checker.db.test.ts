@@ -18,6 +18,7 @@ import {
   seedMonitor,
   startTarget,
   startTestDatabase,
+  TARGET_HOST,
   updateMonitor,
   type SeededMonitor,
   type Target,
@@ -1355,6 +1356,28 @@ describe("shutdown signal listeners", () => {
       );
       expect(target.requests).toHaveLength(5);
       expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+
+      // Not vacuous: a check in flight does hold listeners on the signal.
+      const held = Promise.withResolvers<undefined>();
+      target.setHandler((_request, response) => {
+        void held.promise.then(() => {
+          response.end("ok");
+        });
+      });
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      const running = processMonitorCheck(
+        monitor.job(),
+        dependencies({ signal: controller.signal }),
+      );
+      while (target.requests.length < 6) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(
+        getEventListeners(controller.signal, "abort").length,
+      ).toBeGreaterThan(0);
+      held.resolve(undefined);
+      await running;
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
     } finally {
       await target.close();
     }
@@ -1362,6 +1385,41 @@ describe("shutdown signal listeners", () => {
 });
 
 describe("egress canary and redirects", () => {
+  it("a canary that redirects to a dead port still reads ok and is not followed", async () => {
+    const dead = await closedPort();
+    const target = await startTarget((_request, response) => {
+      response.statusCode = 302;
+      response.setHeader("location", `http://${TARGET_HOST}:${String(dead)}/`);
+      response.end();
+    });
+    try {
+      const canary = createEgressCanary({
+        urls: [`${target.url}/`],
+        outbound: outboundDeps,
+      });
+      expect(await canary.status()).toBe("ok");
+      expect(target.requests).toHaveLength(1);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("an aborted shutdown signal skips the probe and reads unknown", async () => {
+    let probes = 0;
+    const controller = new AbortController();
+    const canary = createEgressCanary({
+      urls: ["https://canary.example.test"],
+      signal: controller.signal,
+      probe: () => {
+        probes += 1;
+        return Promise.resolve(false);
+      },
+    });
+    controller.abort();
+    expect(await canary.status()).toBe("unknown");
+    expect(probes).toBe(0);
+  });
+
   it("counts a redirecting or looping canary URL as answering", async () => {
     const target = await startTarget((request, response) => {
       if (request.url === "/loop") {

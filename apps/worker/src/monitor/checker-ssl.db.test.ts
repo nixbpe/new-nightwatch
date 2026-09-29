@@ -210,7 +210,7 @@ describe("SSL state of the last hop (AC-35)", () => {
         monitor,
         `update monitors set ssl_host = $2, ssl_issuer = 'Known CA',
            ssl_not_after = $3, ssl_state = 'danger',
-           last_check_at = $3::timestamptz - interval '1 hour' where id = $1`,
+           last_check_at = $3::timestamptz + interval '1 hour' where id = $1`,
         [monitor.monitorId, TARGET_HOST, notAfter],
       );
       const events: MonitorEvent[] = [];
@@ -376,6 +376,51 @@ describe("SSL state of the last hop (AC-35)", () => {
       expect(sslEvents(events)).toEqual([]);
     } finally {
       await target.close();
+    }
+  });
+
+  it("a level boundary crossed during non-TLS failures is still entered on the next readable check", async () => {
+    const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 8 }));
+    const monitor = await seedMonitor(db, {
+      url: `${good.url}/`,
+      timeoutSeconds: 2,
+    });
+    const events: MonitorEvent[] = [];
+    const later = (days: number) => ({
+      clock: () => new Date(Date.now() + days * DAY),
+    });
+    try {
+      await check(monitor, events);
+      expect((await ssl(monitor)).ssl_state).toBe("caution");
+
+      // Days 2 to 3: the target refuses connections. last_check_at moves past
+      // the boundary but ssl_state keeps the level last read from the certificate.
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set url = $2 where id = $1",
+        [
+          monitor.monitorId,
+          `https://${TARGET_HOST}:${String(await closedPort())}/`,
+        ],
+      );
+      await check(monitor, events, later(2.5));
+      expect((await ssl(monitor)).ssl_state).toBe("caution");
+
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set url = $2 where id = $1",
+        [monitor.monitorId, `${good.url}/`],
+      );
+      await check(monitor, events, later(2.5));
+      expect((await ssl(monitor)).ssl_state).toBe("danger");
+      expect(sslEvents(events)).toEqual([
+        { level: "caution", host: TARGET_HOST },
+        { level: "danger", host: TARGET_HOST },
+      ]);
+    } finally {
+      await good.close();
     }
   });
 });

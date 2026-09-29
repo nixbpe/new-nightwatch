@@ -19,6 +19,8 @@ export type EgressCanaryOptions = {
   now?: () => number;
   ttlMs?: number;
   outbound?: OutboundDeps;
+  /** Shutdown: an aborted probe is `unknown`, never a cached `failed`. */
+  signal?: AbortSignal;
 };
 
 /** One DNS and TLS connection to each canary URL, shared by all checks for 30 s. */
@@ -34,14 +36,16 @@ export function createEgressCanary(options: EgressCanaryOptions): EgressCanary {
           method: "HEAD",
           headers: {},
           timeoutMs: CANARY_TIMEOUT_MS,
-          maxRedirects: 5,
+          maxRedirects: 0,
+          ...(options.signal ? { signal: options.signal } : {}),
           secretHeaderNames: [],
           maxBodyBytes: 1024,
         },
         options.outbound,
       );
-      // Any HTTP answer proves resolution, routing and TLS work, including a
-      // redirect the helper refused to follow.
+      // Any HTTP status line proves resolution, routing and TLS work on this
+      // side. Redirects are not followed: a dead redirect target must not read
+      // as an outage of the Worker's own network.
       return (
         sent.response !== undefined ||
         sent.failure?.reason === "redirect_limit" ||
@@ -54,15 +58,18 @@ export function createEgressCanary(options: EgressCanaryOptions): EgressCanary {
   }
   let cached: { at: number; result: Promise<EgressStatus> } | null = null;
   return {
-    status() {
-      if (cached && now() - cached.at < ttlMs) return cached.result;
-      const result = Promise.all(
-        options.urls.map((url) => probe(url).catch(() => false)),
-      ).then((answers): EgressStatus =>
-        answers.some(Boolean) ? "ok" : "failed",
-      );
-      cached = { at: now(), result };
-      return result;
+    async status() {
+      if (options.signal?.aborted) return "unknown";
+      if (!cached || now() - cached.at >= ttlMs) {
+        const result = Promise.all(
+          options.urls.map((url) => probe(url).catch(() => false)),
+        ).then((answers): EgressStatus =>
+          answers.some(Boolean) ? "ok" : "failed",
+        );
+        cached = { at: now(), result };
+      }
+      const status = await cached.result;
+      return options.signal?.aborted ? "unknown" : status;
     },
   };
 }
