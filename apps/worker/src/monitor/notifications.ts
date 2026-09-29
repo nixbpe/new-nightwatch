@@ -55,6 +55,8 @@ export const writeMonitorNotification: MonitorEventHook = async (tx, event) => {
 
   if (event.type === "incident_closed") {
     if (!event.downNotified || event.endReason !== "recovered") return;
+    // The incident already closed; only the notification follows the toggle.
+    if (!(await monitorAlertsEnabled(tx, event.tenantId))) return;
     await insertMonitorNotificationIntent(tx, {
       ...base,
       eventType: "MONITOR_RECOVERED",

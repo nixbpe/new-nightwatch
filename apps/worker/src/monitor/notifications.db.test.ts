@@ -101,11 +101,15 @@ function httpResult(
   };
 }
 
-function certResult(notAfter: Date, checkedAt: Date): CheckResult {
+function certResult(
+  notAfter: Date,
+  checkedAt: Date,
+  host = SSL_HOST,
+): CheckResult {
   return {
     ...httpResult("pass", checkedAt),
-    url: `https://${SSL_HOST}/`,
-    tls: { host: SSL_HOST, issuer: "NW Test CA", notAfter },
+    url: `https://${host}/`,
+    tls: { host, issuer: "NW Test CA", notAfter },
   };
 }
 
@@ -323,6 +327,27 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
     expect(incident?.down_notified).toBe(false);
   });
 
+  it("alerts on at open and off at close sends down but no recovered", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("fail"));
+    await db.owner.sql.query(
+      `insert into notification_org_settings (tenant_id, monitor_alerts_enabled)
+       values ($1, false)`,
+      [monitor.tenantId],
+    );
+    await record(monitor, httpResult("pass"));
+    expect(await intentTypes(monitor)).toEqual(["MONITOR_DOWN"]);
+    const [incident] = await rows<{ ended_at: Date | null }>(
+      db,
+      monitor,
+      "select ended_at from monitor_incidents where monitor_id = $1",
+      [monitor.monitorId],
+    );
+    expect(incident?.ended_at).not.toBeNull();
+  });
+
   it("alerts on with an explicit settings row sends down and marks the incident", async () => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
@@ -419,6 +444,32 @@ describe("SSL notifications (AC-36)", () => {
     expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_EXPIRED"]);
   });
 
+  it("a host change with the same expiry is a new certificate identity and sends its level", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await record(monitor, certResult(notAfter, daysBefore(5)));
+    await record(
+      monitor,
+      certResult(notAfter, daysBefore(4), "other.nw-test.internal"),
+    );
+    expect(await intentTypes(monitor)).toEqual([
+      "MONITOR_SSL_DANGER",
+      "MONITOR_SSL_DANGER",
+    ]);
+  });
+
+  it("a renewal straight into caution sends caution for the new certificate", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await record(monitor, certResult(notAfter, daysBefore(6)));
+    const renewed = new Date(notAfter.getTime() + 25 * DAY);
+    await record(monitor, certResult(renewed, daysBefore(5)));
+    expect(await intentTypes(monitor)).toEqual([
+      "MONITOR_SSL_DANGER",
+      "MONITOR_SSL_CAUTION",
+    ]);
+  });
+
   it("a renewal sends nothing and a later threshold crossing of the new certificate sends again", async () => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
@@ -508,6 +559,11 @@ describe("notification queue outage (AC-53)", () => {
       createLogger({ level: "silent", name: "notifications-test" }),
     );
     try {
+      // The dispatcher claims the 10 oldest ledgers of the whole database;
+      // earlier tests of this file must not crowd this scenario out.
+      await db.owner.sql.query(
+        "update notification_dispatch_ledger set status = 'completed'",
+      );
       const monitor = await seedMonitor(db);
       const members = await seedMembers(monitor);
       await relay.down();
