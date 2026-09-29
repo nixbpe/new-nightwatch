@@ -6,8 +6,8 @@ Owner: Technical Lead เมื่อ spec นี้ได้รับอนุ�
 | -------------------- | --------------------------------------------------------------- |
 | Feature              | F-005, `acceptanceVersion` F-005-AC-1 (`feature.md`, status draft) |
 | Epic                 | None                                                            |
-| Status               | Draft                                                           |
-| Approved by user     | Not yet                                                         |
+| Status               | Approved                                                        |
+| Approved by user     | 2026-09-29                                                      |
 | Start authorization  | None                                                            |
 | `COMMIT_MODE`        | none                                                            |
 | `STOP_AT`            | review-ready                                                    |
@@ -832,3 +832,4 @@ A change to an approved contract or AC is recorded here and approved again by th
 | 2026-09-29 | Review round 2: แก้ข้อขัด PKG-01 (parser อยู่ใน contract, เก็บ config แบบ normalize, Worker ไม่ parse), `loadMonitorEnv()` ตามสภาพ env ของ Worker ที่ตรวจแล้ว, แยก 08 เป็น 08S และ 08 พร้อม checkpoint, ขั้น spike และทางสำรองของ 01, หลักฐาน screen reader ของ 11, `OUTBOUND_TEST_ALLOWED_HOSTS` ผูกกับ hostname, partition ของเดือนก่อน, P1 และ P2 ตามสภาพ compose และ CI ที่ตรวจแล้ว (`compose.worker.yaml` แยก, `security:image` ครอบ Worker), e2e ไม่ใช่ gate ของ PR, map AC-09 ฉบับใหม่ (save เท่านั้น) และ AC-62 ใหม่ (Test และตามรอบ) ลง 01, 06A, 07, 08, 12, 15 | Not yet (spec ยังเป็น draft) | F-005-AC-1 (draft) |
 | 2026-09-29 | Review round 3: `monitor_schedule` เพิ่ม `interval_seconds` และ `timeout_seconds` ที่ claim function ต้องใช้, `monitors` เก็บข้อความที่กรอกคู่กับรูป normalize เพื่อแสดงใน Edit, ข้อความ executor ที่ยังบอกว่า parse ใน shared, dependency ของ 06A, P1 ไม่แตะ compose, role ของ Worker ใน dev เป็นงานของ 08 (`apps/worker/package.json` [ตรวจแล้ว]), `loadMonitorEnv` ใน VERIFY ของ 02, ลำดับ `node:https` ก่อน `node:tls` ใน Design decisions, ข้อความ "Product Owner กำลังแก้" ที่ล้าสมัย, ตาราง AC-55 ถึง AC-60 ที่ซ้ำกับ `feature.md` แทนด้วยการอ้าง, เพิ่ม Acceptance coverage AC-01 ถึง AC-62, คำสถานะ `Implemented` ใน Task 15 | Not yet (spec ยังเป็น draft) | F-005-AC-1 (draft) |
 | 2026-09-29 | รับการตัดสินของผู้ใช้ (รอบคำถามที่สี่): AC-31 ชื่อและ URL ซ้ำได้, `clientRequestId` ของ AC-07, สูตร uptime และ coverage กับ rollup รายชั่วโมง, การส่งและตัดค่าลับเมื่อ redirect, รายการ address และ port ของ SSRF helper ผู้ใช้ยังไม่อนุมัติ spec และยังไม่ให้ start authorization | Not yet (ผู้ใช้ขออ่านก่อน) | F-005-AC-1 (draft) |
+| 2026-09-29 | ผู้ใช้อนุมัติ spec ในการสนทนา `/implement-issue` และสั่ง `COMMIT_MODE = owned-slice` (ไม่เปลี่ยน contract หรือ AC) | 2026-09-29 | F-005-AC-1 |
