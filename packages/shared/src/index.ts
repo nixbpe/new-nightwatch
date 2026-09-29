@@ -15,6 +15,8 @@ export {
   CredentialError,
   decryptSecret,
   encryptSecret,
+  type CredentialEnv,
+  type EncryptedSecret,
   type SecretLocation,
 } from "./credentials";
 export {

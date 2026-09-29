@@ -160,7 +160,8 @@ const DEV_CREDENTIAL_KEY = Buffer.alloc(
 ).toString("base64");
 const DEV_CREDENTIAL_KEY_VERSION = "dev";
 
-const CREDENTIAL_KEY_VERSION = /^[A-Za-z0-9_-]{1,32}$/;
+/** Must start alphanumeric so "__proto__" can never be a version. */
+const CREDENTIAL_KEY_VERSION = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
 const HOST_LABEL = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
 function splitList(value: string): string[] {
@@ -214,8 +215,9 @@ export const monitorEnvSchema = z
     };
     const production = raw.NODE_ENV === "production";
 
-    let keys: Record<string, string> = {};
+    const keys = Object.create(null) as Record<string, string>;
     let activeVersion = raw.CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION ?? "";
+    // Messages below are static: neither versions nor key material is echoed.
     if (raw.CREDENTIAL_ENCRYPTION_KEYS === undefined) {
       if (production) {
         fail(
@@ -223,7 +225,7 @@ export const monitorEnvSchema = z
           "CREDENTIAL_ENCRYPTION_KEYS is required in production",
         );
       } else {
-        keys = { [DEV_CREDENTIAL_KEY_VERSION]: DEV_CREDENTIAL_KEY };
+        keys[DEV_CREDENTIAL_KEY_VERSION] = DEV_CREDENTIAL_KEY;
         activeVersion ||= DEV_CREDENTIAL_KEY_VERSION;
       }
     } else {
@@ -233,9 +235,10 @@ export const monitorEnvSchema = z
       } catch {
         parsed = undefined;
       }
+      // Not z.record: it drops a "__proto__" key, which must be rejected.
       const entries =
         parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-          ? Object.entries(parsed)
+          ? Object.entries(parsed as Record<string, unknown>)
           : [];
       if (entries.length === 0) {
         fail(
@@ -248,23 +251,41 @@ export const monitorEnvSchema = z
         if (!CREDENTIAL_KEY_VERSION.test(version) || key === null) {
           fail(
             "CREDENTIAL_ENCRYPTION_KEYS",
-            `key version "${version.slice(0, 32)}" must match [A-Za-z0-9_-]{1,32} and hold a base64 encoding of exactly 32 bytes`,
+            "every entry must map a version matching [A-Za-z0-9][A-Za-z0-9_-]{0,31} to the base64 encoding of exactly 32 bytes",
           );
         } else {
           keys[version] = key;
         }
+        if (
+          production &&
+          (version === DEV_CREDENTIAL_KEY_VERSION ||
+            value === DEV_CREDENTIAL_KEY)
+        ) {
+          fail(
+            "CREDENTIAL_ENCRYPTION_KEYS",
+            "the development credential key must not be used in production",
+          );
+        }
       }
     }
-    if (Object.keys(keys).length > 0 || raw.CREDENTIAL_ENCRYPTION_KEYS) {
+    if (raw.CREDENTIAL_ENCRYPTION_KEYS !== undefined || !production) {
       if (!activeVersion) {
         fail(
           "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION",
           "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION is required with CREDENTIAL_ENCRYPTION_KEYS",
         );
-      } else if (!(activeVersion in keys)) {
+      } else if (
+        !CREDENTIAL_KEY_VERSION.test(activeVersion) ||
+        !Object.hasOwn(keys, activeVersion)
+      ) {
         fail(
           "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION",
           "must name a version present in CREDENTIAL_ENCRYPTION_KEYS",
+        );
+      } else if (production && activeVersion === DEV_CREDENTIAL_KEY_VERSION) {
+        fail(
+          "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION",
+          "the development credential key must not be used in production",
         );
       }
     }

@@ -53,6 +53,100 @@ describe("loadMonitorEnv", () => {
     expect(message).toMatch(/CREDENTIAL_ENCRYPTION_KEYS/);
   });
 
+  it("never echoes a key or version in startup errors", () => {
+    const secret = key();
+    for (const keys of [
+      JSON.stringify({ [secret]: "v1" }),
+      JSON.stringify({ [secret]: secret }),
+      JSON.stringify({ v1: secret.slice(0, -2) }),
+    ]) {
+      let message = "";
+      try {
+        loadMonitorEnv({
+          ...prod,
+          CREDENTIAL_ENCRYPTION_KEYS: keys,
+          CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: secret,
+        });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toMatch(/CREDENTIAL_ENCRYPTION_KEYS/);
+      expect(message).not.toContain(secret);
+      expect(message).not.toContain(secret.slice(0, 12));
+    }
+  });
+
+  it("rejects keys that are not canonical base64 of 32 bytes", () => {
+    const bytes = randomBytes(32);
+    for (const bad of [
+      bytes.toString("base64").replace(/=+$/, ""),
+      Buffer.from([0xfb, 0xff, ...bytes.subarray(2)]).toString("base64url"),
+      Buffer.from([0xfb, 0xff, ...bytes.subarray(2)])
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_"),
+    ]) {
+      expect(() =>
+        loadMonitorEnv({
+          ...prod,
+          CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify({ v1: bad }),
+        }),
+      ).toThrow(EnvValidationError);
+    }
+  });
+
+  it("rejects a __proto__ key version instead of dropping it", () => {
+    expect(() =>
+      loadMonitorEnv({
+        ...prod,
+        CREDENTIAL_ENCRYPTION_KEYS: `{"__proto__":"${key()}","v1":"${key()}"}`,
+      }),
+    ).toThrow(/CREDENTIAL_ENCRYPTION_KEYS/);
+  });
+
+  it.each(["__proto__", "constructor", "toString", "hasOwnProperty", "v.1"])(
+    "fails when the active version is %s",
+    (active) => {
+      expect(() =>
+        loadMonitorEnv({
+          ...prod,
+          CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: active,
+        }),
+      ).toThrow(/CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION/);
+    },
+  );
+
+  describe("development key in production", () => {
+    const devKey = Buffer.alloc(32, "nightwatch-dev-credential-key").toString(
+      "base64",
+    );
+
+    it("is accepted outside production", () => {
+      const env = loadMonitorEnv(base);
+      expect(env.CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION).toBe("dev");
+      expect(env.CREDENTIAL_ENCRYPTION_KEYS.dev).toBe(devKey);
+    });
+
+    it("is refused as version dev, as the public key value, or as active", () => {
+      for (const keys of [{ dev: key(), v1: key() }, { v1: devKey }]) {
+        expect(() =>
+          loadMonitorEnv({
+            ...prod,
+            CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify(keys),
+            CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: "v1",
+          }),
+        ).toThrow(/development credential key/);
+      }
+      expect(() =>
+        loadMonitorEnv({
+          ...prod,
+          CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify({ dev: key() }),
+          CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: "dev",
+        }),
+      ).toThrow(/development credential key/);
+    });
+  });
+
   it("rejects an active version that is not in the key map", () => {
     expect(() =>
       loadMonitorEnv({
@@ -112,6 +206,10 @@ describe("loadMonitorEnv", () => {
       "host.internal:8080",
       "host.internal/path",
       "a.example,127.0.0.1",
+      "127.1",
+      "0177.0.0.1",
+      "a..b",
+      "target.internal.",
     ])("rejects %s", (host) => {
       expect(() =>
         loadMonitorEnv({ ...base, OUTBOUND_TEST_ALLOWED_HOSTS: host }),

@@ -171,4 +171,18 @@ describe("createLogger", () => {
     expect(out).toContain("X-Api-Key");
     expect(out).toContain('"monitorId":"m-1"');
   });
+
+  it("redacts the credential key map when an env object is logged", () => {
+    const { stream, read } = captureStream();
+    const logger = createLogger({ level: "info", name: "test" }, stream);
+    logger.info(
+      {
+        CREDENTIAL_ENCRYPTION_KEYS: { v1: "top-key-sentinel" },
+        env: { CREDENTIAL_ENCRYPTION_KEYS: { v1: "nested-key-sentinel" } },
+      },
+      "env",
+    );
+    expect(read()).not.toContain("top-key-sentinel");
+    expect(read()).not.toContain("nested-key-sentinel");
+  });
 });

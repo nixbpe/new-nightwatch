@@ -22,15 +22,39 @@ function envWith(keys: Record<string, string>, active: string) {
 
 describe("credential helper", () => {
   const env = envWith({ v1: key() }, "v1");
+  const encrypt = (value = "s3cret-value") =>
+    encryptSecret({ ...location, value }, env);
 
   it("round-trips a secret and never stores plaintext or reuses an IV", () => {
-    const a = encryptSecret({ ...location, value: "s3cret-value" }, env);
-    const b = encryptSecret({ ...location, value: "s3cret-value" }, env);
-    expect(a).not.toContain("s3cret-value");
-    expect(a).not.toBe(b);
-    expect(decryptSecret({ ...location, ciphertext: a }, env)).toBe(
-      "s3cret-value",
-    );
+    const a = encrypt();
+    const b = encrypt();
+    expect(a.ciphertext.toString("utf8")).not.toContain("s3cret-value");
+    expect(a.iv.length).toBe(12);
+    expect(a.authTag.length).toBe(16);
+    expect(a.iv.equals(b.iv)).toBe(false);
+    expect(decryptSecret({ ...location, ...a }, env)).toBe("s3cret-value");
+  });
+
+  it("decrypts from values shaped like the monitor_secrets columns", () => {
+    const stored = encrypt("column-value");
+    const row = {
+      key_version: stored.keyVersion,
+      iv: Buffer.from(stored.iv),
+      auth_tag: Buffer.from(stored.authTag),
+      ciphertext: Buffer.from(stored.ciphertext),
+    };
+    expect(
+      decryptSecret(
+        {
+          ...location,
+          keyVersion: row.key_version,
+          iv: row.iv,
+          authTag: row.auth_tag,
+          ciphertext: row.ciphertext,
+        },
+        env,
+      ),
+    ).toBe("column-value");
   });
 
   it.each([
@@ -38,26 +62,55 @@ describe("credential helper", () => {
     ["monitor", { monitorId: "m-2" }],
     ["slot", { slot: "header.x" }],
   ])("refuses a ciphertext moved to another %s", (_name, override) => {
-    const ciphertext = encryptSecret({ ...location, value: "v" }, env);
     expect(() =>
-      decryptSecret({ ...location, ...override, ciphertext }, env),
+      decryptSecret({ ...location, ...override, ...encrypt("v") }, env),
     ).toThrow(CredentialError);
   });
 
-  it("refuses a tampered ciphertext and an unknown key version", () => {
-    const ciphertext = encryptSecret({ ...location, value: "value" }, env);
-    const parts = ciphertext.split(".");
-    parts[3] = Buffer.from("tampered!!!!").toString("base64");
+  it("refuses tampered ciphertext, tampered tag and unknown key version", () => {
+    const stored = encrypt();
+    const flipped = Buffer.from(stored.ciphertext);
+    flipped[0] = (flipped[0] ?? 0) ^ 1;
     expect(() =>
-      decryptSecret({ ...location, ciphertext: parts.join(".") }, env),
+      decryptSecret({ ...location, ...stored, ciphertext: flipped }, env),
+    ).toThrow(CredentialError);
+    const badTag = Buffer.from(stored.authTag);
+    badTag[0] = (badTag[0] ?? 0) ^ 1;
+    expect(() =>
+      decryptSecret({ ...location, ...stored, authTag: badTag }, env),
+    ).toThrow(CredentialError);
+    expect(() =>
+      decryptSecret({ ...location, ...stored, keyVersion: "v9" }, env),
+    ).toThrow(CredentialError);
+  });
+
+  it("refuses a truncated 4-byte tag and a wrong-length IV", () => {
+    const stored = encrypt();
+    expect(() =>
+      decryptSecret(
+        { ...location, ...stored, authTag: stored.authTag.subarray(0, 4) },
+        env,
+      ),
+    ).toThrow(CredentialError);
+    expect(() =>
+      decryptSecret({ ...location, ...stored, iv: randomBytes(16) }, env),
     ).toThrow(CredentialError);
     expect(() =>
       decryptSecret(
-        { ...location, ciphertext: ciphertext.replace(/^v1/, "v9") },
+        { ...location, ...stored, iv: stored.iv.subarray(0, 8) },
         env,
       ),
     ).toThrow(CredentialError);
   });
+
+  it.each(["__proto__", "constructor", "toString", "hasOwnProperty"])(
+    "never resolves the inherited property %s as a key version",
+    (keyVersion) => {
+      expect(() =>
+        decryptSecret({ ...location, ...encrypt(), keyVersion }, env),
+      ).toThrow(CredentialError);
+    },
+  );
 
   it("still decrypts values written under an older key version after rotation", () => {
     const k1 = key();
@@ -66,12 +119,10 @@ describe("credential helper", () => {
       envWith({ v1: k1 }, "v1"),
     );
     const rotated = envWith({ v1: k1, v2: key() }, "v2");
-    expect(decryptSecret({ ...location, ciphertext: old }, rotated)).toBe(
-      "old",
-    );
+    expect(decryptSecret({ ...location, ...old }, rotated)).toBe("old");
     expect(
-      encryptSecret({ ...location, value: "new" }, rotated).startsWith("v2."),
-    ).toBe(true);
+      encryptSecret({ ...location, value: "new" }, rotated).keyVersion,
+    ).toBe("v2");
   });
 
   it("rejects a location containing the AAD separator", () => {
@@ -82,7 +133,7 @@ describe("credential helper", () => {
 
   it("uses the dev key outside production so local code can encrypt", () => {
     const dev = loadMonitorEnv({ REDIS_URL: "redis://x" });
-    const ciphertext = encryptSecret({ ...location, value: "v" }, dev);
-    expect(decryptSecret({ ...location, ciphertext }, dev)).toBe("v");
+    const stored = encryptSecret({ ...location, value: "v" }, dev);
+    expect(decryptSecret({ ...location, ...stored }, dev)).toBe("v");
   });
 });

@@ -1,12 +1,20 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-import { loadMonitorEnv, type MonitorEnv } from "./env";
+import type { MonitorEnv } from "./env";
 
 /** Row identity bound into the ciphertext as AAD. */
 export type SecretLocation = {
   tenantId: string;
   monitorId: string;
   slot: string;
+};
+
+/** The four `monitor_secrets` columns that hold an encrypted value. */
+export type EncryptedSecret = {
+  keyVersion: string;
+  iv: Buffer;
+  authTag: Buffer;
+  ciphertext: Buffer;
 };
 
 /** Carries no plaintext, key or ciphertext material. */
@@ -17,7 +25,7 @@ export class CredentialError extends Error {
   }
 }
 
-type CredentialEnv = Pick<
+export type CredentialEnv = Pick<
   MonitorEnv,
   "CREDENTIAL_ENCRYPTION_KEYS" | "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION"
 >;
@@ -33,67 +41,61 @@ function aad({ tenantId, monitorId, slot }: SecretLocation): Buffer {
   return Buffer.from(parts.join("|"), "utf8");
 }
 
+function keyFor(env: CredentialEnv, version: string): Buffer | undefined {
+  const keys = env.CREDENTIAL_ENCRYPTION_KEYS;
+  return Object.hasOwn(keys, version)
+    ? Buffer.from(keys[version] as string, "base64")
+    : undefined;
+}
+
 /**
- * AES-256-GCM with a random 12-byte IV and the active key. Output is
- * `<keyVersion>.<iv>.<tag>.<ciphertext>` (base64 parts) so a later key
- * rotation can still decrypt older values.
+ * AES-256-GCM with a random 12-byte IV and the active key. The result maps
+ * onto the `monitor_secrets` columns so a later key rotation can still
+ * decrypt older rows by `keyVersion`.
  */
 export function encryptSecret(
   input: SecretLocation & { value: string },
-  env: CredentialEnv = loadMonitorEnv(),
-): string {
-  const version = env.CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION;
-  const key = env.CREDENTIAL_ENCRYPTION_KEYS[version];
+  env: CredentialEnv,
+): EncryptedSecret {
+  const keyVersion = env.CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION;
+  const key = keyFor(env, keyVersion);
   if (key === undefined) {
     throw new CredentialError("active credential key is not configured");
   }
   const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv("aes-256-gcm", Buffer.from(key, "base64"), iv);
+  const cipher = createCipheriv("aes-256-gcm", key, iv, {
+    authTagLength: TAG_BYTES,
+  });
   cipher.setAAD(aad(input));
   const ciphertext = Buffer.concat([
     cipher.update(input.value, "utf8"),
     cipher.final(),
   ]);
-  return [
-    version,
-    iv.toString("base64"),
-    cipher.getAuthTag().toString("base64"),
-    ciphertext.toString("base64"),
-  ].join(".");
+  return { keyVersion, iv, authTag: cipher.getAuthTag(), ciphertext };
 }
 
 /** Throws CredentialError for any tampered, mis-bound or unknown-key input. */
 export function decryptSecret(
-  input: SecretLocation & { ciphertext: string },
-  env: CredentialEnv = loadMonitorEnv(),
+  input: SecretLocation & EncryptedSecret,
+  env: CredentialEnv,
 ): string {
   const fail = () => new CredentialError("secret cannot be decrypted");
-  const parts = input.ciphertext.split(".");
-  if (parts.length !== 4) throw fail();
-  const [version, ivPart, tagPart, dataPart] = parts as [
-    string,
-    string,
-    string,
-    string,
-  ];
-  const key = Object.hasOwn(env.CREDENTIAL_ENCRYPTION_KEYS, version)
-    ? env.CREDENTIAL_ENCRYPTION_KEYS[version]
-    : undefined;
-  const iv = Buffer.from(ivPart, "base64");
-  const tag = Buffer.from(tagPart, "base64");
-  if (key === undefined || iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
+  const key = keyFor(env, input.keyVersion);
+  if (
+    key === undefined ||
+    input.iv.length !== IV_BYTES ||
+    input.authTag.length !== TAG_BYTES
+  ) {
     throw fail();
   }
   try {
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      Buffer.from(key, "base64"),
-      iv,
-    );
+    const decipher = createDecipheriv("aes-256-gcm", key, input.iv, {
+      authTagLength: TAG_BYTES,
+    });
     decipher.setAAD(aad(input));
-    decipher.setAuthTag(tag);
+    decipher.setAuthTag(input.authTag);
     return Buffer.concat([
-      decipher.update(Buffer.from(dataPart, "base64")),
+      decipher.update(input.ciphertext),
       decipher.final(),
     ]).toString("utf8");
   } catch {
