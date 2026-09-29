@@ -738,3 +738,47 @@ it("shows a retryable error, not a restricted state, when the context refresh fa
   expect(screen.queryByText(RESTRICTED)).toBeNull();
   await waitFor(() => expect(roleSelect("Me")).toHaveFocus());
 });
+
+async function saveAnnAsAuditorWithActorOffPage(failure: Error) {
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
+    listCalls.push(id);
+    const list = listFor(id);
+    return Promise.resolve({
+      ...list,
+      members: list.members.filter((item) => item.userId !== ME),
+    });
+  });
+  vi.mocked(updateOrganizationMemberRole).mockRejectedValue(failure);
+  const user = await renderAs("owner");
+  const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
+  await user.selectOptions(roleSelect("Ann"), "auditor");
+  await user.click(save("Ann"));
+  return { contextFetches };
+}
+
+it("refreshes membership context once when a PERMISSION_DENIED PATCH leaves the actor off the page", async () => {
+  const { contextFetches } = await saveAnnAsAuditorWithActorOffPage(
+    new ApiError("PERMISSION_DENIED", "denied", 403),
+  );
+  expect(await screen.findByText(/บันทึกบทบาทไม่สำเร็จ/)).toBeInTheDocument();
+  await waitFor(() => {
+    expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(
+      contextFetches + 1,
+    );
+  });
+  await submitSettled("Ann");
+  expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches + 1);
+  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+});
+
+it.each([
+  ["LAST_OWNER", new ApiError("LAST_OWNER", "last", 400)],
+  ["a generic failure", new Error("boom")],
+])("does not refresh membership context for %s", async (_name, failure) => {
+  const { contextFetches } = await saveAnnAsAuditorWithActorOffPage(failure);
+  expect(
+    await screen.findByText(/ไม่สำเร็จ|เจ้าของอย่างน้อย/),
+  ).toBeInTheDocument();
+  await submitSettled("Ann");
+  expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
+});
