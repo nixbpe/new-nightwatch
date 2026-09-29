@@ -326,6 +326,7 @@ export async function revokeOrganizationMember(
         client,
         input.organizationId,
         input.memberId,
+        !isOwner(actor),
       );
       await assertOwnerMayChangeOwner(
         client,

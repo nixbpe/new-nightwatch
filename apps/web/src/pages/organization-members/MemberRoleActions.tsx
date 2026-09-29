@@ -1,18 +1,10 @@
 import type {
-  MeContextResponse,
   OrganizationMember,
   OrganizationMemberListResponse,
   OrganizationRole,
 } from "@nightwatch/api-contract";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type RefObject,
-} from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { textInputClass } from "../../components/ui";
 import { cn } from "../../lib/utils";
@@ -24,14 +16,11 @@ import {
   updateOrganizationMemberRole,
 } from "../../lib/api/members";
 import {
-  getContextPublicationSnapshot,
-  subscribeToContextPublication,
-} from "../../lib/queryClient";
-import {
   ADMIN_INVITABLE_ROLES,
   INVITABLE_ROLES,
   ROLE_LABELS,
 } from "../../lib/roles";
+import { useOrganizationScope } from "./useOrganizationScope";
 
 export type ActorRole = "owner" | "admin";
 export type RoleNotice = { tone: "success" | "error"; text: string };
@@ -46,9 +35,7 @@ const MEMBER_SELECT_ATTRIBUTE = "data-member-role-select";
 /**
  * Role change flow for one Organization's member page: owner confirmation,
  * pending guard, the persisted-role check after the PATCH and the stale-scope
- * guard. The scope retires when a server-confirmed publication switches away
- * from this Organization or the page unmounts, after which no completion may
- * touch notice, confirmation or caches. Reads the PATCH result only through a
+ * guard (`useOrganizationScope`). Reads the PATCH result only through a
  * refetch of the list, so success is never shown for an unpersisted role.
  */
 export function useMemberRoleChange({
@@ -73,49 +60,7 @@ export function useMemberRoleChange({
   refreshMembershipContext: () => Promise<unknown>;
 }) {
   const queryClient = useQueryClient();
-  const publicationVersion = useRef(
-    getContextPublicationSnapshot(queryClient).version,
-  );
-  const lastPublishedOrganizationId = useRef(
-    queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
-      ?.lastActiveTenantId ?? null,
-  );
-  const retired = useRef(false);
-  const unmounted = useRef(false);
-  const isCurrentScope = useCallback(() => {
-    const version = getContextPublicationSnapshot(queryClient).version;
-    if (version !== publicationVersion.current) {
-      const published =
-        queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
-          ?.lastActiveTenantId ?? null;
-      if (
-        published !== lastPublishedOrganizationId.current &&
-        published !== organizationId
-      ) {
-        retired.current = true;
-      }
-      lastPublishedOrganizationId.current = published;
-      publicationVersion.current = version;
-    }
-    return !retired.current && !unmounted.current;
-  }, [organizationId, queryClient]);
-  const scopeCurrent = useSyncExternalStore(
-    useCallback(
-      (listener) =>
-        subscribeToContextPublication(queryClient, () => {
-          isCurrentScope();
-          listener();
-        }),
-      [queryClient, isCurrentScope],
-    ),
-    isCurrentScope,
-  );
-  useEffect(() => {
-    unmounted.current = false;
-    return () => {
-      unmounted.current = true;
-    };
-  }, []);
+  const { isCurrentScope, scopeCurrent } = useOrganizationScope(organizationId);
 
   const [pending, setPending] = useState(false);
   const [pendingChange, setPendingChange] = useState<{
