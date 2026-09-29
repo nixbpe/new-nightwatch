@@ -991,7 +991,7 @@ describe("AppShell", () => {
     for (const row of rows) {
       expect(row.querySelector("svg")).not.toBeNull();
       expect(
-        within(row).getByRole("link", { name: "เปิดมอนิเตอร์" }),
+        within(row).getByRole("link", { name: "เปิดมอนิเตอร์ Checkout" }),
       ).toHaveAttribute(
         "href",
         `/organizations/${ORG_A}/monitors/${monitorId}`,

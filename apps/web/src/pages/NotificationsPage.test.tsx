@@ -169,7 +169,7 @@ describe("NotificationsPage", () => {
       expect(within(row).getByText("มอนิเตอร์")).toBeInTheDocument();
       expect(row.querySelector("svg")).not.toBeNull();
       expect(
-        within(row).getByRole("link", { name: "เปิดมอนิเตอร์" }),
+        within(row).getByRole("link", { name: "เปิดมอนิเตอร์ Checkout" }),
       ).toHaveAttribute(
         "href",
         `/organizations/${ORG_A}/monitors/${MONITOR_ID}`,
@@ -205,10 +205,9 @@ describe("NotificationsPage", () => {
     expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
     expect(screen.getByText(/หมดเวลารอการตอบกลับ/)).toBeInTheDocument();
     expect(screen.getByText("(Checkout)")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "เปิดมอนิเตอร์" })).toHaveAttribute(
-      "href",
-      `/organizations/${ORG_A}/monitors/${MONITOR_ID}`,
-    );
+    expect(
+      screen.getByRole("link", { name: "เปิดมอนิเตอร์ Checkout" }),
+    ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/${MONITOR_ID}`);
   });
 
   it("clears an open detail when the server-confirmed organization changes", async () => {

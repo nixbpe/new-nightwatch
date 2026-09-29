@@ -245,9 +245,10 @@ export function NotificationRows({
               to={monitorPath(item)}
               onClick={onNavigate}
               data-popover-item={popoverItems ? "" : undefined}
-              className="mb-3 ml-[60px] inline-block text-xs text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="mb-3 ml-[60px] inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               เปิดมอนิเตอร์
+              <span className="sr-only"> {item.subject.monitorName}</span>
             </Link>
           ) : null}
         </li>
@@ -430,9 +431,13 @@ function NotificationsPageForOrganization({
                 <dd className="mb-3 sm:mb-0">
                   <Link
                     to={monitorPath(detail)}
-                    className="text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     เปิดมอนิเตอร์
+                    <span className="sr-only">
+                      {" "}
+                      {detail.subject.monitorName}
+                    </span>
                   </Link>{" "}
                   <span className="text-foreground-secondary">
                     ({detail.subject.monitorName})
