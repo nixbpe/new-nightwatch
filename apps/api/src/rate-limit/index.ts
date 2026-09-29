@@ -1,6 +1,8 @@
 export {
   consumeMonitorTestRateLimit,
   createRateLimiter,
+  type RateLimitFailureReason,
+  type RateLimitGroup,
   type RateLimiter,
   type RateLimitRequest,
   type RateLimitResult,
