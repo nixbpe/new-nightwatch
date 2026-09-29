@@ -863,7 +863,10 @@ describe("Test in Edit with stored and replaced secrets (AC-45)", () => {
     const response = await testEdit(monitor);
     expect(response.status).toBe(200);
     expect(response.json).toMatchObject({
-      result: { outcome: "check_error", failureReason: "executor_error" },
+      result: {
+        outcome: "check_error",
+        failureReason: "secret_decrypt_failed",
+      },
     });
     expect(target.seen).toEqual([]);
   });

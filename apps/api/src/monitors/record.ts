@@ -87,7 +87,8 @@ export function assignHeaderIds(
         fields: [{ field: `headers.${String(index)}.id`, reason: "duplicate" }],
       });
     }
-    const id = match?.id ?? crypto.randomUUID();
+    // Slot names are lowercase, so a stored id of another case is normalized.
+    const id = (match?.id ?? crypto.randomUUID()).toLowerCase();
     used.add(id.toLowerCase());
     return { ...header, id };
   });

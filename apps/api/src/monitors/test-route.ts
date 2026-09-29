@@ -298,8 +298,9 @@ function decryptKept(
   input: { organizationId: string; monitorId: string },
   secrets: TestSecrets,
   env: CredentialEnv | undefined,
-): MonitorSecrets {
+): { values: MonitorSecrets; undecryptable: boolean } {
   const values: Record<string, string> = { ...secrets.provided };
+  let undecryptable = false;
   for (const row of secrets.kept) {
     try {
       values[row.slot] = decryptSecret(
@@ -316,9 +317,10 @@ function decryptKept(
       );
     } catch (error) {
       if (error instanceof AppError) throw error;
+      undecryptable = true;
     }
   }
-  return values;
+  return { values, undecryptable };
 }
 
 async function runTest(
@@ -393,17 +395,24 @@ async function runTest(
   });
   if (!limit.allowed) return { retryAfterSeconds: limit.retryAfterSeconds };
 
-  const checked = await runCheck(
-    toNormalizedConfig(input.config, secrets.headers),
+  const opened =
     monitorId === undefined
-      ? secrets.provided
+      ? { values: secrets.provided, undecryptable: false }
       : decryptKept(
           { organizationId: input.organizationId, monitorId },
           secrets,
           deps.credentialEnv,
-        ),
+        );
+  const ran = await runCheck(
+    toNormalizedConfig(input.config, secrets.headers),
+    opened.values,
     { ...outbound, signal: input.signal },
   );
+  // The scheduled check reports the same condition under the same reason.
+  const checked =
+    opened.undecryptable && ran.failureReason === "executor_error"
+      ? { ...ran, failureReason: "secret_decrypt_failed" as const }
+      : ran;
   return {
     result: {
       checkedAt: checked.checkedAt.toISOString(),

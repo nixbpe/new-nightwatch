@@ -926,6 +926,111 @@ describe("secrets in the checker (JOB-05)", () => {
   });
 });
 
+describe("a failing check that reflects its secret leaks it nowhere (AC-43)", () => {
+  it("keeps every form of the value out of rows, intents and logs", async () => {
+    // Characters that JSON and URL encoding change, so each form differs.
+    const value = `sk"live&x=1+${randomUUID()}`;
+    const forms = [
+      value,
+      Buffer.from(value).toString("base64"),
+      JSON.stringify(value).slice(1, -1),
+      encodeURIComponent(value),
+    ];
+    const lines: string[] = [];
+    const logger = createLogger(
+      { level: "debug", name: "checker-scan-test" },
+      { write: (line: string) => void lines.push(line) },
+    );
+    const target = await startTarget((request, response) => {
+      response.statusCode = 503;
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({ authorization: request.headers.authorization }),
+      );
+    });
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        authType: "bearer",
+        assertions: [
+          {
+            kind: "jsonPathEquals",
+            path: "$.authorization",
+            expected: "never",
+            pathSegments: ["authorization"],
+            expectedValue: "never",
+          },
+        ],
+      });
+      await storeSecret(monitor, "auth.token", value);
+      for (const index of [0, 1]) {
+        const token = randomUUID();
+        await updateMonitor(
+          db,
+          monitor,
+          "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+          [monitor.monitorId, token],
+        );
+        await processMonitorCheck(
+          monitor.job({
+            claimToken: token,
+            scheduledFor: new Date(
+              Date.now() - 3_600_000 + index * 60_000,
+            ).toISOString(),
+          }),
+          dependencies({ logger }),
+        );
+      }
+      expect(target.requests[1]?.headers.authorization).toBe(`Bearer ${value}`);
+
+      const counts = await countAll(monitor);
+      expect(counts.results).toBe(2);
+      expect(counts.incidents).toBe(1);
+      const tables = [
+        "monitor_check_results",
+        "monitor_check_hourly",
+        "monitor_incidents",
+        "monitor_events",
+        "monitor_schedule",
+        "monitors",
+      ];
+      const stored: unknown[] = [];
+      for (const table of tables) {
+        stored.push(
+          await withTenantContextRaw(db.runtime, monitor.tenantId, (client) =>
+            client.query(`select t::text as text from ${table} t`),
+          ).then((result) => result.rows),
+        );
+      }
+      const intents = await db.owner.sql.query(
+        `select t::text as text from notification_intents t where tenant_id = $1`,
+        [monitor.tenantId],
+      );
+      // The incident wrote its intent, so the scan below covers a real row.
+      expect(intents.rows).toHaveLength(1);
+      const haystack = JSON.stringify([
+        stored,
+        intents.rows,
+        (
+          await db.owner.sql.query(
+            "select t::text as text from notification_inbox_items t where tenant_id = $1",
+            [monitor.tenantId],
+          )
+        ).rows,
+      ]);
+      expect(lines.length).toBeGreaterThan(0);
+      // The reflected value did reach storage, as the mask.
+      expect(haystack).toContain("Bearer •••");
+      for (const form of forms) {
+        expect(haystack).not.toContain(form);
+        expect(lines.join("\n")).not.toContain(form);
+      }
+    } finally {
+      await target.close();
+    }
+  });
+});
+
 describe("egress canary classification (AC-55)", () => {
   async function refusedRun(
     canary: ReturnType<typeof createEgressCanary> | undefined,
