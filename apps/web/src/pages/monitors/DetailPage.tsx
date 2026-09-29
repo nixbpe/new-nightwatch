@@ -29,7 +29,7 @@ import { intervalText } from "./detail/labels";
 import { LastResultCard } from "./detail/LastResultCard";
 import { SslCard } from "./detail/SslCard";
 import { StatusCard, statusLine } from "./detail/StatusCard";
-import { useFlashNotice } from "./flash";
+import { useFlashNotice, type MonitorFlashState } from "./flash";
 import { formatTimeOrDate, formatTimeWithSeconds, Time } from "./format";
 import { HealthPill } from "./HealthPill";
 import { useLeaveOnOrganizationSwitch } from "./useLeaveOnOrganizationSwitch";
@@ -189,13 +189,15 @@ function DetailForMonitor({
     onSuccess: async () => {
       // Not refetched: the monitor is gone, and this page is about to unmount.
       await invalidateAll("none");
-      void navigate(overviewPath, { state: { notice: "ลบมอนิเตอร์แล้ว" } });
+      void navigate(overviewPath, {
+        state: { notice: "deleted" } satisfies MonitorFlashState,
+      });
     },
     onError: async (error) => {
       if (isNotFound(error)) {
         await invalidateAll("none");
         void navigate(overviewPath, {
-          state: { notice: "มอนิเตอร์นี้ถูกลบแล้ว" },
+          state: { notice: "alreadyDeleted" } satisfies MonitorFlashState,
         });
         return;
       }

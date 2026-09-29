@@ -141,6 +141,7 @@ function Harness({ children }: { children?: React.ReactNode }) {
         switch to B
       </button>
       <output data-testid="location">{useLocation().pathname}</output>
+      <output data-testid="state">{JSON.stringify(useLocation().state)}</output>
       {children}
       <Routes>
         <Route
@@ -152,7 +153,7 @@ function Harness({ children }: { children?: React.ReactNode }) {
   );
 }
 
-function renderPage(organizationId = A) {
+function renderPage(organizationId = A, state?: unknown) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -162,7 +163,12 @@ function renderPage(organizationId = A) {
       <QueryClientProvider client={queryClient}>
         <TenantProvider>
           <MemoryRouter
-            initialEntries={[`/organizations/${organizationId}/monitors`]}
+            initialEntries={[
+              {
+                pathname: `/organizations/${organizationId}/monitors`,
+                state,
+              },
+            ]}
           >
             <Harness />
           </MemoryRouter>
@@ -972,5 +978,36 @@ describe("Overview Organization switch", () => {
       await screen.findByRole("status", { name: "กำลังโหลดมอนิเตอร์" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("AlphaMonitor")).toBeNull();
+  });
+});
+
+describe("Overview one-time notice", () => {
+  it("shows the notice a monitor page handed over and moves focus to the heading", async () => {
+    fetchListMock.mockResolvedValue(list([item()]));
+    renderPage(A, { notice: "deleted" });
+    expect(await screen.findByText("ลบมอนิเตอร์แล้ว")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "ตรวจสถานะบริการ" }),
+    ).toHaveFocus();
+  });
+
+  it("clears the state so the notice does not come back on reload or back", async () => {
+    fetchListMock.mockResolvedValue(list([item()]));
+    renderPage(A, { notice: "alreadyDeleted" });
+    expect(
+      await screen.findByText("มอนิเตอร์นี้ถูกลบแล้ว"),
+    ).toBeInTheDocument();
+    // The history entry no longer carries it, so a reload or a back navigation shows nothing.
+    await waitFor(() => {
+      expect(screen.getByTestId("state")).toHaveTextContent("null");
+    });
+  });
+
+  it("ignores state that is not one of the known notice keys", async () => {
+    fetchListMock.mockResolvedValue(list([item()]));
+    renderPage(A, { notice: "<b>free text</b>" });
+    await screen.findByRole("heading", { level: 1, name: "ตรวจสถานะบริการ" });
+    expect(screen.queryByText("<b>free text</b>")).toBeNull();
+    expect(document.querySelector('[data-slot="notice"]')).toBeNull();
   });
 });
