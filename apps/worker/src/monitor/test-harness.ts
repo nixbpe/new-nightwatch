@@ -226,6 +226,8 @@ export async function seedMonitor(
 export type Target = {
   url: string;
   port: number;
+  /** TCP connections accepted; a request that never reached the server leaves this at 0. */
+  connections(): number;
   /** Replaces the response behavior for later requests. */
   setHandler(handler: TargetHandler): void;
   requests: {
@@ -259,11 +261,16 @@ export async function startTarget(
     handler(request, response);
   });
   server.keepAliveTimeout = 0;
+  let connections = 0;
+  server.on("connection", () => {
+    connections += 1;
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://${TARGET_HOST}:${String(port)}`,
     port,
+    connections: () => connections,
     setHandler(next) {
       handler = next;
     },
@@ -310,7 +317,12 @@ export async function closedPort(): Promise<number> {
   return port;
 }
 
-export type TestRedis = { url: string; stop(): Promise<void> };
+export type TestRedis = {
+  url: string;
+  /** Freezes the container: connections hang instead of being refused. */
+  freeze(): Promise<void>;
+  stop(): Promise<void>;
+};
 
 /** Throwaway Redis so process tests never share a queue with other runs. */
 export async function startTestRedis(label: string): Promise<TestRedis> {
@@ -337,6 +349,9 @@ export async function startTestRedis(label: string): Promise<TestRedis> {
     const port = Number(/:(\d+)\s*$/.exec(stdout)?.[1]);
     return {
       url: `redis://127.0.0.1:${String(port)}`,
+      freeze: async () => {
+        await docker(["pause", container]);
+      },
       stop: async () => {
         await docker(["rm", "--force", container], true);
       },

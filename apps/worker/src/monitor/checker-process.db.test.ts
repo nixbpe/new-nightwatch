@@ -140,9 +140,12 @@ async function seedDue(
   return monitor;
 }
 
-function startScheduler(intervalMs = 1_000) {
+function startScheduler(
+  intervalMs = 1_000,
+  target: ConstructorParameters<typeof MonitorScheduler>[1] = queue,
+) {
   const handle = startMonitorSchedule(
-    new MonitorScheduler(db.runtime, queue, silent),
+    new MonitorScheduler(db.runtime, target, silent),
     silent,
     intervalMs,
   );
@@ -238,7 +241,7 @@ describe("monitor-checker process", () => {
     );
   }, 60_000);
 
-  it("two Worker processes leave one row per scheduled_for and none twice", async () => {
+  it("two Worker processes never run one claim twice: requests equal recorded rows", async () => {
     const answering = await target();
     await Promise.all([spawnWorker(), spawnWorker()]);
     const monitors: SeededMonitor[] = [];
@@ -250,7 +253,7 @@ describe("monitor-checker process", () => {
         }),
       );
     }
-    startScheduler(500);
+    const scheduler = startScheduler(500);
     await waitFor(
       async () => {
         const counts = await Promise.all(monitors.map(resultCount));
@@ -259,51 +262,50 @@ describe("monitor-checker process", () => {
       20_000,
       "two rounds of results",
     );
-    for (const monitor of monitors) {
-      const slots = await rows<{ scheduled_for: Date }>(
-        db,
-        monitor,
-        "select scheduled_for from monitor_check_results where monitor_id = $1",
-        [monitor.monitorId],
-      );
-      const distinct = new Set(
-        slots.map((slot) => slot.scheduled_for.getTime()),
-      );
-      expect(distinct.size).toBe(slots.length);
-    }
+    await scheduler.stop();
+    // Let in-flight checks finish, then compare what the target saw with the
+    // ledger: a claim handled by both Workers would show as an extra request.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    const recorded = (await Promise.all(monitors.map(resultCount))).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+    expect(answering.requests.length).toBe(recorded);
   }, 60_000);
 
-  it("a job replayed under its old id records no second result", async () => {
+  it("a job replayed under its real claim and id records no second result", async () => {
     const answering = await target();
     await spawnWorker();
     const monitor = await seedDue(`${answering.url}/`);
-    const scheduler = startScheduler();
+    const claimed: MonitorCheckJob[] = [];
+    const recording = {
+      add: (...args: Parameters<typeof queue.add>) => {
+        claimed.push(args[1]);
+        return queue.add(...args);
+      },
+      waitUntilReady: () => queue.waitUntilReady(),
+      close: () => queue.close(),
+    };
+    const scheduler = startScheduler(1_000, recording);
     await waitFor(
       async () => (await resultCount(monitor)) === 1,
       10_000,
       "first result",
     );
     await scheduler.stop();
-    // The queue removed the finished job, so its id is free again; the ledger
-    // no longer holds a claim for it and the checker must not record.
-    const { tenantId, monitorId } = monitor;
-    const stale: MonitorCheckJob = {
-      tenantId,
-      monitorId,
-      claimToken: monitor.claimToken,
-      checkConfigVersion: 1,
-      scheduledFor: new Date(Date.now() - 60_000).toISOString(),
+    const first = claimed.find((job) => job.monitorId === monitor.monitorId);
+    if (!first) throw new Error("scheduler did not enqueue the monitor");
+    // The finished job left the queue, so its id is free again while the
+    // ledger no longer holds that claim: the checker must not record.
+    const options = {
+      ...MONITOR_CHECK_JOB_OPTIONS,
+      jobId: monitorCheckJobId(first.monitorId, first.claimToken),
     };
-    await queue.add("check", stale, {
-      ...MONITOR_CHECK_JOB_OPTIONS,
-      jobId: monitorCheckJobId(monitorId, stale.claimToken),
-    });
-    await queue.add("check", stale, {
-      ...MONITOR_CHECK_JOB_OPTIONS,
-      jobId: monitorCheckJobId(monitorId, stale.claimToken),
-    });
+    await queue.add("check", first, options);
+    await queue.add("check", first, options);
     await new Promise((resolve) => setTimeout(resolve, 2_000));
     expect(await resultCount(monitor)).toBe(1);
+    expect(answering.requests).toHaveLength(1);
   }, 60_000);
 
   it("SIGKILL mid-check leaves no result; after lease expiry the next claim records one", async () => {
@@ -488,5 +490,49 @@ describe("monitor-checker process", () => {
     });
     expect(JSON.stringify(row)).not.toContain("127.0.0.1");
     expect(listener.requests).toHaveLength(0);
+    expect(listener.connections()).toBe(0);
   }, 30_000);
+
+  it("SIGTERM with Redis frozen stays inside the 25 s hard deadline", async () => {
+    const frozenRedis = await startTestRedis("checker-frozen");
+    const output: string[] = [];
+    const child = spawn("bun", ["run", "--preload", preload, workerEntry], {
+      env: {
+        PATH: process.env.PATH,
+        DATABASE_URL: db.runtimeUrl,
+        REDIS_URL: frozenRedis.url,
+        WORKER_ROLES: "consumer,scheduler,monitor-scheduler,monitor-checker",
+        OUTBOUND_TEST_ALLOWED_HOSTS: TARGET_HOST,
+        NW_TEST_DNS_FILE: dnsFile,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const exited = new Promise<number | null>((resolve) => {
+      child.once("close", (code) => {
+        resolve(code);
+      });
+    });
+    const ready = Promise.withResolvers<undefined>();
+    const onData = (chunk: Buffer) => {
+      output.push(chunk.toString());
+      if (output.join("").includes("worker ready")) ready.resolve(undefined);
+    };
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+    try {
+      await ready.promise;
+      await frozenRedis.freeze();
+      const signalled = Date.now();
+      child.kill("SIGTERM");
+      await exited;
+      const waitedMs = Date.now() - signalled;
+      expect(waitedMs).toBeLessThan(26_000);
+      console.info(
+        `SIGTERM with frozen Redis exited after ${String(waitedMs)} ms`,
+      );
+    } finally {
+      if (child.exitCode === null) child.kill("SIGKILL");
+      await frozenRedis.stop();
+    }
+  }, 60_000);
 });

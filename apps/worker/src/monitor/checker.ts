@@ -340,7 +340,6 @@ export async function processMonitorCheck(
       outcome: result.outcome,
       failureReason: result.failureReason,
       durationMs: Date.now() - started,
-      recorded: outcome,
     },
     "monitor check finished",
   );

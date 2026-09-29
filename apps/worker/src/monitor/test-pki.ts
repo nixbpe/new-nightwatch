@@ -149,6 +149,10 @@ export async function startTlsTarget(
     ? https.createServer(credentials, listener)
     : http.createServer(listener);
   server.on("tlsClientError", () => undefined);
+  let connections = 0;
+  server.on("connection", () => {
+    connections += 1;
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   const origin = `${credentials ? "https" : "http"}://${host}:${String(port)}`;
@@ -156,6 +160,7 @@ export async function startTlsTarget(
     url: origin,
     origin,
     port,
+    connections: () => connections,
     requests,
     setHandler(next) {
       current = next;

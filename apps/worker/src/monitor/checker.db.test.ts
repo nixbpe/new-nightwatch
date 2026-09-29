@@ -257,9 +257,27 @@ describe("checker records a result (transaction A then B)", () => {
       const deleted = await seedMonitor(db, { url, timeoutSeconds: 10 });
       const edited = await seedMonitor(db, { url, timeoutSeconds: 10 });
       const untouched = await seedMonitor(db, { url, timeoutSeconds: 10 });
+      // One failure already recorded: a 500 that got recorded would open an incident.
+      for (const monitor of [paused, deleted, edited, untouched]) {
+        await updateMonitor(
+          db,
+          monitor,
+          "update monitors set consecutive_failures = 1 where id = $1",
+          [monitor.monitorId],
+        );
+      }
 
+      const emitted: string[] = [];
       const running = [paused, deleted, edited, untouched].map((monitor) =>
-        processMonitorCheck(monitor.job(), dependencies()),
+        processMonitorCheck(
+          monitor.job(),
+          dependencies({
+            onEvent: (_tx, event) => {
+              emitted.push(`${event.monitorId}:${event.type}`);
+              return Promise.resolve();
+            },
+          }),
+        ),
       );
       // All four requests are in flight before the change lands.
       const started = Date.now();
@@ -306,6 +324,9 @@ describe("checker records a result (transaction A then B)", () => {
         "discarded",
       ]);
       expect(untouchedOutcome).toBe("recorded");
+      // Only the monitor nobody touched reaches the event hook and opens an incident.
+      expect(emitted).toEqual([`${untouched.monitorId}:incident_opened`]);
+      expect((await countAll(untouched)).incidents).toBe(1);
       for (const monitor of [paused, edited]) {
         expect(await countAll(monitor)).toEqual({
           results: 0,
@@ -949,6 +970,7 @@ describe("AC-62 and shutdown", () => {
       }
 
       expect(listener.requests).toHaveLength(0);
+      expect(listener.connections()).toBe(0);
       const stored = await rows<{
         outcome: string;
         failure_reason: string;
@@ -1149,6 +1171,7 @@ describe("recorded rows carry no request data (AC-42)", () => {
         "request-header-marker",
         "request-body-marker",
         "resp-header-marker",
+        "secretField",
       ]) {
         expect(everything).not.toContain(marker);
       }
@@ -1158,6 +1181,94 @@ describe("recorded rows carry no request data (AC-42)", () => {
       // The assertion result holds the matched text only where the executor put it.
       const [row] = await results(monitor);
       expect(row?.outcome).toBe("pass");
+    } finally {
+      await target.close();
+    }
+  });
+});
+
+describe("assertion values and redirects on scheduled checks", () => {
+  it("stores an assertion value cut at 200 characters and flags it (AC-17)", async () => {
+    const target = await startTarget((_request, response) => {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ name: "y".repeat(300) }));
+    });
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        assertions: [
+          {
+            kind: "jsonPathEquals",
+            path: "$.name",
+            expected: "x",
+            pathSegments: ["name"],
+            expectedValue: "x",
+          },
+        ],
+      });
+      await processMonitorCheck(monitor.job(), dependencies());
+      const [row] = await rows<{
+        outcome: string;
+        failure_reason: string;
+        assertions: {
+          actual: string;
+          actualTruncated: boolean;
+          status: string;
+        }[];
+      }>(
+        db,
+        monitor,
+        "select outcome, failure_reason, assertions from monitor_check_results where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(row?.failure_reason).toBe("assertion_failed");
+      expect(row?.assertions[0]?.actualTruncated).toBe(true);
+      expect(row?.assertions[0]?.actual.length).toBeLessThanOrEqual(200);
+      expect(row?.assertions[0]?.actual).toContain("yyyy");
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a redirect to a forbidden address is redirect_blocked, counted as fail and never followed (AC-34)", async () => {
+    const forbidden = await startTarget();
+    const target = await startTarget((_request, response) => {
+      response.statusCode = 302;
+      // Not on the test allow-list, so it resolves to loopback and is refused.
+      response.setHeader(
+        "location",
+        `http://internal.example.test:${String(forbidden.port)}/`,
+      );
+      response.end();
+    });
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await processMonitorCheck(monitor.job(), dependencies());
+      expect((await results(monitor))[0]).toMatchObject({
+        outcome: "fail",
+        failure_reason: "redirect_blocked",
+      });
+      expect(forbidden.connections()).toBe(0);
+    } finally {
+      await target.close();
+      await forbidden.close();
+    }
+  });
+
+  it("more than five redirects is redirect_limit and a fail (AC-34)", async () => {
+    const target = await startTarget((request, response) => {
+      const hop = Number(/hop=(\d+)/.exec(request.url ?? "")?.[1] ?? "0");
+      response.statusCode = 302;
+      response.setHeader("location", `/?hop=${String(hop + 1)}`);
+      response.end();
+    });
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await processMonitorCheck(monitor.job(), dependencies());
+      expect((await results(monitor))[0]).toMatchObject({
+        outcome: "fail",
+        failure_reason: "redirect_limit",
+      });
     } finally {
       await target.close();
     }

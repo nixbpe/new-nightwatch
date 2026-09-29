@@ -42,7 +42,7 @@ type WorkerRole = (typeof WORKER_ROLES)[number];
 const SHUTDOWN_DEADLINE_MS = 25_000;
 // Checks still running after this long are abandoned; their results become gaps.
 const CHECKER_DRAIN_MS = 15_000;
-const CHECKER_CLOSE_MS = 18_000;
+const CHECKER_CLOSE_MS = 17_000;
 const checkerShutdown = new AbortController();
 
 const env = loadEnv();
@@ -96,16 +96,19 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   await monitorSchedule?.stop();
   if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
-  if (monitorChecker) {
-    const abort = setTimeout(() => {
-      checkerShutdown.abort();
-    }, CHECKER_DRAIN_MS);
-    await closeWithin(monitorChecker, CHECKER_CLOSE_MS);
-    clearTimeout(abort);
-  }
-  if (worker) await closeWithin(worker);
-  if (queue) await closeWithin(queue);
-  if (monitorQueue) await closeWithin(monitorQueue);
+  // Closes run together so the slowest one, not their sum, bounds shutdown.
+  const abort = monitorChecker
+    ? setTimeout(() => {
+        checkerShutdown.abort();
+      }, CHECKER_DRAIN_MS)
+    : undefined;
+  await Promise.all([
+    monitorChecker && closeWithin(monitorChecker, CHECKER_CLOSE_MS),
+    worker && closeWithin(worker),
+    queue && closeWithin(queue),
+    monitorQueue && closeWithin(monitorQueue),
+  ]);
+  clearTimeout(abort);
   await database.close();
   logger.flush();
   // Abandoned requests would keep the event loop alive until their own timeout.
