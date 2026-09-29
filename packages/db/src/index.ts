@@ -29,6 +29,12 @@ export {
   type NotificationTransaction,
 } from "./notification";
 export {
+  claimDueMonitorChecks,
+  ensureMonitorPartitions,
+  purgeExpiredMonitorData,
+  type MonitorCheckClaim,
+} from "./monitor";
+export {
   listMigrations,
   runMigrations,
   sha256,
