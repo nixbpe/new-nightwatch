@@ -16,11 +16,14 @@ agent:`product-owner` writes the matrix with only the categories the change touc
 - **Scope**: routes, APIs and user journeys in scope.
 - **Authorization**: which actor may or may not do which operation on which target.
 - **State**: loading, empty, success, denied, revoked and failure, matching the Feature's UI flow state table.
+- **Accessibility**: focus, keyboard, dialog. Zoom/reflow is a criterion only when the user asks for it; layouts still follow LAY-02 in file:`docs/design-system.md`.
+- **Out of scope**: known items deliberately excluded.
+
+agent:`tech-lead` then adds the technical categories the change touches:
+
 - **Concurrency**: races to handle and the accepted outcome.
 - **Security**: data never disclosed, log redaction, fresh-auth boundary.
-- **Accessibility**: focus, keyboard, dialog. Zoom/reflow is a criterion only when the user asks for it; layouts still follow LAY-02 in file:`docs/design-system.md`.
 - **Verification**: the scenario or command that proves each item.
-- **Out of scope**: known items deliberately excluded.
 
 The matrix lives in the Feature file (file:`docs/templates/feature.md`). Number criteria `AC-01`, `AC-02`… across the whole Feature; each Story lists the ACs it covers.
 
@@ -31,5 +34,5 @@ After the user approves the Feature's scope and the Product Owner and the Techni
 ## After freeze
 
 - A reviewer may point only at an AC the work misses, a violation of an already-approved architecture or security rule, or a non-blocking follow-up. A reviewer never adds a criterion.
-- A genuinely new criterion is a scope change: proposed AC → the Technical Lead classifies it as blocker or follow-up → the Product Owner approves → `acceptanceVersion` bumps (e.g. `-AC-1` to `-AC-2`) → the affected work is replanned.
+- A genuinely new criterion is a scope change: proposed AC from the Product Owner → the Technical Lead classifies it as blocker or follow-up → the user approves → `acceptanceVersion` bumps (e.g. `-AC-1` to `-AC-2`) → the affected work is replanned.
 - No criterion changes silently.
