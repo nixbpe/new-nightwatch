@@ -279,7 +279,8 @@ suite. It then runs the same root `e2e` command.
   - `security:secrets` → gitleaks with `.gitleaks.toml`
   - `security:sast` → semgrep registry packs `p/typescript` +
     `p/security-audit` with `--error`
-- `security:image` → docker build + trivy `--severity HIGH,CRITICAL
---exit-code 1` once `apps/api/Dockerfile` exists; skips with a message
-  otherwise. Scanner execution errors must fail — never swallow a scanner
-  non-zero exit as a pass.
+- `security:image` → for `api` then `worker`: docker build of
+  `apps/<app>/Dockerfile` (tags `nightwatch-<app>:trivy-scan`) and trivy
+  `--severity HIGH,CRITICAL --exit-code 1`. Fail-fast: an API image failure
+  stops before the Worker image. Scanner execution errors must fail, never
+  swallow a scanner non-zero exit as a pass.

@@ -58,6 +58,45 @@ the new roles is rejected as an unknown role. Roles: `consumer`, `scheduler`,
   `consumer,scheduler,monitor-scheduler,monitor-checker`.
 - Stop with SIGTERM; the scheduler stops before the checker.
 
+### Worker image
+
+`apps/worker/Dockerfile` builds `nightwatch-worker` from the repo root:
+`docker build -f apps/worker/Dockerfile -t nightwatch-worker .`
+
+- Runtime is `oven/bun:1.3.14-alpine` (same digest as the API image), user
+  `nightwatch` (uid 1001). The SSRF helper was validated on Bun 1.3.14; do not
+  run the bundle on Node.
+- The image sets `NODE_ENV=production` and its entrypoint exits 78 with a message
+  when `NODE_ENV` is unset, empty or not `production`/`development`. It carries
+  no keys, no secrets and no `OUTBOUND_TEST_ALLOWED_HOSTS`.
+- No `HEALTHCHECK`: the Worker exposes no endpoint. Liveness is the process and
+  the `monitor worker ready` log line.
+- Set at run time: `WORKER_ROLES`, `DATABASE_URL`, `REDIS_URL`,
+  `CREDENTIAL_ENCRYPTION_KEYS`, `CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION`.
+  Run one container per role (`monitor-scheduler`, `monitor-checker`) so each
+  scales and stops on its own. Give the container a stop grace period of at
+  least 30 s (Worker hard deadline 25 s).
+- Production example (values come from the secret store):
+  `docker run --rm -e WORKER_ROLES=monitor-checker -e DATABASE_URL -e REDIS_URL -e CREDENTIAL_ENCRYPTION_KEYS -e CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION nightwatch-worker`
+  Without the two credential variables the Worker exits with
+  `CREDENTIAL_ENCRYPTION_KEYS is required in production`.
+
+Local compose: `compose.worker.yaml` adds `monitor-scheduler` and
+`monitor-checker` to the dev stack (usage in its header; same project and
+`NW_SLOT` as `compose.yaml`). It sets `NODE_ENV=development` explicitly, which
+is the only way the Worker accepts the public dev key
+(`CREDENTIAL_ENCRYPTION_KEYS` `{"dev":...}`). Production behaviour is unchanged:
+with `NODE_ENV=production` the Worker rejects version `dev` and the public key.
+Never reuse that file or env outside local development.
+
+Deployment dependencies before release (not part of this image):
+
+- Redis must be non-cluster. API rate-limit keys hash to different slots, so
+  their `EVAL` fails with `CROSSSLOT` on a cluster.
+- Network egress control of the production Worker network is a separate
+  dependency in the F-005 spec. The image does not restrict outbound traffic;
+  the SSRF helper is the only guard until that control exists.
+
 ## Partitions
 
 `bun run db:partitions` after every `db:migrate` and at least monthly (see

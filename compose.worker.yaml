@@ -1,0 +1,47 @@
+# Local Worker roles for the dev stack. Run together with compose.yaml: same
+# project name (nw-dev-<NW_SLOT>) and same variables as `bun run db:up` computes
+# (scripts/db.mjs), so the roles join the running Postgres and Redis:
+#   bun run db:up
+#   set -a; . ./.env.compose.local; set +a
+#   export NW_SLOT=<slot> NW_DB_PORT=<5400+slot> NW_MAIL_SMTP_PORT=<7400+slot> \
+#     NW_MAIL_UI_PORT=<7500+slot> NW_REDIS_PORT=<6380+slot>
+#   docker compose -f compose.yaml -f compose.worker.yaml up -d --build \
+#     monitor-scheduler monitor-checker
+#
+# NODE_ENV=development is set explicitly here and only here. The image itself
+# defaults to production, where the Worker refuses the development credential
+# key and OUTBOUND_TEST_ALLOWED_HOSTS; the image entrypoint refuses an unset
+# NODE_ENV. The values below are public dev values, not secrets. Do not reuse
+# this file, its env or the dev key for a shared or production environment.
+# OUTBOUND_TEST_ALLOWED_HOSTS is intentionally absent.
+x-worker: &worker
+  image: nightwatch-worker
+  build:
+    context: .
+    dockerfile: apps/worker/Dockerfile
+  stop_grace_period: 30s
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  environment: &worker-env
+    NODE_ENV: development
+    LOG_LEVEL: info
+    DATABASE_URL: postgres://nightwatch:${NW_DB_PASSWORD:?run bun run db:up}@postgres:5432/nightwatch
+    REDIS_URL: redis://redis:6379
+    CREDENTIAL_ENCRYPTION_KEYS: '{"dev":"bmlnaHR3YXRjaC1kZXYtY3JlZGVudGlhbC1rZXluaWc="}'
+    CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: dev
+
+services:
+  monitor-scheduler:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLES: monitor-scheduler
+
+  monitor-checker:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLES: monitor-checker
