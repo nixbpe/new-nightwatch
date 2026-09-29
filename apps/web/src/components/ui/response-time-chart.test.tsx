@@ -7,6 +7,7 @@ import { ResponseTimeChart } from "./response-time-chart";
 import {
   buildSeries,
   describeEntry,
+  pausedThroughout,
   summarize,
   summaryText,
   toChartProps,
@@ -79,17 +80,20 @@ describe("series", () => {
   });
 
   it("words a check NightWatch could not run as 'ตรวจไม่ได้', apart from a check without a time", () => {
-    const { buckets } = toChartProps({
-      range: "24h",
-      unit: "ms",
-      points: [
-        { at: T("07:00"), responseTimeMs: null, outcome: "check_error" },
-        { at: T("07:05"), responseTimeMs: null, outcome: "fail" },
-      ],
-      gaps: [],
-      pauses: [],
-      configChanges: [],
-    });
+    const { buckets } = toChartProps(
+      {
+        range: "24h",
+        unit: "ms",
+        points: [
+          { at: T("07:00"), responseTimeMs: null, outcome: "check_error" },
+          { at: T("07:05"), responseTimeMs: null, outcome: "fail" },
+        ],
+        gaps: [],
+        pauses: [],
+        configChanges: [],
+      },
+      { dataAsOf: T("08:00"), intervalSeconds: 300 },
+    );
     const series = buildSeries({
       range: "24h",
       buckets,
@@ -114,6 +118,7 @@ describe("series", () => {
       avgMs: avg,
       maxMs: avg === null ? null : avg * 2,
       checks,
+      responseChecks: checks,
     });
     const series = buildSeries({
       range: "7d",
@@ -176,6 +181,217 @@ describe("series", () => {
       configChanges: [],
     });
     expect(series.map((entry) => entry.kind)).toEqual(["pause"]);
+  });
+});
+
+const empty = (from: string, to: string) => ({
+  at: T(from),
+  endAt: T(to),
+  avgMs: null,
+  maxMs: null,
+  checks: 0,
+});
+
+describe("series gaps, pauses and averages", () => {
+  it("merges adjacent empty hours into one step so its label can show", () => {
+    const props = {
+      range: "7d",
+      buckets: [
+        empty("01:00", "02:00"),
+        empty("02:00", "03:00"),
+        empty("03:00", "04:00"),
+        { ...empty("04:00", "05:00"), avgMs: 100, maxMs: 100, checks: 12 },
+      ],
+      pauses: [],
+      configChanges: [],
+    } satisfies ResponseTimeChartProps;
+    const series = buildSeries(props);
+    expect(series.map((entry) => [entry.kind, entry.end - entry.at])).toEqual([
+      ["gap", 3 * 3_600_000],
+      ["value", 3_600_000],
+    ]);
+    const { container } = render(<ResponseTimeChart {...props} />);
+    expect(container.querySelectorAll('[data-chart-part="gap"]')).toHaveLength(
+      1,
+    );
+    expect(container.querySelector("svg")).toHaveTextContent("ไม่มีข้อมูล");
+  });
+
+  it("reads an empty hour as a pause only when a pause covers the whole hour", () => {
+    const kinds = (pauseFrom: string) =>
+      buildSeries({
+        range: "7d",
+        buckets: [empty("10:00", "11:00")],
+        pauses: [{ from: T(pauseFrom), to: T("12:00") }],
+        configChanges: [],
+      }).map((entry) => entry.kind);
+    expect(kinds("10:55")).toEqual(["gap"]);
+    expect(kinds("09:30")).toEqual(["pause"]);
+    expect(kinds("10:00")).toEqual(["pause"]);
+  });
+
+  it("marks a check without a response time and a system-side check error, with legend entries", () => {
+    const { container } = render(
+      <ResponseTimeChart
+        {...props24h({
+          buckets: [
+            point("07:00", 182),
+            { ...point("07:05", null) },
+            { ...point("07:10", null), checkError: true },
+          ],
+          pauses: [],
+        })}
+      />,
+    );
+    expect(
+      container.querySelectorAll('[data-chart-part="no-response"]'),
+    ).toHaveLength(1);
+    expect(
+      container.querySelectorAll('[data-chart-part="check-error"]'),
+    ).toHaveLength(1);
+    expect(screen.getByText(/× ตรวจแล้ว ไม่มีเวลาตอบสนอง/)).toBeInTheDocument();
+    expect(screen.getByText(/○ ตรวจไม่ได้/)).toBeInTheDocument();
+  });
+
+  it("weights the overall average by responseChecks, not by checks", () => {
+    const hour = (start: string, end: string, avg: number, rc: number) => ({
+      at: T(start),
+      endAt: T(end),
+      avgMs: avg,
+      maxMs: avg,
+      checks: 12,
+      responseChecks: rc,
+    });
+    const summary = summarize(
+      buildSeries({
+        range: "7d",
+        // Both hours ran 12 checks, but only 2 of the first had a response time.
+        buckets: [
+          hour("01:00", "02:00", 1000, 2),
+          hour("02:00", "03:00", 100, 10),
+        ],
+        pauses: [],
+        configChanges: [],
+      }),
+    );
+    expect(summary.averageMs).toBeCloseTo((1000 * 2 + 100 * 10) / 12, 5);
+  });
+
+  it("shows the range of hourly averages, not an overall average, when the count is absent", () => {
+    const summary = summarize(
+      buildSeries({
+        range: "7d",
+        buckets: [
+          { ...empty("01:00", "02:00"), avgMs: 100, maxMs: 150, checks: 12 },
+          { ...empty("02:00", "03:00"), avgMs: 300, maxMs: 500, checks: 1 },
+        ],
+        pauses: [],
+        configChanges: [],
+      }),
+    );
+    expect(summary.averageMs).toBeNull();
+    expect(summaryText(summary)).toContain(
+      "ค่าเฉลี่ยรายชั่วโมง 100 ms ถึง 300 ms สูงสุด 500 ms",
+    );
+    expect(summaryText(summary)).not.toContain("เฉลี่ย 200");
+  });
+
+  it("says in the legend that hours with only system-side errors read as no data, for 7 d and 30 d only", () => {
+    const note = /ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้/;
+    const { unmount } = render(<ResponseTimeChart {...props24h()} />);
+    expect(screen.queryByText(note)).toBeNull();
+    unmount();
+    render(
+      <ResponseTimeChart
+        {...props24h({ range: "7d", buckets: [empty("01:00", "02:00")] })}
+      />,
+    );
+    expect(screen.getByText(note)).toBeInTheDocument();
+  });
+});
+
+describe("24 h window", () => {
+  const window = { from: T("00:00"), to: T("12:00") };
+  const base = {
+    range: "24h",
+    pauses: [],
+    configChanges: [],
+    window,
+    intervalSeconds: 300,
+  } satisfies Partial<ResponseTimeChartProps>;
+
+  it("draws the stretch from the last result to now as no data for a stale monitor", () => {
+    const series = buildSeries({
+      ...base,
+      buckets: [point("00:05", 100), point("07:00", 120)],
+    });
+    expect(series.map((entry) => entry.kind)).toEqual([
+      "value",
+      "value",
+      "gap",
+    ]);
+    const trailing = series[2];
+    expect(trailing?.end).toBe(Date.parse(window.to));
+    expect(trailing && describeEntry("24h", trailing)).toContain("ไม่มีข้อมูล");
+    const { container } = render(
+      <ResponseTimeChart
+        {...base}
+        buckets={[point("00:05", 100), point("07:00", 120)]}
+      />,
+    );
+    expect(container.querySelectorAll('[data-chart-part="gap"]')).toHaveLength(
+      1,
+    );
+  });
+
+  it("draws a leading stretch and ignores stretches within twice the interval or inside a pause", () => {
+    const kinds = (first: string, pauses: ResponseTimeChartProps["pauses"]) =>
+      buildSeries({
+        ...base,
+        pauses,
+        buckets: [point(first, 100), point("11:55", 100)],
+      }).map((entry) => entry.kind);
+    expect(kinds("03:00", [])).toEqual(["gap", "value", "value"]);
+    // 8 minutes is under 2 x 5 minutes: no gap.
+    expect(kinds("00:08", [])).toEqual(["value", "value"]);
+    // The leading hours are a pause, so they are not also a gap.
+    expect(kinds("03:00", [{ from: T("00:00"), to: T("03:00") }])).toEqual([
+      "pause",
+      "value",
+      "value",
+    ]);
+  });
+
+  it("treats a window with no results at all as one gap, and a fully paused one as a pause", () => {
+    expect(
+      buildSeries({ ...base, buckets: [] }).map((entry) => entry.kind),
+    ).toEqual(["gap"]);
+    expect(
+      buildSeries({
+        ...base,
+        buckets: [],
+        pauses: [window],
+      }).map((entry) => entry.kind),
+    ).toEqual(["pause"]);
+    expect(pausedThroughout({ ...base, buckets: [], pauses: [window] })).toBe(
+      true,
+    );
+    expect(pausedThroughout({ ...base, buckets: [], pauses: [] })).toBe(false);
+    // The pauses come from a later read: a sliver at the window's edge is still "throughout".
+    expect(
+      pausedThroughout({
+        ...base,
+        buckets: [],
+        pauses: [{ from: T("00:02"), to: window.to }],
+      }),
+    ).toBe(true);
+    expect(
+      pausedThroughout({
+        ...base,
+        buckets: [],
+        pauses: [{ from: T("02:00"), to: window.to }],
+      }),
+    ).toBe(false);
   });
 });
 

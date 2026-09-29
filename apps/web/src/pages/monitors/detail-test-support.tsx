@@ -67,7 +67,10 @@ export function must<T>(value: T | null | undefined): T {
   return value;
 }
 
-export const noResponseTimes: MonitorResponseTimesResponse = {
+export const noResponseTimes: Extract<
+  MonitorResponseTimesResponse,
+  { range: "24h" }
+> = {
   range: "24h",
   unit: "ms",
   points: [],

@@ -13,6 +13,7 @@ import {
 import { TIME_ZONE, formatNumber } from "../../pages/monitors/format";
 import {
   buildSeries,
+  HOURLY_CHECK_ERROR_NOTE,
   describeEntry,
   RANGE_LABELS,
   type ResponseTimeChartProps,
@@ -91,8 +92,8 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
   const left = MARGIN.left;
   const right = width - MARGIN.right;
   const bottom = HEIGHT - MARGIN.bottom;
-  let from = first?.at ?? 0;
-  let to = last?.end ?? 1;
+  let from = props.window ? Date.parse(props.window.from) : (first?.at ?? 0);
+  let to = props.window ? Date.parse(props.window.to) : (last?.end ?? 1);
   for (const pause of props.pauses) {
     from = Math.min(from, Date.parse(pause.from));
     to = Math.max(to, Date.parse(pause.to));
@@ -104,10 +105,9 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
   const x = scaleTime()
     .domain([new Date(from), new Date(to)])
     .range([left, right]);
-  const top = Math.max(
-    1,
-    ...series.map((entry) => entry.maxMs ?? entry.avgMs ?? 0),
-  );
+  // With no value to scale to, the axis reads 0 to 100 rather than 0 to 1 in fractions.
+  const measured = series.map((entry) => entry.maxMs ?? entry.avgMs ?? 0);
+  const top = Math.max(0, ...measured) > 0 ? Math.max(...measured) : 100;
   const y = scaleLinear().domain([0, top]).nice().range([bottom, MARGIN.top]);
 
   const path = line<SeriesEntry>()
@@ -370,6 +370,34 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
               className="fill-primary"
             />
           ))}
+          {series
+            .filter(
+              (entry) =>
+                entry.kind === "no-response" || entry.kind === "check-error",
+            )
+            .map((entry) => {
+              const cx = x(new Date(midpoint(entry)));
+              const cy = bottom - 8;
+              return entry.kind === "no-response" ? (
+                <path
+                  key={entry.key}
+                  data-chart-part="no-response"
+                  d={`M${String(cx - 4)},${String(cy - 4)}L${String(cx + 4)},${String(cy + 4)}M${String(cx - 4)},${String(cy + 4)}L${String(cx + 4)},${String(cy - 4)}`}
+                  strokeWidth="2"
+                  className="stroke-danger"
+                />
+              ) : (
+                <circle
+                  key={entry.key}
+                  data-chart-part="check-error"
+                  cx={cx}
+                  cy={cy}
+                  r="4"
+                  strokeWidth="2"
+                  className="fill-surface stroke-foreground-secondary"
+                />
+              );
+            })}
           {selected === undefined ? null : selected.kind === "value" ? (
             <g data-chart-part="selection">
               <line
@@ -422,7 +450,18 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
         <span>แถบเทา: หยุดชั่วคราว</span>
         <span>แถบลาย: ไม่มีข้อมูล</span>
         <span>เส้นประ: เปลี่ยน URL หรือแก้ค่า</span>
+        {series.some((entry) => entry.kind === "no-response") ? (
+          <span>× ตรวจแล้ว ไม่มีเวลาตอบสนอง (เช่น หมดเวลา)</span>
+        ) : null}
+        {series.some((entry) => entry.kind === "check-error") ? (
+          <span>○ ตรวจไม่ได้ (ปัญหาฝั่งระบบ)</span>
+        ) : null}
       </p>
+      {range === "24h" ? null : (
+        <p className="text-xs text-foreground-secondary">
+          {HOURLY_CHECK_ERROR_NOTE}
+        </p>
+      )}
     </div>
   );
 }

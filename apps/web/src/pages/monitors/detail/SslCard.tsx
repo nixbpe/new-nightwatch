@@ -12,7 +12,10 @@ const dateFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
 
 export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
   const reason = tlsReasonLabel(ssl.reason);
-  const hasCertificate = ssl.issuer !== null || ssl.notAfter !== null;
+  const hasCertificate =
+    ssl.issuer !== null || ssl.notAfter !== null || ssl.host !== null;
+  // A readable certificate that fails validation keeps its level and dates but carries a reason (AC-35).
+  const invalid = ssl.state !== "unreadable" && ssl.reason !== null;
   return (
     <Card as="section" aria-labelledby="detail-ssl">
       <CardHeader
@@ -30,6 +33,12 @@ export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
         {ssl.state === "no_data" ? (
           <p className="text-foreground-secondary">
             ยังไม่มีข้อมูลใบรับรอง จะแสดงหลังตรวจ https สำเร็จ
+          </p>
+        ) : null}
+        {invalid ? (
+          <p className="font-medium text-danger">
+            ใบรับรองไม่ถูกต้อง{reason === null ? null : <>: {reason}</>} การตรวจ
+            https ล้มเหลว
           </p>
         ) : null}
         {ssl.state === "unreadable" ? (

@@ -17,6 +17,7 @@ import {
   fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
+  monitorQueryKeys,
   pauseMonitor,
   resumeMonitor,
 } from "../../lib/api/monitors";
@@ -55,6 +56,8 @@ const fetchDetailMock = vi.mocked(fetchMonitorDetail);
 const pauseMock = vi.mocked(pauseMonitor);
 const resumeMock = vi.mocked(resumeMonitor);
 const deleteMock = vi.mocked(deleteMonitor);
+
+const OTHER_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const emptyList: MonitorListResponse = {
   summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
@@ -315,6 +318,69 @@ describe("Delete", () => {
     );
     // The deleted monitor is not read again on the way out.
     expect(fetchDetailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends one request when Confirm is pressed twice", async () => {
+    fetchDetailMock.mockResolvedValue({ monitor: detail() });
+    deleteMock.mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    renderDetail();
+    const { dialog } = await openDialog(user);
+    const confirm = within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" });
+    await user.dblClick(confirm);
+    expect(deleteMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes the deleted monitor from a cached list before the Overview shows it", async () => {
+    fetchDetailMock.mockResolvedValue({ monitor: detail() });
+    deleteMock.mockResolvedValue(undefined);
+    // The Overview refetch never lands, so only the cached list is on screen.
+    vi.mocked(fetchMonitorList).mockReturnValue(new Promise(() => undefined));
+    const item = (id: string, name: string) => ({
+      id,
+      name,
+      url: "https://example.test/",
+      status: "active" as const,
+      health: "up" as const,
+      healthReason: null,
+      lastKnownDown: false,
+      consecutiveFailures: 0,
+      lastCheckAt: "2026-09-30T07:30:00.000Z",
+      openIncident: null,
+      lastResponseTimeMs: 100,
+      ssl: { level: "ok" as const, daysRemaining: 100, host: null },
+      uptime: {
+        h24: { percent: 100, checks: 1, coveragePercent: 100 },
+        d30: { percent: 100, checks: 1, coveragePercent: 100 },
+      },
+    });
+    const cached: MonitorListResponse = {
+      summary: { up: 2, down: 0, unknown: 0, paused: 0, total: 2, limit: 50 },
+      monitors: [item(MONITOR_ID, "Payments API"), item(OTHER_ID, "Docs")],
+      page: { limit: 25, offset: 0, total: 2 },
+      dataAsOf: "2026-09-30T07:32:05.000Z",
+    };
+    const user = userEvent.setup();
+    const { queryClient } = renderDetail();
+    queryClient.setQueryData(
+      monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
+      cached,
+    );
+    const { dialog } = await openDialog(user);
+    await user.click(
+      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+    );
+
+    expect(await screen.findByText("ลบมอนิเตอร์แล้ว")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: "Docs" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Payments API" })).toBeNull();
+    expect(
+      queryClient.getQueryData<MonitorListResponse>(
+        monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
+      )?.summary,
+    ).toMatchObject({ up: 1, total: 1 });
   });
 
   it("does not show the notice again after a reload of the Overview state", async () => {

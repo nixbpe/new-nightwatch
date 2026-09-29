@@ -24,6 +24,7 @@ import {
   B,
   baseResult,
   context,
+  DATA_AS_OF,
   detail,
   MONITOR_ID,
   must,
@@ -333,6 +334,50 @@ describe("Detail SSL card", () => {
         within(card).getAllByText(new RegExp(text)).length,
       ).toBeGreaterThan(0);
     }
+  });
+
+  it.each([
+    ["self_signed", "self-signed"],
+    ["hostname_mismatch", "ชื่อไม่ตรง"],
+    ["untrusted", "ไม่น่าเชื่อถือ"],
+  ])(
+    "says a readable but invalid certificate (%s) is invalid, in a warning tone",
+    async (reason, wording) => {
+      showDetail(
+        detail({
+          ssl: { ...detail().ssl, state: "ok", daysRemaining: 128, reason },
+        }),
+      );
+      renderDetail();
+      const card = sectionOf(
+        await screen.findByRole("heading", { name: "SSL" }),
+      );
+      const line = within(card).getByText(/^ใบรับรองไม่ถูกต้อง/);
+      expect(line).toHaveTextContent(`ใบรับรองไม่ถูกต้อง: ${wording}`);
+      expect(line).toHaveClass("text-danger");
+      // The days and dates of the certificate stay visible beside it.
+      expect(within(card).getAllByText(/เหลือ 128 วัน/).length).toBeGreaterThan(
+        0,
+      );
+    },
+  );
+
+  it("shows the host when it is known even without issuer or expiry", async () => {
+    showDetail(
+      detail({
+        ssl: {
+          ...detail().ssl,
+          state: "unreadable",
+          issuer: null,
+          notAfter: null,
+          daysRemaining: null,
+          host: "api.acme.example",
+        },
+      }),
+    );
+    renderDetail();
+    const card = sectionOf(await screen.findByRole("heading", { name: "SSL" }));
+    expect(within(card).getByText("api.acme.example")).toBeInTheDocument();
   });
 
   it("lists issuer, host and expiry date of a readable certificate", async () => {
@@ -705,13 +750,19 @@ describe("Detail structure", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
-  it("shows the auth type and secret header names as set, never a value", async () => {
+  const HEADER_ID = "5c2f0a86-7d0e-4c58-9f4e-1a2b3c4d5e6f";
+
+  it("shows 'ตั้งค่าแล้ว' from the stored slots, never a value", async () => {
     showDetail(
       detail({
         auth: { type: "bearer" },
         headers: [
-          { id: "h1", name: "X-Api-Key", secret: true },
+          { id: HEADER_ID, name: "X-Api-Key", secret: true },
           { name: "Accept", value: "application/json", secret: false },
+        ],
+        secretSlots: [
+          { slot: "auth.token", configured: true },
+          { slot: `header.${HEADER_ID}`, configured: true },
         ],
       }),
     );
@@ -726,6 +777,76 @@ describe("Detail structure", () => {
       "ตั้งค่าแล้ว (ค่าลับ)",
     );
     expect(within(card).getByText("application/json")).toBeInTheDocument();
+  });
+
+  it("does not claim a secret is set when its slot is not stored", async () => {
+    showDetail(
+      detail({
+        auth: { type: "basic" },
+        headers: [{ id: HEADER_ID, name: "X-Api-Key", secret: true }],
+        // Only half of the Basic pair is stored, and the header has no slot.
+        secretSlots: [{ slot: "auth.username", configured: true }],
+      }),
+    );
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "การตั้งค่า" }),
+    );
+    expect(within(card).getByText(/^Basic/)).toHaveTextContent(
+      "ยังไม่ได้ตั้งค่า",
+    );
+    expect(within(card).getByText("X-Api-Key").parentElement).toHaveTextContent(
+      "ยังไม่ได้ตั้งค่า (ค่าลับ)",
+    );
+    expect(within(card).queryByText(/ตั้งค่าแล้ว/)).toBeNull();
+  });
+
+  it.each(["viewer", "auditor"] as const)(
+    "shows %s the query parameters, body and assertions with the visibility warning",
+    async (role) => {
+      fetchMeContextMock.mockResolvedValue(context(role));
+      showDetail(
+        detail({
+          queryParams: [{ name: "region", value: "eu" }],
+          body: { type: "json", content: '{"ping":true}' },
+          assertions: [
+            { kind: "jsonPathEquals", path: "$.status", expected: "ok" },
+            { kind: "bodyContains", text: "ready" },
+            { kind: "responseTimeBelow", ms: 800 },
+          ],
+        }),
+      );
+      renderDetail();
+      const card = sectionOf(
+        await screen.findByRole("heading", { name: "การตั้งค่า" }),
+      );
+      expect(within(card).getByText("region=eu")).toBeInTheDocument();
+      expect(within(card).getByText("Body (json)")).toBeInTheDocument();
+      expect(within(card).getByText('{"ping":true}')).toBeInTheDocument();
+      expect(
+        within(card).getByText("JSONPath เท่ากับ $.status = ok"),
+      ).toBeInTheDocument();
+      expect(
+        within(card).getByText("เนื้อหามีข้อความ ready"),
+      ).toBeInTheDocument();
+      expect(
+        within(card).getByText("เวลาตอบสนองน้อยกว่า 800 ms"),
+      ).toBeInTheDocument();
+      expect(
+        within(card).getByText(
+          "ผู้ที่ดูมอนิเตอร์เห็นค่านี้ได้ ห้ามใส่ความลับ ใช้ header ลับแทน",
+        ),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("shows no visibility warning when there are no query parameters or body", async () => {
+    showDetail(detail());
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "การตั้งค่า" }),
+    );
+    expect(within(card).queryByText(/ห้ามใส่ความลับ/)).toBeNull();
   });
 
   it("keeps the monitor leaf active on the Detail path", () => {
@@ -769,25 +890,30 @@ function chartTable() {
 }
 
 const T = (time: string) => `2026-09-30T${time}:00.000Z`;
+/** A time `minutes` after the start of the 24 h window that ends at the page's dataAsOf. */
+const inWindow = (minutes: number) =>
+  new Date(
+    Date.parse(DATA_AS_OF) - 24 * 3_600_000 + minutes * 60_000,
+  ).toISOString();
 
 const responseTimes24h: MonitorResponseTimesResponse = {
   range: "24h",
   unit: "ms",
   points: [
-    { at: T("07:00"), responseTimeMs: 182, outcome: "pass" },
-    { at: T("07:05"), responseTimeMs: 1204, outcome: "fail" },
-    { at: T("07:45"), responseTimeMs: 200, outcome: "pass" },
+    { at: inWindow(3), responseTimeMs: 182, outcome: "pass" },
+    { at: inWindow(8), responseTimeMs: 1204, outcome: "fail" },
+    { at: inWindow(1437), responseTimeMs: 200, outcome: "pass" },
   ],
-  gaps: [{ from: T("07:10"), to: T("07:25") }],
-  pauses: [{ from: T("07:25"), to: T("07:40") }],
+  gaps: [{ from: inWindow(10), to: inWindow(25) }],
+  pauses: [{ from: inWindow(25), to: inWindow(40) }],
   configChanges: [
-    { at: T("07:02"), urlChanged: true, url: "https://new.example" },
+    { at: inWindow(5), urlChanged: true, url: "https://new.example" },
   ],
 };
 
 describe("Detail response-time chart", () => {
   it("shows the empty state when there are no results", async () => {
-    showDetail(detail());
+    showDetail(detail({ lastCheckAt: null, lastResult: null }));
     renderDetail();
     const card = sectionOf(
       await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
@@ -796,6 +922,64 @@ describe("Detail response-time chart", () => {
       await within(card).findByText("ยังไม่มีผลการตรวจ"),
     ).toBeInTheDocument();
     expect(within(card).queryByRole("group")).toBeNull();
+  });
+
+  it("tells a monitor with no results in the window from one that was never checked", async () => {
+    showDetail(detail({ lastCheckAt: "2026-09-28T07:30:00.000Z" }));
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    expect(
+      await within(card).findByText(/^ไม่มีผลใน 24 ชม\. \(ผลล่าสุด/),
+    ).toBeInTheDocument();
+    expect(within(card).queryByText("ยังไม่มีผลการตรวจ")).toBeNull();
+  });
+
+  it("says so when the whole window is paused", async () => {
+    showDetail(detail({ status: "paused", health: "paused" }));
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      pauses: [{ from: inWindow(-60), to: DATA_AS_OF }],
+    });
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    expect(
+      await within(card).findByText("หยุดชั่วคราวตลอดช่วง ไม่มีการตรวจ"),
+    ).toBeInTheDocument();
+    expect(
+      await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("draws the stretch from the last result up to now as no data for a stale monitor", async () => {
+    showDetail(
+      detail({
+        health: "unknown",
+        healthReason: "stale",
+        lastCheckAt: inWindow(600),
+      }),
+    );
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: [
+        { at: inWindow(60), responseTimeMs: 150, outcome: "pass" },
+        { at: inWindow(600), responseTimeMs: 160, outcome: "pass" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    const button = await screen.findByRole("button", {
+      name: "ดูข้อมูลกราฟเป็นตาราง",
+    });
+    await user.click(button);
+    const rows = within(chartTable()).getAllByRole("row").slice(1);
+    // Two results, then the gap from the last one to now (and one before the first).
+    expect(rows.at(-1)).toHaveTextContent("ไม่มีข้อมูล");
+    expect(rows[0]).toHaveTextContent("ไม่มีข้อมูล");
+    expect(screen.getByText(/ไม่มีข้อมูล 2 ช่วง รวม/)).toBeInTheDocument();
   });
 
   it("loads the chart lazily with its unit, range, source and summary", async () => {
@@ -868,14 +1052,27 @@ describe("Detail response-time chart", () => {
                 range: requested,
                 unit: "ms",
                 buckets: [
-                  { hourStart: T("05:00"), avgMs: 100, maxMs: 150, checks: 12 },
+                  {
+                    hourStart: T("05:00"),
+                    avgMs: 100,
+                    maxMs: 150,
+                    checks: 12,
+                    responseChecks: 12,
+                  },
                   {
                     hourStart: T("06:00"),
                     avgMs: null,
                     maxMs: null,
                     checks: 0,
+                    responseChecks: 0,
                   },
-                  { hourStart: T("07:00"), avgMs: 300, maxMs: 500, checks: 12 },
+                  {
+                    hourStart: T("07:00"),
+                    avgMs: 300,
+                    maxMs: 500,
+                    checks: 12,
+                    responseChecks: 12,
+                  },
                 ],
                 pauses: [],
                 configChanges: [],

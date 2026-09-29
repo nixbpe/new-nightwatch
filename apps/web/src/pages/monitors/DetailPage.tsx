@@ -1,4 +1,4 @@
-import type { Monitor } from "@nightwatch/api-contract";
+import type { Monitor, MonitorListResponse } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -17,6 +17,7 @@ import {
   fetchMonitorDetail,
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
+  type MonitorRecentEventsResponse,
   pauseMonitor,
   resumeMonitor,
 } from "../../lib/api/monitors";
@@ -161,6 +162,44 @@ function DetailForMonitor({
       refetchType,
     });
 
+  // The Overview mounts with its cached list; without this it would show the deleted monitor until its refetch lands.
+  function dropFromCachedLists() {
+    queryClient.setQueriesData<MonitorListResponse>(
+      {
+        queryKey: monitorQueryKeys.all(organizationId),
+        predicate: (query) => query.queryKey[3] === "list",
+      },
+      (cached) => {
+        const gone = cached?.monitors.find((item) => item.id === monitorId);
+        if (cached === undefined || gone === undefined) return cached;
+        return {
+          ...cached,
+          summary: {
+            ...cached.summary,
+            [gone.health]: Math.max(0, cached.summary[gone.health] - 1),
+            total: Math.max(0, cached.summary.total - 1),
+          },
+          monitors: cached.monitors.filter((item) => item.id !== monitorId),
+          page: { ...cached.page, total: Math.max(0, cached.page.total - 1) },
+        };
+      },
+    );
+    queryClient.setQueriesData<MonitorRecentEventsResponse>(
+      {
+        queryKey: monitorQueryKeys.all(organizationId),
+        predicate: (query) => query.queryKey[3] === "recent-events",
+      },
+      (cached) =>
+        cached === undefined
+          ? cached
+          : {
+              events: cached.events.filter(
+                (event) => event.monitorId !== monitorId,
+              ),
+            },
+    );
+  }
+
   function handleWriteError(error: unknown, failure: string) {
     if (isPermissionDenied(error)) {
       setActionError(ROLE_CHANGED);
@@ -206,6 +245,7 @@ function DetailForMonitor({
       setActionError(null);
     },
     onSuccess: async () => {
+      dropFromCachedLists();
       // Not refetched: the monitor is gone, and this page is about to unmount.
       await invalidateAll("none");
       void navigate(overviewPath, {
@@ -214,6 +254,7 @@ function DetailForMonitor({
     },
     onError: async (error) => {
       if (isNotFound(error)) {
+        dropFromCachedLists();
         await invalidateAll("none");
         void navigate(overviewPath, {
           state: { notice: "alreadyDeleted" } satisfies MonitorFlashState,
@@ -403,7 +444,13 @@ function DetailForMonitor({
       <StateAlerts monitor={monitor} />
       <StatusCard monitor={monitor} />
       <LastResultCard monitor={monitor} />
-      <ResponseTimeCard organizationId={organizationId} monitorId={monitorId} />
+      <ResponseTimeCard
+        organizationId={organizationId}
+        monitorId={monitorId}
+        lastCheckAt={monitor.lastCheckAt}
+        dataAsOf={monitor.dataAsOf}
+        intervalSeconds={monitor.intervalSeconds}
+      />
       <SslCard ssl={monitor.ssl} />
       <IncidentsCard organizationId={organizationId} monitorId={monitorId} />
       <ChecksHistoryCard

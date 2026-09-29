@@ -9,6 +9,7 @@ import { ResponseTimeTable } from "../../../components/ui/response-time-table";
 import {
   buildSeries,
   hasChecks,
+  pausedThroughout,
   RANGE_LABELS,
   summarize,
   summaryText,
@@ -21,7 +22,7 @@ import {
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../../lib/api/monitors";
-import { TIME_ZONE } from "../format";
+import { formatTimeOrDate, Time, TIME_ZONE } from "../format";
 
 // d3 loads only when the Detail page shows a chart.
 const ResponseTimeChart = lazy(() =>
@@ -51,9 +52,15 @@ function ChartLoading() {
 export function ResponseTimeCard({
   organizationId,
   monitorId,
+  lastCheckAt,
+  dataAsOf,
+  intervalSeconds,
 }: {
   organizationId: string;
   monitorId: string;
+  lastCheckAt: string | null;
+  dataAsOf: string;
+  intervalSeconds: number;
 }) {
   const [range, setRange] = useState<ChartRange>("24h");
   const [tableOpen, setTableOpen] = useState(false);
@@ -63,22 +70,30 @@ export function ResponseTimeCard({
     refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
   });
   const chartProps = useMemo(
-    () => (query.data === undefined ? undefined : toChartProps(query.data)),
-    [query.data],
+    () =>
+      query.data === undefined
+        ? undefined
+        : toChartProps(query.data, { dataAsOf, intervalSeconds }),
+    [query.data, dataAsOf, intervalSeconds],
   );
   const series = useMemo(
     () => (chartProps === undefined ? [] : buildSeries(chartProps)),
     [chartProps],
   );
 
+  const paused = chartProps !== undefined && pausedThroughout(chartProps);
   let body;
-  if (chartProps !== undefined && hasChecks(series)) {
+  if (chartProps !== undefined && (hasChecks(series) || paused)) {
     body = (
       <>
         <Suspense fallback={<ChartLoading />}>
           <ResponseTimeChart {...chartProps} />
         </Suspense>
-        <p className="text-sm">{summaryText(summarize(series))}</p>
+        <p className="text-sm">
+          {paused && !hasChecks(series)
+            ? "หยุดชั่วคราวตลอดช่วง ไม่มีการตรวจ"
+            : summaryText(summarize(series))}
+        </p>
         <div className="flex flex-col items-start gap-3">
           <Button
             type="button"
@@ -102,7 +117,17 @@ export function ResponseTimeCard({
     );
   } else if (chartProps !== undefined) {
     body = (
-      <p className="text-sm text-foreground-secondary">ยังไม่มีผลการตรวจ</p>
+      <p className="text-sm text-foreground-secondary">
+        {lastCheckAt === null ? (
+          "ยังไม่มีผลการตรวจ"
+        ) : (
+          <>
+            ไม่มีผลใน{" "}
+            {RANGE_OPTIONS.find((option) => option.value === range)?.label}{" "}
+            (ผลล่าสุด <Time iso={lastCheckAt} format={formatTimeOrDate} />)
+          </>
+        )}
+      </p>
     );
   } else if (query.isError) {
     body = (

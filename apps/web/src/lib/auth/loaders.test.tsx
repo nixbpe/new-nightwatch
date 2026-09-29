@@ -17,7 +17,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
-import { fetchMonitorList, monitorQueryKeys } from "../api/monitors";
+import {
+  fetchMonitorDetail,
+  fetchMonitorList,
+  monitorQueryKeys,
+} from "../api/monitors";
 import {
   fetchNotifications,
   fetchOrganizationNotificationSettings,
@@ -30,8 +34,10 @@ import {
   resetQueryClientRegistry,
   resolveQueryClientForIdentity,
 } from "../queryClient";
+import { detail } from "../../pages/monitors/detail-test-support";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
+  monitorDetailLoader,
   monitorsOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
@@ -92,7 +98,11 @@ vi.mock("../api/notifications", async (importOriginal) => {
 });
 vi.mock("../api/monitors", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
-  return { ...original, fetchMonitorList: vi.fn() };
+  return {
+    ...original,
+    fetchMonitorList: vi.fn(),
+    fetchMonitorDetail: vi.fn(),
+  };
 });
 vi.mock("../api/members", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
@@ -107,6 +117,7 @@ const fetchOrganizationNotificationSettingsMock = vi.mocked(
 );
 const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 const fetchMonitorListMock = vi.mocked(fetchMonitorList);
+const fetchMonitorDetailMock = vi.mocked(fetchMonitorDetail);
 
 const VERIFIED: SessionUser = {
   id: "user-1",
@@ -427,6 +438,74 @@ describe("monitorsOverviewLoader", () => {
       `/organizations/${organizationId}/monitors`,
     );
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("monitorDetailLoader", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const monitorId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const route: RouteObject = {
+    path: "/organizations/:organizationId/monitors/:monitorId",
+    loader: monitorDetailLoader,
+    element: <div>detail-area</div>,
+  };
+  const path = `/organizations/${organizationId}/monitors/${monitorId}`;
+
+  it("stages the monitor in the identity client for a member", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+      lastActiveTenantId: organizationId,
+    });
+    const response = { monitor: detail() };
+    fetchMonitorDetailMock.mockResolvedValue(response);
+    renderAt([route], path);
+
+    expect(await screen.findByText("detail-area")).toBeInTheDocument();
+    expect(fetchMonitorDetailMock).toHaveBeenCalledExactlyOnceWith(
+      organizationId,
+      monitorId,
+    );
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        monitorQueryKeys.detail(organizationId, monitorId),
+      ),
+    ).toEqual(response);
+  });
+
+  it("requests nothing for an Organization the user does not belong to", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    renderAt([route], path);
+
+    expect(await screen.findByText("detail-area")).toBeInTheDocument();
+    expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
+  });
+
+  it("still renders the page when the prefetch fails, so the page shows its own state", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+      lastActiveTenantId: organizationId,
+    });
+    fetchMonitorDetailMock.mockRejectedValue(new Error("404"));
+    renderAt([route], path);
+
+    expect(await screen.findByText("detail-area")).toBeInTheDocument();
+  });
+
+  it("sends an anonymous visitor to sign in with a return path", async () => {
+    sessionState.data = null;
+    renderAt([route], path);
+
+    expect(await screen.findByTestId("from")).toHaveTextContent(path);
+    expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
   });
 });
 
