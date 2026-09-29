@@ -3,7 +3,11 @@ import type {
   MeContextResponse,
   OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -113,9 +117,29 @@ function SwitcherView() {
 
 function TenantView() {
   const { serverActiveOrgId, switchOrg } = useTenant();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   return (
     <>
+      <button
+        type="button"
+        onClick={() => {
+          queryClient.setQueryData<MeContextResponse>(
+            ["me", "context"],
+            (previous) =>
+              previous && {
+                ...previous,
+                organizations: previous.organizations.map((organization) =>
+                  organization.id === A
+                    ? { ...organization, role: "admin" }
+                    : organization,
+                ),
+              },
+          );
+        }}
+      >
+        refresh actor as admin
+      </button>
       <button type="button" onClick={() => void switchOrg(B)}>
         confirm B
       </button>
@@ -1076,6 +1100,191 @@ it("keeps role verification on the edited page while a direct save is pending", 
   expect(await screen.findByText("Last")).toBeInTheDocument();
   expect(screen.getByText("แสดง 51–51 จาก 51")).toBeInTheDocument();
 });
+
+it.each(["dialog", "selection"] as const)(
+  "removes stale owner %s after the actor context is refreshed as admin",
+  async (scenario) => {
+    const target = {
+      ...aMember,
+      id: "member-2",
+      userId: "user-2",
+      name: "Bea",
+      role: "viewer" as const,
+    };
+    vi.mocked(fetchMeContext).mockResolvedValue(context);
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue({
+      ...aList,
+      members: [aMember, target],
+      page: { limit: 50, offset: 0, total: 2 },
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <TenantProvider>
+          <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+            <TenantView />
+          </MemoryRouter>
+        </TenantProvider>
+      </QueryClientProvider>,
+    );
+    const select = await screen.findByRole("combobox", {
+      name: "บทบาทของ Bea",
+    });
+    await user.selectOptions(select, "owner");
+    if (scenario === "dialog") {
+      await user.click(
+        screen.getByRole("button", { name: "บันทึกบทบาทของ Bea" }),
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    }
+    await user.click(
+      screen.getByRole("button", { name: "refresh actor as admin" }),
+    );
+    if (scenario === "dialog") {
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.getByRole("heading", { name: "สมาชิก" })).toHaveFocus();
+    } else {
+      const current = screen.getByRole("combobox", { name: "บทบาทของ Bea" });
+      expect(current).toHaveValue("viewer");
+      expect(current.querySelector('option[value="owner"]')).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "บันทึกบทบาทของ Bea" }),
+      ).toBeDisabled();
+    }
+    if (scenario === "selection") {
+      await user.click(
+        screen.getByRole("button", { name: "บันทึกบทบาทของ Bea" }),
+      );
+    }
+    expect(updateOrganizationMemberRole).not.toHaveBeenCalled();
+  },
+);
+
+it.each(["accepted", "revoked"] as const)(
+  "does not claim a confirmed role conflict when a pending PATCH target moves across pages after a member is %s",
+  async (change) => {
+    const target = {
+      ...aMember,
+      id: "member-51",
+      userId: "user-51",
+      name: "Boundary target",
+      role: "viewer" as const,
+    };
+    const firstPage = [
+      aMember,
+      ...Array.from({ length: 49 }, (_, index) => ({
+        ...target,
+        id: `member-${String(index + 2)}`,
+        userId: `user-${String(index + 2)}`,
+        name: `Member ${String(index + 2)}`,
+      })),
+    ];
+    const patch = Promise.withResolvers<{
+      member: {
+        id: string;
+        userId: string;
+        organizationId: string;
+        role: "admin";
+      };
+    }>();
+    let changed = false;
+    vi.mocked(fetchMeContext).mockResolvedValue(context);
+    vi.mocked(fetchOrganizationMembers).mockImplementation(
+      (_id, _limit, offset) =>
+        Promise.resolve({
+          organizationId: A,
+          members:
+            offset === 0
+              ? changed
+                ? change === "accepted"
+                  ? [
+                      { ...target, id: "new-member", name: "New member" },
+                      ...firstPage.slice(0, 49),
+                    ]
+                  : [...firstPage.slice(1), { ...target, role: "admin" }]
+                : change === "accepted"
+                  ? [...firstPage.slice(0, 49), target]
+                  : firstPage
+              : changed
+                ? change === "accepted"
+                  ? [{ ...target, role: "admin" }]
+                  : []
+                : change === "revoked"
+                  ? [target]
+                  : [],
+          page: {
+            limit: 50,
+            offset,
+            total: changed
+              ? change === "accepted"
+                ? 51
+                : 50
+              : change === "accepted"
+                ? 50
+                : 51,
+          },
+        }),
+    );
+    vi.mocked(updateOrganizationMemberRole).mockReturnValue(patch.promise);
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <TenantProvider>
+          <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+            <TenantView />
+          </MemoryRouter>
+        </TenantProvider>
+      </QueryClientProvider>,
+    );
+    if (change === "revoked") {
+      await screen.findByText("Member 50");
+      await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    }
+    await screen.findByText("Boundary target");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "บทบาทของ Boundary target" }),
+      "admin",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "บันทึกบทบาทของ Boundary target" }),
+    );
+    expect(screen.getByText("กำลังบันทึกบทบาท…")).toBeInTheDocument();
+    expect(updateOrganizationMemberRole).toHaveBeenCalledWith(
+      A,
+      target.id,
+      "admin",
+    );
+    changed = true;
+    await act(async () => {
+      patch.resolve({
+        member: {
+          id: target.id,
+          userId: target.userId,
+          organizationId: A,
+          role: "admin",
+        },
+      });
+      await patch.promise;
+    });
+    expect(
+      screen.queryByText("บทบาทถูกเปลี่ยนอีกครั้ง โหลดบทบาทล่าสุดแล้ว"),
+    ).toBeNull();
+    expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+    expect(
+      await screen.findByText(
+        "ไม่สามารถตรวจสอบบทบาทล่าสุดได้ กรุณาลองโหลดสมาชิกอีกครั้ง",
+      ),
+    ).toBeInTheDocument();
+  },
+);
 
 it.each(["success", "failure"] as const)(
   "refreshes cached pages and actor controls when the actor is on another page after role %s",

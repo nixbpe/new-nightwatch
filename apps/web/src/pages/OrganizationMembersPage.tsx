@@ -138,6 +138,11 @@ function OrganizationMembersPageForOrganization({
   );
   const canRead =
     organization !== undefined && isMemberDirectoryReadable(organization);
+  useEffect(() => {
+    if (organization?.role !== "owner" && confirmation !== null) {
+      setConfirmation(null);
+    }
+  }, [organization?.role, confirmation]);
   const list = useQuery({
     queryKey: memberListQueryKey(organizationId, LIMIT, offset),
     queryFn: () => fetchOrganizationMembers(organizationId, LIMIT, offset),
@@ -238,17 +243,23 @@ function OrganizationMembersPageForOrganization({
             ? "ต้องมีเจ้าขององค์กรอย่างน้อยหนึ่งคน บทบาทล่าสุดได้รับการโหลดแล้ว"
             : "บันทึกบทบาทไม่สำเร็จ โหลดบทบาทล่าสุดแล้ว",
       });
-    } else if (
-      refreshed.data.members.some(
-        (current) => current.id === member.id && current.role === role,
-      )
-    ) {
-      setRoleNotice({ error: false, text: "บันทึกบทบาทแล้ว" });
     } else {
-      setRoleNotice({
-        error: true,
-        text: "บทบาทถูกเปลี่ยนอีกครั้ง โหลดบทบาทล่าสุดแล้ว",
-      });
+      const current = refreshed.data.members.find(
+        (item) => item.id === member.id,
+      );
+      setRoleNotice(
+        current === undefined
+          ? {
+              error: true,
+              text: "ไม่สามารถตรวจสอบบทบาทล่าสุดได้ กรุณาลองโหลดสมาชิกอีกครั้ง",
+            }
+          : current.role === role
+            ? { error: false, text: "บันทึกบทบาทแล้ว" }
+            : {
+                error: true,
+                text: "บทบาทถูกเปลี่ยนอีกครั้ง โหลดบทบาทล่าสุดแล้ว",
+              },
+      );
     }
     const refreshedActor = refreshed.data?.members.find(
       (current) => current.userId === me?.user.id,
@@ -274,7 +285,13 @@ function OrganizationMembersPageForOrganization({
     role: OrganizationRole,
     opener: HTMLElement,
   ) {
-    if (roleInFlight.current || !isCurrentRoleScope()) return;
+    if (
+      roleInFlight.current ||
+      !isCurrentRoleScope() ||
+      (organization?.role !== "owner" &&
+        (member.role === "owner" || role === "owner"))
+    )
+      return;
     if (member.role === "owner" || role === "owner") {
       setConfirmation({ member, role, opener });
     } else {
@@ -539,7 +556,7 @@ function OrganizationMembersPageForOrganization({
                   >
                     {roleScopeCurrent && (
                       <MemberRoleActions
-                        key={`${member.id}:${member.role}`}
+                        key={`${member.id}:${member.role}:${organization.role}`}
                         member={member}
                         actorRole={
                           organization.role === "owner" ? "owner" : "admin"
@@ -616,7 +633,7 @@ function OrganizationMembersPageForOrganization({
       {roleScopeCurrent && rolePending && (
         <p role="status">กำลังบันทึกบทบาท…</p>
       )}
-      {roleScopeCurrent && confirmation && (
+      {roleScopeCurrent && organization.role === "owner" && confirmation && (
         <MemberActionDialog
           title="ยืนยันการเปลี่ยนบทบาท"
           description={`เปลี่ยนบทบาทของ ${confirmation.member.name} ในองค์กร ${organization.name} (${organization.slug}) เป็น ${String(ROLE_LABELS[confirmation.role])} การเปลี่ยนสิทธิ์เจ้าของมีผลต่อการจัดการสมาชิกและการเข้าถึงองค์กร`}
