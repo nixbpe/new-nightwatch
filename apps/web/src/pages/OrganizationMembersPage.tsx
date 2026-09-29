@@ -8,6 +8,9 @@ import {
 } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Button } from "../components/ui/button";
+import { DataTable, DataTablePagination } from "../components/ui/data-table";
+import { StatusPill } from "../components/ui/status-pill";
+import { ROLE_LABELS } from "../lib/roles";
 import { Page, PageHeader } from "../components/shell/Page";
 import { PageState } from "../components/shell/PageState";
 import { ApiError } from "../lib/api/client";
@@ -295,61 +298,43 @@ function OrganizationMembersPageForOrganization({
     const hasNext = offset + data.members.length < data.page.total;
     directory = (
       <>
-        <div
-          tabIndex={0}
-          role="region"
-          aria-label="ตารางสมาชิก"
-          className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
-        >
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead className="border-b border-foreground/10 text-foreground-secondary">
-              <tr>
-                <th className="p-4">ชื่อ</th>
-                <th className="p-4">อีเมล</th>
-                <th className="p-4">บทบาท</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.members.map((member) => (
-                <tr
-                  className="border-b border-foreground/10 last:border-0"
-                  key={member.id}
-                >
-                  <td className="p-4">{member.name}</td>
-                  <td className="p-4">{member.email}</td>
-                  <td className="p-4">{member.role}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <nav
-          aria-label="หน้าสมาชิก"
-          className="flex flex-wrap items-center justify-between gap-4"
-        >
-          <p className="text-sm text-foreground-secondary">
-            แสดง {data.members.length === 0 ? 0 : offset + 1}–
-            {offset + data.members.length} จาก {data.page.total}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              disabled={!hasPrevious}
-              onClick={() => {
-                setOffset((value) => Math.max(0, value - LIMIT));
-              }}
-            >
-              ก่อนหน้า
-            </Button>
-            <Button
-              disabled={!hasNext}
-              onClick={() => {
-                setOffset((value) => value + LIMIT);
-              }}
-            >
-              ถัดไป
-            </Button>
-          </div>
-        </nav>
+        <DataTable
+          ariaLabel="ตารางสมาชิก"
+          columns={[
+            { key: "name", header: "ชื่อ", width: "30%", cell: (m) => m.name },
+            { key: "email", header: "อีเมล", cell: (m) => m.email },
+            {
+              key: "role",
+              header: "บทบาท",
+              width: "160px",
+              cell: (m) => (
+                <StatusPill>{ROLE_LABELS[m.role] ?? m.role}</StatusPill>
+              ),
+            },
+          ]}
+          rows={data.members}
+          rowKey={(m) => m.id}
+          empty={`สมาชิกทั้งหมด ${String(data.page.total)} คน`}
+        />
+        <DataTablePagination
+          ariaLabel="หน้าสมาชิก"
+          summary={
+            <>
+              แสดง {data.members.length === 0 ? 0 : offset + 1}–
+              {offset + data.members.length} จาก {data.page.total}
+            </>
+          }
+          previousLabel="ก่อนหน้า"
+          nextLabel="ถัดไป"
+          hasPrevious={hasPrevious}
+          hasNext={hasNext}
+          onPrevious={() => {
+            setOffset((value) => Math.max(0, value - LIMIT));
+          }}
+          onNext={() => {
+            setOffset((value) => value + LIMIT);
+          }}
+        />
       </>
     );
   }
