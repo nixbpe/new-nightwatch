@@ -42,3 +42,15 @@ export function updateOrganizationMemberRole(
     { method: "PATCH", params: { organizationId, memberId }, body: { role } },
   );
 }
+
+// Revoke answers with the same `{ member }` body as a role update.
+export function revokeOrganizationMember(
+  organizationId: string,
+  memberId: string,
+): Promise<OrganizationMemberRoleUpdateResponse> {
+  return request(
+    "/api/organizations/{organizationId}/members/{memberId}",
+    organizationMemberRoleUpdateResponseSchema,
+    { method: "DELETE", params: { organizationId, memberId } },
+  );
+}

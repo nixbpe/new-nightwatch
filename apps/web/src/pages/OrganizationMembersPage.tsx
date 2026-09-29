@@ -24,6 +24,10 @@ import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
 import { MemberActionDialog } from "./organization-members/MemberActionDialog";
 import {
+  MemberRevokeButton,
+  useMemberRevoke,
+} from "./organization-members/MemberRevokeAction";
+import {
   MemberRoleActions,
   useMemberRoleChange,
 } from "./organization-members/MemberRoleActions";
@@ -201,6 +205,17 @@ function OrganizationMembersPageForOrganization({
     refreshMembershipContext: refreshAfterAuthorizationDenied,
   });
 
+  const revoke = useMemberRevoke({
+    organizationId,
+    actorUserId: me?.user.id,
+    listSettled: !list.isFetching && list.data !== undefined,
+    headingRef: memberPageHeadingRef,
+    refetchList,
+    refreshMembershipContext: refreshAfterAuthorizationDenied,
+    blocked: roleChange.pending,
+  });
+  const memberMutationPending = roleChange.pending || revoke.pending;
+
   const invalidPage =
     list.data?.organizationId === organizationId &&
     offset > 0 &&
@@ -340,8 +355,22 @@ function OrganizationMembersPageForOrganization({
                     key={`${m.id}:${m.role}:${actorRole}`}
                     member={m}
                     actorRole={actorRole}
-                    pending={roleChange.pending}
+                    pending={memberMutationPending}
                     onSave={roleChange.request}
+                  />
+                ) : null,
+            },
+            {
+              key: "revoke",
+              header: "ถอนสมาชิก",
+              align: "end",
+              cell: (m) =>
+                roleChange.scopeCurrent && revoke.scopeCurrent ? (
+                  <MemberRevokeButton
+                    member={m}
+                    actorRole={actorRole}
+                    pending={memberMutationPending}
+                    onRevoke={revoke.request}
                   />
                 ) : null,
             },
@@ -360,8 +389,8 @@ function OrganizationMembersPageForOrganization({
           }
           previousLabel="ก่อนหน้า"
           nextLabel="ถัดไป"
-          hasPrevious={hasPrevious && !roleChange.pending}
-          hasNext={hasNext && !roleChange.pending}
+          hasPrevious={hasPrevious && !memberMutationPending}
+          hasNext={hasNext && !memberMutationPending}
           onPrevious={() => {
             setOffset((value) => Math.max(0, value - LIMIT));
           }}
@@ -406,6 +435,45 @@ function OrganizationMembersPageForOrganization({
         ) : (
           <Alert tone="error">{roleChange.notice.text}</Alert>
         )
+      ) : null}
+      {revoke.pendingText !== null ? (
+        <Notice tone="pending">{revoke.pendingText}</Notice>
+      ) : null}
+      {revoke.scopeCurrent && revoke.notice !== null ? (
+        revoke.notice.tone === "success" ? (
+          <Notice tone="success">{revoke.notice.text}</Notice>
+        ) : (
+          <Alert tone="error">{revoke.notice.text}</Alert>
+        )
+      ) : null}
+      {revoke.scopeCurrent && revoke.confirmation !== null ? (
+        <MemberActionDialog
+          title="ยืนยันการถอนสมาชิก"
+          description={
+            <>
+              <p>
+                ถอน {revoke.confirmation.member.name} (
+                {revoke.confirmation.member.email}) ออกจากองค์กร{" "}
+                {organization.name} ({organization.slug})
+              </p>
+              <p className="mt-2">
+                สมาชิกจะเข้าถึงองค์กรนี้ไม่ได้ทันที
+                แต่บัญชีและสมาชิกภาพในองค์กรอื่นยังอยู่
+                {revoke.confirmation.member.userId === me?.user.id
+                  ? " คุณกำลังถอนตัวเอง และจะออกจากหน้านี้เมื่อสำเร็จ"
+                  : ""}
+              </p>
+            </>
+          }
+          confirmLabel="ยืนยันการถอนสมาชิก"
+          confirmVariant="destructive"
+          pendingLabel="กำลังถอนสมาชิก…"
+          pending={revoke.pending}
+          opener={revoke.confirmation.opener}
+          fallbackFocus={memberPageHeadingRef}
+          onCancel={revoke.cancel}
+          onConfirm={revoke.confirm}
+        />
       ) : null}
       {roleChange.scopeCurrent &&
       actorRole === "owner" &&
