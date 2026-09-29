@@ -13,6 +13,7 @@ import { BrandMark } from "./components/shell/BrandMark";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import {
+  monitorDetailLoader,
   monitorsOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
@@ -32,6 +33,7 @@ import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { DetailPage } from "./pages/monitors/DetailPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
@@ -136,6 +138,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/monitors",
             loader: monitorsOverviewLoader,
             element: <OverviewPage />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId",
+            loader: monitorDetailLoader,
+            element: <DetailPage />,
           },
           {
             path: "/notifications",

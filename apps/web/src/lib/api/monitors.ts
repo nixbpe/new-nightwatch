@@ -1,10 +1,21 @@
 import {
+  MONITOR_HISTORY_DEFAULT_LIMIT,
   MONITOR_LIST_DEFAULT_LIMIT,
   MONITOR_RECENT_EVENTS_DEFAULT,
+  monitorChecksResponseSchema,
+  monitorDetailResponseSchema,
+  monitorIncidentsResponseSchema,
   monitorListResponseSchema,
   monitorRecentEventsResponseSchema,
+  monitorResponseTimesResponseSchema,
+  monitorWriteResponseSchema,
+  type MonitorChecksResponse,
+  type MonitorDetailResponse,
   type MonitorHealthName,
+  type MonitorIncidentsResponse,
   type MonitorListResponse,
+  type MonitorResponseTimesResponse,
+  type MonitorWriteResponse,
 } from "@nightwatch/api-contract";
 
 import type { z } from "zod";
@@ -17,6 +28,7 @@ export type MonitorRecentEventsResponse = z.infer<
 >;
 
 export const MONITOR_LIST_PAGE_SIZE = MONITOR_LIST_DEFAULT_LIMIT;
+export const MONITOR_HISTORY_PAGE_SIZE = MONITOR_HISTORY_DEFAULT_LIMIT;
 export const MONITOR_RECENT_EVENTS_LIMIT = MONITOR_RECENT_EVENTS_DEFAULT;
 // The Overview and its recent-events card refetch on this interval without announcing it.
 export const MONITOR_REFETCH_INTERVAL_MS = 30_000;
@@ -86,7 +98,11 @@ export const monitorQueryKeys = {
       monitorId,
       page,
     ] as const,
-  responseTimes: (organizationId: string, monitorId: string, range: string) =>
+  responseTimes: (
+    organizationId: string,
+    monitorId: string,
+    range: MonitorResponseRange,
+  ) =>
     [
       ...TENANT_QUERY_PREFIX,
       "monitors",
@@ -124,5 +140,87 @@ export function fetchMonitorRecentEvents(
     "/api/organizations/{organizationId}/monitors/recent-events",
     monitorRecentEventsResponseSchema,
     { params: { organizationId }, query: { limit } },
+  );
+}
+
+export type MonitorResponseRange = "24h" | "7d" | "30d";
+
+export function fetchMonitorDetail(
+  organizationId: string,
+  monitorId: string,
+): Promise<MonitorDetailResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}",
+    monitorDetailResponseSchema,
+    { params: { organizationId, monitorId } },
+  );
+}
+
+export function fetchMonitorChecks(
+  organizationId: string,
+  monitorId: string,
+  page: { limit: number; offset: number },
+): Promise<MonitorChecksResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}/checks",
+    monitorChecksResponseSchema,
+    { params: { organizationId, monitorId }, query: page },
+  );
+}
+
+export function fetchMonitorIncidents(
+  organizationId: string,
+  monitorId: string,
+  page: { limit: number; offset: number },
+): Promise<MonitorIncidentsResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}/incidents",
+    monitorIncidentsResponseSchema,
+    { params: { organizationId, monitorId }, query: page },
+  );
+}
+
+export function fetchMonitorResponseTimes(
+  organizationId: string,
+  monitorId: string,
+  range: MonitorResponseRange,
+): Promise<MonitorResponseTimesResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}/response-times",
+    monitorResponseTimesResponseSchema,
+    { params: { organizationId, monitorId }, query: { range } },
+  );
+}
+
+export function pauseMonitor(
+  organizationId: string,
+  monitorId: string,
+): Promise<MonitorWriteResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}/pause",
+    monitorWriteResponseSchema,
+    { method: "POST", params: { organizationId, monitorId } },
+  );
+}
+
+export function resumeMonitor(
+  organizationId: string,
+  monitorId: string,
+): Promise<MonitorWriteResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}/resume",
+    monitorWriteResponseSchema,
+    { method: "POST", params: { organizationId, monitorId } },
+  );
+}
+
+export function deleteMonitor(
+  organizationId: string,
+  monitorId: string,
+): Promise<undefined> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}",
+    undefined,
+    { method: "DELETE", params: { organizationId, monitorId } },
   );
 }
