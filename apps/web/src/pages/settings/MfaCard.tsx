@@ -681,7 +681,12 @@ export function MfaCard({
             </div>
             <StepFooter
               left={
-                <Button type="button" variant="ghost" onClick={resetEnrollment}>
+                <Button
+                  wrap
+                  type="button"
+                  variant="ghost"
+                  onClick={resetEnrollment}
+                >
                   ยกเลิก
                 </Button>
               }
@@ -689,7 +694,7 @@ export function MfaCard({
                 <enableForm.Subscribe
                   selector={(state) => state.isSubmitting}
                   children={(submitting) => (
-                    <Button type="submit" disabled={submitting}>
+                    <Button wrap type="submit" disabled={submitting}>
                       {submitting ? "กำลังตรวจสอบ…" : "ถัดไป: สแกนคิวอาร์โค้ด"}
                       <ArrowRightIcon size={16} />
                     </Button>
@@ -729,11 +734,12 @@ export function MfaCard({
                 <p className="text-sm text-foreground-secondary">
                   หรือกรอกคีย์นี้ในแอปด้วยตนเองถ้าสแกนไม่ได้
                 </p>
-                <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center [&_button]:h-auto [&_button]:min-w-0 [&_button]:whitespace-normal">
+                <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                   <code className="block min-w-0 flex-1 break-all rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-sm tracking-wider">
                     {secretDisplay}
                   </code>
                   <Button
+                    wrap
                     type="button"
                     variant="secondary"
                     size="sm"
@@ -777,6 +783,7 @@ export function MfaCard({
           <StepFooter
             left={
               <Button
+                wrap
                 type="button"
                 variant="ghost"
                 onClick={() => {
@@ -792,6 +799,7 @@ export function MfaCard({
             }
             right={
               <Button
+                wrap
                 type="button"
                 disabled={!acknowledged}
                 onClick={() => {
@@ -886,6 +894,7 @@ export function MfaCard({
             <StepFooter
               left={
                 <Button
+                  wrap
                   type="button"
                   variant="ghost"
                   onClick={() => {
@@ -902,7 +911,7 @@ export function MfaCard({
                 <verifyForm.Subscribe
                   selector={(state) => state.isSubmitting}
                   children={(submitting) => (
-                    <Button type="submit" disabled={submitting}>
+                    <Button wrap type="submit" disabled={submitting}>
                       <CheckIcon size={16} />
                       {submitting ? "กำลังยืนยัน…" : "ยืนยันและเปิดใช้งาน"}
                     </Button>
@@ -970,7 +979,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
 
 function StepFooter({ left, right }: { left: ReactNode; right: ReactNode }) {
   return (
-    <div className="flex flex-col items-stretch gap-2 border-t border-foreground/10 pt-4 sm:flex-row sm:items-center sm:justify-between [&_button]:h-auto [&_button]:min-h-10 [&_button]:min-w-0 [&_button]:whitespace-normal [&_button]:py-2">
+    <div className="flex flex-col items-stretch gap-2 border-t border-foreground/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
       {left}
       {right}
     </div>
@@ -996,12 +1005,13 @@ function CodesHeader({
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-foreground-secondary">{description}</p>
       </div>
-      <div className="flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:flex-wrap sm:items-center [&_button]:h-auto [&_button]:min-w-0 [&_button]:whitespace-normal">
-        <Button type="button" variant="ghost" size="sm" onClick={onCopy}>
+      <div className="flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:flex-wrap sm:items-center">
+        <Button wrap type="button" variant="ghost" size="sm" onClick={onCopy}>
           <CopyIcon size={14} />
           {copied ? "คัดลอกแล้ว" : "คัดลอกทั้งหมด"}
         </Button>
         <Button
+          wrap
           type="button"
           variant="ghost"
           size="sm"

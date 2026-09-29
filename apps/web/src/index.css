@@ -128,3 +128,16 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Three inset levels over Canvas/Surface (docs/design-system.md, Layout):
+   depth comes from stepped neutrals, never a shadow. The divider stays at
+   Text 10% (COL-04); these tint fills only. */
+@utility surface-inset {
+  @apply bg-foreground/4;
+}
+@utility surface-hover {
+  @apply bg-foreground/5;
+}
+@utility surface-active {
+  @apply bg-foreground/8;
+}
