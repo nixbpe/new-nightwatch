@@ -15,6 +15,7 @@ import {
 import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { Redis } from "ioredis";
 import type { QueryConfig } from "pg";
 import pkg from "../package.json";
 import type { Auth } from "./auth";
@@ -29,6 +30,7 @@ import {
   registerOrganizationMemberRoutes,
   registerOrganizationNotificationSettingsRoutes,
 } from "./organization-notifications/routes";
+import { RATE_LIMIT_TIMEOUT_MS } from "./rate-limit";
 
 export type AppDeps = {
   env: Env;
@@ -38,6 +40,9 @@ export type AppDeps = {
   auth?: Auth;
   database?: Database;
   mailer?: Mailer;
+  // Optional so route tests and OpenAPI emission need no Redis; readiness
+  // checks Redis only when a client is injected.
+  redis?: Redis;
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
@@ -199,7 +204,7 @@ const readinessRoute = createRoute({
   method: "get",
   path: "/ready",
   tags: ["system"],
-  summary: "Readiness probe (database check; no Redis in this phase)",
+  summary: "Readiness probe (database and Redis checks when configured)",
   responses: {
     200: {
       description: "Service is ready",
@@ -231,6 +236,22 @@ const databaseReadinessQuery: ReadinessQueryConfig = {
   text: "select 1",
   query_timeout: DB_READINESS_TIMEOUT_MS,
 };
+
+async function checkRedisReadiness(redis: Redis): Promise<void> {
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      redis.ping(),
+      new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => {
+          reject(new Error("redis readiness check timed out"));
+        }, RATE_LIMIT_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(deadline);
+  }
+}
 
 async function checkDatabaseReadiness(database: Database): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -393,7 +414,16 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       } catch {
         checks.database = "fail";
       }
-    } else {
+    }
+    if (deps.redis) {
+      try {
+        await checkRedisReadiness(deps.redis);
+        checks.redis = "ok";
+      } catch {
+        checks.redis = "fail";
+      }
+    }
+    if (!database && !deps.redis) {
       checks.self = "ok";
     }
     const ready = !Object.values(checks).includes("fail");

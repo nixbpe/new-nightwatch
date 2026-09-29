@@ -1404,7 +1404,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Readiness probe (database check; no Redis in this phase) */
+        /** Readiness probe (database and Redis checks when configured) */
         get: {
             parameters: {
                 query?: never;

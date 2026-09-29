@@ -9,7 +9,7 @@ export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
 export const readinessCheckSchema = z.enum(["ok", "fail"]);
 
-/** Readiness: self-checks only in this phase (no database/Redis yet). */
+/** Readiness: one named check per configured dependency (`database`, `redis`), or `self` when none is configured. */
 export const readinessResponseSchema = z.object({
   status: z.enum(["ready", "not_ready"]),
   checks: z.record(z.string(), readinessCheckSchema),
