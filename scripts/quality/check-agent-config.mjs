@@ -143,6 +143,15 @@ for (const file of agentFiles) {
   }
   const preloadSkills = frontmatter.skills ?? [];
   if (
+    Array.isArray(preloadSkills) &&
+    preloadSkills.length > 0 &&
+    path.basename(file) !== "tech-lead.md"
+  ) {
+    errors.push(
+      `${path.relative(root, file)}: worker agents do not preload skills; the dispatch names them`,
+    );
+  }
+  if (
     !Array.isArray(preloadSkills) ||
     preloadSkills.some((skill) => typeof skill !== "string")
   ) {
@@ -177,6 +186,21 @@ for (const entry of await readdir(path.join(claude, "skills"), {
     skillNames.add(entry.name);
   }
 }
+// Flows wire agents and skills together; worker agents and leaf skills name neither.
+const flowSkills = new Set([
+  "delivery-orchestration",
+  "release-preparation",
+  "technical-spec",
+]);
+for (const name of skillNames) {
+  const skillSource = await readFile(
+    path.join(claude, "skills", name, "SKILL.md"),
+    "utf8",
+  );
+  const skillFrontmatter =
+    skillSource.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? "";
+  if (/^argument-hint:/m.test(skillFrontmatter)) flowSkills.add(name);
+}
 for (const declaration of preloadDeclarations) {
   for (const skill of declaration.skills) {
     counts.skills += 1;
@@ -189,6 +213,19 @@ for (const declaration of preloadDeclarations) {
 }
 for (const file of await markdownFiles(claude)) {
   const source = stripFencedCode(await readFile(file, "utf8"));
+  const [area, owner] = path.relative(claude, file).split(path.sep);
+  const worker = area === "agents" && owner !== "tech-lead.md";
+  const leaf = area === "skills" && !flowSkills.has(owner);
+  if (worker && /skill:`[^`]+`/.test(source)) {
+    errors.push(
+      `${path.relative(root, file)}: worker agents do not reference skills; the dispatch names them`,
+    );
+  }
+  if (leaf && /(?:agent|skill):`[^`]+`/.test(source)) {
+    errors.push(
+      `${path.relative(root, file)}: leaf skills do not reference agents or skills; a command names them`,
+    );
+  }
   for (const match of source.matchAll(/agent:`([^`]+)`/g)) {
     counts.agents += 1;
     if (!referenceNamePattern.test(match[1])) {
