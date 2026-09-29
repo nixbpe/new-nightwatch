@@ -888,6 +888,9 @@ export const monitorResponseTimesResponseSchema = z.discriminatedUnion(
     }),
   ],
 );
+export type MonitorResponseTimesResponse = z.infer<
+  typeof monitorResponseTimesResponseSchema
+>;
 
 // ---- Route parameters and error envelopes ------------------------------------
 

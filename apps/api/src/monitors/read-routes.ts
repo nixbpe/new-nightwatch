@@ -14,6 +14,8 @@ import {
   monitorParamsSchema,
   monitorRecentEventsQuerySchema,
   monitorRecentEventsResponseSchema,
+  monitorResponseTimesQuerySchema,
+  monitorResponseTimesResponseSchema,
   permissionDeniedErrorResponseSchema,
   unauthenticatedErrorResponseSchema,
 } from "@nightwatch/api-contract";
@@ -30,6 +32,7 @@ import {
   listChecks,
   listIncidents,
   listMonitors,
+  getResponseTimes,
   listRecentEvents,
 } from "./read-service";
 
@@ -122,6 +125,27 @@ export const monitorReadRouteDeclarations = {
         description: "One page of results and the URL changes inside it",
         content: {
           "application/json": { schema: monitorChecksResponseSchema },
+        },
+      },
+      ...readErrors,
+      404: notFoundResponse,
+    },
+  }),
+  responseTimes: createRoute({
+    method: "get",
+    path: `${monitorBase}/{monitorId}/response-times`,
+    tags,
+    summary:
+      "Response times: per-check points for 24 h, hourly buckets for 7 d and 30 d",
+    request: {
+      params: monitorParamsSchema,
+      query: monitorResponseTimesQuerySchema,
+    },
+    responses: {
+      200: {
+        description: "The series with its pauses and configuration changes",
+        content: {
+          "application/json": { schema: monitorResponseTimesResponseSchema },
         },
       },
       ...readErrors,
@@ -257,6 +281,30 @@ export function registerMonitorReadRoutes(
             { organizationId, actorUserId },
             monitorId,
             query,
+          ),
+      );
+      return c.json(body, 200);
+    },
+    monitorInvalidInputHook,
+  );
+
+  app.openapi(
+    routes.responseTimes,
+    async (c) => {
+      const { organizationId, monitorId } = c.req.valid("param");
+      const { range } = c.req.valid("query");
+      const session = await requireVerifiedSession(auth, c.req.raw.headers);
+      const actorUserId = session.user.id;
+      const body = await auditMonitorDenials(
+        logger,
+        actorUserId,
+        "organization.monitor.read",
+        () =>
+          getResponseTimes(
+            database,
+            { organizationId, actorUserId },
+            monitorId,
+            range,
           ),
       );
       return c.json(body, 200);

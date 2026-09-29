@@ -25,6 +25,7 @@ import {
   validConfig,
   type MonitorTestContext,
   type TestOrganization,
+  type TestRole,
 } from "./test-support";
 
 let ctx: MonitorTestContext;
@@ -50,7 +51,7 @@ afterAll(async () => {
   await ctx.close();
 });
 
-const read = (org: TestOrganization, path: string, role = "viewer" as const) =>
+const read = (org: TestOrganization, path: string, role: TestRole = "viewer") =>
   ctx.call(org.users[role], "GET", monitorsPath(org.id, path));
 
 async function detailOf(org: TestOrganization, id: string) {

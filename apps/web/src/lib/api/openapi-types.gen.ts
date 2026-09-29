@@ -3281,6 +3281,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{organizationId}/monitors/{monitorId}/response-times": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Response times: per-check points for 24 h, hourly buckets for 7 d and 30 d */
+        get: {
+            parameters: {
+                query?: {
+                    range?: "24h" | "7d" | "30d";
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                    monitorId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The series with its pauses and configuration changes */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {string} */
+                            range: "24h";
+                            points: {
+                                /** Format: date-time */
+                                at: string;
+                                responseTimeMs: number | null;
+                                /** @enum {string} */
+                                outcome: "pass" | "fail" | "check_error";
+                            }[];
+                            gaps: {
+                                /** Format: date-time */
+                                from: string;
+                                /** Format: date-time */
+                                to: string;
+                            }[];
+                            /** @enum {string} */
+                            unit: "ms";
+                            pauses: {
+                                /** Format: date-time */
+                                from: string;
+                                /** Format: date-time */
+                                to: string;
+                            }[];
+                            configChanges: {
+                                /** Format: date-time */
+                                at: string;
+                                urlChanged: boolean;
+                                url?: string;
+                            }[];
+                        } | {
+                            /** @enum {string} */
+                            range: "7d" | "30d";
+                            buckets: {
+                                /** Format: date-time */
+                                hourStart: string;
+                                avgMs: number | null;
+                                maxMs: number | null;
+                                checks: number;
+                            }[];
+                            /** @enum {string} */
+                            unit: "ms";
+                            pauses: {
+                                /** Format: date-time */
+                                from: string;
+                                /** Format: date-time */
+                                to: string;
+                            }[];
+                            configChanges: {
+                                /** Format: date-time */
+                                at: string;
+                                urlChanged: boolean;
+                                url?: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Invalid query */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified or membership is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;

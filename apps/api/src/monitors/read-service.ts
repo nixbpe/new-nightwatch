@@ -1,5 +1,6 @@
 import {
   MONITOR_LIMIT_PER_ORGANIZATION,
+  MONITOR_RESPONSE_POINTS_MAX,
   type CheckResultView,
   type MonitorChecksResponse,
   type MonitorDetailResponse,
@@ -7,6 +8,7 @@ import {
   type MonitorIncidentsResponse,
   type MonitorHealthName,
   type MonitorListQuery,
+  type MonitorResponseTimesResponse,
   type MonitorListResponse,
   type MonitorRecentEvent,
   type SslLevelName,
@@ -19,8 +21,10 @@ import { computeHealth, computeSsl } from "./health";
 import { assertMemberPermissionBeforeTenantContext } from "./permissions";
 import { MONITOR_COLUMNS, toRecord, type MonitorRow } from "./record";
 import {
+  computeGaps,
   computeUptime,
   derivePauses,
+  HOUR_MS,
   windowStart,
   type Interval,
   type UptimeAggregate,
@@ -768,5 +772,129 @@ export async function listIncidents(
         total: total.rows[0]?.total ?? 0,
       },
     };
+  });
+}
+
+// ---- Response times --------------------------------------------------------
+
+export async function getResponseTimes(
+  database: Database,
+  identity: ReadIdentity,
+  rawMonitorId: string,
+  range: "24h" | "7d" | "30d",
+): Promise<MonitorResponseTimesResponse> {
+  return readInTenant(database, identity, async (client, now) => {
+    const monitorId = parseMonitorId(rawMonitorId);
+    const found = await client.query<{ status: "active" | "paused" }>(
+      "select status from monitors where id = $1 and tenant_id = $2",
+      [monitorId, identity.organizationId],
+    );
+    const monitor = found.rows[0];
+    if (!monitor) monitorNotFound();
+
+    const start = windowStart(range, now);
+    const pauseEvents = await loadPauseEvents(
+      client,
+      identity.organizationId,
+      [monitorId],
+      start,
+    );
+    const pauses = derivePauses(
+      pauseEvents.get(monitorId) ?? [],
+      monitor.status,
+      start,
+      now,
+    );
+    const changes = await client.query<{ at: Date; url: string | null }>(
+      `select occurred_at as at, url_masked as url from monitor_events
+       where monitor_id = $1 and tenant_id = $2 and kind = 'config_changed'
+         and occurred_at >= $3
+       order by occurred_at, id`,
+      [monitorId, identity.organizationId, start],
+    );
+    const common = {
+      unit: "ms" as const,
+      pauses: pauses.map(toIsoInterval),
+      configChanges: changes.rows.map((change) => ({
+        at: change.at.toISOString(),
+        urlChanged: change.url !== null,
+        ...(change.url === null ? {} : { url: change.url }),
+      })),
+    };
+
+    if (range === "24h") {
+      // Strictly inside the window, newest MONITOR_RESPONSE_POINTS_MAX rows.
+      const rows = await client.query<{
+        checkedAt: Date;
+        responseTimeMs: number | null;
+        outcome: "pass" | "fail" | "check_error";
+        intervalSeconds: number;
+      }>(
+        `select checked_at as "checkedAt", response_time_ms as "responseTimeMs",
+           outcome, interval_seconds as "intervalSeconds"
+         from monitor_check_results
+         where monitor_id = $1 and tenant_id = $2 and scheduled_for > $3
+         order by scheduled_for desc
+         limit $4`,
+        [
+          monitorId,
+          identity.organizationId,
+          start,
+          MONITOR_RESPONSE_POINTS_MAX,
+        ],
+      );
+      const ordered = rows.rows.reverse();
+      const gaps = computeGaps(
+        ordered
+          .filter((row) => row.outcome !== "check_error")
+          .map((row) => ({
+            at: row.checkedAt,
+            intervalSeconds: row.intervalSeconds,
+          })),
+        pauses,
+      );
+      return {
+        range,
+        points: ordered.map((row) => ({
+          at: row.checkedAt.toISOString(),
+          responseTimeMs: row.responseTimeMs,
+          outcome: row.outcome,
+        })),
+        gaps: gaps.map(toIsoInterval),
+        ...common,
+      };
+    }
+
+    const rows = await client.query<{
+      hourStart: Date;
+      checks: number;
+      responseMsSum: string;
+      responseMsMax: number | null;
+    }>(
+      `select hour_start as "hourStart", checks,
+         response_ms_sum::text as "responseMsSum",
+         response_ms_max as "responseMsMax"
+       from monitor_check_hourly
+       where monitor_id = $1 and tenant_id = $2 and hour_start >= $3
+         and hour_start < $4`,
+      [monitorId, identity.organizationId, start, now],
+    );
+    const byHour = new Map(
+      rows.rows.map((row) => [row.hourStart.getTime(), row]),
+    );
+    const buckets = [];
+    for (let hour = start.getTime(); hour < now.getTime(); hour += HOUR_MS) {
+      const row = byHour.get(hour);
+      const measured = row !== undefined && row.responseMsMax !== null;
+      buckets.push({
+        hourStart: new Date(hour).toISOString(),
+        avgMs: measured
+          ? Math.round((Number(row.responseMsSum) / row.checks) * 100) / 100
+          : null,
+        maxMs: measured ? row.responseMsMax : null,
+        checks: row?.checks ?? 0,
+      });
+    }
+    return { range, buckets, ...common };
   });
 }
