@@ -569,8 +569,57 @@ describe("ensure_monitor_partitions", () => {
 });
 
 describe("purge_expired_monitor_data", () => {
+  // Fixture partitions are created here, never assumed from
+  // ensure_monitor_partitions, so the tests do not depend on the calendar
+  // (a 31-day-old row can fall two months back on the 1st of a month).
+  const createdPartitions: string[] = [];
+  const fixtureMonitors: string[] = [];
+
+  async function ensureFixturePartitions(atSql: string): Promise<void> {
+    const month = await owner.query<{
+      yyyymm: string;
+      lo: string;
+      hi: string;
+    }>(
+      `select to_char(m, 'YYYYMM') as yyyymm,
+              to_char(m, 'YYYY-MM-DD"T"00:00:00"Z"') as lo,
+              to_char(m + interval '1 month', 'YYYY-MM-DD"T"00:00:00"Z"') as hi
+       from (select date_trunc('month', (${atSql}) at time zone 'UTC') as m) t`,
+    );
+    const { yyyymm, lo, hi } = must(month.rows[0]);
+    for (const parent of ["monitor_check_results", "monitor_check_hourly"]) {
+      const name = `${parent}_p${yyyymm}`;
+      const exists = await owner.query<{ found: boolean }>(
+        "select to_regclass($1) is not null as found",
+        [`public.${name}`],
+      );
+      if (exists.rows[0]?.found) continue;
+      await owner.query(
+        `create table if not exists ${name} partition of ${parent}
+           for values from ('${lo}') to ('${hi}')`,
+      );
+      createdPartitions.push(name);
+    }
+  }
+
+  afterAll(async () => {
+    if (!ownerConnected) return;
+    await owner.query("delete from monitors where id = any($1::uuid[])", [
+      fixtureMonitors,
+    ]);
+    for (const name of createdPartitions) {
+      const left = await owner.query<{ n: string }>(
+        `select count(*) as n from ${name}`,
+      );
+      if (Number(left.rows[0]?.n) === 0) {
+        await owner.query(`drop table if exists ${name}`);
+      }
+    }
+  });
+
   async function seedAged(monitorId: string, tenantId: string, days: number) {
     const at = `now() - interval '${String(days)} days'`;
+    await ensureFixturePartitions(at);
     await owner.query(
       `insert into monitor_check_results
          (monitor_id, tenant_id, scheduled_for, checked_at, outcome,
@@ -611,10 +660,34 @@ describe("purge_expired_monitor_data", () => {
   }
 
   async function freshMonitor(): Promise<string> {
-    return withTenantContextRaw(database, tenantA, (client) =>
+    const id = await withTenantContextRaw(database, tenantA, (client) =>
       insertMonitor(client, tenantA),
     );
+    fixtureMonitors.push(id);
+    return id;
   }
+
+  it("deletes expired rows on both sides of a month boundary", async () => {
+    const monitorId = await freshMonitor();
+    const before = "'2001-02-28T23:59:59Z'::timestamptz";
+    const after = "'2001-03-01T00:00:00Z'::timestamptz";
+    await ensureFixturePartitions(before);
+    await ensureFixturePartitions(after);
+    for (const at of [before, after]) {
+      await owner.query(
+        `insert into monitor_check_results
+           (monitor_id, tenant_id, scheduled_for, checked_at, outcome,
+            url_masked, check_config_version, interval_seconds)
+         values ($1, $2, ${at}, ${at}, 'pass', 'u', 1, 60)`,
+        [monitorId, tenantA],
+      );
+    }
+    let deleted = 1;
+    for (let i = 0; i < 20 && deleted > 0; i += 1) {
+      deleted = await purgeExpiredMonitorData(database, { limit: 1000 });
+    }
+    expect(await ownerCount("monitor_check_results", [monitorId])).toBe(0);
+  });
 
   it("keeps 29-day rows and open incidents, deletes 31-day rows and old closed incidents", async () => {
     const monitorId = await freshMonitor();
