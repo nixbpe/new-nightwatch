@@ -2,6 +2,7 @@ import type {
   CheckResultView,
   Monitor,
   MonitorChecksResponse,
+  MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -16,6 +17,7 @@ import {
   fetchMonitorIncidents,
   fetchMonitorList,
   fetchMonitorRecentEvents,
+  fetchMonitorResponseTimes,
 } from "../../lib/api/monitors";
 import {
   A,
@@ -27,6 +29,7 @@ import {
   must,
   noChecks,
   noIncidents,
+  noResponseTimes,
   NOW,
   renderDetail,
   sectionOf,
@@ -47,6 +50,7 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   fetchMonitorIncidents: vi.fn(),
   fetchMonitorList: vi.fn(),
   fetchMonitorRecentEvents: vi.fn(),
+  fetchMonitorResponseTimes: vi.fn(),
 }));
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
@@ -56,6 +60,7 @@ const fetchChecksMock = vi.mocked(fetchMonitorChecks);
 const fetchIncidentsMock = vi.mocked(fetchMonitorIncidents);
 const fetchListMock = vi.mocked(fetchMonitorList);
 const fetchEventsMock = vi.mocked(fetchMonitorRecentEvents);
+const fetchResponseTimesMock = vi.mocked(fetchMonitorResponseTimes);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
@@ -63,6 +68,7 @@ beforeEach(() => {
   fetchChecksMock.mockResolvedValue(noChecks);
   fetchIncidentsMock.mockResolvedValue(noIncidents);
   fetchEventsMock.mockResolvedValue({ events: [] });
+  fetchResponseTimesMock.mockResolvedValue(noResponseTimes);
 });
 
 afterEach(() => {
@@ -512,10 +518,15 @@ describe("Detail check history", () => {
       "Payments API",
     );
     fetchChecksMock.mockResolvedValue(noChecks);
+    const card = sectionOf(
+      screen.getByRole("heading", { name: "ประวัติการตรวจ" }),
+    );
     await userEvent
       .setup()
-      .click(must(screen.getAllByRole("button", { name: "ลองอีกครั้ง" })[0]));
-    expect(await screen.findByText("ยังไม่มีผลการตรวจ")).toBeInTheDocument();
+      .click(within(card).getByRole("button", { name: "ลองอีกครั้ง" }));
+    expect(
+      await within(card).findByText("ยังไม่มีผลการตรวจ"),
+    ).toBeInTheDocument();
   });
 });
 
@@ -666,9 +677,10 @@ describe("Detail structure", () => {
     const headings = screen
       .getAllByRole("heading", { level: 2 })
       .map((heading) => heading.textContent);
-    expect(headings.filter((text) => text !== "เวลาตอบสนอง")).toEqual([
+    expect(headings).toEqual([
       "สถานะปัจจุบัน",
       "ผลการตรวจล่าสุดและ Assertions",
+      "เวลาตอบสนอง",
       "SSL",
       "เหตุการณ์",
       "ประวัติการตรวจ",
@@ -731,5 +743,178 @@ describe("Detail Organization switch", () => {
       );
     });
     expect(screen.queryByText("Payments API")).toBeNull();
+  });
+});
+
+function chartTable() {
+  return within(
+    screen.getByRole("region", { name: "ข้อมูลกราฟเวลาตอบสนอง" }),
+  ).getByRole("table");
+}
+
+const T = (time: string) => `2026-09-30T${time}:00.000Z`;
+
+const responseTimes24h: MonitorResponseTimesResponse = {
+  range: "24h",
+  unit: "ms",
+  points: [
+    { at: T("07:00"), responseTimeMs: 182, outcome: "pass" },
+    { at: T("07:05"), responseTimeMs: 1204, outcome: "fail" },
+    { at: T("07:45"), responseTimeMs: 200, outcome: "pass" },
+  ],
+  gaps: [{ from: T("07:10"), to: T("07:25") }],
+  pauses: [{ from: T("07:25"), to: T("07:40") }],
+  configChanges: [
+    { at: T("07:02"), urlChanged: true, url: "https://new.example" },
+  ],
+};
+
+describe("Detail response-time chart", () => {
+  it("shows the empty state when there are no results", async () => {
+    showDetail(detail());
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    expect(
+      await within(card).findByText("ยังไม่มีผลการตรวจ"),
+    ).toBeInTheDocument();
+    expect(within(card).queryByRole("group")).toBeNull();
+  });
+
+  it("loads the chart lazily with its unit, range, source and summary", async () => {
+    showDetail(detail());
+    fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    expect(
+      await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        /หน่วย: ms ช่วง: 24 ชม.ล่าสุด แหล่ง: ผลการตรวจของ NightWatch/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        "เฉลี่ย 529 ms สูงสุด 1,204 ms ไม่มีข้อมูล 1 ช่วง รวม 15 นาที หยุดชั่วคราว 1 ช่วง",
+      ),
+    ).toBeInTheDocument();
+    expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, MONITOR_ID, "24h");
+  });
+
+  it("opens the same data as a real table with the keyboard", async () => {
+    showDetail(detail());
+    fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
+    const user = userEvent.setup();
+    renderDetail();
+    const button = await screen.findByRole("button", {
+      name: "ดูข้อมูลกราฟเป็นตาราง",
+    });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    button.focus();
+    await user.keyboard("{Enter}");
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    const table = chartTable();
+    expect(table).toHaveAccessibleName(
+      /เวลาตอบสนอง หน่วย ms ช่วง 24 ชม.ล่าสุด/,
+    );
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent);
+    expect(headers[1]).toBe("เวลาตอบสนอง (ms)");
+    const body = within(table).getAllByRole("row").slice(1);
+    // Three checks, one gap and one pause.
+    expect(body).toHaveLength(5);
+    expect(within(table).getByText("ไม่มีข้อมูล")).toBeInTheDocument();
+    expect(within(table).getByText("หยุดชั่วคราว")).toBeInTheDocument();
+    expect(within(table).getByText("เปลี่ยน URL")).toBeInTheDocument();
+    await user.keyboard(" ");
+    expect(
+      screen.queryByRole("table", { name: /เวลาตอบสนอง หน่วย/ }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["7 วัน", "7d", "7 วันล่าสุด"],
+    ["30 วัน", "30d", "30 วันล่าสุด"],
+  ] as const)(
+    "refetches for %s and labels the table with the range",
+    async (label, range, text) => {
+      showDetail(detail());
+      fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
+        Promise.resolve(
+          requested === "24h"
+            ? responseTimes24h
+            : {
+                range: requested,
+                unit: "ms",
+                buckets: [
+                  { hourStart: T("05:00"), avgMs: 100, maxMs: 150, checks: 12 },
+                  {
+                    hourStart: T("06:00"),
+                    avgMs: null,
+                    maxMs: null,
+                    checks: 0,
+                  },
+                  { hourStart: T("07:00"), avgMs: 300, maxMs: 500, checks: 12 },
+                ],
+                pauses: [],
+                configChanges: [],
+              },
+        ),
+      );
+      const user = userEvent.setup();
+      renderDetail();
+      await screen.findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ });
+      await user.click(screen.getByRole("radio", { name: label }));
+      await waitFor(() => {
+        expect(fetchResponseTimesMock).toHaveBeenCalledWith(
+          A,
+          MONITOR_ID,
+          range,
+        );
+      });
+      expect(
+        await screen.findByRole("group", { name: new RegExp(`ช่วง ${text}`) }),
+      ).toBeInTheDocument();
+      await user.click(
+        screen.getByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" }),
+      );
+      const table = chartTable();
+      expect(table).toHaveAccessibleName(new RegExp(text));
+      expect(
+        within(table)
+          .getAllByRole("columnheader")
+          .map((header) => header.textContent),
+      ).toEqual(
+        expect.arrayContaining(["เฉลี่ย (ms)", "สูงสุด (ms)", "หมายเหตุ"]),
+      );
+    },
+  );
+
+  it("keeps a failing chart inside its card with a retry", async () => {
+    showDetail(detail());
+    fetchResponseTimesMock.mockRejectedValueOnce(
+      new ApiError("NETWORK_ERROR", "x", 0),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+    expect(
+      await screen.findByText("โหลดกราฟเวลาตอบสนองไม่สำเร็จ"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Payments API",
+    );
+    fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
+    const card = sectionOf(
+      screen.getByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    await user.click(within(card).getByRole("button", { name: "ลองอีกครั้ง" }));
+    expect(
+      await screen.findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+    ).toBeInTheDocument();
   });
 });

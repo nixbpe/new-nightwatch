@@ -27,6 +27,7 @@ import { ConfigCard } from "./detail/ConfigCard";
 import { IncidentsCard } from "./detail/IncidentsCard";
 import { intervalText } from "./detail/labels";
 import { LastResultCard } from "./detail/LastResultCard";
+import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { SslCard } from "./detail/SslCard";
 import { StatusCard, statusLine } from "./detail/StatusCard";
 import { useFlashNotice, type MonitorFlashState } from "./flash";
@@ -376,6 +377,7 @@ function DetailForMonitor({
       <StateAlerts monitor={monitor} />
       <StatusCard monitor={monitor} />
       <LastResultCard monitor={monitor} />
+      <ResponseTimeCard organizationId={organizationId} monitorId={monitorId} />
       <SslCard ssl={monitor.ssl} />
       <IncidentsCard organizationId={organizationId} monitorId={monitorId} />
       <ChecksHistoryCard
