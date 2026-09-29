@@ -85,6 +85,9 @@ jobs:
       SMTP_SECURE: "false"
       SMTP_FROM: NightWatch CI <ci@nightwatch.local>
       REDIS_URL: redis://localhost:6379
+      CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: ci
+      # CI and e2e only, never production (refused when NODE_ENV=production).
+      OUTBOUND_TEST_ALLOWED_HOSTS: localhost
     services: &db_services
       postgres:
         image: postgres:17.11-alpine
@@ -125,6 +128,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Generate development secret
         run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+      - name: Generate credential encryption key
+        run: |
+          key="$(openssl rand -base64 32)"
+          echo "::add-mask::$key"
+          echo "CREDENTIAL_ENCRYPTION_KEYS={\"ci\":\"$key\"}" >> "$GITHUB_ENV"
       - name: Create least-privilege runtime database role
         run: |
           docker run --rm --network host \
@@ -137,7 +145,13 @@ jobs:
             postgres:17.11-alpine sh /init/001-roles.sh
       - name: Run database migrations
         run: bun run db:migrate
+      - name: Ensure monitor partitions
+        run: bun run db:partitions
       - run: bun run test:coverage
+      # test and test:coverage run vitest on Node; this step runs the SSRF
+      # helper suite on the pinned Bun runtime.
+      - name: Shared tests on Bun
+        run: bun run --cwd packages/shared test:bun
       - uses: actions/upload-artifact@v6
         with:
           name: coverage-report
@@ -222,6 +236,9 @@ jobs:
       SMTP_SECURE: "false"
       SMTP_FROM: NightWatch CI <ci@nightwatch.local>
       REDIS_URL: redis://localhost:6379
+      CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: ci
+      # CI and e2e only, never production (refused when NODE_ENV=production).
+      OUTBOUND_TEST_ALLOWED_HOSTS: localhost
       E2E_REQUIRE_CREDENTIALS: "1"
       E2E_EMAIL: settings-e2e@nightwatch.invalid
       E2E_PASSWORD: "nightwatch-ci-disposable-only-06!"
@@ -237,6 +254,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Generate development secret
         run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+      - name: Generate credential encryption key
+        run: |
+          key="$(openssl rand -base64 32)"
+          echo "::add-mask::$key"
+          echo "CREDENTIAL_ENCRYPTION_KEYS={\"ci\":\"$key\"}" >> "$GITHUB_ENV"
       - name: Create least-privilege runtime database role
         run: |
           docker run --rm --network host \
@@ -249,6 +271,8 @@ jobs:
             postgres:17.11-alpine sh /init/001-roles.sh
       - name: Run database migrations
         run: bun run db:migrate
+      - name: Ensure monitor partitions
+        run: bun run db:partitions
       - name: Provision dedicated E2E settings fixture
         run: bun run --cwd apps/api provision-e2e-fixture
       - name: Install e2e dependencies

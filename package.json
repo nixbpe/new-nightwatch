@@ -25,6 +25,7 @@
     "db:psql": "bun scripts/db.mjs psql",
     "db:mail": "bun scripts/db.mjs mail",
     "db:migrate": "bun scripts/migrate.mjs",
+    "db:partitions": "bun scripts/partitions.mjs",
     "db:seed": "bun scripts/seed.mjs",
     "provision:organization": "bun scripts/provision.mjs",
     "format": "prettier --write .",

@@ -30,6 +30,7 @@ bun run db:logs    # follow container logs
 bun run db:psql    # owner psql shell (DDL/migrations only)
 bun run db:mail    # print the Mailpit web UI URL
 bun run db:migrate # schema migrations (owned by @nightwatch/db)
+bun run db:partitions # monitor result partitions (owner role), after db:migrate
 bun run provision:organization -- \
   --name "Acme" --slug acme --owner-email admin@example.com
                    # first-org operator provisioning (invitation-only;
@@ -162,6 +163,37 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   task-owned fresh PostgreSQL cluster, reuses the same role bootstrap, and
   removes only its own cluster. Migration `0008_notification_function_owners.sql`
   cannot be clean-applied to a second database on the shared cluster (architecture DB-13).
+
+## Monitor environment and partitions
+
+- `bun run db:partitions` (`scripts/partitions.mjs`) calls
+  `ensure_monitor_partitions(3)` with `DATABASE_OWNER_URL` only; the runtime role
+  has no `EXECUTE`. It creates the previous, current and next 3 month partitions
+  of `monitor_check_results` and `monitor_check_hourly`, drops partitions whose
+  whole range is older than 31 days, and is safe to rerun. Run it after
+  `db:migrate` in every environment and at least monthly. It sets a
+  transaction-local `lock_timeout` (`PARTITION_LOCK_TIMEOUT_MS`, default 5000)
+  because a drop locks the parent table; on timeout the transaction rolls back,
+  the script prints the reason and exits 1. `PARTITION_MONTHS_AHEAD` (0..12,
+  default 3) overrides the horizon.
+- Env names (validated by `loadMonitorEnv()` in `packages/shared/src/env.ts`):
+  `CREDENTIAL_ENCRYPTION_KEYS` (JSON map of key version to base64 32-byte key),
+  `CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION`, `REDIS_URL`,
+  `MONITOR_EGRESS_CANARY_URLS` (optional), `OUTBOUND_TEST_ALLOWED_HOSTS`
+  (optional, hostnames, CI and e2e only; startup fails when set with
+  `NODE_ENV=production`).
+- Dev: nothing is generated. When `CREDENTIAL_ENCRYPTION_KEYS` is unset outside
+  production, `loadMonitorEnv()` uses a public development key with version
+  `dev`; production refuses that key and version.
+- CI (jobs `test` and `full`): the job generates a random key per run into
+  `CREDENTIAL_ENCRYPTION_KEYS` (version `ci`, masked), sets
+  `OUTBOUND_TEST_ALLOWED_HOSTS=localhost`, and runs `bun run db:partitions` after
+  `db:migrate`. Job `build` gets none of these. `MONITOR_EGRESS_CANARY_URLS` is
+  unset in CI because runners may lack internet; tests inject the canary.
+- Bun runtime: `test` and `test:coverage` run vitest on Node. Job `test` also
+  runs `bun run --cwd packages/shared test:bun` (`bun --bun vitest run`) so the
+  SSRF helper is exercised on the pinned Bun.
+- Runbook: [uptime monitor operations](../../docs/runbooks/uptime-monitor.md).
 
 ## OpenAPI client drift
 
