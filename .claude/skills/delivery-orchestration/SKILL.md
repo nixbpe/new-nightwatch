@@ -41,10 +41,10 @@ Every dispatch:
 
 | Worker | Load |
 |---|---|
-| agent:`software-engineer` | skill:`build`, skill:`worker-coordination`, skill:`incremental-implementation`, skill:`test-driven-development`; skill:`security-and-hardening` when the Task touches authentication, input handling, organization data or credentials |
+| agent:`software-engineer` | skill:`build`, skill:`worker-coordination`; skill:`security-and-hardening` when the Task touches authentication, input handling, organization data or credentials |
 | agent:`platform-engineer` | skill:`worker-coordination`; skill:`debugging-and-error-recovery` when a setup, gate or environment fails; skill:`release-preparation` for release work |
-| agent:`code-reviewer` | skill:`code-review-and-quality`, skill:`performance-optimization` and skill:`code-simplification` for correctness and maintainability; skill:`security-and-hardening`; skill:`release-preparation` for bound-evidence review; skill:`acceptance-freeze` after freeze |
-| agent:`product-owner` | skill:`requirements`; skill:`grilling` for clarify or challenge work; skill:`acceptance-freeze` for freezing |
+| agent:`code-reviewer` | skill:`code-review-and-quality` and skill:`performance-optimization` for correctness and maintainability; skill:`security-and-hardening`; skill:`release-preparation` for bound-evidence review; skill:`acceptance-freeze` after freeze |
+| agent:`product-owner` | skill:`requirements`; skill:`acceptance-freeze` for freezing |
 | agent:`ux-designer` | skill:`acceptance-freeze` after freeze |
 
 **Commits.** Set `COMMIT_MODE` from the user's actual authorization. If it is unclear use `none`, and ask only when the user wants commits.
@@ -68,7 +68,7 @@ Every dispatch:
 
 ## 4. Build to review-ready
 
-1. Dispatch bounded, ready Tasks together only when ownership is disjoint; owners build in slices per skill:`incremental-implementation`, and one slice may cover several ACs. No candidate exists yet.
+1. Dispatch bounded, ready Tasks together only when ownership is disjoint; owners build in slices per skill:`build`, and one slice may cover several ACs. No candidate exists yet.
 2. As each handoff arrives, send that Task's diff to agent:`code-reviewer` against its criteria, contracts and non-goals, and return Blocker/Major findings to the owner before dependent Tasks start. Evidence must exercise each claim.
    - When relevant, stateful proof names one trigger, the mutation or interleaving it reached, and the state it preserved.
    - Integration tests that write data need run-unique fixtures and owned cleanup.

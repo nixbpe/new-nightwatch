@@ -316,6 +316,8 @@ Audits only find known advisories; they do not catch a newly malicious or typosq
 - **Never apply forced audit remediation automatically** (`npm audit fix --force` or equivalent). Preview the remediation, read changelogs, and test each resulting upgrade; forced fixes may cross declared dependency ranges.
 - **Verify registry signatures and provenance where supported** (`npm audit signatures`, `pnpm audit signatures`) and treat absence as a signal to investigate, not automatic proof of compromise.
 - **Review new dependencies, lockfile diffs, and script-policy changes together** — ownership, maintenance, release age, provenance, transitive graph, and typosquats such as `cross-env` vs `crossenv` (OWASP **A06**, **LLM03**).
+- **Before adding a dependency,** check whether the existing stack solves it, its size and maintenance, its known vulnerabilities and its license.
+- **Upgrade one dependency per change:** read the changelog for behavioral changes, let a green suite before and after decide, review the lockfile diff including transitive changes, and never hand-edit the lockfile.
 
 ## Rate Limiting
 
@@ -424,51 +426,6 @@ await runAllowlistedAction(intent.action, intent.params);
 container.textContent = await llm.reply(userMessage);
 ```
 
-## Security Review Checklist
-
-```markdown
-### Authentication
-- [ ] Passwords hashed with bcrypt/scrypt/argon2 (salt rounds ≥ 12)
-- [ ] Session tokens are httpOnly, secure, sameSite
-- [ ] Login has rate limiting
-- [ ] Password reset tokens expire
-
-### Authorization
-- [ ] Every endpoint checks user permissions
-- [ ] Users can only access their own resources
-- [ ] Admin actions require admin role verification
-
-### Input
-- [ ] All user input validated at the boundary
-- [ ] SQL queries are parameterized
-- [ ] HTML output is encoded/escaped
-- [ ] Server-side URL fetches are allowlisted (no SSRF to internal services)
-- [ ] Delete/move/overwrite targets built from data are checked against an allowlisted root, a minimum depth, and ownership evidence read before the operation
-
-### Data
-- [ ] No secrets in code or version control
-- [ ] Sensitive fields excluded from API responses
-- [ ] PII encrypted at rest (if applicable)
-- [ ] Personal data is classified, collected against a stated purpose, and minimized
-- [ ] Personal data has a retention limit and a working deletion path (incl. backups/indexes)
-- [ ] Export/delete (data-subject) requests are supported where required; sharing with third parties has consent
-
-### Infrastructure
-- [ ] Security headers configured (CSP, HSTS, etc.)
-- [ ] CORS restricted to known origins
-- [ ] Dependencies audited for vulnerabilities
-- [ ] Error messages don't expose internals
-
-### Supply Chain
-- [ ] One authoritative lockfile committed; CI uses that manager's frozen/immutable install
-- [ ] Native audit triaged by reachability and fix risk; dependency install scripts blocked unless explicitly approved
-- [ ] New dependencies reviewed (ownership, provenance, release age, transitive graph)
-
-### AI / LLM (if used)
-- [ ] Model output treated as untrusted (no eval/SQL/innerHTML/shell)
-- [ ] Secrets and other users' data kept out of prompts
-- [ ] Tool/agent permissions scoped; destructive actions require confirmation
-```
 ## See Also
 
 For detailed security checklists and pre-commit verification steps, use file:`../../references/security-checklist.md`.

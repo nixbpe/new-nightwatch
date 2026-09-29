@@ -70,6 +70,18 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 - [ ] Forced audit fixes are never automatic; remediation diffs and changelogs are reviewed
 - [ ] New dependencies are reviewed for ownership, maintenance, release age, provenance, transitive graph and typosquatting
 
+## Privacy
+
+- [ ] Personal data is classified, collected for a stated purpose and minimized
+- [ ] Personal data has a retention limit and a working deletion path, including backups and indexes
+- [ ] Data-subject export and deletion requests are supported where required; sharing with third parties has consent
+
+## AI / LLM (if used)
+
+- [ ] Model output is treated as untrusted (no eval, SQL, innerHTML or shell)
+- [ ] Secrets and other users' data are kept out of prompts
+- [ ] Tool and agent permissions are scoped; destructive actions require confirmation
+
 ## OWASP Top 10 Quick Reference
 
 | # | Vulnerability | Prevention |

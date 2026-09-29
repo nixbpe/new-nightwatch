@@ -1,6 +1,7 @@
 ---
 name: release-preparation
 description: Separate flow that takes a merged or merge-ready change to release-ready - target environment checks, deploy readiness evidence, candidate binding, the full release gates and a final delta review. Used only when the user asks to prepare a release or deployment.
+argument-hint: "<Feature id, PR number or URL>"
 ---
 
 # Release Preparation
@@ -8,6 +9,10 @@ description: Separate flow that takes a merged or merge-ready change to release-
 ## What this is for
 
 Implementation stops at review-ready or merge-ready. Preparing a release is its own task: check the target environment, lock the exact code with a fingerprint, run the full gates against it, and finish with a final review. Any file change after the lock breaks it and the affected checks run again. Release and deploy approval stay with people.
+
+## Running it as a command
+
+Run in a main session started as the Technical Lead (`claude --agent tech-lead`). Require one Feature id, PR number or URL that names a merge-ready change; if it is not merge-ready, stop and say so. The run stops at `release-ready`. Deployment or production actions need the user's exact target and scope, relayed to the platform worker.
 
 ## 1. Environment readiness
 
