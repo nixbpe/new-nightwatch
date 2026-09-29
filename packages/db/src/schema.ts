@@ -202,6 +202,9 @@ export const notificationOrgSettings = pgTable("notification_org_settings", {
   orgSettingsChangedEnabled: boolean("org_settings_changed_enabled")
     .notNull()
     .default(true),
+  monitorAlertsEnabled: boolean("monitor_alerts_enabled")
+    .notNull()
+    .default(true),
   version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
     .notNull()
@@ -234,6 +237,14 @@ export const notificationIntents = pgTable(
       onDelete: "set null",
     }),
     actorDisplayName: text("actor_display_name"),
+    // No FK: a monitor notification outlives its monitor (AC-19).
+    subjectMonitorId: uuid("subject_monitor_id"),
+    subjectMonitorName: text("subject_monitor_name"),
+    monitorReason: text("monitor_reason"),
+    sslNotAfter: timestamp("ssl_not_after", {
+      mode: "date",
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -307,6 +318,14 @@ export const notificationInboxItems = pgTable(
       onDelete: "set null",
     }),
     actorDisplayName: text("actor_display_name"),
+    // No FK: a monitor notification outlives its monitor (AC-19).
+    subjectMonitorId: uuid("subject_monitor_id"),
+    subjectMonitorName: text("subject_monitor_name"),
+    monitorReason: text("monitor_reason"),
+    sslNotAfter: timestamp("ssl_not_after", {
+      mode: "date",
+      withTimezone: true,
+    }),
     readAt: timestamp("read_at", { mode: "date", withTimezone: true }),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()
