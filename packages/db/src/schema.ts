@@ -539,6 +539,7 @@ export const monitorCheckResults = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.monitorId, table.scheduledFor] }),
+    index("monitor_check_results_scheduled_idx").on(table.scheduledFor),
     foreignKey({
       columns: [table.monitorId, table.tenantId],
       foreignColumns: [monitors.id, monitors.tenantId],
@@ -568,6 +569,7 @@ export const monitorCheckHourly = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.monitorId, table.hourStart] }),
+    index("monitor_check_hourly_hour_idx").on(table.hourStart),
     foreignKey({
       columns: [table.monitorId, table.tenantId],
       foreignColumns: [monitors.id, monitors.tenantId],

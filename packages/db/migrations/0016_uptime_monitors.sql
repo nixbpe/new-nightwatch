@@ -119,6 +119,13 @@ create table monitor_check_hourly (
     references monitors (id, tenant_id) on delete cascade
 ) partition by range (hour_start);
 
+-- Purge filters and sorts on the partition key alone; the primary keys lead
+-- with monitor_id and cannot serve it.
+create index monitor_check_results_scheduled_idx
+  on monitor_check_results (scheduled_for);
+create index monitor_check_hourly_hour_idx
+  on monitor_check_hourly (hour_start);
+
 create table monitor_incidents (
   id uuid primary key default gen_random_uuid(),
   monitor_id uuid not null,
@@ -459,9 +466,10 @@ begin
           timezone('UTC', v_month),
           timezone('UTC', v_month + interval '1 month')
         );
+        -- Only on creation: ALTER would lock hot existing partitions.
+        execute format('alter table public.%I enable row level security', v_name);
+        execute format('alter table public.%I force row level security', v_name);
       end if;
-      execute format('alter table public.%I enable row level security', v_name);
-      execute format('alter table public.%I force row level security', v_name);
     end loop;
 
     for v_child in

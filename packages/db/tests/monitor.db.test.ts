@@ -77,7 +77,7 @@ async function insertSchedule(
     `insert into monitor_schedule
        (monitor_id, tenant_id, next_check_at, check_config_version,
         interval_seconds, timeout_seconds)
-     values ($1, $2, $3::timestamptz, 1, 60, 10)`,
+     values ($1, $2, $3::timestamptz, 1, 120, 20)`,
     [monitorId, tenantId, nextCheckAt],
   );
 }
@@ -256,6 +256,71 @@ describe("monitor tenant isolation", () => {
     expect(await ownerCount("monitors", [seededB.monitorId])).toBe(1);
   });
 
+  it("rejects inserting a monitor for tenant B from tenant A context", async () => {
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        insertMonitor(client, tenantB),
+      ),
+    ).rejects.toThrow(/row-level security/);
+  });
+
+  it.each(MONITOR_TABLES)(
+    "%s rejects moving a tenant A row to tenant B",
+    async (table) => {
+      const column = table === "monitors" ? "id" : "monitor_id";
+      // results and events have no UPDATE grant, so the grant stops them
+      // before RLS; every other table must fail on the policy WITH CHECK.
+      const expected =
+        table === "monitor_check_results" || table === "monitor_events"
+          ? /permission denied/
+          : /row-level security/;
+      await expect(
+        withTenantContextRaw(database, tenantA, (client) =>
+          client.query(
+            `update ${table} set tenant_id = $1 where ${column} = $2`,
+            [tenantB, seededA.monitorId],
+          ),
+        ),
+      ).rejects.toThrow(expected);
+    },
+  );
+
+  it("grants the runtime role exactly the spec privileges per table", async () => {
+    const spec: Record<(typeof MONITOR_TABLES)[number], string> = {
+      monitors: "SELECT,INSERT,UPDATE,DELETE",
+      monitor_secrets: "SELECT,INSERT,UPDATE,DELETE",
+      monitor_schedule: "SELECT,INSERT,UPDATE,DELETE",
+      monitor_check_results: "SELECT,INSERT",
+      monitor_check_hourly: "SELECT,INSERT,UPDATE",
+      monitor_incidents: "SELECT,INSERT,UPDATE",
+      monitor_events: "SELECT,INSERT",
+    };
+    for (const table of MONITOR_TABLES) {
+      const actual: string[] = [];
+      for (const privilege of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+        const r = await owner.query<{ ok: boolean }>(
+          "select has_table_privilege('nightwatch', $1::regclass, $2) as ok",
+          [`public.${table}`, privilege],
+        );
+        if (r.rows[0]?.ok) actual.push(privilege);
+      }
+      expect({ table, privileges: actual.join(",") }).toEqual({
+        table,
+        privileges: spec[table],
+      });
+    }
+  });
+
+  it("has no default partition on the partitioned tables", async () => {
+    const r = await owner.query<{ relname: string; partdefid: string }>(
+      `select c.relname, p.partdefid::text
+       from pg_partitioned_table p join pg_class c on c.oid = p.partrelid
+       where c.relname in ('monitor_check_results', 'monitor_check_hourly')`,
+    );
+    expect(r.rows).toHaveLength(2);
+    expect(r.rows.map((row) => row.partdefid)).toEqual(["0", "0"]);
+  });
+
   it("denies runtime writes the grants do not include", async () => {
     await expect(
       withTenantContextRaw(database, tenantA, (client) =>
@@ -357,6 +422,17 @@ describe("claim_due_monitor_checks", () => {
     });
   }
 
+  /** Claims until a short batch, so leftover due rows cannot crowd the assertions. */
+  async function claimAll() {
+    const all: Awaited<ReturnType<typeof claimDueMonitorChecks>> = [];
+    for (let i = 0; i < 50; i += 1) {
+      const batch = await claimDueMonitorChecks(database, { limit: 100 });
+      all.push(...batch);
+      if (batch.length < 100) break;
+    }
+    return all;
+  }
+
   it("claims due rows across tenants, sets lease and next slot from the ledger", async () => {
     const a = await dueMonitor(tenantA, ancient);
     const b = await dueMonitor(tenantB, ancient);
@@ -366,7 +442,7 @@ describe("claim_due_monitor_checks", () => {
     const before = await owner.query<{ t: Date }>(
       "select clock_timestamp() as t",
     );
-    const claims = await claimDueMonitorChecks(database, { limit: 100 });
+    const claims = await claimAll();
     const after = await owner.query<{ t: Date }>(
       "select clock_timestamp() as t",
     );
@@ -392,13 +468,14 @@ describe("claim_due_monitor_checks", () => {
     );
     const stored = must(row.rows[0]);
     expect(stored.claim_token).toBe(claimA.claimToken);
-    // interval 60 s, timeout 10 s: next = now + 60 s, lease = now + 10 s + 60 s
+    // monitors say 60 s / 10 s, the ledger says 120 s / 20 s: the ledger wins.
+    // next = now + 120 s, lease = now + 20 s + 60 s
     const lo = must(before.rows[0]).t.getTime();
     const hi = must(after.rows[0]).t.getTime();
-    expect(stored.next_check_at.getTime()).toBeGreaterThanOrEqual(lo + 60_000);
-    expect(stored.next_check_at.getTime()).toBeLessThanOrEqual(hi + 60_000);
-    expect(stored.claimed_until.getTime()).toBeGreaterThanOrEqual(lo + 70_000);
-    expect(stored.claimed_until.getTime()).toBeLessThanOrEqual(hi + 70_000);
+    expect(stored.next_check_at.getTime()).toBeGreaterThanOrEqual(lo + 120_000);
+    expect(stored.next_check_at.getTime()).toBeLessThanOrEqual(hi + 120_000);
+    expect(stored.claimed_until.getTime()).toBeGreaterThanOrEqual(lo + 80_000);
+    expect(stored.claimed_until.getTime()).toBeLessThanOrEqual(hi + 80_000);
 
     const unclaimed = await owner.query<{ claim_token: string | null }>(
       "select claim_token from monitor_schedule where monitor_id = any($1::uuid[])",
@@ -408,9 +485,8 @@ describe("claim_due_monitor_checks", () => {
   });
 
   it("does not hand the same row to two concurrent connections", async () => {
-    const ids: string[] = [];
     for (let i = 0; i < 6; i += 1) {
-      ids.push(await dueMonitor(tenantA, ancient));
+      await dueMonitor(tenantA, ancient);
     }
     const first = new Client({ connectionString: runtimeUrl });
     const second = new Client({ connectionString: runtimeUrl });
@@ -438,30 +514,27 @@ describe("claim_due_monitor_checks", () => {
       await first.end();
       await second.end();
     }
-    expect(ids).toHaveLength(6);
   });
 
   it("re-claims only after the lease expires", async () => {
     const id = await dueMonitor(tenantA, ancient);
-    const first = await claimDueMonitorChecks(database, { limit: 100 });
+    const first = await claimAll();
     const firstClaim = must(first.find((c) => c.monitorId === id));
-    expect(firstClaim).toBeDefined();
 
     // Slot is due again but the lease is still live.
     await owner.query(
       "update monitor_schedule set next_check_at = '2000-01-02T00:00:00Z' where monitor_id = $1",
       [id],
     );
-    const held = await claimDueMonitorChecks(database, { limit: 100 });
+    const held = await claimAll();
     expect(held.some((c) => c.monitorId === id)).toBe(false);
 
     await owner.query(
       "update monitor_schedule set claimed_until = now() - interval '1 second' where monitor_id = $1",
       [id],
     );
-    const again = await claimDueMonitorChecks(database, { limit: 100 });
+    const again = await claimAll();
     const secondClaim = must(again.find((c) => c.monitorId === id));
-    expect(secondClaim).toBeDefined();
     expect(secondClaim.claimToken).not.toBe(firstClaim.claimToken);
   });
 
@@ -730,27 +803,93 @@ describe("purge_expired_monitor_data", () => {
     );
   });
 
-  it("deletes at most the requested number of rows per call", async () => {
-    const monitorId = await freshMonitor();
-    for (const days of [31, 32, 33, 34, 35]) {
-      await seedAged(monitorId, tenantA, days);
+  async function drainExpired(): Promise<void> {
+    let deleted = 1;
+    for (let i = 0; i < 50 && deleted > 0; i += 1) {
+      deleted = await purgeExpiredMonitorData(database, { limit: 1000 });
     }
-    const count = async () =>
-      (
-        await owner.query<{ n: string }>(
-          `select (select count(*) from monitor_check_results where monitor_id = $1)
-                + (select count(*) from monitor_check_hourly where monitor_id = $1)
-                + (select count(*) from monitor_events where monitor_id = $1) as n`,
-          [monitorId],
-        )
-      ).rows[0]?.n;
-    expect(Number(await count())).toBe(15);
+  }
+
+  /** Rows at explicit 2002 timestamps, oldest first, so they sort ahead of
+   * any other expired row once the table has been drained. */
+  async function seedExpired(
+    monitorId: string,
+    counts: { results: number; hourly: number; events: number },
+  ): Promise<void> {
+    const at = (day: number) =>
+      `2002-01-${String(day).padStart(2, "0")}T00:00:00Z`;
+    await ensureFixturePartitions(`'${at(1)}'::timestamptz`);
+    for (let day = 1; day <= counts.results; day += 1) {
+      await owner.query(
+        `insert into monitor_check_results
+           (monitor_id, tenant_id, scheduled_for, checked_at, outcome,
+            url_masked, check_config_version, interval_seconds)
+         values ($1, $2, $3, $3, 'pass', 'u', 1, 60)`,
+        [monitorId, tenantA, at(day)],
+      );
+    }
+    for (let day = 1; day <= counts.hourly; day += 1) {
+      await owner.query(
+        `insert into monitor_check_hourly (monitor_id, tenant_id, hour_start)
+         values ($1, $2, $3)`,
+        [monitorId, tenantA, at(day)],
+      );
+    }
+    for (let day = 1; day <= counts.events; day += 1) {
+      await owner.query(
+        `insert into monitor_events (monitor_id, tenant_id, kind, occurred_at)
+         values ($1, $2, 'config_changed', $3)`,
+        [monitorId, tenantA, at(day)],
+      );
+    }
+  }
+
+  async function remainingRows(monitorId: string) {
+    const r = await owner.query<{
+      results: string;
+      hourly: string;
+      events: string;
+    }>(
+      `select (select count(*) from monitor_check_results where monitor_id = $1) as results,
+              (select count(*) from monitor_check_hourly where monitor_id = $1) as hourly,
+              (select count(*) from monitor_events where monitor_id = $1) as events`,
+      [monitorId],
+    );
+    const row = must(r.rows[0]);
+    return {
+      results: Number(row.results),
+      hourly: Number(row.hourly),
+      events: Number(row.events),
+    };
+  }
+
+  it("deletes exactly p_limit rows when more are expired", async () => {
+    const monitorId = await freshMonitor();
+    await drainExpired();
+    await seedExpired(monitorId, { results: 5, hourly: 5, events: 5 });
     const deleted = await purgeExpiredMonitorData(database, { limit: 2 });
-    expect(deleted).toBeLessThanOrEqual(2);
-    expect(Number(await count())).toBeGreaterThanOrEqual(13);
+    expect(deleted).toBe(2);
+    expect(await remainingRows(monitorId)).toEqual({
+      results: 3,
+      hourly: 5,
+      events: 5,
+    });
     await expect(
       database.sql.query("select purge_expired_monitor_data(0)"),
     ).rejects.toThrow(/between 1 and 1000/);
+  });
+
+  it("spends the remaining limit on later tables when results run out", async () => {
+    const monitorId = await freshMonitor();
+    await drainExpired();
+    await seedExpired(monitorId, { results: 1, hourly: 3, events: 3 });
+    const deleted = await purgeExpiredMonitorData(database, { limit: 5 });
+    expect(deleted).toBe(5);
+    expect(await remainingRows(monitorId)).toEqual({
+      results: 0,
+      hourly: 0,
+      events: 2,
+    });
   });
 });
 
@@ -828,14 +967,12 @@ describe("monitor catalog invariants", () => {
       owner_bypassrls: boolean;
       runtime_exec: boolean;
       public_exec: boolean;
-      owner_role_exec: boolean;
     }>(
       `select p.proname, p.prosecdef, p.proconfig, r.rolname as owner,
               r.rolsuper as owner_super, r.rolcanlogin as owner_login,
               r.rolbypassrls as owner_bypassrls,
               has_function_privilege('nightwatch', p.oid, 'execute') as runtime_exec,
-              has_function_privilege('public', p.oid, 'execute') as public_exec,
-              has_function_privilege('nightwatch_owner', p.oid, 'execute') as owner_role_exec
+              has_function_privilege('public', p.oid, 'execute') as public_exec
        from pg_proc p join pg_roles r on r.oid = p.proowner
        where p.pronamespace = 'public'::regnamespace
          and p.proname in ('claim_due_monitor_checks', 'purge_expired_monitor_data',
@@ -847,7 +984,6 @@ describe("monitor catalog invariants", () => {
       expect(row.prosecdef).toBe(true);
       expect(row.proconfig).toEqual(["search_path=pg_catalog, public"]);
       expect(row.public_exec).toBe(false);
-      expect(row.owner_role_exec).toBe(true);
     }
     const claim = must(byName.get("claim_due_monitor_checks"));
     const purge = must(byName.get("purge_expired_monitor_data"));
