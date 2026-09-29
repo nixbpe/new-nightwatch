@@ -13,7 +13,7 @@ import {
   configFor,
   createTestPki,
   deps,
-  only,
+  first,
   serveReplies,
   TARGET_HOST,
 } from "./fixtures";
@@ -334,7 +334,7 @@ describe("pre-validation of the saved config", () => {
 });
 
 describe("request building", () => {
-  const head = (server: RawServer) => only(server.requests).head;
+  const head = (server: RawServer) => first(server.requests).head;
   const headerValues = (requestHead: string, name: string) =>
     requestHead
       .split("\r\n")
@@ -579,9 +579,10 @@ describe("secret redaction (AC-43)", () => {
       secrets,
       deps(),
     );
-    const assertion = only(result.assertions);
-    expect(assertion.reason).toBe("value_mismatch");
-    expect(assertion.actual).toContain("•••");
+    const [reflected, missing] = result.assertions;
+    expect(reflected).toMatchObject({ reason: "value_mismatch" });
+    expect(reflected?.actual).toContain("•••");
+    expect(missing?.reason).toBe("text_not_found");
     const serialized = JSON.stringify(result);
     for (const leaked of ["hunter2-Pw", "sk-live-9f8e7d", basic]) {
       expect(serialized).not.toContain(leaked);

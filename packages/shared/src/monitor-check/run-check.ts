@@ -2,10 +2,10 @@ import {
   findInvalidHeader,
   maskUrl,
   sendOutboundRequest,
-  validateOutboundUrl,
   type OutboundFailureReason,
 } from "../outbound-http";
 import { evaluateAssertions } from "./assertions";
+import { buildCheckUrl } from "./check-url";
 import { createRedactor } from "./redact";
 import {
   outcomeForFailure,
@@ -42,30 +42,13 @@ function buildRequest(
     return value;
   };
 
-  const checked = validateOutboundUrl(config.url);
-  if (!checked.ok) {
-    return checked.reason === "blocked_address"
-      ? { ok: false, reason: "blocked_address" }
-      : executorError;
-  }
-  const target = checked.url;
-  // Only the new pairs are serialized, so the saved query keeps its exact bytes (%20, ~, ?flag).
-  if (config.queryParams.length > 0) {
-    const added = new URLSearchParams(
-      config.queryParams.map(({ name, value }): [string, string] => [
-        name,
-        value,
-      ]),
-    ).toString();
-    const saved = target.search.slice(1);
-    target.search = saved === "" ? added : `${saved}&${added}`;
-  }
-  const final = validateOutboundUrl(target.href);
+  const final = buildCheckUrl(config.url, config.queryParams);
   if (!final.ok) {
     return final.reason === "blocked_address"
       ? { ok: false, reason: "blocked_address" }
       : executorError;
   }
+  const target = final.url;
 
   const headers: Record<string, string> = {};
   const secretHeaderNames: string[] = [];

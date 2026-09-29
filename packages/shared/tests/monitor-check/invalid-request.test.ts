@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type * as outbound from "../../src/outbound-http";
 import { sendOutboundRequest } from "../../src/outbound-http";
 import { runCheck } from "../../src/monitor-check";
-import { configFor, only } from "./fixtures";
+import { configFor, first } from "./fixtures";
 
 vi.mock("../../src/outbound-http", async (importOriginal) => ({
   ...(await importOriginal<typeof outbound>()),
@@ -26,7 +26,7 @@ describe("invalid_request from the outbound helper", () => {
       outcome: "check_error",
       failureReason: "executor_error",
     });
-    expect(only(result.assertions)).toMatchObject({
+    expect(first(result.assertions)).toMatchObject({
       status: "not_evaluated",
       reason: "no_response",
     });

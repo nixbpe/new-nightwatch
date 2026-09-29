@@ -8,7 +8,7 @@ import {
   type NormalizedAssertion,
 } from "../../src/monitor-check";
 import type { RawServer } from "../outbound-http/fixtures";
-import { configFor, deps, only, serveReplies, type Reply } from "./fixtures";
+import { configFor, deps, first, serveReplies, type Reply } from "./fixtures";
 
 const servers: RawServer[] = [];
 afterEach(async () => {
@@ -36,7 +36,7 @@ async function assertOnce(
     deps(),
   );
   return {
-    assertion: only(result.assertions),
+    assertion: first(result.assertions),
     prefix: result.evaluatedFromPrefix,
   };
 }
@@ -275,7 +275,7 @@ describe("response time assertion", () => {
     elapsedMs,
   });
   const run = (ms: number, elapsedMs: number) =>
-    only(
+    first(
       evaluateAssertions(
         [{ kind: "responseTimeBelow", ms }],
         response(elapsedMs),
@@ -299,7 +299,7 @@ describe("response time assertion", () => {
 
 describe("actual value cut (AC-17)", () => {
   const evaluate = (value: string, redact = (text: string) => text) =>
-    only(
+    first(
       evaluateAssertions(
         [jsonPath(["v"], "never")],
         {

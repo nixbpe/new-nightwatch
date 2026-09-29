@@ -66,7 +66,7 @@ export function configFor(
   };
 }
 
-export function only<T>(items: readonly T[]): T {
+export function first<T>(items: readonly T[]): T {
   const [item] = items;
   if (item === undefined) throw new Error("expected one item");
   return item;

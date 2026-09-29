@@ -62,6 +62,70 @@ describe("findAll", () => {
   });
 });
 
+describe("keys", () => {
+  it("resolves a key written with a unicode escape", () => {
+    expect(findAll('{"a\\u0062":1}', ["ab"])).toEqual([1]);
+    expect(findAll('{"\\u00e9":2}', ["é"])).toEqual([2]);
+    expect(findAll('{"\\ud83d\\ude00":3}', ["😀"])).toEqual([3]);
+    expect(findAll('{"a\\"b":4}', ['a"b'])).toEqual([4]);
+  });
+
+  it("returns two matches for a key spelled two ways", () => {
+    expect(findAll('{"ab":1,"a\\u0062":2}', ["ab"])).toEqual([1, 2]);
+  });
+
+  it("reports multiple_matches for a duplicate key through evaluateAssertions", () => {
+    const { results } = evaluate(
+      [{ kind: "jsonPathEquals", pathSegments: ["ab"], expectedValue: 1 }],
+      '{"ab":1,"a\\u0062":2}',
+    );
+    expect(results[0]).toMatchObject({
+      status: "fail",
+      reason: "multiple_matches",
+    });
+  });
+});
+
+const evaluate = (assertions: NormalizedAssertion[], body: string) =>
+  evaluateAssertions(
+    assertions,
+    {
+      status: 200,
+      headers: {},
+      body: Buffer.from(body),
+      bodyTruncated: false,
+      elapsedMs: 1,
+    },
+    (text) => text,
+  );
+
+describe("deep bodies through evaluateAssertions", () => {
+  it("passes a JSONPath assertion on a body nested past 128 levels", () => {
+    const { results } = evaluate(
+      [{ kind: "jsonPathEquals", pathSegments: ["a"], expectedValue: 1 }],
+      `{"deep":${nest(2000, "0")},"a":1}`,
+    );
+    expect(results[0]).toMatchObject({ status: "pass", reason: null });
+  });
+
+  it("resolves 200 nested segments in a body of about 1 MiB", () => {
+    const segments = Array.from({ length: 200 }, () => "a");
+    const body = `${'{"a":'.repeat(200)}"${"x".repeat(1024 * 1024 - 2000)}"${"}".repeat(200)}`;
+    const assertions: NormalizedAssertion[] = Array.from(
+      { length: 10 },
+      () => ({
+        kind: "jsonPathEquals",
+        pathSegments: segments,
+        expectedValue: "y",
+      }),
+    );
+    const { results } = evaluate(assertions, body);
+    expect(results.map((result) => result.reason)).toEqual(
+      Array.from({ length: 10 }, () => "value_mismatch"),
+    );
+  });
+});
+
 describe("shared parse", () => {
   it("validates the body once for several JSONPath assertions", () => {
     const body = JSON.stringify({ a: 1, b: { c: "x" }, d: [true] });

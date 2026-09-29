@@ -1,4 +1,4 @@
-import { findAll } from "./json-scan";
+import { findAll, indexContainers } from "./json-scan";
 import { truncateActual } from "./redact";
 import type {
   AssertionReason,
@@ -78,6 +78,7 @@ export function evaluateAssertions(
   let decoded: Decoded | undefined;
   // One validity parse per response, shared by every JSONPath assertion.
   let valid: boolean | undefined;
+  let ends: Int32Array | undefined;
   const text = (from: EvaluatedResponse): Decoded =>
     (decoded ??= decodeBody(from));
 
@@ -132,7 +133,8 @@ export function evaluateAssertions(
 
     valid ??= isJson(body.text);
     if (!valid) return outcome("fail", "not_json");
-    const matches = findAll(body.text, assertion.pathSegments);
+    ends ??= indexContainers(body.text);
+    const matches = findAll(body.text, assertion.pathSegments, ends);
     if (matches.length === 0) return outcome("fail", "path_not_found");
     if (matches.length > 1) return outcome("fail", "multiple_matches");
     const found = matches[0];
