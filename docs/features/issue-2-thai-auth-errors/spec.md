@@ -29,7 +29,7 @@
 | `INVALID_TOKEN`, `TOKEN_EXPIRED` | ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว |
 | `SESSION_EXPIRED`, `SESSION_NOT_FRESH` | เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง |
 | `INVALID_CODE` | รหัสยืนยันไม่ถูกต้อง |
-| `INVALID_BACKUP_CODE` | รหัสกู้คืนไม่ถูกต้อง |
+| `INVALID_BACKUP_CODE` | รหัสกู้คืนไม่ถูกต้องหรือถูกใช้ไปแล้ว |
 | `OTP_HAS_EXPIRED` | รหัสยืนยันหมดอายุแล้ว |
 | `TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE` | ลองผิดหลายครั้งเกินไป กรุณาขอรหัสใหม่ |
 | `ACCOUNT_TEMPORARILY_LOCKED` | ยืนยันผิดหลายครั้งเกินไป บัญชีถูกล็อกชั่วคราว กรุณาลองใหม่ภายหลัง |
@@ -41,7 +41,7 @@
 
 - One map inside `auth-client.ts`; all 14 files the issue lists reach it through `authErrorMessage` or `sessions.ts`, so callers other than `LoginPage.tsx` need no edit. `SessionsPage.tsx:113` displays `sessions.ts:19`'s `Error`, which already carries helper output.
 - Security (account enumeration): login keeps one generic text for `INVALID_EMAIL_OR_PASSWORD`; `USER_NOT_FOUND` is deliberately unmapped and falls back to the caller's generic text. `USER_ALREADY_EXISTS` is mapped only because signup is invitation-only for an email the invitee already holds.
-- Server-authored Thai messages without a mapped code (for example `AUTH_INTERNAL_ERROR` in `apps/api/src/auth/index.ts:181`) now show the caller's `fallback`; issue criterion (2) requires this.
+- Server-authored Thai messages without a mapped code (for example `AUTH_INTERNAL_ERROR` in `apps/api/src/auth/index.ts:181`, and the invitation-required signup denial thrown at `apps/api/src/auth/index.ts:251` without a `code`) now show the caller's `fallback`; issue criterion (2) requires this. Restoring the specific invitation text needs an API `code`, which is a follow-up outside this issue (apps/api is a non-goal).
 - Non-goals: `WorkspacePage.tsx:32` shows `meError` from `TenantProvider`'s API `/me` query, not better-auth; `OnboardingPage.tsx` already shows a fixed Thai text; `ErrorBoundary.tsx` and `preferences.ts` are unrelated.
 - Issue names `TOO_MANY_ATTEMPTS` and `SESSION_NOT_FOUND`; neither exists in better-auth 1.6.23. The map uses the real codes above.
 - Accessibility, layout, themes: unchanged; the same `Alert` elements render different text.
