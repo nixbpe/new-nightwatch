@@ -1,0 +1,5 @@
+# Fingerprint-scoped false positive: a fake bearer token literal ("tok-...")
+# used as a test fixture in commit d9f133d (apps/worker checker.db.test.ts).
+# It is not a credential and was replaced by a runtime-built value in 6f77949.
+# History is not rewritten; suppress only this fingerprint, never the rule.
+d9f133d8b80823e519cc2f7aee41b11c41729c9f:apps/worker/src/monitor/checker.db.test.ts:generic-api-key:747
