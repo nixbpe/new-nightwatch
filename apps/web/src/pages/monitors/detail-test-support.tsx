@@ -4,6 +4,7 @@ import type {
   Monitor,
   MonitorChecksResponse,
   MonitorIncidentsResponse,
+  MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
@@ -65,6 +66,15 @@ export function must<T>(value: T | null | undefined): T {
   }
   return value;
 }
+
+export const noResponseTimes: MonitorResponseTimesResponse = {
+  range: "24h",
+  unit: "ms",
+  points: [],
+  gaps: [],
+  pauses: [],
+  configChanges: [],
+};
 
 export function sectionOf(element: HTMLElement): HTMLElement {
   return must(element.closest("section"));

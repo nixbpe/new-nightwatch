@@ -13,6 +13,7 @@ import { PageState } from "../../components/shell/PageState";
 import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Notice } from "../../components/ui/notice";
 import { DataTablePagination } from "../../components/ui/data-table";
 import { Label } from "../../components/ui/label";
 import { ApiError } from "../../lib/api/client";
@@ -24,6 +25,7 @@ import {
 } from "../../lib/api/monitors";
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
+import { useFlashNotice } from "./flash";
 import { formatTimeWithSeconds, Time, TIME_ZONE } from "./format";
 import { HEALTH_LABELS } from "./HealthPill";
 import { MonitorTable } from "./MonitorTable";
@@ -177,21 +179,28 @@ function OverviewForOrganization({
     });
   }, [denied, contextRefresh, refreshMembershipContext]);
 
+  const { notice, heading } = useFlashNotice();
+
   const header = (actions?: ReactNode, status?: ReactNode) => (
-    <PageHeader
-      scope={
-        organization === undefined
-          ? undefined
-          : {
-              mark: organization.name,
-              label: organization.name,
-              tag: ROLE_LABELS[organization.role] ?? organization.role,
-            }
-      }
-      title="ตรวจสถานะบริการ"
-      status={status}
-      actions={actions}
-    />
+    <>
+      <PageHeader
+        scope={
+          organization === undefined
+            ? undefined
+            : {
+                mark: organization.name,
+                label: organization.name,
+                tag: ROLE_LABELS[organization.role] ?? organization.role,
+              }
+        }
+        title="ตรวจสถานะบริการ"
+        status={status}
+        actions={actions}
+        titleRef={heading}
+        titleTabIndex={-1}
+      />
+      {notice === null ? null : <Notice tone="success">{notice}</Notice>}
+    </>
   );
 
   if (mePending || contextRefresh === "refreshing") {
