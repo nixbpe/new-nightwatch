@@ -1,6 +1,10 @@
 import {
   MONITOR_LIMIT_PER_ORGANIZATION,
-  type CheckAssertionResult,
+  type CheckResultView,
+  type MonitorChecksResponse,
+  type MonitorDetailResponse,
+  type MonitorHistoryQuery,
+  type MonitorIncidentsResponse,
   type MonitorHealthName,
   type MonitorListQuery,
   type MonitorListResponse,
@@ -13,6 +17,7 @@ import type { PoolClient } from "pg";
 
 import { computeHealth, computeSsl } from "./health";
 import { assertMemberPermissionBeforeTenantContext } from "./permissions";
+import { MONITOR_COLUMNS, toRecord, type MonitorRow } from "./record";
 import {
   computeUptime,
   derivePauses,
@@ -89,9 +94,9 @@ type StateRow = {
   latestOutcome: "pass" | "fail" | "check_error" | null;
   latestHttpStatus: number | null;
   latestResponseTimeMs: number | null;
-  latestFailureReason: string | null;
-  latestTlsReason: string | null;
-  latestAssertions: CheckAssertionResult[] | null;
+  latestFailureReason: CheckResultView["failureReason"];
+  latestTlsReason: CheckResultView["tlsReason"];
+  latestAssertions: CheckResultView["assertions"] | null;
   latestUrlMasked: string | null;
   latestConfigVersion: number | null;
   latestEvaluatedFromPrefix: boolean | null;
@@ -538,4 +543,230 @@ function compareEvents(
   if (left.at !== right.at) return left.at < right.at ? 1 : -1;
   if (left.kind !== right.kind) return left.kind < right.kind ? -1 : 1;
   return left.monitorId < right.monitorId ? -1 : 1;
+}
+
+// ---- Detail ----------------------------------------------------------------
+
+function latestResultOf(row: StateRow): CheckResultView | null {
+  if (
+    row.latestScheduledFor === null ||
+    row.latestCheckedAt === null ||
+    row.latestOutcome === null ||
+    row.latestConfigVersion === null
+  ) {
+    return null;
+  }
+  return {
+    scheduledFor: row.latestScheduledFor.toISOString(),
+    checkedAt: row.latestCheckedAt.toISOString(),
+    outcome: row.latestOutcome,
+    httpStatus: row.latestHttpStatus,
+    responseTimeMs: row.latestResponseTimeMs,
+    failureReason: row.latestFailureReason,
+    tlsReason: row.latestTlsReason,
+    assertions: row.latestAssertions ?? [],
+    url: row.latestUrlMasked ?? "",
+    configVersion: row.latestConfigVersion,
+    evaluatedFromPrefix: row.latestEvaluatedFromPrefix ?? false,
+  };
+}
+
+export async function getMonitor(
+  database: Database,
+  identity: ReadIdentity,
+  rawMonitorId: string,
+): Promise<MonitorDetailResponse> {
+  return readInTenant(database, identity, async (client, now) => {
+    const monitorId = parseMonitorId(rawMonitorId);
+    const found = await client.query<MonitorRow>(
+      `select ${MONITOR_COLUMNS} from monitors
+       where id = $1 and tenant_id = $2`,
+      [monitorId, identity.organizationId],
+    );
+    const monitor = found.rows[0];
+    if (!monitor) monitorNotFound();
+    const slots = await client.query<{ slot: string }>(
+      "select slot from monitor_secrets where monitor_id = $1 and tenant_id = $2 order by slot",
+      [monitorId, identity.organizationId],
+    );
+    const [state] = await loadStates(client, identity.organizationId, {
+      monitorId,
+    });
+    if (!state) monitorNotFound();
+    const windows = (
+      await loadUptime(client, identity.organizationId, [state], now)
+    ).get(monitorId);
+    if (!windows) throw new Error("uptime missing for the monitor");
+    const ssl = sslOf(state, now);
+
+    return {
+      monitor: {
+        ...toRecord(
+          monitor,
+          slots.rows.map((row) => row.slot),
+        ),
+        ...healthOf(state),
+        lastResult: latestResultOf(state),
+        ssl: {
+          state: ssl.level,
+          host: state.sslHost,
+          issuer: state.sslIssuer,
+          notAfter: state.sslNotAfter?.toISOString() ?? null,
+          daysRemaining: ssl.daysRemaining,
+          reason: state.sslReason,
+        },
+        uptime: windows,
+        dataAsOf: now.toISOString(),
+      },
+    };
+  });
+}
+
+// ---- Check history and incidents -------------------------------------------
+
+async function assertMonitorInTenant(
+  client: PoolClient,
+  organizationId: string,
+  rawMonitorId: string,
+): Promise<string> {
+  const monitorId = parseMonitorId(rawMonitorId);
+  const found = await client.query(
+    "select 1 from monitors where id = $1 and tenant_id = $2",
+    [monitorId, organizationId],
+  );
+  if (found.rows.length === 0) monitorNotFound();
+  return monitorId;
+}
+
+type CheckRow = Omit<CheckResultView, "scheduledFor" | "checkedAt"> & {
+  scheduledFor: Date;
+  checkedAt: Date;
+};
+
+export async function listChecks(
+  database: Database,
+  identity: ReadIdentity,
+  rawMonitorId: string,
+  query: MonitorHistoryQuery,
+): Promise<MonitorChecksResponse> {
+  return readInTenant(database, identity, async (client) => {
+    const monitorId = await assertMonitorInTenant(
+      client,
+      identity.organizationId,
+      rawMonitorId,
+    );
+    // One row more than the page: it is the check just before the page, which
+    // bounds the URL changes that belong to this page.
+    const rows = await client.query<CheckRow>(
+      `select scheduled_for as "scheduledFor", checked_at as "checkedAt", outcome,
+         http_status as "httpStatus", response_time_ms as "responseTimeMs",
+         failure_reason as "failureReason", tls_reason as "tlsReason", assertions,
+         url_masked as url, check_config_version as "configVersion",
+         evaluated_from_prefix as "evaluatedFromPrefix"
+       from monitor_check_results
+       where monitor_id = $1 and tenant_id = $2
+       order by scheduled_for desc
+       offset $3 limit $4`,
+      [monitorId, identity.organizationId, query.offset, query.limit + 1],
+    );
+    const total = await client.query<{ total: number }>(
+      `select count(*)::int as total from monitor_check_results
+       where monitor_id = $1 and tenant_id = $2`,
+      [monitorId, identity.organizationId],
+    );
+    const page = rows.rows.slice(0, query.limit);
+    const before = rows.rows[query.limit]?.scheduledFor ?? null;
+    const newest = page[0]?.scheduledFor ?? null;
+
+    // A URL change belongs to the page that holds the first check after it.
+    // The first page also takes changes newer than every check.
+    const changes =
+      query.offset > 0 && newest === null
+        ? []
+        : (
+            await client.query<{ at: Date; url: string }>(
+              `select occurred_at as at, url_masked as url from monitor_events
+               where monitor_id = $1 and tenant_id = $2
+                 and kind = 'config_changed' and url_masked is not null
+                 and ($3::timestamptz is null or occurred_at > $3)
+                 and ($4::timestamptz is null or occurred_at <= $4)
+               order by occurred_at desc, id`,
+              [
+                monitorId,
+                identity.organizationId,
+                before,
+                query.offset === 0 ? null : newest,
+              ],
+            )
+          ).rows;
+
+    return {
+      checks: page.map((row) => ({
+        ...row,
+        scheduledFor: row.scheduledFor.toISOString(),
+        checkedAt: row.checkedAt.toISOString(),
+      })),
+      page: {
+        limit: query.limit,
+        offset: query.offset,
+        total: total.rows[0]?.total ?? 0,
+      },
+      urlChanges: changes.map((change) => ({
+        at: change.at.toISOString(),
+        url: change.url,
+      })),
+    };
+  });
+}
+
+export async function listIncidents(
+  database: Database,
+  identity: ReadIdentity,
+  rawMonitorId: string,
+  query: MonitorHistoryQuery,
+): Promise<MonitorIncidentsResponse> {
+  return readInTenant(database, identity, async (client) => {
+    const monitorId = await assertMonitorInTenant(
+      client,
+      identity.organizationId,
+      rawMonitorId,
+    );
+    const rows = await client.query<{
+      id: string;
+      startedAt: Date;
+      endedAt: Date | null;
+      durationSeconds: number;
+      startReason: string;
+      startHttpStatus: number | null;
+      endReason: "recovered" | "paused_by_user" | null;
+    }>(
+      `select id, started_at as "startedAt", ended_at as "endedAt",
+         floor(extract(epoch from (coalesce(ended_at, now()) - started_at)))::int
+           as "durationSeconds",
+         start_reason as "startReason", start_http_status as "startHttpStatus",
+         end_reason as "endReason"
+       from monitor_incidents
+       where monitor_id = $1 and tenant_id = $2
+       order by started_at desc, id
+       offset $3 limit $4`,
+      [monitorId, identity.organizationId, query.offset, query.limit],
+    );
+    const total = await client.query<{ total: number }>(
+      `select count(*)::int as total from monitor_incidents
+       where monitor_id = $1 and tenant_id = $2`,
+      [monitorId, identity.organizationId],
+    );
+    return {
+      incidents: rows.rows.map((row) => ({
+        ...row,
+        startedAt: row.startedAt.toISOString(),
+        endedAt: row.endedAt?.toISOString() ?? null,
+      })),
+      page: {
+        limit: query.limit,
+        offset: query.offset,
+        total: total.rows[0]?.total ?? 0,
+      },
+    };
+  });
 }

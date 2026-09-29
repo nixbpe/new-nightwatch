@@ -3,9 +3,15 @@ import {
   emailNotVerifiedErrorResponseSchema,
   invalidInputErrorResponseSchema,
   membershipDeniedErrorResponseSchema,
+  monitorChecksResponseSchema,
+  monitorDetailResponseSchema,
+  monitorHistoryQuerySchema,
+  monitorIncidentsResponseSchema,
   monitorListQuerySchema,
   monitorListResponseSchema,
+  monitorNotFoundErrorResponseSchema,
   monitorOrganizationParamsSchema,
+  monitorParamsSchema,
   monitorRecentEventsQuerySchema,
   monitorRecentEventsResponseSchema,
   permissionDeniedErrorResponseSchema,
@@ -19,7 +25,13 @@ import type { Auth } from "../auth";
 import { requireVerifiedSession } from "../me/service";
 import { auditMonitorDenials } from "./audit";
 import { monitorInvalidInputHook } from "./invalid-input";
-import { listMonitors, listRecentEvents } from "./read-service";
+import {
+  getMonitor,
+  listChecks,
+  listIncidents,
+  listMonitors,
+  listRecentEvents,
+} from "./read-service";
 
 const jsonError = (description: string, schema: z.ZodType) =>
   ({ description, content: { "application/json": { schema } } }) as const;
@@ -36,6 +48,11 @@ const readErrors = {
     ]),
   ),
 } as const;
+
+const notFoundResponse = jsonError(
+  "The monitor does not exist, is malformed or belongs to another Organization",
+  monitorNotFoundErrorResponseSchema,
+);
 
 const monitorBase = "/api/organizations/{organizationId}/monitors";
 const tags = ["monitors"];
@@ -75,6 +92,57 @@ export const monitorReadRouteDeclarations = {
         },
       },
       ...readErrors,
+    },
+  }),
+  detail: createRoute({
+    method: "get",
+    path: `${monitorBase}/{monitorId}`,
+    tags,
+    summary: "Monitor configuration with health, SSL level and uptime",
+    request: { params: monitorParamsSchema },
+    responses: {
+      200: {
+        description: "The monitor with its computed state",
+        content: {
+          "application/json": { schema: monitorDetailResponseSchema },
+        },
+      },
+      ...readErrors,
+      404: notFoundResponse,
+    },
+  }),
+  checks: createRoute({
+    method: "get",
+    path: `${monitorBase}/{monitorId}/checks`,
+    tags,
+    summary: "Check history, newest first",
+    request: { params: monitorParamsSchema, query: monitorHistoryQuerySchema },
+    responses: {
+      200: {
+        description: "One page of results and the URL changes inside it",
+        content: {
+          "application/json": { schema: monitorChecksResponseSchema },
+        },
+      },
+      ...readErrors,
+      404: notFoundResponse,
+    },
+  }),
+  incidents: createRoute({
+    method: "get",
+    path: `${monitorBase}/{monitorId}/incidents`,
+    tags,
+    summary: "Incident history, newest first",
+    request: { params: monitorParamsSchema, query: monitorHistoryQuerySchema },
+    responses: {
+      200: {
+        description: "One page of incidents",
+        content: {
+          "application/json": { schema: monitorIncidentsResponseSchema },
+        },
+      },
+      ...readErrors,
+      404: notFoundResponse,
     },
   }),
 } as const;
@@ -125,6 +193,71 @@ export function registerMonitorReadRoutes(
         actorUserId,
         "organization.monitor.list",
         () => listMonitors(database, { organizationId, actorUserId }, query),
+      );
+      return c.json(body, 200);
+    },
+    monitorInvalidInputHook,
+  );
+
+  app.openapi(
+    routes.detail,
+    async (c) => {
+      const { organizationId, monitorId } = c.req.valid("param");
+      const session = await requireVerifiedSession(auth, c.req.raw.headers);
+      const actorUserId = session.user.id;
+      const body = await auditMonitorDenials(
+        logger,
+        actorUserId,
+        "organization.monitor.read",
+        () => getMonitor(database, { organizationId, actorUserId }, monitorId),
+      );
+      return c.json(body, 200);
+    },
+    monitorInvalidInputHook,
+  );
+
+  app.openapi(
+    routes.checks,
+    async (c) => {
+      const { organizationId, monitorId } = c.req.valid("param");
+      const query = c.req.valid("query");
+      const session = await requireVerifiedSession(auth, c.req.raw.headers);
+      const actorUserId = session.user.id;
+      const body = await auditMonitorDenials(
+        logger,
+        actorUserId,
+        "organization.monitor.read",
+        () =>
+          listChecks(
+            database,
+            { organizationId, actorUserId },
+            monitorId,
+            query,
+          ),
+      );
+      return c.json(body, 200);
+    },
+    monitorInvalidInputHook,
+  );
+
+  app.openapi(
+    routes.incidents,
+    async (c) => {
+      const { organizationId, monitorId } = c.req.valid("param");
+      const query = c.req.valid("query");
+      const session = await requireVerifiedSession(auth, c.req.raw.headers);
+      const actorUserId = session.user.id;
+      const body = await auditMonitorDenials(
+        logger,
+        actorUserId,
+        "organization.monitor.read",
+        () =>
+          listIncidents(
+            database,
+            { organizationId, actorUserId },
+            monitorId,
+            query,
+          ),
       );
       return c.json(body, 200);
     },

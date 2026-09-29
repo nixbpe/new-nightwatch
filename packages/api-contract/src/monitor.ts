@@ -678,6 +678,8 @@ export const checkResultSchema = z.object({
   evaluatedFromPrefix: z.boolean(),
 });
 
+export type CheckResultView = z.infer<typeof checkResultSchema>;
+
 const openIncidentSchema = z
   .object({ startedAt: isoDateTime, reason: z.string() })
   .nullable();
@@ -725,6 +727,7 @@ export const monitorSchema = monitorRecordSchema.extend({
 export type Monitor = z.infer<typeof monitorSchema>;
 
 export const monitorDetailResponseSchema = z.object({ monitor: monitorSchema });
+export type MonitorDetailResponse = z.infer<typeof monitorDetailResponseSchema>;
 
 export const monitorListItemSchema = z.object({
   id: monitorIdSchema,
@@ -821,6 +824,7 @@ export const monitorChecksResponseSchema = z.object({
   page: pageSchema,
   urlChanges: z.array(z.object({ at: isoDateTime, url: z.string() })),
 });
+export type MonitorChecksResponse = z.infer<typeof monitorChecksResponseSchema>;
 
 export const monitorIncidentSchema = z.object({
   id: z.uuid(),
@@ -835,6 +839,9 @@ export const monitorIncidentsResponseSchema = z.object({
   incidents: z.array(monitorIncidentSchema).max(50),
   page: pageSchema,
 });
+export type MonitorIncidentsResponse = z.infer<
+  typeof monitorIncidentsResponseSchema
+>;
 
 const interval = z.object({ from: isoDateTime, to: isoDateTime });
 const responseTimesCommon = {
