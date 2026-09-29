@@ -1,0 +1,695 @@
+import type { Socket } from "node:net";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+
+import {
+  sendOutboundRequest,
+  type OutboundDeps,
+  type OutboundRequest,
+} from "../../src/outbound-http";
+import {
+  createTestPki,
+  respond,
+  startRawServer,
+  TARGET_HOST,
+  type RawServer,
+  type TestPki,
+} from "./fixtures";
+
+const OTHER_HOST = "other.nw-test.internal";
+const LOOPBACK = "127.0.0.1";
+
+let pki: TestPki;
+const servers: RawServer[] = [];
+
+beforeAll(() => {
+  pki = createTestPki();
+});
+afterAll(() => {
+  pki.dispose();
+});
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map((server) => server.close()));
+});
+
+async function serve(options: Parameters<typeof startRawServer>[0]) {
+  const server = await startRawServer(options);
+  servers.push(server);
+  return server;
+}
+
+const okBody = (socket: Socket, body = "ok") => {
+  respond(
+    socket,
+    "200 OK",
+    { "Content-Length": String(body.length), Connection: "close" },
+    body,
+  );
+};
+
+function baseRequest(
+  url: string,
+  overrides: Partial<OutboundRequest> = {},
+): OutboundRequest {
+  return {
+    url,
+    method: "GET",
+    headers: {},
+    timeoutMs: 5000,
+    maxRedirects: 5,
+    secretHeaderNames: ["Authorization", "X-Secret"],
+    maxBodyBytes: 1024 * 1024,
+    ...overrides,
+  };
+}
+
+function deps(overrides: Partial<OutboundDeps> = {}): OutboundDeps {
+  return {
+    resolver: () => Promise.resolve([LOOPBACK]),
+    testAllowedHosts: [TARGET_HOST, OTHER_HOST],
+    ca: pki.ca,
+    ...overrides,
+  };
+}
+
+const at = (
+  server: RawServer,
+  path = "/",
+  scheme = "http",
+  host = TARGET_HOST,
+) => `${scheme}://${host}:${String(server.port)}${path}`;
+
+describe("HTTP/1.1 framing over node:net", () => {
+  it("reads a Content-Length body and sends the fixed request headers", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket, "hello");
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/a?b=1"), {
+        headers: { "Accept-Encoding": "gzip", "X-Custom": "v" },
+      }),
+      deps(),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.response?.status).toBe(200);
+    expect(result.response?.body.toString()).toBe("hello");
+    expect(result.response?.bodyTruncated).toBe(false);
+    expect(result.tls).toBeUndefined();
+    const head = server.requests[0]?.head ?? "";
+    expect(head).toContain("GET /a?b=1 HTTP/1.1");
+    expect(head).toContain(`Host: ${TARGET_HOST}:${String(server.port)}`);
+    expect(head).toContain("Connection: close");
+    expect(head).toContain("Accept-Encoding: identity");
+    expect(head).not.toContain("gzip");
+    expect(head).toContain("X-Custom: v");
+  });
+
+  it("decodes a chunked body delivered in fragments", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        socket.write(
+          "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;ext=1\r\nhel",
+        );
+        setTimeout(() => {
+          socket.write("lo\r\n6\r\n wor");
+          setTimeout(() => socket.end("ld\r\n0\r\nX-Trailer: 1\r\n\r\n"), 20);
+        }, 20);
+      },
+    });
+    const result = await sendOutboundRequest(baseRequest(at(server)), deps());
+    expect(result.response?.body.toString()).toBe("hello world");
+  });
+
+  it("reads a body that ends when the connection closes", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        socket.end("HTTP/1.1 200 OK\r\nX-A: 1\r\nX-A: 2\r\n\r\nuntil close");
+      },
+    });
+    const result = await sendOutboundRequest(baseRequest(at(server)), deps());
+    expect(result.response?.body.toString()).toBe("until close");
+    expect(result.response?.headers["x-a"]).toBe("1, 2");
+  });
+
+  it("stops reading at maxBodyBytes and reports truncation", async () => {
+    let closed = false;
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        socket.on("close", () => {
+          closed = true;
+        });
+        socket.write("HTTP/1.1 200 OK\r\nContent-Length: 10000000\r\n\r\n");
+        const timer = setInterval(() => {
+          if (socket.destroyed) clearInterval(timer);
+          else socket.write("x".repeat(4096));
+        }, 2);
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server), { maxBodyBytes: 10 }),
+      deps(),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.response?.body.toString()).toBe("xxxxxxxxxx");
+    expect(result.response?.bodyTruncated).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(closed).toBe(true);
+  });
+
+  it("does not flag a body exactly at maxBodyBytes as truncated", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket, "12345");
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server), { maxBodyBytes: 5 }),
+      deps(),
+    );
+    expect(result.response?.bodyTruncated).toBe(false);
+    expect(result.response?.body.toString()).toBe("12345");
+  });
+
+  it("fails with body_read_failed when the connection closes before Content-Length", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        socket.end("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nabc");
+      },
+    });
+    const result = await sendOutboundRequest(baseRequest(at(server)), deps());
+    expect(result.failure?.reason).toBe("body_read_failed");
+  });
+
+  it("sends a POST body with Content-Length", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    await sendOutboundRequest(
+      baseRequest(at(server), { method: "POST", body: "payload" }),
+      deps(),
+    );
+    expect(server.requests[0]?.head).toContain("Content-Length: 7");
+  });
+});
+
+describe("address policy at connect time", () => {
+  it("rejects a DNS answer that mixes a public and a private address without connecting", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(`http://mixed.example.com:${String(server.port)}/`),
+      deps({ resolver: () => Promise.resolve(["93.184.216.34", LOOPBACK]) }),
+    );
+    expect(result.failure?.reason).toBe("blocked_address");
+    expect(server.connections()).toBe(0);
+  });
+
+  it.each(["127.0.0.1", "[::1]", "169.254.169.254", "10.0.0.1", "0x7f.1"])(
+    "blocks the literal host %s without connecting",
+    async (host) => {
+      const server = await serve({
+        onRequest: ({ socket }) => {
+          okBody(socket);
+        },
+      });
+      const result = await sendOutboundRequest(
+        baseRequest(`http://${host}:${String(server.port)}/`),
+        deps(),
+      );
+      expect(result.failure?.reason).toBe("blocked_address");
+      expect(server.connections()).toBe(0);
+    },
+  );
+
+  it("only exempts the hostnames in testAllowedHosts", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(`http://not-listed.nw-test.internal:${String(server.port)}/`),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("blocked_address");
+    expect(server.connections()).toBe(0);
+  });
+
+  it("connects to the address it validated even when DNS answers differently later", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    let calls = 0;
+    const result = await sendOutboundRequest(
+      baseRequest(at(server)),
+      deps({
+        resolver: () => {
+          calls++;
+          return Promise.resolve([calls === 1 ? LOOPBACK : "203.0.113.9"]);
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(calls).toBe(1);
+    expect(server.connections()).toBe(1);
+  });
+
+  it("resolves again on every request, so a changed answer is blocked (AC-62)", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    let answer = "93.184.216.34";
+    const resolver = () => Promise.resolve([answer]);
+    const url = `http://changing.example.com:${String(server.port)}/`;
+    answer = LOOPBACK;
+    const result = await sendOutboundRequest(
+      baseRequest(url),
+      deps({ resolver }),
+    );
+    expect(result.failure?.reason).toBe("blocked_address");
+    expect(server.connections()).toBe(0);
+  });
+
+  it("never puts a resolved address in the result", async () => {
+    const results = await Promise.all([
+      sendOutboundRequest(
+        baseRequest("http://mixed.example.com/"),
+        deps({
+          resolver: () => Promise.resolve(["93.184.216.34", "10.9.8.7"]),
+        }),
+      ),
+      sendOutboundRequest(baseRequest(`http://${TARGET_HOST}:9/`), deps()),
+      sendOutboundRequest(baseRequest("http://10.9.8.7/"), deps()),
+    ]);
+    for (const result of results) {
+      const text = JSON.stringify(result);
+      expect(text).not.toMatch(/10\.9\.8\.7|93\.184\.216\.34|127\.0\.0\.1/);
+    }
+  });
+});
+
+describe("failure classification", () => {
+  it("maps a refused connection", async () => {
+    const closed = await serve({});
+    const port = closed.port;
+    await closed.close();
+    const result = await sendOutboundRequest(
+      baseRequest(`http://${TARGET_HOST}:${String(port)}/`),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("connect_refused");
+  });
+
+  it("maps resolver errors", async () => {
+    const notFound = await sendOutboundRequest(
+      baseRequest("http://gone.example.com/"),
+      deps({
+        resolver: () =>
+          Promise.reject(Object.assign(new Error("x"), { code: "ENOTFOUND" })),
+      }),
+    );
+    expect(notFound.failure?.reason).toBe("dns_not_found");
+    const unavailable = await sendOutboundRequest(
+      baseRequest("http://gone.example.com/"),
+      deps({
+        resolver: () =>
+          Promise.reject(Object.assign(new Error("x"), { code: "EAI_AGAIN" })),
+      }),
+    );
+    expect(unavailable.failure?.reason).toBe("resolver_unavailable");
+  });
+
+  it("rejects forbidden headers, CR/LF and unknown methods without connecting", async () => {
+    const server = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const cases: Partial<OutboundRequest>[] = [
+      { headers: { Host: "evil" } },
+      { headers: { "X-A": "a\r\nInjected: 1" } },
+      { headers: { "Transfer-Encoding": "chunked" } },
+      { method: "CONNECT" },
+    ];
+    for (const overrides of cases) {
+      const result = await sendOutboundRequest(
+        baseRequest(at(server), overrides),
+        deps(),
+      );
+      expect(result.failure?.reason).toBe("invalid_request");
+    }
+    expect(server.connections()).toBe(0);
+  });
+
+  it("rejects a disallowed port without connecting", async () => {
+    const result = await sendOutboundRequest(
+      baseRequest(`http://${TARGET_HOST}:22/`),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("invalid_request");
+  });
+});
+
+describe("timeout", () => {
+  it("times out when the server never answers", async () => {
+    const server = await serve({});
+    const started = Date.now();
+    const result = await sendOutboundRequest(
+      baseRequest(at(server), { timeoutMs: 200 }),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("timeout");
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it("counts every hop against one budget", async () => {
+    const slowRedirect = (socket: Socket, location: string) => {
+      setTimeout(() => {
+        respond(socket, "302 Found", {
+          Location: location,
+          "Content-Length": "0",
+        });
+      }, 200);
+    };
+    const second = await serve({
+      onRequest: ({ socket }) => {
+        setTimeout(() => {
+          okBody(socket);
+        }, 200);
+      },
+    });
+    const first = await serve({
+      onRequest: ({ socket }) => {
+        slowRedirect(socket, at(second));
+      },
+    });
+    const within = await sendOutboundRequest(
+      baseRequest(at(first), { timeoutMs: 3000 }),
+      deps(),
+    );
+    expect(within.ok).toBe(true);
+    const over = await sendOutboundRequest(
+      baseRequest(at(first), { timeoutMs: 300 }),
+      deps(),
+    );
+    expect(over.failure?.reason).toBe("timeout");
+  });
+});
+
+describe("redirects", () => {
+  async function chain(hops: number) {
+    const server: RawServer = await serve({
+      onRequest: ({ head, socket }) => {
+        const step = Number(/GET \/step\/(\d+)/.exec(head)?.[1] ?? "0");
+        if (step < hops)
+          respond(socket, "302 Found", {
+            Location: `/step/${String(step + 1)}`,
+            "Content-Length": "0",
+          });
+        else okBody(socket, `done ${String(step)}`);
+      },
+    });
+    return server;
+  }
+
+  it("follows 5 redirects and stops at 6 with redirect_limit", async () => {
+    const five = await chain(5);
+    const passed = await sendOutboundRequest(
+      baseRequest(at(five, "/step/0")),
+      deps(),
+    );
+    expect(passed.response?.body.toString()).toBe("done 5");
+    expect(passed.response?.redirects).toBe(5);
+    const six = await chain(6);
+    const failed = await sendOutboundRequest(
+      baseRequest(at(six, "/step/0")),
+      deps(),
+    );
+    expect(failed.failure?.reason).toBe("redirect_limit");
+  });
+
+  it("reports a redirect loop as redirect_limit", async () => {
+    const server = await serve({
+      onRequest: ({ head, socket }) => {
+        const next = head.includes("GET /a ") ? "/b" : "/a";
+        respond(socket, "301 Moved", { Location: next, "Content-Length": "0" });
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/a")),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("redirect_limit");
+  });
+
+  it.each([301, 302, 303, 307, 308])("follows status %i", async (status) => {
+    const server = await serve({
+      onRequest: ({ head, socket }) => {
+        if (head.includes("GET /start"))
+          respond(socket, `${String(status)} Moved`, {
+            Location: "/end",
+            "Content-Length": "0",
+          });
+        else okBody(socket, "end");
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/start")),
+      deps(),
+    );
+    expect(result.response?.body.toString()).toBe("end");
+  });
+
+  it("switches POST to GET on 302 and keeps POST with its body on 307", async () => {
+    const run = async (status: string) => {
+      const server = await serve({
+        onRequest: ({ head, socket }) => {
+          if (head.includes("/start"))
+            respond(socket, status, {
+              Location: "/end",
+              "Content-Length": "0",
+            });
+          else okBody(socket);
+        },
+      });
+      await sendOutboundRequest(
+        baseRequest(at(server, "/start"), { method: "POST", body: "data" }),
+        deps(),
+      );
+      return server.requests[1]?.head ?? "";
+    };
+    const after302 = await run("302 Found");
+    expect(after302).toContain("GET /end");
+    expect(after302).not.toContain("Content-Length");
+    const after307 = await run("307 Temporary Redirect");
+    expect(after307).toContain("POST /end");
+    expect(after307).toContain("Content-Length: 4");
+  });
+
+  it("drops secret headers when the redirect goes to another host", async () => {
+    const target = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const origin = await serve({
+      onRequest: ({ socket }) => {
+        respond(socket, "302 Found", {
+          Location: at(target, "/", "http", OTHER_HOST),
+          "Content-Length": "0",
+        });
+      },
+    });
+    await sendOutboundRequest(
+      baseRequest(at(origin), {
+        headers: {
+          "X-Secret": "s3",
+          authorization: "Bearer t",
+          "X-Public": "p",
+        },
+      }),
+      deps(),
+    );
+    const forwarded = target.requests[0]?.head.toLowerCase() ?? "";
+    expect(forwarded).not.toContain("x-secret");
+    expect(forwarded).not.toContain("authorization");
+    expect(forwarded).toContain("x-public: p");
+    expect(origin.requests[0]?.head.toLowerCase()).toContain("x-secret: s3");
+  });
+
+  it("drops secret headers when only the port changes on plain http", async () => {
+    const target = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const origin = await serve({
+      onRequest: ({ socket }) => {
+        respond(socket, "302 Found", {
+          Location: at(target),
+          "Content-Length": "0",
+        });
+      },
+    });
+    await sendOutboundRequest(
+      baseRequest(at(origin), { headers: { "X-Secret": "s3" } }),
+      deps(),
+    );
+    expect(target.requests[0]?.head.toLowerCase()).not.toContain("x-secret");
+  });
+
+  it("upgrades http to https on the same host and keeps secret headers", async () => {
+    const secure = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        okBody(socket, "secure");
+      },
+    });
+    const origin = await serve({
+      onRequest: ({ socket }) => {
+        respond(socket, "301 Moved", {
+          Location: at(secure, "/", "https"),
+          "Content-Length": "0",
+        });
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(origin), { headers: { "X-Secret": "s3" } }),
+      deps(),
+    );
+    expect(result.response?.body.toString()).toBe("secure");
+    expect(secure.requests[0]?.head.toLowerCase()).toContain("x-secret: s3");
+    expect(result.tls?.reason).toBeNull();
+    expect(result.tls?.issuer).toBe("NW Test");
+  });
+
+  it("blocks https to http as redirect_blocked without contacting the target", async () => {
+    const plain = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const secure = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        respond(socket, "302 Found", {
+          Location: at(plain),
+          "Content-Length": "0",
+        });
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(secure, "/", "https")),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("redirect_blocked");
+    expect(plain.connections()).toBe(0);
+  });
+
+  it("blocks a redirect to a forbidden address without connecting", async () => {
+    const victim = await serve({
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const targets = [
+      `http://127.0.0.1:${String(victim.port)}/`,
+      `http://[::1]:${String(victim.port)}/`,
+      `http://169.254.169.254/`,
+      `http://unlisted.nw-test.internal:${String(victim.port)}/`,
+      `http://${TARGET_HOST}:22/`,
+      `ftp://${TARGET_HOST}/`,
+    ];
+    for (const location of targets) {
+      const origin = await serve({
+        onRequest: ({ socket }) => {
+          respond(socket, "302 Found", {
+            Location: location,
+            "Content-Length": "0",
+          });
+        },
+      });
+      const result = await sendOutboundRequest(baseRequest(at(origin)), deps());
+      expect(result.failure?.reason, location).toBe("redirect_blocked");
+    }
+    expect(victim.connections()).toBe(0);
+  });
+});
+
+describe("TLS verification", () => {
+  it.each([
+    ["expired", "expired"],
+    ["wrongName", "hostname_mismatch"],
+    ["selfSigned", "self_signed"],
+    ["unknownCa", "untrusted"],
+  ] as const)(
+    "fails a %s certificate with tlsReason %s before any request byte",
+    async (name, tlsReason) => {
+      const server = await serve({
+        tls: pki.leaf[name],
+        onRequest: ({ socket }) => {
+          okBody(socket);
+        },
+      });
+      const result = await sendOutboundRequest(
+        baseRequest(at(server, "/", "https"), {
+          headers: { "X-Secret": "s3", Authorization: "Bearer t" },
+        }),
+        deps(),
+      );
+      expect(result.ok).toBe(false);
+      expect(result.failure?.reason).toBe("tls_invalid");
+      expect(result.failure?.tlsReason).toBe(tlsReason);
+      expect(result.tls?.reason).toBe(tlsReason);
+      expect(server.bytesReceived()).toBe(0);
+      expect(server.requests).toHaveLength(0);
+    },
+  );
+
+  it("returns issuer and notAfter of a valid certificate", async () => {
+    const server = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/", "https")),
+      deps(),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.tls?.issuer).toBe("NW Test");
+    const notAfter = result.tls?.notAfter?.getTime() ?? 0;
+    expect(notAfter).toBeGreaterThan(Date.now());
+    expect(notAfter).toBeLessThan(Date.now() + 31 * 86_400_000);
+  });
+
+  it("reports the certificate of the last hop after a redirect", async () => {
+    const last = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const first = await serve({
+      onRequest: ({ socket }) => {
+        respond(socket, "302 Found", {
+          Location: at(last, "/", "https"),
+          "Content-Length": "0",
+        });
+      },
+    });
+    const result = await sendOutboundRequest(baseRequest(at(first)), deps());
+    expect(result.tls?.issuer).toBe("NW Test");
+  });
+});
