@@ -407,22 +407,24 @@ export function createApp(deps: AppDeps): OpenAPIHono {
   app.openapi(readinessRoute, async (c) => {
     const database = deps.database;
     const checks: Record<string, "ok" | "fail"> = {};
-    if (database) {
-      try {
-        await checkDatabaseReadiness(database);
-        checks.database = "ok";
-      } catch {
-        checks.database = "fail";
-      }
-    }
-    if (deps.redis) {
-      try {
-        await checkRedisReadiness(deps.redis);
-        checks.redis = "ok";
-      } catch {
-        checks.redis = "fail";
-      }
-    }
+    // Run in parallel so /ready stays bounded by the slowest single deadline.
+    const asCheck = (check: Promise<void>): Promise<"ok" | "fail"> =>
+      check.then(
+        () => "ok",
+        () => "fail",
+      );
+    await Promise.all([
+      database
+        ? asCheck(checkDatabaseReadiness(database)).then((result) => {
+            checks.database = result;
+          })
+        : undefined,
+      deps.redis
+        ? asCheck(checkRedisReadiness(deps.redis)).then((result) => {
+            checks.redis = result;
+          })
+        : undefined,
+    ]);
     if (!database && !deps.redis) {
       checks.self = "ok";
     }

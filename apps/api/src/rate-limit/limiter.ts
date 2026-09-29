@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { AppError } from "@nightwatch/shared";
+import { AppError, type Logger } from "@nightwatch/shared";
 import type { Redis } from "ioredis";
 
 import { RATE_LIMIT_TIMEOUT_MS } from "./redis";
@@ -11,32 +11,54 @@ export type RateLimitRequest = {
   windowMs: number;
 };
 
+/** One window for every key, so mixed windows cannot be expressed. */
+export type RateLimitGroup = {
+  windowMs: number;
+  limits: readonly { key: string; limit: number }[];
+};
+
 export type RateLimitResult = {
   allowed: boolean;
   retryAfterSeconds: number;
 };
 
+export type RateLimitFailureReason = "timeout" | "redis_error" | "bad_reply";
+
 export type RateLimiter = {
-  /** Consumes one slot of one key. Throws RATE_LIMIT_UNAVAILABLE when Redis fails. */
+  /**
+   * Consumes one slot of one key. Throws RATE_LIMIT_UNAVAILABLE when Redis
+   * fails; a timed-out EVAL may still have consumed a slot (fail closed).
+   */
   consumeRateLimit(request: RateLimitRequest): Promise<RateLimitResult>;
   /** Consumes one slot of every key atomically: no key is consumed when any key denies. */
-  consumeRateLimits(
-    requests: readonly RateLimitRequest[],
-  ): Promise<RateLimitResult>;
+  consumeRateLimits(group: RateLimitGroup): Promise<RateLimitResult>;
 };
 
 export type RateLimiterOptions = {
   redis: Redis;
+  logger?: Logger;
   now?: () => number;
   timeoutMs?: number;
 };
 
-export function rateLimitUnavailable(): AppError {
-  return new AppError(
+const FAILURE_LOG_INTERVAL_MS = 10_000;
+
+/** The cause carries the failure kind only, never keys or identifiers. */
+export function rateLimitUnavailable(
+  reason: RateLimitFailureReason,
+  source?: unknown,
+): AppError {
+  const code =
+    source instanceof Error && "code" in source
+      ? String((source as { code: unknown }).code)
+      : undefined;
+  const error = new AppError(
     503,
     "RATE_LIMIT_UNAVAILABLE",
     "rate limiter is unavailable",
   );
+  error.cause = new Error(code ? `${reason}: ${code}` : reason);
+  return error;
 }
 
 // KEYS: one sorted set per limit. ARGV: now, window ms, member, then one limit
@@ -63,35 +85,49 @@ return {1, 0}
 `;
 
 export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
-  const { redis } = options;
+  const { redis, logger } = options;
   const now = options.now ?? Date.now;
   const timeoutMs = options.timeoutMs ?? RATE_LIMIT_TIMEOUT_MS;
+  const lastLoggedAt = new Map<RateLimitFailureReason, number>();
+
+  // An outage fails every request; log each reason at most once per interval.
+  function logFailure(reason: RateLimitFailureReason): void {
+    if (!logger) return;
+    const at = Date.now();
+    const previous = lastLoggedAt.get(reason);
+    if (previous !== undefined && at - previous < FAILURE_LOG_INTERVAL_MS) {
+      return;
+    }
+    lastLoggedAt.set(reason, at);
+    logger.warn({ reason }, "rate limiter unavailable");
+  }
 
   async function consumeRateLimits(
-    requests: readonly RateLimitRequest[],
+    group: RateLimitGroup,
   ): Promise<RateLimitResult> {
-    const [first] = requests;
-    if (!first) throw new Error("at least one rate limit is required");
-    // A single window applies to the whole call; the callers share one.
-    const { windowMs } = first;
+    if (group.limits.length === 0) {
+      throw new Error("at least one rate limit is required");
+    }
     const args = [
       now(),
-      windowMs,
+      group.windowMs,
       randomUUID(),
-      ...requests.map((request) => request.limit),
+      ...group.limits.map((entry) => entry.limit),
     ];
 
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let reason: RateLimitFailureReason = "redis_error";
     try {
       const reply = await Promise.race([
         redis.eval(
           slidingWindowScript,
-          requests.length,
-          ...requests.map((request) => request.key),
+          group.limits.length,
+          ...group.limits.map((entry) => entry.key),
           ...args,
         ),
         new Promise<never>((_resolve, reject) => {
           deadline = setTimeout(() => {
+            reason = "timeout";
             reject(new Error("rate limiter timed out"));
           }, timeoutMs);
         }),
@@ -101,6 +137,7 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
         typeof reply[0] !== "number" ||
         typeof reply[1] !== "number"
       ) {
+        reason = "bad_reply";
         throw new Error("unexpected rate limiter reply");
       }
       const allowed = reply[0] === 1;
@@ -110,15 +147,25 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
           ? 0
           : Math.max(1, Math.ceil(reply[1] / 1000)),
       };
-    } catch {
-      throw rateLimitUnavailable();
+    } catch (error) {
+      // ioredis reports its own command timeout as an error; classify it too.
+      if (
+        reason === "redis_error" &&
+        error instanceof Error &&
+        error.message.includes("timed out")
+      ) {
+        reason = "timeout";
+      }
+      logFailure(reason);
+      throw rateLimitUnavailable(reason, error);
     } finally {
       clearTimeout(deadline);
     }
   }
 
   return {
-    consumeRateLimit: (request) => consumeRateLimits([request]),
+    consumeRateLimit: ({ key, limit, windowMs }) =>
+      consumeRateLimits({ windowMs, limits: [{ key, limit }] }),
     consumeRateLimits,
   };
 }
@@ -128,17 +175,14 @@ export function consumeMonitorTestRateLimit(
   limiter: RateLimiter,
   scope: { userId: string; organizationId: string },
 ): Promise<RateLimitResult> {
-  const windowMs = 60_000;
-  return limiter.consumeRateLimits([
-    {
-      key: `rl:monitor-test:u:${scope.userId}:o:${scope.organizationId}`,
-      limit: 10,
-      windowMs,
-    },
-    {
-      key: `rl:monitor-test:o:${scope.organizationId}`,
-      limit: 30,
-      windowMs,
-    },
-  ]);
+  return limiter.consumeRateLimits({
+    windowMs: 60_000,
+    limits: [
+      {
+        key: `rl:monitor-test:u:${scope.userId}:o:${scope.organizationId}`,
+        limit: 10,
+      },
+      { key: `rl:monitor-test:o:${scope.organizationId}`, limit: 30 },
+    ],
+  });
 }

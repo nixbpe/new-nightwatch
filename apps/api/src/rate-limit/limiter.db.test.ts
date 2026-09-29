@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import net from "node:net";
 
 import { readinessResponseSchema } from "@nightwatch/api-contract";
+import { DB_READINESS_TIMEOUT_MS, type Database } from "@nightwatch/db";
 import { createLogger, type AuthEnv, type Env } from "@nightwatch/shared";
 import type { Redis } from "ioredis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -173,6 +174,69 @@ describe("consumeRateLimit", () => {
     expect(await redis.zcard(`rl:monitor-test:u:${fourth}:o:${org}`)).toBe(0);
   });
 
+  it("admits exactly the limit when requests race in parallel", async () => {
+    const limiter = createRateLimiter({ redis, now: () => 40_000_000 });
+    const key = freshKey();
+    const results = await Promise.all(
+      Array.from({ length: 25 }, () =>
+        limiter.consumeRateLimit({ key, limit: 7, windowMs }),
+      ),
+    );
+    expect(results.filter((result) => result.allowed)).toHaveLength(7);
+    expect(await redis.zcard(key)).toBe(7);
+  });
+
+  it("leaves the org key unconsumed when the per-user key denies", async () => {
+    const limiter = createRateLimiter({ redis, now: () => 50_000_000 });
+    const [userId, org] = [randomUUID(), randomUUID()];
+    const orgKey = `rl:monitor-test:o:${org}`;
+    keys.push(orgKey, `rl:monitor-test:u:${userId}:o:${org}`);
+    for (let i = 0; i < 10; i += 1) {
+      await consumeMonitorTestRateLimit(limiter, {
+        userId,
+        organizationId: org,
+      });
+    }
+    const denied = await consumeMonitorTestRateLimit(limiter, {
+      userId,
+      organizationId: org,
+    });
+    expect(denied.allowed).toBe(false);
+    expect(await redis.zcard(orgKey)).toBe(10);
+  });
+
+  it("reports the longest wait among denying keys", async () => {
+    let clock = 60_000_000;
+    const limiter = createRateLimiter({ redis, now: () => clock });
+    const [keyA, keyB] = [freshKey(), freshKey()];
+    await limiter.consumeRateLimit({ key: keyA, limit: 1, windowMs });
+    clock += 20_000;
+    await limiter.consumeRateLimit({ key: keyB, limit: 1, windowMs });
+    clock += 10_000;
+    // A frees in 30 s, B in 50 s.
+    expect(
+      await limiter.consumeRateLimits({
+        windowMs,
+        limits: [
+          { key: keyA, limit: 1 },
+          { key: keyB, limit: 1 },
+        ],
+      }),
+    ).toEqual({ allowed: false, retryAfterSeconds: 50 });
+  });
+
+  it("rejects per-key windows at compile time", () => {
+    const limiter = createRateLimiter({ redis });
+    // A group has one window; a window on a single limit is a type error.
+    const mixed = () =>
+      limiter.consumeRateLimits({
+        windowMs,
+        // @ts-expect-error windowMs belongs to the group, not to each limit
+        limits: [{ key: "a", limit: 1, windowMs: 1000 }],
+      });
+    expect(mixed).toBeTypeOf("function");
+  });
+
   it("uses the documented Redis keys", async () => {
     const limiter = createRateLimiter({ redis });
     const [userId, org] = [randomUUID(), randomUUID()];
@@ -186,49 +250,143 @@ describe("consumeRateLimit", () => {
   });
 });
 
-describe("limiter failure (fail closed)", () => {
-  const request = { key: "rl:test:unavailable", limit: 1, windowMs: 60_000 };
+type DelayProxy = {
+  url: string;
+  /** Delays bytes travelling client to Redis (request) or Redis to client (reply). */
+  setDelay(direction: "request" | "reply" | "none", ms?: number): void;
+  close(): void;
+};
 
-  it("throws RATE_LIMIT_UNAVAILABLE when Redis is down", async () => {
-    const limiter = createRateLimiter({ redis: client(closedPortUrl) });
-    await expect(limiter.consumeRateLimit(request)).rejects.toMatchObject({
-      statusCode: 503,
-      code: "RATE_LIMIT_UNAVAILABLE",
+async function startDelayProxy(): Promise<DelayProxy> {
+  const target = new URL(redisUrl as string);
+  const sockets: net.Socket[] = [];
+  let direction: "request" | "reply" | "none" = "none";
+  let delayMs = 0;
+  const proxy = net.createServer((inbound) => {
+    const upstream = net.connect(Number(target.port), target.hostname);
+    sockets.push(inbound, upstream);
+    inbound.on("data", (chunk) => {
+      if (direction === "request") {
+        setTimeout(() => upstream.write(chunk), delayMs);
+      } else {
+        upstream.write(chunk);
+      }
     });
+    upstream.on("data", (chunk) => {
+      if (direction === "reply") {
+        setTimeout(() => inbound.write(chunk), delayMs);
+      } else {
+        inbound.write(chunk);
+      }
+    });
+    inbound.on("error", () => undefined);
+    upstream.on("error", () => undefined);
+  });
+  await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  const { port } = proxy.address() as net.AddressInfo;
+  return {
+    url: `redis://127.0.0.1:${port.toString()}`,
+    setDelay(next, ms = 0) {
+      direction = next;
+      delayMs = ms;
+    },
+    close() {
+      for (const socket of sockets) socket.destroy();
+      proxy.close();
+    },
+  };
+}
+
+function captureLogger() {
+  const lines: Record<string, unknown>[] = [];
+  const logger = createLogger(
+    { level: "info", name: "test" },
+    {
+      write(chunk: string) {
+        lines.push(JSON.parse(chunk) as Record<string, unknown>);
+      },
+    },
+  );
+  return { logger, lines };
+}
+
+describe("limiter failure (fail closed)", () => {
+  function request() {
+    return {
+      key: `rl:test:unavailable:${randomUUID()}`,
+      limit: 1,
+      windowMs: 60_000,
+    };
+  }
+  const unavailable = { statusCode: 503, code: "RATE_LIMIT_UNAVAILABLE" };
+
+  it("throws RATE_LIMIT_UNAVAILABLE and logs redis_error when Redis is down", async () => {
+    const { logger, lines } = captureLogger();
+    const limiter = createRateLimiter({ redis: client(closedPortUrl), logger });
+    const error = await limiter
+      .consumeRateLimit(request())
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject(unavailable);
+    expect((error as Error).cause).toBeInstanceOf(Error);
+    expect(lines.map((line) => line.reason)).toEqual(["redis_error"]);
   });
 
-  it("throws RATE_LIMIT_UNAVAILABLE when Redis answers slower than 2 s", async () => {
-    // Delaying proxy: forwards bytes to the real Redis after 2.5 s.
-    const target = new URL(redisUrl);
-    const sockets: net.Socket[] = [];
-    const proxy = net.createServer((inbound) => {
-      const upstream = net.connect(Number(target.port), target.hostname);
-      sockets.push(inbound, upstream);
-      inbound.on("data", (chunk) => {
-        setTimeout(() => upstream.write(chunk), 2500);
-      });
-      upstream.on("data", (chunk) => inbound.write(chunk));
-      inbound.on("error", () => undefined);
-      upstream.on("error", () => undefined);
-    });
-    await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  it("logs timeout when Redis never answers a queued command within 2 s", async () => {
+    const proxy = await startDelayProxy();
+    proxy.setDelay("request", 2500);
     try {
-      const { port } = proxy.address() as net.AddressInfo;
-      const limiter = createRateLimiter({
-        redis: client(`redis://127.0.0.1:${port.toString()}`),
-      });
+      const { logger, lines } = captureLogger();
+      const limiter = createRateLimiter({ redis: client(proxy.url), logger });
       const started = Date.now();
-      await expect(limiter.consumeRateLimit(request)).rejects.toMatchObject({
-        statusCode: 503,
-        code: "RATE_LIMIT_UNAVAILABLE",
-      });
+      const error = await limiter
+        .consumeRateLimit(request())
+        .catch((e: unknown) => e);
       const elapsed = Date.now() - started;
+      expect(error).toMatchObject(unavailable);
+      expect((error as Error).cause).toMatchObject({ message: "timeout" });
+      expect(lines.map((line) => line.reason)).toEqual(["timeout"]);
       expect(elapsed).toBeGreaterThanOrEqual(1900);
       expect(elapsed).toBeLessThan(2500);
     } finally {
-      for (const socket of sockets) socket.destroy();
       proxy.close();
     }
+  });
+
+  it("times out when a connected Redis takes the command but replies after 2 s", async () => {
+    const proxy = await startDelayProxy();
+    try {
+      const { logger, lines } = captureLogger();
+      const redis = client(proxy.url);
+      await redis.ping();
+      proxy.setDelay("reply", 2500);
+      const limiter = createRateLimiter({ redis, logger });
+      const error = await limiter
+        .consumeRateLimit(request())
+        .catch((e: unknown) => e);
+      expect(error).toMatchObject(unavailable);
+      expect(lines.map((line) => line.reason)).toEqual(["timeout"]);
+    } finally {
+      proxy.close();
+    }
+  });
+
+  it("throws RATE_LIMIT_UNAVAILABLE on a malformed script reply", async () => {
+    const { logger, lines } = captureLogger();
+    const redis = { eval: () => Promise.resolve("nope") } as unknown as Redis;
+    const limiter = createRateLimiter({ redis, logger });
+    await expect(limiter.consumeRateLimit(request())).rejects.toMatchObject(
+      unavailable,
+    );
+    expect(lines.map((line) => line.reason)).toEqual(["bad_reply"]);
+  });
+
+  it("does not put the key or identifiers in the error cause", async () => {
+    const limiter = createRateLimiter({ redis: client(closedPortUrl) });
+    const input = request();
+    const error = await limiter
+      .consumeRateLimit(input)
+      .catch((e: unknown) => e);
+    expect(String((error as Error).cause)).not.toContain(input.key);
   });
 });
 
@@ -274,5 +432,40 @@ describe("GET /ready with Redis", () => {
       status: "not_ready",
       checks: { redis: "fail" },
     });
+  });
+
+  it("bounds /ready by one deadline when the database and Redis both hang", async () => {
+    const proxy = await startDelayProxy();
+    try {
+      const hung = client(proxy.url);
+      await hung.ping();
+      proxy.setDelay("reply", 10_000);
+      const database = {
+        db: undefined,
+        sql: { query: () => new Promise(() => undefined) },
+        close: () => Promise.resolve(),
+      } as unknown as Database;
+      const app = createApp({
+        env,
+        authEnv,
+        logger: createLogger({ level: "silent", name: "test" }),
+        database,
+        redis: hung,
+      });
+      const started = Date.now();
+      const res = await app.request("/ready");
+      const elapsed = Date.now() - started;
+      expect(res.status).toBe(503);
+      expect(readinessResponseSchema.parse(await res.json())).toEqual({
+        status: "not_ready",
+        checks: { database: "fail", redis: "fail" },
+      });
+      // Sequential checks would take the sum of both deadlines.
+      expect(elapsed).toBeLessThan(
+        Math.max(DB_READINESS_TIMEOUT_MS, 2000) + 500,
+      );
+    } finally {
+      proxy.close();
+    }
   });
 });
