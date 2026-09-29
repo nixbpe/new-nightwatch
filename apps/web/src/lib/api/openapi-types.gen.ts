@@ -1365,7 +1365,153 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List monitors with health, SSL level and uptime */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                    health?: "up" | "down" | "unknown" | "paused";
+                    q?: string;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One page of monitors and the Organization summary */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            summary: {
+                                up: number;
+                                down: number;
+                                unknown: number;
+                                paused: number;
+                                total: number;
+                                /** @enum {number} */
+                                limit: 50;
+                            };
+                            monitors: {
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                                url: string;
+                                /** @enum {string} */
+                                status: "active" | "paused";
+                                /** @enum {string} */
+                                health: "up" | "down" | "unknown" | "paused";
+                                /** @enum {string|null} */
+                                healthReason: "never_checked" | "stale" | "awaiting_new_config" | "check_error" | null;
+                                lastKnownDown: boolean;
+                                consecutiveFailures: number;
+                                /** Format: date-time */
+                                lastCheckAt: string | null;
+                                openIncident: {
+                                    /** Format: date-time */
+                                    startedAt: string;
+                                    reason: string;
+                                } | null;
+                                lastResponseTimeMs: number | null;
+                                ssl: {
+                                    /** @enum {string} */
+                                    level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
+                                    daysRemaining: number | null;
+                                    host: string | null;
+                                };
+                                uptime: {
+                                    h24: {
+                                        percent: number | null;
+                                        checks: number;
+                                        coveragePercent: number;
+                                    };
+                                    d30: {
+                                        percent: number | null;
+                                        checks: number;
+                                        coveragePercent: number;
+                                    };
+                                };
+                            }[];
+                            page: {
+                                limit: number;
+                                offset: number;
+                                total: number;
+                            };
+                            /** Format: date-time */
+                            dataAsOf: string;
+                        };
+                    };
+                };
+                /** @description Invalid query */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified or membership is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
         put?: never;
         /** Create a monitor */
         post: {
@@ -2477,6 +2623,123 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/monitors/recent-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent incidents and SSL levels across the Organization */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Events of the last 30 days, newest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            events: {
+                                /** @enum {string} */
+                                kind: "incident_opened" | "incident_closed" | "ssl_level";
+                                /** Format: uuid */
+                                monitorId: string;
+                                monitorName: string;
+                                /** Format: date-time */
+                                at: string;
+                                reason: string | null;
+                                durationSeconds?: number;
+                                /** @enum {string} */
+                                sslLevel?: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
+                                daysRemaining?: number;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Invalid query */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified or membership is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;

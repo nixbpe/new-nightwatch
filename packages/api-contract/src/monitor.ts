@@ -555,6 +555,7 @@ const pageSchema = z.object({
 
 export const MONITOR_HEALTHS = ["up", "down", "unknown", "paused"] as const;
 export const monitorHealthSchema = z.enum(MONITOR_HEALTHS);
+export type MonitorHealthName = z.infer<typeof monitorHealthSchema>;
 export const monitorHealthReasonSchema = z
   .enum(["never_checked", "stale", "awaiting_new_config", "check_error"])
   .nullable();
@@ -660,6 +661,8 @@ export const checkAssertionResultSchema = z.object({
   status: z.enum(["pass", "fail", "not_evaluated"]),
   reason: z.enum(ASSERTION_REASONS).nullable(),
 });
+
+export type CheckAssertionResult = z.infer<typeof checkAssertionResultSchema>;
 
 export const checkResultSchema = z.object({
   scheduledFor: isoDateTime,
@@ -796,6 +799,7 @@ export const monitorListResponseSchema = z.object({
   page: pageSchema,
   dataAsOf: isoDateTime,
 });
+export type MonitorListResponse = z.infer<typeof monitorListResponseSchema>;
 
 export const monitorRecentEventSchema = z.object({
   kind: z.enum(["incident_opened", "incident_closed", "ssl_level"]),
@@ -807,6 +811,7 @@ export const monitorRecentEventSchema = z.object({
   sslLevel: z.enum(SSL_LEVELS).optional(),
   daysRemaining: z.number().int().optional(),
 });
+export type MonitorRecentEvent = z.infer<typeof monitorRecentEventSchema>;
 export const monitorRecentEventsResponseSchema = z.object({
   events: z.array(monitorRecentEventSchema).max(20),
 });

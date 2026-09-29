@@ -1,0 +1,541 @@
+import {
+  MONITOR_LIMIT_PER_ORGANIZATION,
+  type CheckAssertionResult,
+  type MonitorHealthName,
+  type MonitorListQuery,
+  type MonitorListResponse,
+  type MonitorRecentEvent,
+  type SslLevelName,
+} from "@nightwatch/api-contract";
+import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import { AppError } from "@nightwatch/shared";
+import type { PoolClient } from "pg";
+
+import { computeHealth, computeSsl } from "./health";
+import { assertMemberPermissionBeforeTenantContext } from "./permissions";
+import {
+  computeUptime,
+  derivePauses,
+  windowStart,
+  type Interval,
+  type UptimeAggregate,
+  type UptimeWindow,
+} from "./uptime";
+
+export type ReadIdentity = { organizationId: string; actorUserId: string };
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function monitorNotFound(): never {
+  throw new AppError(404, "MONITOR_NOT_FOUND", "ไม่พบมอนิเตอร์นี้");
+}
+
+// A malformed id answers like a missing or foreign one (AC-48).
+export function parseMonitorId(raw: string): string {
+  if (!UUID_PATTERN.test(raw)) monitorNotFound();
+  return raw;
+}
+
+/**
+ * Membership and read permission are checked before tenant context, then all
+ * queries of a request run in one transaction, so `now()` is one instant for
+ * freshness, SSL level, uptime windows and `dataAsOf`.
+ */
+export async function readInTenant<T>(
+  database: Database,
+  identity: ReadIdentity,
+  work: (client: PoolClient, now: Date) => Promise<T>,
+): Promise<T> {
+  await assertMemberPermissionBeforeTenantContext(database, {
+    organizationId: identity.organizationId,
+    userId: identity.actorUserId,
+    permission: "read",
+  });
+  return withTenantContextRaw(
+    database,
+    identity.organizationId,
+    async (client) => {
+      const clock = await client.query<{ now: Date }>("select now() as now");
+      const now = clock.rows[0]?.now;
+      if (!now) throw new Error("database returned no time");
+      return work(client, now);
+    },
+  );
+}
+
+// ---- Monitor state ---------------------------------------------------------
+
+type StateRow = {
+  id: string;
+  name: string;
+  url: string;
+  status: "active" | "paused";
+  createdAt: Date;
+  intervalSeconds: number;
+  checkConfigVersion: number;
+  consecutiveFailures: number;
+  lastPassedConfigVersion: number | null;
+  sslHost: string | null;
+  sslIssuer: string | null;
+  sslNotAfter: Date | null;
+  sslState: string | null;
+  sslReason: string | null;
+  matches: boolean;
+  incidentStartedAt: Date | null;
+  incidentReason: string | null;
+  latestScheduledFor: Date | null;
+  latestCheckedAt: Date | null;
+  latestOutcome: "pass" | "fail" | "check_error" | null;
+  latestHttpStatus: number | null;
+  latestResponseTimeMs: number | null;
+  latestFailureReason: string | null;
+  latestTlsReason: string | null;
+  latestAssertions: CheckAssertionResult[] | null;
+  latestUrlMasked: string | null;
+  latestConfigVersion: number | null;
+  latestEvaluatedFromPrefix: boolean | null;
+  /** `now() - checked_at` measured by the database. */
+  latestAgeSeconds: number | null;
+};
+
+// The host of a stored URL, for `q`. URLs are validated on save (no userinfo).
+const HOST_PATTERN = String.raw`(?i)^https?://(\[[^\]]*\]|[^/:?#]+)`;
+
+const STATE_QUERY = `
+  select m.id, m.name, m.url, m.status, m.created_at as "createdAt",
+    m.interval_seconds as "intervalSeconds",
+    m.check_config_version as "checkConfigVersion",
+    m.consecutive_failures as "consecutiveFailures",
+    m.last_passed_config_version as "lastPassedConfigVersion",
+    m.ssl_host as "sslHost", m.ssl_issuer as "sslIssuer",
+    m.ssl_not_after as "sslNotAfter", m.ssl_state as "sslState",
+    m.ssl_reason as "sslReason",
+    ($3::text is null
+      or m.name ilike $3
+      or substring(m.url from '${HOST_PATTERN}') ilike $3) as matches,
+    i.started_at as "incidentStartedAt", i.start_reason as "incidentReason",
+    r."scheduledFor" as "latestScheduledFor", r."checkedAt" as "latestCheckedAt",
+    r.outcome as "latestOutcome", r."httpStatus" as "latestHttpStatus",
+    r."responseTimeMs" as "latestResponseTimeMs",
+    r."failureReason" as "latestFailureReason",
+    r."tlsReason" as "latestTlsReason", r.assertions as "latestAssertions",
+    r."urlMasked" as "latestUrlMasked", r."configVersion" as "latestConfigVersion",
+    r."evaluatedFromPrefix" as "latestEvaluatedFromPrefix",
+    extract(epoch from (now() - r."checkedAt"))::float8 as "latestAgeSeconds"
+  from monitors m
+  left join lateral (
+    select scheduled_for as "scheduledFor", checked_at as "checkedAt", outcome,
+      http_status as "httpStatus", response_time_ms as "responseTimeMs",
+      failure_reason as "failureReason", tls_reason as "tlsReason", assertions,
+      url_masked as "urlMasked", check_config_version as "configVersion",
+      evaluated_from_prefix as "evaluatedFromPrefix"
+    from monitor_check_results
+    where monitor_id = m.id and tenant_id = m.tenant_id
+    order by scheduled_for desc
+    limit 1
+  ) r on true
+  left join lateral (
+    select started_at, start_reason from monitor_incidents
+    where monitor_id = m.id and tenant_id = m.tenant_id and ended_at is null
+  ) i on true
+  where m.tenant_id = $1 and ($2::uuid is null or m.id = $2)
+  order by lower(m.name), m.id`;
+
+// Bound as a parameter; `%`, `_` and the escape character match literally.
+function likePattern(q: string | undefined): string | null {
+  if (q === undefined || q === "") return null;
+  return `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+}
+
+export async function loadStates(
+  client: PoolClient,
+  organizationId: string,
+  options: { monitorId?: string; q?: string } = {},
+): Promise<StateRow[]> {
+  const result = await client.query<StateRow>(STATE_QUERY, [
+    organizationId,
+    options.monitorId ?? null,
+    likePattern(options.q),
+  ]);
+  return result.rows;
+}
+
+export function healthOf(row: StateRow) {
+  const health = computeHealth({
+    status: row.status,
+    checkConfigVersion: row.checkConfigVersion,
+    intervalSeconds: row.intervalSeconds,
+    consecutiveFailures: row.consecutiveFailures,
+    lastPassedConfigVersion: row.lastPassedConfigVersion,
+    hasOpenIncident: row.incidentStartedAt !== null,
+    latest:
+      row.latestOutcome === null ||
+      row.latestConfigVersion === null ||
+      row.latestAgeSeconds === null
+        ? null
+        : {
+            outcome: row.latestOutcome,
+            configVersion: row.latestConfigVersion,
+            ageSeconds: row.latestAgeSeconds,
+          },
+  });
+  return {
+    ...health,
+    consecutiveFailures: row.consecutiveFailures,
+    lastCheckAt: row.latestCheckedAt?.toISOString() ?? null,
+    openIncident:
+      row.incidentStartedAt === null
+        ? null
+        : {
+            startedAt: row.incidentStartedAt.toISOString(),
+            reason: row.incidentReason ?? "",
+          },
+  };
+}
+
+export function sslOf(row: StateRow, now: Date) {
+  return computeSsl(
+    {
+      host: row.sslHost,
+      issuer: row.sslIssuer,
+      notAfter: row.sslNotAfter,
+      state: row.sslState,
+      reason: row.sslReason,
+    },
+    now,
+  );
+}
+
+// ---- Uptime ----------------------------------------------------------------
+
+export type UptimeWindows = {
+  h24: UptimeWindow;
+  d7: UptimeWindow;
+  d30: UptimeWindow;
+};
+
+type AggregateRow = {
+  monitorId: string;
+  checks: number;
+  passed: number;
+  coveredSeconds: number;
+};
+
+const EMPTY_AGGREGATE: UptimeAggregate = {
+  checks: 0,
+  passed: 0,
+  coveredSeconds: 0,
+};
+
+function aggregateByMonitor(
+  rows: AggregateRow[],
+): Map<string, UptimeAggregate> {
+  return new Map(rows.map((row) => [row.monitorId, row]));
+}
+
+/**
+ * 24 h from raw results (primary-key range on `(monitor_id, scheduled_for)`),
+ * 7 d and 30 d from hourly rollups; raw results older than 24 h are never read.
+ * check_error rows are excluded here and never enter a rollup.
+ */
+export async function loadUptime(
+  client: PoolClient,
+  organizationId: string,
+  monitors: { id: string; status: "active" | "paused"; createdAt: Date }[],
+  now: Date,
+): Promise<Map<string, UptimeWindows>> {
+  const ids = monitors.map((monitor) => monitor.id);
+  const start24 = windowStart("24h", now);
+  const start7 = windowStart("7d", now);
+  const start30 = windowStart("30d", now);
+
+  const raw = await client.query<AggregateRow>(
+    `select monitor_id as "monitorId",
+         (count(*) filter (where outcome <> 'check_error'))::int as checks,
+         (count(*) filter (where outcome = 'pass'))::int as passed,
+         coalesce(sum(interval_seconds) filter (where outcome <> 'check_error'), 0)::int
+           as "coveredSeconds"
+       from monitor_check_results
+       where tenant_id = $1 and monitor_id = any($2::uuid[]) and scheduled_for >= $3
+       group by monitor_id`,
+    [organizationId, ids, start24],
+  );
+  const hourly = await client.query<AggregateRow & { window: "d7" | "d30" }>(
+    `select monitor_id as "monitorId", w.name as window,
+         coalesce(sum(h.checks), 0)::int as checks,
+         coalesce(sum(h.passed), 0)::int as passed,
+         coalesce(sum(h.covered_seconds), 0)::int as "coveredSeconds"
+       from monitor_check_hourly h
+       join (values ('d7', $3::timestamptz), ('d30', $4::timestamptz)) as w(name, start)
+         on h.hour_start >= w.start
+       where h.tenant_id = $1 and h.monitor_id = any($2::uuid[]) and h.hour_start >= $4
+       group by h.monitor_id, w.name`,
+    [organizationId, ids, start7, start30],
+  );
+  const events = await loadPauseEvents(client, organizationId, ids, start30);
+
+  const h24 = aggregateByMonitor(raw.rows);
+  const d7 = aggregateByMonitor(
+    hourly.rows.filter((row) => row.window === "d7"),
+  );
+  const d30 = aggregateByMonitor(
+    hourly.rows.filter((row) => row.window === "d30"),
+  );
+
+  return new Map(
+    monitors.map((monitor) => {
+      const monitorEvents = events.get(monitor.id) ?? [];
+      const window = (
+        aggregates: Map<string, UptimeAggregate>,
+        start: Date,
+      ): UptimeWindow =>
+        computeUptime(aggregates.get(monitor.id) ?? EMPTY_AGGREGATE, {
+          start,
+          createdAt: monitor.createdAt,
+          now,
+          pauses: derivePauses(monitorEvents, monitor.status, start, now),
+        });
+      return [
+        monitor.id,
+        {
+          h24: window(h24, start24),
+          d7: window(d7, start7),
+          d30: window(d30, start30),
+        },
+      ];
+    }),
+  );
+}
+
+export type PauseEvent = { kind: "paused" | "resumed"; at: Date };
+
+export async function loadPauseEvents(
+  client: PoolClient,
+  organizationId: string,
+  monitorIds: string[],
+  since: Date,
+): Promise<Map<string, PauseEvent[]>> {
+  const result = await client.query<{
+    monitorId: string;
+    kind: "paused" | "resumed";
+    at: Date;
+  }>(
+    `select monitor_id as "monitorId", kind, occurred_at as at
+     from monitor_events
+     where tenant_id = $1 and monitor_id = any($2::uuid[])
+       and kind in ('paused', 'resumed') and occurred_at >= $3
+     order by occurred_at, id`,
+    [organizationId, monitorIds, since],
+  );
+  const byMonitor = new Map<string, PauseEvent[]>();
+  for (const row of result.rows) {
+    const list = byMonitor.get(row.monitorId) ?? [];
+    list.push({ kind: row.kind, at: row.at });
+    byMonitor.set(row.monitorId, list);
+  }
+  return byMonitor;
+}
+
+export function toIsoInterval(interval: Interval) {
+  return {
+    from: interval.from.toISOString(),
+    to: interval.to.toISOString(),
+  };
+}
+
+// ---- List ------------------------------------------------------------------
+
+const HEALTH_ORDER: Record<MonitorHealthName, number> = {
+  down: 0,
+  unknown: 1,
+  up: 2,
+  paused: 3,
+};
+
+export async function listMonitors(
+  database: Database,
+  identity: ReadIdentity,
+  query: MonitorListQuery,
+): Promise<MonitorListResponse> {
+  return readInTenant(database, identity, async (client, now) => {
+    // At most 50 rows per Organization, so health is computed for all of them
+    // and the summary never depends on the filters. The database orders by
+    // lower(name), id; the health group sort is stable on top of that.
+    const rows = await loadStates(client, identity.organizationId, {
+      q: query.q,
+    });
+    const scored = rows.map((row) => ({ row, state: healthOf(row) }));
+
+    const summary = { up: 0, down: 0, unknown: 0, paused: 0 };
+    for (const { state } of scored) summary[state.health] += 1;
+
+    const filtered = scored
+      .filter(
+        ({ row, state }) =>
+          row.matches &&
+          (query.health === undefined || state.health === query.health),
+      )
+      .sort(
+        (left, right) =>
+          HEALTH_ORDER[left.state.health] - HEALTH_ORDER[right.state.health],
+      );
+    const pageRows = filtered.slice(query.offset, query.offset + query.limit);
+    const uptime = await loadUptime(
+      client,
+      identity.organizationId,
+      pageRows.map(({ row }) => row),
+      now,
+    );
+
+    return {
+      summary: {
+        ...summary,
+        total: scored.length,
+        limit: MONITOR_LIMIT_PER_ORGANIZATION,
+      },
+      monitors: pageRows.map(({ row, state }) => {
+        const windows = uptime.get(row.id);
+        if (!windows) throw new Error("uptime missing for a listed monitor");
+        const ssl = sslOf(row, now);
+        return {
+          id: row.id,
+          name: row.name,
+          url: row.url,
+          status: row.status,
+          ...state,
+          lastResponseTimeMs: row.latestResponseTimeMs,
+          ssl: {
+            level: ssl.level,
+            daysRemaining: ssl.daysRemaining,
+            host: row.sslHost,
+          },
+          uptime: { h24: windows.h24, d30: windows.d30 },
+        };
+      }),
+      page: {
+        limit: query.limit,
+        offset: query.offset,
+        total: filtered.length,
+      },
+      dataAsOf: now.toISOString(),
+    };
+  });
+}
+
+// ---- Recent events ---------------------------------------------------------
+
+const RECENT_DAYS = 30;
+
+type IncidentEventRow = {
+  kind: "incident_opened" | "incident_closed";
+  monitorId: string;
+  monitorName: string;
+  at: Date;
+  reason: string;
+  durationSeconds: number | null;
+};
+
+export async function listRecentEvents(
+  database: Database,
+  identity: ReadIdentity,
+  limit: number,
+): Promise<{ events: MonitorRecentEvent[] }> {
+  return readInTenant(database, identity, async (client, now) => {
+    const since = new Date(now.getTime() - RECENT_DAYS * 86_400_000);
+    const incidents = await client.query<IncidentEventRow>(
+      `(select 'incident_opened' as kind, i.monitor_id as "monitorId",
+          m.name as "monitorName", i.started_at as at,
+          i.start_reason as reason, null::int as "durationSeconds"
+        from monitor_incidents i
+        join monitors m on m.id = i.monitor_id and m.tenant_id = i.tenant_id
+        where i.tenant_id = $1 and i.started_at >= $2
+        order by i.started_at desc limit $3)
+       union all
+       (select 'incident_closed', i.monitor_id, m.name, i.ended_at, i.end_reason,
+          floor(extract(epoch from (i.ended_at - i.started_at)))::int
+        from monitor_incidents i
+        join monitors m on m.id = i.monitor_id and m.tenant_id = i.tenant_id
+        where i.tenant_id = $1 and i.ended_at >= $2
+        order by i.ended_at desc limit $3)`,
+      [identity.organizationId, since, limit],
+    );
+
+    // The SSL level now is not an event in the table: a monitor whose level
+    // computed from the database time is caution, danger or expired is listed,
+    // stamped with the check that last observed it.
+    const monitors = await client.query<{
+      id: string;
+      name: string;
+      lastCheckAt: Date | null;
+      updatedAt: Date;
+      sslHost: string | null;
+      sslIssuer: string | null;
+      sslNotAfter: Date | null;
+      sslState: string | null;
+      sslReason: string | null;
+    }>(
+      `select id, name, last_check_at as "lastCheckAt", updated_at as "updatedAt",
+         ssl_host as "sslHost", ssl_issuer as "sslIssuer",
+         ssl_not_after as "sslNotAfter", ssl_state as "sslState",
+         ssl_reason as "sslReason"
+       from monitors where tenant_id = $1`,
+      [identity.organizationId],
+    );
+    const sslEvents: MonitorRecentEvent[] = [];
+    for (const monitor of monitors.rows) {
+      const ssl = computeSsl(
+        {
+          host: monitor.sslHost,
+          issuer: monitor.sslIssuer,
+          notAfter: monitor.sslNotAfter,
+          state: monitor.sslState,
+          reason: monitor.sslReason,
+        },
+        now,
+      );
+      if (!isSslProblem(ssl.level)) continue;
+      sslEvents.push({
+        kind: "ssl_level",
+        monitorId: monitor.id,
+        monitorName: monitor.name,
+        at: (monitor.lastCheckAt ?? monitor.updatedAt).toISOString(),
+        reason: null,
+        sslLevel: ssl.level,
+        ...(ssl.daysRemaining === null
+          ? {}
+          : { daysRemaining: ssl.daysRemaining }),
+      });
+    }
+
+    const events: MonitorRecentEvent[] = [
+      ...incidents.rows.map((row) => ({
+        kind: row.kind,
+        monitorId: row.monitorId,
+        monitorName: row.monitorName,
+        at: row.at.toISOString(),
+        reason: row.reason,
+        ...(row.durationSeconds === null
+          ? {}
+          : { durationSeconds: row.durationSeconds }),
+      })),
+      ...sslEvents,
+    ];
+    events.sort(compareEvents);
+    return { events: events.slice(0, limit) };
+  });
+}
+
+function isSslProblem(level: SslLevelName): boolean {
+  return level === "caution" || level === "danger" || level === "expired";
+}
+
+// at desc, then a fixed order so equal timestamps never reshuffle.
+function compareEvents(
+  left: MonitorRecentEvent,
+  right: MonitorRecentEvent,
+): number {
+  if (left.at !== right.at) return left.at < right.at ? 1 : -1;
+  if (left.kind !== right.kind) return left.kind < right.kind ? -1 : 1;
+  return left.monitorId < right.monitorId ? -1 : 1;
+}

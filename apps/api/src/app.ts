@@ -24,6 +24,7 @@ import type { Auth } from "./auth";
 import type { Mailer } from "./auth/mailer";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
+import { registerMonitorReadRoutes } from "./monitors/read-routes";
 import { registerMonitorRoutes } from "./monitors/routes";
 import { registerNotificationInboxRoutes } from "./notifications/routes";
 import { registerOnboardingRoutes } from "./onboarding/routes";
@@ -394,6 +395,11 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       database,
       logger: deps.logger,
       outbound: deps.outbound,
+    });
+    registerMonitorReadRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
     });
   }
 
