@@ -534,6 +534,43 @@ describe("validation over HTTP", () => {
       assertions: [{ kind: "responseTimeBelow", ms: 5000 }],
     }),
     bad("missing name", { name: undefined }, "name", "required"),
+    bad(
+      "header id with NUL",
+      { headers: [{ id: "a\0", name: "x-a", secret: true }] },
+      "headers.0.id",
+      "invalid_format",
+    ),
+    bad(
+      "header id with a lone surrogate",
+      { headers: [{ id: "\uD800", name: "x-a", secret: true }] },
+      "headers.0.id",
+      "invalid_format",
+    ),
+    bad(
+      "empty header id",
+      { headers: [{ id: "", name: "x-a", secret: true }] },
+      "headers.0.id",
+      "invalid_format",
+    ),
+    bad(
+      "duplicate header id",
+      {
+        headers: [
+          {
+            id: "0b9d1c62-4f0e-4c55-8a1d-3f2b7c9e1a10",
+            name: "x-a",
+            secret: true,
+          },
+          {
+            id: "0b9d1c62-4f0e-4c55-8a1d-3f2b7c9e1a10",
+            name: "x-b",
+            secret: true,
+          },
+        ],
+      },
+      "headers.1.id",
+      "duplicate",
+    ),
     ok("name of 100 characters", { name: "n".repeat(100) }),
     bad(
       "name of 101 characters",

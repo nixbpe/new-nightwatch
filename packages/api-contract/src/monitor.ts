@@ -65,6 +65,8 @@ export function isValidMonitorHeaderName(name: string): boolean {
   return HEADER_TOKEN.test(name);
 }
 
+const HEADER_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LINE_BREAKS = /[\r\n]/;
 // Postgres rejects U+0000 in text and jsonb and unpaired surrogate escapes in
 // jsonb, and node-pg rewrites them in text, so neither may reach storage.
@@ -375,7 +377,17 @@ function refineMonitorConfig(config: ConfigBase, ctx: z.RefinementCtx): void {
   }
 
   const seen = new Set<string>();
+  const ids = new Set<string>();
   config.headers.forEach((header, index) => {
+    // An id names a future secret slot: a UUID, and never shared by two headers.
+    if (header.id !== undefined) {
+      if (!HEADER_ID.test(header.id)) {
+        add(["headers", index, "id"], "invalid_format");
+      } else if (ids.has(header.id.toLowerCase())) {
+        add(["headers", index, "id"], "duplicate");
+      }
+      ids.add(header.id.toLowerCase());
+    }
     const lower = header.name.toLowerCase();
     if (!isValidMonitorHeaderName(header.name)) {
       add(["headers", index, "name"], "invalid_format");

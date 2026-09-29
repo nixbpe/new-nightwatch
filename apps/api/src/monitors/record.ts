@@ -6,6 +6,7 @@ import {
   type StoredAssertion,
   type StoredHeader,
 } from "@nightwatch/api-contract";
+import { AppError } from "@nightwatch/shared";
 
 export const MONITOR_COLUMNS = `id, name, url, method, headers,
   query_params as "queryParams", body_type as "bodyType",
@@ -67,7 +68,12 @@ export function assignHeaderIds(
   headers: StoredHeader[],
   stored: StoredHeader[],
 ): StoredHeader[] {
-  return headers.map((header) => {
+  const used = new Set(
+    headers.flatMap((header) =>
+      header.id === undefined ? [] : [header.id.toLowerCase()],
+    ),
+  );
+  return headers.map((header, index) => {
     if (!header.secret || header.id !== undefined) return header;
     const match = stored.find(
       (candidate) =>
@@ -75,7 +81,15 @@ export function assignHeaderIds(
         candidate.id !== undefined &&
         candidate.name.toLowerCase() === header.name.toLowerCase(),
     );
-    return { ...header, id: match?.id ?? crypto.randomUUID() };
+    // The stored id belongs to a header this request keeps under another name.
+    if (match?.id !== undefined && used.has(match.id.toLowerCase())) {
+      throw new AppError(400, "MONITOR_INVALID", "Invalid monitor input", {
+        fields: [{ field: `headers.${String(index)}.id`, reason: "duplicate" }],
+      });
+    }
+    const id = match?.id ?? crypto.randomUUID();
+    used.add(id.toLowerCase());
+    return { ...header, id };
   });
 }
 

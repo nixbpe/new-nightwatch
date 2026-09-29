@@ -433,6 +433,40 @@ describe("storable text", () => {
   });
 });
 
+describe("header ids", () => {
+  const id = "0b9d1c62-4f0e-4c55-8a1d-3f2b7c9e1a10";
+  const other = "1c0e2d73-5a1f-4d66-9b2e-4a3c8d0f2b21";
+  const header = (value?: string) => ({
+    ...(value === undefined ? {} : { id: value }),
+    name: "x-a",
+    secret: true,
+  });
+  it.each([
+    ["NUL", "a\0", "invalid_format"],
+    ["a lone surrogate", "\uD800", "invalid_format"],
+    ["empty", "", "invalid_format"],
+    ["not a UUID", "slot-1", "invalid_format"],
+  ])("rejects an id with %s", (_label, value, reason) => {
+    expect(reasons({ headers: [header(value)] })).toEqual([
+      { path: "headers.0.id", reason },
+    ]);
+  });
+
+  it("rejects an id shared by two headers, ignoring case", () => {
+    expect(
+      reasons({
+        headers: [header(id), { ...header(id.toUpperCase()), name: "x-b" }],
+      }),
+    ).toEqual([{ path: "headers.1.id", reason: "duplicate" }]);
+  });
+
+  it("accepts distinct UUID ids", () => {
+    expect(
+      reasons({ headers: [header(id), { ...header(other), name: "x-b" }] }),
+    ).toEqual([]);
+  });
+});
+
 describe("name and url normalization", () => {
   it("accepts a name of 100 characters and rejects 101", () => {
     expect(reasons({ name: "n".repeat(100) })).toEqual([]);

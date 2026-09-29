@@ -397,6 +397,51 @@ describe("Edit header ids and URL trimming", () => {
     expect(await events(monitor.id)).toHaveLength(2);
   });
 
+  it.each([
+    ["NUL", "a\0"],
+    ["a lone surrogate", "\uD800"],
+    ["empty", ""],
+    ["not a UUID", "slot-1"],
+  ])(
+    "rejects an Edit whose header id is %s and writes nothing",
+    async (_label, id) => {
+      const monitor = await created(validConfig({ headers: [secretHeader] }));
+      const response = await edit(monitor, {
+        ...configOf(monitor),
+        headers: [{ id, name: "X-Secret", secret: true }],
+      });
+      expect(response.status).toBe(400);
+      expect(response.json).toMatchObject({
+        error: {
+          code: "MONITOR_INVALID",
+          details: { fields: [{ field: "headers.0.id" }] },
+        },
+      });
+      expect(await monitorRow(monitor.id)).toMatchObject({ version: 1 });
+      expect(await events(monitor.id)).toEqual([]);
+    },
+  );
+
+  it("rejects a renamed header that keeps an id another id-less header matches by name", async () => {
+    const monitor = await created(validConfig({ headers: [secretHeader] }));
+    const id = monitor.headers[0]?.id;
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      headers: [
+        { id, name: "X-Renamed", secret: true },
+        { name: "X-Secret", secret: true },
+      ],
+    });
+    expect(response.status).toBe(400);
+    expect(response.json).toMatchObject({
+      error: {
+        code: "MONITOR_INVALID",
+        details: { fields: [{ field: "headers.1.id", reason: "duplicate" }] },
+      },
+    });
+    expect(await monitorRow(monitor.id)).toMatchObject({ version: 1 });
+  });
+
   it("gives a genuinely new secret header a new id", async () => {
     const monitor = await created(validConfig({ headers: [secretHeader] }));
     const response = await edit(monitor, {
