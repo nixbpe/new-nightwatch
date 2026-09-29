@@ -90,12 +90,6 @@ describe("WORKER_ROLES parsing", () => {
     expect(result.code).not.toBe(0);
     expect(result.output).toContain("WORKER_ROLES has unknown role: bogus");
   });
-
-  it("fails clearly when monitor-checker is selected before it exists", async () => {
-    const result = await runWorker("monitor-checker");
-    expect(result.code).not.toBe(0);
-    expect(result.output).toContain("monitor-checker is not implemented yet");
-  });
 });
 
 describe("aheadSuffixes", () => {

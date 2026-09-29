@@ -1,5 +1,10 @@
 import { createDatabase, failNotificationDispatch } from "@nightwatch/db";
-import { createLogger, loadEnv, loadMonitorEnv } from "@nightwatch/shared";
+import {
+  createLogger,
+  loadEnv,
+  loadMonitorEnv,
+  type MonitorEnv,
+} from "@nightwatch/shared";
 import { Worker } from "bullmq";
 
 import {
@@ -15,7 +20,12 @@ import {
   processMaterialization,
   type MaterializeJobData,
 } from "./materialize";
-import { createMonitorCheckQueue } from "./monitor/queue";
+import { assertMonitorCheckJob, processMonitorCheck } from "./monitor/checker";
+import {
+  createMonitorCheckQueue,
+  MONITOR_CHECK_QUEUE,
+  type MonitorCheckJob,
+} from "./monitor/queue";
 import { MonitorScheduler, startMonitorSchedule } from "./monitor/scheduler";
 import { armHardDeadline, closeWithin } from "./shutdown";
 
@@ -37,14 +47,18 @@ const logger = createLogger({
   name: "nightwatch-worker",
 });
 const roles = workerRoles(process.env.WORKER_ROLES);
-if (roles.has("monitor-checker")) {
-  throw new Error("WORKER_ROLES monitor-checker is not implemented yet");
-}
-const monitorEnv = roles.has("monitor-scheduler") ? loadMonitorEnv() : null;
+const monitorEnv =
+  roles.has("monitor-scheduler") || roles.has("monitor-checker")
+    ? loadMonitorEnv()
+    : null;
 const redisUrl = monitorEnv?.REDIS_URL ?? requireEnvironment("REDIS_URL");
 const database = createDatabase(databaseUrl);
 
 const worker = roles.has("consumer") ? startConsumer() : null;
+const monitorChecker =
+  monitorEnv && roles.has("monitor-checker")
+    ? startMonitorChecker(monitorEnv)
+    : null;
 const queue = roles.has("scheduler") ? createDispatchQueue(redisUrl) : null;
 const monitorQueue = roles.has("monitor-scheduler")
   ? createMonitorCheckQueue(redisUrl)
@@ -52,6 +66,7 @@ const monitorQueue = roles.has("monitor-scheduler")
 await Promise.all([
   queue?.waitUntilReady(),
   worker?.waitUntilReady(),
+  monitorChecker?.waitUntilReady(),
   monitorQueue?.waitUntilReady(),
 ]);
 const stopSchedule = queue
@@ -76,6 +91,7 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   await monitorSchedule?.stop();
   if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
+  if (monitorChecker) await closeWithin(monitorChecker);
   if (worker) await closeWithin(worker);
   if (queue) await closeWithin(queue);
   if (monitorQueue) await closeWithin(monitorQueue);
@@ -111,6 +127,31 @@ function workerRoles(value: string | undefined): Set<WorkerRole> {
     roles.add(known);
   }
   return roles;
+}
+
+function startMonitorChecker(monitor: MonitorEnv): Worker<MonitorCheckJob> {
+  const dependencies = {
+    database,
+    credentialEnv: monitor,
+    logger,
+    outbound: { testAllowedHosts: monitor.OUTBOUND_TEST_ALLOWED_HOSTS },
+  };
+  // attempts is 1: a failed job is logged and never retried.
+  const checker = new Worker<MonitorCheckJob>(
+    MONITOR_CHECK_QUEUE,
+    async (job) => {
+      assertMonitorCheckJob(job.data);
+      await processMonitorCheck(job.data, dependencies);
+    },
+    { connection: redisConnection(redisUrl), concurrency: 20 },
+  );
+  checker.on("failed", (job) => {
+    logger.error(
+      { tenantId: job?.data.tenantId, monitorId: job?.data.monitorId },
+      "monitor check job failed",
+    );
+  });
+  return checker;
 }
 
 function startConsumer(): Worker<MaterializeJobData> {
