@@ -22,6 +22,11 @@ export function isNavGroup(item: NavItem): item is NavGroup {
 // Leaves must be real routes in router.tsx; the mockup's placeholder sections are intentionally omitted.
 export const NAV_ITEMS: NavItem[] = [
   { label: "ภาพรวม", icon: "grid", path: "/workspace" },
+  {
+    label: "ตรวจสถานะบริการ",
+    icon: "activity",
+    path: "/organizations/:organizationId/monitors",
+  },
   { label: "การแจ้งเตือน", icon: "inbox", path: "/notifications" },
   {
     label: "การตั้งค่าส่วนตัว",

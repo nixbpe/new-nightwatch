@@ -157,6 +157,10 @@ function renderShell(
             element: <OrganizationMembersPage />,
           },
           { path: "/notifications", element: <NotificationsPage /> },
+          {
+            path: "/organizations/:organizationId/monitors",
+            element: <p>หน้ามอนิเตอร์</p>,
+          },
           { path: "/settings/security", element: <p>หน้าความปลอดภัย</p> },
           { path: "/settings/sessions", element: <p>หน้าเซสชัน</p> },
           {
@@ -608,6 +612,56 @@ describe("AppShell", () => {
     expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
   });
 
+  it.each(["owner", "admin", "viewer", "auditor"] as const)(
+    "shows the monitors leaf in the sidebar and ⌘K to a %s",
+    async (role) => {
+      fetchMeContextMock.mockResolvedValue(
+        meContext([{ ...ownerOrg, role }], ORG_A),
+      );
+      const user = userEvent.setup();
+      renderShell();
+      await screen.findByRole("link", { name: "Org A" });
+
+      const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+      expect(
+        within(nav).getByRole("link", { name: "ตรวจสถานะบริการ" }),
+      ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors`);
+
+      await user.keyboard("{Meta>}k{/Meta}");
+      const dialog = screen.getByRole("dialog", { name: "ค้นหาทั้งหมด" });
+      await user.keyboard("ตรวจสถานะ");
+      const options = within(dialog).getAllByRole("option");
+      expect(options).toHaveLength(1);
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText("หน้ามอนิเตอร์")).toBeInTheDocument();
+    },
+  );
+
+  it("omits the monitors leaf when there is no active organization", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([], null));
+    renderShell();
+    await screen.findByRole("navigation", { name: "เมนูหลัก" });
+
+    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    expect(
+      within(nav).queryByRole("link", { name: "ตรวจสถานะบริการ" }),
+    ).toBeNull();
+  });
+
+  it("marks the monitors leaf current on the monitors route", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderShell(undefined, `/organizations/${ORG_A}/monitors`);
+    expect(await screen.findByText("หน้ามอนิเตอร์")).toBeInTheDocument();
+
+    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    expect(
+      await within(nav).findByRole("link", { name: "ตรวจสถานะบริการ" }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      within(nav).getByRole("link", { name: "ภาพรวม" }),
+    ).not.toHaveAttribute("aria-current");
+  });
+
   it("⌘K includes every owner destination and navigates from a filtered result", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
@@ -620,9 +674,10 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    expect(within(dialog).getAllByRole("option")).toHaveLength(9);
+    expect(within(dialog).getAllByRole("option")).toHaveLength(10);
     for (const name of [
       "ภาพรวม",
+      "ตรวจสถานะบริการ",
       "การแจ้งเตือน",
       "การตั้งค่าส่วนตัว",
       "โปรไฟล์",
