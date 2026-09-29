@@ -189,18 +189,22 @@ export function SessionsPage() {
                       </StatusPill>
                     ) : null}
                   </div>
-                  <p className="truncate text-xs text-foreground-secondary">
-                    {row.ipAddress === null ||
-                    row.ipAddress === undefined ||
-                    row.ipAddress.trim() === "" ? (
-                      "ไม่ทราบ IP"
-                    ) : (
-                      <span className="font-mono">{row.ipAddress}</span>
-                    )}
-                    {" · ใช้งานล่าสุด "}
-                    <time dateTime={row.updatedAt.toISOString()}>
-                      {lastActive}
-                    </time>
+                  <p className="flex flex-wrap gap-x-2 text-xs text-foreground-secondary">
+                    <span>
+                      {row.ipAddress === null ||
+                      row.ipAddress === undefined ||
+                      row.ipAddress.trim() === "" ? (
+                        "ไม่ทราบ IP"
+                      ) : (
+                        <span className="font-mono">{row.ipAddress}</span>
+                      )}
+                    </span>
+                    <span>
+                      ใช้งานล่าสุด{" "}
+                      <time dateTime={row.updatedAt.toISOString()}>
+                        {lastActive}
+                      </time>
+                    </span>
                   </p>
                 </div>
                 {currentToken === null || isCurrent ? null : isConfirming ? (

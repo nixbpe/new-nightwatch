@@ -55,7 +55,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
               {activeOrg.name}
             </span>
             <span className="block truncate text-xs text-foreground-secondary">
-              องค์กร · {roleLabel}
+              องค์กร <span className="ps-1">{roleLabel}</span>
             </span>
           </span>
           {canSwitch ? (

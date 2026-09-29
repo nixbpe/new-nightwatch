@@ -222,7 +222,7 @@ describe("AppShell", () => {
     const orgSwitcher = await screen.findByRole("button", {
       name: /Org A/,
     });
-    expect(orgSwitcher).toHaveTextContent("องค์กร · เจ้าของ");
+    expect(orgSwitcher).toHaveTextContent(/องค์กร\s*เจ้าของ/);
 
     const breadcrumb = screen.getByRole("navigation", {
       name: "ตำแหน่งปัจจุบัน",
@@ -551,7 +551,7 @@ describe("AppShell", () => {
       organizationId: ORG_B,
     });
     expect(screen.getByRole("button", { name: /Org B/ })).toHaveTextContent(
-      "องค์กร · ผู้ชม",
+      /องค์กร\s*ผู้ชม/,
     );
     expect(
       within(

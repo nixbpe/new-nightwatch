@@ -143,7 +143,7 @@ export function AppShell() {
 
         <aside
           id="app-sidebar"
-          className={`hidden flex-shrink-0 border-r border-foreground/10 bg-surface transition-[width] duration-150 ease-out sm:block ${
+          className={`hidden flex-shrink-0 border-r border-foreground/10 bg-background transition-[width] duration-150 ease-out sm:block ${
             collapsed ? "w-14" : "w-60"
           }`}
         >

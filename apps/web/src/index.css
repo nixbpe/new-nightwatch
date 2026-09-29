@@ -19,6 +19,7 @@
  * themes; no shadcn default palette is imported.
  */
 :root {
+  color-scheme: light;
   --background: #f7f8fa;
   --surface: #ffffff;
   --foreground: #171a1f;
@@ -32,6 +33,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --background: #0b0c0e;
     --surface: #121316;
     --foreground: #f3f4f6;
@@ -48,6 +50,7 @@
    as above, restated as attribute selectors so they win regardless of
    prefers-color-scheme (equal specificity, later in source). */
 :root[data-theme="light"] {
+  color-scheme: light;
   --background: #f7f8fa;
   --surface: #ffffff;
   --foreground: #171a1f;
@@ -60,6 +63,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --background: #0b0c0e;
   --surface: #121316;
   --foreground: #f3f4f6;

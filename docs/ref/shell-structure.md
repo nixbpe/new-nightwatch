@@ -1,6 +1,6 @@
 # App shell
 
-The shell is the chrome around every signed-in page: a sidebar, a header and a scrollable main column. Tokens, type and spacing follow `docs/design-system.md`. Routes without chrome (sign-in, password reset, invitation, two-factor, e-mail verification, onboarding) render in a bare layout; the not-found page stands outside both.
+The shell is the chrome around every signed-in page: a sidebar, a header and a scrollable main column. Sidebar and header sit on Canvas behind hairline edges; Surface is for cards, fields and overlays. Tokens, type and spacing follow `docs/design-system.md`. Routes without chrome (sign-in, password reset, invitation, two-factor, e-mail verification, onboarding) render in a bare layout; the not-found page stands outside both.
 
 ## Layout
 
