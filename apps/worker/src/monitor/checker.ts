@@ -15,7 +15,7 @@ import {
 import { z } from "zod";
 
 import type { MonitorCheckJob } from "./queue";
-import { recordCheckResult } from "./record-result";
+import { recordCheckResult, type MonitorEventHook } from "./record-result";
 
 const monitorCheckJobSchema = z.object({
   tenantId: z.uuid(),
@@ -38,6 +38,8 @@ export type CheckerDependencies = {
   /** Resolver, `OUTBOUND_TEST_ALLOWED_HOSTS` and CA store; test seams for the SSRF helper. */
   outbound?: OutboundDeps;
   clock?: () => Date;
+  /** Overrides `onMonitorEvent`; tests observe incident events with it. */
+  onEvent?: MonitorEventHook;
 };
 
 export type CheckerOutcome = "recorded" | "duplicate" | "discarded" | "skipped";
@@ -270,15 +272,19 @@ export async function processMonitorCheck(
     };
   }
 
-  const outcome = await recordCheckResult(database, {
-    tenantId: job.tenantId,
-    monitorId: job.monitorId,
-    claimToken: job.claimToken,
-    checkConfigVersion: job.checkConfigVersion,
-    scheduledFor: new Date(job.scheduledFor),
-    intervalSeconds: prepared.intervalSeconds,
-    result,
-  });
+  const outcome = await recordCheckResult(
+    database,
+    {
+      tenantId: job.tenantId,
+      monitorId: job.monitorId,
+      claimToken: job.claimToken,
+      checkConfigVersion: job.checkConfigVersion,
+      scheduledFor: new Date(job.scheduledFor),
+      intervalSeconds: prepared.intervalSeconds,
+      result,
+    },
+    dependencies.onEvent ? { onEvent: dependencies.onEvent } : {},
+  );
   logger.info(
     {
       tenantId: job.tenantId,

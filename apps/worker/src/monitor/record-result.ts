@@ -19,27 +19,102 @@ export type RecordInput = {
 
 export type RecordOutcome = "recorded" | "discarded" | "duplicate";
 
+type EventContext = {
+  tenantId: string;
+  monitorId: string;
+  monitorName: string;
+  occurredAt: Date;
+};
+
+export type MonitorEvent = EventContext &
+  (
+    | {
+        type: "incident_opened";
+        incidentId: string;
+        reason: string;
+        httpStatus: number | null;
+      }
+    | {
+        type: "incident_closed";
+        incidentId: string;
+        endReason: "recovered" | "paused_by_user";
+        /** Whether a MONITOR_DOWN notification went out for this incident. */
+        downNotified: boolean;
+      }
+  );
+
+export type MonitorEventHook = (
+  tx: TenantClient,
+  event: MonitorEvent,
+) => Promise<void>;
+
+/**
+ * Called inside transaction B, after the row change it describes, only for a
+ * result that was really inserted. Task 09 writes notification intents here.
+ */
+export const onMonitorEvent: MonitorEventHook = async () => {};
+
+export type RecordOptions = { onEvent?: MonitorEventHook };
+
+type LockedMonitor = {
+  name: string;
+  consecutive_failures: number;
+  last_passed_config_version: number | null;
+};
+
+type OpenIncident = { id: string; down_notified: boolean };
+
+/** Thrown to roll back an attempt that has to run again with the advisory lock. */
+class NeedsMembershipLock extends Error {}
+
 /**
  * Transaction B of a check. A result is kept only while the claim that
  * produced it is still the monitor's current one: Pause, Delete and an Edit
  * that affects checks clear or replace it, and the late result is dropped.
  *
- * Lock order (Concurrency): organization FOR SHARE, monitors FOR UPDATE,
- * monitor_schedule, monitor_incidents.
+ * Lock order (Concurrency): organization FOR SHARE, advisory
+ * notification-membership (only when an event may follow), monitors FOR
+ * UPDATE, monitor_schedule, monitor_incidents. Most results emit no event, so
+ * the first attempt runs without the advisory lock; when the locked state
+ * shows an event is possible the attempt is rolled back and repeated in the
+ * proper order instead of taking the lock after monitors.
  */
 export async function recordCheckResult(
   database: Database,
   input: RecordInput,
+  options: RecordOptions = {},
+): Promise<RecordOutcome> {
+  const onEvent = options.onEvent ?? onMonitorEvent;
+  try {
+    return await attempt(database, input, onEvent, false);
+  } catch (error) {
+    if (!(error instanceof NeedsMembershipLock)) throw error;
+    return attempt(database, input, onEvent, true);
+  }
+}
+
+function attempt(
+  database: Database,
+  input: RecordInput,
+  onEvent: MonitorEventHook,
+  membershipLocked: boolean,
 ): Promise<RecordOutcome> {
   return withTenantContextRaw(database, input.tenantId, async (client) => {
     await client.query("select id from organization where id = $1 for share", [
       input.tenantId,
     ]);
-    const monitor = await client.query(
-      "select id from monitors where id = $1 and tenant_id = $2 for update",
+    if (membershipLocked) {
+      await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+        `notification-membership:${input.tenantId}`,
+      ]);
+    }
+    const monitorRows = await client.query<LockedMonitor>(
+      `select name, consecutive_failures, last_passed_config_version
+       from monitors where id = $1 and tenant_id = $2 for update`,
       [input.monitorId, input.tenantId],
     );
-    if (monitor.rows.length === 0) return "discarded";
+    const monitor = monitorRows.rows[0];
+    if (!monitor) return "discarded";
 
     const claim = await client.query(
       `update monitor_schedule set claim_token = null
@@ -48,10 +123,150 @@ export async function recordCheckResult(
     );
     if (claim.rowCount === 0) return "discarded";
 
-    const inserted = await insertResult(client, input);
-    if (!inserted) return "duplicate";
+    const incidentRows = await client.query<OpenIncident>(
+      `select id, down_notified from monitor_incidents
+       where monitor_id = $1 and ended_at is null`,
+      [input.monitorId],
+    );
+    const open = incidentRows.rows[0] ?? null;
+    const next = nextState(monitor, open !== null, input);
+    if (!membershipLocked && next.event !== null) {
+      throw new NeedsMembershipLock();
+    }
+
+    if (!(await insertResult(client, input))) return "duplicate";
+    const { result } = input;
+    if (result.outcome !== "check_error") await upsertRollup(client, input);
+    await client.query(
+      `update monitors set consecutive_failures = $2, last_check_at = $3,
+         last_outcome = $4, last_passed_config_version = $5
+       where id = $1`,
+      [
+        input.monitorId,
+        next.consecutiveFailures,
+        result.checkedAt,
+        result.outcome,
+        next.lastPassedConfigVersion,
+      ],
+    );
+
+    const context = {
+      tenantId: input.tenantId,
+      monitorId: input.monitorId,
+      monitorName: monitor.name,
+      occurredAt: result.checkedAt,
+    };
+    if (next.event === "open") {
+      const created = await client.query<{ id: string }>(
+        `insert into monitor_incidents
+           (monitor_id, tenant_id, started_at, start_reason, start_http_status)
+         values ($1, $2, $3, $4, $5) returning id`,
+        [
+          input.monitorId,
+          input.tenantId,
+          result.checkedAt,
+          result.failureReason ?? "http_status",
+          result.httpStatus,
+        ],
+      );
+      await onEvent(client, {
+        ...context,
+        type: "incident_opened",
+        incidentId: (created.rows[0] as { id: string }).id,
+        reason: result.failureReason ?? "http_status",
+        httpStatus: result.httpStatus,
+      });
+    } else if (next.event === "close" && open) {
+      await client.query(
+        `update monitor_incidents set ended_at = $2, end_reason = 'recovered'
+         where id = $1`,
+        [open.id, result.checkedAt],
+      );
+      await onEvent(client, {
+        ...context,
+        type: "incident_closed",
+        incidentId: open.id,
+        endReason: "recovered",
+        downNotified: open.down_notified,
+      });
+    }
     return "recorded";
   });
+}
+
+/**
+ * Streak and incident rules (Jobs, Incident). Only pass and fail move the
+ * streak; `check_error` leaves it as it was. Every recorded result belongs to
+ * the monitor's current check config, because a result of an older config
+ * loses the claim guard, so a pass here may close an incident carried over
+ * from an old config.
+ */
+function nextState(
+  monitor: LockedMonitor,
+  incidentOpen: boolean,
+  input: RecordInput,
+): {
+  consecutiveFailures: number;
+  lastPassedConfigVersion: number | null;
+  event: "open" | "close" | null;
+} {
+  const { outcome } = input.result;
+  if (outcome === "pass") {
+    return {
+      consecutiveFailures: 0,
+      lastPassedConfigVersion: input.checkConfigVersion,
+      event: incidentOpen ? "close" : null,
+    };
+  }
+  if (outcome === "fail") {
+    const failures = monitor.consecutive_failures + 1;
+    return {
+      consecutiveFailures: failures,
+      lastPassedConfigVersion: monitor.last_passed_config_version,
+      event: failures >= 2 && !incidentOpen ? "open" : null,
+    };
+  }
+  return {
+    consecutiveFailures: monitor.consecutive_failures,
+    lastPassedConfigVersion: monitor.last_passed_config_version,
+    event: null,
+  };
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** One row per (monitor, UTC hour of scheduled_for); check_error is not part of uptime. */
+async function upsertRollup(
+  client: TenantClient,
+  input: RecordInput,
+): Promise<void> {
+  const { result } = input;
+  const hourStart = new Date(
+    Math.floor(input.scheduledFor.getTime() / HOUR_MS) * HOUR_MS,
+  );
+  const responseMs =
+    result.responseTimeMs === null ? null : Math.round(result.responseTimeMs);
+  await client.query(
+    `insert into monitor_check_hourly
+       (monitor_id, tenant_id, hour_start, checks, passed, covered_seconds,
+        response_ms_sum, response_ms_max)
+     values ($1, $2, $3, 1, $4, $5, $6, $7)
+     on conflict (monitor_id, hour_start) do update set
+       checks = monitor_check_hourly.checks + 1,
+       passed = monitor_check_hourly.passed + excluded.passed,
+       covered_seconds = monitor_check_hourly.covered_seconds + excluded.covered_seconds,
+       response_ms_sum = monitor_check_hourly.response_ms_sum + excluded.response_ms_sum,
+       response_ms_max = greatest(monitor_check_hourly.response_ms_max, excluded.response_ms_max)`,
+    [
+      input.monitorId,
+      input.tenantId,
+      hourStart,
+      result.outcome === "pass" ? 1 : 0,
+      input.intervalSeconds,
+      responseMs ?? 0,
+      responseMs,
+    ],
+  );
 }
 
 async function insertResult(

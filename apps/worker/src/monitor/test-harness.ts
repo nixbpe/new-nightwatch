@@ -226,6 +226,8 @@ export async function seedMonitor(
 export type Target = {
   url: string;
   port: number;
+  /** Replaces the response behavior for later requests. */
+  setHandler(handler: TargetHandler): void;
   requests: {
     method: string;
     url: string;
@@ -234,16 +236,19 @@ export type Target = {
   close(): Promise<void>;
 };
 
+type TargetHandler = (
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+) => void;
+
 /** Local HTTP target on 127.0.0.1; reached through the stub resolver only. */
 export async function startTarget(
-  handler: (
-    request: http.IncomingMessage,
-    response: http.ServerResponse,
-  ) => void = (_request, response) => {
+  initial: TargetHandler = (_request, response) => {
     response.statusCode = 200;
     response.end("ok");
   },
 ): Promise<Target> {
+  let handler = initial;
   const requests: Target["requests"] = [];
   const server = http.createServer((request, response) => {
     requests.push({
@@ -259,6 +264,9 @@ export async function startTarget(
   return {
     url: `http://${TARGET_HOST}:${String(port)}`,
     port,
+    setHandler(next) {
+      handler = next;
+    },
     requests,
     close: () =>
       new Promise<void>((resolve) => {
