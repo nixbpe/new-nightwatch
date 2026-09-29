@@ -125,7 +125,7 @@ export function MemberActionDialog({
         <p role="status" className="mt-3 text-sm text-foreground-secondary">
           {pending ? pendingLabel : null}
         </p>
-        <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
             ref={cancel}
             type="button"

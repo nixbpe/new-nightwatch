@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type RefObject,
 } from "react";
 
 import { textInputClass } from "../../components/ui";
@@ -54,6 +55,7 @@ export function useMemberRoleChange({
   actorRole,
   actorUserId,
   listSettled,
+  headingRef,
   refetchList,
   refreshMembershipContext,
 }: {
@@ -61,6 +63,8 @@ export function useMemberRoleChange({
   actorRole: ActorRole;
   actorUserId: string | undefined;
   listSettled: boolean;
+  /** The dialog parks focus here when its opener unmounts with the table. */
+  headingRef: RefObject<HTMLElement | null>;
   refetchList: () => Promise<{
     data?: OrganizationMemberListResponse;
     isError: boolean;
@@ -131,12 +135,13 @@ export function useMemberRoleChange({
       return;
     }
     focusMemberId.current = null;
-    if (document.activeElement !== document.body) return;
+    const active = document.activeElement;
+    if (active !== document.body && active !== headingRef.current) return;
     const control = Array.from(
       document.querySelectorAll<HTMLElement>(`[${MEMBER_SELECT_ATTRIBUTE}]`),
     ).find((element) => element.dataset.memberRoleSelect === memberId);
     control?.focus();
-  }, [isCurrentScope, listSettled, pending]);
+  }, [headingRef, isCurrentScope, listSettled, pending]);
 
   async function submit(member: OrganizationMember, role: OrganizationRole) {
     if (inFlight.current || !isCurrentScope()) return;

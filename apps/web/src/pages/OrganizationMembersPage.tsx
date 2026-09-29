@@ -83,6 +83,7 @@ function OrganizationMembersPageForOrganization({
     actorRole,
     actorUserId: me?.user.id,
     listSettled: !list.isFetching && list.data !== undefined,
+    headingRef: memberPageHeadingRef,
     refetchList,
     refreshMembershipContext,
   });

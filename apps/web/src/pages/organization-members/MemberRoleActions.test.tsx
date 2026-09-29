@@ -7,7 +7,13 @@ import type {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
@@ -128,8 +134,15 @@ afterEach(() => vi.resetAllMocks());
 
 function Harness() {
   const { switchOrg } = useTenant();
+  const navigate = useNavigate();
   return (
     <>
+      <button
+        type="button"
+        onClick={() => void navigate(`/organizations/${B}/members`)}
+      >
+        navigate B
+      </button>
       <button type="button" onClick={() => void switchOrg(B)}>
         confirm B
       </button>
@@ -243,6 +256,9 @@ it("traps Tab inside the dialog and confirms with one PATCH", async () => {
     "owner",
   );
   expect(screen.queryByRole("dialog")).toBeNull();
+  // The table reloads behind the dialog; focus must land on a live control.
+  await waitFor(() => expect(roleSelect("Ann")).toHaveFocus());
+  expect(document.body).not.toHaveFocus();
 });
 
 it("shows admins no controls for owners and no owner option elsewhere", async () => {
@@ -310,6 +326,15 @@ it("explains LAST_OWNER, refreshes the latest roles and shows no success", async
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   expect(listCalls).toEqual([A, A]);
   expect(pillFor("Boss")).toHaveTextContent("เจ้าของ");
+  // Focus stays on the member's own controls (opener or its select).
+  await waitFor(() => {
+    expect(
+      screen
+        .getByRole("row", { name: /Boss/ })
+        .contains(document.activeElement),
+    ).toBe(true);
+  });
+  expect(document.body).not.toHaveFocus();
 });
 
 it("reports a persisted role that differs from the requested one instead of success", async () => {
@@ -366,36 +391,65 @@ it("shows no success when an owner demotes themselves and loses list access", as
   expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
 });
 
-it("drops a late A role response after a confirmed switch to B", async () => {
-  const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
-  vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
-  vi.mocked(updateActiveOrganization).mockResolvedValue({
-    ...contextFor("owner"),
-    lastActiveTenantId: B,
-  });
-  const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "owner");
-  await user.click(save("Ann"));
-  await user.click(
-    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
-  );
-  expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
-  await user.click(screen.getByRole("button", { name: "confirm B" }));
-  await waitFor(() => {
-    expect(updateActiveOrganization).toHaveBeenCalled();
-  });
-  await waitFor(() => {
+it.each(["success", "LAST_OWNER"] as const)(
+  "keeps B role, action and notice untouched by a late A %s response",
+  async (outcome) => {
+    const pending =
+      Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+    vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
+    vi.mocked(updateActiveOrganization).mockResolvedValue({
+      ...contextFor("owner"),
+      lastActiveTenantId: B,
+    });
+    const user = await renderAs("owner");
+    await user.selectOptions(roleSelect("Ann"), "owner");
+    await user.click(save("Ann"));
+    await user.click(
+      screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
+    );
+    expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "confirm B" }));
+    await waitFor(() => {
+      expect(updateActiveOrganization).toHaveBeenCalled();
+    });
+    await user.click(screen.getByRole("button", { name: "navigate B" }));
+    await screen.findByText("Bea");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    const listCallsBeforeLateResponse = [...listCalls];
+    expect(listCallsBeforeLateResponse.filter((id) => id === B)).toHaveLength(
+      1,
+    );
+    await act(async () => {
+      if (outcome === "success") {
+        pending.resolve({
+          member: {
+            id: "member-ann",
+            userId: "user-ann",
+            organizationId: A,
+            role: "owner",
+          },
+        });
+      } else {
+        pending.reject(new ApiError("LAST_OWNER", "late", 400));
+      }
+      await pending.promise.catch(() => undefined);
+    });
+    expect(pillFor("Bea")).toHaveTextContent("ผู้ชม");
+    expect(roleSelect("Bea")).toBeEnabled();
+    expect(save("Bea")).toBeDisabled();
+    await user.selectOptions(roleSelect("Bea"), "auditor");
+    expect(save("Bea")).toBeEnabled();
+    // Only the harness's own location output may carry a status role.
+    expect(
+      screen
+        .queryAllByRole("status")
+        .filter((element) => !element.hasAttribute("data-testid")),
+    ).toEqual([]);
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
-  });
-  const callsBefore = listCalls.length;
-  await act(async () => {
-    pending.reject(new ApiError("LAST_OWNER", "late", 400));
-    await pending.promise.catch(() => undefined);
-  });
-  expect(screen.queryByText(/องค์กรต้องมีเจ้าของ/)).toBeNull();
-  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
-  expect(screen.queryByRole("dialog")).toBeNull();
-  // No A refetch or notice after the switch; the page's A scope is retired.
-  expect(listCalls.length).toBe(callsBefore);
-  expect(listCalls.filter((id) => id === A).length).toBe(callsBefore);
-});
+    expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
+    expect(listCalls).toEqual(listCallsBeforeLateResponse);
+  },
+);
