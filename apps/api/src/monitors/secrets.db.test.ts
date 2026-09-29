@@ -898,7 +898,8 @@ describe("Test in Edit reads (R13-01, R13-02, quota)", () => {
 
   it("reports secret_decrypt_failed even when the stored URL is a blocked address", async () => {
     const monitor = await created(bearer());
-    const blocked = `http://${STUB_HOSTS.internal}:8080/x`;
+    // An IP literal: the URL is refused before the request needs the secret.
+    const blocked = "http://10.0.0.5:8080/x";
     await ctx.owner.sql.query("update monitors set url = $2 where id = $1", [
       monitor.id,
       blocked,

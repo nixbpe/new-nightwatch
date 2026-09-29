@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkMonitorUrl,
+  canonicalSecretSlot,
   monitorConfigSchema,
   monitorCreateSchema,
   monitorEditSchema,
@@ -626,6 +627,22 @@ describe("secret entries", () => {
         created({ secrets: [{ slot: "auth.token", value: "é".repeat(2049) }] }),
       ),
     ).toEqual([{ path: "secrets.0.value", reason: "too_long" }]);
+  });
+
+  it("rejects a slot in the wrong case and canonicalizes a header UUID", () => {
+    const slots = (...names: string[]) =>
+      failures(
+        created({
+          secrets: names.map((slot) => ({ slot, value: "v" })),
+        }),
+      ).filter((failure) => failure.reason === "invalid_format");
+    expect(slots("AUTH.TOKEN")).toHaveLength(1);
+    expect(slots(`Header.${id}`)).toHaveLength(1);
+    expect(slots(`header.${id.toUpperCase()}`)).toEqual([]);
+    expect(canonicalSecretSlot(`header.${id.toUpperCase()}`)).toBe(
+      `header.${id}`,
+    );
+    expect(canonicalSecretSlot("auth.apiKey")).toBe("auth.apiKey");
   });
 
   it("requires a client-chosen id for a secret header", () => {

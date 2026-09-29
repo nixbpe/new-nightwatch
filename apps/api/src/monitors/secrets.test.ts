@@ -72,6 +72,15 @@ describe("assertSameOrigin (AC-44)", () => {
     }).not.toThrow();
   });
 
+  it("compares the origin of a forbidden address instead of calling it changed", () => {
+    expect(origins("http://10.0.0.5:8080/a", "http://10.0.0.5:8080/b")).toBe(
+      "same",
+    );
+    expect(origins("http://10.0.0.5:8080/", "http://10.0.0.6:8080/")).toBe(
+      "changed",
+    );
+  });
+
   it("treats a URL the executor would refuse as changed, never as safe", () => {
     expect(origins("https://a.example/", "https://user:pw@a.example/")).toBe(
       "changed",

@@ -121,7 +121,11 @@ function originOf(config: {
   queryParams: { name: string; value: string }[];
 }): string | null {
   const built = buildCheckUrl(config.url, config.queryParams);
-  return built.ok ? built.url.origin : null;
+  if (built.ok) return built.url.origin;
+  // A forbidden address is a result of the check, not a different origin.
+  return built.reason === "blocked_address" && URL.canParse(config.url)
+    ? new URL(config.url).origin
+    : null;
 }
 
 /** A path or query change keeps the origin; anything unparsable counts as changed. */
