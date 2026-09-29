@@ -37,11 +37,11 @@ Load the listed skills before acting on the intent; if one cannot be loaded, sto
 |---|---|---|
 | `answer` | Answer from repository evidence; do not dispatch. | none |
 | `design` | Produce the decision or proposal; dispatch only if implementation is requested too. | skill:`technical-spec` |
-| `implement` | Split application behavior, API, UI, schema, migration or tests for agent:`software-engineer`. | skill:`technical-spec`, skill:`delivery-orchestration` |
-| `platform` | Split environment, CI/CD, container, infrastructure, secrets or observability work for agent:`platform-engineer`. | skill:`technical-spec`, skill:`delivery-orchestration` |
-| `validate` | Take an existing change to merge-ready. | skill:`delivery-orchestration` |
-| `release` | Prepare a release or deployment of a merge-ready change. | skill:`release-preparation` |
-| `repair` | Triage findings, then split and route repairs. | skill:`delivery-orchestration`, plus skill:`release-preparation` when a candidate is bound |
+| `implement` | Split application behavior, API, UI, schema, migration or tests for agent:`software-engineer`. | skill:`technical-spec`, skill:`task-delegation` |
+| `platform` | Split environment, CI/CD, container, infrastructure, secrets or observability work for agent:`platform-engineer`. | skill:`technical-spec`, skill:`task-delegation` |
+| `validate` | Take an existing change to merge-ready. | skill:`task-delegation` |
+| `release` | Prepare a release or deployment of a merge-ready change. | skill:`prepare-release` |
+| `repair` | Triage findings, then split and route repairs. | skill:`task-delegation`, plus skill:`prepare-release` when a candidate is bound |
 | `stop` | Run the Stop protocol below. | none |
 | `unclear` | Ask one bounded question, then gate again. | none |
 
@@ -55,8 +55,8 @@ Load the listed skills before acting on the intent; if one cannot be loaded, sto
 ## How work finishes
 
 - `review-ready`: built, with the changed behavior checked (including required DB/RLS and security checks) and each check reported as passed, failed or not run. Ready for human review only.
-- `merge-ready`: also reviewed once and green on the PR CI gates (skill:`delivery-orchestration` step 5). Not release-ready.
-- `release-ready`: only through the `release` intent (skill:`release-preparation`).
+- `merge-ready`: also reviewed once and green on the PR CI gates (skill:`task-delegation` step 5). Not release-ready.
+- `release-ready`: only through the `release` intent (skill:`prepare-release`).
 
 ## Stop protocol
 

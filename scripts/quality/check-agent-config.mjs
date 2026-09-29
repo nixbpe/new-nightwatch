@@ -187,7 +187,7 @@ for (const entry of await readdir(path.join(claude, "skills"), {
   }
 }
 // Flows wire agents and skills together; worker agents and leaf skills name neither.
-const flowSkills = new Set(["delivery-orchestration"]);
+const flowSkills = new Set(["task-delegation"]);
 for (const name of skillNames) {
   const skillSource = await readFile(
     path.join(claude, "skills", name, "SKILL.md"),

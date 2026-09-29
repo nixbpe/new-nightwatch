@@ -17,7 +17,7 @@ The approved spec is the source of truth for implementation and review. Workers 
 1. Start from a Feature whose scope the user approved and whose Acceptance matrix is `draft` with the Product Owner's behavior rows. If its UI flow is unclear, ask agent:`ux-designer`.
 2. Copy file:`docs/templates/spec.md` to `docs/features/<Feature>/spec.md`.
 3. Fill in the contracts (API, data and RLS, jobs). Check the architecture drivers below for any new contract, table, queue or dependency. Add the technical rows to the Feature's Acceptance matrix (see Acceptance freeze).
-4. Outline the Tasks per skill:`delivery-orchestration` and map every AC to a Task.
+4. Outline the Tasks per skill:`task-delegation` and map every AC to a Task.
 5. List open decisions, then ask the user to approve the spec. Do not dispatch without approval and a start authorization from the user (approval alone does not start work). On approval, freeze acceptance (see below).
 
 ## Rules

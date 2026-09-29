@@ -1,10 +1,10 @@
 ---
-name: release-preparation
+name: prepare-release
 description: Separate flow that takes a merged or merge-ready change to release-ready - target environment checks, deploy readiness evidence, candidate binding, the full release gates and a final delta review. Used only when the user asks to prepare a release or deployment.
 argument-hint: "<Feature id, PR number or URL>"
 ---
 
-# Release Preparation
+# Prepare Release
 
 ## What this is for
 
@@ -53,7 +53,7 @@ Final delta review of a frozen candidate checks only that the candidate matches 
 
 ## 4. Repair and cap
 
-Batch all findings and failed gates, repair with the focused checks in skill:`delivery-orchestration` step 5, rerun only the failed gates, and never send a candidate with a red gate to final review. Allow one repair cycle and one final delta review; a reproducible Blocker or Major found there gets a second and last cycle. Minor issues become follow-ups, and a new requirement goes through the After freeze rules in skill:`technical-spec`. When the cap is used up, stop and give the user the evidence and the decision needed.
+Batch all findings and failed gates, repair with the focused checks in skill:`task-delegation` step 5, rerun only the failed gates, and never send a candidate with a red gate to final review. Allow one repair cycle and one final delta review; a reproducible Blocker or Major found there gets a second and last cycle. Minor issues become follow-ups, and a new requirement goes through the After freeze rules in skill:`technical-spec`. When the cap is used up, stop and give the user the evidence and the decision needed.
 
 ## 5. Done
 

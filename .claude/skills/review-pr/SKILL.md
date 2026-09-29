@@ -5,7 +5,7 @@ argument-hint: "<PR number or URL>"
 disable-model-invocation: true
 ---
 
-Use skill:`delivery-orchestration`, skill:`code-review-and-quality` and skill:`git-workflow`.
+Use skill:`task-delegation`, skill:`code-review-and-quality` and skill:`git-workflow`.
 
 Run in a main session started as agent:`tech-lead` (`claude --agent tech-lead`): read the PR, gate its evidence against file:`.github/PULL_REQUEST_TEMPLATE.md`, dispatch agent:`code-reviewer`, triage, route repairs and decide merge-ready. Never edit code, run project commands or merge.
 
@@ -35,7 +35,7 @@ All on the same head commit:
 - Record head SHA, base branch, changed paths and the linked issue. A PR with no code edit needs no code review per file:`AGENTS.md`; still check template, CI and docs claims.
 - Blocker evidence gaps: a missing section; a gate without a result; a gate not run on the head SHA; a requirement in the Evidence table without a check and result; a UI change without both-theme desktop (1440×900) screenshots; an e2e-affecting change without a local e2e result. A narrow-screen or text-zoom observation from any reviewer (agent:`code-reviewer`, Codex or a human) is a follow-up filed as an issue, never a Blocker or Major, unless an accepted AC names that size or zoom.
 - Gate results: read the result and notes only; do not ask for command output or rerun what CI ran (trust PR CI on the head). Check e2e and UI claims against the attached output, trace or screenshots.
-- Do not ask for binding or manifest digests, environment slot names or cleanup narration in the PR; they belong to skill:`release-preparation`. Evidence longer than the What changed section, or a Gates table with rows the template does not list, is a Minor: ask for the cut in the next repair round.
+- Do not ask for binding or manifest digests, environment slot names or cleanup narration in the PR; they belong to skill:`prepare-release`. Evidence longer than the What changed section, or a Gates table with rows the template does not list, is a Minor: ask for the cut in the next repair round.
 - The body must read for a technical manager who did not follow the work: internal IDs expanded on first use, no agent, binding or handoff vocabulary, Risks limited to product and operational risk. A body that fails this is a Minor, repaired in the next round.
 - Database-touching gates count only when run through `scripts/dev-env.mjs` per file:`scripts/quality/README.md` (author checklist); an ambient-database claim is not evidence.
 
@@ -51,7 +51,7 @@ All on the same head commit:
 2. Route on the PR branch with disjoint ownership: application, API, UI, schema, tests and PR-body updates → agent:`software-engineer` via command:`/build` with `NODE-<id>`; CI, containers, environment, secrets → agent:`platform-engineer`. Each Task names `OWNER`, `FILES`, `NON-GOALS`, `VERIFY`, `PROOF` and the finding IDs it closes. Workers run focused checks, rerun the failed gates, update the gate results and evidence in the PR body, and push.
 3. After the push, comment `@codex review` followed by the addressed finding IDs and the commit SHA, one per line.
 4. Wait without polling: `gh pr checks <n> --watch --fail-fast` with a finite timeout, then one timed wait for the Codex summary on the new head. A timeout is not a failure: inspect once, then use the result, wait once more, or report the runtime limit.
-5. Re-review only the delta with agent:`code-reviewer` (final review per skill:`delivery-orchestration` step 5): prior findings closed against their evidence, no new regression, PR body matches the head.
+5. Re-review only the delta with agent:`code-reviewer` (final review per skill:`task-delegation` step 5): prior findings closed against their evidence, no new regression, PR body matches the head.
 
 ### 4. Decide and record
 

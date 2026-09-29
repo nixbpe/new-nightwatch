@@ -5,7 +5,7 @@ argument-hint: "<issue URL or number>"
 disable-model-invocation: true
 ---
 
-Use skill:`delivery-orchestration` and skill:`git-workflow`.
+Use skill:`task-delegation` and skill:`git-workflow`.
 
 Run this command in a main session started as agent:`tech-lead` (`claude --agent tech-lead`); workers have no `Agent` tool and cannot dispatch it. The Technical Lead reads the issue, writes the Technical Spec, splits and dispatches Tasks, reviews and decides, and never edits code. Workers implement, run checks and commit; agent:`software-engineer` as integration owner pushes and opens the PR.
 

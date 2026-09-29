@@ -1,9 +1,9 @@
 ---
-name: worker-coordination
+name: worker-handoff
 description: Shared-output, handover and takeover rules for the software-engineer and platform-engineer workers. Loaded by those workers when assigned; the main session and the Technical Lead do not use it.
 ---
 
-# Worker Coordination
+# Worker Handoff
 
 ## What this is for
 
