@@ -718,6 +718,59 @@ describe("TLS verification", () => {
     expect(notAfter).toBeLessThan(Date.now() + 31 * 86_400_000);
   });
 
+  it("reports the request hostname of a single hop", async () => {
+    const server = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/", "https")),
+      deps(),
+    );
+    expect(result.tls?.host).toBe(TARGET_HOST);
+  });
+
+  it("reports the host of the final hop after a cross-host redirect", async () => {
+    const last = await serve({
+      tls: pki.leaf.wrongName,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const first = await serve({
+      tls: pki.leaf.good,
+      onRequest: ({ socket }) => {
+        respond(socket, "302 Found", {
+          Location: at(last, "/", "https", OTHER_HOST),
+          "Content-Length": "0",
+        });
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(first, "/", "https")),
+      deps(),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.tls?.host).toBe(OTHER_HOST);
+  });
+
+  it("names the failing host in a tls_invalid result", async () => {
+    const server = await serve({
+      tls: pki.leaf.wrongName,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/", "https")),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("tls_invalid");
+    expect(result.tls?.host).toBe(TARGET_HOST);
+  });
+
   it("reports the certificate of the last hop after a redirect", async () => {
     const last = await serve({
       tls: pki.leaf.good,

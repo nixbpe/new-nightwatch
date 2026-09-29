@@ -125,7 +125,7 @@ export interface CheckResult {
   url: string;
   evaluatedFromPrefix: boolean;
   /** Certificate facts of the last hop, for the SSL state; null for http or no handshake. */
-  tls: { issuer: string | null; notAfter: Date | null } | null;
+  tls: { host: string; issuer: string | null; notAfter: Date | null } | null;
 }
 
 const CHECK_ERROR_REASONS: ReadonlySet<CheckFailureReason> = new Set([

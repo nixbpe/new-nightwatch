@@ -41,6 +41,8 @@ export interface OutboundRequest {
 }
 
 export interface OutboundTls {
+  /** Hostname of the hop whose certificate was read: lowercase, no port, never a resolved address. */
+  host: string;
   reason: TlsReason | null;
   issuer: string | null;
   notAfter: Date | null;
@@ -157,6 +159,7 @@ function classifyConnectError(
   error: unknown,
   secure: boolean,
   tcpConnected: boolean,
+  host: string,
 ): OutboundError {
   if (error instanceof OutboundError) return error;
   const code = errorCode(error);
@@ -170,6 +173,7 @@ function classifyConnectError(
       : tlsReasonFor(code);
   if (tlsReason) {
     return new OutboundError("tls_invalid", tlsReason, {
+      host,
       reason: tlsReason,
       issuer: null,
       notAfter: null,
@@ -181,6 +185,7 @@ function classifyConnectError(
   }
   if (secure && tcpConnected) {
     return new OutboundError("tls_invalid", "handshake_failed", {
+      host,
       reason: "handshake_failed",
       issuer: null,
       notAfter: null,
@@ -301,7 +306,10 @@ function connectOnce(
       const onError = (error: unknown) => {
         const connected = tcpConnected || socket.remoteAddress !== undefined;
         socket.destroy();
-        settle(reject, classifyConnectError(error, secure, connected));
+        settle(
+          reject,
+          classifyConnectError(error, secure, connected, url.hostname),
+        );
       };
       // Connection-time check: the socket must be on the address that was validated.
       const remoteMatches = (): boolean => {
@@ -341,6 +349,7 @@ function connectOnce(
           settle(resolve, {
             socket,
             tls: {
+              host: url.hostname,
               reason: null,
               issuer: (Array.isArray(issuer) ? issuer[0] : issuer) ?? null,
               notAfter:

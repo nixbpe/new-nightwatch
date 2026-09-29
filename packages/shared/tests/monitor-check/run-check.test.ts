@@ -265,6 +265,7 @@ describe("no response (AC-32) and classification (AC-10)", () => {
     );
     expect(result.outcome).toBe("pass");
     expect(result.tls?.issuer).toBe("NW Test");
+    expect(result.tls?.host).toBe(TARGET_HOST);
     expect(result.tls?.notAfter).toBeInstanceOf(Date);
   });
 });

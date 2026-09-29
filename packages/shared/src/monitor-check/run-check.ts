@@ -171,7 +171,11 @@ export async function runCheck(
     deps,
   );
   const tls = sent.tls
-    ? { issuer: sent.tls.issuer, notAfter: sent.tls.notAfter }
+    ? {
+        host: sent.tls.host,
+        issuer: sent.tls.issuer,
+        notAfter: sent.tls.notAfter,
+      }
     : null;
 
   if (!sent.ok || !sent.response) {
