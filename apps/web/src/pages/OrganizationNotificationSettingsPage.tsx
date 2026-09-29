@@ -198,7 +198,8 @@ function OrganizationNotificationSettingsForOrganization({
             <span className="block font-medium">แจ้งเตือนมอนิเตอร์</span>
             <span className="text-sm text-foreground-secondary">
               เจ้าของและผู้ดูแลจะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม
-              และเมื่อกลับมาทำงานหลังจากที่แจ้งว่าล่มแล้ว
+              กลับมาทำงานหลังจากที่แจ้งว่าล่มแล้ว และเมื่อใบรับรอง SSL
+              ใกล้หมดอายุหรือหมดอายุ
             </span>
           </span>
         </label>

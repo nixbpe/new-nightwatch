@@ -390,6 +390,35 @@ describe("SSL notifications (AC-36)", () => {
     ]);
   });
 
+  it("alerts off sends no SSL notification but advances the level, so re-enabling sends only a later, more severe one", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await db.owner.sql.query(
+      `insert into notification_org_settings (tenant_id, monitor_alerts_enabled)
+       values ($1, false)`,
+      [monitor.tenantId],
+    );
+    await record(monitor, certResult(notAfter, daysBefore(30)));
+    await record(monitor, certResult(notAfter, daysBefore(7)));
+    expect(await intentTypes(monitor)).toEqual([]);
+    const [advanced] = await rows<{ ssl_notified_level: string }>(
+      db,
+      monitor,
+      "select ssl_notified_level from monitors where id = $1",
+      [monitor.monitorId],
+    );
+    expect(advanced?.ssl_notified_level).toBe("danger");
+
+    await db.owner.sql.query(
+      "update notification_org_settings set monitor_alerts_enabled = true where tenant_id = $1",
+      [monitor.tenantId],
+    );
+    await record(monitor, certResult(notAfter, daysBefore(6)));
+    expect(await intentTypes(monitor)).toEqual([]);
+    await record(monitor, expiredResult(daysBefore(0, 1_000)));
+    expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_EXPIRED"]);
+  });
+
   it("a renewal sends nothing and a later threshold crossing of the new certificate sends again", async () => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
