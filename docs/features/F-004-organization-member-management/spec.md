@@ -149,3 +149,13 @@ Issue [#13](https://github.com/nixbpe/new-nightwatch/issues/13) authorizes this 
 | `ISSUE-13-REVOKE` | **OWNER:** `software-engineer` (integration owner). **READY:** node 03 merged, `MemberActionDialog` and member page present. **OUTCOME:** confirmed revoke via existing DELETE, scoped list/context refresh, revoked-session denial on next A request. **SOURCE:** #13, `F-004-AC-2` AC-04 (revoke), AC-11, AC-12, AC-15 (revoke), AC-16-AC-17 (revoke); `specs/04-revoke.md`. **FILES:** as in `specs/04-revoke.md`. **NON-GOALS:** delete user, revoke invitation, cross-tab sync, self-leave. **VERIFY/PROOF:** as in `specs/04-revoke.md`. **COMMIT_MODE:** `owned-slice`. |
 
 No new open decision.
+
+## Issue #14 execution addendum: `NODE-F004-05`
+
+Issue [#14](https://github.com/nixbpe/new-nightwatch/issues/14) authorizes this node only, with `COMMIT_MODE: owned-slice` and `STOP_AT: merge-ready`. This authorization supersedes the legacy `COMMIT_MODE: none` and no-start statements above and in [`specs/05-self-leave.md`](specs/05-self-leave.md) only for issue #14; it does not authorize deployment, release or integrated verification. `F-004-AC-2` remains frozen; `NODE-F004-04` (PR #46) is merged. Contracts, shared-file policy and `specs/05-self-leave.md` are authoritative for behavior.
+
+| Task | Definition |
+| --- | --- |
+| `ISSUE-14-LEAVE` | **OWNER:** `software-engineer` (integration owner). **READY:** node 04 merged; revoke transition, `MemberActionDialog` and member page present. **OUTCOME:** confirmed self-leave via existing `DELETE /members/me` for every role including viewer/auditor without a member list; server-confirmed active Organization or no-access afterwards. **SOURCE:** #14, `F-004-AC-2` AC-02 (self-leave entry), AC-04 (leave), AC-13, AC-14, AC-15 (leave), AC-16-AC-17 (leave); `specs/05-self-leave.md`. **FILES:** as in `specs/05-self-leave.md`. **NON-GOALS:** sign-out, delete account, cross-tab sync, background task, schema or RLS change. **VERIFY/PROOF:** as in `specs/05-self-leave.md`. **COMMIT_MODE:** `owned-slice`. |
+
+No new open decision.
