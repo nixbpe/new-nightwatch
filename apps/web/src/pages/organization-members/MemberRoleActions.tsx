@@ -220,7 +220,7 @@ export function useMemberRoleChange({
     // role; refresh only when the actor changed themselves or their row moved.
     if (
       !refreshed.isError &&
-      (member.userId === actorUserId ||
+      ((member.userId === actorUserId && failure === null) ||
         (currentActor !== undefined && currentActor.role !== actorRole))
     ) {
       await refreshMembershipContext();

@@ -181,6 +181,12 @@ const pillFor = (name: string) =>
   screen
     .getByRole("row", { name: new RegExp(name) })
     .querySelector('[data-slot="status-pill"]');
+// The submit finishes after its refresh branch: pending text gone, control enabled.
+const submitSettled = (name: string) =>
+  waitFor(() => {
+    expect(screen.queryByText(/กำลังบันทึกบทบาทของ/)).toBeNull();
+    expect(roleSelect(name)).toBeEnabled();
+  });
 const save = (name: string) =>
   screen.getByRole("button", { name: `บันทึกบทบาทของ ${name}` });
 const roleSelect = (name: string) =>
@@ -630,6 +636,39 @@ it("does not refresh membership context when another member changes on a page wi
   await user.selectOptions(roleSelect("Ann"), "auditor");
   await user.click(save("Ann"));
   expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  await submitSettled("Ann");
+  expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
+});
+
+it("refreshes membership context when another member changes and the actor's listed role differs", async () => {
+  const user = await renderAs("owner");
+  const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
+  // Another session demoted the actor; the refetched list shows the new role.
+  roles["member-me"] = "admin";
+  await user.selectOptions(roleSelect("Ann"), "auditor");
+  await user.click(save("Ann"));
+  await waitFor(() => {
+    expect(vi.mocked(fetchMeContext).mock.calls.length).toBeGreaterThan(
+      contextFetches,
+    );
+  });
+});
+
+it("does not refresh membership context when the actor's own role change fails", async () => {
+  vi.mocked(updateOrganizationMemberRole).mockRejectedValue(
+    new ApiError("LAST_OWNER", "last", 400),
+  );
+  const user = await renderAs("owner");
+  const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
+  await user.selectOptions(roleSelect("Me"), "admin");
+  await user.click(save("Me"));
+  await user.click(
+    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
+  );
+  expect(
+    await screen.findByText(/องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน/),
+  ).toBeInTheDocument();
+  await submitSettled("Me");
   expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
 });
 
