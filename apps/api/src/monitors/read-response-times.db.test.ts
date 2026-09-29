@@ -233,17 +233,43 @@ describe("7 d and 30 d", () => {
     );
   });
 
-  it("reports a pause inside the range; the paused hours stay null", async () => {
+  it("reports a pause inside the range; the paused hours stay null while measured hours keep their values", async () => {
     const id = await seedMonitor(ctx, org.id);
     await seedEvent(ctx, org.id, id, "paused", 5 * 3600);
     await seedEvent(ctx, org.id, id, "resumed", 3 * 3600);
+    await seedHourly(ctx, org.id, id, [10], {
+      checks: 12,
+      passed: 12,
+      coveredSeconds: 3600,
+      responseChecks: 12,
+      responseMsSum: 1200,
+      responseMsMax: 150,
+    });
     const week = await series(id, "7d");
     expect(week.pauses).toHaveLength(1);
     expect(
       seconds(week.pauses[0]?.from ?? "", week.pauses[0]?.to ?? ""),
     ).toBeCloseTo(2 * 3600, -1);
     if (week.range !== "7d") throw new Error("expected the 7 d shape");
-    expect(week.buckets.every((bucket) => bucket.avgMs === null)).toBe(true);
+    const hour = await currentHour();
+    const measured = week.buckets.filter((bucket) => bucket.avgMs !== null);
+    expect(measured).toEqual([
+      {
+        hourStart: new Date(hour - 10 * 3_600_000).toISOString(),
+        avgMs: 100,
+        maxMs: 150,
+        checks: 12,
+      },
+    ]);
+    for (const hoursAgo of [3, 4, 5]) {
+      expect(
+        week.buckets.find(
+          (bucket) =>
+            bucket.hourStart ===
+            new Date(hour - hoursAgo * 3_600_000).toISOString(),
+        ),
+      ).toMatchObject({ avgMs: null, maxMs: null, checks: 0 });
+    }
   });
 });
 

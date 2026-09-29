@@ -172,17 +172,35 @@ describe("computeSsl", () => {
     });
   });
 
-  it("ignores the recorded level when the expiry is known", () => {
+  it("ignores a recorded date-derived level when the expiry is known", () => {
     expect(
       computeSsl({ ...base, state: "danger", notAfter: after(90 * DAY) }, now)
         .level,
     ).toBe("ok");
   });
 
+  it.each(["unreadable", "not_https"] as const)(
+    "reports %s as recorded even though an old expiry is kept",
+    (state) => {
+      expect(
+        computeSsl(
+          {
+            ...base,
+            state,
+            reason: "handshake_failed",
+            notAfter: after(60 * DAY),
+          },
+          now,
+        ),
+      ).toEqual({ level: state, daysRemaining: null });
+    },
+  );
+
   it.each([
     ["expired", "expired"],
     ["not_https", "not_https"],
     ["unreadable", "unreadable"],
+    ["no_data", "no_data"],
     [null, "no_data"],
     ["ok", "no_data"],
   ] as const)("without an expiry, state %s is %s", (state, level) => {

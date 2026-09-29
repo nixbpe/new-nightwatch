@@ -155,6 +155,7 @@ describe("List: order and summary", () => {
       "?limit=51",
       "?offset=-1",
       "?health=healthy",
+      "?q=%00",
       `?q=${"x".repeat(201)}`,
     ]) {
       const response = await ctx.call(
@@ -275,6 +276,37 @@ describe("List: SSL level", () => {
     });
   });
 
+  it("reports an unreadable certificate as recorded although an old expiry is kept", async () => {
+    const id = await seedMonitor(ctx, sslOrg.id, {
+      name: "unreadable with kept expiry",
+      sslHost: "ssl.example",
+      sslNotAfterInSeconds: 60 * DAY,
+      sslState: "unreadable",
+      sslReason: "handshake_failed",
+    });
+    const item = (await list(sslOrg)).monitors.find((m) => m.id === id);
+    expect(item?.ssl).toEqual({
+      level: "unreadable",
+      daysRemaining: null,
+      host: "ssl.example",
+    });
+  });
+
+  it("reports an expired handshake without a date as expired with no days", async () => {
+    const id = await seedMonitor(ctx, sslOrg.id, {
+      name: "expired without date",
+      sslHost: "ssl.example",
+      sslState: "expired",
+      sslReason: "expired",
+    });
+    const item = (await list(sslOrg)).monitors.find((m) => m.id === id);
+    expect(item?.ssl).toEqual({
+      level: "expired",
+      daysRemaining: null,
+      host: "ssl.example",
+    });
+  });
+
   it("reports the recorded state without an expiry date", async () => {
     const cases = [
       ["no data", null, "no_data"],
@@ -357,12 +389,12 @@ describe("Recent events", () => {
     expect(response.status).toBe(200);
     const body = monitorRecentEventsResponseSchema.parse(response.json);
     expect(body.events.map((event) => [event.kind, event.monitorId])).toEqual([
-      ["ssl_level", ssl],
       ["incident_opened", opened],
       ["incident_closed", closed],
       ["incident_opened", closed],
+      ["ssl_level", ssl],
     ]);
-    const [sslEvent, openedEvent, closedEvent] = body.events;
+    const [openedEvent, closedEvent, , sslEvent] = body.events;
     expect(sslEvent).toMatchObject({
       sslLevel: "danger",
       daysRemaining: 5,
@@ -419,6 +451,90 @@ describe("Recent events", () => {
       monitorRecentEventsResponseSchema.parse((await get("?limit=20")).json)
         .events,
     ).toHaveLength(20);
+  });
+});
+
+describe("Recent events: SSL levels", () => {
+  const DAY = 86_400;
+  const get = async (org: TestOrganization) => {
+    const response = await ctx.call(
+      org.users.owner,
+      "GET",
+      monitorsPath(org.id, "/recent-events"),
+    );
+    expect(response.status).toBe(200);
+    return monitorRecentEventsResponseSchema.parse(response.json).events;
+  };
+
+  it("does not emit an SSL level for an unreadable certificate", async () => {
+    const org = await ctx.createOrganization("read-events-unreadable");
+    await seedMonitor(ctx, org.id, {
+      name: "unreadable",
+      sslHost: "ssl.example",
+      sslNotAfterInSeconds: 5 * DAY,
+      sslState: "unreadable",
+      sslReason: "handshake_failed",
+    });
+    expect(await get(org)).toEqual([]);
+  });
+
+  it("lists an expired certificate without a date, with no daysRemaining", async () => {
+    const org = await ctx.createOrganization("read-events-expired");
+    const id = await seedMonitor(ctx, org.id, {
+      name: "expired no date",
+      sslState: "expired",
+      sslReason: "expired",
+      lastCheckAgoSeconds: 90,
+    });
+    const [event, ...rest] = await get(org);
+    expect(rest).toEqual([]);
+    expect(event).toMatchObject({
+      kind: "ssl_level",
+      monitorId: id,
+      sslLevel: "expired",
+    });
+    expect(event).not.toHaveProperty("daysRemaining");
+  });
+
+  it("stamps a level with the time it was entered, so ten cautions do not crowd out a fresh incident", async () => {
+    const org = await ctx.createOrganization("read-events-crowd");
+    for (let index = 0; index < 10; index += 1) {
+      await seedMonitor(ctx, org.id, {
+        name: `caution ${String(index)}`,
+        sslNotAfterInSeconds: 10 * DAY,
+        sslState: "caution",
+        lastCheckAgoSeconds: 5,
+      });
+    }
+    const flapping = await seedMonitor(ctx, org.id, { name: "flapping" });
+    await seedIncident(ctx, org.id, flapping, { startedAgoSeconds: 600 });
+    const body = await get(org);
+    expect(body).toHaveLength(10);
+    expect(body[0]).toMatchObject({
+      kind: "incident_opened",
+      monitorId: flapping,
+    });
+    // Caution starts 30 d before expiry: 20 d ago here.
+    const caution = body[1];
+    expect(caution?.kind).toBe("ssl_level");
+    const enteredAgo = (Date.now() - Date.parse(caution?.at ?? "")) / 1000;
+    expect(enteredAgo).toBeGreaterThan(19.9 * DAY);
+    expect(enteredAgo).toBeLessThan(20.1 * DAY);
+  });
+
+  it("does not stamp an event older than the 30-day window", async () => {
+    const org = await ctx.createOrganization("read-events-old");
+    await seedMonitor(ctx, org.id, {
+      name: "paused, expired 35 d ago",
+      status: "paused",
+      createdAgoSeconds: 60 * DAY,
+      sslNotAfterInSeconds: -35 * DAY,
+      sslState: "expired",
+    });
+    const [event] = await get(org);
+    expect(event?.kind).toBe("ssl_level");
+    const age = (Date.now() - Date.parse(event?.at ?? "")) / 1000;
+    expect(age).toBeLessThan(30 * DAY + 60);
   });
 });
 

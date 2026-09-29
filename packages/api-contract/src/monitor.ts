@@ -767,7 +767,12 @@ export const monitorListQuerySchema = z.object({
     .default(MONITOR_LIST_DEFAULT_LIMIT),
   offset: pageOffsetSchema,
   health: monitorHealthSchema.optional(),
-  q: z.string().trim().max(MONITOR_Q_MAX_LENGTH).optional(),
+  q: z
+    .string()
+    .trim()
+    .max(MONITOR_Q_MAX_LENGTH)
+    .refine(isStorableText)
+    .optional(),
 });
 export type MonitorListQuery = z.output<typeof monitorListQuerySchema>;
 

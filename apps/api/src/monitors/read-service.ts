@@ -483,30 +483,43 @@ export async function listRecentEvents(
 ): Promise<{ events: MonitorRecentEvent[] }> {
   return readInTenant(database, identity, async (client, now) => {
     const since = new Date(now.getTime() - RECENT_DAYS * 86_400_000);
+    // Both branches are driven from the tenant's monitors, so each probe is a
+    // single-monitor range on monitor_incidents_history_idx and no other
+    // Organization's incidents are scanned.
     const incidents = await client.query<IncidentEventRow>(
-      `(select 'incident_opened' as kind, i.monitor_id as "monitorId",
+      `(select 'incident_opened' as kind, m.id as "monitorId",
           m.name as "monitorName", i.started_at as at,
           i.start_reason as reason, null::int as "durationSeconds"
-        from monitor_incidents i
-        join monitors m on m.id = i.monitor_id and m.tenant_id = i.tenant_id
-        where i.tenant_id = $1 and i.started_at >= $2
+        from monitors m
+        cross join lateral (
+          select started_at, start_reason from monitor_incidents
+          where monitor_id = m.id and tenant_id = m.tenant_id and started_at >= $2
+          order by started_at desc limit $3
+        ) i
+        where m.tenant_id = $1
         order by i.started_at desc limit $3)
        union all
-       (select 'incident_closed', i.monitor_id, m.name, i.ended_at, i.end_reason,
+       (select 'incident_closed', m.id, m.name, i.ended_at, i.end_reason,
           floor(extract(epoch from (i.ended_at - i.started_at)))::int
-        from monitor_incidents i
-        join monitors m on m.id = i.monitor_id and m.tenant_id = i.tenant_id
-        where i.tenant_id = $1 and i.ended_at >= $2
+        from monitors m
+        cross join lateral (
+          select started_at, ended_at, end_reason from monitor_incidents
+          where monitor_id = m.id and tenant_id = m.tenant_id and ended_at >= $2
+          order by started_at desc limit $3
+        ) i
+        where m.tenant_id = $1
         order by i.ended_at desc limit $3)`,
       [identity.organizationId, since, limit],
     );
 
     // The SSL level now is not an event in the table: a monitor whose level
     // computed from the database time is caution, danger or expired is listed,
-    // stamped with the check that last observed it.
+    // stamped with the time it entered that level (clamped to the window and
+    // to the monitor's creation), so it ages out like an incident.
     const monitors = await client.query<{
       id: string;
       name: string;
+      createdAt: Date;
       lastCheckAt: Date | null;
       updatedAt: Date;
       sslHost: string | null;
@@ -515,10 +528,10 @@ export async function listRecentEvents(
       sslState: string | null;
       sslReason: string | null;
     }>(
-      `select id, name, last_check_at as "lastCheckAt", updated_at as "updatedAt",
-         ssl_host as "sslHost", ssl_issuer as "sslIssuer",
-         ssl_not_after as "sslNotAfter", ssl_state as "sslState",
-         ssl_reason as "sslReason"
+      `select id, name, created_at as "createdAt", last_check_at as "lastCheckAt",
+         updated_at as "updatedAt", ssl_host as "sslHost",
+         ssl_issuer as "sslIssuer", ssl_not_after as "sslNotAfter",
+         ssl_state as "sslState", ssl_reason as "sslReason"
        from monitors where tenant_id = $1`,
       [identity.organizationId],
     );
@@ -539,7 +552,7 @@ export async function listRecentEvents(
         kind: "ssl_level",
         monitorId: monitor.id,
         monitorName: monitor.name,
-        at: (monitor.lastCheckAt ?? monitor.updatedAt).toISOString(),
+        at: sslEnteredAt(ssl.level, monitor, since).toISOString(),
         reason: null,
         sslLevel: ssl.level,
         ...(ssl.daysRemaining === null
@@ -564,6 +577,30 @@ export async function listRecentEvents(
     events.sort(compareEvents);
     return { events: events.slice(0, limit) };
   });
+}
+
+const DAY_MS = 86_400_000;
+const SSL_LEVEL_LEAD_DAYS = { caution: 30, danger: 7, expired: 0 } as const;
+
+function sslEnteredAt(
+  level: SslLevelName,
+  monitor: {
+    createdAt: Date;
+    lastCheckAt: Date | null;
+    updatedAt: Date;
+    sslNotAfter: Date | null;
+  },
+  windowStart: Date,
+): Date {
+  // Without an expiry date (expired handshake) the last observation is all we have.
+  if (monitor.sslNotAfter === null) {
+    return monitor.lastCheckAt ?? monitor.updatedAt;
+  }
+  const lead = SSL_LEVEL_LEAD_DAYS[level as keyof typeof SSL_LEVEL_LEAD_DAYS];
+  const entered = monitor.sslNotAfter.getTime() - lead * DAY_MS;
+  return new Date(
+    Math.max(entered, windowStart.getTime(), monitor.createdAt.getTime()),
+  );
 }
 
 function isSslProblem(level: SslLevelName): boolean {
@@ -854,7 +891,7 @@ export async function getResponseTimes(
     };
 
     if (range === "24h") {
-      // Strictly inside the window, newest MONITOR_RESPONSE_POINTS_MAX rows.
+      // Same boundary as the 24 h uptime window; newest MONITOR_RESPONSE_POINTS_MAX rows.
       const rows = await client.query<{
         checkedAt: Date;
         responseTimeMs: number | null;
@@ -864,7 +901,7 @@ export async function getResponseTimes(
         `select checked_at as "checkedAt", response_time_ms as "responseTimeMs",
            outcome, interval_seconds as "intervalSeconds"
          from monitor_check_results
-         where monitor_id = $1 and tenant_id = $2 and scheduled_for > $3
+         where monitor_id = $1 and tenant_id = $2 and scheduled_for >= $3
          order by scheduled_for desc
          limit $4`,
         [

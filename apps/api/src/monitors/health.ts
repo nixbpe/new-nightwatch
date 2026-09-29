@@ -72,7 +72,7 @@ export type SslFacts = {
   host: string | null;
   issuer: string | null;
   notAfter: Date | null;
-  /** Level recorded at the last check; used only when no expiry date is known. */
+  /** State recorded at the last check. */
   state: string | null;
   reason: string | null;
 };
@@ -82,14 +82,23 @@ export type SslView = {
   daysRemaining: number | null;
 };
 
-const RECORDED_LEVELS = ["expired", "not_https", "unreadable"] as const;
+// States a check records that do not come from the expiry date. The Worker
+// keeps the previous expiry when a certificate is unreadable, so the date is
+// stale for these and must not decide the level.
+const RECORDED_STATES = ["unreadable", "not_https", "no_data"] as const;
 
 /**
- * The level is recomputed from the expiry and the database time on every
- * request: the stored state was true at the last check and time has passed.
+ * The level comes from the expiry and the database time on every request, for
+ * the date-derived states (ok, caution, danger, expired). An unreadable or
+ * non-https result is reported as recorded. `expired` without a date (the
+ * handshake failed on an expired certificate) stays expired.
  */
 export function computeSsl(facts: SslFacts, now: Date): SslView {
+  const recorded = RECORDED_STATES.find((state) => state === facts.state);
+  if (recorded !== undefined) return { level: recorded, daysRemaining: null };
   if (facts.notAfter !== null) return sslLevel(facts.notAfter, now);
-  const recorded = RECORDED_LEVELS.find((level) => level === facts.state);
-  return { level: recorded ?? "no_data", daysRemaining: null };
+  return {
+    level: facts.state === "expired" ? "expired" : "no_data",
+    daysRemaining: null,
+  };
 }

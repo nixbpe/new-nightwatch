@@ -121,8 +121,9 @@ export function computeUptime(
 }
 
 /**
- * Spans between consecutive pass|fail results longer than 2 x the earlier
- * result's interval, less any pause. Only the part outside a pause counts, so
+ * Spans between consecutive pass|fail results longer than 2 x the larger of the
+ * two results' intervals (an interval increase must not draw a false gap), less
+ * any pause. Only the part outside a pause counts, so
  * a pause followed by the first check after Resume is not a gap.
  */
 export function computeGaps(
@@ -134,7 +135,8 @@ export function computeGaps(
     const before = results[index - 1];
     const after = results[index];
     if (before === undefined || after === undefined) continue;
-    const limitMs = 2 * before.intervalSeconds * 1000;
+    const limitMs =
+      2 * Math.max(before.intervalSeconds, after.intervalSeconds) * 1000;
     let cursor = before.at;
     const pieces: Interval[] = [];
     const inside = pauses

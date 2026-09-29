@@ -543,6 +543,8 @@ describe("read query schemas", () => {
     );
     for (const bad of [
       { q: "x".repeat(201) },
+      { q: "a\0b" },
+      { q: "\ud800" },
       { limit: "0" },
       { limit: "51" },
       { limit: "1.5" },

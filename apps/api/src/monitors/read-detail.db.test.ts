@@ -311,6 +311,41 @@ describe("SSL level in Detail", () => {
   });
 });
 
+describe("SSL state recorded by the checker", () => {
+  it("reports an unreadable certificate with its reason although an old expiry is kept", async () => {
+    const id = await seedMonitor(ctx, detail.id, {
+      name: "unreadable with kept expiry",
+      sslHost: "ssl.example",
+      sslNotAfterInSeconds: 60 * 86_400,
+      sslState: "unreadable",
+      sslReason: "handshake_failed",
+    });
+    const view = await detailOf(detail, id);
+    expect(view.ssl).toMatchObject({
+      state: "unreadable",
+      reason: "handshake_failed",
+      daysRemaining: null,
+      host: "ssl.example",
+    });
+  });
+
+  it("reports an expired handshake without a date as expired with no days", async () => {
+    const id = await seedMonitor(ctx, detail.id, {
+      name: "expired without date",
+      sslHost: "ssl.example",
+      sslState: "expired",
+      sslReason: "expired",
+    });
+    const view = await detailOf(detail, id);
+    expect(view.ssl).toMatchObject({
+      state: "expired",
+      reason: "expired",
+      notAfter: null,
+      daysRemaining: null,
+    });
+  });
+});
+
 describe("Detail view", () => {
   it("returns the record of the write routes plus the computed state", async () => {
     const created = await ctx.call(

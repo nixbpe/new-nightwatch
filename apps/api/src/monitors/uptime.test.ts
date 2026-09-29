@@ -216,8 +216,17 @@ describe("computeGaps", () => {
     ]);
   });
 
-  it("uses the interval of the earlier result", () => {
-    expect(computeGaps([result(30, 900), result(10, 60)], [])).toEqual([]);
-    expect(computeGaps([result(30, 60), result(10, 900)], [])).toHaveLength(1);
+  it("an interval increase from 60 s to 900 s is not a false gap", () => {
+    // Last 1-minute result, next 15-minute result 900 s later.
+    expect(computeGaps([result(30, 60), result(15, 900)], [])).toEqual([]);
+  });
+
+  it("an interval decrease from 900 s to 60 s is not a gap at 900 s either", () => {
+    expect(computeGaps([result(30, 900), result(15, 60)], [])).toEqual([]);
+  });
+
+  it("uses the larger interval: 2 x 900 s is the limit after an increase", () => {
+    expect(computeGaps([result(40, 60), result(5, 900)], [])).toHaveLength(1);
+    expect(computeGaps([result(30, 60), result(0, 900)], [])).toEqual([]);
   });
 });
