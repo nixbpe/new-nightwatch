@@ -1,11 +1,11 @@
 # F-000 Technical Spec
 
-Save as `docs/features/F-000-<slug>/spec.md`. Owner: Technical Lead. Implementation starts only after the user approves this spec.
+Save as `docs/features/F-000-<slug>/spec.md`. Owner: Technical Lead. Implementation starts only after the user approves this spec. Approval freezes the Feature's Acceptance matrix, and this spec is the source of truth for implementation and review.
 
 | Field            | Value                                 |
 | ---------------- | ------------------------------------- |
 | Feature          | F-000, `acceptanceVersion` F-000-AC-1 |
-| Approved by user | Not yet / date                        |
+| Approved by user | Not yet / date (freezes acceptance)   |
 
 ## Contracts
 

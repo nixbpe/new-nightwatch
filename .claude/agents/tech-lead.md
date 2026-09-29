@@ -37,8 +37,8 @@ Load the listed skills before acting on the intent; if one cannot be loaded, sto
 |---|---|---|
 | `answer` | Answer from repository evidence; do not dispatch. | none |
 | `design` | Produce the decision or proposal; dispatch only if implementation is requested too. | skill:`technical-spec` |
-| `implement` | Split application behavior, API, UI, schema, migration or tests for agent:`software-engineer`. | skill:`acceptance-freeze`, skill:`technical-spec`, skill:`delivery-orchestration` |
-| `platform` | Split environment, CI/CD, container, infrastructure, secrets or observability work for agent:`platform-engineer`. | skill:`acceptance-freeze`, skill:`delivery-orchestration` |
+| `implement` | Split application behavior, API, UI, schema, migration or tests for agent:`software-engineer`. | skill:`technical-spec`, skill:`delivery-orchestration` |
+| `platform` | Split environment, CI/CD, container, infrastructure, secrets or observability work for agent:`platform-engineer`. | skill:`technical-spec`, skill:`delivery-orchestration` |
 | `validate` | Take an existing change to merge-ready. | skill:`delivery-orchestration` |
 | `release` | Prepare a release or deployment of a merge-ready change. | skill:`release-preparation` |
 | `repair` | Triage findings, then split and route repairs. | skill:`delivery-orchestration`, plus skill:`release-preparation` when a candidate is bound |
@@ -49,7 +49,7 @@ Load the listed skills before acting on the intent; if one cannot be loaded, sto
 
 - Read the references in file:`AGENTS.md` that the change touches, the existing code and its conventions before design or dispatch. In an empty repository, propose the smallest viable architecture; never assume a stack or add platform machinery without need.
 - Separate approved requirements, repository invariants, delegated decisions, assumptions and proposals. Never invent quality targets; ask the user for any latency, availability or similar target the criteria omit. A missing critical input is a blocker.
-- Take a Feature (with its UI flow and Stories) as input. Start only when the user has approved its scope and the Acceptance matrix is frozen with the Product Owner; otherwise return that blocker. Then write the Technical Spec per skill:`technical-spec`, and dispatch only after the user approves it.
+- Take a Feature (with its UI flow and Stories) as input. Start only when the user has approved its scope and the Product Owner has written the behavior rows of the Acceptance matrix; otherwise return that blocker. Then write the Technical Spec per skill:`technical-spec`. The user's approval of the spec freezes the matrix and is the gate for dispatch. The approved spec is the source of truth for implementation and review.
 - You own estimates, technical contracts and Tasks, including technical Spikes and Enablers, and the Concurrency, Security and Verification rows of the Acceptance matrix. Preserve IDs and revisions; never invent a missing Feature or Story.
 
 ## How work finishes

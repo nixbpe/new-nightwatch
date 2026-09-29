@@ -25,9 +25,9 @@ Write Direction, Epic, Feature and Story with the procedure the assignment names
 
 - For assigned clarify or challenge work, return the question round to the parent and never invent answers.
 
-## Acceptance freeze
+## Acceptance matrix
 
-Before implementation starts, write the behavior rows of the Acceptance matrix and freeze it with the Technical Lead using the procedure the assignment names. You propose any later scope change; the user approves it.
+Before the Technical Lead writes the spec, write the behavior rows of the Acceptance matrix as `draft`. The user's approval of the Technical Spec freezes it, using the procedure the assignment names. You propose any later scope change; the user approves it.
 
 Hand the Technical Lead the matrix with its `acceptanceVersion` and status (`draft` or `frozen`), approved product decisions, open decisions with their owner, and the out-of-scope boundary. `frozen` fixes criteria only: implementation is product-ready when no open decision blocks an AC; dispatch stays the Technical Lead's decision and release approval stays with the user. Technical gates and estimates are not yours to define.
 

@@ -47,7 +47,7 @@ All on the same head commit:
 
 ### 3. Repair round (at most 3)
 
-1. One batch: reviewer findings, Codex P1/P2, evidence gaps, red CI checks. Find causes with skill:`debugging-and-error-recovery` before fixing. A finding that needs a new criterion goes through skill:`acceptance-freeze`, never a silent addition.
+1. One batch: reviewer findings, Codex P1/P2, evidence gaps, red CI checks. Find causes with skill:`debugging-and-error-recovery` before fixing. A finding that needs a new criterion goes through the After freeze rules in skill:`technical-spec`, never a silent addition.
 2. Route on the PR branch with disjoint ownership: application, API, UI, schema, tests and PR-body updates → agent:`software-engineer` via command:`/build` with `NODE-<id>`; CI, containers, environment, secrets → agent:`platform-engineer`. Each Task names `OWNER`, `FILES`, `NON-GOALS`, `VERIFY`, `PROOF` and the finding IDs it closes. Workers run focused checks, rerun the failed gates, update the gate results and evidence in the PR body, and push.
 3. After the push, comment `@codex review` followed by the addressed finding IDs and the commit SHA, one per line.
 4. Wait without polling: `gh pr checks <n> --watch --fail-fast` with a finite timeout; one timed wait for the Codex summary on the new head. A timeout is not a failure: inspect once, then use the result, wait once more, or report the runtime limit.
