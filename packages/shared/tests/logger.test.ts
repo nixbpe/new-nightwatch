@@ -139,4 +139,36 @@ describe("createLogger", () => {
     expect(read()).not.toContain("quiet");
     expect(read()).toContain("loud");
   });
+
+  it("redacts monitor header values, secrets and auth while keeping names", () => {
+    const { stream, read } = captureStream();
+    const logger = createLogger({ level: "info", name: "test" }, stream);
+    logger.info(
+      {
+        monitor: {
+          headers: [{ name: "X-Api-Key", value: "header-value-sentinel" }],
+          secrets: [{ slot: "auth.token", value: "secret-value-sentinel" }],
+          auth: { type: "bearer", token: "auth-token-sentinel" },
+        },
+        headers: { "x-api-key": { value: "keyed-value-sentinel" } },
+        secrets: { "auth.token": "top-secrets-sentinel" },
+        auth: "top-auth-sentinel",
+        monitorId: "m-1",
+      },
+      "monitor",
+    );
+    const out = read();
+    for (const sentinel of [
+      "header-value-sentinel",
+      "secret-value-sentinel",
+      "auth-token-sentinel",
+      "keyed-value-sentinel",
+      "top-secrets-sentinel",
+      "top-auth-sentinel",
+    ]) {
+      expect(out).not.toContain(sentinel);
+    }
+    expect(out).toContain("X-Api-Key");
+    expect(out).toContain('"monitorId":"m-1"');
+  });
 });

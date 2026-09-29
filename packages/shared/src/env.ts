@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 import { z } from "zod";
 
 /**
@@ -149,4 +151,176 @@ export function loadAuthEnv(source: NodeJS.ProcessEnv = process.env): AuthEnv {
   }
   env.CORS_ORIGIN = env.CORS_ORIGIN ?? env.APP_URL;
   return env as AuthEnv;
+}
+
+/** Development-only credential key (version "dev"); refused in production. */
+const DEV_CREDENTIAL_KEY = Buffer.alloc(
+  32,
+  "nightwatch-dev-credential-key",
+).toString("base64");
+const DEV_CREDENTIAL_KEY_VERSION = "dev";
+
+const CREDENTIAL_KEY_VERSION = /^[A-Za-z0-9_-]{1,32}$/;
+const HOST_LABEL = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+function splitList(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+/** Canonical base64 of exactly 32 bytes, or null. */
+function canonicalKey(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length !== 32) return null;
+  const canonical = bytes.toString("base64");
+  return canonical === value ? canonical : null;
+}
+
+/**
+ * Test-harness hostnames only. IP literals (including forms the WHATWG URL
+ * parser reads as IPv4, such as "2130706433" or "0x7f.1") and wildcards are
+ * refused so the exemption can never widen past a named DNS host.
+ */
+function isPlainHostname(host: string): boolean {
+  if (host.includes(":") || isIP(host) !== 0) return false;
+  const labels = host.split(".");
+  return (
+    host.length <= 253 &&
+    labels.every((label) => label.length <= 63 && HOST_LABEL.test(label)) &&
+    /^[a-z]/.test(labels[labels.length - 1] ?? "")
+  );
+}
+
+export const monitorEnvSchema = z
+  .object({
+    NODE_ENV: z
+      .enum(["development", "test", "production"])
+      .default("development"),
+    REDIS_URL: z.string().min(1),
+    /** JSON map of key version to base64 32-byte AES-256 key. */
+    CREDENTIAL_ENCRYPTION_KEYS: z.string().min(1).optional(),
+    CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: z.string().min(1).optional(),
+    /** Comma-separated URL list. */
+    MONITOR_EGRESS_CANARY_URLS: z.string().optional(),
+    /** Comma-separated hostnames; refused when NODE_ENV=production. */
+    OUTBOUND_TEST_ALLOWED_HOSTS: z.string().optional(),
+  })
+  .transform((raw, ctx) => {
+    const fail = (path: string, message: string) => {
+      ctx.addIssue({ code: "custom", path: [path], message });
+    };
+    const production = raw.NODE_ENV === "production";
+
+    let keys: Record<string, string> = {};
+    let activeVersion = raw.CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION ?? "";
+    if (raw.CREDENTIAL_ENCRYPTION_KEYS === undefined) {
+      if (production) {
+        fail(
+          "CREDENTIAL_ENCRYPTION_KEYS",
+          "CREDENTIAL_ENCRYPTION_KEYS is required in production",
+        );
+      } else {
+        keys = { [DEV_CREDENTIAL_KEY_VERSION]: DEV_CREDENTIAL_KEY };
+        activeVersion ||= DEV_CREDENTIAL_KEY_VERSION;
+      }
+    } else {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw.CREDENTIAL_ENCRYPTION_KEYS);
+      } catch {
+        parsed = undefined;
+      }
+      const entries =
+        parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+          ? Object.entries(parsed)
+          : [];
+      if (entries.length === 0) {
+        fail(
+          "CREDENTIAL_ENCRYPTION_KEYS",
+          "must be a non-empty JSON object of key version to base64 key",
+        );
+      }
+      for (const [version, value] of entries) {
+        const key = canonicalKey(value);
+        if (!CREDENTIAL_KEY_VERSION.test(version) || key === null) {
+          fail(
+            "CREDENTIAL_ENCRYPTION_KEYS",
+            `key version "${version.slice(0, 32)}" must match [A-Za-z0-9_-]{1,32} and hold a base64 encoding of exactly 32 bytes`,
+          );
+        } else {
+          keys[version] = key;
+        }
+      }
+    }
+    if (Object.keys(keys).length > 0 || raw.CREDENTIAL_ENCRYPTION_KEYS) {
+      if (!activeVersion) {
+        fail(
+          "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION",
+          "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION is required with CREDENTIAL_ENCRYPTION_KEYS",
+        );
+      } else if (!(activeVersion in keys)) {
+        fail(
+          "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION",
+          "must name a version present in CREDENTIAL_ENCRYPTION_KEYS",
+        );
+      }
+    }
+
+    const canaryUrls = splitList(raw.MONITOR_EGRESS_CANARY_URLS ?? "");
+    for (const url of canaryUrls) {
+      if (!URL.canParse(url) || !/^https?:$/.test(new URL(url).protocol)) {
+        fail(
+          "MONITOR_EGRESS_CANARY_URLS",
+          "every entry must be an http or https URL",
+        );
+        break;
+      }
+    }
+
+    const allowedHosts = splitList(raw.OUTBOUND_TEST_ALLOWED_HOSTS ?? "").map(
+      (host) => host.toLowerCase(),
+    );
+    if (allowedHosts.length > 0) {
+      if (production) {
+        fail(
+          "OUTBOUND_TEST_ALLOWED_HOSTS",
+          "must not be set when NODE_ENV=production",
+        );
+      }
+      if (!allowedHosts.every(isPlainHostname)) {
+        fail(
+          "OUTBOUND_TEST_ALLOWED_HOSTS",
+          "entries must be plain hostnames (no IP literals, wildcards, ports or paths)",
+        );
+      }
+    }
+
+    return {
+      NODE_ENV: raw.NODE_ENV,
+      REDIS_URL: raw.REDIS_URL,
+      CREDENTIAL_ENCRYPTION_KEYS: keys,
+      CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: activeVersion,
+      MONITOR_EGRESS_CANARY_URLS: canaryUrls,
+      OUTBOUND_TEST_ALLOWED_HOSTS: allowedHosts,
+    };
+  });
+
+/** Key versions map to canonical base64 32-byte keys; lists are already split. */
+export type MonitorEnv = z.output<typeof monitorEnvSchema>;
+
+/**
+ * Environment for API and Worker monitor features. Production requires
+ * explicit keys; other environments fall back to a dev-only key.
+ */
+export function loadMonitorEnv(
+  source: NodeJS.ProcessEnv = process.env,
+): MonitorEnv {
+  const result = monitorEnvSchema.safeParse(source);
+  if (!result.success) {
+    throw new EnvValidationError(result.error.issues);
+  }
+  return result.data;
 }
