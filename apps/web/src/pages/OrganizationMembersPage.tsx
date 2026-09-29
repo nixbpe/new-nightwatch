@@ -7,10 +7,9 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
 import { Page, PageHeader } from "../components/shell/Page";
-import { Skeleton } from "../components/shell/Skeleton";
+import { PageState } from "../components/shell/PageState";
 import { ApiError } from "../lib/api/client";
 import {
   fetchOrganizationMembers,
@@ -18,7 +17,6 @@ import {
 } from "../lib/api/members";
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
-import { Card } from "../components/ui/card";
 
 const LIMIT = 50;
 
@@ -202,17 +200,12 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <Card
-          role="status"
-          aria-label="กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"
-          padding="md"
-        >
-          <p className="text-sm text-foreground-secondary">
-            กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก
-          </p>
-          <Skeleton className="h-4 w-72 max-w-full" />
-          <Skeleton className="h-64 w-full" />
-        </Card>
+        <PageState
+          kind="loading"
+          label="กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"
+          layout="table"
+          visibleLabel
+        />
       </Page>
     );
   }
@@ -220,24 +213,33 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <Alert tone="error">ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้</Alert>
-        <Button onClick={() => void refreshAfterAuthorizationDenied()}>
-          ลองอีกครั้ง
-        </Button>
+        <PageState
+          kind="error"
+          message="ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={() => void refreshAfterAuthorizationDenied()}
+        />
       </Page>
     );
   }
   if (mePending) {
-    return <p role="status">กำลังโหลดสมาชิก</p>;
+    return (
+      <Page>
+        <PageHeader title="สมาชิกองค์กร" />
+        <PageState kind="loading" label="กำลังโหลดสมาชิก" layout="table" />
+      </Page>
+    );
   }
   if (meError !== null) {
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <Alert tone="error">ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้</Alert>
-        <Button onClick={() => void refreshMembershipContext()}>
-          ลองอีกครั้ง
-        </Button>
+        <PageState
+          kind="error"
+          message="ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={() => void refreshMembershipContext()}
+        />
       </Page>
     );
   }
@@ -245,28 +247,35 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <Alert tone="error">คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้</Alert>
+        <PageState
+          kind="denied"
+          message="คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"
+        />
       </Page>
     );
   }
   let directory: ReactNode;
   if (list.isFetching || invalidPage) {
     directory = (
-      <>
-        <p role="status">กำลังโหลดสมาชิก</p>
-        <Skeleton className="h-64 w-full" />
-      </>
+      <PageState
+        kind="loading"
+        label="กำลังโหลดสมาชิก"
+        layout="table"
+        rows={5}
+      />
     );
   } else if (list.isError || membershipRefreshState === "list-failed") {
     directory = (
-      <>
-        <Alert tone="error">โหลดสมาชิกไม่สำเร็จ</Alert>
-        {offset > 0 ? (
-          <div className="flex gap-2">
-            <Button onClick={() => void retryAfterListFailure()}>
-              ลองอีกครั้ง
-            </Button>
+      <PageState
+        kind="error"
+        message="โหลดสมาชิกไม่สำเร็จ"
+        retryLabel="ลองอีกครั้ง"
+        onRetry={() => void retryAfterListFailure()}
+        actions={
+          offset > 0 ? (
             <Button
+              type="button"
+              variant="secondary"
               onClick={() => {
                 memberPageHeadingRef.current?.focus();
                 setOffset((value) => Math.max(0, value - LIMIT));
@@ -274,13 +283,9 @@ function OrganizationMembersPageForOrganization({
             >
               ก่อนหน้า
             </Button>
-          </div>
-        ) : (
-          <Button onClick={() => void retryAfterListFailure()}>
-            ลองอีกครั้ง
-          </Button>
-        )}
-      </>
+          ) : undefined
+        }
+      />
     );
   } else {
     const data = list.data;

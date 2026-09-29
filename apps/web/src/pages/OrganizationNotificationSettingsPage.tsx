@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useParams } from "react-router";
 
 import { Page, PageHeader } from "../components/shell/Page";
-import { Skeleton } from "../components/shell/Skeleton";
+import { PageState } from "../components/shell/PageState";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
 import { ApiError } from "../lib/api/client";
@@ -92,25 +92,29 @@ function OrganizationNotificationSettingsForOrganization({
     return (
       <Page width="form">
         {header}
-        <Card role="status" padding="md">
-          <span className="sr-only">กำลังโหลดการตั้งค่า…</span>
-          <Skeleton className="h-4 w-72 max-w-full" />
-          <Skeleton className="h-3 w-full max-w-md" />
-        </Card>
+        <PageState kind="loading" label="กำลังโหลดการตั้งค่า…" />
       </Page>
     );
   if (settings.isError)
     return (
       <Page width="form">
         {header}
-        <Alert tone="error">
-          {settings.error instanceof ApiError &&
-          ["PERMISSION_DENIED", "MEMBERSHIP_DENIED"].includes(
-            settings.error.code,
-          )
-            ? "คุณไม่มีสิทธิ์จัดการการตั้งค่านี้"
-            : "โหลดการตั้งค่าไม่สำเร็จ"}
-        </Alert>
+        {settings.error instanceof ApiError &&
+        ["PERMISSION_DENIED", "MEMBERSHIP_DENIED"].includes(
+          settings.error.code,
+        ) ? (
+          <PageState
+            kind="denied"
+            message="คุณไม่มีสิทธิ์จัดการการตั้งค่านี้"
+          />
+        ) : (
+          <PageState
+            kind="error"
+            message="โหลดการตั้งค่าไม่สำเร็จ"
+            retryLabel="ลองใหม่"
+            onRetry={() => void settings.refetch()}
+          />
+        )}
       </Page>
     );
   const settingsData = settings.data;

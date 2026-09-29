@@ -15,6 +15,7 @@ import {
   SlidersIcon,
 } from "../components/shell/icons";
 import { Page, PageHeader } from "../components/shell/Page";
+import { PageState } from "../components/shell/PageState";
 import { Skeleton } from "../components/shell/Skeleton";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
@@ -344,48 +345,39 @@ function NotificationsPageForOrganization({
       </Page>
     );
   }
+  const scope = {
+    label: "บัญชีของคุณ",
+    tag:
+      serverActiveOrgId === null ? "ไม่มีองค์กรที่ใช้งาน" : "องค์กรที่ใช้งาน",
+  };
   if (list.isPending)
     return (
       <Page>
-        <Card role="status">
-          <span className="sr-only">กำลังโหลดการแจ้งเตือน…</span>
-          {[0, 1, 2].map((row) => (
-            <div
-              key={row}
-              className="flex gap-3 border-b border-foreground/10 px-4 py-3 last:border-b-0"
-            >
-              <Skeleton className="ml-5 h-8 w-8 shrink-0" />
-              <span className="flex flex-1 flex-col gap-2">
-                <Skeleton className="h-4 w-56 max-w-full" />
-                <Skeleton className="h-3 w-32" />
-              </span>
-            </div>
-          ))}
-        </Card>
+        <PageHeader scope={scope} title="การแจ้งเตือน" />
+        <PageState
+          kind="loading"
+          label="กำลังโหลดการแจ้งเตือน…"
+          layout="rows"
+        />
       </Page>
     );
   if (list.isError)
     return (
       <Page>
-        <Alert tone="error">{problem(list.error)}</Alert>
-        <div>
-          <Button variant="secondary" onClick={() => void list.refetch()}>
-            ลองใหม่
-          </Button>
-        </div>
+        <PageHeader scope={scope} title="การแจ้งเตือน" />
+        <PageState
+          kind="error"
+          message={problem(list.error)}
+          retryLabel="ลองใหม่"
+          onRetry={() => void list.refetch()}
+        />
       </Page>
     );
   const { unreadCount } = list.data;
   return (
     <Page>
       <PageHeader
-        scope={{
-          label: "บัญชีของคุณ",
-          tag:
-            serverActiveOrgId === null
-              ? "ไม่มีองค์กรที่ใช้งาน"
-              : "องค์กรที่ใช้งาน",
-        }}
+        scope={scope}
         title="การแจ้งเตือน"
         status={
           <span>
