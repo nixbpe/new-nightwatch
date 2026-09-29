@@ -8,17 +8,27 @@
 #   docker compose -f compose.yaml -f compose.worker.yaml up -d --build \
 #     monitor-scheduler monitor-checker
 #
-# NODE_ENV=development is set explicitly here and only here. The image itself
-# defaults to production, where the Worker refuses the development credential
-# key and OUTBOUND_TEST_ALLOWED_HOSTS; the image entrypoint refuses an unset
-# NODE_ENV. The values below are public dev values, not secrets. Do not reuse
-# this file, its env or the dev key for a shared or production environment.
-# OUTBOUND_TEST_ALLOWED_HOSTS is intentionally absent.
+# <slot> is printed by `bun scripts/db.mjs env` (project nw-dev-<slot>). A wrong
+# NW_SLOT starts a new, empty project instead of joining the running one.
+#
+# This file builds a separate development image (nightwatch-worker:dev, build arg
+# WORKER_ALLOW_DEVELOPMENT=1) and sets NODE_ENV=development. Only that build
+# accepts development; the production image (nightwatch-worker) refuses it. The
+# Worker then uses its built-in public dev credential key (version dev), which
+# needs no key variables here. Do not reuse this file, image or key for a shared
+# or production environment. OUTBOUND_TEST_ALLOWED_HOSTS is intentionally absent.
 x-worker: &worker
-  image: nightwatch-worker
+  # Local development build only (accepts NODE_ENV=development); never the
+  # production artifact, which is tagged nightwatch-worker.
+  image: nightwatch-worker:dev
   build:
     context: .
     dockerfile: apps/worker/Dockerfile
+    args:
+      WORKER_ALLOW_DEVELOPMENT: "1"
+  # The Worker registers its SIGTERM handler after start; init forwards signals
+  # so a stop during startup does not wait out the grace period.
+  init: true
   stop_grace_period: 30s
   depends_on:
     postgres:
@@ -30,8 +40,6 @@ x-worker: &worker
     LOG_LEVEL: info
     DATABASE_URL: postgres://nightwatch:${NW_DB_PASSWORD:?run bun run db:up}@postgres:5432/nightwatch
     REDIS_URL: redis://redis:6379
-    CREDENTIAL_ENCRYPTION_KEYS: '{"dev":"bmlnaHR3YXRjaC1kZXYtY3JlZGVudGlhbC1rZXluaWc="}'
-    CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: dev
 
 services:
   monitor-scheduler:

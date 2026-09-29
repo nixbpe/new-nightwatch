@@ -35,7 +35,7 @@
     "security:audit": "bun audit --audit-level=high",
     "security:secrets": "gitleaks git --config .gitleaks.toml --redact --exit-code 1 .",
     "security:sast": "semgrep scan --config p/typescript --config p/security-audit --error --metrics=off .",
-    "security:image": "sh -c 'set -e; for app in api worker; do docker build -f apps/$app/Dockerfile -t nightwatch-$app:trivy-scan . && trivy image --exit-code 1 --severity HIGH,CRITICAL nightwatch-$app:trivy-scan; done'",
+    "security:image": "sh -c 'for app in api worker; do docker build -f apps/$app/Dockerfile -t nightwatch-$app:trivy-scan . || exit 1; trivy image --exit-code 1 --severity HIGH,CRITICAL nightwatch-$app:trivy-scan || exit 1; done'",
     "codegen:check": "turbo run codegen:check",
     "agent:check": "bun scripts/quality/check-agent-config.mjs",
     "candidate:manifest": "bun scripts/quality/candidate-manifest.mjs",

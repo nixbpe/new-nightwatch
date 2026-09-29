@@ -48,8 +48,9 @@ the new roles is rejected as an unknown role. Roles: `consumer`, `scheduler`,
 `monitor-checker` (runs checks, concurrency 20).
 
 - Worker containers must run with `NODE_ENV=production` so the key rules and the
-  `OUTBOUND_TEST_ALLOWED_HOSTS` ban apply. A container without it silently
-  accepts the public development key.
+  `OUTBOUND_TEST_ALLOWED_HOSTS` ban apply. The Worker process itself treats a
+  missing `NODE_ENV` as development; the image entrypoint prevents that (see
+  Worker image).
 - Run at least one `monitor-scheduler` and one `monitor-checker`. Several of
   each are safe: claims use `FOR UPDATE SKIP LOCKED` and job ids are
   deterministic.
@@ -67,27 +68,39 @@ the new roles is rejected as an unknown role. Roles: `consumer`, `scheduler`,
   `nightwatch` (uid 1001). The SSRF helper was validated on Bun 1.3.14; do not
   run the bundle on Node.
 - The image sets `NODE_ENV=production` and its entrypoint exits 78 with a message
-  when `NODE_ENV` is unset, empty or not `production`/`development`. It carries
-  no keys, no secrets and no `OUTBOUND_TEST_ALLOWED_HOSTS`.
+  unless `NODE_ENV` is exactly `production`, so unset, empty, `development` and
+  `test` are refused. It carries no keys, no secrets and no
+  `OUTBOUND_TEST_ALLOWED_HOSTS`. Only a build with
+  `--build-arg WORKER_ALLOW_DEVELOPMENT=1` (local compose, tag
+  `nightwatch-worker:dev`) also accepts `development`; that choice is a marker
+  file written at build time and cannot be set through run-time env.
+- The entrypoint ignores its arguments: `docker run nightwatch-worker id -u`
+  starts the Worker. Run other commands with `--entrypoint`, for example
+  `docker run --rm --entrypoint id nightwatch-worker -u` (prints 1001).
 - No `HEALTHCHECK`: the Worker exposes no endpoint. Liveness is the process and
   the `monitor worker ready` log line.
 - Set at run time: `WORKER_ROLES`, `DATABASE_URL`, `REDIS_URL`,
   `CREDENTIAL_ENCRYPTION_KEYS`, `CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION`.
   Run one container per role (`monitor-scheduler`, `monitor-checker`) so each
-  scales and stops on its own. Give the container a stop grace period of at
-  least 30 s (Worker hard deadline 25 s).
+  scales and stops on its own. On SIGTERM the scheduler stops first, running
+  checks drain for up to 15 s (then their requests are aborted) and a hard
+  deadline exits the process at 25 s. Set a stop grace period of at least 30 s
+  and run with `--init` (or tini): the Worker registers its SIGTERM handler
+  after start, so without an init process a stop during startup waits out the
+  full grace period.
 - Production example (values come from the secret store):
-  `docker run --rm -e WORKER_ROLES=monitor-checker -e DATABASE_URL -e REDIS_URL -e CREDENTIAL_ENCRYPTION_KEYS -e CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION nightwatch-worker`
+  `docker run --rm --init -e WORKER_ROLES=monitor-checker -e DATABASE_URL -e REDIS_URL -e CREDENTIAL_ENCRYPTION_KEYS -e CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION nightwatch-worker`
   Without the two credential variables the Worker exits with
   `CREDENTIAL_ENCRYPTION_KEYS is required in production`.
 
 Local compose: `compose.worker.yaml` adds `monitor-scheduler` and
 `monitor-checker` to the dev stack (usage in its header; same project and
-`NW_SLOT` as `compose.yaml`). It sets `NODE_ENV=development` explicitly, which
-is the only way the Worker accepts the public dev key
-(`CREDENTIAL_ENCRYPTION_KEYS` `{"dev":...}`). Production behaviour is unchanged:
-with `NODE_ENV=production` the Worker rejects version `dev` and the public key.
-Never reuse that file or env outside local development.
+`NW_SLOT` as `compose.yaml`). It builds the ARG-gated `nightwatch-worker:dev`
+image and sets `NODE_ENV=development`, so the Worker falls back to its public dev
+credential key (version `dev`). A production artifact cannot run with
+`NODE_ENV=development`, and with `NODE_ENV=production` the Worker rejects
+version `dev` and the public key. Never deploy the `:dev` image or reuse that
+file outside local development.
 
 Deployment dependencies before release (not part of this image):
 

@@ -70,21 +70,30 @@ RUN apk add --no-cache \
 COPY --from=build --chown=1001:1001 /app/apps/worker/dist ./dist
 # A missing NODE_ENV makes the Worker treat the container as development: it
 # would accept the public development credential key and
-# OUTBOUND_TEST_ALLOWED_HOSTS. The entrypoint refuses to start in that case.
+# OUTBOUND_TEST_ALLOWED_HOSTS. The entrypoint therefore accepts only
+# NODE_ENV=production. Only a build with WORKER_ALLOW_DEVELOPMENT=1 (local
+# compose, tagged nightwatch-worker:dev) also accepts development. The choice is
+# a marker file written at build time, so no runtime env value can flip it.
+# Arguments to `docker run` after the image name are ignored by the entrypoint;
+# use --entrypoint to run another command.
+ARG WORKER_ALLOW_DEVELOPMENT=0
+RUN case "$WORKER_ALLOW_DEVELOPMENT" in \
+      0) ;; \
+      1) touch /etc/nightwatch-worker-dev-build ;; \
+      *) echo "WORKER_ALLOW_DEVELOPMENT must be 0 or 1" >&2; exit 1 ;; \
+    esac
 COPY --chmod=0555 <<'SH' /usr/local/bin/worker-entrypoint.sh
 #!/bin/sh
 set -eu
-case "${NODE_ENV:-}" in
-  production | development) ;;
-  "")
-    echo "nightwatch-worker: NODE_ENV is unset; refusing to start. Set NODE_ENV=production." >&2
-    exit 78
-    ;;
-  *)
-    echo "nightwatch-worker: NODE_ENV must be production (or development for local compose); refusing to start." >&2
-    exit 78
-    ;;
-esac
+if [ -z "${NODE_ENV:-}" ]; then
+  echo "nightwatch-worker: NODE_ENV is unset; refusing to start. Set NODE_ENV=production." >&2
+  exit 78
+fi
+if [ "$NODE_ENV" != production ] && \
+  { [ "$NODE_ENV" != development ] || [ ! -e /etc/nightwatch-worker-dev-build ]; }; then
+  echo "nightwatch-worker: NODE_ENV must be production; refusing to start." >&2
+  exit 78
+fi
 exec bun dist/index.js
 SH
 USER 1001
