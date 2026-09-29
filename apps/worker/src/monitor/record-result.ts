@@ -375,13 +375,14 @@ async function upsertRollup(
   await client.query(
     `insert into monitor_check_hourly
        (monitor_id, tenant_id, hour_start, checks, passed, covered_seconds,
-        response_ms_sum, response_ms_max)
-     values ($1, $2, $3, 1, $4, $5, $6, $7)
+        response_ms_sum, response_ms_max, response_checks)
+     values ($1, $2, $3, 1, $4, $5, $6, $7, $8)
      on conflict (monitor_id, hour_start) do update set
        checks = monitor_check_hourly.checks + 1,
        passed = monitor_check_hourly.passed + excluded.passed,
        covered_seconds = monitor_check_hourly.covered_seconds + excluded.covered_seconds,
        response_ms_sum = monitor_check_hourly.response_ms_sum + excluded.response_ms_sum,
+       response_checks = monitor_check_hourly.response_checks + excluded.response_checks,
        response_ms_max = greatest(monitor_check_hourly.response_ms_max, excluded.response_ms_max)`,
     [
       input.monitorId,
@@ -391,6 +392,7 @@ async function upsertRollup(
       input.intervalSeconds,
       responseMs ?? 0,
       responseMs,
+      responseMs === null ? 0 : 1,
     ],
   );
 }

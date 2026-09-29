@@ -1274,3 +1274,59 @@ describe("assertion values and redirects on scheduled checks", () => {
     }
   });
 });
+
+describe("hourly rollup response times", () => {
+  it("a timeout counts as a check but adds no response time", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        timeoutSeconds: 1,
+        intervalSeconds: 60,
+      });
+      const hour =
+        Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3 * 3_600_000;
+      await runSteps(monitor, target, ["pass"], hour + 60_000);
+      target.setHandler(() => undefined);
+      const token = randomUUID();
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+        [monitor.monitorId, token],
+      );
+      await processMonitorCheck(
+        monitor.job({
+          claimToken: token,
+          scheduledFor: new Date(hour + 120_000).toISOString(),
+        }),
+        dependencies(),
+      );
+      const [row] = await rows<{
+        checks: number;
+        covered_seconds: number;
+        response_checks: number;
+        response_ms_sum: string;
+      }>(
+        db,
+        monitor,
+        "select checks, covered_seconds, response_checks, response_ms_sum from monitor_check_hourly where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      const [timeout] = await results(monitor).then((all) => all.slice(-1));
+      expect(timeout?.failure_reason).toBe("timeout");
+      expect(row?.checks).toBe(2);
+      expect(row?.covered_seconds).toBe(120);
+      expect(row?.response_checks).toBe(1);
+      const [pass] = await rows<{ ms: number }>(
+        db,
+        monitor,
+        "select response_time_ms as ms from monitor_check_results where monitor_id = $1 and outcome = 'pass'",
+        [monitor.monitorId],
+      );
+      expect(Number(row?.response_ms_sum)).toBe(pass?.ms);
+    } finally {
+      await target.close();
+    }
+  });
+});
