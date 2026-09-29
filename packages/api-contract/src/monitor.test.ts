@@ -4,6 +4,10 @@ import {
   checkMonitorUrl,
   monitorConfigSchema,
   monitorCreateSchema,
+  monitorHistoryQuerySchema,
+  monitorListQuerySchema,
+  monitorRecentEventsQuerySchema,
+  monitorResponseTimesQuerySchema,
   normalizeMonitorConfig,
   parseExpectedStatus,
   parseExpectedValue,
@@ -511,5 +515,50 @@ describe("normalizeMonitorConfig", () => {
         { kind: "responseTimeBelow", ms: 500 },
       ],
     });
+  });
+});
+
+describe("read query schemas", () => {
+  it("apply the documented defaults to strings from the URL", () => {
+    expect(monitorListQuerySchema.parse({})).toEqual({ limit: 25, offset: 0 });
+    expect(monitorHistoryQuerySchema.parse({})).toEqual({
+      limit: 20,
+      offset: 0,
+    });
+    expect(monitorRecentEventsQuerySchema.parse({})).toEqual({ limit: 10 });
+    expect(monitorResponseTimesQuerySchema.parse({})).toEqual({ range: "24h" });
+    expect(
+      monitorListQuerySchema.parse({
+        limit: "50",
+        offset: "3",
+        health: "down",
+      }),
+    ).toEqual({ limit: 50, offset: 3, health: "down" });
+  });
+
+  it("trim q and bound every number", () => {
+    expect(monitorListQuerySchema.parse({ q: "  a_b%  " }).q).toBe("a_b%");
+    expect(monitorListQuerySchema.parse({ q: "x".repeat(200) }).q).toHaveLength(
+      200,
+    );
+    for (const bad of [
+      { q: "x".repeat(201) },
+      { limit: "0" },
+      { limit: "51" },
+      { limit: "1.5" },
+      { offset: "-1" },
+      { health: "healthy" },
+    ]) {
+      expect(monitorListQuerySchema.safeParse(bad).success).toBe(false);
+    }
+    expect(
+      monitorRecentEventsQuerySchema.safeParse({ limit: "21" }).success,
+    ).toBe(false);
+    expect(
+      monitorRecentEventsQuerySchema.safeParse({ limit: "20" }).success,
+    ).toBe(true);
+    expect(
+      monitorResponseTimesQuerySchema.safeParse({ range: "1y" }).success,
+    ).toBe(false);
   });
 });

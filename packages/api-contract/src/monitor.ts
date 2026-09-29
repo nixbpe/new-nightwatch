@@ -558,6 +558,7 @@ export const monitorHealthSchema = z.enum(MONITOR_HEALTHS);
 export const monitorHealthReasonSchema = z
   .enum(["never_checked", "stale", "awaiting_new_config", "check_error"])
   .nullable();
+export type MonitorHealthReason = z.infer<typeof monitorHealthReasonSchema>;
 export const monitorStatusSchema = z.enum(["active", "paused"]);
 
 export const MONITOR_SECRET_SLOT_PATTERN =
@@ -648,6 +649,8 @@ export const SSL_LEVELS = [
   "no_data",
 ] as const;
 
+export type SslLevelName = (typeof SSL_LEVELS)[number];
+
 export const checkAssertionResultSchema = z.object({
   kind: z.enum(["jsonPathEquals", "bodyContains", "responseTimeBelow"]),
   expected: z.string(),
@@ -731,6 +734,55 @@ export const monitorListItemSchema = z.object({
   uptime: z.object({ h24: uptimeWindowSchema, d30: uptimeWindowSchema }),
 });
 
+export const MONITOR_LIST_DEFAULT_LIMIT = 25;
+export const MONITOR_HISTORY_DEFAULT_LIMIT = 20;
+export const MONITOR_RECENT_EVENTS_MAX = 20;
+export const MONITOR_RECENT_EVENTS_DEFAULT = 10;
+export const MONITOR_Q_MAX_LENGTH = 200;
+/** One point per check over 24 h at the shortest interval (60 s). */
+export const MONITOR_RESPONSE_POINTS_MAX = 1440;
+export const MONITOR_RESPONSE_RANGES = ["24h", "7d", "30d"] as const;
+
+const pageOffsetSchema = z.coerce.number().int().min(0).default(0);
+
+export const monitorListQuerySchema = z.object({
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(MONITOR_LIST_DEFAULT_LIMIT),
+  offset: pageOffsetSchema,
+  health: monitorHealthSchema.optional(),
+  q: z.string().trim().max(MONITOR_Q_MAX_LENGTH).optional(),
+});
+export type MonitorListQuery = z.output<typeof monitorListQuerySchema>;
+
+/** Check history and incidents. */
+export const monitorHistoryQuerySchema = z.object({
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(MONITOR_HISTORY_DEFAULT_LIMIT),
+  offset: pageOffsetSchema,
+});
+export type MonitorHistoryQuery = z.output<typeof monitorHistoryQuerySchema>;
+
+export const monitorRecentEventsQuerySchema = z.object({
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MONITOR_RECENT_EVENTS_MAX)
+    .default(MONITOR_RECENT_EVENTS_DEFAULT),
+});
+
+export const monitorResponseTimesQuerySchema = z.object({
+  range: z.enum(MONITOR_RESPONSE_RANGES).default("24h"),
+});
+
 export const monitorListResponseSchema = z.object({
   summary: z.object({
     up: z.number().int().min(0),
@@ -796,26 +848,30 @@ export const monitorResponseTimesResponseSchema = z.discriminatedUnion(
   [
     z.object({
       range: z.literal("24h"),
-      points: z.array(
-        z.object({
-          at: isoDateTime,
-          responseTimeMs: z.number().int().nullable(),
-          outcome: z.enum(CHECK_OUTCOMES),
-        }),
-      ),
+      points: z
+        .array(
+          z.object({
+            at: isoDateTime,
+            responseTimeMs: z.number().int().nullable(),
+            outcome: z.enum(CHECK_OUTCOMES),
+          }),
+        )
+        .max(MONITOR_RESPONSE_POINTS_MAX),
       gaps: z.array(interval),
       ...responseTimesCommon,
     }),
     z.object({
       range: z.enum(["7d", "30d"]),
-      buckets: z.array(
-        z.object({
-          hourStart: isoDateTime,
-          avgMs: z.number().nullable(),
-          maxMs: z.number().int().nullable(),
-          checks: z.number().int().min(0),
-        }),
-      ),
+      buckets: z
+        .array(
+          z.object({
+            hourStart: isoDateTime,
+            avgMs: z.number().nullable(),
+            maxMs: z.number().int().nullable(),
+            checks: z.number().int().min(0),
+          }),
+        )
+        .max(720),
       ...responseTimesCommon,
     }),
   ],
