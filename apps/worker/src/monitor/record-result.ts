@@ -1,6 +1,8 @@
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import { sslLevel, type CheckResult } from "@nightwatch/shared";
 
+import { writeMonitorNotification } from "./notifications";
+
 /** The transaction handle of `withTenantContextRaw`. */
 export type TenantClient = Parameters<
   Parameters<typeof withTenantContextRaw>[2]
@@ -56,9 +58,9 @@ export type MonitorEventHook = (
 
 /**
  * Called inside transaction B, after the row change it describes, only for a
- * result that was really inserted. Task 09 writes notification intents here.
+ * result that was really inserted. Writes the notification intent.
  */
-export const onMonitorEvent: MonitorEventHook = async () => {};
+export const onMonitorEvent: MonitorEventHook = writeMonitorNotification;
 
 export type RecordOptions = { onEvent?: MonitorEventHook };
 
@@ -205,7 +207,19 @@ function attempt(
     }
     if (ssl.update) {
       await client.query(
-        `update monitors set ssl_host = $2, ssl_issuer = $3, ssl_not_after = $4,
+        // A readable certificate with another host or expiry is a new
+        // identity: the levels reported for the old one no longer apply, and a
+        // healthy renewal emits no event that could reset them later.
+        `update monitors set
+           ssl_notified_level = case
+             when $4::timestamptz is not null
+               and (ssl_host is distinct from $2 or ssl_not_after is distinct from $4::timestamptz)
+             then null else ssl_notified_level end,
+           ssl_notified_not_after = case
+             when $4::timestamptz is not null
+               and (ssl_host is distinct from $2 or ssl_not_after is distinct from $4::timestamptz)
+             then null else ssl_notified_not_after end,
+           ssl_host = $2, ssl_issuer = $3, ssl_not_after = $4,
            ssl_state = $5, ssl_reason = $6 where id = $1`,
         [
           input.monitorId,
