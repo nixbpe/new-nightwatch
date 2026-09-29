@@ -1,9 +1,11 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Database } from "@nightwatch/db";
 import type { Logger, OutboundDeps } from "@nightwatch/shared";
+import type { Redis } from "ioredis";
 
 import type { Auth } from "../auth";
 import { requireVerifiedSession } from "../me/service";
+import { createRateLimiter } from "../rate-limit";
 import { auditMonitorDenials, auditMonitorMutation } from "./audit";
 import { monitorWriteRouteDeclarations as routes } from "./contract";
 import { monitorInvalidInputHook } from "./invalid-input";
@@ -14,6 +16,7 @@ import {
   pauseMonitor,
   resumeMonitor,
 } from "./service";
+import { registerMonitorTestRoutes } from "./test-route";
 
 export type MonitorRouteDeps = {
   auth: Auth;
@@ -21,15 +24,26 @@ export type MonitorRouteDeps = {
   logger: Logger;
   /** Resolver and test-only host exemptions for save-time checks. */
   outbound?: OutboundDeps;
+  /** Backs the Test rate limit; without it every Test answers 503. */
+  redis?: Redis;
 };
 
 // GET /monitors/recent-events must be registered before GET /monitors/{monitorId}
 // (Task 06B): monitorId is a plain string and would capture "recent-events".
+// The same holds for POST /monitors/test (Task 07), registered first below.
 export function registerMonitorRoutes(
   app: OpenAPIHono,
   deps: MonitorRouteDeps,
 ): void {
-  const { auth, database, logger, outbound } = deps;
+  const { auth, database, logger, outbound, redis } = deps;
+
+  registerMonitorTestRoutes(app, {
+    auth,
+    database,
+    logger,
+    outbound,
+    rateLimiter: redis ? createRateLimiter({ redis, logger }) : undefined,
+  });
 
   app.openapi(
     routes.create,

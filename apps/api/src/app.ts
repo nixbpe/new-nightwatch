@@ -395,6 +395,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       database,
       logger: deps.logger,
       outbound: deps.outbound,
+      redis: deps.redis,
     });
     registerMonitorReadRoutes(app, {
       auth,

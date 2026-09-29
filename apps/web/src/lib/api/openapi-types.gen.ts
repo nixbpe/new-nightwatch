@@ -1501,6 +1501,540 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{organizationId}/monitors/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a monitor configuration before it is created */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        url: string;
+                        /** @default 300 */
+                        intervalSeconds?: number;
+                        /** @default 10 */
+                        timeoutSeconds?: number;
+                        /**
+                         * @default GET
+                         * @enum {string}
+                         */
+                        method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                        /** @default [] */
+                        headers?: {
+                            id?: string;
+                            name: string;
+                            value?: string;
+                            /** @default false */
+                            secret?: boolean;
+                        }[];
+                        /** @default [] */
+                        queryParams?: {
+                            name: string;
+                            value: string;
+                        }[];
+                        /** @default null */
+                        body?: {
+                            /** @enum {string} */
+                            type: "json" | "text";
+                            content: string;
+                        } | null;
+                        /** @default 200-299 */
+                        expectedStatus?: string;
+                        /** @default [] */
+                        assertions?: ({
+                            /** @enum {string} */
+                            kind: "jsonPathEquals";
+                            path: string;
+                            expected: string;
+                        } | {
+                            /** @enum {string} */
+                            kind: "bodyContains";
+                            text: string;
+                        } | {
+                            /** @enum {string} */
+                            kind: "responseTimeBelow";
+                            ms: number;
+                        })[];
+                        /**
+                         * @default {
+                         *       "type": "none"
+                         *     }
+                         */
+                        auth?: {
+                            /** @enum {string} */
+                            type: "none";
+                        } | {
+                            /** @enum {string} */
+                            type: "bearer";
+                        } | {
+                            /** @enum {string} */
+                            type: "basic";
+                        } | {
+                            /** @enum {string} */
+                            type: "apiKey";
+                            headerName: string;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description The result of one check of the target, not recorded. Target problems (DNS, TLS, timeout, blocked address, redirects) are results, not errors */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            result: {
+                                /** Format: date-time */
+                                checkedAt: string;
+                                /** @enum {string} */
+                                outcome: "pass" | "fail" | "check_error";
+                                httpStatus: number | null;
+                                responseTimeMs: number | null;
+                                /** @enum {string|null} */
+                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
+                                /** @enum {string|null} */
+                                tlsReason: "expired" | "hostname_mismatch" | "untrusted" | "self_signed" | "handshake_failed" | null;
+                                assertions: {
+                                    /** @enum {string} */
+                                    kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
+                                    expected: string;
+                                    actual: string | null;
+                                    actualType: string | null;
+                                    actualTruncated: boolean;
+                                    /** @enum {string} */
+                                    status: "pass" | "fail" | "not_evaluated";
+                                    /** @enum {string|null} */
+                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | null;
+                                }[];
+                                url: string;
+                                evaluatedFromPrefix: boolean;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid monitor input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_INVALID";
+                                message: string;
+                                details: {
+                                    fields: {
+                                        field: string;
+                                        /** @enum {string} */
+                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
+                                    }[];
+                                };
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or permission is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Test rate limit reached; Retry-After carries the wait in seconds */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_TEST_RATE_LIMITED";
+                                message: string;
+                                details: {
+                                    retryAfterSeconds: number;
+                                };
+                            };
+                        };
+                    };
+                };
+                /** @description The rate limiter is unavailable; no request was sent */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "RATE_LIMIT_UNAVAILABLE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/monitors/{monitorId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a configuration in the edit form of an existing monitor */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    monitorId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        url: string;
+                        /** @default 300 */
+                        intervalSeconds?: number;
+                        /** @default 10 */
+                        timeoutSeconds?: number;
+                        /**
+                         * @default GET
+                         * @enum {string}
+                         */
+                        method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                        /** @default [] */
+                        headers?: {
+                            id?: string;
+                            name: string;
+                            value?: string;
+                            /** @default false */
+                            secret?: boolean;
+                        }[];
+                        /** @default [] */
+                        queryParams?: {
+                            name: string;
+                            value: string;
+                        }[];
+                        /** @default null */
+                        body?: {
+                            /** @enum {string} */
+                            type: "json" | "text";
+                            content: string;
+                        } | null;
+                        /** @default 200-299 */
+                        expectedStatus?: string;
+                        /** @default [] */
+                        assertions?: ({
+                            /** @enum {string} */
+                            kind: "jsonPathEquals";
+                            path: string;
+                            expected: string;
+                        } | {
+                            /** @enum {string} */
+                            kind: "bodyContains";
+                            text: string;
+                        } | {
+                            /** @enum {string} */
+                            kind: "responseTimeBelow";
+                            ms: number;
+                        })[];
+                        /**
+                         * @default {
+                         *       "type": "none"
+                         *     }
+                         */
+                        auth?: {
+                            /** @enum {string} */
+                            type: "none";
+                        } | {
+                            /** @enum {string} */
+                            type: "bearer";
+                        } | {
+                            /** @enum {string} */
+                            type: "basic";
+                        } | {
+                            /** @enum {string} */
+                            type: "apiKey";
+                            headerName: string;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description The result of one check of the target, not recorded. Target problems (DNS, TLS, timeout, blocked address, redirects) are results, not errors */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            result: {
+                                /** Format: date-time */
+                                checkedAt: string;
+                                /** @enum {string} */
+                                outcome: "pass" | "fail" | "check_error";
+                                httpStatus: number | null;
+                                responseTimeMs: number | null;
+                                /** @enum {string|null} */
+                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
+                                /** @enum {string|null} */
+                                tlsReason: "expired" | "hostname_mismatch" | "untrusted" | "self_signed" | "handshake_failed" | null;
+                                assertions: {
+                                    /** @enum {string} */
+                                    kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
+                                    expected: string;
+                                    actual: string | null;
+                                    actualType: string | null;
+                                    actualTruncated: boolean;
+                                    /** @enum {string} */
+                                    status: "pass" | "fail" | "not_evaluated";
+                                    /** @enum {string|null} */
+                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | null;
+                                }[];
+                                url: string;
+                                evaluatedFromPrefix: boolean;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid monitor input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_INVALID";
+                                message: string;
+                                details: {
+                                    fields: {
+                                        field: string;
+                                        /** @enum {string} */
+                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
+                                    }[];
+                                };
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or permission is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Test rate limit reached; Retry-After carries the wait in seconds */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_TEST_RATE_LIMITED";
+                                message: string;
+                                details: {
+                                    retryAfterSeconds: number;
+                                };
+                            };
+                        };
+                    };
+                };
+                /** @description The rate limiter is unavailable; no request was sent */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "RATE_LIMIT_UNAVAILABLE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{organizationId}/monitors": {
         parameters: {
             query?: never;

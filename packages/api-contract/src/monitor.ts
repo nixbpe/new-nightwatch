@@ -680,6 +680,18 @@ export const checkResultSchema = z.object({
 
 export type CheckResultView = z.infer<typeof checkResultSchema>;
 
+/** A Test is not recorded, so its result has no schedule slot and no config version. */
+export const monitorTestResultSchema = checkResultSchema.omit({
+  scheduledFor: true,
+  configVersion: true,
+});
+export type MonitorTestResult = z.infer<typeof monitorTestResultSchema>;
+
+export const monitorTestResponseSchema = z.object({
+  result: monitorTestResultSchema,
+});
+export type MonitorTestResponse = z.infer<typeof monitorTestResponseSchema>;
+
 const openIncidentSchema = z
   .object({ startedAt: isoDateTime, reason: z.string() })
   .nullable();
@@ -961,3 +973,11 @@ export const monitorVersionConflictErrorResponseSchema =
     "MONITOR_VERSION_CONFLICT",
     z.object({ currentVersion: z.number().int().min(1) }),
   );
+export const monitorTestRateLimitedErrorResponseSchema =
+  monitorErrorWithDetails(
+    "MONITOR_TEST_RATE_LIMITED",
+    z.object({ retryAfterSeconds: z.number().int().min(1) }),
+  );
+export const rateLimitUnavailableErrorResponseSchema = monitorErrorSchema(
+  "RATE_LIMIT_UNAVAILABLE",
+);
