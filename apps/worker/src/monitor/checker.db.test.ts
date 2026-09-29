@@ -767,13 +767,15 @@ describe("secrets in the checker (JOB-05)", () => {
         url: `${target.url}/`,
         authType: "bearer",
       });
-      await storeSecret(monitor, "auth.token", "tok-very-secret-123");
+      // Built at runtime so no key-like literal sits in the source.
+      const secretValue = ["tok", "fixture", randomUUID()].join("-");
+      await storeSecret(monitor, "auth.token", secretValue);
       expect(await processMonitorCheck(monitor.job(), dependencies())).toBe(
         "recorded",
       );
 
       expect(target.requests[0]?.headers.authorization).toBe(
-        "Bearer tok-very-secret-123",
+        `Bearer ${secretValue}`,
       );
       const stored = await rows(
         db,
@@ -781,7 +783,7 @@ describe("secrets in the checker (JOB-05)", () => {
         "select * from monitor_check_results where monitor_id = $1",
         [monitor.monitorId],
       );
-      expect(JSON.stringify(stored)).not.toContain("tok-very-secret-123");
+      expect(JSON.stringify(stored)).not.toContain(secretValue);
       expect(stored[0]?.outcome).toBe("pass");
     } finally {
       await target.close();
