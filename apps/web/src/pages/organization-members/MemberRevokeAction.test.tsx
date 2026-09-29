@@ -277,33 +277,29 @@ it("reports an error instead of success when the refetched list still holds the 
   expect(screen.queryByText(/ออกจากองค์กรแล้ว/)).toBeNull();
 });
 
-it("redirects to the server-confirmed Organization after the actor revokes themselves", async () => {
-  const user = await renderAs("owner");
-  vi.mocked(fetchMeContext).mockResolvedValue(
-    contextFor("owner", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
-  );
-  await user.click(revokeButton("Me"));
-  expect(screen.getByRole("dialog")).toHaveAccessibleDescription(
-    /คุณกำลังถอนตัวเอง/,
-  );
-  await user.click(confirmButton());
-  await waitFor(() =>
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${B}/members`,
-    ),
-  );
-  expect(await screen.findByText("Bea")).toBeInTheDocument();
-  expect(screen.queryByRole("dialog")).toBeNull();
+it("offers no revoke on the actor's own row, which is the self-leave flow", async () => {
+  await renderAs("owner");
+  expect(
+    screen.queryByRole("button", { name: "ถอน Me ออกจากองค์กร" }),
+  ).toBeNull();
+  expect(revokeButton("Boss")).toBeEnabled();
 });
 
-it("goes to no-access when the actor has no Organization left", async () => {
+it("goes to no-access when the server denies the actor and no Organization is left", async () => {
+  vi.mocked(revokeOrganizationMember).mockRejectedValue(
+    new ApiError("MEMBERSHIP_DENIED", "denied", 403),
+  );
   const user = await renderAs("owner");
+  vi.mocked(fetchOrganizationMembers).mockRejectedValue(
+    new ApiError("MEMBERSHIP_DENIED", "denied", 403),
+  );
   vi.mocked(fetchMeContext).mockResolvedValue(contextFor("owner", []));
-  await user.click(revokeButton("Me"));
+  await user.click(revokeButton("Ann"));
   await user.click(confirmButton());
   await waitFor(() =>
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace"),
   );
+  expect(screen.queryByText(/ออกจากองค์กรแล้ว/)).toBeNull();
 });
 
 it("refreshes context and redirects when the server denies the actor's revoke", async () => {
@@ -318,9 +314,14 @@ it("refreshes context and redirects when the server denies the actor's revoke", 
       ? Promise.reject(new ApiError("MEMBERSHIP_DENIED", "denied", 403))
       : Promise.resolve(listFor(id));
   });
-  vi.mocked(fetchMeContext).mockResolvedValue(
-    contextFor("owner", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
-  );
+  // The revoked session's mirror was cleared, so the server confirms no active
+  // Organization and the page falls back to a remaining readable one.
+  vi.mocked(fetchMeContext).mockResolvedValue({
+    ...contextFor("owner", [
+      { id: B, name: "Beta", slug: "beta", role: "owner" },
+    ]),
+    lastActiveTenantId: null,
+  });
   await user.click(revokeButton("Ann"));
   await user.click(confirmButton());
   await waitFor(() =>
@@ -329,6 +330,30 @@ it("refreshes context and redirects when the server denies the actor's revoke", 
     ),
   );
   expect(screen.queryByText(/ออกจากองค์กรแล้ว/)).toBeNull();
+});
+
+it("applies a late A result to A when the switch to B is denied", async () => {
+  const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+  vi.mocked(revokeOrganizationMember).mockReturnValue(pending.promise);
+  vi.mocked(updateActiveOrganization).mockRejectedValue(
+    new ApiError("MEMBERSHIP_DENIED", "denied", 403),
+  );
+  const user = await renderAs("owner");
+  await user.click(revokeButton("Ann"));
+  await user.click(confirmButton());
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() => {
+    expect(updateActiveOrganization).toHaveBeenCalled();
+  });
+  await act(async () => {
+    removed.add("member-ann");
+    pending.resolve(revoked("member-ann"));
+    await pending.promise;
+  });
+  expect(await screen.findByText("ถอน Ann ออกจากองค์กรแล้ว")).toBeVisible();
+  expect(screen.queryByRole("row", { name: /Ann/ })).toBeNull();
+  expect(screen.queryByText("Bea")).toBeNull();
+  expect(revokeOrganizationMember).toHaveBeenCalledTimes(1);
 });
 
 it.each(["success", "LAST_OWNER"] as const)(

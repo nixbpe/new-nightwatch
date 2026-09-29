@@ -207,7 +207,6 @@ function OrganizationMembersPageForOrganization({
 
   const revoke = useMemberRevoke({
     organizationId,
-    actorUserId: me?.user.id,
     listSettled: !list.isFetching && list.data !== undefined,
     headingRef: memberPageHeadingRef,
     refetchList,
@@ -369,6 +368,7 @@ function OrganizationMembersPageForOrganization({
                   <MemberRevokeButton
                     member={m}
                     actorRole={actorRole}
+                    actorUserId={me?.user.id}
                     pending={memberMutationPending}
                     onRevoke={revoke.request}
                   />
@@ -459,9 +459,6 @@ function OrganizationMembersPageForOrganization({
               <p className="mt-2">
                 สมาชิกจะเข้าถึงองค์กรนี้ไม่ได้ทันที
                 แต่บัญชีและสมาชิกภาพในองค์กรอื่นยังอยู่
-                {revoke.confirmation.member.userId === me?.user.id
-                  ? " คุณกำลังถอนตัวเอง และจะออกจากหน้านี้เมื่อสำเร็จ"
-                  : ""}
               </p>
             </>
           }

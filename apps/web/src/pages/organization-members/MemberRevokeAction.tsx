@@ -22,24 +22,28 @@ export type RevokeConfirmation = {
 
 const REVOKE_ATTRIBUTE = "data-member-revoke";
 
+// Removing oneself is the self-leave flow, not a revoke.
 export function canRevoke(
   actorRole: ActorRole,
+  actorUserId: string | undefined,
   member: OrganizationMember,
 ): boolean {
-  return actorRole === "owner" || member.role !== "owner";
+  return (
+    member.userId !== actorUserId &&
+    (actorRole === "owner" || member.role !== "owner")
+  );
 }
 
 /**
  * Revoke flow for one Organization's member page: confirmation, pending guard,
  * list refetch and stale-scope guard (`useOrganizationScope`). Success is
  * shown only when the DELETE succeeded and the refetched list no longer holds
- * the member. Cancel and Escape send no request. When the actor removed
- * themselves or the server denied the actor, the page's membership refresh
- * decides where the user lands (server-confirmed Organization or no-access).
+ * the member. Cancel and Escape send no request. When the server denies the
+ * actor, the page's membership refresh decides where the user lands
+ * (server-confirmed Organization or no-access).
  */
 export function useMemberRevoke({
   organizationId,
-  actorUserId,
   listSettled,
   headingRef,
   refetchList,
@@ -47,7 +51,6 @@ export function useMemberRevoke({
   blocked,
 }: {
   organizationId: string;
-  actorUserId: string | undefined;
   listSettled: boolean;
   /** The dialog parks focus here when the removed member's row is gone. */
   headingRef: RefObject<HTMLElement | null>;
@@ -146,16 +149,13 @@ export function useMemberRevoke({
       });
     }
     focusMemberId.current = member.id;
-    // The actor's own access changed when they removed themselves or the
-    // server denied them; the member list alone cannot show that.
+    // A server denial means the actor's own role or membership changed; the
+    // member list alone cannot show that.
     const deniedCode =
       failure instanceof ApiError &&
       (failure.code === "PERMISSION_DENIED" ||
         failure.code === "MEMBERSHIP_DENIED");
-    if (
-      !refreshed.isError &&
-      (deniedCode || (member.userId === actorUserId && failure === null))
-    ) {
+    if (!refreshed.isError && deniedCode) {
       await refreshMembershipContext();
       if (!isCurrentScope()) return;
     }
@@ -190,15 +190,17 @@ export function useMemberRevoke({
 export function MemberRevokeButton({
   member,
   actorRole,
+  actorUserId,
   pending,
   onRevoke,
 }: {
   member: OrganizationMember;
   actorRole: ActorRole;
+  actorUserId: string | undefined;
   pending: boolean;
   onRevoke: (member: OrganizationMember, opener: HTMLElement) => void;
 }) {
-  if (!canRevoke(actorRole, member)) return null;
+  if (!canRevoke(actorRole, actorUserId, member)) return null;
   return (
     <Button
       {...{ [REVOKE_ATTRIBUTE]: member.id }}
