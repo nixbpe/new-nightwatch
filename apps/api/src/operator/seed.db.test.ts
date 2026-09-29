@@ -442,20 +442,28 @@ describe("local demo seed against PostgreSQL", () => {
   it("refuses stale migration state before any seed mutation", async () => {
     await seedLocalDemo(ownerUrl, runtimeUrl);
     const before = await canonicalGraph();
-    const latest = await owner.sql.query<{ name: string }>(
-      "select name from __nightwatch_migrations order by name desc limit 1",
+    const latest = await owner.sql.query<{ name: string; sha256: string }>(
+      "select name, sha256 from __nightwatch_migrations order by name desc limit 1",
     );
-    const migration = latest.rows[0]?.name;
-    if (!migration) throw new Error("expected applied migration state");
+    const removed = latest.rows[0];
+    if (!removed) throw new Error("expected applied migration state");
     await owner.sql.query(
       "delete from __nightwatch_migrations where name = $1",
-      [migration],
+      [removed.name],
     );
-    await expect(seedLocalDemo(ownerUrl, runtimeUrl)).rejects.toThrow(
-      "database migrations are not current",
-    );
-    await expect(canonicalGraph()).resolves.toEqual(before);
-    await runMigrations({ url: ownerUrl, migrationsDir });
+    try {
+      await expect(seedLocalDemo(ownerUrl, runtimeUrl)).rejects.toThrow(
+        "database migrations are not current",
+      );
+      await expect(canonicalGraph()).resolves.toEqual(before);
+    } finally {
+      // Re-insert the tracking row instead of replaying the migration: the
+      // latest migration need not be replayable (create table, create role).
+      await owner.sql.query(
+        "insert into __nightwatch_migrations (name, sha256) values ($1, $2)",
+        [removed.name, removed.sha256],
+      );
+    }
   });
   it("refuses every lower-email ownership collision before identity mutation", async () => {
     const ownerId = "6b0a2d01-60c2-4b32-9b17-1e9e87000001";
