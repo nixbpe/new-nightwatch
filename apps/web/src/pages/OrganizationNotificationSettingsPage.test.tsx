@@ -119,6 +119,7 @@ describe("OrganizationNotificationSettingsPage", () => {
     );
 
     expect(await screen.findByRole("checkbox")).not.toBeChecked();
+    expect(await screen.findByText("บันทึกแล้ว")).toBeInTheDocument();
   });
 
   it("shows a distinct permission denial and optimistic-concurrency conflict", async () => {

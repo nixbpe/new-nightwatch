@@ -6,6 +6,7 @@ import { Page, PageHeader } from "../components/shell/Page";
 import { PageState } from "../components/shell/PageState";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
+import { Notice } from "../components/ui/notice";
 import { ApiError } from "../lib/api/client";
 import {
   fetchOrganizationNotificationSettings,
@@ -13,7 +14,7 @@ import {
   updateOrganizationNotificationSettings,
 } from "../lib/api/notifications";
 import { useTenant } from "../lib/tenant/TenantProvider";
-import { Card, CardFooter } from "../components/ui/card";
+import { Card, CardFooter, CardHeader } from "../components/ui/card";
 
 export function OrganizationNotificationSettingsPage() {
   const organizationId = useParams().organizationId;
@@ -122,14 +123,38 @@ function OrganizationNotificationSettingsForOrganization({
   return (
     <Page width="form">
       {header}
-      <Card as="section" padding="md">
+      <Card
+        as="section"
+        aria-labelledby="notification-settings-card-title"
+        padding="md"
+      >
+        <CardHeader
+          id="notification-settings-card-title"
+          title="ตั้งค่าการแจ้งเตือน"
+        />
         {save.isError ? (
-          <Alert tone="error">
-            {save.error instanceof ApiError &&
-            save.error.code === "SETTINGS_VERSION_CONFLICT"
-              ? "การตั้งค่าถูกเปลี่ยนโดยผู้อื่น กรุณาโหลดใหม่"
-              : "บันทึกการตั้งค่าไม่สำเร็จ"}
-          </Alert>
+          <div className="flex flex-col gap-3">
+            <Alert tone="error">
+              {save.error instanceof ApiError &&
+              save.error.code === "SETTINGS_VERSION_CONFLICT"
+                ? "การตั้งค่าถูกเปลี่ยนโดยผู้อื่น กรุณาโหลดใหม่"
+                : "บันทึกการตั้งค่าไม่สำเร็จ"}
+            </Alert>
+            <div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  save.reset();
+                  setEnabled(null);
+                  void settings.refetch();
+                }}
+              >
+                ลองใหม่
+              </Button>
+            </div>
+          </div>
         ) : null}
         <label className="flex items-start gap-3">
           <input
@@ -149,9 +174,11 @@ function OrganizationNotificationSettingsForOrganization({
             </span>
           </span>
         </label>
-        <CardFooter>
+        <CardFooter variant="split">
+          <Notice tone="success">{save.isSuccess ? "บันทึกแล้ว" : null}</Notice>
           <Button
-            className="h-auto min-h-10 w-full max-w-full break-words whitespace-normal sm:w-auto"
+            type="button"
+            wrap
             disabled={
               value === settingsData.settingsChangedEnabled || save.isPending
             }
@@ -159,7 +186,7 @@ function OrganizationNotificationSettingsForOrganization({
               save.mutate({ value, expectedVersion: settingsData.version });
             }}
           >
-            บันทึกการเปลี่ยนแปลง
+            {save.isPending ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}
           </Button>
         </CardFooter>
       </Card>
