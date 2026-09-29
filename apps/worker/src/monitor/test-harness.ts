@@ -300,3 +300,12 @@ export async function rows<T extends Record<string, unknown>>(
     return result.rows;
   });
 }
+
+/** A loopback port with nothing listening on it. */
+export async function closedPort(): Promise<number> {
+  const server = http.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}

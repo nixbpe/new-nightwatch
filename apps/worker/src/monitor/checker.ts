@@ -3,6 +3,7 @@ import {
   decryptSecret,
   maskUrl,
   runCheck,
+  type CheckFailureReason,
   type CheckResult,
   type CredentialEnv,
   type Logger,
@@ -14,6 +15,7 @@ import {
 } from "@nightwatch/shared";
 import { z } from "zod";
 
+import type { EgressCanary } from "./egress-canary";
 import type { MonitorCheckJob } from "./queue";
 import { recordCheckResult, type MonitorEventHook } from "./record-result";
 
@@ -38,11 +40,24 @@ export type CheckerDependencies = {
   /** Resolver, `OUTBOUND_TEST_ALLOWED_HOSTS` and CA store; test seams for the SSRF helper. */
   outbound?: OutboundDeps;
   clock?: () => Date;
+  /** Distinguishes a target failure from an outage of the Worker's own egress. */
+  canary?: EgressCanary;
+  /** Aborted on shutdown: a check still running then is abandoned and leaves a gap. */
+  signal?: AbortSignal;
   /** Overrides `onMonitorEvent`; tests observe incident events with it. */
   onEvent?: MonitorEventHook;
 };
 
-export type CheckerOutcome = "recorded" | "duplicate" | "discarded" | "skipped";
+export type CheckerOutcome =
+  "recorded" | "duplicate" | "discarded" | "skipped" | "aborted";
+
+/** Failures that a broken outbound network of the Worker would also produce. */
+const NETWORK_FAILURES: ReadonlySet<CheckFailureReason> = new Set([
+  "dns_not_found",
+  "connect_refused",
+  "connect_failed",
+  "timeout",
+]);
 
 type StoredHeader = {
   id?: string;
@@ -225,6 +240,19 @@ function decryptSecrets(
   return { secrets, complete };
 }
 
+function abandoned(signal: AbortSignal | undefined): Promise<"aborted"> {
+  if (!signal) return new Promise(() => undefined);
+  return new Promise((resolve) => {
+    signal.addEventListener(
+      "abort",
+      () => {
+        resolve("aborted");
+      },
+      { once: true },
+    );
+  });
+}
+
 /**
  * One queued check: load (tx A), send outside any transaction, then record
  * (tx B). Never rejects for target-controlled input.
@@ -243,15 +271,14 @@ export async function processMonitorCheck(
     prepared,
     dependencies.credentialEnv,
   );
-  let result: CheckResult;
-  try {
-    result = await runCheck(prepared.config, secrets, {
-      ...dependencies.outbound,
-      ...(dependencies.clock ? { clock: dependencies.clock } : {}),
-    });
-  } catch {
+  const signal = dependencies.signal;
+  if (signal?.aborted) return "aborted";
+  const running = runCheck(prepared.config, secrets, {
+    ...dependencies.outbound,
+    ...(dependencies.clock ? { clock: dependencies.clock } : {}),
+  }).catch(
     // runCheck is meant not to reject; a rejection is still a check that could not run.
-    result = {
+    (): CheckResult => ({
       outcome: "check_error",
       checkedAt: (dependencies.clock ?? (() => new Date()))(),
       httpStatus: null,
@@ -262,6 +289,27 @@ export async function processMonitorCheck(
       url: maskUrl(prepared.config.url),
       evaluatedFromPrefix: false,
       tls: null,
+    }),
+  );
+  const finished = await Promise.race([running, abandoned(signal)]);
+  if (finished === "aborted") {
+    logger.warn(
+      { tenantId: job.tenantId, monitorId: job.monitorId },
+      "monitor check abandoned on shutdown",
+    );
+    return "aborted";
+  }
+  let result: CheckResult = finished;
+  if (
+    result.outcome === "fail" &&
+    result.failureReason !== null &&
+    NETWORK_FAILURES.has(result.failureReason) &&
+    (await dependencies.canary?.status()) === "failed"
+  ) {
+    result = {
+      ...result,
+      outcome: "check_error",
+      failureReason: "internal_egress_failed",
     };
   }
   if (!complete) {

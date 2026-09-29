@@ -1,10 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import { createLogger, loadMonitorEnv } from "@nightwatch/shared";
+import {
+  createLogger,
+  encryptSecret,
+  loadMonitorEnv,
+} from "@nightwatch/shared";
+import { withTenantContextRaw } from "@nightwatch/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { processMonitorCheck, type CheckerDependencies } from "./checker";
+import { createEgressCanary } from "./egress-canary";
 import {
+  closedPort,
   outboundDeps,
   rows,
   seedMonitor,
@@ -12,6 +19,7 @@ import {
   startTestDatabase,
   updateMonitor,
   type SeededMonitor,
+  type Target,
   type TestDatabase,
 } from "./test-harness";
 
@@ -330,9 +338,10 @@ type StepEvent = { type: string; endReason?: string; lockHeld: boolean };
  */
 async function runSteps(
   monitor: SeededMonitor,
-  target: Awaited<ReturnType<typeof startTarget>>,
+  target: Pick<Target, "setHandler">,
   steps: Step[],
   startAt = Date.now() - 3_600_000,
+  canary?: CheckerDependencies["canary"],
 ): Promise<{
   events: StepEvent[];
   states: { failures: number; open: boolean; lastOutcome: string | null }[];
@@ -363,6 +372,7 @@ async function runSteps(
         scheduledFor: new Date(startAt + index * 60_000).toISOString(),
       }),
       dependencies({
+        ...(canary ? { canary } : {}),
         outbound:
           step === "check_error"
             ? {
@@ -684,6 +694,299 @@ describe("hourly rollup (AC-14)", () => {
         [monitor.monitorId],
       );
       expect(hourly).toEqual({ checks: 1, covered_seconds: 60 });
+    } finally {
+      await target.close();
+    }
+  });
+});
+
+const credentialEnv = loadMonitorEnv({ REDIS_URL: "redis://unused" });
+
+/** Stores an encrypted slot the way Task 13 will; the API does not write secrets yet. */
+async function storeSecret(
+  monitor: SeededMonitor,
+  slot: string,
+  value: string,
+  bindTo: { monitorId: string } = monitor,
+): Promise<void> {
+  const sealed = encryptSecret(
+    {
+      tenantId: monitor.tenantId,
+      monitorId: bindTo.monitorId,
+      slot,
+      value,
+    },
+    credentialEnv,
+  );
+  await withTenantContextRaw(db.runtime, monitor.tenantId, (client) =>
+    client.query(
+      `insert into monitor_secrets
+         (monitor_id, tenant_id, slot, ciphertext, iv, auth_tag, key_version)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        monitor.monitorId,
+        monitor.tenantId,
+        slot,
+        sealed.ciphertext,
+        sealed.iv,
+        sealed.authTag,
+        sealed.keyVersion,
+      ],
+    ),
+  );
+}
+
+describe("secrets in the checker (JOB-05)", () => {
+  it("decrypts in memory, sends the value and stores none of it", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        authType: "bearer",
+      });
+      await storeSecret(monitor, "auth.token", "tok-very-secret-123");
+      expect(await processMonitorCheck(monitor.job(), dependencies())).toBe(
+        "recorded",
+      );
+
+      expect(target.requests[0]?.headers.authorization).toBe(
+        "Bearer tok-very-secret-123",
+      );
+      const stored = await rows(
+        db,
+        monitor,
+        "select * from monitor_check_results where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(JSON.stringify(stored)).not.toContain("tok-very-secret-123");
+      expect(stored[0]?.outcome).toBe("pass");
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("an undecryptable secret is check_error with no request and no incident (AC-39)", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        authType: "bearer",
+      });
+      // Bound to another monitor: the AAD does not match this row.
+      await storeSecret(monitor, "auth.token", "tok", {
+        monitorId: randomUUID(),
+      });
+      const { states } = await runSteps(monitor, target, [
+        "fail",
+        "fail",
+        "fail",
+      ]);
+
+      expect(target.requests).toHaveLength(0);
+      expect(states.every((state) => !state.open && state.failures === 0)).toBe(
+        true,
+      );
+      const stored = await results(monitor);
+      expect(stored.map((row) => [row.outcome, row.failure_reason])).toEqual([
+        ["check_error", "secret_decrypt_failed"],
+        ["check_error", "secret_decrypt_failed"],
+        ["check_error", "secret_decrypt_failed"],
+      ]);
+      expect((await countAll(monitor)).incidents).toBe(0);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a missing required secret slot is check_error", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        authType: "basic",
+      });
+      await storeSecret(monitor, "auth.username", "user");
+      await processMonitorCheck(monitor.job(), dependencies());
+      expect(target.requests).toHaveLength(0);
+      expect((await results(monitor))[0]).toMatchObject({
+        outcome: "check_error",
+        failure_reason: "secret_decrypt_failed",
+      });
+    } finally {
+      await target.close();
+    }
+  });
+});
+
+describe("egress canary classification (AC-55)", () => {
+  async function refusedRun(
+    canary: ReturnType<typeof createEgressCanary> | undefined,
+  ) {
+    const port = await closedPort();
+    const monitor = await seedMonitor(db, {
+      url: `http://target.nw-test.internal:${String(port)}/`,
+    });
+    const { states, events } = await runSteps(
+      monitor,
+      { setHandler: () => undefined },
+      ["fail", "fail"],
+      Date.now() - 600_000,
+      canary,
+    );
+    return { monitor, states, events };
+  }
+
+  it("network failure with a failing canary is check_error internal_egress_failed, no incident", async () => {
+    const canary = createEgressCanary({
+      urls: ["https://canary.example.test"],
+      probe: () => Promise.resolve(false),
+    });
+    const { monitor, states } = await refusedRun(canary);
+    expect(states.map((state) => state.open)).toEqual([false, false]);
+    expect(
+      (await results(monitor)).map((row) => [row.outcome, row.failure_reason]),
+    ).toEqual([
+      ["check_error", "internal_egress_failed"],
+      ["check_error", "internal_egress_failed"],
+    ]);
+  });
+
+  it("network failure with a working canary stays a failure and opens an incident", async () => {
+    const canary = createEgressCanary({
+      urls: ["https://canary.example.test"],
+      probe: () => Promise.resolve(true),
+    });
+    const { monitor, states } = await refusedRun(canary);
+    expect(states.map((state) => state.open)).toEqual([false, true]);
+    expect((await results(monitor)).map((row) => row.failure_reason)).toEqual([
+      "connect_refused",
+      "connect_refused",
+    ]);
+  });
+
+  it("without a canary the error code alone decides", async () => {
+    const { monitor, states } = await refusedRun(undefined);
+    expect(states.map((state) => state.open)).toEqual([false, true]);
+    expect((await results(monitor))[0]?.outcome).toBe("fail");
+  });
+
+  it("a failing canary does not turn a target-side failure into check_error", async () => {
+    const target = await startTarget((_request, response) => {
+      response.statusCode = 503;
+      response.end("down");
+    });
+    try {
+      const canary = createEgressCanary({
+        urls: ["https://canary.example.test"],
+        probe: () => Promise.resolve(false),
+      });
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await processMonitorCheck(monitor.job(), dependencies({ canary }));
+      expect((await results(monitor))[0]).toMatchObject({
+        outcome: "fail",
+        failure_reason: "http_status",
+      });
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("probes the canary URL through the SSRF helper", async () => {
+    const answering = await startTarget();
+    try {
+      const up = createEgressCanary({
+        urls: [`${answering.url}/ping`],
+        outbound: outboundDeps,
+      });
+      expect(await up.status()).toBe("ok");
+      expect(answering.requests[0]?.method).toBe("HEAD");
+    } finally {
+      await answering.close();
+    }
+    const port = await closedPort();
+    const down = createEgressCanary({
+      urls: [`http://target.nw-test.internal:${String(port)}/`],
+      outbound: outboundDeps,
+    });
+    expect(await down.status()).toBe("failed");
+    // A canary URL that resolves to a forbidden address is refused, never contacted.
+    const blocked = createEgressCanary({
+      urls: ["http://blocked.example.test:8080/"],
+      outbound: { resolver: () => Promise.resolve(["127.0.0.1"]) },
+    });
+    expect(await blocked.status()).toBe("failed");
+  });
+});
+
+describe("AC-62 and shutdown", () => {
+  it("a host that resolves to 127.0.0.1 after save is blocked_address and never contacted", async () => {
+    const listener = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `http://rebind.example.test:${String(listener.port)}/health`,
+      });
+      // Saved while public; by check time the name resolves to loopback.
+      const deps = dependencies({
+        outbound: { resolver: () => Promise.resolve(["127.0.0.1"]) },
+      });
+      for (const index of [0, 1]) {
+        const token = randomUUID();
+        await updateMonitor(
+          db,
+          monitor,
+          "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+          [monitor.monitorId, token],
+        );
+        await processMonitorCheck(
+          monitor.job({
+            claimToken: token,
+            scheduledFor: new Date(
+              Date.now() - 60_000 * (index + 1),
+            ).toISOString(),
+          }),
+          deps,
+        );
+      }
+
+      expect(listener.requests).toHaveLength(0);
+      const stored = await rows<{
+        outcome: string;
+        failure_reason: string;
+        url_masked: string;
+      }>(
+        db,
+        monitor,
+        "select outcome, failure_reason, url_masked from monitor_check_results where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(stored.map((row) => [row.outcome, row.failure_reason])).toEqual([
+        ["fail", "blocked_address"],
+        ["fail", "blocked_address"],
+      ]);
+      expect(JSON.stringify(stored)).not.toContain("127.0.0.1");
+      expect((await countAll(monitor)).incidents).toBe(1);
+    } finally {
+      await listener.close();
+    }
+  });
+
+  it("an aborted check records nothing and keeps its claim (gap)", async () => {
+    const target = await startTarget();
+    target.setHandler(() => undefined);
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/hang` });
+      const controller = new AbortController();
+      const running = processMonitorCheck(
+        monitor.job(),
+        dependencies({ signal: controller.signal }),
+      );
+      while (target.requests.length === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      controller.abort();
+      expect(await running).toBe("aborted");
+      expect((await countAll(monitor)).results).toBe(0);
+      expect(await claimToken(monitor)).toBe(monitor.claimToken);
     } finally {
       await target.close();
     }

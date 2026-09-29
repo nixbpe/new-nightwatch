@@ -21,6 +21,7 @@ import {
   type MaterializeJobData,
 } from "./materialize";
 import { assertMonitorCheckJob, processMonitorCheck } from "./monitor/checker";
+import { createEgressCanary } from "./monitor/egress-canary";
 import {
   createMonitorCheckQueue,
   MONITOR_CHECK_QUEUE,
@@ -39,6 +40,10 @@ type WorkerRole = (typeof WORKER_ROLES)[number];
 
 // Inside the 30 s shutdown budget of the spec.
 const SHUTDOWN_DEADLINE_MS = 25_000;
+// Checks still running after this long are abandoned; their results become gaps.
+const CHECKER_DRAIN_MS = 15_000;
+const CHECKER_CLOSE_MS = 18_000;
+const checkerShutdown = new AbortController();
 
 const env = loadEnv();
 const databaseUrl = requireEnvironment("DATABASE_URL");
@@ -91,12 +96,20 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   await monitorSchedule?.stop();
   if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
-  if (monitorChecker) await closeWithin(monitorChecker);
+  if (monitorChecker) {
+    const abort = setTimeout(() => {
+      checkerShutdown.abort();
+    }, CHECKER_DRAIN_MS);
+    await closeWithin(monitorChecker, CHECKER_CLOSE_MS);
+    clearTimeout(abort);
+  }
   if (worker) await closeWithin(worker);
   if (queue) await closeWithin(queue);
   if (monitorQueue) await closeWithin(monitorQueue);
   await database.close();
   logger.flush();
+  // Abandoned requests would keep the event loop alive until their own timeout.
+  if (checkerShutdown.signal.aborted) process.exit(0);
 }
 
 process.on("SIGINT", () => void shutdown("SIGINT"));
@@ -135,6 +148,11 @@ function startMonitorChecker(monitor: MonitorEnv): Worker<MonitorCheckJob> {
     credentialEnv: monitor,
     logger,
     outbound: { testAllowedHosts: monitor.OUTBOUND_TEST_ALLOWED_HOSTS },
+    canary: createEgressCanary({
+      urls: monitor.MONITOR_EGRESS_CANARY_URLS,
+      outbound: { testAllowedHosts: monitor.OUTBOUND_TEST_ALLOWED_HOSTS },
+    }),
+    signal: checkerShutdown.signal,
   };
   // attempts is 1: a failed job is logged and never retried.
   const checker = new Worker<MonitorCheckJob>(
