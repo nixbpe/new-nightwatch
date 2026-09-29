@@ -152,6 +152,10 @@ function OrganizationMembersPageForOrganization({
       !isCurrentRoleScope()
     )
       return;
+    if (document.activeElement !== document.body) {
+      directRoleFocusMemberId.current = null;
+      return;
+    }
     const target = directRoleActionCellRef.current?.querySelector(
       "select:not(:disabled), button:not(:disabled)",
     );
@@ -271,7 +275,8 @@ function OrganizationMembersPageForOrganization({
     if (member.role === "owner" || role === "owner") {
       setConfirmation({ member, role, opener });
     } else {
-      directRoleFocusMemberId.current = member.id;
+      directRoleFocusMemberId.current =
+        document.activeElement === opener ? member.id : null;
       void submitRole(member, role);
     }
   }

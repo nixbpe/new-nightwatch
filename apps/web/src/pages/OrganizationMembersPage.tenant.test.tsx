@@ -611,6 +611,73 @@ it.each(["updated", "removed"] as const)(
   },
 );
 
+it("keeps intentional focus on a live invitation input through a deferred direct-save refetch", async () => {
+  const target = {
+    id: "member-2",
+    userId: "user-2",
+    name: "Bea",
+    email: "bea@example.test",
+    role: "viewer" as const,
+  };
+  const refreshed = Promise.withResolvers<OrganizationMemberListResponse>();
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(fetchOrganizationMembers)
+    .mockResolvedValueOnce({
+      ...aList,
+      members: [aMember, target],
+      page: { limit: 50, offset: 0, total: 2 },
+    })
+    .mockImplementationOnce(() => refreshed.promise);
+  vi.mocked(updateOrganizationMemberRole).mockResolvedValue({
+    member: {
+      id: target.id,
+      userId: target.userId,
+      organizationId: A,
+      role: "admin",
+    },
+  });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("Bea");
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "บทบาทของ Bea" }),
+    "admin",
+  );
+  const oldSave = screen.getByRole("button", { name: "บันทึกบทบาทของ Bea" });
+  oldSave.focus();
+  await user.keyboard("{Enter}");
+  expect(oldSave.isConnected).toBe(false);
+  expect(document.activeElement).toBe(document.body);
+  expect(screen.getByText("กำลังโหลดสมาชิก")).toBeInTheDocument();
+  const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
+  await user.click(email);
+  expect(email).toHaveFocus();
+  await act(async () => {
+    refreshed.resolve({
+      ...aList,
+      members: [aMember, { ...target, role: "admin" }],
+      page: { limit: 50, offset: 0, total: 2 },
+    });
+    await refreshed.promise;
+  });
+  expect(
+    screen.getByRole("combobox", { name: "บทบาทของ Bea" }),
+  ).toBeInTheDocument();
+  expect(email.isConnected).toBe(true);
+  expect(email).toHaveFocus();
+});
+
 it("does not restore the old direct role action over B after a confirmed switch", async () => {
   const patch = Promise.withResolvers<{
     member: { id: string; userId: string; organizationId: string; role: "admin" };
