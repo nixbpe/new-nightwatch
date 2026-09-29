@@ -11,12 +11,15 @@ export function buildCheckUrl(
   queryParams: readonly { name: string; value: string }[],
 ): UrlCheck {
   const checked = validateOutboundUrl(url);
-  if (!checked.ok || queryParams.length === 0) return checked;
+  if (!checked.ok) return checked;
   const target = checked.url;
-  const added = new URLSearchParams(
-    queryParams.map(({ name, value }): [string, string] => [name, value]),
-  ).toString();
-  const saved = target.search.slice(1);
-  target.search = saved === "" ? added : `${saved}&${added}`;
+  if (queryParams.length > 0) {
+    const added = new URLSearchParams(
+      queryParams.map(({ name, value }): [string, string] => [name, value]),
+    ).toString();
+    const saved = target.search.slice(1);
+    target.search = saved === "" ? added : `${saved}&${added}`;
+  }
+  // The normalized href can be longer than the raw text (spaces become %20).
   return validateOutboundUrl(target.href);
 }

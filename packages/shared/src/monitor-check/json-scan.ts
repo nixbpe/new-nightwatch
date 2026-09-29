@@ -79,11 +79,11 @@ function forEachMember(
  * matches, and every other value is skipped by `ends` without being parsed.
  * `ends` comes from `indexContainers`, computed once per response.
  */
-export function findAll(
+export function findSpans(
   text: string,
   segments: PathSegment[],
   ends: Int32Array = indexContainers(text),
-): unknown[] {
+): [start: number, end: number][] {
   let starts: number[] = [skipSpace(text, 0)];
   for (const segment of segments) {
     const next: number[] = [];
@@ -104,8 +104,35 @@ export function findAll(
     }
     starts = next;
   }
-  return starts.map(
-    (start) =>
-      JSON.parse(text.slice(start, skipValue(text, ends, start))) as unknown,
+  return starts.map((start) => [start, skipValue(text, ends, start)]);
+}
+
+/** JSON type of the value starting at `start`, read from its first character. */
+export function jsonTypeAt(text: string, start: number): string {
+  switch (text.charAt(start)) {
+    case "{":
+      return "object";
+    case "[":
+      return "array";
+    case '"':
+      return "string";
+    case "t":
+    case "f":
+      return "boolean";
+    case "n":
+      return "null";
+    default:
+      return "number";
+  }
+}
+
+/** Parsed values of `findSpans`; parsing a very deep value may throw `RangeError`. */
+export function findAll(
+  text: string,
+  segments: PathSegment[],
+  ends: Int32Array = indexContainers(text),
+): unknown[] {
+  return findSpans(text, segments, ends).map(
+    ([start, end]) => JSON.parse(text.slice(start, end)) as unknown,
   );
 }

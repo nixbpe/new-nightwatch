@@ -1,4 +1,4 @@
-import { findAll, indexContainers } from "./json-scan";
+import { findSpans, indexContainers, jsonTypeAt } from "./json-scan";
 import { truncateActual } from "./redact";
 import type {
   AssertionReason,
@@ -70,6 +70,14 @@ function display(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function expectedText(assertion: NormalizedAssertion): string {
+  return assertion.kind === "jsonPathEquals"
+    ? display(assertion.expectedValue)
+    : assertion.kind === "bodyContains"
+      ? assertion.text
+      : String(assertion.ms);
+}
+
 export function evaluateAssertions(
   assertions: readonly NormalizedAssertion[],
   response: EvaluatedResponse | null,
@@ -93,12 +101,7 @@ export function evaluateAssertions(
       actualType: null,
       actualTruncated: false,
     };
-    const expected =
-      assertion.kind === "jsonPathEquals"
-        ? display(assertion.expectedValue)
-        : assertion.kind === "bodyContains"
-          ? assertion.text
-          : String(assertion.ms);
+    const expected = expectedText(assertion);
     const outcome = (
       status: AssertionResult["status"],
       reason: AssertionReason | null,
@@ -134,12 +137,25 @@ export function evaluateAssertions(
     valid ??= isJson(body.text);
     if (!valid) return outcome("fail", "not_json");
     ends ??= indexContainers(body.text);
-    const matches = findAll(body.text, assertion.pathSegments, ends);
-    if (matches.length === 0) return outcome("fail", "path_not_found");
-    if (matches.length > 1) return outcome("fail", "multiple_matches");
-    const found = matches[0];
-    const foundType = jsonType(found);
-    const details = { actualType: foundType, ...shown(display(found)) };
+    const spans = findSpans(body.text, assertion.pathSegments, ends);
+    if (spans.length === 0) return outcome("fail", "path_not_found");
+    if (spans.length > 1) return outcome("fail", "multiple_matches");
+    const [start, end] = spans[0] ?? [0, 0];
+    const foundType = jsonTypeAt(body.text, start);
+    let found: unknown;
+    let json: string | undefined;
+    try {
+      found = JSON.parse(body.text.slice(start, end));
+      json = display(found);
+    } catch {
+      // Too deep to materialize (RangeError). Only a container can be that deep,
+      // so the type check below fails it; no raw slice is shown because it
+      // could spell a secret in a form the redactor does not know.
+    }
+    const details: Partial<AssertionResult> =
+      json === undefined
+        ? { actualType: foundType }
+        : { actualType: foundType, ...shown(json) };
     const expectedValue: JsonScalar = assertion.expectedValue;
     if (foundType !== jsonType(expectedValue)) {
       return outcome("fail", "type_mismatch", details);
@@ -149,8 +165,27 @@ export function evaluateAssertions(
       : outcome("fail", "value_mismatch", details);
   };
 
+  // Target-controlled input must never reject `runCheck`: an unexpected
+  // exception fails that one assertion with a fixed reason.
+  const evaluateGuarded = (assertion: NormalizedAssertion): AssertionResult => {
+    try {
+      return evaluateOne(assertion);
+    } catch {
+      return {
+        kind: assertion.kind,
+        expected: expectedText(assertion),
+        actual: null,
+        actualType: null,
+        actualTruncated: false,
+        status: "fail",
+        reason:
+          assertion.kind === "jsonPathEquals" ? "not_json" : "undecodable",
+      };
+    }
+  };
+
   return {
-    results: assertions.map(evaluateOne),
+    results: assertions.map(evaluateGuarded),
     evaluatedFromPrefix:
       response !== null &&
       response.bodyTruncated &&

@@ -55,10 +55,12 @@ export function truncateActual(text: string): {
   truncated: boolean;
 } {
   if (text.length <= ACTUAL_MAX_CHARS) return { text, truncated: false };
-  const points = Array.from(text);
-  if (points.length <= ACTUAL_MAX_CHARS) return { text, truncated: false };
-  return {
-    text: points.slice(0, ACTUAL_MAX_CHARS).join(""),
-    truncated: true,
-  };
+  let kept = "";
+  let count = 0;
+  for (const point of text) {
+    if (count === ACTUAL_MAX_CHARS) return { text: kept, truncated: true };
+    kept += point;
+    count++;
+  }
+  return { text, truncated: false };
 }

@@ -126,6 +126,55 @@ describe("deep bodies through evaluateAssertions", () => {
   });
 });
 
+describe("very deep matches never throw", () => {
+  const scalar = (
+    pathSegments: string[] = [],
+  ): Extract<NormalizedAssertion, { kind: "jsonPathEquals" }> => ({
+    kind: "jsonPathEquals",
+    pathSegments,
+    expectedValue: "x",
+  });
+
+  it("fails an empty path on a 100000-level body as type_mismatch", () => {
+    const { results } = evaluate([scalar()], nest(100_000, "0"));
+    expect(results[0]).toMatchObject({
+      status: "fail",
+      reason: "type_mismatch",
+      actualType: "array",
+    });
+  });
+
+  it("fails a path that lands on a 100000-level subtree as type_mismatch", () => {
+    const { results } = evaluate(
+      [scalar(["a", "b"])],
+      `{"a":{"b":${nest(100_000, "0")}}}`,
+    );
+    expect(results[0]).toMatchObject({
+      status: "fail",
+      reason: "type_mismatch",
+      actualType: "array",
+    });
+    expect((results[0]?.actual ?? "").length).toBeLessThanOrEqual(200);
+  });
+
+  it("turns an unexpected exception into a failed assertion", () => {
+    const { results } = evaluateAssertions(
+      [scalar(["a"])],
+      {
+        status: 200,
+        headers: {},
+        body: Buffer.from('{"a":"x"}'),
+        bodyTruncated: false,
+        elapsedMs: 1,
+      },
+      () => {
+        throw new Error("boom");
+      },
+    );
+    expect(results[0]).toMatchObject({ status: "fail", reason: "not_json" });
+  });
+});
+
 describe("shared parse", () => {
   it("validates the body once for several JSONPath assertions", () => {
     const body = JSON.stringify({ a: 1, b: { c: "x" }, d: [true] });
