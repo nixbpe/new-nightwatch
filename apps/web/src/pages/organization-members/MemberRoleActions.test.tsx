@@ -499,7 +499,9 @@ it("does not leave pagination disabled when a confirmed switch retires A while s
   await user.click(save("Ann"));
   expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
   await user.click(screen.getByRole("button", { name: "confirm B" }));
-  await waitFor(() => { expect(updateActiveOrganization).toHaveBeenCalled(); });
+  await waitFor(() => {
+    expect(updateActiveOrganization).toHaveBeenCalled();
+  });
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeEnabled(),
   );
@@ -521,7 +523,9 @@ it("keeps A pending, and its result, when the switch to B is denied", async () =
   await user.selectOptions(roleSelect("Ann"), "auditor");
   await user.click(save("Ann"));
   await user.click(screen.getByRole("button", { name: "confirm B" }));
-  await waitFor(() => { expect(updateActiveOrganization).toHaveBeenCalled(); });
+  await waitFor(() => {
+    expect(updateActiveOrganization).toHaveBeenCalled();
+  });
   expect(save("Ann")).toBeDisabled();
   await act(async () => {
     roles["member-ann"] = "auditor";
