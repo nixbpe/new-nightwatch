@@ -452,18 +452,37 @@ describe("Edit", () => {
     expect(JSON.stringify(event)).not.toContain("url-marker");
   });
 
-  it("records no URL for a query-param-only change but still bumps check_config_version", async () => {
+  it("marks history when a query param name is added or renamed, not when only a value changes", async () => {
     const monitor = await created();
-    await edit(
-      monitor,
-      configOf({ ...monitor, queryParams: [{ name: "q", value: "1" }] }),
-    );
-    expect(await monitorRow(monitor.id)).toMatchObject({
-      check_config_version: 2,
+    const base = `https://${STUB_HOSTS.public}/health`;
+    const withParams = (queryParams: { name: string; value: string }[]) =>
+      configOf({ ...monitor, queryParams });
+    let current = monitor;
+    const step = async (queryParams: { name: string; value: string }[]) => {
+      const response = await edit(
+        current,
+        withParams(queryParams),
+        (await monitorRow(monitor.id)).version,
+      );
+      expect(response.status).toBe(200);
+      current = monitorWriteResponseSchema.parse(response.json).monitor;
+      return (await events(monitor.id)).at(-1);
+    };
+    expect(await step([{ name: "q", value: "1" }])).toEqual({
+      kind: "config_changed",
+      url_masked: `${base}?q=•••`,
     });
-    expect(await events(monitor.id)).toEqual([
-      { kind: "config_changed", url_masked: null },
-    ]);
+    expect(await step([{ name: "r", value: "1" }])).toEqual({
+      kind: "config_changed",
+      url_masked: `${base}?r=•••`,
+    });
+    expect(await step([{ name: "r", value: "2" }])).toEqual({
+      kind: "config_changed",
+      url_masked: null,
+    });
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      check_config_version: 4,
+    });
   });
 
   it("updates the schedule for a timeout edit and bumps check_config_version", async () => {

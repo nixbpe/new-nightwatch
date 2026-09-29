@@ -28,6 +28,7 @@ const app = createApp({
   database,
   mailer,
   redis,
+  outbound: { testAllowedHosts: monitorEnv.OUTBOUND_TEST_ALLOWED_HOSTS },
 });
 
 const server = Bun.serve({ port: env.PORT, fetch: app.fetch });

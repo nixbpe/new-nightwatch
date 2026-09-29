@@ -289,7 +289,8 @@ const authSchema = z.discriminatedUnion("type", [
 ]);
 
 // No `mode` field: basic and advanced mode belong to the UI.
-export const monitorConfigBaseSchema = z.object({
+// Strict: `secrets` belongs to Task 13 and must not be silently ignored.
+export const monitorConfigBaseSchema = z.strictObject({
   name: z.string().trim().min(1).max(MONITOR_NAME_MAX_LENGTH),
   url: z.string().max(MONITOR_URL_MAX_LENGTH * 2),
   intervalSeconds: z.number().default(MONITOR_DEFAULT_INTERVAL_SECONDS),
@@ -808,6 +809,9 @@ function monitorErrorWithDetails<
   });
 }
 
+export const unsupportedMediaTypeErrorResponseSchema = monitorErrorSchema(
+  "UNSUPPORTED_MEDIA_TYPE",
+);
 export const monitorInvalidErrorResponseSchema = monitorErrorWithDetails(
   "MONITOR_INVALID",
   z.object({

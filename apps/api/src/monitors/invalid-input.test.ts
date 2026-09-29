@@ -38,7 +38,6 @@ describe("monitorInvalidInputHook", () => {
         { name: "Host", value: "x", secret: false },
         { name: "X-A", value: "a\r\nb", secret: false },
       ],
-      surprise: secretLooking,
     });
     expect(fields).toEqual([
       { field: "url", reason: "blocked_scheme" },

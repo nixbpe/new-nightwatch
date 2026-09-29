@@ -1618,6 +1618,21 @@ export interface paths {
                         };
                     };
                 };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
                 /** @description The host is or resolves to a forbidden address */
                 422: {
                     headers: {
@@ -2034,6 +2049,21 @@ export interface paths {
                                 details: {
                                     currentVersion: number;
                                 };
+                            };
+                        };
+                    };
+                };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
                             };
                         };
                     };

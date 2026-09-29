@@ -106,6 +106,7 @@ export async function openMonitorTestContext(options?: {
     SMTP_SECURE: false,
     SMTP_FROM: "Monitor tests <monitor@example.test>",
   };
+  const resolverCalls: string[] = [];
   const users = new Map<string, AuthSession>();
   const auth: Auth = {
     handler: () => Promise.resolve(new Response(null, { status: 404 })),
@@ -124,6 +125,7 @@ export async function openMonitorTestContext(options?: {
     logger,
     outbound: {
       resolver: (hostname) => {
+        resolverCalls.push(hostname);
         const addresses = STUB_ADDRESSES[hostname];
         if (!addresses) {
           return Promise.reject(
@@ -228,6 +230,7 @@ export async function openMonitorTestContext(options?: {
     runtime,
     owner,
     lines,
+    resolverCalls,
     createUser,
     createOrganization,
     call,

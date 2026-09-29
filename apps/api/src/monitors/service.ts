@@ -95,6 +95,15 @@ async function validateSaveTarget(
   return maskUrl(built.url.href);
 }
 
+// History marks a URL change when the masked built URL differs, so a new or
+// renamed query param shows; a value-only change looks identical once masked.
+function urlMarker(previous: StoredConfig, nextMasked: string): string | null {
+  const before = buildCheckUrl(previous.url, previous.queryParams);
+  return before.ok && maskUrl(before.url.href) === nextMasked
+    ? null
+    : nextMasked;
+}
+
 type Identity = { organizationId: string; actorUserId: string };
 
 // Lock order shared with the Worker: organization row, then the
@@ -357,11 +366,7 @@ export async function editMonitor(
       await client.query(
         `insert into monitor_events (monitor_id, tenant_id, kind, url_masked)
        values ($1, $2, 'config_changed', $3)`,
-        [
-          monitorId,
-          input.organizationId,
-          previous.url === next.url ? null : maskedUrl,
-        ],
+        [monitorId, input.organizationId, urlMarker(previous, maskedUrl)],
       );
       return { monitor: await loadRecord(client, saved), changed: true };
     },

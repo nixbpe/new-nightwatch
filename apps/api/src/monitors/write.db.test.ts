@@ -201,6 +201,63 @@ describe("role x operation", () => {
     });
   });
 
+  it("touches no row, DNS or connection for a valid body from a viewer, auditor or nonmember", async () => {
+    const target = await createdBy(org.users.owner);
+    const before = await monitorRows(org.id);
+    const calls = ctx.resolverCalls.length;
+    const hostUrl = `https://${STUB_HOSTS.public}/denied`;
+    for (const user of [org.users.viewer, org.users.auditor, outsider]) {
+      const created = await create(org.id, user, validConfig({ url: hostUrl }));
+      const edited = await ctx.call(
+        user,
+        "PATCH",
+        monitorsPath(org.id, `/${target.id}`),
+        {
+          ...validConfig({ url: hostUrl }),
+          expectedVersion: target.version,
+        },
+      );
+      expect(created.status).toBe(403);
+      expect(edited.status).toBe(403);
+    }
+    expect(await monitorRows(org.id)).toEqual(before);
+    expect(ctx.resolverCalls.length).toBe(calls);
+  });
+
+  it("gives a nonmember with an invalid body only allow-listed field and reason", async () => {
+    const response = await ctx.call(outsider, "POST", monitorsPath(org.id), {
+      name: "",
+      url: "ftp://x",
+      secrets: [{ slot: "auth.token", value: "s" }],
+    });
+    expect(response.status).toBe(400);
+    expect(response.json).toMatchObject({
+      error: { code: "MONITOR_INVALID" },
+    });
+    expect(JSON.stringify(response.json)).not.toContain("auth.token");
+  });
+
+  it("rejects a secrets field and unknown keys", async () => {
+    const response = await ctx.call(
+      org.users.owner,
+      "POST",
+      monitorsPath(org.id),
+      {
+        ...validConfig(),
+        clientRequestId: crypto.randomUUID(),
+        secrets: [{ slot: "auth.token", value: "s" }],
+      },
+    );
+    expect(response.status).toBe(400);
+    expect(response.json).toEqual({
+      error: {
+        code: "MONITOR_INVALID",
+        message: "Invalid monitor input",
+        details: { fields: [{ field: "request", reason: "invalid_format" }] },
+      },
+    });
+  });
+
   it("requires a session", async () => {
     const response = await create(org.id, null);
     expect(response.status).toBe(401);

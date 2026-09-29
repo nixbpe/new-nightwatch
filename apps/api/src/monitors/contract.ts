@@ -15,6 +15,7 @@ import {
   monitorWriteResponseSchema,
   permissionDeniedErrorResponseSchema,
   unauthenticatedErrorResponseSchema,
+  unsupportedMediaTypeErrorResponseSchema,
 } from "@nightwatch/api-contract";
 import { z } from "zod";
 
@@ -24,6 +25,10 @@ const jsonError = (description: string, schema: z.ZodType) =>
 const invalidResponse = jsonError(
   "Invalid monitor input",
   z.union([monitorInvalidErrorResponseSchema, invalidInputErrorResponseSchema]),
+);
+const mediaTypeResponse = jsonError(
+  "The request body is not JSON",
+  unsupportedMediaTypeErrorResponseSchema,
 );
 const authResponses = {
   401: jsonError("No valid session", unauthenticatedErrorResponseSchema),
@@ -63,6 +68,7 @@ export const monitorWriteRouteDeclarations = {
         content: { "application/json": { schema: monitorWriteResponseSchema } },
       },
       400: invalidResponse,
+      415: mediaTypeResponse,
       ...authResponses,
       409: jsonError(
         "The Organization is at its monitor limit",
@@ -92,6 +98,7 @@ export const monitorWriteRouteDeclarations = {
         content: { "application/json": { schema: monitorWriteResponseSchema } },
       },
       400: invalidResponse,
+      415: mediaTypeResponse,
       ...authResponses,
       404: notFoundResponse,
       409: jsonError(
