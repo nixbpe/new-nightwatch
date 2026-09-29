@@ -840,13 +840,9 @@ export function MfaCard({
                 <span className="font-mono">30</span> วินาที
               </p>
               {error === null ? null : codeInvalid ? (
-                <p
-                  id={VERIFY_TOTP_SERVER_ERROR_ID}
-                  role="alert"
-                  className="rounded-md border border-danger/40 bg-danger/8 px-3 py-2 text-sm text-danger"
-                >
+                <Alert id={VERIFY_TOTP_SERVER_ERROR_ID} tone="error">
                   {error}
-                </p>
+                </Alert>
               ) : (
                 <Alert tone="error">{error}</Alert>
               )}

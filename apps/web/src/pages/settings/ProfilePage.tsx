@@ -3,9 +3,8 @@ import { useId, useState } from "react";
 
 import { initialsOf } from "../../components/shell/initials";
 import { Skeleton } from "../../components/shell/Skeleton";
-import { Alert, Input } from "../../components/ui";
+import { Alert, Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import { Label } from "../../components/ui/label";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
 import { Card, CardHeader, CardFooter } from "../../components/ui/card";
@@ -152,7 +151,7 @@ function ProfileForm({
       <div className="flex items-center gap-4">
         <span
           aria-hidden="true"
-          className="inline-flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full border border-foreground/10 bg-surface text-xl font-medium"
+          className="surface-inset inline-flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full border border-foreground/10 text-xl font-medium"
         >
           {initialsOf(name.trim() === "" ? storedName : name)}
         </span>
@@ -170,10 +169,15 @@ function ProfileForm({
         className="flex flex-col gap-6"
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor={nameId} className="mb-2 flex min-h-6 items-center">
-              ชื่อที่แสดง
-            </Label>
+          <Field
+            label={
+              <span className="inline-flex min-h-6 items-center">
+                ชื่อที่แสดง
+              </span>
+            }
+            error={showError ? validation : null}
+            errorId={`${nameId}-error`}
+          >
             <Input
               id={nameId}
               name="display-name"
@@ -190,36 +194,29 @@ function ProfileForm({
               aria-invalid={showError}
               aria-describedby={showError ? `${nameId}-error` : undefined}
             />
-            {showError ? (
-              <span
-                id={`${nameId}-error`}
-                role="alert"
-                className="mt-1 block text-sm text-danger"
-              >
-                {validation}
-              </span>
-            ) : null}
-          </div>
+          </Field>
           <div>
-            <Label
-              htmlFor={emailId}
-              className="mb-2 flex min-h-6 items-center gap-2"
+            <Field
+              label={
+                <span className="inline-flex min-h-6 items-center gap-2">
+                  อีเมล
+                  {emailVerified ? (
+                    <StatusPill tone="primary" dot>
+                      ยืนยันแล้ว
+                    </StatusPill>
+                  ) : null}
+                </span>
+              }
             >
-              อีเมล
-              {emailVerified ? (
-                <StatusPill tone="primary" dot>
-                  ยืนยันแล้ว
-                </StatusPill>
-              ) : null}
-            </Label>
-            <Input
-              id={emailId}
-              type="email"
-              value={email}
-              readOnly
-              aria-describedby={`${emailId}-help`}
-              className="text-foreground-secondary"
-            />
+              <Input
+                id={emailId}
+                type="email"
+                value={email}
+                readOnly
+                aria-describedby={`${emailId}-help`}
+                className="text-foreground-secondary"
+              />
+            </Field>
             <p
               id={`${emailId}-help`}
               className="mt-1 text-xs text-foreground-secondary"

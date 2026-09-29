@@ -184,7 +184,7 @@ export function PasswordCard() {
           <form.Subscribe
             selector={(state) => state.isSubmitting}
             children={(submitting) => (
-              <Button type="submit" variant="secondary" disabled={submitting}>
+              <Button type="submit" disabled={submitting}>
                 {submitting ? "กำลังเปลี่ยน…" : "เปลี่ยนรหัสผ่าน"}
               </Button>
             )}
@@ -264,7 +264,7 @@ function PasswordField({
         <button
           type="button"
           onClick={onToggle}
-          className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-foreground-secondary hover:text-foreground"
+          className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-md text-foreground-secondary hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
         >
           {revealed ? <EyeOffIcon /> : <EyeIcon />}
           <span className="sr-only">

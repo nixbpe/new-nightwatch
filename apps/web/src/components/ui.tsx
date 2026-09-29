@@ -43,7 +43,7 @@ export function Field({
   className,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   error?: string | null;
   /** Lets the control point at the message through aria-describedby. */
   errorId?: string;
@@ -123,10 +123,12 @@ export function SubmitButton({
 }
 
 export function Alert({
+  id,
   tone,
   role = "alert",
   children,
 }: {
+  id?: string;
   tone: "error" | "success" | "warning" | "info";
   /** `status` for outcomes that inform without interrupting (a sent invitation). */
   role?: "alert" | "status";
@@ -143,6 +145,7 @@ export function Alert({
           : "border-foreground/15 bg-foreground/4 text-foreground";
   return (
     <p
+      id={id}
       role={role}
       className={`rounded-md border px-3 py-2 text-sm ${className}`}
     >
