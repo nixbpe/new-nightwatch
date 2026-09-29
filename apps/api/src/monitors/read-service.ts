@@ -505,7 +505,7 @@ export async function listRecentEvents(
         cross join lateral (
           select started_at, ended_at, end_reason from monitor_incidents
           where monitor_id = m.id and tenant_id = m.tenant_id and ended_at >= $2
-          order by started_at desc limit $3
+          order by ended_at desc limit $3
         ) i
         where m.tenant_id = $1
         order by i.ended_at desc limit $3)`,
@@ -592,15 +592,17 @@ function sslEnteredAt(
   },
   windowStart: Date,
 ): Date {
-  // Without an expiry date (expired handshake) the last observation is all we have.
+  // Without an expiry date (expired handshake) the last observation is all we
+  // have. It is clamped like the dated path, so an event never predates the
+  // 30 days of stored data; such a monitor is listed at the window start.
+  const floor = Math.max(windowStart.getTime(), monitor.createdAt.getTime());
   if (monitor.sslNotAfter === null) {
-    return monitor.lastCheckAt ?? monitor.updatedAt;
+    const observed = (monitor.lastCheckAt ?? monitor.updatedAt).getTime();
+    return new Date(Math.max(observed, floor));
   }
   const lead = SSL_LEVEL_LEAD_DAYS[level as keyof typeof SSL_LEVEL_LEAD_DAYS];
   const entered = monitor.sslNotAfter.getTime() - lead * DAY_MS;
-  return new Date(
-    Math.max(entered, windowStart.getTime(), monitor.createdAt.getTime()),
-  );
+  return new Date(Math.max(entered, floor));
 }
 
 function isSslProblem(level: SslLevelName): boolean {

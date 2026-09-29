@@ -522,6 +522,22 @@ describe("Recent events: SSL levels", () => {
     expect(enteredAgo).toBeLessThan(20.1 * DAY);
   });
 
+  it("clamps an undated expired certificate last checked 40 days ago to the window start", async () => {
+    const org = await ctx.createOrganization("read-events-undated-old");
+    await seedMonitor(ctx, org.id, {
+      name: "paused, undated expired",
+      status: "paused",
+      createdAgoSeconds: 60 * DAY,
+      lastCheckAgoSeconds: 40 * DAY,
+      sslState: "expired",
+      sslReason: "expired",
+    });
+    const [event] = await get(org);
+    expect(event?.kind).toBe("ssl_level");
+    const age = (Date.now() - Date.parse(event?.at ?? "")) / 1000;
+    expect(age).toBeLessThan(30 * DAY + 60);
+  });
+
   it("does not stamp an event older than the 30-day window", async () => {
     const org = await ctx.createOrganization("read-events-old");
     await seedMonitor(ctx, org.id, {
