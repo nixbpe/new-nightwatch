@@ -144,7 +144,9 @@ async function listen(
     close: () =>
       new Promise<void>((resolve) => {
         for (const socket of sockets) socket.destroy();
-        server.close(() => { resolve(); });
+        server.close(() => {
+          resolve();
+        });
       }),
   };
 }
