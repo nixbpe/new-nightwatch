@@ -97,7 +97,7 @@ const memberParamsSchema = z.object({
   memberId: z.uuid(),
 });
 // Member IDs are opaque text (column type `text`); only Organization IDs are UUIDs.
-const memberRoleParamsSchema = memberParamsSchema.extend({
+const memberIdParamsSchema = memberParamsSchema.extend({
   // Production ids are UUIDs (Better Auth generateId, invitation accept); the
   // local demo seed uses ~70-char stable ids, so allow up to 128.
   memberId: z.string().min(1).max(128),
@@ -115,7 +115,7 @@ const memberRoleUpdateRoute = createRoute({
   path: "/api/organizations/{organizationId}/members/{memberId}/role",
   tags: ["organizations"],
   request: {
-    params: memberRoleParamsSchema,
+    params: memberIdParamsSchema,
     body: {
       content: {
         "application/json": {
@@ -142,7 +142,7 @@ const memberRevokeRoute = createRoute({
   method: "delete",
   path: "/api/organizations/{organizationId}/members/{memberId}",
   tags: ["organizations"],
-  request: { params: memberRoleParamsSchema },
+  request: { params: memberIdParamsSchema },
   responses: {
     200: {
       description: "Revoked member",

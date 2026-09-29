@@ -219,10 +219,23 @@ it("hides revoke for owner rows from admins and offers it for non-owners", async
 it("blocks a second confirm and pagination while the DELETE is pending", async () => {
   const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
   vi.mocked(revokeOrganizationMember).mockReturnValue(pending.promise);
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
+    listCalls.push(id);
+    const list = listFor(id);
+    return Promise.resolve({ ...list, page: { ...list.page, total: 60 } });
+  });
   const user = await renderAs("owner");
+  expect(screen.getByRole("button", { name: "ถัดไป" })).toBeEnabled();
   await user.click(revokeButton("Ann"));
   await user.click(confirmButton());
   expect(await screen.findAllByText("กำลังถอนสมาชิก…")).not.toHaveLength(0);
+  // The confirm button is disabled and relabelled while pending.
+  const pendingConfirm = screen.getByRole("button", {
+    name: "กำลังถอนสมาชิก…",
+  });
+  expect(pendingConfirm).toBeDisabled();
+  await user.click(pendingConfirm);
+  expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "ยกเลิก" })).toBeDisabled();
   await user.keyboard("{Escape}");
   expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -264,6 +277,24 @@ it("shows a generic failure without success and refreshes the list without repla
   expect(screen.queryByText(/ออกจากองค์กรแล้ว/)).toBeNull();
   expect(revokeOrganizationMember).toHaveBeenCalledTimes(1);
   expect(listCalls).toEqual([A, A]);
+});
+
+it("refreshes context once when the DELETE is PERMISSION_DENIED but the list is still readable", async () => {
+  vi.mocked(revokeOrganizationMember).mockRejectedValue(
+    new ApiError("PERMISSION_DENIED", "denied", 403),
+  );
+  const user = await renderAs("owner");
+  const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
+  await user.click(revokeButton("Ann"));
+  await user.click(confirmButton());
+  expect(await screen.findByText(/ถอนสมาชิกไม่สำเร็จ/)).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.queryByText("กำลังถอนสมาชิก…")).toBeNull();
+    expect(revokeButton("Ann")).toBeEnabled();
+  });
+  expect(screen.queryByText(/ออกจากองค์กรแล้ว/)).toBeNull();
+  expect(revokeOrganizationMember).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches + 1);
 });
 
 it("reports an error instead of success when the refetched list still holds the member", async () => {

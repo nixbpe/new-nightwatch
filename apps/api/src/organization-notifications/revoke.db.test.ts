@@ -22,13 +22,33 @@ const secondOwner = {
   user: `revoke-user-owner2-${run}`,
   member: `revoke-member-owner2-${run}`,
 };
+// A second holder of every role, so the matrix never targets the actor itself.
+const peers = {
+  owner: secondOwner,
+  admin: {
+    user: `revoke-user-admin2-${run}`,
+    member: `revoke-member-admin2-${run}`,
+  },
+  viewer: {
+    user: `revoke-user-viewer2-${run}`,
+    member: `revoke-member-viewer2-${run}`,
+  },
+  auditor: {
+    user: `revoke-user-auditor2-${run}`,
+    member: `revoke-member-auditor2-${run}`,
+  },
+} satisfies Record<Role, { user: string; member: string }>;
 const everyone = [
   ...roles.map((role) => ({
     user: users[role],
     member: members[role],
     role: role,
   })),
-  { user: secondOwner.user, member: secondOwner.member, role: "owner" },
+  ...roles.map((role) => ({
+    user: peers[role].user,
+    member: peers[role].member,
+    role: role,
+  })),
 ];
 const database = createDatabase(runtimeUrl);
 const owner = new Client({ connectionString: ownerUrl });
@@ -225,12 +245,14 @@ afterAll(async () => {
 });
 
 describe("locked organization member revoke", () => {
-  it("persists exactly the actor x target matrix with two owners and clears only organization A mirrors", async () => {
+  it("persists exactly the actor x distinct-target matrix with two holders of every role and clears only organization A mirrors", async () => {
     for (const actor of roles) {
       for (const target of roles) {
         await reset();
-        const targetUser = users[target];
-        const targetMember = members[target];
+        const peer = actor === target ? peers[target] : undefined;
+        const targetUser = peer?.user ?? users[target];
+        const targetMember = peer?.member ?? members[target];
+        expect(targetUser).not.toBe(users[actor]);
         const before = await snapshot();
         const mutation = revokeOrganizationMember(database, {
           organizationId,
@@ -264,7 +286,7 @@ describe("locked organization member revoke", () => {
           });
           expect(await snapshot()).toEqual(before);
         }
-        expect(await ownerCount()).toBeGreaterThanOrEqual(1);
+        expect(await ownerCount()).toBe(allowed && target === "owner" ? 1 : 2);
       }
     }
   }, 120_000);
