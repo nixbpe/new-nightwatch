@@ -170,13 +170,9 @@ export function InvitationPanel({
         className="flex flex-col gap-3"
         noValidate
       >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-          <Field
-            label="อีเมลของผู้ได้รับเชิญ"
-            error={fieldError}
-            errorId="invite-email-error"
-            className="min-w-0 flex-1"
-          >
+        {/* Bottom-aligned so the button meets the fields whatever the label height; the error sits under the row. */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+          <Field label="อีเมลของผู้ได้รับเชิญ" className="min-w-0 flex-1">
             <Input
               ref={emailRef}
               type="email"
@@ -210,12 +206,19 @@ export function InvitationPanel({
               ))}
             </select>
           </Field>
-          <div className="flex flex-col sm:pt-8">
-            <Button type="submit" disabled={pending}>
-              {pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}
-            </Button>
-          </div>
+          <Button type="submit" disabled={pending}>
+            {pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}
+          </Button>
         </div>
+        {fieldError && (
+          <span
+            id="invite-email-error"
+            role="alert"
+            className="text-sm text-danger"
+          >
+            {fieldError}
+          </span>
+        )}
         <p className="text-xs text-foreground-secondary">
           ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร
           คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น
