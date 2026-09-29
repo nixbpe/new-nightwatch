@@ -309,3 +309,40 @@ export async function closedPort(): Promise<number> {
   await new Promise((resolve) => server.close(resolve));
   return port;
 }
+
+export type TestRedis = { url: string; stop(): Promise<void> };
+
+/** Throwaway Redis so process tests never share a queue with other runs. */
+export async function startTestRedis(label: string): Promise<TestRedis> {
+  const container = `nightwatch-monitor-${label}-redis-${randomUUID()}`;
+  await docker([
+    "run",
+    "--detach",
+    "--rm",
+    "--name",
+    container,
+    "--publish",
+    "127.0.0.1::6379",
+    "redis:7.4.7-alpine",
+  ]);
+  try {
+    await docker([
+      "exec",
+      container,
+      "sh",
+      "-ceu",
+      "timeout 30 sh -ceu 'until redis-cli ping | grep -q PONG; do sleep 0.1; done'",
+    ]);
+    const { stdout } = await docker(["port", container, "6379/tcp"]);
+    const port = Number(/:(\d+)\s*$/.exec(stdout)?.[1]);
+    return {
+      url: `redis://127.0.0.1:${String(port)}`,
+      stop: async () => {
+        await docker(["rm", "--force", container], true);
+      },
+    };
+  } catch (error) {
+    await docker(["rm", "--force", container], true);
+    throw error;
+  }
+}

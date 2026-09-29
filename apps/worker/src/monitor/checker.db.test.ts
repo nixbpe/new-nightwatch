@@ -5,7 +5,7 @@ import {
   encryptSecret,
   loadMonitorEnv,
 } from "@nightwatch/shared";
-import { withTenantContextRaw } from "@nightwatch/db";
+import { purgeExpiredMonitorData, withTenantContextRaw } from "@nightwatch/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { processMonitorCheck, type CheckerDependencies } from "./checker";
@@ -987,6 +987,177 @@ describe("AC-62 and shutdown", () => {
       expect(await running).toBe("aborted");
       expect((await countAll(monitor)).results).toBe(0);
       expect(await claimToken(monitor)).toBe(monitor.claimToken);
+    } finally {
+      await target.close();
+    }
+  });
+});
+
+describe("retention of recorded data (AC-41)", () => {
+  const DAY = 86_400_000;
+
+  /** The fixed 30-day window can reach two months back; the owner adds a missing partition. */
+  async function ensurePartition(at: Date): Promise<void> {
+    const start = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1));
+    const end = new Date(
+      Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1),
+    );
+    const suffix = `${String(start.getUTCFullYear())}${String(start.getUTCMonth() + 1).padStart(2, "0")}`;
+    for (const parent of ["monitor_check_results", "monitor_check_hourly"]) {
+      const name = `${parent}_p${suffix}`;
+      const exists = await db.owner.sql.query(
+        "select to_regclass($1) as found",
+        [`public.${name}`],
+      );
+      if ((exists.rows[0] as { found: string | null }).found === null) {
+        await db.owner.sql.query(
+          `create table ${name} partition of ${parent}
+             for values from ('${start.toISOString()}') to ('${end.toISOString()}')`,
+        );
+        await db.owner.sql.query(
+          `alter table ${name} enable row level security`,
+        );
+        await db.owner.sql.query(
+          `alter table ${name} force row level security`,
+        );
+      }
+    }
+  }
+
+  it("purge removes 31-day-old results and rollups, keeps 29-day-old ones and a 40-day-old open incident", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      const old = new Date(Date.now() - 31 * DAY);
+      const recent = new Date(Date.now() - 29 * DAY);
+      await ensurePartition(old);
+      await ensurePartition(recent);
+      for (const scheduledFor of [old, recent]) {
+        const token = randomUUID();
+        await updateMonitor(
+          db,
+          monitor,
+          "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+          [monitor.monitorId, token],
+        );
+        expect(
+          await processMonitorCheck(
+            monitor.job({
+              claimToken: token,
+              scheduledFor: scheduledFor.toISOString(),
+            }),
+            dependencies(),
+          ),
+        ).toBe("recorded");
+      }
+      await withTenantContextRaw(
+        db.runtime,
+        monitor.tenantId,
+        async (client) => {
+          const insert = `insert into monitor_incidents
+           (monitor_id, tenant_id, started_at, ended_at, end_reason, start_reason)
+           values ($1, $2, $3, $4, $5, 'http_status')`;
+          const at = (days: number) => new Date(Date.now() - days * DAY);
+          const args = [monitor.monitorId, monitor.tenantId];
+          await client.query(insert, [...args, at(41), at(31), "recovered"]);
+          await client.query(insert, [...args, at(35), at(29), "recovered"]);
+          await client.query(insert, [...args, at(40), null, null]);
+        },
+      );
+
+      for (let round = 0; round < 5; round += 1) {
+        await purgeExpiredMonitorData(db.runtime, { limit: 100 });
+      }
+
+      const [kept] = await rows<{
+        results: number;
+        hourly: number;
+        open: number;
+        closed: number;
+      }>(
+        db,
+        monitor,
+        `select (select count(*)::int from monitor_check_results where monitor_id = $1) as results,
+                (select count(*)::int from monitor_check_hourly where monitor_id = $1) as hourly,
+                (select count(*)::int from monitor_incidents where monitor_id = $1 and ended_at is null) as open,
+                (select count(*)::int from monitor_incidents where monitor_id = $1 and ended_at is not null) as closed`,
+        [monitor.monitorId],
+      );
+      expect(kept).toEqual({ results: 1, hourly: 1, open: 1, closed: 1 });
+      const [left] = await results(monitor);
+      expect(left?.scheduled_for.toISOString()).toBe(recent.toISOString());
+    } finally {
+      await target.close();
+    }
+  });
+});
+
+describe("recorded rows carry no request data (AC-42)", () => {
+  it("keeps no query value, request body, header or response body anywhere", async () => {
+    const target = await startTarget((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader("x-response-header", "resp-header-marker");
+      response.end('{"secretField":"response-body-marker"}');
+    });
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/p?url-query=url-query-marker`,
+        method: "POST",
+        queryParams: [{ name: "q", value: "param-query-marker" }],
+        headers: [
+          { name: "X-Custom", value: "request-header-marker", secret: false },
+        ],
+        assertions: [{ kind: "bodyContains", text: "response-body-marker" }],
+      });
+      await withTenantContextRaw(db.runtime, monitor.tenantId, (client) =>
+        client.query(
+          "update monitors set body_type = 'text', body_content = 'request-body-marker' where id = $1",
+          [monitor.monitorId],
+        ),
+      );
+      await processMonitorCheck(monitor.job(), dependencies());
+
+      const everything = JSON.stringify([
+        await rows(
+          db,
+          monitor,
+          "select * from monitor_check_results where monitor_id = $1",
+          [monitor.monitorId],
+        ),
+        await rows(
+          db,
+          monitor,
+          "select * from monitor_check_hourly where monitor_id = $1",
+          [monitor.monitorId],
+        ),
+        await rows(
+          db,
+          monitor,
+          "select * from monitor_incidents where monitor_id = $1",
+          [monitor.monitorId],
+        ),
+        await rows(
+          db,
+          monitor,
+          "select * from monitor_events where monitor_id = $1",
+          [monitor.monitorId],
+        ),
+      ]);
+      for (const marker of [
+        "url-query-marker",
+        "param-query-marker",
+        "request-header-marker",
+        "request-body-marker",
+        "resp-header-marker",
+      ]) {
+        expect(everything).not.toContain(marker);
+      }
+      expect(target.requests[0]?.headers["x-custom"]).toBe(
+        "request-header-marker",
+      );
+      // The assertion result holds the matched text only where the executor put it.
+      const [row] = await results(monitor);
+      expect(row?.outcome).toBe("pass");
     } finally {
       await target.close();
     }
