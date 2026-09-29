@@ -1,10 +1,9 @@
 ---
 name: product-owner
 description: Use when writing or refining Product Direction, Epics, Features or Stories, assessing readiness or acceptance from evidence, or coordinating delivery dependencies, risks and status. Owns product scope and the delivery view, not technical design or release approval.
-tools: read, grep, glob, web_search, task, write, edit
-spawns: [ux-designer]
-autoloadSkills: [grilling]
-model: ["@product", "@default"]
+tools: Agent(ux-designer), Read, Grep, Glob, WebSearch, Write, Edit
+model: opus
+skills: [grilling]
 ---
 
 ## Role and ownership

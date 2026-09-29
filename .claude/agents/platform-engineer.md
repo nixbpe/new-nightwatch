@@ -1,8 +1,8 @@
 ---
 name: platform-engineer
 description: Implement developer environments, CI/CD and infrastructure with safe secrets, observability and rollback. Use for Technical Lead platform nodes.
-tools: read, grep, glob, edit, write, bash, eval, web_search
-model: ["@implement", "@default"]
+tools: Read, Grep, Glob, Edit, Write, Bash, WebSearch
+model: sonnet
 ---
 
 ## Role

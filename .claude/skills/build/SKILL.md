@@ -1,5 +1,7 @@
 ---
+name: build
 description: Implement one assigned slice or run no-edit evidence against a bound candidate; use auto only for an approved full plan.
+argument-hint: "[NODE-<id> | auto]"
 ---
 
 Use skill:`incremental-implementation` and skill:`test-driven-development` for implementation work.

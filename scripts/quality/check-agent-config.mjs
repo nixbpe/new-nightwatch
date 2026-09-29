@@ -11,9 +11,10 @@ const rootFlag = process.argv.indexOf("--root");
 const root =
   rootFlag >= 0 ? path.resolve(process.argv[rootFlag + 1]) : defaultRoot;
 const canonicalRoot = await realpath(root);
-const omp = path.join(root, ".omp");
+const claude = path.join(root, ".claude");
 const errors = [];
-const allowedEfforts = new Set(["low", "medium", "high"]);
+const modelPattern = /^(opus|sonnet|haiku|inherit|claude-[a-z0-9.-]+)$/;
+const legacyKeys = ["spawns", "autoloadSkills", "sandbox", "blocking"];
 const referenceNamePattern = /^[a-z][a-z0-9-]*$/;
 
 function isContained(parent, candidate) {
@@ -33,41 +34,6 @@ async function resolvesInside(parent, candidate) {
     return false;
   }
 }
-async function isContainedRegularFileWithoutSymlinks(
-  lexicalParent,
-  canonicalParent,
-  candidate,
-) {
-  try {
-    const relative = path.relative(lexicalParent, candidate);
-    if (
-      relative === "" ||
-      relative.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relative)
-    ) {
-      return false;
-    }
-    const components = relative.split(path.sep);
-    let current = lexicalParent;
-    for (const [index, component] of components.entries()) {
-      current = path.join(current, component);
-      const entry = await lstat(current);
-      if (
-        entry.isSymbolicLink() ||
-        (index === components.length - 1
-          ? !entry.isFile()
-          : !entry.isDirectory())
-      ) {
-        return false;
-      }
-    }
-    const resolved = await realpath(candidate);
-    return isContained(canonicalParent, resolved);
-  } catch {
-    return false;
-  }
-}
-
 async function markdownFiles(dir) {
   if (!existsSync(dir)) return [];
   const resolved = await realpath(dir);
@@ -117,83 +83,13 @@ function stripFencedCode(source) {
   return output.join("\n");
 }
 
-async function readYaml(file, label) {
-  let source;
-  try {
-    source = await readFile(file, "utf8");
-  } catch {
-    errors.push(`${path.relative(root, file)}: missing ${label}`);
-    return {};
-  }
-  try {
-    const parsed = Bun.YAML.parse(source);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new TypeError("expected a mapping");
-    }
-    return parsed;
-  } catch (error) {
-    errors.push(
-      `${path.relative(root, file)}: malformed ${label}: ${error.message}`,
-    );
-    return {};
-  }
-}
-
-const configPath = path.join(omp, "config.yml");
-let config;
-if (
-  existsSync(configPath) &&
-  !(await isContainedRegularFileWithoutSymlinks(
-    root,
-    canonicalRoot,
-    configPath,
-  ))
-) {
-  errors.push(
-    `${path.relative(root, configPath)}: config must be an in-repository regular file`,
-  );
-  config = {};
-} else {
-  config = await readYaml(configPath, "config.yml");
-}
-const modelRoles = config.modelRoles;
-const roles = new Set();
-if (
-  !modelRoles ||
-  typeof modelRoles !== "object" ||
-  Array.isArray(modelRoles)
-) {
-  errors.push(
-    `${path.relative(root, configPath)}: modelRoles must be a mapping`,
-  );
-} else {
-  for (const [role, selector] of Object.entries(modelRoles)) {
-    roles.add(role);
-    if (typeof selector !== "string") {
-      errors.push(
-        `${path.relative(root, configPath)}: model role ${role} must be a selector string`,
-      );
-      continue;
-    }
-    const suffixAt = selector.lastIndexOf(":");
-    if (suffixAt > selector.lastIndexOf("/")) {
-      const effort = selector.slice(suffixAt + 1);
-      if (!allowedEfforts.has(effort)) {
-        errors.push(
-          `${path.relative(root, configPath)}: unknown effort ${JSON.stringify(effort)} for ${role}`,
-        );
-      }
-    }
-  }
-}
-
 const counts = { agents: 0, models: 0, skills: 0, commands: 0, files: 0 };
-const agentDir = path.join(omp, "agents");
+const agentDir = path.join(claude, "agents");
 const agentFiles = await markdownFiles(agentDir);
 const agentNames = new Set(
   agentFiles.map((file) => path.basename(file, ".md")),
 );
-const autoloadDeclarations = [];
+const preloadDeclarations = [];
 for (const file of agentFiles) {
   const source = await readFile(file, "utf8");
   const frontmatterSource = source.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1];
@@ -219,92 +115,79 @@ for (const file of agentFiles) {
     continue;
   }
   const agent = frontmatter.name ?? path.basename(file, ".md");
-  const spawns = frontmatter.spawns ?? [];
-  if (
-    !Array.isArray(spawns) ||
-    spawns.some((spawn) => typeof spawn !== "string")
-  ) {
-    errors.push(`${path.relative(root, file)}: spawns must be a string list`);
-  } else {
-    for (const spawn of spawns) {
-      counts.agents += 1;
-      if (!referenceNamePattern.test(spawn)) {
-        errors.push(
-          `${path.relative(root, file)}: invalid agent identity ${spawn}`,
-        );
-      } else if (!agentNames.has(spawn)) {
-        errors.push(
-          `${path.relative(root, file)}: ${agent} spawns missing agent ${spawn}`,
-        );
-      }
+  for (const key of legacyKeys) {
+    if (key in frontmatter) {
+      errors.push(`${path.relative(root, file)}: unsupported key ${key}`);
     }
   }
-  const autoloadSkills = frontmatter.autoloadSkills ?? [];
-  if (
-    !Array.isArray(autoloadSkills) ||
-    autoloadSkills.some((skill) => typeof skill !== "string")
-  ) {
+  const tools = frontmatter.tools ?? "";
+  if (typeof tools !== "string") {
     errors.push(
-      `${path.relative(root, file)}: autoloadSkills must be a string list`,
+      `${path.relative(root, file)}: tools must be a comma-separated string`,
     );
   } else {
-    autoloadDeclarations.push({ file, skills: autoloadSkills });
-  }
-  const model = frontmatter.model ?? [];
-  const selectors = typeof model === "string" ? [model] : model;
-  if (
-    !Array.isArray(selectors) ||
-    selectors.some((selector) => typeof selector !== "string")
-  ) {
-    errors.push(
-      `${path.relative(root, file)}: model must be a string or string list`,
-    );
-  } else {
-    for (const selector of selectors) {
-      for (const alias of selector.matchAll(/@([\w-]+)/g)) {
-        counts.models += 1;
-        if (alias[1] !== "default" && !roles.has(alias[1])) {
+    for (const allowlist of tools.matchAll(/Agent\(([^)]*)\)/g)) {
+      for (const spawn of allowlist[1].split(",").map((name) => name.trim())) {
+        counts.agents += 1;
+        if (!referenceNamePattern.test(spawn)) {
           errors.push(
-            `${path.relative(root, file)}: missing model role @${alias[1]}`,
+            `${path.relative(root, file)}: invalid agent identity ${spawn}`,
+          );
+        } else if (!agentNames.has(spawn)) {
+          errors.push(
+            `${path.relative(root, file)}: ${agent} spawns missing agent ${spawn}`,
           );
         }
       }
     }
   }
+  const preloadSkills = frontmatter.skills ?? [];
+  if (
+    !Array.isArray(preloadSkills) ||
+    preloadSkills.some((skill) => typeof skill !== "string")
+  ) {
+    errors.push(`${path.relative(root, file)}: skills must be a string list`);
+  } else {
+    preloadDeclarations.push({ file, skills: preloadSkills });
+  }
+  if (frontmatter.model !== undefined) {
+    counts.models += 1;
+    if (
+      typeof frontmatter.model !== "string" ||
+      !modelPattern.test(frontmatter.model)
+    ) {
+      errors.push(
+        `${path.relative(root, file)}: model must be opus, sonnet, haiku, inherit or a claude-* id`,
+      );
+    }
+  }
 }
 
 const skillNames = new Set();
-for (const entry of await readdir(path.join(omp, "skills"), {
+for (const entry of await readdir(path.join(claude, "skills"), {
   withFileTypes: true,
 })) {
   if (
     entry.isDirectory() &&
     (await resolvesInside(
       canonicalRoot,
-      path.join(omp, "skills", entry.name, "SKILL.md"),
+      path.join(claude, "skills", entry.name, "SKILL.md"),
     ))
   ) {
     skillNames.add(entry.name);
   }
 }
-for (const declaration of autoloadDeclarations) {
+for (const declaration of preloadDeclarations) {
   for (const skill of declaration.skills) {
     counts.skills += 1;
     if (!referenceNamePattern.test(skill) || !skillNames.has(skill)) {
       errors.push(
-        `${path.relative(root, declaration.file)}: missing autoload skill ${skill}`,
+        `${path.relative(root, declaration.file)}: missing preload skill ${skill}`,
       );
     }
   }
 }
-const commandDir = path.join(omp, "commands");
-const commandNames = new Set(
-  (await markdownFiles(commandDir))
-    .filter((file) => path.dirname(file) === commandDir)
-    .map((file) => path.basename(file, ".md")),
-);
-
-for (const file of await markdownFiles(omp)) {
+for (const file of await markdownFiles(claude)) {
   const source = stripFencedCode(await readFile(file, "utf8"));
   for (const match of source.matchAll(/agent:`([^`]+)`/g)) {
     counts.agents += 1;
@@ -343,7 +226,7 @@ for (const file of await markdownFiles(omp)) {
   }
   for (const match of source.matchAll(/command:`\/([^`]+)`/g)) {
     counts.commands += 1;
-    if (!referenceNamePattern.test(match[1]) || !commandNames.has(match[1])) {
+    if (!referenceNamePattern.test(match[1]) || !skillNames.has(match[1])) {
       errors.push(`${path.relative(root, file)}: missing command /${match[1]}`);
     }
   }

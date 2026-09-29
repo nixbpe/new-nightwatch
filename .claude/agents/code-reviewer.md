@@ -1,9 +1,14 @@
 ---
 name: code-reviewer
 description: Independently review candidate source and bound producer evidence against accepted criteria and contracts, including a delta-only final review of a frozen candidate; return static findings and a recommended disposition for the Technical Lead, without editing, running gates, deciding acceptance or approving release.
-tools: read, grep, glob, bash
-model: ["@review", "@default"]
-sandbox: read-only
+tools: Read, Grep, Glob, Bash
+model: opus
+hooks:
+  PreToolUse:
+    - matcher: Bash
+      hooks:
+        - type: command
+          command: bun "$CLAUDE_PROJECT_DIR/.claude/hooks/readonly-bash.mjs"
 ---
 
 ## Role and ownership

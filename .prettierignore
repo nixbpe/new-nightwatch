@@ -1,6 +1,6 @@
 # Owned by other waves/roles; the platform formatter must not rewrite them.
 docs/
-.omp/
+.claude/
 AGENTS.md
 
 # Lockfile and generated output.

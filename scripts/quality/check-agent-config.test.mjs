@@ -1,12 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  mkdtemp,
-  mkdir,
-  rename,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -18,35 +11,33 @@ afterEach(async () =>
 );
 
 async function fixture({
-  selector = "provider/model:medium",
-  spawnsYaml = "spawns:\n  - worker",
-  autoloadYaml = "",
-  modelYaml = 'model: ["@review", "@default"]',
+  toolsYaml = "tools: Agent(worker), Read",
+  skillsYaml = "",
+  modelYaml = "model: opus",
   refs = "agent:`worker` skill:`known` command:`/build` file:`AGENTS.md`\n```text\nagent:`missing-agent` skill:`missing-skill` file:`missing.md`\n```",
 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "agent-config-"));
   roots.push(root);
   await Promise.all([
-    mkdir(path.join(root, ".omp/agents"), { recursive: true }),
-    mkdir(path.join(root, ".omp/skills/known"), { recursive: true }),
-    mkdir(path.join(root, ".omp/commands"), { recursive: true }),
+    mkdir(path.join(root, ".claude/agents"), { recursive: true }),
+    mkdir(path.join(root, ".claude/skills/known"), { recursive: true }),
+    mkdir(path.join(root, ".claude/skills/build"), { recursive: true }),
   ]);
   await writeFile(path.join(root, "AGENTS.md"), "# Rules\n");
   await writeFile(
-    path.join(root, ".omp/config.yml"),
-    `modelRoles:\n  review: ${selector}\n`,
+    path.join(root, ".claude/agents/lead.md"),
+    `---\nname: lead\n${toolsYaml}\n${skillsYaml}\n${modelYaml}\n---\n${refs}\n`,
   );
   await writeFile(
-    path.join(root, ".omp/agents/lead.md"),
-    `---\nname: lead\n${spawnsYaml}\n${autoloadYaml}\n${modelYaml}\n---\n${refs}\n`,
-  );
-  await writeFile(
-    path.join(root, ".omp/agents/worker.md"),
+    path.join(root, ".claude/agents/worker.md"),
     "---\nname: worker\n---\n",
   );
-  await writeFile(path.join(root, ".omp/skills/known/SKILL.md"), "# Known\n");
   await writeFile(
-    path.join(root, ".omp/commands/build.md"),
+    path.join(root, ".claude/skills/known/SKILL.md"),
+    "# Known\n",
+  );
+  await writeFile(
+    path.join(root, ".claude/skills/build/SKILL.md"),
     "---\ndescription: build\n---\n",
   );
   return root;
@@ -64,33 +55,31 @@ function check(root) {
 }
 
 describe("agent config checker", () => {
-  test("accepts multiline spawns, model lists and fenced examples", async () => {
+  test("accepts Agent allowlists, model ids and fenced examples", async () => {
     const result = check(await fixture());
     expect(result.exitCode, result.stderr.toString()).toBe(0);
     expect(result.stdout.toString()).toContain(
-      "2 agent refs, 2 model refs, 1 skill refs, 1 command refs, 1 file refs",
+      "2 agent refs, 1 model refs, 1 skill refs, 1 command refs, 1 file refs",
     );
   });
 
-  test("accepts selectors without effort and scalar model frontmatter", async () => {
-    const root = await fixture({
-      selector: "provider/model",
-      modelYaml: 'model: "@review"',
-    });
-    const result = check(root);
-    expect(result.exitCode, result.stderr.toString()).toBe(0);
+  test("accepts a full claude model id and no model", async () => {
+    const full = check(await fixture({ modelYaml: "model: claude-opus-5-5" }));
+    expect(full.exitCode, full.stderr.toString()).toBe(0);
+    const none = check(await fixture({ modelYaml: "" }));
+    expect(none.exitCode, none.stderr.toString()).toBe(0);
   });
 
   test("rejects unknown and legacy references", async () => {
     const root = await fixture({
-      selector: "provider/model:meduim",
-      spawnsYaml: "spawns: [missing-agent]",
+      toolsYaml: "tools: Agent(missing-agent)",
+      modelYaml: "model: gpt-6",
       refs: "agent:`missing-agent` skill:`missing-skill` command:`/missing-command` file:`missing.md` use `legacy-skill` skills see `known` follow `other.md` `/file` `/optional`",
     });
     const result = check(root);
     const error = result.stderr.toString();
     expect(result.exitCode).toBe(1);
-    expect(error).toContain('unknown effort "meduim"');
+    expect(error).toContain("model must be opus, sonnet, haiku");
     expect(error).toContain("spawns missing agent missing-agent");
     expect(error).toContain("missing skill missing-skill");
     expect(error).toContain("missing command /missing-command");
@@ -104,7 +93,7 @@ describe("agent config checker", () => {
 
   test("rejects traversal, implicit agents and external symlink references", async () => {
     const root = await fixture({
-      spawnsYaml: "spawns: [../worker]",
+      toolsYaml: "tools: Agent(../worker)",
       refs: "`worker` agent:`../worker` agent:`Code-reviewer` file:`external.md`",
     });
     const outside = await mkdtemp(path.join(tmpdir(), "agent-config-outside-"));
@@ -124,21 +113,27 @@ describe("agent config checker", () => {
 
   test("requires canonical SKILL.md files", async () => {
     const root = await fixture();
-    await rm(path.join(root, ".omp/skills/known/SKILL.md"));
+    await rm(path.join(root, ".claude/skills/known/SKILL.md"));
     const result = check(root);
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain("missing skill known");
   });
 
-  test("rejects missing autoload skills", async () => {
+  test("rejects missing preload skills", async () => {
+    const root = await fixture({ skillsYaml: "skills: [missing]" });
+    const result = check(root);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("missing preload skill missing");
+  });
+
+  test("rejects unsupported frontmatter keys", async () => {
     const root = await fixture({
-      autoloadYaml: "autoloadSkills: [missing]",
+      toolsYaml: "spawns: [worker]\nsandbox: read-only",
     });
     const result = check(root);
     expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain(
-      "missing autoload skill missing",
-    );
+    expect(result.stderr.toString()).toContain("unsupported key spawns");
+    expect(result.stderr.toString()).toContain("unsupported key sandbox");
   });
 
   test("rejects symlinked agent inventory entries", async () => {
@@ -147,7 +142,7 @@ describe("agent config checker", () => {
     roots.push(outside);
     const target = path.join(outside, "worker.md");
     await writeFile(target, "---\nname: worker\n---\n");
-    const worker = path.join(root, ".omp/agents/worker.md");
+    const worker = path.join(root, ".claude/agents/worker.md");
     await rm(worker);
     await symlink(target, worker);
     const result = check(root);
@@ -162,118 +157,34 @@ describe("agent config checker", () => {
     roots.push(outside);
     await writeFile(
       path.join(outside, "lead.md"),
-      '---\nname: lead\nspawns: [worker]\nmodel: ["@review"]\n---\n',
+      "---\nname: lead\ntools: Agent(worker)\nmodel: opus\n---\n",
     );
     await writeFile(
       path.join(outside, "worker.md"),
       "---\nname: worker\n---\n",
     );
-    const agents = path.join(root, ".omp/agents");
+    const agents = path.join(root, ".claude/agents");
     await rm(agents, { recursive: true });
     await symlink(outside, agents);
     const result = check(root);
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain(
-      ".omp/agents: markdown directory escapes repository",
+      ".claude/agents: markdown directory escapes repository",
     );
   });
 
-  test("rejects a symlinked command inventory directory", async () => {
-    const root = await fixture();
-    const outside = await mkdtemp(
-      path.join(tmpdir(), "agent-config-commands-"),
+  test("rejects malformed frontmatter shapes", async () => {
+    const result = check(
+      await fixture({
+        toolsYaml: "tools: [Read]",
+        skillsYaml: "skills: worker",
+        modelYaml: "model:\n  nested: value",
+      }),
     );
-    roots.push(outside);
-    await writeFile(
-      path.join(outside, "build.md"),
-      "---\ndescription: external build\n---\n",
-    );
-    const commands = path.join(root, ".omp/commands");
-    await rm(commands, { recursive: true });
-    await symlink(outside, commands);
-    const result = check(root);
+    const error = result.stderr.toString();
     expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain(
-      ".omp/commands: markdown directory escapes repository",
-    );
-    expect(result.stderr.toString()).toContain("missing command /build");
-  });
-
-  test("rejects an external config symlink", async () => {
-    const root = await fixture();
-    const outside = await mkdtemp(path.join(tmpdir(), "agent-config-config-"));
-    roots.push(outside);
-    const externalConfig = path.join(outside, "config.yml");
-    await writeFile(
-      externalConfig,
-      `modelRoles:\n  review: provider/model:external\n`,
-    );
-    const configPath = path.join(root, ".omp/config.yml");
-    await rm(configPath);
-    await symlink(externalConfig, configPath);
-    const result = check(root);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain(
-      ".omp/config.yml: config must be an in-repository regular file",
-    );
-    expect(result.stderr.toString()).not.toContain("unknown effort");
-  });
-
-  test("rejects an internal config symlink", async () => {
-    const root = await fixture();
-    const configPath = path.join(root, ".omp/config.yml");
-    const target = path.join(root, ".omp/config-target.yml");
-    await rename(configPath, target);
-    await symlink(target, configPath);
-    const result = check(root);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain(
-      ".omp/config.yml: config must be an in-repository regular file",
-    );
-  });
-
-  test("rejects a symlinked config ancestor", async () => {
-    const root = await fixture();
-    const omp = path.join(root, ".omp");
-    const target = path.join(root, ".omp-target");
-    await rename(omp, target);
-    await symlink(target, omp);
-    const result = check(root);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain(
-      ".omp/config.yml: config must be an in-repository regular file",
-    );
-  });
-
-  test("rejects malformed config and frontmatter shapes", async () => {
-    const malformedConfig = await fixture();
-    await writeFile(
-      path.join(malformedConfig, ".omp/config.yml"),
-      "modelRoles: [\n",
-    );
-    const configResult = check(malformedConfig);
-    expect(configResult.exitCode).toBe(1);
-    expect(configResult.stderr.toString()).toContain("malformed config.yml");
-
-    const malformedFrontmatter = await fixture({
-      spawnsYaml: "spawns: worker",
-      modelYaml: "model:\n  nested: value",
-    });
-    const frontmatterResult = check(malformedFrontmatter);
-    expect(frontmatterResult.exitCode).toBe(1);
-    expect(frontmatterResult.stderr.toString()).toContain(
-      "spawns must be a string list",
-    );
-    expect(frontmatterResult.stderr.toString()).toContain(
-      "model must be a string or string list",
-    );
-  });
-
-  test("rejects missing config", async () => {
-    const missing = await fixture();
-    await rm(path.join(missing, ".omp/config.yml"));
-    const missingResult = check(missing);
-    expect(missingResult.exitCode).toBe(1);
-    expect(missingResult.stderr.toString()).toContain("missing config.yml");
+    expect(error).toContain("tools must be a comma-separated string");
+    expect(error).toContain("skills must be a string list");
+    expect(error).toContain("model must be opus, sonnet, haiku");
   });
 });

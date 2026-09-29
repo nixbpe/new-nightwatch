@@ -1,5 +1,7 @@
 ---
+name: spec
 description: Write the Technical Spec for an approved Feature before implementation
+argument-hint: "<Feature, e.g. F-002>"
 ---
 
 Use skill:`technical-spec`.

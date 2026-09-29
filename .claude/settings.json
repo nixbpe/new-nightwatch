@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(gh pr merge*)"
+    ],
+    "ask": ["Bash(git push*)", "Bash(gh pr create*)"]
+  }
+}

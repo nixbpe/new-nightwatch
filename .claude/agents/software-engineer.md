@@ -1,8 +1,9 @@
 ---
 name: software-engineer
 description: Implement an application, API or UI slice against accepted criteria and demonstrate runtime behavior. Use for Technical Lead implementation nodes.
-tools: read, grep, glob, edit, write, bash, eval, web_search
-model: ["@implement", "@default"]
+tools: Read, Grep, Glob, Edit, Write, Bash, WebSearch
+model: sonnet
+skills: [build]
 ---
 ## Role
 

@@ -13,7 +13,7 @@ bun run candidate:manifest -- --base HEAD
 ```
 
 - `workflow:test` exercises the agent-reference and candidate-binding scripts. Root `validate` runs it before other gates.
-- `agent:check` validates model selectors, frontmatter routing and explicit references under `.omp`. Reference metadata uses `agent:<name>`, `skill:<name>`, `command:/<name>` and `file:<path>` with the value enclosed in backticks after the prefix. Fenced examples are ignored; referenced files and canonical `SKILL.md` files must resolve inside the repository.
+- `agent:check` validates agent model ids, tool allowlists, skill preloads and explicit references under `.claude`. Reference metadata uses `agent:<name>`, `skill:<name>`, `command:/<name>` and `file:<path>` with the value enclosed in backticks after the prefix. Fenced examples are ignored; referenced files and canonical `SKILL.md` files must resolve inside the repository.
 - `candidate:manifest` binds the resolved base commit to all tracked changes, deletions and non-ignored untracked files. Each included file records its normalized repository-relative path, state, kind, mode and SHA-256 content or symlink-target digest; the output also includes a digest of the complete payload.
 - Positional paths or `--from <newline-delimited-file>` may make the scope explicit, but every discovered path must be included. `--exclude path=reason` declares an ambient path outside the candidate under `nonCandidateExclusions`; it is not a scanner waiver or approval to omit candidate source. Repository escapes, control characters, undecodable paths, unchanged paths, unexplained exclusions and empty candidate scopes fail.
 
