@@ -1,6 +1,6 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
@@ -11,6 +11,28 @@ import { MemberActionDialog } from "./MemberActionDialog";
 import { useOrganizationScope } from "./useOrganizationScope";
 
 const LEAVE_ATTRIBUTE = "data-self-leave";
+
+/** Navigation state that asks the destination page to focus its heading. */
+const SELF_LEFT_STATE = { selfLeft: true } as const;
+
+/**
+ * After a confirmed leave the old page and its dialog are gone, so the
+ * destination heading takes focus once it exists (Organization page or
+ * no-access). Runs once per arrival.
+ */
+export function useFocusHeadingAfterSelfLeave(
+  headingRef: RefObject<HTMLElement | null>,
+) {
+  const state = useLocation().state as { selfLeft?: boolean } | null;
+  const pending = useRef(state?.selfLeft === true);
+  useEffect(() => {
+    if (!pending.current) return;
+    const heading = headingRef.current;
+    if (heading === null) return;
+    pending.current = false;
+    heading.focus();
+  });
+}
 
 // `refreshing` and `refresh-failed` replace the page body, so the hook lives
 // in the page and survives the context refresh that hides the Organization.
@@ -46,6 +68,8 @@ export function useSelfLeave({
     opener: HTMLElement;
   } | null>(null);
   const restoreFocus = useRef(false);
+  // Kept so a retry after a failed refresh still explains the original failure.
+  const lastFailure = useRef<unknown>(null);
 
   useEffect(() => {
     if (!restoreFocus.current || phase !== "idle") return;
@@ -56,6 +80,7 @@ export function useSelfLeave({
   });
 
   async function settle(failure: unknown) {
+    lastFailure.current = failure;
     setPhase("refreshing");
     const context = await refreshMembershipContext();
     if (!isCurrentScope()) return;
@@ -71,7 +96,7 @@ export function useSelfLeave({
         ) ?? context.organizations[0];
       await navigate(
         next === undefined ? "/workspace" : `/organizations/${next.id}/members`,
-        { replace: true },
+        { replace: true, state: SELF_LEFT_STATE },
       );
       return;
     }
@@ -125,7 +150,7 @@ export function useSelfLeave({
       setConfirmation(null);
     },
     retryRefresh: () => {
-      if (phase === "refresh-failed") void settle(null);
+      if (phase === "refresh-failed") void settle(lastFailure.current);
     },
   };
 }

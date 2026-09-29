@@ -24,6 +24,7 @@ import {
 } from "../../lib/api/members";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "../OrganizationMembersPage";
+import { WorkspacePage } from "../WorkspacePage";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -108,18 +109,20 @@ function Harness() {
           path="/organizations/:organizationId/members"
           element={<OrganizationMembersPage />}
         />
-        <Route path="/workspace" element={<p>no-access page</p>} />
+        <Route path="/workspace" element={<WorkspacePage />} />
       </Routes>
     </>
   );
 }
+
+let queryClient: QueryClient;
 
 async function renderAs(
   role: OrganizationRole,
   organizations: MeContextResponse["organizations"] = [ORG_A(role), ORG_B],
 ) {
   vi.mocked(fetchMeContext).mockResolvedValue(contextWith(organizations));
-  const queryClient = new QueryClient({
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const user = userEvent.setup();
@@ -179,13 +182,25 @@ it.each(["owner", "admin"] as const)(
   async (role) => {
     const user = await renderAs(role, [ORG_A(role)]);
     expect(await screen.findByRole("row", { name: /Me/ })).toBeInTheDocument();
+    const cachedLists = () =>
+      queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ["tenant", "members", A] })
+        .filter((query) => query.state.data !== undefined);
+    expect(cachedLists()).toHaveLength(1);
     vi.mocked(fetchMeContext).mockResolvedValue(contextWith([]));
     await user.click(entry());
     await user.click(confirmButton());
     await waitFor(() =>
       expect(screen.getByTestId("location")).toHaveTextContent("/workspace"),
     );
-    expect(screen.getByText("no-access page")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
+      }),
+    ).toHaveFocus();
+    // A's member list data is gone with the membership.
+    expect(cachedLists()).toHaveLength(0);
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
   },
 );
@@ -368,3 +383,50 @@ it.each(["success", "LAST_OWNER"] as const)(
     expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
   },
 );
+
+it("shows the Organization name and slug in the header of a viewer without a list", async () => {
+  await renderAs("auditor");
+  expect(screen.getByText("Acme")).toBeInTheDocument();
+  expect(screen.getByText("acme")).toBeInTheDocument();
+});
+
+it("keeps the LAST_OWNER explanation when the refresh fails and is retried", async () => {
+  vi.mocked(leaveOrganization).mockRejectedValue(
+    new ApiError("LAST_OWNER", "last", 400),
+  );
+  const user = await renderAs("owner");
+  await screen.findByRole("row", { name: /Me/ });
+  await user.click(entry());
+  vi.mocked(fetchMeContext).mockRejectedValueOnce(new Error("offline"));
+  await user.click(confirmButton());
+  await user.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
+  expect(
+    await screen.findByText(/องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน/),
+  ).toHaveAttribute("role", "alert");
+  expect(leaveOrganization).toHaveBeenCalledTimes(1);
+});
+
+it("applies a late A leave to A when the switch to B is denied", async () => {
+  const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
+  vi.mocked(leaveOrganization).mockReturnValue(pending.promise);
+  vi.mocked(updateActiveOrganization).mockRejectedValue(
+    new ApiError("MEMBERSHIP_DENIED", "denied", 403),
+  );
+  const user = await renderAs("viewer");
+  await user.click(entry());
+  await user.click(confirmButton());
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() => {
+    expect(updateActiveOrganization).toHaveBeenCalled();
+  });
+  afterLeaveContext();
+  await act(async () => {
+    pending.resolve(left());
+    await pending.promise;
+  });
+  await waitFor(() =>
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${B}/members`,
+    ),
+  );
+});

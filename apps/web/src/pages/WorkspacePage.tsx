@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useNavigate } from "react-router";
 
 import { EmptyState } from "../components/shell/EmptyState";
@@ -8,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { ROLE_LABELS } from "../lib/roles";
 import { useTenant } from "../lib/tenant/TenantProvider";
+import { useFocusHeadingAfterSelfLeave } from "./organization-members/SelfLeaveAction";
 
 export function WorkspacePage() {
   const { me, mePending, meError, retryMe, activeOrg } = useTenant();
@@ -73,9 +75,16 @@ export function WorkspacePage() {
 
 function AccessNeeded({ email }: { email: string }) {
   const navigate = useNavigate();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useFocusHeadingAfterSelfLeave(headingRef);
   return (
     <Page>
-      <PageHeader title="ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร" />
+      <PageHeader
+        title="ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร"
+        titleRef={headingRef}
+        titleTabIndex={-1}
+        titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+      />
       <PageState
         kind="denied"
         tone="info"

@@ -33,6 +33,7 @@ import {
 } from "./organization-members/MemberRoleActions";
 import {
   SelfLeaveSection,
+  useFocusHeadingAfterSelfLeave,
   useSelfLeave,
 } from "./organization-members/SelfLeaveAction";
 
@@ -217,12 +218,14 @@ function OrganizationMembersPageForOrganization({
     refreshMembershipContext: refreshAfterAuthorizationDenied,
     blocked: roleChange.pending,
   });
+  const otherMutationPending = roleChange.pending || revoke.pending;
   const selfLeave = useSelfLeave({
     organizationId,
-    blocked: roleChange.pending || revoke.pending,
+    blocked: otherMutationPending,
     headingRef: memberPageHeadingRef,
     refreshMembershipContext,
   });
+  useFocusHeadingAfterSelfLeave(memberPageHeadingRef);
   const memberMutationPending =
     roleChange.pending || revoke.pending || selfLeave.pending;
 
@@ -332,7 +335,7 @@ function OrganizationMembersPageForOrganization({
       selfLeave={selfLeave}
       organization={organization}
       actor={me?.user}
-      disabled={roleChange.pending || revoke.pending}
+      disabled={otherMutationPending}
       headingRef={memberPageHeadingRef}
     />
   );
@@ -343,6 +346,11 @@ function OrganizationMembersPageForOrganization({
         <PageHeader
           scope={{ mark: organization.name, label: organization.name }}
           title="สมาชิก"
+          status={
+            <span>
+              slug <span className="font-mono">{organization.slug}</span>
+            </span>
+          }
           titleRef={memberPageHeadingRef}
           titleTabIndex={-1}
           titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
