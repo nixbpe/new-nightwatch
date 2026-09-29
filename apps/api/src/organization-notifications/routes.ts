@@ -142,7 +142,7 @@ const memberRevokeRoute = createRoute({
   method: "delete",
   path: "/api/organizations/{organizationId}/members/{memberId}",
   tags: ["organizations"],
-  request: { params: memberParamsSchema },
+  request: { params: memberRoleParamsSchema },
   responses: {
     200: {
       description: "Revoked member",

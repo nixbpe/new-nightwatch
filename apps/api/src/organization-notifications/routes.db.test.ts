@@ -18,6 +18,8 @@ const organizationId = crypto.randomUUID();
 const settingsOrganizationId = crypto.randomUUID();
 const lastOwnerOrganizationId = crypto.randomUUID();
 const roleOrganizationId = crypto.randomUUID();
+const revokeOrganizationId = crypto.randomUUID();
+const revokeOtherOrganizationId = crypto.randomUUID();
 const inviterId = crypto.randomUUID();
 const memberIds = {
   owner: crypto.randomUUID(),
@@ -30,6 +32,10 @@ const memberIds = {
   roleOwner: `opaque-owner-${run}`,
   roleAdmin: `opaque-admin-${run}`,
   roleViewer: `opaque-viewer-${run}`,
+  revokeOwner: crypto.randomUUID(),
+  revokeAdmin: crypto.randomUUID(),
+  revokeTarget: crypto.randomUUID(),
+  revokeTargetB: crypto.randomUUID(),
 };
 const password = "Member-Route-Passw0rd!";
 const appUrl = "http://localhost:5173";
@@ -44,6 +50,9 @@ const emails = {
   roleOwner: `role-owner-${run}@example.test`,
   roleAdmin: `role-admin-${run}@example.test`,
   roleViewer: `role-viewer-${run}@example.test`,
+  revokeOwner: `revoke-owner-${run}@example.test`,
+  revokeAdmin: `revoke-admin-${run}@example.test`,
+  revokeTarget: `revoke-target-${run}@example.test`,
 };
 const userIds = new Map<keyof typeof emails, string>();
 const mail: OutboundMail[] = [];
@@ -198,7 +207,9 @@ beforeAll(async () => {
      values ($1, $2, $3, now()),
             ($4, $5, $6, now()),
             ($7, $8, $9, now()),
-            ($10, $11, $12, now())`,
+            ($10, $11, $12, now()),
+            ($13, $14, $15, now()),
+            ($16, $17, $18, now())`,
     [
       organizationId,
       `Member route ${run}`,
@@ -212,6 +223,12 @@ beforeAll(async () => {
       roleOrganizationId,
       `Role route ${run}`,
       `role-route-${run}`,
+      revokeOrganizationId,
+      `Revoke route A ${run}`,
+      `revoke-route-a-${run}`,
+      revokeOtherOrganizationId,
+      `Revoke route B ${run}`,
+      `revoke-route-b-${run}`,
     ],
   );
   await owner.sql.query(
@@ -227,6 +244,8 @@ afterAll(async () => {
       settingsOrganizationId,
       lastOwnerOrganizationId,
       roleOrganizationId,
+      revokeOrganizationId,
+      revokeOtherOrganizationId,
     ],
   ]);
   await owner.sql.query(
@@ -1016,5 +1035,210 @@ describe("organization notification settings HTTP input validation", () => {
     expect(unauthenticated.json).toMatchObject({
       error: { code: "UNAUTHENTICATED" },
     });
+  }, 120_000);
+});
+
+describe("organization member revoke HTTP contract", () => {
+  it("denies the revoked session's next A request, keeps B in context and reports denials without leaking targets", async () => {
+    const ownerClient = await admit("revokeOwner");
+    const adminClient = await admit("revokeAdmin");
+    const targetSession1 = await admit("revokeTarget");
+    const ids = {
+      owner: userIds.get("revokeOwner"),
+      admin: userIds.get("revokeAdmin"),
+      target: userIds.get("revokeTarget"),
+    };
+    if (!ids.owner || !ids.admin || !ids.target)
+      throw new Error("revoke membership users missing");
+    const a = revokeOrganizationId;
+    const b = revokeOtherOrganizationId;
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $5, $6, 'owner', now(), now()),
+              ($2, $5, $7, 'admin', now(), now()),
+              ($3, $5, $8, 'admin', now(), now()),
+              ($4, $9, $8, 'viewer', now(), now())`,
+      [
+        memberIds.revokeOwner,
+        memberIds.revokeAdmin,
+        memberIds.revokeTarget,
+        memberIds.revokeTargetB,
+        a,
+        ids.owner,
+        ids.admin,
+        ids.target,
+        b,
+      ],
+    );
+    // Second session of the same user, signed in independently.
+    const targetSession2 = client();
+    expect(
+      (
+        await targetSession2("POST", "/api/auth/sign-in/email", {
+          email: emails.revokeTarget,
+          password,
+        })
+      ).status,
+    ).toBe(200);
+    for (const session of [targetSession1, targetSession2]) {
+      expect(
+        (await session("PATCH", "/api/me/active-org", { organizationId: a }))
+          .status,
+      ).toBe(200);
+      expect(
+        (await session("GET", `/api/organizations/${a}/members`)).status,
+      ).toBe(200);
+    }
+    const mirrors = () =>
+      owner.sql
+        .query<{ active_organization_id: string | null }>(
+          "select active_organization_id from session where user_id = $1 order by created_at, id",
+          [ids.target],
+        )
+        .then((result) => result.rows.map((row) => row.active_organization_id));
+    expect(await mirrors()).toEqual([a, a]);
+
+    // An admin gets identical denials for an owner target and an absent one.
+    auditLines.length = 0;
+    const adminOwnerTarget = await adminClient(
+      "DELETE",
+      `/api/organizations/${a}/members/${memberIds.revokeOwner}`,
+    );
+    const absentId = `absent-${run}`;
+    const adminAbsentTarget = await adminClient(
+      "DELETE",
+      `/api/organizations/${a}/members/${absentId}`,
+    );
+    expect(adminOwnerTarget.status).toBe(403);
+    expect(adminOwnerTarget.json).toMatchObject({
+      error: { code: "PERMISSION_DENIED" },
+    });
+    expect(adminAbsentTarget).toEqual(adminOwnerTarget);
+    // The owner learns that a target is absent, not a denial.
+    const ownerAbsent = await ownerClient(
+      "DELETE",
+      `/api/organizations/${a}/members/${absentId}`,
+    );
+    expect(ownerAbsent.status).toBe(404);
+    expect(ownerAbsent.json).toMatchObject({
+      error: { code: "MEMBER_NOT_FOUND" },
+    });
+    // The sole owner cannot revoke itself.
+    const lastOwner = await ownerClient(
+      "DELETE",
+      `/api/organizations/${a}/members/${memberIds.revokeOwner}`,
+    );
+    expect(lastOwner.status).toBe(400);
+    expect(lastOwner.json).toMatchObject({ error: { code: "LAST_OWNER" } });
+    const serialized = auditLines.join("\n");
+    for (const secret of [
+      a,
+      memberIds.revokeOwner,
+      memberIds.revokeTarget,
+      absentId,
+      emails.revokeOwner,
+      emails.revokeTarget,
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(
+      (
+        await owner.sql.query(
+          "select 1 from member where organization_id = $1",
+          [a],
+        )
+      ).rows,
+    ).toHaveLength(3);
+
+    // The owner revokes the target from A.
+    const revoke = await ownerClient(
+      "DELETE",
+      `/api/organizations/${a}/members/${memberIds.revokeTarget}`,
+    );
+    expect(revoke).toEqual({
+      status: 200,
+      json: {
+        member: {
+          id: memberIds.revokeTarget,
+          userId: ids.target,
+          organizationId: a,
+          role: "admin",
+        },
+      },
+    });
+    expect(
+      (
+        await owner.sql.query<{ organization_id: string }>(
+          "select organization_id from member where user_id = $1",
+          [ids.target],
+        )
+      ).rows,
+    ).toEqual([{ organization_id: b }]);
+    expect(
+      (
+        await owner.sql.query<{ last_active_tenant_id: string | null }>(
+          'select last_active_tenant_id from "user" where id = $1',
+          [ids.target],
+        )
+      ).rows[0]?.last_active_tenant_id,
+    ).toBeNull();
+    expect(await mirrors()).toEqual([null, null]);
+
+    // Both still-valid sessions are denied on the next A request and mutation,
+    // with one body that does not reveal whether A exists.
+    for (const session of [targetSession1, targetSession2]) {
+      const denials = [
+        await session("GET", `/api/organizations/${a}/members`),
+        await session(
+          "PATCH",
+          `/api/organizations/${a}/members/${memberIds.revokeAdmin}/role`,
+          { role: "viewer" },
+        ),
+        await session(
+          "DELETE",
+          `/api/organizations/${a}/members/${memberIds.revokeAdmin}`,
+        ),
+        await session("PATCH", "/api/me/active-org", { organizationId: a }),
+      ];
+      for (const denial of denials) {
+        expect(denial.status).toBe(403);
+        expect(denial.json).toMatchObject({
+          error: { code: "MEMBERSHIP_DENIED" },
+        });
+      }
+      const context = await session("GET", "/api/me/context");
+      expect(context.status).toBe(200);
+      const body = context.json as {
+        organizations: { id: string }[];
+        lastActiveTenantId: string | null;
+      };
+      expect(body.organizations.map((org) => org.id)).toEqual([b]);
+      expect(body.lastActiveTenantId).toBeNull();
+      expect(JSON.stringify(body)).not.toContain(a);
+      // The session survives.
+      expect((await session("GET", "/api/auth/get-session")).status).toBe(200);
+    }
+    // B remains selectable from the revoked user's session.
+    expect(
+      (
+        await targetSession1("PATCH", "/api/me/active-org", {
+          organizationId: b,
+        })
+      ).status,
+    ).toBe(200);
+    // The denied A mutations changed nothing.
+    expect(
+      (
+        await owner.sql.query<{ id: string; role: string }>(
+          "select id, role from member where organization_id = $1 order by id",
+          [a],
+        )
+      ).rows.sort((left, right) => left.id.localeCompare(right.id)),
+    ).toEqual(
+      [
+        { id: memberIds.revokeOwner, role: "owner" },
+        { id: memberIds.revokeAdmin, role: "admin" },
+      ].sort((left, right) => left.id.localeCompare(right.id)),
+    );
   }, 120_000);
 });
