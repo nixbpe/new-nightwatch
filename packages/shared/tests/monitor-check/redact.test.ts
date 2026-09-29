@@ -93,3 +93,17 @@ describe("outcomeForFailure", () => {
     );
   });
 });
+
+describe("createRedactor with a lone surrogate", () => {
+  const secret = "a\uD800b";
+
+  it("does not throw and still masks the raw and JSON-escaped forms", () => {
+    const redact = createRedactor([secret]);
+    expect(redact(`x ${secret} y`)).toBe("x ••• y");
+    expect(redact(JSON.stringify({ v: secret }))).toBe('{"v":"•••"}');
+  });
+
+  it("keeps masking the other secrets", () => {
+    expect(createRedactor([secret, "plain"])("plain")).toBe("•••");
+  });
+});

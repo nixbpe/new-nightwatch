@@ -186,11 +186,17 @@ export async function runCheck(
   }
 
   const { response } = sent;
-  const { results, evaluatedFromPrefix } = evaluateAssertions(
-    config.assertions,
-    response,
-    redact,
-  );
+  let evaluated: ReturnType<typeof evaluateAssertions>;
+  try {
+    evaluated = evaluateAssertions(config.assertions, response, redact);
+  } catch {
+    // An unexpected exception on target-controlled data is a check that could not run.
+    return failed("executor_error", {
+      tlsReason: null,
+      tls,
+    });
+  }
+  const { results, evaluatedFromPrefix } = evaluated;
   const statusOk = config.expectedStatus.some(
     ({ from, to }) => response.status >= from && response.status <= to,
   );

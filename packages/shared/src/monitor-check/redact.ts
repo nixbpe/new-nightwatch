@@ -14,7 +14,11 @@ export function createRedactor(
   for (const value of [...secretValues, ...extra]) {
     needles.add(value);
     needles.add(JSON.stringify(value).slice(1, -1));
-    needles.add(encodeURIComponent(value));
+    try {
+      needles.add(encodeURIComponent(value));
+    } catch {
+      // A lone surrogate has no URL-encoded form; the other forms still apply.
+    }
   }
   needles.delete("");
   return (text) => {

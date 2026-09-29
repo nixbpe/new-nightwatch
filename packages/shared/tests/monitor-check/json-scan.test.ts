@@ -156,23 +156,6 @@ describe("very deep matches never throw", () => {
     });
     expect((results[0]?.actual ?? "").length).toBeLessThanOrEqual(200);
   });
-
-  it("turns an unexpected exception into a failed assertion", () => {
-    const { results } = evaluateAssertions(
-      [scalar(["a"])],
-      {
-        status: 200,
-        headers: {},
-        body: Buffer.from('{"a":"x"}'),
-        bodyTruncated: false,
-        elapsedMs: 1,
-      },
-      () => {
-        throw new Error("boom");
-      },
-    );
-    expect(results[0]).toMatchObject({ status: "fail", reason: "not_json" });
-  });
 });
 
 describe("shared parse", () => {

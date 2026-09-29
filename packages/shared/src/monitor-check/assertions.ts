@@ -165,27 +165,8 @@ export function evaluateAssertions(
       : outcome("fail", "value_mismatch", details);
   };
 
-  // Target-controlled input must never reject `runCheck`: an unexpected
-  // exception fails that one assertion with a fixed reason.
-  const evaluateGuarded = (assertion: NormalizedAssertion): AssertionResult => {
-    try {
-      return evaluateOne(assertion);
-    } catch {
-      return {
-        kind: assertion.kind,
-        expected: expectedText(assertion),
-        actual: null,
-        actualType: null,
-        actualTruncated: false,
-        status: "fail",
-        reason:
-          assertion.kind === "jsonPathEquals" ? "not_json" : "undecodable",
-      };
-    }
-  };
-
   return {
-    results: assertions.map(evaluateGuarded),
+    results: assertions.map(evaluateOne),
     evaluatedFromPrefix:
       response !== null &&
       response.bodyTruncated &&
