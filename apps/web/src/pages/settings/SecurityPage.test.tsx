@@ -133,7 +133,7 @@ describe("SecurityPage enrollment", () => {
     const user = await enroll();
     twoFactorMock.verifyTotp.mockResolvedValue({
       data: null,
-      error: { message: "รหัสยืนยันไม่ถูกต้อง" },
+      error: { code: "INVALID_CODE", message: "Invalid code" },
     });
 
     await user.type(screen.getByLabelText(/รหัสยืนยัน 6 หลัก/), "000000");
@@ -245,7 +245,7 @@ describe("SecurityPage recovery regeneration", () => {
     twoFactorMock.generateBackupCodes
       .mockResolvedValueOnce({
         data: null,
-        error: { message: "รหัสผ่านไม่ถูกต้อง" },
+        error: { code: "INVALID_PASSWORD", message: "Invalid password" },
       })
       .mockResolvedValueOnce({
         data: { status: true, backupCodes: ["kept-1", "kept-2"] },

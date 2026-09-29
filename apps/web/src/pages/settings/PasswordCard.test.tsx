@@ -102,7 +102,7 @@ describe("PasswordCard", () => {
 
     const current = screen.getByLabelText("รหัสผ่านปัจจุบัน");
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Invalid password",
+      "รหัสผ่านไม่ถูกต้อง",
     );
     expect(current).toHaveAttribute("aria-invalid", "true");
     expect(current).toHaveValue("WrongPassw0rd!");

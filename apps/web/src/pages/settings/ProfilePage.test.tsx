@@ -135,7 +135,9 @@ describe("ProfilePage", () => {
       screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
     );
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Name too long");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "บันทึกโปรไฟล์ไม่สำเร็จ",
+    );
     expect(name).toHaveValue("ชื่อใหม่");
   });
 

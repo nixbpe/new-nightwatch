@@ -71,14 +71,14 @@ describe("ResetPasswordPage", () => {
   it("refuses an expired or replayed token and keeps the form intact", async () => {
     resetPasswordMock.mockResolvedValue({
       data: null,
-      error: { message: "โทเค็นไม่ถูกต้องหรือหมดอายุแล้ว" },
+      error: { code: "INVALID_TOKEN", message: "Invalid token" },
     });
     renderAt("/reset-password?token=spent-tok");
 
     await fillAndSubmit("another-pass-22");
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("โทเค็นไม่ถูกต้องหรือหมดอายุแล้ว");
+    expect(alert).toHaveTextContent("ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว");
     // Retry-safe: still on the page, inputs preserved, request-new-link shown.
     expect(screen.queryByTestId("location")).toBeNull();
     expect(

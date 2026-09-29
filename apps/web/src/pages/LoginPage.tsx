@@ -47,7 +47,10 @@ export function LoginPage() {
         });
         if (signInError != null) {
           const message = authErrorMessage(signInError, "เข้าสู่ระบบไม่สำเร็จ");
-          if (signInError.status === 403 || /not verified/i.test(message)) {
+          if (
+            signInError.status === 403 ||
+            signInError.code === "EMAIL_NOT_VERIFIED"
+          ) {
             setNeedsVerification(true);
           }
           setError(message);

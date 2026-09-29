@@ -74,7 +74,7 @@ describe("ForgotPasswordPage", () => {
     // A failure must not swallow the entered email; a retry can succeed.
     requestPasswordResetMock.mockResolvedValueOnce({
       data: null,
-      error: { message: "ส่งอีเมลไม่สำเร็จ" },
+      error: { message: "Failed to send email" },
     });
     const user = userEvent.setup();
     renderPage();

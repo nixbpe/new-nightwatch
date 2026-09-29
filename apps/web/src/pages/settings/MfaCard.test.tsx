@@ -107,7 +107,7 @@ describe("MfaCard enrolment steps", () => {
     const user = userEvent.setup();
     twoFactorMock.enable.mockResolvedValue({
       data: null,
-      error: { message: "รหัสผ่านไม่ถูกต้อง" },
+      error: { code: "INVALID_PASSWORD", message: "Invalid password" },
     });
     render(<MfaCard enabled={false} refreshStatus={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "เปิดใช้งาน" }));
@@ -132,7 +132,7 @@ describe("MfaCard enrolment steps", () => {
     );
     twoFactorMock.verifyTotp.mockResolvedValue({
       data: null,
-      error: { message: "รหัสยืนยันไม่ถูกต้อง" },
+      error: { code: "INVALID_CODE", message: "Invalid code" },
     });
 
     const code = screen.getByLabelText(/รหัสยืนยัน 6 หลัก/);
@@ -288,7 +288,7 @@ describe("MfaCard enabled state", () => {
   it("a wrong password on disable keeps the panel open with a field-level error", async () => {
     twoFactorMock.disable.mockResolvedValue({
       data: null,
-      error: { message: "รหัสผ่านไม่ถูกต้อง" },
+      error: { code: "INVALID_PASSWORD", message: "Invalid password" },
     });
     const user = userEvent.setup();
     render(<MfaCard enabled refreshStatus={vi.fn()} />);

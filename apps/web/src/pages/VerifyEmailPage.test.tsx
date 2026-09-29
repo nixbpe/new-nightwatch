@@ -238,7 +238,7 @@ describe("VerifyEmailPage", () => {
   it("shows an error and stays retryable when resend fails", async () => {
     sendVerificationEmailMock.mockResolvedValue({
       data: null,
-      error: { message: "ส่งอีเมลยืนยันไม่สำเร็จ" },
+      error: { message: "Failed to send verification email" },
     });
     sessionState.data = {
       user: {
