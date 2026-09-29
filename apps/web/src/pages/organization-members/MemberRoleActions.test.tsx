@@ -641,9 +641,9 @@ it("refreshes membership context when the actor changes their own role", async (
   await user.click(
     screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
   );
-  await waitFor(() =>
+  await waitFor(() => {
     expect(vi.mocked(fetchMeContext).mock.calls.length).toBeGreaterThan(
       contextFetches,
-    ),
-  );
+    );
+  });
 });
