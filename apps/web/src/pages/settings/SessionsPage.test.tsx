@@ -315,7 +315,7 @@ describe("SessionsPage", () => {
     );
 
     expect(await within(phoneRow).findByRole("alert")).toHaveTextContent(
-      "Session not found",
+      "ออกจากระบบอุปกรณ์ไม่สำเร็จ",
     );
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(authMock.listSessions).toHaveBeenCalledTimes(1);
@@ -328,7 +328,9 @@ describe("SessionsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "โหลดรายการเซสชันไม่สำเร็จ",
+    );
     await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
     expect(await screen.findAllByRole("listitem")).toHaveLength(1);
   });

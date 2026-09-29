@@ -42,15 +42,50 @@ export function sameEmail(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
+// Thai copy for known better-auth error codes. `USER_NOT_FOUND` is deliberately absent (account enumeration).
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  INVALID_EMAIL_OR_PASSWORD: "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+  INVALID_PASSWORD: "รหัสผ่านไม่ถูกต้อง",
+  EMAIL_NOT_VERIFIED: "อีเมลนี้ยังไม่ได้รับการยืนยัน",
+  PASSWORD_TOO_SHORT: "รหัสผ่านสั้นเกินไป",
+  PASSWORD_TOO_LONG: "รหัสผ่านยาวเกินไป",
+  USER_ALREADY_EXISTS: "อีเมลนี้มีบัญชีอยู่แล้ว",
+  USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: "อีเมลนี้มีบัญชีอยู่แล้ว",
+  INVALID_TOKEN: "ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว",
+  TOKEN_EXPIRED: "ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว",
+  SESSION_EXPIRED: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง",
+  SESSION_NOT_FRESH: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง",
+  INVALID_CODE: "รหัสยืนยันไม่ถูกต้อง",
+  INVALID_BACKUP_CODE: "รหัสกู้คืนไม่ถูกต้อง",
+  OTP_HAS_EXPIRED: "รหัสยืนยันหมดอายุแล้ว",
+  TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE: "ลองผิดหลายครั้งเกินไป กรุณาขอรหัสใหม่",
+  ACCOUNT_TEMPORARILY_LOCKED:
+    "ยืนยันผิดหลายครั้งเกินไป บัญชีถูกล็อกชั่วคราว กรุณาลองใหม่ภายหลัง",
+  INVALID_TWO_FACTOR_COOKIE: "การยืนยันสองขั้นตอนหมดเวลา กรุณาเข้าสู่ระบบใหม่",
+};
+
+const RATE_LIMITED_MESSAGE = "มีคำขอมากเกินไป กรุณาลองใหม่ภายหลัง";
+
+// Resolves better-auth errors to Thai copy by `code`, then rate-limit status, else the caller's fallback.
+// Never returns `error.message`: it is server English text.
 export function authErrorMessage(error: unknown, fallback: string): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string" &&
-    error.message.length > 0
-  ) {
-    return error.message;
+  if (typeof error !== "object" || error === null) {
+    return fallback;
   }
-  return fallback;
+  const { code, status, message } = error as {
+    code?: unknown;
+    status?: unknown;
+    message?: unknown;
+  };
+  const mapped =
+    typeof code === "string" &&
+    Object.prototype.hasOwnProperty.call(AUTH_ERROR_MESSAGES, code)
+      ? AUTH_ERROR_MESSAGES[code]
+      : undefined;
+  const resolved =
+    mapped ?? (status === 429 ? RATE_LIMITED_MESSAGE : undefined);
+  if (resolved === undefined && import.meta.env.DEV) {
+    console.warn("[auth] unmapped error", { code, message });
+  }
+  return resolved ?? fallback;
 }

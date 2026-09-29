@@ -194,7 +194,11 @@ describe("LoginPage", () => {
     // A failed attempt must not wipe the form or navigate away.
     signInEmailMock.mockResolvedValue({
       data: null,
-      error: { message: "อีเมลหรือรหัสผ่านไม่ถูกต้อง", status: 401 },
+      error: {
+        code: "INVALID_EMAIL_OR_PASSWORD",
+        message: "Invalid email or password",
+        status: 401,
+      },
     });
     renderPage();
 
@@ -213,14 +217,18 @@ describe("LoginPage", () => {
     // EMAIL_NOT_VERIFIED is recoverable: the error links to the anonymous-safe resend hub.
     signInEmailMock.mockResolvedValue({
       data: null,
-      error: { message: "กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ", status: 403 },
+      error: {
+        code: "EMAIL_NOT_VERIFIED",
+        message: "Email not verified",
+        status: 403,
+      },
     });
     renderPage();
 
     await submitLogin("new@example.com", "super-secret-1");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ",
+      "อีเมลนี้ยังไม่ได้รับการยืนยัน",
     );
     const user = userEvent.setup();
     await user.click(
@@ -229,6 +237,40 @@ describe("LoginPage", () => {
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/verify-email",
     );
+  });
+
+  it("offers the resend page for EMAIL_NOT_VERIFIED even without a 403 status", async () => {
+    signInEmailMock.mockResolvedValue({
+      data: null,
+      error: { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
+    });
+    renderPage();
+
+    await submitLogin("new@example.com", "super-secret-1");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "อีเมลนี้ยังไม่ได้รับการยืนยัน",
+    );
+    expect(
+      screen.getByRole("link", { name: "ไปที่หน้ายืนยันอีเมล" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the resend page on a 403 without a code, showing the fallback text", async () => {
+    signInEmailMock.mockResolvedValue({
+      data: null,
+      error: { message: "Forbidden", status: 403 },
+    });
+    renderPage();
+
+    await submitLogin("new@example.com", "super-secret-1");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "เข้าสู่ระบบไม่สำเร็จ",
+    );
+    expect(
+      screen.getByRole("link", { name: "ไปที่หน้ายืนยันอีเมล" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps the deep link when session identity remounts before sign-in settles", async () => {
