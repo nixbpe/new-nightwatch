@@ -5,7 +5,7 @@ Save as `docs/features/F-000-<slug>/spec.md`. Owner: Technical Lead. This spec i
 | Field                | Value                                                           |
 | -------------------- | --------------------------------------------------------------- |
 | Feature              | F-000, `acceptanceVersion` F-000-AC-1 (`feature.md`)            |
-| Epic                 | E-000                                                           |
+| Epic                 | E-000 / None                                                    |
 | Status               | Draft / Approved                                                |
 | Approved by user     | Not yet / date (freezes acceptance)                             |
 | Start authorization  | None / date and issue (approval alone does not start work)      |

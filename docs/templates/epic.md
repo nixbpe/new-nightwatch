@@ -1,6 +1,6 @@
 # E-000 Epic title
 
-Save as `docs/epics/E-000-<slug>.md`. Owner: Product Owner.
+Save as `docs/epics/E-000-<slug>.md`. Owner: Product Owner. Create an Epic when two or more Features share one outcome; a single Feature links to its Direction instead.
 
 | Field          | Value                   |
 | -------------- | ----------------------- |
