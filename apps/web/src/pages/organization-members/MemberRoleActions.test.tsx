@@ -715,6 +715,8 @@ it("shows loading, never a restricted state, while context refreshes after an ow
   expect(await screen.findByText("Ann")).toBeInTheDocument();
   expect(screen.queryByText(RESTRICTED)).toBeNull();
   expect(screen.getByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  // The table unmounted during the refresh; focus must return to a live control.
+  await waitFor(() => expect(roleSelect("Me")).toHaveFocus());
 });
 
 it("shows a retryable error, not a restricted state, when the context refresh fails after an own role change", async () => {
@@ -734,4 +736,5 @@ it("shows a retryable error, not a restricted state, when the context refresh fa
     failedFetches,
   );
   expect(screen.queryByText(RESTRICTED)).toBeNull();
+  await waitFor(() => expect(roleSelect("Me")).toHaveFocus());
 });

@@ -217,7 +217,8 @@ export function useMemberRoleChange({
       (item) => item.userId === actorUserId,
     );
     // Absence from this page (normal on page 2+) says nothing about the actor's
-    // role; refresh only when the actor changed themselves or their row moved.
+    // role; refresh only when the actor successfully changed their own role or
+    // their listed role differs from before.
     if (
       !refreshed.isError &&
       ((member.userId === actorUserId && failure === null) ||
