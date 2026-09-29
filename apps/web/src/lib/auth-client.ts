@@ -56,7 +56,7 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   SESSION_EXPIRED: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง",
   SESSION_NOT_FRESH: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง",
   INVALID_CODE: "รหัสยืนยันไม่ถูกต้อง",
-  INVALID_BACKUP_CODE: "รหัสกู้คืนไม่ถูกต้อง",
+  INVALID_BACKUP_CODE: "รหัสกู้คืนไม่ถูกต้องหรือถูกใช้ไปแล้ว",
   OTP_HAS_EXPIRED: "รหัสยืนยันหมดอายุแล้ว",
   TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE: "ลองผิดหลายครั้งเกินไป กรุณาขอรหัสใหม่",
   ACCOUNT_TEMPORARILY_LOCKED:

@@ -7,6 +7,7 @@ const FALLBACK = "ไม่สำเร็จ";
 describe("authErrorMessage", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("maps a known better-auth code to Thai text", () => {
@@ -79,7 +80,10 @@ describe("authErrorMessage", () => {
       FALLBACK,
     );
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(warn.mock.calls[0])).toContain("SOMETHING_NEW");
+    expect(warn).toHaveBeenCalledWith("[auth] unmapped error", {
+      code: "SOMETHING_NEW",
+      message: "Something new",
+    });
     expect(result).toBe(FALLBACK);
   });
 
@@ -88,7 +92,6 @@ describe("authErrorMessage", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     authErrorMessage({ code: "SOMETHING_NEW", message: "x" }, FALLBACK);
     expect(warn).not.toHaveBeenCalled();
-    vi.unstubAllEnvs();
   });
 
   it("does not log for a mapped code", () => {

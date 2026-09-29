@@ -161,7 +161,7 @@ describe("TwoFactorPage challenge", () => {
     const user = userEvent.setup();
     twoFactorMock.verifyTotp.mockResolvedValue({
       data: null,
-      error: { message: "รหัสยืนยันไม่ถูกต้อง" },
+      error: { code: "INVALID_CODE", message: "Invalid code" },
     });
     renderPage();
 
@@ -226,7 +226,7 @@ describe("TwoFactorPage challenge", () => {
     const user = userEvent.setup();
     twoFactorMock.verifyBackupCode.mockResolvedValue({
       data: null,
-      error: { message: "รหัสกู้คืนไม่ถูกต้องหรือถูกใช้ไปแล้ว" },
+      error: { code: "INVALID_BACKUP_CODE", message: "Invalid backup code" },
     });
     renderPage();
 
