@@ -615,3 +615,35 @@ it("keeps Tab inside the generic dialog across links, inputs and buttons", async
   await user.tab({ shift: true });
   expect(confirm).toHaveFocus();
 });
+
+it("does not refresh membership context when another member changes on a page without the actor", async () => {
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
+    listCalls.push(id);
+    const list = listFor(id);
+    return Promise.resolve({
+      ...list,
+      members: list.members.filter((item) => item.userId !== ME),
+    });
+  });
+  const user = await renderAs("owner");
+  const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
+  await user.selectOptions(roleSelect("Ann"), "auditor");
+  await user.click(save("Ann"));
+  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
+});
+
+it("refreshes membership context when the actor changes their own role", async () => {
+  const user = await renderAs("owner");
+  const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
+  await user.selectOptions(roleSelect("Me"), "admin");
+  await user.click(save("Me"));
+  await user.click(
+    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
+  );
+  await waitFor(() =>
+    expect(vi.mocked(fetchMeContext).mock.calls.length).toBeGreaterThan(
+      contextFetches,
+    ),
+  );
+});

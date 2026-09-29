@@ -216,9 +216,12 @@ export function useMemberRoleChange({
     const currentActor = refreshed.data?.members.find(
       (item) => item.userId === actorUserId,
     );
+    // Absence from this page (normal on page 2+) says nothing about the actor's
+    // role; refresh only when the actor changed themselves or their row moved.
     if (
       !refreshed.isError &&
-      (currentActor === undefined || currentActor.role !== actorRole)
+      (member.userId === actorUserId ||
+        (currentActor !== undefined && currentActor.role !== actorRole))
     ) {
       await refreshMembershipContext();
       if (!isCurrentScope()) return;
@@ -290,11 +293,11 @@ export function MemberRoleActions({
   if (actorRole === "admin" && member.role === "owner") return null;
   const roles = actorRole === "owner" ? INVITABLE_ROLES : ADMIN_INVITABLE_ROLES;
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+    <div className="flex flex-wrap items-center justify-end gap-2 py-1 sm:flex-nowrap">
       <select
         {...{ [MEMBER_SELECT_ATTRIBUTE]: member.id }}
         aria-label={`บทบาทใหม่ของ ${member.name}`}
-        className={cn(textInputClass, "h-8 w-32 shrink-0 py-0 text-[13px]")}
+        className={cn(textInputClass, "w-32 shrink-0 py-0 text-sm")}
         value={role}
         disabled={pending}
         onChange={(event) => {
@@ -310,7 +313,6 @@ export function MemberRoleActions({
       <Button
         type="button"
         variant="secondary"
-        size="sm"
         disabled={pending || role === member.role}
         aria-label={`บันทึกบทบาทของ ${member.name}`}
         onClick={(event) => {
