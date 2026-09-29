@@ -62,7 +62,7 @@ Don't combine formatting, refactors, and features in one commit — ideally not 
 
 ### 5. Size Your Changes
 
-Target ~100 lines per commit/PR; split anything over ~1000. Use skill:`code-review-and-quality` for splitting strategies.
+Target ~100 lines per commit/PR; split anything over ~1000.
 
 ## Branching Strategy
 

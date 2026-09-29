@@ -33,9 +33,19 @@ Route by outcome, not by which worker is free:
 - Environment, CI/CD, containers, infrastructure, secrets, observability and runbooks → agent:`platform-engineer` with target, provider and budget constraints. Deployment requires the user's authorization, relayed by you.
 
 Every dispatch:
-- names the exact role, so model routing applies, and includes the gate, criteria, contracts, binding, sibling ownership and `COMMIT_MODE`;
+- names the exact role, so model routing applies, and includes the gate, criteria, contracts, binding, sibling ownership, `COMMIT_MODE` and the skills the worker loads (table below);
 - sends independent Tasks together, and repeated assignments to one worker separately;
 - starts a software Task with `/build NODE-<id>` and its fields, never `/build auto` or bare `auto`/`all`. While siblings write, `VERIFY` replaces full-suite and build steps.
+
+**Worker skills.** Workers name no skills themselves; the dispatch tells them which to load with the Skill tool:
+
+| Worker | Load |
+|---|---|
+| agent:`software-engineer` | skill:`build`, skill:`worker-coordination`, skill:`incremental-implementation`, skill:`test-driven-development`; skill:`security-and-hardening` when the Task touches authentication, input handling, organization data or credentials |
+| agent:`platform-engineer` | skill:`worker-coordination`; skill:`debugging-and-error-recovery` when a setup, gate or environment fails; skill:`release-preparation` for release work |
+| agent:`code-reviewer` | skill:`code-review-and-quality`, skill:`performance-optimization` and skill:`code-simplification` for correctness and maintainability; skill:`security-and-hardening`; skill:`release-preparation` for bound-evidence review; skill:`acceptance-freeze` after freeze |
+| agent:`product-owner` | skill:`requirements`; skill:`grilling` for clarify or challenge work; skill:`acceptance-freeze` for freezing |
+| agent:`ux-designer` | skill:`acceptance-freeze` after freeze |
 
 **Commits.** Set `COMMIT_MODE` from the user's actual authorization. If it is unclear use `none`, and ask only when the user wants commits.
 - `none`: workers never commit; bind by manifest.

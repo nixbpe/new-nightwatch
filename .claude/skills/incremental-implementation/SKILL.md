@@ -31,7 +31,7 @@ Implement ──→ Test ──→ Verify ──→ Commit (if allowed) ──�
 1. **Implement** the smallest complete piece of functionality
 2. **Test** — run the focused checks the assignment's `VERIFY` allows, writing a test if none exists; they must exercise the changed behavior
 3. **Verify** — those checks pass and the changed behavior is observed
-4. **Commit** — only when `COMMIT_MODE: owned-slice` allows it (see skill:`git-workflow`); otherwise leave the change uncommitted and report it
+4. **Commit** — only when `COMMIT_MODE: owned-slice` allows it; otherwise leave the change uncommitted and report it
 5. **Move to the next slice** — carry forward, don't restart
 
 ## Slicing Strategies

@@ -11,7 +11,7 @@ Before anyone writes code, the Product Owner and the Technical Lead agree on a n
 
 ## The Acceptance matrix
 
-agent:`product-owner` writes the matrix with only the categories the change touches:
+The Product Owner writes the matrix with only the categories the change touches:
 
 - **Scope**: routes, APIs and user journeys in scope.
 - **Authorization**: which actor may or may not do which operation on which target.
@@ -19,7 +19,7 @@ agent:`product-owner` writes the matrix with only the categories the change touc
 - **Accessibility**: focus, keyboard, dialog. Zoom/reflow is a criterion only when the user asks for it; layouts still follow LAY-02 in file:`docs/design-system.md`.
 - **Out of scope**: known items deliberately excluded.
 
-agent:`tech-lead` then adds the technical categories the change touches:
+The Technical Lead then adds the technical categories the change touches:
 
 - **Concurrency**: races to handle and the accepted outcome.
 - **Security**: data never disclosed, log redaction, fresh-auth boundary.

@@ -40,6 +40,12 @@ PR CI never runs `e2e`; only the human-dispatched `full` job does, so run it loc
 
 agent:`code-reviewer` then reviews the bound evidence. The Technical Lead accepts the candidate only when, on the same binding, every required criterion is observed pass and every manifest file, including deleted paths, is scanned or scanner-skipped with reason (`nonCandidateExclusions` are reconciled separately). Missing, mismatched or not-verified evidence blocks acceptance; author-produced results are not independent evidence.
 
+Scanner evidence from agent:`platform-engineer`: candidate binding, command, tool version, configuration, execution identity, date, exit code and result location, plus every candidate manifest path accounted as scanned or scanner-skipped with reason. Deletions count as skipped. Non-candidate exclusions are listed separately and never waive scanning of candidate source.
+
+Bound-evidence review by agent:`code-reviewer`: judge pass or fail only from bound gate evidence, verify that every producer result names the same binding and scope, account every manifest file as scanned or scanner-skipped with reason (including deletions), reconcile `nonCandidateExclusions` separately as outside the candidate, and map each required criterion to observed pass, observed fail or not verified.
+
+Final delta review of a frozen candidate checks only that the candidate matches its manifest, prior findings are closed against their evidence, repairs introduced no new regression, the full-verification evidence is bound to this exact candidate, and no out-of-scope observation is mixed in rather than filed as a follow-up. The verdict is APPROVED, or CHANGES_REQUESTED naming Blocker/Major finding IDs. An addition that violates neither the frozen acceptance matrix nor an existing architecture invariant is not a finding.
+
 ## 4. Repair and cap
 
 Collect all findings and failed gates into one batch, repair with the focused checks in skill:`delivery-orchestration` step 5, rerun only the failed gates, and never send a candidate with a red gate to final review. Allow one repair cycle and one final delta review; a reproducible Blocker or Major found there gets a second and last cycle. Minor issues become follow-ups, and a new requirement goes through skill:`acceptance-freeze`. When the cap is used up, stop and give the user the evidence and the decision needed.

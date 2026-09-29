@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 Use skill:`delivery-orchestration` and skill:`git-workflow`.
 
-Run this command in a main session started as agent:`tech-lead` (`claude --agent tech-lead`); subagents cannot dispatch it. The Technical Lead reads the issue, writes the Technical Spec, splits and dispatches Tasks, reviews and decides; it never edits code itself. Workers implement, run checks and commit, and agent:`software-engineer` as integration owner pushes and opens the PR.
+Run this command in a main session started as agent:`tech-lead` (`claude --agent tech-lead`); workers have no `Agent` tool and cannot dispatch it. The Technical Lead reads the issue, writes the Technical Spec, splits and dispatches Tasks, reviews and decides; it never edits code itself. Workers implement, run checks and commit, and agent:`software-engineer` as integration owner pushes and opens the PR.
 
 Require one GitHub issue URL or issue number as the command argument. Implement that issue end to end according to the issue, repository instructions, accepted specs, dependencies and acceptance criteria.
 
