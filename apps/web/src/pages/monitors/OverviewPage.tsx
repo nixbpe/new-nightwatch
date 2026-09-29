@@ -340,7 +340,7 @@ function OverviewForOrganization({
         </span>
         <Button
           type="button"
-          variant="ghost"
+          variant="secondary"
           size="sm"
           disabled={refreshing}
           onClick={() => void refresh()}
