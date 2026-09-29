@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import net from "node:net";
 
 import { createLogger, loadMonitorEnv } from "@nightwatch/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -208,7 +209,8 @@ describe("SSL state of the last hop (AC-35)", () => {
         db,
         monitor,
         `update monitors set ssl_host = $2, ssl_issuer = 'Known CA',
-           ssl_not_after = $3, ssl_state = 'danger' where id = $1`,
+           ssl_not_after = $3, ssl_state = 'danger',
+           last_check_at = $3::timestamptz - interval '1 hour' where id = $1`,
         [monitor.monitorId, TARGET_HOST, notAfter],
       );
       const events: MonitorEvent[] = [];
@@ -306,5 +308,74 @@ describe("SSL state of the last hop (AC-35)", () => {
     );
     await check(monitor, events);
     expect(await ssl(monitor)).toEqual(before);
+  });
+
+  it("an unreadable handshake keeps the certificate identity, so the same certificate enters its level once", async () => {
+    const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 5 }));
+    const reset = net.createServer((socket) => {
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => reset.listen(0, "127.0.0.1", resolve));
+    const resetPort = (reset.address() as net.AddressInfo).port;
+    try {
+      const monitor = await seedMonitor(db, { url: `${good.url}/` });
+      const events: MonitorEvent[] = [];
+      await check(monitor, events);
+      const before = await ssl(monitor);
+
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set url = $2 where id = $1",
+        [monitor.monitorId, `https://${TARGET_HOST}:${String(resetPort)}/`],
+      );
+      await check(monitor, events);
+      const during = await ssl(monitor);
+      expect(during.ssl_state).toBe("unreadable");
+      expect(during.ssl_reason).toBe("handshake_failed");
+      expect(during.ssl_host).toBe(before.ssl_host);
+      expect(during.ssl_issuer).toBe(before.ssl_issuer);
+      expect(during.ssl_not_after).toEqual(before.ssl_not_after);
+
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set url = $2 where id = $1",
+        [monitor.monitorId, `${good.url}/`],
+      );
+      await check(monitor, events);
+      expect(await ssl(monitor)).toMatchObject({ ssl_state: "danger" });
+      expect(sslEvents(events)).toEqual([
+        { level: "danger", host: TARGET_HOST },
+      ]);
+    } finally {
+      await good.close();
+      await new Promise((resolve) => reset.close(resolve));
+    }
+  });
+
+  it("a stored expiry that has not passed is not reused for an expired certificate", async () => {
+    const target = await startTlsTarget(pki.issue(TARGET_HOST, "expired"));
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await updateMonitor(
+        db,
+        monitor,
+        `update monitors set ssl_host = $2, ssl_issuer = 'Other CA',
+           ssl_not_after = now() + interval '30 days', ssl_state = 'ok' where id = $1`,
+        [monitor.monitorId, TARGET_HOST],
+      );
+      const events: MonitorEvent[] = [];
+      await check(monitor, events);
+      expect(await ssl(monitor)).toMatchObject({
+        ssl_state: "expired",
+        ssl_reason: "expired",
+        ssl_not_after: null,
+        ssl_issuer: null,
+      });
+      expect(sslEvents(events)).toEqual([]);
+    } finally {
+      await target.close();
+    }
   });
 });

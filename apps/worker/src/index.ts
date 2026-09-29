@@ -145,6 +145,12 @@ function workerRoles(value: string | undefined): Set<WorkerRole> {
   return roles;
 }
 
+/** pg error code (a short string such as 23505); never the message. */
+function errorCode(error: Error): string | undefined {
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 function startMonitorChecker(monitor: MonitorEnv): Worker<MonitorCheckJob> {
   const dependencies = {
     database,
@@ -164,13 +170,26 @@ function startMonitorChecker(monitor: MonitorEnv): Worker<MonitorCheckJob> {
       assertMonitorCheckJob(job.data);
       await processMonitorCheck(job.data, dependencies);
     },
-    { connection: redisConnection(redisUrl), concurrency: 20 },
+    {
+      connection: redisConnection(redisUrl),
+      concurrency: 20,
+      // attempts 1 also means a check that stalled (Worker crash) is not run again.
+      maxStalledCount: 0,
+    },
   );
-  checker.on("failed", (job) => {
+  checker.on("failed", (job, error) => {
     logger.error(
-      { tenantId: job?.data.tenantId, monitorId: job?.data.monitorId },
+      {
+        tenantId: job?.data.tenantId,
+        monitorId: job?.data.monitorId,
+        errorName: error.name,
+        errorCode: errorCode(error),
+      },
       "monitor check job failed",
     );
+  });
+  checker.on("error", (error) => {
+    logger.error({ errorName: error.name }, "monitor checker worker error");
   });
   return checker;
 }

@@ -456,6 +456,26 @@ describe("monitor-checker process", () => {
     expect(answering.requests).toHaveLength(1);
     expect(await resultCount(monitor)).toBe(0);
     expect(log).not.toContain(monitor.claimToken);
+    // The failed record left the monitor exactly as the claim left it.
+    const [state] = await rows<{
+      claim_token: string | null;
+      consecutive_failures: number;
+      last_check_at: Date | null;
+      hourly: number;
+    }>(
+      db,
+      monitor,
+      `select s.claim_token, m.consecutive_failures, m.last_check_at,
+              (select count(*)::int from monitor_check_hourly where monitor_id = m.id) as hourly
+       from monitors m join monitor_schedule s on s.monitor_id = m.id where m.id = $1`,
+      [monitor.monitorId],
+    );
+    expect(state).toEqual({
+      claim_token: monitor.claimToken,
+      consecutive_failures: 0,
+      last_check_at: null,
+      hourly: 0,
+    });
   }, 30_000);
 
   it("a name that resolves to loopback is blocked_address, counted as fail, and never contacted (AC-62)", async () => {
@@ -524,9 +544,10 @@ describe("monitor-checker process", () => {
       await frozenRedis.freeze();
       const signalled = Date.now();
       child.kill("SIGTERM");
-      await exited;
+      const code = await exited;
       const waitedMs = Date.now() - signalled;
-      expect(waitedMs).toBeLessThan(26_000);
+      expect(code).toBe(0);
+      expect(waitedMs).toBeLessThan(20_000);
       console.info(
         `SIGTERM with frozen Redis exited after ${String(waitedMs)} ms`,
       );

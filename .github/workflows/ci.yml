@@ -154,6 +154,8 @@ jobs:
       # helper suite on the pinned Bun runtime.
       - name: Shared tests on Bun
         run: bun run --cwd packages/shared test:bun
+      - name: Worker checker tests on Bun
+        run: bun run --cwd apps/worker test:bun
       - uses: actions/upload-artifact@v6
         if: always()
         with:

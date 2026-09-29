@@ -240,17 +240,25 @@ function decryptSecrets(
   return { secrets, complete };
 }
 
-function abandoned(signal: AbortSignal | undefined): Promise<"aborted"> {
-  if (!signal) return new Promise(() => undefined);
-  return new Promise((resolve) => {
-    signal.addEventListener(
-      "abort",
-      () => {
-        resolve("aborted");
-      },
-      { once: true },
-    );
+/** Resolves on abort; `dispose` removes the listener so a finished check leaves none behind. */
+function abandonment(signal: AbortSignal | undefined): {
+  aborted: Promise<"aborted">;
+  dispose(): void;
+} {
+  if (!signal) return { aborted: new Promise(() => undefined), dispose() {} };
+  let listener: () => void = () => undefined;
+  const aborted = new Promise<"aborted">((resolve) => {
+    listener = () => {
+      resolve("aborted");
+    };
+    signal.addEventListener("abort", listener, { once: true });
   });
+  return {
+    aborted,
+    dispose() {
+      signal.removeEventListener("abort", listener);
+    },
+  };
 }
 
 /**
@@ -276,6 +284,7 @@ export async function processMonitorCheck(
   const running = runCheck(prepared.config, secrets, {
     ...dependencies.outbound,
     ...(dependencies.clock ? { clock: dependencies.clock } : {}),
+    ...(signal ? { signal } : {}),
   }).catch(
     // runCheck is meant not to reject; a rejection is still a check that could not run.
     (): CheckResult => ({
@@ -291,8 +300,14 @@ export async function processMonitorCheck(
       tls: null,
     }),
   );
-  const finished = await Promise.race([running, abandoned(signal)]);
-  if (finished === "aborted") {
+  const abandon = abandonment(signal);
+  const finished = await Promise.race([running, abandon.aborted]).finally(
+    () => {
+      abandon.dispose();
+    },
+  );
+  // A check that ended because of the abort is a gap, never a check_error row.
+  if (finished === "aborted" || signal?.aborted) {
     logger.warn(
       { tenantId: job.tenantId, monitorId: job.monitorId },
       "monitor check abandoned on shutdown",

@@ -228,6 +228,8 @@ export type Target = {
   port: number;
   /** TCP connections accepted; a request that never reached the server leaves this at 0. */
   connections(): number;
+  /** Accepted connections the client side has since closed. */
+  closedConnections(): number;
   /** Replaces the response behavior for later requests. */
   setHandler(handler: TargetHandler): void;
   requests: {
@@ -262,8 +264,12 @@ export async function startTarget(
   });
   server.keepAliveTimeout = 0;
   let connections = 0;
-  server.on("connection", () => {
+  let closed = 0;
+  server.on("connection", (socket) => {
     connections += 1;
+    socket.once("close", () => {
+      closed += 1;
+    });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
@@ -271,6 +277,7 @@ export async function startTarget(
     url: `http://${TARGET_HOST}:${String(port)}`,
     port,
     connections: () => connections,
+    closedConnections: () => closed,
     setHandler(next) {
       handler = next;
     },

@@ -34,14 +34,19 @@ export function createEgressCanary(options: EgressCanaryOptions): EgressCanary {
           method: "HEAD",
           headers: {},
           timeoutMs: CANARY_TIMEOUT_MS,
-          maxRedirects: 0,
+          maxRedirects: 5,
           secretHeaderNames: [],
           maxBodyBytes: 1024,
         },
         options.outbound,
       );
-      // Any HTTP answer proves resolution, routing and TLS work.
-      return sent.response !== undefined;
+      // Any HTTP answer proves resolution, routing and TLS work, including a
+      // redirect the helper refused to follow.
+      return (
+        sent.response !== undefined ||
+        sent.failure?.reason === "redirect_limit" ||
+        sent.failure?.reason === "redirect_blocked"
+      );
     });
 
   if (options.urls.length === 0) {

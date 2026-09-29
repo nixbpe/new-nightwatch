@@ -150,8 +150,12 @@ export async function startTlsTarget(
     : http.createServer(listener);
   server.on("tlsClientError", () => undefined);
   let connections = 0;
-  server.on("connection", () => {
+  let closed = 0;
+  server.on("connection", (socket) => {
     connections += 1;
+    socket.once("close", () => {
+      closed += 1;
+    });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
@@ -161,6 +165,7 @@ export async function startTlsTarget(
     origin,
     port,
     connections: () => connections,
+    closedConnections: () => closed,
     requests,
     setHandler(next) {
       current = next;

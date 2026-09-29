@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { getEventListeners } from "node:events";
 
 import {
   createLogger,
@@ -1007,6 +1008,9 @@ describe("AC-62 and shutdown", () => {
       }
       controller.abort();
       expect(await running).toBe("aborted");
+      // The request itself is torn down, not just abandoned.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(target.closedConnections()).toBe(1);
       expect((await countAll(monitor)).results).toBe(0);
       expect(await claimToken(monitor)).toBe(monitor.claimToken);
     } finally {
@@ -1325,6 +1329,60 @@ describe("hourly rollup response times", () => {
         [monitor.monitorId],
       );
       expect(Number(row?.response_ms_sum)).toBe(pass?.ms);
+    } finally {
+      await target.close();
+    }
+  });
+});
+
+describe("shutdown signal listeners", () => {
+  it("finished checks leave no abort listener on the shared signal", async () => {
+    const target = await startTarget();
+    try {
+      const controller = new AbortController();
+      const monitors = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          seedMonitor(db, { url: `${target.url}/` }),
+        ),
+      );
+      await Promise.all(
+        monitors.map((monitor) =>
+          processMonitorCheck(
+            monitor.job(),
+            dependencies({ signal: controller.signal }),
+          ),
+        ),
+      );
+      expect(target.requests).toHaveLength(5);
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    } finally {
+      await target.close();
+    }
+  });
+});
+
+describe("egress canary and redirects", () => {
+  it("counts a redirecting or looping canary URL as answering", async () => {
+    const target = await startTarget((request, response) => {
+      if (request.url === "/loop") {
+        response.statusCode = 302;
+        response.setHeader("location", "/loop");
+      } else if (request.url === "/hop") {
+        response.statusCode = 302;
+        response.setHeader("location", "/final");
+      } else {
+        response.statusCode = 200;
+      }
+      response.end();
+    });
+    try {
+      for (const path of ["/hop", "/loop"]) {
+        const canary = createEgressCanary({
+          urls: [`${target.url}${path}`],
+          outbound: outboundDeps,
+        });
+        expect(await canary.status()).toBe("ok");
+      }
     } finally {
       await target.close();
     }

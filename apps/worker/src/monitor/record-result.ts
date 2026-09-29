@@ -69,7 +69,7 @@ type LockedMonitor = {
   ssl_host: string | null;
   ssl_issuer: string | null;
   ssl_not_after: Date | null;
-  ssl_state: string | null;
+  last_check_at: Date | null;
 };
 
 type OpenIncident = { id: string; down_notified: boolean };
@@ -121,7 +121,7 @@ function attempt(
     }
     const monitorRows = await client.query<LockedMonitor>(
       `select name, consecutive_failures, last_passed_config_version,
-              ssl_host, ssl_issuer, ssl_not_after, ssl_state
+              ssl_host, ssl_issuer, ssl_not_after, last_check_at
        from monitors where id = $1 and tenant_id = $2 for update`,
       [input.monitorId, input.tenantId],
     );
@@ -227,6 +227,21 @@ function attempt(
   });
 }
 
+/**
+ * Level the stored certificate had at the previous check. ssl_state cannot
+ * answer this: an unreadable handshake overwrites it while the identity stays.
+ */
+function previousLevel(
+  monitor: LockedMonitor,
+  result: CheckResult,
+): string | null {
+  if (monitor.ssl_not_after === null) return null;
+  return sslLevel(
+    monitor.ssl_not_after,
+    monitor.last_check_at ?? result.checkedAt,
+  ).level;
+}
+
 type SslUpdate = {
   host: string | null;
   issuer: string | null;
@@ -268,7 +283,10 @@ function nextSsl(
     const sameCertificate =
       monitor.ssl_host === tls.host &&
       monitor.ssl_not_after?.getTime() === tls.notAfter.getTime();
-    if (level === "ok" || (sameCertificate && monitor.ssl_state === level)) {
+    if (
+      level === "ok" ||
+      (sameCertificate && previousLevel(monitor, result) === level)
+    ) {
       return { update, event: null };
     }
     return { update, event: { level, host: tls.host, notAfter: tls.notAfter } };
@@ -278,27 +296,34 @@ function nextSsl(
     // read. The expiry stored from earlier checks of the same host still
     // applies, so the level can still be entered.
     if (result.tlsReason === "expired") {
-      const sameHost = monitor.ssl_host === tls.host;
-      const notAfter = sameHost ? monitor.ssl_not_after : null;
+      // The stored expiry is reused only when it has really passed; a later
+      // date belongs to another certificate (or a not-yet-valid one).
+      const reusable =
+        monitor.ssl_host === tls.host &&
+        monitor.ssl_not_after !== null &&
+        monitor.ssl_not_after.getTime() <= result.checkedAt.getTime();
+      const notAfter = reusable ? monitor.ssl_not_after : null;
       return {
         update: {
           host: tls.host,
-          issuer: sameHost ? monitor.ssl_issuer : null,
+          issuer: reusable ? monitor.ssl_issuer : null,
           notAfter,
           state: "expired",
           reason: "expired",
         },
         event:
-          notAfter && monitor.ssl_state !== "expired"
+          notAfter && previousLevel(monitor, result) !== "expired"
             ? { level: "expired", host: tls.host, notAfter }
             : null,
       };
     }
+    // The stored certificate identity stays, so the same certificate seen
+    // again after a failed handshake does not enter its level a second time.
     return {
       update: {
-        host: tls.host,
-        issuer: null,
-        notAfter: null,
+        host: monitor.ssl_host ?? tls.host,
+        issuer: monitor.ssl_issuer,
+        notAfter: monitor.ssl_not_after,
         state: "unreadable",
         reason: result.tlsReason,
       },
