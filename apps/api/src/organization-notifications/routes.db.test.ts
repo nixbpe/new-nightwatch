@@ -1218,6 +1218,45 @@ describe("organization member revoke HTTP contract", () => {
       // The session survives.
       expect((await session("GET", "/api/auth/get-session")).status).toBe(200);
     }
+    // A missing Organization gets the same denial as the one the session left.
+    const missingOrganization = await targetSession1(
+      "DELETE",
+      `/api/organizations/${crypto.randomUUID()}/members/${memberIds.revokeAdmin}`,
+    );
+    const revokedOrganization = await targetSession1(
+      "DELETE",
+      `/api/organizations/${a}/members/${memberIds.revokeAdmin}`,
+    );
+    expect(missingOrganization.status).toBe(403);
+    expect(missingOrganization).toEqual(revokedOrganization);
+    // Denial logs after the revoke carry the actor and action, never tenant data.
+    const denialLogs = auditLines
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.msg === "organization access denied");
+    expect(denialLogs.length).toBeGreaterThan(0);
+    for (const denial of denialLogs) {
+      expect(typeof denial.actorUserId).toBe("string");
+    }
+    expect(
+      denialLogs.filter(
+        (entry) =>
+          entry.action === "organization.member.revoke" &&
+          entry.code === "MEMBERSHIP_DENIED" &&
+          entry.actorUserId === ids.target,
+      ),
+    ).toHaveLength(4);
+    const finalLogs = auditLines.join("\n");
+    for (const secret of [
+      a,
+      memberIds.revokeOwner,
+      memberIds.revokeAdmin,
+      memberIds.revokeTarget,
+      emails.revokeOwner,
+      emails.revokeAdmin,
+      emails.revokeTarget,
+    ]) {
+      expect(finalLogs).not.toContain(secret);
+    }
     // B remains selectable from the revoked user's session.
     expect(
       (
