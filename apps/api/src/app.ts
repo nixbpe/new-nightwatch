@@ -11,6 +11,7 @@ import {
   type AuthEnv,
   type Env,
   type Logger,
+  type OutboundDeps,
 } from "@nightwatch/shared";
 import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
@@ -22,6 +23,7 @@ import type { Auth } from "./auth";
 import type { Mailer } from "./auth/mailer";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
+import { registerMonitorRoutes } from "./monitors/routes";
 import { registerNotificationInboxRoutes } from "./notifications/routes";
 import { registerOnboardingRoutes } from "./onboarding/routes";
 import {
@@ -43,6 +45,8 @@ export type AppDeps = {
   // Optional so route tests and OpenAPI emission need no Redis; readiness
   // checks Redis only when a client is injected.
   redis?: Redis;
+  // Save-time monitor checks: DNS resolver and OUTBOUND_TEST_ALLOWED_HOSTS.
+  outbound?: OutboundDeps;
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
@@ -383,6 +387,12 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       database,
       logger: deps.logger,
       mailer: deps.mailer,
+    });
+    registerMonitorRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+      outbound: deps.outbound,
     });
   }
 
