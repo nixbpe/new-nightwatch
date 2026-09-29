@@ -996,11 +996,15 @@ describe("a failing check that reflects its secret leaks it nowhere (AC-43)", ()
       ];
       const stored: unknown[] = [];
       for (const table of tables) {
-        stored.push(
-          await withTenantContextRaw(db.runtime, monitor.tenantId, (client) =>
-            client.query(`select t::text as text from ${table} t`),
-          ).then((result) => result.rows),
+        const result = await withTenantContextRaw(
+          db.runtime,
+          monitor.tenantId,
+          (client) =>
+            client.query<{ text: string }>(
+              `select t::text as text from ${table} t`,
+            ),
         );
+        stored.push(result.rows);
       }
       const intents = await db.owner.sql.query(
         `select t::text as text from notification_intents t where tenant_id = $1`,
