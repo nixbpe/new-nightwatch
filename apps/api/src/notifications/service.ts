@@ -22,6 +22,10 @@ type InboxRow = {
   cursorOccurredAt: string;
   readAt: Date | string | null;
   actorDisplayName: string | null;
+  subjectMonitorId: string | null;
+  subjectMonitorName: string | null;
+  monitorReason: string | null;
+  sslNotAfter: Date | string | null;
 };
 
 type InboxServiceDeps = { database: Database; cursorSecret: string };
@@ -56,15 +60,64 @@ function toItem(row: InboxRow): NotificationItem {
   }
   if (!row.tenantId)
     throw new Error("organization notification requires tenant");
-  return {
+  const organization = {
     id: row.id,
-    scope: "organization",
+    scope: "organization" as const,
     organizationId: row.tenantId,
-    eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED",
     occurredAt,
     readAt,
-    actor: { displayName: row.actorDisplayName ?? "Unknown actor" },
-    category: "notification-settings",
+  };
+  if (row.eventType === "ORG-NOTIFICATION-SETTINGS-CHANGED") {
+    return {
+      ...organization,
+      eventType: row.eventType,
+      actor: { displayName: row.actorDisplayName ?? "Unknown actor" },
+      category: "notification-settings",
+    };
+  }
+  if (!row.subjectMonitorId || !row.subjectMonitorName) {
+    throw new Error("monitor notification requires a subject");
+  }
+  const monitor = {
+    ...organization,
+    actor: null,
+    category: "monitor" as const,
+    subject: {
+      monitorId: row.subjectMonitorId,
+      monitorName: row.subjectMonitorName,
+    },
+  };
+  if (row.eventType === "MONITOR_DOWN") {
+    if (!row.monitorReason)
+      throw new Error("down notification requires a reason");
+    return {
+      ...monitor,
+      eventType: row.eventType,
+      reason: row.monitorReason,
+      sslNotAfter: null,
+    };
+  }
+  if (row.eventType === "MONITOR_RECOVERED") {
+    return {
+      ...monitor,
+      eventType: row.eventType,
+      reason: null,
+      sslNotAfter: null,
+    };
+  }
+  if (
+    row.eventType !== "MONITOR_SSL_CAUTION" &&
+    row.eventType !== "MONITOR_SSL_DANGER" &&
+    row.eventType !== "MONITOR_SSL_EXPIRED"
+  ) {
+    throw new Error("invalid organization notification event type");
+  }
+  if (!row.sslNotAfter) throw new Error("SSL notification requires an expiry");
+  return {
+    ...monitor,
+    eventType: row.eventType,
+    reason: null,
+    sslNotAfter: toIsoDate(row.sslNotAfter),
   };
 }
 
@@ -182,7 +235,9 @@ const itemFields = `
   id, scope_kind as "scopeKind", tenant_id as "tenantId", event_type as "eventType",
   occurred_at as "occurredAt",
   to_char(occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "cursorOccurredAt",
-  read_at as "readAt", actor_display_name as "actorDisplayName"`;
+  read_at as "readAt", actor_display_name as "actorDisplayName",
+  subject_monitor_id as "subjectMonitorId", subject_monitor_name as "subjectMonitorName",
+  monitor_reason as "monitorReason", ssl_not_after as "sslNotAfter"`;
 
 const completedDispatch = `
   and exists (

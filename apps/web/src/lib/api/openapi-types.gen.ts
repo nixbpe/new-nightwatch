@@ -374,6 +374,24 @@ export interface paths {
                                 readAt: string | null;
                                 actor: unknown;
                                 category: unknown;
+                            } | ({
+                                /** Format: uuid */
+                                id: string;
+                                /** @enum {string} */
+                                scope: "organization";
+                                /** Format: uuid */
+                                organizationId: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                                /** Format: date-time */
+                                readAt: string | null;
+                                /** @enum {string} */
+                                eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED";
+                                actor: {
+                                    displayName: string;
+                                };
+                                /** @enum {string} */
+                                category: "notification-settings";
                             } | {
                                 /** Format: uuid */
                                 id: string;
@@ -381,18 +399,70 @@ export interface paths {
                                 scope: "organization";
                                 /** Format: uuid */
                                 organizationId: string;
-                                /** @enum {string} */
-                                eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED";
                                 /** Format: date-time */
                                 occurredAt: string;
                                 /** Format: date-time */
                                 readAt: string | null;
-                                actor: {
-                                    displayName: string;
+                                actor: unknown;
+                                /** @enum {string} */
+                                category: "monitor";
+                                subject: {
+                                    /** Format: uuid */
+                                    monitorId: string;
+                                    monitorName: string;
                                 };
                                 /** @enum {string} */
-                                category: "notification-settings";
-                            })[];
+                                eventType: "MONITOR_DOWN";
+                                reason: string;
+                                sslNotAfter: unknown;
+                            } | {
+                                /** Format: uuid */
+                                id: string;
+                                /** @enum {string} */
+                                scope: "organization";
+                                /** Format: uuid */
+                                organizationId: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                                /** Format: date-time */
+                                readAt: string | null;
+                                actor: unknown;
+                                /** @enum {string} */
+                                category: "monitor";
+                                subject: {
+                                    /** Format: uuid */
+                                    monitorId: string;
+                                    monitorName: string;
+                                };
+                                /** @enum {string} */
+                                eventType: "MONITOR_RECOVERED";
+                                reason: unknown;
+                                sslNotAfter: unknown;
+                            } | {
+                                /** Format: uuid */
+                                id: string;
+                                /** @enum {string} */
+                                scope: "organization";
+                                /** Format: uuid */
+                                organizationId: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                                /** Format: date-time */
+                                readAt: string | null;
+                                actor: unknown;
+                                /** @enum {string} */
+                                category: "monitor";
+                                subject: {
+                                    /** Format: uuid */
+                                    monitorId: string;
+                                    monitorName: string;
+                                };
+                                /** @enum {string} */
+                                eventType: "MONITOR_SSL_CAUTION" | "MONITOR_SSL_DANGER" | "MONITOR_SSL_EXPIRED";
+                                reason: unknown;
+                                /** Format: date-time */
+                                sslNotAfter: string;
+                            }))[];
                             nextCursor: string | null;
                             unreadCount: number;
                             /** Format: uuid */
@@ -578,6 +648,24 @@ export interface paths {
                             readAt: string | null;
                             actor: unknown;
                             category: unknown;
+                        } | ({
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            scope: "organization";
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** Format: date-time */
+                            readAt: string | null;
+                            /** @enum {string} */
+                            eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED";
+                            actor: {
+                                displayName: string;
+                            };
+                            /** @enum {string} */
+                            category: "notification-settings";
                         } | {
                             /** Format: uuid */
                             id: string;
@@ -585,18 +673,70 @@ export interface paths {
                             scope: "organization";
                             /** Format: uuid */
                             organizationId: string;
-                            /** @enum {string} */
-                            eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED";
                             /** Format: date-time */
                             occurredAt: string;
                             /** Format: date-time */
                             readAt: string | null;
-                            actor: {
-                                displayName: string;
+                            actor: unknown;
+                            /** @enum {string} */
+                            category: "monitor";
+                            subject: {
+                                /** Format: uuid */
+                                monitorId: string;
+                                monitorName: string;
                             };
                             /** @enum {string} */
-                            category: "notification-settings";
-                        };
+                            eventType: "MONITOR_DOWN";
+                            reason: string;
+                            sslNotAfter: unknown;
+                        } | {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            scope: "organization";
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** Format: date-time */
+                            readAt: string | null;
+                            actor: unknown;
+                            /** @enum {string} */
+                            category: "monitor";
+                            subject: {
+                                /** Format: uuid */
+                                monitorId: string;
+                                monitorName: string;
+                            };
+                            /** @enum {string} */
+                            eventType: "MONITOR_RECOVERED";
+                            reason: unknown;
+                            sslNotAfter: unknown;
+                        } | {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            scope: "organization";
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            /** Format: date-time */
+                            readAt: string | null;
+                            actor: unknown;
+                            /** @enum {string} */
+                            category: "monitor";
+                            subject: {
+                                /** Format: uuid */
+                                monitorId: string;
+                                monitorName: string;
+                            };
+                            /** @enum {string} */
+                            eventType: "MONITOR_SSL_CAUTION" | "MONITOR_SSL_DANGER" | "MONITOR_SSL_EXPIRED";
+                            reason: unknown;
+                            /** Format: date-time */
+                            sslNotAfter: string;
+                        });
                     };
                 };
                 /** @description Invalid request input */
@@ -916,6 +1056,7 @@ export interface paths {
                             /** Format: uuid */
                             organizationId: string;
                             settingsChangedEnabled: boolean;
+                            monitorAlertsEnabled: boolean;
                             version: number;
                         };
                     };
@@ -1002,7 +1143,8 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        settingsChangedEnabled: boolean;
+                        settingsChangedEnabled?: boolean;
+                        monitorAlertsEnabled?: boolean;
                         expectedVersion: number;
                     };
                 };
@@ -1018,6 +1160,7 @@ export interface paths {
                             /** Format: uuid */
                             organizationId: string;
                             settingsChangedEnabled: boolean;
+                            monitorAlertsEnabled: boolean;
                             version: number;
                         };
                     };

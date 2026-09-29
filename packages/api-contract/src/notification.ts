@@ -6,6 +6,11 @@ export const notificationEventTypeSchema = z.enum([
   "PASSWORD_CHANGED",
   "MFA_ENABLED",
   "MFA_DISABLED",
+  "MONITOR_DOWN",
+  "MONITOR_RECOVERED",
+  "MONITOR_SSL_CAUTION",
+  "MONITOR_SSL_DANGER",
+  "MONITOR_SSL_EXPIRED",
 ]);
 
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>;
@@ -25,16 +30,65 @@ const accountNotificationItemSchema = z.object({
   category: z.null(),
 });
 
-const organizationNotificationItemSchema = z.object({
+const organizationItemBase = {
   id: notificationItemIdSchema,
   scope: z.literal("organization"),
   organizationId: organizationIdSchema,
-  eventType: z.literal("ORG-NOTIFICATION-SETTINGS-CHANGED"),
   occurredAt: isoDateTimeSchema,
   readAt: isoDateTimeSchema.nullable(),
+};
+
+const settingsChangedNotificationItemSchema = z.object({
+  ...organizationItemBase,
+  eventType: z.literal("ORG-NOTIFICATION-SETTINGS-CHANGED"),
   actor: z.object({ displayName: z.string().min(1) }),
   category: z.literal("notification-settings"),
 });
+
+/** The monitor is identified by id and the name it had at event time; it may be deleted since. */
+const monitorSubjectSchema = z.object({
+  monitorId: z.uuid(),
+  monitorName: z.string().min(1),
+});
+
+const monitorItemBase = {
+  ...organizationItemBase,
+  actor: z.null(),
+  category: z.literal("monitor"),
+  subject: monitorSubjectSchema,
+};
+
+const monitorDownNotificationItemSchema = z.object({
+  ...monitorItemBase,
+  eventType: z.literal("MONITOR_DOWN"),
+  reason: z.string().min(1),
+  sslNotAfter: z.null(),
+});
+
+const monitorRecoveredNotificationItemSchema = z.object({
+  ...monitorItemBase,
+  eventType: z.literal("MONITOR_RECOVERED"),
+  reason: z.null(),
+  sslNotAfter: z.null(),
+});
+
+const monitorSslNotificationItemSchema = z.object({
+  ...monitorItemBase,
+  eventType: z.enum([
+    "MONITOR_SSL_CAUTION",
+    "MONITOR_SSL_DANGER",
+    "MONITOR_SSL_EXPIRED",
+  ]),
+  reason: z.null(),
+  sslNotAfter: isoDateTimeSchema,
+});
+
+const organizationNotificationItemSchema = z.discriminatedUnion("eventType", [
+  settingsChangedNotificationItemSchema,
+  monitorDownNotificationItemSchema,
+  monitorRecoveredNotificationItemSchema,
+  monitorSslNotificationItemSchema,
+]);
 
 export const notificationItemSchema = z.discriminatedUnion("scope", [
   accountNotificationItemSchema,
@@ -94,6 +148,7 @@ export type MarkAllReadResponse = z.infer<typeof markAllReadResponseSchema>;
 export const organizationNotificationSettingsSchema = z.object({
   organizationId: organizationIdSchema,
   settingsChangedEnabled: z.boolean(),
+  monitorAlertsEnabled: z.boolean(),
   version: z.number().int().min(0),
 });
 
@@ -101,10 +156,19 @@ export type OrganizationNotificationSettings = z.infer<
   typeof organizationNotificationSettingsSchema
 >;
 
-export const notificationSettingsUpdateSchema = z.object({
-  settingsChangedEnabled: z.boolean(),
-  expectedVersion: z.number().int().min(0),
-});
+/** At least one toggle is required; a client that sends only `settingsChangedEnabled` keeps working. */
+export const notificationSettingsUpdateSchema = z
+  .object({
+    settingsChangedEnabled: z.boolean().optional(),
+    monitorAlertsEnabled: z.boolean().optional(),
+    expectedVersion: z.number().int().min(0),
+  })
+  .refine(
+    (update) =>
+      update.settingsChangedEnabled !== undefined ||
+      update.monitorAlertsEnabled !== undefined,
+    { message: "at least one setting is required" },
+  );
 
 export type NotificationSettingsUpdate = z.infer<
   typeof notificationSettingsUpdateSchema
