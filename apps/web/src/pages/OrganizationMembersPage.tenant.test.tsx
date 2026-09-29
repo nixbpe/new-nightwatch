@@ -18,14 +18,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ApiError } from "../lib/api/client";
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { createInvitation } from "../lib/api/invitations";
-import {
-  ME_CONTEXT_QUERY_KEY,
-  fetchMeContext,
-  updateActiveOrganization,
-} from "../lib/api/me";
+import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
 import {
   fetchOrganizationMembers,
-  memberListQueryKey,
   updateOrganizationMemberRole,
 } from "../lib/api/members";
 import {
@@ -680,7 +675,12 @@ it("keeps intentional focus on a live invitation input through a deferred direct
 
 it("does not restore the old direct role action over B after a confirmed switch", async () => {
   const patch = Promise.withResolvers<{
-    member: { id: string; userId: string; organizationId: string; role: "admin" };
+    member: {
+      id: string;
+      userId: string;
+      organizationId: string;
+      role: "admin";
+    };
   }>();
   const target = {
     ...aMember,
@@ -891,8 +891,100 @@ it.each([
   },
 );
 
+it("removes owner-only actions when another owner demotes the actor during a target PATCH", async () => {
+  const target = {
+    ...aMember,
+    id: "member-2",
+    userId: "user-2",
+    name: "Bea",
+    role: "viewer" as const,
+  };
+  const patch = Promise.withResolvers<{
+    member: {
+      id: string;
+      userId: string;
+      organizationId: string;
+      role: "admin";
+    };
+  }>();
+  const refreshedContext: MeContextResponse = {
+    ...context,
+    organizations: context.organizations.map((organization) =>
+      organization.id === A ? { ...organization, role: "admin" } : organization,
+    ),
+  };
+  vi.mocked(fetchMeContext)
+    .mockResolvedValueOnce(context)
+    .mockResolvedValueOnce(refreshedContext);
+  vi.mocked(updateOrganizationMemberRole).mockReturnValue(patch.promise);
+  let concurrentDemotion = false;
+  vi.mocked(fetchOrganizationMembers).mockImplementation(() =>
+    Promise.resolve({
+      organizationId: A,
+      members: [
+        { ...aMember, role: concurrentDemotion ? "admin" : "owner" },
+        { ...target, role: concurrentDemotion ? "admin" : "viewer" },
+      ],
+      page: { limit: 50, offset: 0, total: 2 },
+    }),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  const targetRoles = await screen.findByRole("combobox", {
+    name: "บทบาทของ Bea",
+  });
+  const invitationRoles = screen.getByRole("combobox", { name: "บทบาท" });
+  expect(targetRoles.querySelector('option[value="owner"]')).not.toBeNull();
+  expect(invitationRoles.querySelector('option[value="owner"]')).not.toBeNull();
+  await user.selectOptions(targetRoles, "admin");
+  await user.click(screen.getByRole("button", { name: "บันทึกบทบาทของ Bea" }));
+  expect(screen.getByText("กำลังบันทึกบทบาท…")).toBeInTheDocument();
+  concurrentDemotion = true;
+  await act(async () => {
+    patch.resolve({
+      member: {
+        id: target.id,
+        userId: target.userId,
+        organizationId: A,
+        role: "admin",
+      },
+    });
+    await patch.promise;
+  });
+  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "บทบาทของ Ada" })).toHaveValue(
+    "admin",
+  );
+  await waitFor(() => {
+    expect(
+      screen
+        .getByRole("combobox", { name: "บทบาทของ Bea" })
+        .querySelector('option[value="owner"]'),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("combobox", { name: "บทบาท" })
+        .querySelector('option[value="owner"]'),
+    ).toBeNull();
+  });
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${A}/members`,
+  );
+});
+
 it.each(["success", "failure"] as const)(
-  "refreshes both cached pages and context after role %s",
+  "refreshes cached pages and actor controls when the actor is on another page after role %s",
   async (outcome) => {
     const secondMember = {
       ...aMember,
@@ -909,7 +1001,20 @@ it.each(["success", "failure"] as const)(
     const confirmedFirstPage =
       Promise.withResolvers<OrganizationMemberListResponse>();
     let changed = false;
-    vi.mocked(fetchMeContext).mockResolvedValue(context);
+    vi.mocked(fetchMeContext).mockImplementation(() =>
+      Promise.resolve(
+        changed
+          ? {
+              ...context,
+              organizations: context.organizations.map((organization) =>
+                organization.id === A
+                  ? { ...organization, role: "admin" }
+                  : organization,
+              ),
+            }
+          : context,
+      ),
+    );
     vi.mocked(fetchOrganizationMembers).mockImplementation(
       (_id, _limit, offset) => {
         if (offset === 50) {
@@ -978,12 +1083,6 @@ it.each(["success", "failure"] as const)(
     expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue(
       outcome === "success" ? "viewer" : "auditor",
     );
-    expect(queryClient.getQueryState(ME_CONTEXT_QUERY_KEY)?.isInvalidated).toBe(
-      true,
-    );
-    expect(
-      queryClient.getQueryState(memberListQueryKey(A, 50, 0))?.isInvalidated,
-    ).toBe(true);
     await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
     expect(screen.getByText("กำลังโหลดสมาชิก")).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "บทบาทของ Ada" })).toBeNull();
@@ -995,6 +1094,16 @@ it.each(["success", "failure"] as const)(
     expect(
       await screen.findByRole("combobox", { name: "บทบาทของ Ada" }),
     ).toHaveValue("admin");
+    expect(
+      screen
+        .getByRole("combobox", { name: "บทบาทของ Ada" })
+        .querySelector('option[value="owner"]'),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("combobox", { name: "บทบาท" })
+        .querySelector('option[value="owner"]'),
+    ).toBeNull();
     expect(
       vi
         .mocked(fetchOrganizationMembers)

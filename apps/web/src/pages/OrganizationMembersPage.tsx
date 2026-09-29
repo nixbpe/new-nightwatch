@@ -250,10 +250,13 @@ function OrganizationMembersPageForOrganization({
         text: "บทบาทถูกเปลี่ยนอีกครั้ง โหลดบทบาทล่าสุดแล้ว",
       });
     }
+    const refreshedActor = refreshed.data?.members.find(
+      (current) => current.userId === me?.user.id,
+    );
     if (
-      failure === null &&
-      member.userId === me?.user.id &&
-      !listAuthorizationDenied
+      !listAuthorizationDenied &&
+      (refreshedActor === undefined ||
+        refreshedActor.role !== organization?.role)
     ) {
       const context = await refreshMembershipContext();
       if (!isCurrentRoleScope()) return;
