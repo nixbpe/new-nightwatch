@@ -14,6 +14,7 @@ import {
   type OutboundDeps,
 } from "@nightwatch/shared";
 import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
 import { requestId } from "hono/request-id";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Redis } from "ioredis";
@@ -427,6 +428,23 @@ export function createApp(deps: AppDeps): OpenAPIHono {
         },
       };
       return c.json(body, err.statusCode as ContentfulStatusCode);
+    }
+    // Hono rejects unparsable bodies and wrong content types itself; that is a
+    // client error, not an internal one.
+    if (
+      err instanceof HTTPException &&
+      (err.status === 400 || err.status === 415)
+    ) {
+      const body: ErrorResponse = {
+        error:
+          err.status === 415
+            ? {
+                code: "UNSUPPORTED_MEDIA_TYPE",
+                message: "Unsupported media type",
+              }
+            : { code: "INVALID_INPUT", message: "Invalid request input" },
+      };
+      return c.json(body, err.status);
     }
     deps.logger.error(
       {

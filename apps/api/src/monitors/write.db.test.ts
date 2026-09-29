@@ -491,6 +491,32 @@ describe("validation over HTTP", () => {
     });
   });
 
+  it.each([
+    ["malformed JSON", "application/json", "{oops", 400, "INVALID_INPUT"],
+    ["an empty body", "application/json", "", 400, "INVALID_INPUT"],
+    [
+      "a non-JSON content type",
+      "text/plain",
+      "a=1",
+      415,
+      "UNSUPPORTED_MEDIA_TYPE",
+    ],
+    ["no content type", null, "{}", 415, "UNSUPPORTED_MEDIA_TYPE"],
+  ])(
+    "answers %s with a client error envelope, not a 500",
+    async (_label, contentType, text, status, code) => {
+      const response = await ctx.call(
+        org.users.owner,
+        "POST",
+        monitorsPath(org.id),
+        undefined,
+        { text, contentType },
+      );
+      expect(response.status).toBe(status);
+      expect(response.json).toMatchObject({ error: { code } });
+    },
+  );
+
   it("never echoes input values in errors", async () => {
     const marker = "sk_live_marker_9f3a";
     const response = await create(

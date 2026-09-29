@@ -178,22 +178,30 @@ export async function openMonitorTestContext(options?: {
     return { id, users: members };
   }
 
+  // `body` is serialized as JSON unless `rawBody` sends the bytes as they are.
   async function call(
     userId: string | null,
     method: "DELETE" | "GET" | "PATCH" | "POST",
     path: string,
     body?: unknown,
+    rawBody?: { text: string; contentType: string | null },
   ): Promise<ApiResponse> {
     const headers = new Headers();
     if (userId) headers.set("x-test-user", userId);
-    if (body !== undefined) {
-      headers.set("content-type", "application/json");
+    if (body !== undefined || rawBody) {
+      if (rawBody?.contentType !== null) {
+        headers.set("content-type", rawBody?.contentType ?? "application/json");
+      }
       headers.set("origin", appUrl);
     }
     const response = await app.request(path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: rawBody
+        ? rawBody.text
+        : body === undefined
+          ? undefined
+          : JSON.stringify(body),
     });
     const text = await response.text();
     return {
