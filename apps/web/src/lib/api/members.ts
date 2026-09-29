@@ -57,3 +57,14 @@ export function revokeOrganizationMember(
     { method: "DELETE", params: { organizationId, memberId } },
   );
 }
+
+// Leave answers with the same `{ member }` body as a role update.
+export function leaveOrganization(
+  organizationId: string,
+): Promise<OrganizationMemberRoleUpdateResponse> {
+  return request(
+    "/api/organizations/{organizationId}/members/me",
+    organizationMemberRevokeResponseSchema,
+    { method: "DELETE", params: { organizationId } },
+  );
+}

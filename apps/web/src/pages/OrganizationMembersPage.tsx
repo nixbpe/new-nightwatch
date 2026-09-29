@@ -31,6 +31,10 @@ import {
   MemberRoleActions,
   useMemberRoleChange,
 } from "./organization-members/MemberRoleActions";
+import {
+  SelfLeaveSection,
+  useSelfLeave,
+} from "./organization-members/SelfLeaveAction";
 
 const LIMIT = 50;
 
@@ -213,7 +217,14 @@ function OrganizationMembersPageForOrganization({
     refreshMembershipContext: refreshAfterAuthorizationDenied,
     blocked: roleChange.pending,
   });
-  const memberMutationPending = roleChange.pending || revoke.pending;
+  const selfLeave = useSelfLeave({
+    organizationId,
+    blocked: roleChange.pending || revoke.pending,
+    headingRef: memberPageHeadingRef,
+    refreshMembershipContext,
+  });
+  const memberMutationPending =
+    roleChange.pending || revoke.pending || selfLeave.pending;
 
   const invalidPage =
     list.data?.organizationId === organizationId &&
@@ -229,6 +240,32 @@ function OrganizationMembersPageForOrganization({
     });
     setOffset(0);
   }, [invalidPage, organizationId, queryClient]);
+  if (selfLeave.phase === "refreshing") {
+    return (
+      <Page>
+        <PageHeader title="สมาชิกองค์กร" />
+        <PageState
+          kind="loading"
+          label="กำลังยืนยันการออกจากองค์กร"
+          layout="table"
+          visibleLabel
+        />
+      </Page>
+    );
+  }
+  if (selfLeave.phase === "refresh-failed") {
+    return (
+      <Page>
+        <PageHeader title="สมาชิกองค์กร" />
+        <PageState
+          kind="error"
+          message="ไม่สามารถยืนยันสถานะการเป็นสมาชิกได้"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={selfLeave.retryRefresh}
+        />
+      </Page>
+    );
+  }
   if (
     membershipRefreshState === "refreshing" ||
     (isAuthorizationDenied(list.error) && membershipRefreshState === "idle")
@@ -279,7 +316,7 @@ function OrganizationMembersPageForOrganization({
       </Page>
     );
   }
-  if (organization === undefined || !canRead) {
+  if (organization === undefined) {
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
@@ -287,6 +324,34 @@ function OrganizationMembersPageForOrganization({
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"
         />
+      </Page>
+    );
+  }
+  const selfLeaveSection = (
+    <SelfLeaveSection
+      selfLeave={selfLeave}
+      organization={organization}
+      actor={me?.user}
+      disabled={roleChange.pending || revoke.pending}
+      headingRef={memberPageHeadingRef}
+    />
+  );
+  if (!canRead) {
+    // Viewer and auditor cannot list members but can still leave.
+    return (
+      <Page>
+        <PageHeader
+          scope={{ mark: organization.name, label: organization.name }}
+          title="สมาชิก"
+          titleRef={memberPageHeadingRef}
+          titleTabIndex={-1}
+          titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+        />
+        <PageState
+          kind="denied"
+          message="คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"
+        />
+        {selfLeaveSection}
       </Page>
     );
   }
@@ -504,6 +569,7 @@ function OrganizationMembersPageForOrganization({
         />
       ) : null}
       {directory}
+      {selfLeaveSection}
     </Page>
   );
 }
