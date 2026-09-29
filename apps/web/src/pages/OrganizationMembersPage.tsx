@@ -481,6 +481,7 @@ function OrganizationMembersPageForOrganization({
               ลองอีกครั้ง
             </Button>
             <Button
+              disabled={rolePending}
               onClick={() => {
                 memberPageHeadingRef.current?.focus();
                 setOffset((value) => Math.max(0, value - LIMIT));
@@ -563,7 +564,7 @@ function OrganizationMembersPageForOrganization({
           </p>
           <div className="flex gap-2">
             <Button
-              disabled={!hasPrevious}
+              disabled={!hasPrevious || rolePending}
               onClick={() => {
                 setOffset((value) => Math.max(0, value - LIMIT));
               }}
@@ -571,7 +572,7 @@ function OrganizationMembersPageForOrganization({
               ก่อนหน้า
             </Button>
             <Button
-              disabled={!hasNext}
+              disabled={!hasNext || rolePending}
               onClick={() => {
                 setOffset((value) => value + LIMIT);
               }}

@@ -983,6 +983,100 @@ it("removes owner-only actions when another owner demotes the actor during a tar
   );
 });
 
+it("keeps role verification on the edited page while a direct save is pending", async () => {
+  const target = {
+    ...aMember,
+    id: "member-2",
+    userId: "user-2",
+    name: "Bea",
+    role: "viewer" as const,
+  };
+  const firstPage = [
+    aMember,
+    target,
+    ...Array.from({ length: 48 }, (_, index) => ({
+      ...target,
+      id: `member-${String(index + 3)}`,
+      userId: `user-${String(index + 3)}`,
+      name: `Member ${String(index + 3)}`,
+    })),
+  ];
+  const patch = Promise.withResolvers<{
+    member: {
+      id: string;
+      userId: string;
+      organizationId: string;
+      role: "admin";
+    };
+  }>();
+  let saved = false;
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(fetchOrganizationMembers).mockImplementation(
+    (_id, _limit, offset) =>
+      Promise.resolve({
+        organizationId: A,
+        members:
+          offset === 0
+            ? firstPage.map((member) =>
+                member.id === target.id && saved
+                  ? { ...member, role: "admin" as const }
+                  : member,
+              )
+            : [{ ...target, id: "member-51", userId: "user-51", name: "Last" }],
+        page: { limit: 50, offset, total: 51 },
+      }),
+  );
+  vi.mocked(updateOrganizationMemberRole).mockReturnValue(patch.promise);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("Bea");
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "บทบาทของ Bea" }),
+    "admin",
+  );
+  await user.click(screen.getByRole("button", { name: "บันทึกบทบาทของ Bea" }));
+  expect(screen.getByText("กำลังบันทึกบทบาท…")).toBeInTheDocument();
+  const next = screen.getByRole("button", { name: "ถัดไป" });
+  expect(next).toBeDisabled();
+  await user.click(next);
+  expect(screen.getByText("แสดง 1–50 จาก 51")).toBeInTheDocument();
+  expect(screen.getByText("Bea")).toBeInTheDocument();
+  await act(async () => {
+    saved = true;
+    patch.resolve({
+      member: {
+        id: target.id,
+        userId: target.userId,
+        organizationId: A,
+        role: "admin",
+      },
+    });
+    await patch.promise;
+  });
+  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  expect(
+    screen.queryByText("บทบาทถูกเปลี่ยนอีกครั้ง โหลดบทบาทล่าสุดแล้ว"),
+  ).toBeNull();
+  expect(screen.getByRole("combobox", { name: "บทบาทของ Bea" })).toHaveValue(
+    "admin",
+  );
+  expect(next).toBeEnabled();
+  await user.click(next);
+  expect(await screen.findByText("Last")).toBeInTheDocument();
+  expect(screen.getByText("แสดง 51–51 จาก 51")).toBeInTheDocument();
+});
+
 it.each(["success", "failure"] as const)(
   "refreshes cached pages and actor controls when the actor is on another page after role %s",
   async (outcome) => {
