@@ -7,6 +7,7 @@ import {
   SmartphoneIcon,
 } from "../../components/shell/icons";
 import { Skeleton } from "../../components/shell/Skeleton";
+import { EmptyState } from "../../components/shell/EmptyState";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
@@ -256,9 +257,10 @@ export function SessionsPage() {
       </ul>
 
       {others?.length === 0 ? (
-        <Alert tone="info">
-          ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ มีเพียงอุปกรณ์นี้เท่านั้น
-        </Alert>
+        <EmptyState
+          icon={<LaptopIcon size={20} />}
+          title="ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ มีเพียงอุปกรณ์นี้เท่านั้น"
+        />
       ) : null}
       {others !== null && others.length > 0 ? (
         <CardFooter variant="stack">

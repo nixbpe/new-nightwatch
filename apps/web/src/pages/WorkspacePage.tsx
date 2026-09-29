@@ -62,6 +62,7 @@ export function WorkspacePage() {
         }
       />
       <EmptyState
+        variant="first-run"
         icon={<GridIcon size={20} />}
         title="ยังไม่มีข้อมูลการสแกน"
         description="ข้อมูลการตรวจสอบและสถานะระบบขององค์กรนี้จะปรากฏที่นี่เมื่อเปิดใช้งานโมดูลการสแกน"
