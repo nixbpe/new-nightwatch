@@ -22,10 +22,11 @@ function charsetOf(contentType: string | undefined): string {
   return match?.[1]?.toLowerCase() ?? "utf-8";
 }
 
-/** Supports utf-8, us-ascii and iso-8859-1; a cut multi-byte tail of a truncated body is not an error. */
+/** Supports utf-8, us-ascii and iso-8859-1 (aliases utf8, ascii, latin1); a cut multi-byte tail of a truncated body is not an error. */
 function decodeBody(response: EvaluatedResponse): Decoded {
   switch (charsetOf(response.headers["content-type"])) {
     case "utf-8":
+    case "utf8":
       try {
         return {
           ok: true,
@@ -38,13 +39,24 @@ function decodeBody(response: EvaluatedResponse): Decoded {
         return { ok: false };
       }
     case "us-ascii":
+    case "ascii":
       return response.body.every((byte) => byte < 0x80)
         ? { ok: true, text: response.body.toString("latin1") }
         : { ok: false };
     case "iso-8859-1":
+    case "latin1":
       return { ok: true, text: response.body.toString("latin1") };
     default:
       return { ok: false };
+  }
+}
+
+function isJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -64,6 +76,8 @@ export function evaluateAssertions(
   redact: (text: string) => string,
 ): { results: AssertionResult[]; evaluatedFromPrefix: boolean } {
   let decoded: Decoded | undefined;
+  // One validity parse per response, shared by every JSONPath assertion.
+  let valid: boolean | undefined;
   const text = (from: EvaluatedResponse): Decoded =>
     (decoded ??= decodeBody(from));
 
@@ -116,13 +130,9 @@ export function evaluateAssertions(
         : outcome("fail", "text_not_found");
     }
 
-    let matches: unknown[];
-    try {
-      JSON.parse(body.text);
-      matches = findAll(body.text, assertion.pathSegments);
-    } catch {
-      return outcome("fail", "not_json");
-    }
+    valid ??= isJson(body.text);
+    if (!valid) return outcome("fail", "not_json");
+    const matches = findAll(body.text, assertion.pathSegments);
     if (matches.length === 0) return outcome("fail", "path_not_found");
     if (matches.length > 1) return outcome("fail", "multiple_matches");
     const found = matches[0];

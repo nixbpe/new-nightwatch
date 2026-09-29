@@ -3,6 +3,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export type SslLevel = "ok" | "caution" | "danger" | "expired";
 
 /**
+ * Both dates must be valid; an invalid `Date` yields NaN days and level `ok`.
  * `daysRemaining` rounds up, so exactly 30 days is caution, 30 days + 1 s is ok,
  * exactly 7 days is danger and 7 days + 1 s is caution.
  */

@@ -6,7 +6,7 @@ import {
   type OutboundFailureReason,
 } from "../outbound-http";
 import { evaluateAssertions } from "./assertions";
-import { createRedactor, truncateActual } from "./redact";
+import { createRedactor } from "./redact";
 import {
   outcomeForFailure,
   type CheckDeps,
@@ -49,8 +49,16 @@ function buildRequest(
       : executorError;
   }
   const target = checked.url;
-  for (const { name, value } of config.queryParams) {
-    target.searchParams.append(name, value);
+  // Only the new pairs are serialized, so the saved query keeps its exact bytes (%20, ~, ?flag).
+  if (config.queryParams.length > 0) {
+    const added = new URLSearchParams(
+      config.queryParams.map(({ name, value }): [string, string] => [
+        name,
+        value,
+      ]),
+    ).toString();
+    const saved = target.search.slice(1);
+    target.search = saved === "" ? added : `${saved}&${added}`;
   }
   const final = validateOutboundUrl(target.href);
   if (!final.ok) {
@@ -144,9 +152,8 @@ export async function runCheck(
   const redact = createRedactor(
     built.ok ? built.secretValues : Object.values(secrets),
   );
-  const url = truncateActual(
-    redact(maskUrl(built.ok ? built.url : config.url)),
-  ).text;
+  // Masked query values are all a URL can carry; it has no secret slot, so no cut and no redaction.
+  const url = maskUrl(built.ok ? built.url : config.url);
 
   const failed = (
     reason: CheckFailureReason,

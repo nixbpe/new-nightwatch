@@ -157,6 +157,36 @@ describe("body assertions against real responses (AC-33)", () => {
       null,
     ],
     [
+      "utf8 alias",
+      { headers: { "Content-Type": "text/plain; charset=UTF8" }, body: "ok" },
+      { kind: "bodyContains", text: "ok" },
+      null,
+    ],
+    [
+      "ascii alias",
+      { headers: { "Content-Type": "text/plain; charset=ascii" }, body: "ok" },
+      { kind: "bodyContains", text: "ok" },
+      null,
+    ],
+    [
+      "latin1 alias",
+      {
+        headers: { "Content-Type": "text/plain; charset=Latin1" },
+        body: Buffer.from([0x63, 0xe9]),
+      },
+      { kind: "bodyContains", text: "cé" },
+      null,
+    ],
+    [
+      "windows-1252 stays undecodable",
+      {
+        headers: { "Content-Type": "text/plain; charset=windows-1252" },
+        body: "ok",
+      },
+      { kind: "bodyContains", text: "ok" },
+      "undecodable",
+    ],
+    [
       "body without the text",
       { body: "hello" },
       { kind: "bodyContains", text: "bye" },
@@ -195,6 +225,36 @@ describe("body assertions against real responses (AC-33)", () => {
     );
     expect(atStart.assertion.status).toBe("pass");
     expect(atStart.prefix).toBe(true);
+  });
+
+  it.each([
+    ["2-byte", "é", 1],
+    ["3-byte, one byte in", "€", 1],
+    ["3-byte, two bytes in", "€", 2],
+  ])(
+    "does not call a %s character cut by the 1 MiB limit undecodable",
+    async (_name, char, bytesKept) => {
+      const kept = 1024 * 1024 - bytesKept;
+      const { assertion, prefix } = await assertOnce(
+        { body: `${"x".repeat(kept)}${char}tail` },
+        { kind: "bodyContains", text: "xxx" },
+      );
+      expect(assertion).toMatchObject({ status: "pass", reason: null });
+      expect(prefix).toBe(true);
+    },
+  );
+
+  it("still calls invalid utf-8 inside the read prefix undecodable", async () => {
+    const { assertion } = await assertOnce(
+      {
+        body: Buffer.concat([
+          Buffer.from([0xff]),
+          Buffer.from("x".repeat(1024 * 1024 + 10)),
+        ]),
+      },
+      { kind: "bodyContains", text: "x" },
+    );
+    expect(assertion.reason).toBe("undecodable");
   });
 
   it("does not flag a body within 1 MiB", async () => {

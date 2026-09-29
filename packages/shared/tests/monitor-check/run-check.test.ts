@@ -335,6 +335,13 @@ describe("pre-validation of the saved config", () => {
 
 describe("request building", () => {
   const head = (server: RawServer) => only(server.requests).head;
+  const headerValues = (requestHead: string, name: string) =>
+    requestHead
+      .split("\r\n")
+      .slice(1)
+      .map((line) => line.split(/:\s*/, 2) as [string, string])
+      .filter(([header]) => header.toLowerCase() === name.toLowerCase())
+      .map(([, value]) => value);
 
   it("appends query params and masks them in the result url", async () => {
     const server = await serve(() => ({}));
@@ -355,6 +362,81 @@ describe("request building", () => {
     expect(result.url).toBe(
       `http://${TARGET_HOST}:${String(server.port)}/p?x=•••&a=•••&b=•••`,
     );
+  });
+
+  it.each([
+    ["%20", "/p?q=a%20b", "/p?q=a%20b&n=1"],
+    ["~", "/p?q=a~b", "/p?q=a~b&n=1"],
+    ["a bare flag", "/p?flag", "/p?flag&n=1"],
+    ["a bare flag and an encoded slash", "/p?flag&r=%2F", "/p?flag&r=%2F&n=1"],
+  ])("keeps the saved query bytes with %s", async (_name, path, sent) => {
+    const server = await serve(() => ({}));
+    await runCheck(
+      configFor("http", server.port, {
+        url: `http://${TARGET_HOST}:${String(server.port)}${path}`,
+        queryParams: [{ name: "n", value: "1" }],
+      }),
+      {},
+      deps(),
+    );
+    expect(head(server).split("\r\n")[0]).toBe(`GET ${sent} HTTP/1.1`);
+  });
+
+  it("leaves a saved query untouched when there are no params", async () => {
+    const server = await serve(() => ({}));
+    await runCheck(
+      configFor("http", server.port, {
+        url: `http://${TARGET_HOST}:${String(server.port)}/p?flag&q=a%20b~`,
+      }),
+      {},
+      deps(),
+    );
+    expect(head(server).split("\r\n")[0]).toBe("GET /p?flag&q=a%20b~ HTTP/1.1");
+  });
+
+  it("returns the whole masked url even past 200 characters", async () => {
+    const server = await serve(() => ({}));
+    const path = `/${"a".repeat(300)}`;
+    const result = await runCheck(
+      configFor("http", server.port, {
+        url: `http://${TARGET_HOST}:${String(server.port)}${path}`,
+        queryParams: [{ name: "k", value: "v" }],
+      }),
+      {},
+      deps(),
+    );
+    expect(result.url).toBe(
+      `http://${TARGET_HOST}:${String(server.port)}${path}?k=•••`,
+    );
+    expect(result.url.length).toBeGreaterThan(300);
+  });
+
+  it("is executor_error with no connection when query params push the url past 2048", async () => {
+    const server = await serve(() => ({}));
+    const base = `http://${TARGET_HOST}:${String(server.port)}/`;
+    const room = 2048 - base.length - "?k=".length;
+    const fits = await runCheck(
+      configFor("http", server.port, {
+        url: base,
+        queryParams: [{ name: "k", value: "v".repeat(room) }],
+      }),
+      {},
+      deps(),
+    );
+    expect(fits.outcome).toBe("pass");
+    const over = await runCheck(
+      configFor("http", server.port, {
+        url: base,
+        queryParams: [{ name: "k", value: "v".repeat(room + 1) }],
+      }),
+      {},
+      deps(),
+    );
+    expect(over).toMatchObject({
+      outcome: "check_error",
+      failureReason: "executor_error",
+    });
+    expect(server.connections()).toBe(1);
   });
 
   it.each(["GET", "HEAD"] as const)(
@@ -418,22 +500,54 @@ describe("request building", () => {
     [
       { type: "bearer" },
       { "auth.token": "tok-1" },
-      "authorization: Bearer tok-1",
+      ["Authorization", "Bearer tok-1"],
     ],
     [
       { type: "basic" },
       { "auth.username": "alice", "auth.password": "pw" },
-      `authorization: Basic ${Buffer.from("alice:pw").toString("base64")}`,
+      ["Authorization", `Basic ${Buffer.from("alice:pw").toString("base64")}`],
     ],
     [
       { type: "apiKey", headerName: "X-Api-Key" },
       { "auth.apiKey": "k-1" },
-      "x-api-key: k-1",
+      ["X-Api-Key", "k-1"],
     ],
-  ] as const)("sends %j auth", async (auth, secrets, line) => {
+  ] as const)("sends %j auth", async (auth, secrets, [name, value]) => {
     const server = await serve(() => ({}));
     await runCheck(configFor("http", server.port, { auth }), secrets, deps());
-    expect(head(server).toLowerCase()).toContain(line.toLowerCase());
+    expect(headerValues(head(server), name)).toEqual([value]);
+  });
+
+  it("replaces a same-named user header, ignoring case, with the auth header", async () => {
+    const server = await serve(() => ({}));
+    await runCheck(
+      configFor("http", server.port, {
+        auth: { type: "apiKey", headerName: "X-Api-Key" },
+        headers: [
+          { name: "x-api-key", value: "user-value", secret: false },
+          { name: "authorization", value: "user-auth", secret: false },
+        ],
+      }),
+      { "auth.apiKey": "k-1" },
+      deps(),
+    );
+    expect(headerValues(head(server), "x-api-key")).toEqual(["k-1"]);
+    expect(headerValues(head(server), "authorization")).toEqual(["user-auth"]);
+  });
+
+  it("replaces a user Authorization header with a bearer token", async () => {
+    const server = await serve(() => ({}));
+    await runCheck(
+      configFor("http", server.port, {
+        auth: { type: "bearer" },
+        headers: [{ name: "authorization", value: "user-auth", secret: false }],
+      }),
+      { "auth.token": "tok-1" },
+      deps(),
+    );
+    expect(headerValues(head(server), "authorization")).toEqual([
+      "Bearer tok-1",
+    ]);
   });
 });
 

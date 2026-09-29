@@ -1,96 +1,100 @@
 import type { PathSegment } from "./types";
 
-type Node =
-  | { t: "o"; entries: [string, Node][] }
-  | { t: "a"; items: Node[] }
-  | { t: "v"; value: unknown };
+/** Text that `JSON.parse` already accepted, so no error handling for malformed input. */
+const isSpace = (c: string) =>
+  c === " " || c === "\t" || c === "\r" || c === "\n";
 
-const MAX_DEPTH = 128;
-const SCALAR = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/y;
+function skipSpace(text: string, from: number): number {
+  let i = from;
+  while (i < text.length && isSpace(text.charAt(i))) i++;
+  return i;
+}
+
+/** Index just past the string that starts at `start`. */
+function skipString(text: string, start: number): number {
+  let i = start + 1;
+  while (i < text.length && text.charAt(i) !== '"') {
+    i += text.charAt(i) === "\\" ? 2 : 1;
+  }
+  return i + 1;
+}
+
+/** Index just past the value that starts at `start`; iterative, any nesting depth. */
+function skipValue(text: string, start: number): number {
+  const first = text.charAt(start);
+  if (first === '"') return skipString(text, start);
+  if (first === "{" || first === "[") {
+    let depth = 0;
+    let i = start;
+    while (i < text.length) {
+      const c = text.charAt(i);
+      if (c === '"') {
+        i = skipString(text, i);
+        continue;
+      }
+      if (c === "{" || c === "[") depth++;
+      else if (c === "}" || c === "]") {
+        depth--;
+        if (depth === 0) return i + 1;
+      }
+      i++;
+    }
+    return i;
+  }
+  let i = start;
+  while (i < text.length && !",]} \t\r\n".includes(text.charAt(i))) i++;
+  return i;
+}
+
+/** Starts of the members of an object or array; `visit` returns true to stop early. */
+function forEachMember(
+  text: string,
+  start: number,
+  visit: (key: string | number, valueStart: number) => boolean,
+): void {
+  const object = text.charAt(start) === "{";
+  let i = skipSpace(text, start + 1);
+  let index = 0;
+  while (i < text.length && text.charAt(i) !== "}" && text.charAt(i) !== "]") {
+    let key: string | number = index++;
+    if (object) {
+      const keyEnd = skipString(text, i);
+      key = JSON.parse(text.slice(i, keyEnd)) as string;
+      i = skipSpace(text, skipSpace(text, keyEnd) + 1); // past ":"
+    }
+    if (visit(key, i)) return;
+    i = skipSpace(text, skipValue(text, i));
+    if (text.charAt(i) === ",") i = skipSpace(text, i + 1);
+  }
+}
 
 /**
- * Parses text that `JSON.parse` already accepted, keeping duplicate keys so a
- * path that reaches two members is reported as ambiguous.
+ * Every value the path reaches. Walks only the visited segments: an object on
+ * the path is read member by member so a repeated key is reported as several
+ * matches, and every other value is skipped without being parsed.
  */
-function parseNodes(text: string): Node {
-  let i = 0;
-  const skipSpace = () => {
-    while (i < text.length && " \t\r\n".includes(text.charAt(i))) i++;
-  };
-  const string = (): string => {
-    let end = i + 1;
-    while (text.charAt(end) !== '"') end += text.charAt(end) === "\\" ? 2 : 1;
-    const literal = text.slice(i, end + 1);
-    i = end + 1;
-    return JSON.parse(literal) as string;
-  };
-  const value = (depth: number): Node => {
-    if (depth > MAX_DEPTH) throw new RangeError("JSON nested too deeply");
-    skipSpace();
-    const c = text.charAt(i);
-    if (c === "{") {
-      i++;
-      const entries: [string, Node][] = [];
-      skipSpace();
-      if (text.charAt(i) === "}") {
-        i++;
-        return { t: "o", entries };
-      }
-      for (;;) {
-        skipSpace();
-        const key = string();
-        skipSpace();
-        i++; // ":"
-        entries.push([key, value(depth + 1)]);
-        skipSpace();
-        if (text.charAt(i++) === "}") return { t: "o", entries };
-      }
-    }
-    if (c === "[") {
-      i++;
-      const items: Node[] = [];
-      skipSpace();
-      if (text.charAt(i) === "]") {
-        i++;
-        return { t: "a", items };
-      }
-      for (;;) {
-        items.push(value(depth + 1));
-        skipSpace();
-        if (text.charAt(i++) === "]") return { t: "a", items };
-      }
-    }
-    if (c === '"') return { t: "v", value: string() };
-    SCALAR.lastIndex = i;
-    const match = SCALAR.exec(text);
-    const literal = match?.[0] ?? "null";
-    i += literal.length;
-    return { t: "v", value: JSON.parse(literal) as unknown };
-  };
-  return value(0);
-}
-
-function toValue(node: Node): unknown {
-  if (node.t === "v") return node.value;
-  if (node.t === "a") return node.items.map(toValue);
-  return Object.fromEntries(
-    node.entries.map(([key, child]) => [key, toValue(child)]),
-  );
-}
-
-/** Every value the path reaches. Throws `RangeError` beyond 128 levels of nesting. */
 export function findAll(text: string, segments: PathSegment[]): unknown[] {
-  let nodes: Node[] = [parseNodes(text)];
+  let starts: number[] = [skipSpace(text, 0)];
   for (const segment of segments) {
-    nodes = nodes.flatMap((node): Node[] => {
-      if (typeof segment === "string") {
-        return node.t === "o"
-          ? node.entries.filter(([key]) => key === segment).map(([, n]) => n)
-          : [];
+    const next: number[] = [];
+    for (const start of starts) {
+      const c = text.charAt(start);
+      if (typeof segment === "string" && c === "{") {
+        forEachMember(text, start, (key, valueStart) => {
+          if (key === segment) next.push(valueStart);
+          return false;
+        });
+      } else if (typeof segment === "number" && c === "[") {
+        forEachMember(text, start, (key, valueStart) => {
+          if (key !== segment) return false;
+          next.push(valueStart);
+          return true;
+        });
       }
-      const item = node.t === "a" ? node.items[segment] : undefined;
-      return item === undefined ? [] : [item];
-    });
+    }
+    starts = next;
   }
-  return nodes.map(toValue);
+  return starts.map(
+    (start) => JSON.parse(text.slice(start, skipValue(text, start))) as unknown,
+  );
 }
