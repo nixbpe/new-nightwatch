@@ -24,7 +24,7 @@ import {
   ROLE_LABELS,
   type InvitableRole,
 } from "../../lib/roles";
-import { Card, CardHeader, CardFooter } from "../../components/ui/card";
+import { Card, CardHeader } from "../../components/ui/card";
 
 export function InvitationPanel({
   organizationId,
@@ -143,7 +143,6 @@ export function InvitationPanel({
       <CardHeader
         id="invite-card-title"
         title={<>เชิญสมาชิกเข้าสู่ {organizationName}</>}
-        description="ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น"
       />
       {notice && (
         <div
@@ -154,12 +153,12 @@ export function InvitationPanel({
           {notice.tone === "error" ? (
             <Alert tone="error">{notice.text}</Alert>
           ) : (
-            <p
+            <Alert
+              tone={notice.tone === "warning" ? "warning" : "success"}
               role="status"
-              className={`rounded-md border px-3 py-2 text-sm ${notice.tone === "warning" ? "border-caution/40 text-caution" : "border-primary/40 text-primary"}`}
             >
               {notice.text}
-            </p>
+            </Alert>
           )}
         </div>
       )}
@@ -168,38 +167,31 @@ export function InvitationPanel({
           event.preventDefault();
           void submit();
         }}
-        className="flex flex-col gap-6"
+        className="flex flex-col gap-3"
         noValidate
       >
-        <div className="grid max-w-2xl gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
-          <div>
-            <Field label="อีเมลของผู้ได้รับเชิญ">
-              <Input
-                ref={emailRef}
-                type="email"
-                name="invite-email"
-                autoComplete="off"
-                value={email}
-                style={{ outlineColor: "var(--primary)" }}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  setFieldError(null);
-                }}
-                aria-invalid={fieldError !== null}
-                aria-describedby={fieldError ? "invite-email-error" : undefined}
-              />
-            </Field>
-            {fieldError && (
-              <span
-                id="invite-email-error"
-                role="alert"
-                className="mt-1 block text-sm text-danger"
-              >
-                {fieldError}
-              </span>
-            )}
-          </div>
-          <Field label="บทบาท">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <Field
+            label="อีเมลของผู้ได้รับเชิญ"
+            error={fieldError}
+            errorId="invite-email-error"
+            className="min-w-0 flex-1"
+          >
+            <Input
+              ref={emailRef}
+              type="email"
+              name="invite-email"
+              autoComplete="off"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setFieldError(null);
+              }}
+              aria-invalid={fieldError !== null}
+              aria-describedby={fieldError ? "invite-email-error" : undefined}
+            />
+          </Field>
+          <Field label="บทบาท" className="sm:w-[200px]">
             <select
               name="invite-role"
               value={role}
@@ -218,16 +210,16 @@ export function InvitationPanel({
               ))}
             </select>
           </Field>
+          <div className="flex flex-col sm:pt-8">
+            <Button type="submit" disabled={pending}>
+              {pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}
+            </Button>
+          </div>
         </div>
-        <CardFooter>
-          <Button
-            type="submit"
-            style={{ outlineColor: "var(--primary)" }}
-            disabled={pending}
-          >
-            {pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}
-          </Button>
-        </CardFooter>
+        <p className="text-xs text-foreground-secondary">
+          ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร
+          คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น
+        </p>
       </form>
     </Card>
   );

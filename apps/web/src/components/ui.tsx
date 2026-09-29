@@ -39,22 +39,34 @@ export function AuthPageShell({
 export function Field({
   label,
   error,
+  errorId,
+  className,
   children,
 }: {
   label: string;
   error?: string | null;
+  /** Lets the control point at the message through aria-describedby. */
+  errorId?: string;
+  className?: string;
   children: ReactNode;
 }) {
+  // The message sits outside the <label> so the accessible label stays the label text alone.
   return (
-    <Label className="block">
-      <span className="mb-2 block">{label}</span>
-      {children}
+    <div className={className}>
+      <Label className="block">
+        <span className="mb-2 block">{label}</span>
+        {children}
+      </Label>
       {error === undefined || error === null ? null : (
-        <span role="alert" className="mt-1 block text-sm text-danger">
+        <span
+          id={errorId}
+          role="alert"
+          className="mt-1 block text-sm text-danger"
+        >
           {error}
         </span>
       )}
-    </Label>
+    </div>
   );
 }
 
@@ -112,9 +124,12 @@ export function SubmitButton({
 
 export function Alert({
   tone,
+  role = "alert",
   children,
 }: {
-  tone: "error" | "success" | "info";
+  tone: "error" | "success" | "warning" | "info";
+  /** `status` for outcomes that inform without interrupting (a sent invitation). */
+  role?: "alert" | "status";
   children: ReactNode;
 }) {
   // Text stays the only fully-saturated use of the tone colour; info is neutral by design.
@@ -123,10 +138,12 @@ export function Alert({
       ? "border-danger/40 bg-danger/8 text-danger"
       : tone === "success"
         ? "border-primary/40 bg-primary/8 text-primary"
-        : "border-foreground/15 bg-foreground/4 text-foreground";
+        : tone === "warning"
+          ? "border-caution/40 bg-caution/8 text-caution"
+          : "border-foreground/15 bg-foreground/4 text-foreground";
   return (
     <p
-      role="alert"
+      role={role}
       className={`rounded-md border px-3 py-2 text-sm ${className}`}
     >
       {children}
