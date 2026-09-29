@@ -1,6 +1,6 @@
 ---
 name: code-review-and-quality
-description: Conducts multi-axis code review. Use before merging any change that edits code. Use when reviewing code written by yourself, another agent, or a human. Use when you need to assess code quality across multiple dimensions before it enters the main branch.
+description: Conducts static multi-axis code review by reading source, tests and author evidence, without running code. Use before merging any change that edits code. Use when reviewing code written by yourself, another agent, or a human. Use when you need to assess code quality across multiple dimensions before it enters the main branch.
 ---
 
 # Code Review and Quality
@@ -8,6 +8,8 @@ description: Conducts multi-axis code review. Use before merging any change that
 ## Overview
 
 Multi-dimensional code review with quality gates. Every change that edits code gets reviewed before merge. A change with no code edit (docs-only, config-only or other non-code content) needs no code review, per file:`AGENTS.md`. Review covers five axes: correctness, readability, architecture, security, and performance.
+
+**Static review only.** The reviewer reads source, tests and the author's evidence. It does not run the app, tests, builds, profilers or benchmarks. Where a judgment depends on a runtime fact (a measured latency, a query plan, a bundle size), cite the author's evidence or ask for it; do not estimate one.
 
 **The approval standard:** Approve a change when it definitely improves overall code health, even if it isn't perfect. Perfect code doesn't exist — the goal is continuous improvement. Don't block a change because it isn't exactly how you would have written it. If it improves the codebase and follows the project's conventions, approve it.
 
@@ -67,7 +69,52 @@ Review with the security lens; it holds the checks.
 
 ### 5. Performance
 
-Review with the performance lens; it holds the checks.
+Judge from the source. Flag a pattern with a known cost; when the impact depends on data volume or a measured number, ask the author for the evidence instead of guessing. Web Vitals values below are industry references, not project targets; the project sets targets in its own contracts.
+
+**Data access**
+
+- **N+1 queries:** a query or per-item `await` inside a loop. Propose one query with a join/`include`, or a batch by ids.
+- **Unbounded fetch:** a list query or endpoint with no limit, pagination or cursor.
+- **Predicates that defeat an index:** leading-wildcard `LIKE '%term'`, a function on the indexed column (`lower(email) = ?`; index the expression instead), a composite index with the range or sort column before the equality columns.
+- **New index without a stated query shape:** every index taxes each write; ask which query it serves and for the plan before and after.
+- **Partial, expression or trigram index missing** where the query shape needs one; unused or duplicate indexes left on a write-heavy table.
+- **Loop of single calls** where a bulk operation exists.
+
+**Connections and request path**
+
+- **Pool per request or per module.** Pool `max` times instance count must stay under the database `max_connections`; no `connectionTimeoutMillis`, so exhaustion queues forever. Raising `max` is not a fix until what holds connections is found (long transactions, missing `await`, leaked clients).
+- **Synchronous heavy computation** in a request handler.
+- **Large responses not compressed.**
+
+**Caching**
+
+- **Cached call not shown to be expensive**, or read rarely relative to writes.
+- **Key omits an input the response varies on** (tenant, viewer, locale, permissions, feature flag). This leaks one user's data to another: **Critical**.
+- **No staleness window or invalidation strategy**, or more than one strategy layered.
+- **Hot key with no stampede guard** (request coalescing, lock or `stale-while-revalidate`).
+- **Data cached whose staleness is a correctness bug** (balances, permissions); origin errors cached; negative results cached with the same TTL as hits.
+- **No eviction policy or memory ceiling** on an in-process or shared cache.
+- **Write strategy mismatched to the need:** write-through adds cache latency to every write; write-behind loses data if the cache dies before the flush.
+
+**Frontend**
+
+- **New object, array or function literal passed as a prop** to a memoized child, so the memo never hits.
+- **`React.memo`/`useMemo`/`useCallback` on everything** with no profiling evidence; over-use is as much a finding as under-use.
+- **Heavy library imported statically** into a route that could `lazy(() => import(...))`; route-level code splitting missing.
+- **Images:** no `width`/`height`; below-the-fold image without `loading="lazy"`; LCP image lazy-loaded or without `fetchpriority="high"`.
+- **Long lists rendered without virtualization**; off-screen sections without `content-visibility: auto`.
+- **Long tasks (> 50ms) in an event handler** with no `scheduler.yield()` or `yieldToMain`, the main lever for INP (reference: LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1); non-urgent work (analytics, logging) run inside the handler.
+- **Layout thrashing** (reads and writes interleaved in one handler); animation on properties other than `transform` and `opacity`.
+- **Third-party script** loaded without `async`/`defer`; non-critical CSS that blocks rendering.
+- **Fonts:** many families or weights, not self-hosted WOFF2, no `font-display: swap`, LCP font not preloaded.
+- **Network:** static assets without long `max-age` and content hashes; unnecessary redirects; `unload` handlers or `Cache-Control: no-store` on HTML, which lose bfcache eligibility.
+
+**Speculative optimization**
+
+- Complexity added "for performance" with no cited before/after numbers from the author. Ask for them; an optimization that shows no measurable gain is not worth keeping.
+- An "optimization" that drops work the product needs (skipped validation, cached data that must be fresh, a removed load-bearing `await`) is a regression.
+- A test changed, skipped or deleted to make an optimization pass.
+
 
 ## Structural Remedies
 
@@ -122,7 +169,7 @@ For each file changed:
 2. Readability: Can I understand this without help?
 3. Architecture: Does this fit the system?
 4. Security: Any vulnerabilities?
-5. Performance: Any bottlenecks?
+5. Performance: Any anti-pattern from the list above?
 ```
 
 ### Step 4: Categorize Findings
@@ -143,15 +190,17 @@ This prevents authors from treating all feedback as mandatory and wasting time o
 
 ### Step 5: Verify the Verification
 
-Check the author's verification story:
+Check the author's verification story as evidence, without re-running it:
 
 ```
-- What tests were run?
-- Did the build pass?
-- Was the change tested manually?
+- Which tests does the author report, and do they cover the change?
+- Is the build result reported?
+- Is manual testing described?
 - Are there screenshots for UI changes?
-- Is there a before/after comparison?
+- Is there a before/after measurement for a performance claim?
 ```
+
+Report a missing item as a gap. Do not run tests, builds or profilers to fill it.
 
 ## Multi-Model Review Pattern
 
@@ -205,14 +254,13 @@ When reviewing code — whether written by you, another agent, or a human:
 
 - **Don't rubber-stamp.** "LGTM" without evidence of review helps no one.
 - **Don't soften real issues.** "This might be a minor concern" when it's a bug that will hit production is dishonest.
-- **Quantify problems when possible.** "This N+1 query will add ~50ms per item in the list" is better than "this could be slow."
+- **Quantify problems from the code, not from guesses.** "This loop issues one query per row, so a 100-row page costs 101 queries" is better than "this could be slow." Do not invent latency figures.
 - **Push back on approaches with clear problems.** Sycophancy is a failure mode in reviews. If the implementation has issues, say so directly and propose alternatives.
 - **Accept override gracefully.** If the author has full context and disagrees, defer to their judgment. Comment on code, not people — reframe personal critiques to focus on the code itself.
 
 ## See Also
 
 - Detailed security review: file:`../../references/security-checklist.md`
-- Detailed performance review: file:`../../references/performance-checklist.md`
 
 ## Common Rationalizations
 
@@ -225,6 +273,9 @@ When reviewing code — whether written by you, another agent, or a human:
 | "The tests pass, so it's good" | Tests are necessary but not sufficient. They don't catch architecture problems, security issues, or readability concerns. |
 | "The refactor makes it cleaner" | Relocating complexity isn't reducing it. If the reader still holds the same number of concepts, the structure didn't improve — look for the version where branches disappear. |
 | "It's only a small addition to this file" | Small diffs still push files past a healthy size and bolt branches onto unrelated flows. Judge the resulting structure, not the diff size. |
+| "We'll optimize later" | Fix known anti-patterns (N+1, unbounded fetch, per-request pools) now; defer micro-optimizations. |
+| "This optimization is obvious" | Then the author can cite the measurement. Unmeasured wins are how neutral complexity lands. |
+| "Just cache it" | Caching a cheap call adds a staleness bug for no gain, and a key that omits the viewer leaks data. |
 | "It's just a version bump" | A bump is a behavior change you didn't write. Read the changelog; semver doesn't guarantee no breakage. |
 | "I'll upgrade everything in one PR to save time" | A bulk bump that breaks the build hides which package did it. One dependency per change keeps the cause and the revert clean. |
 
@@ -238,6 +289,9 @@ When reviewing code — whether written by you, another agent, or a human:
 - No regression tests with bug fix PRs
 - Review comments without severity labels — makes it unclear what's required vs optional
 - Accepting "I'll fix it later" — it never happens
+- N+1 query, unbounded list, or cache key missing tenant/viewer in the diff
+- Performance complexity added with no author measurement
+- Review that runs code or estimates runtime numbers instead of reading the source and the author's evidence
 
 ## Verification
 
@@ -245,8 +299,7 @@ After review is complete:
 
 - [ ] All Critical issues are resolved
 - [ ] All Required (no-prefix) changes are resolved or explicitly deferred with justification
-- [ ] Tests pass
-- [ ] Build succeeds
+- [ ] The author's test and build results are reported and cover the change (reviewer did not re-run them)
 - [ ] The verification story is documented (what changed, how it was verified)
 
 **Presumptive blockers:** surface and propose the simpler design for each of these; escalate to Required only when the change actively makes structure worse: a refactor that relocates complexity instead of reducing it; a change that pushes a file past the size boundary with no decomposition; feature logic added to a shared module; a near-duplicate of an existing canonical helper; a silent fallback that hides an unclear invariant.

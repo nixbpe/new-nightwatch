@@ -43,7 +43,7 @@ Every dispatch:
 |---|---|
 | agent:`software-engineer` | skill:`build`, skill:`worker-coordination`; skill:`security-and-hardening` when the Task touches authentication, input handling, organization data or credentials |
 | agent:`platform-engineer` | skill:`worker-coordination`; skill:`debugging-and-error-recovery` when a setup, gate or environment fails; skill:`release-preparation` for release work |
-| agent:`code-reviewer` | skill:`code-review-and-quality` and skill:`performance-optimization` for correctness and maintainability; skill:`security-and-hardening`; skill:`release-preparation` for bound-evidence review; skill:`acceptance-freeze` after freeze |
+| agent:`code-reviewer` | skill:`code-review-and-quality` for static correctness, maintainability and performance review; skill:`security-and-hardening`; skill:`release-preparation` for bound-evidence review; skill:`acceptance-freeze` after freeze |
 | agent:`product-owner` | skill:`requirements`; skill:`acceptance-freeze` for freezing |
 | agent:`ux-designer` | skill:`acceptance-freeze` after freeze |
 
