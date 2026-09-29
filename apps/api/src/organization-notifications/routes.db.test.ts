@@ -17,6 +17,7 @@ const run = crypto.randomUUID().slice(0, 8);
 const organizationId = crypto.randomUUID();
 const settingsOrganizationId = crypto.randomUUID();
 const lastOwnerOrganizationId = crypto.randomUUID();
+const roleOrganizationId = crypto.randomUUID();
 const inviterId = crypto.randomUUID();
 const memberIds = {
   owner: crypto.randomUUID(),
@@ -26,6 +27,9 @@ const memberIds = {
   lastOwner: crypto.randomUUID(),
   homeowner: crypto.randomUUID(),
   secondOwner: crypto.randomUUID(),
+  roleOwner: `opaque-owner-${run}`,
+  roleAdmin: `opaque-admin-${run}`,
+  roleViewer: `opaque-viewer-${run}`,
 };
 const password = "Member-Route-Passw0rd!";
 const appUrl = "http://localhost:5173";
@@ -37,6 +41,9 @@ const emails = {
   lastOwner: `last-owner-${run}@example.test`,
   homeowner: `homeowner-${run}@example.test`,
   secondOwner: `second-owner-${run}@example.test`,
+  roleOwner: `role-owner-${run}@example.test`,
+  roleAdmin: `role-admin-${run}@example.test`,
+  roleViewer: `role-viewer-${run}@example.test`,
 };
 const userIds = new Map<keyof typeof emails, string>();
 const mail: OutboundMail[] = [];
@@ -190,7 +197,8 @@ beforeAll(async () => {
     `insert into organization (id, name, slug, created_at)
      values ($1, $2, $3, now()),
             ($4, $5, $6, now()),
-            ($7, $8, $9, now())`,
+            ($7, $8, $9, now()),
+            ($10, $11, $12, now())`,
     [
       organizationId,
       `Member route ${run}`,
@@ -201,6 +209,9 @@ beforeAll(async () => {
       lastOwnerOrganizationId,
       `Last owner route ${run}`,
       `last-owner-route-${run}`,
+      roleOrganizationId,
+      `Role route ${run}`,
+      `role-route-${run}`,
     ],
   );
   await owner.sql.query(
@@ -211,7 +222,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await owner.sql.query("delete from organization where id = any($1::uuid[])", [
-    [organizationId, settingsOrganizationId, lastOwnerOrganizationId],
+    [
+      organizationId,
+      settingsOrganizationId,
+      lastOwnerOrganizationId,
+      roleOrganizationId,
+    ],
   ]);
   await owner.sql.query(
     'delete from "user" where id = $1 or email = any($2::text[])',
@@ -772,6 +788,154 @@ describe("organization member last-owner HTTP protection", () => {
       ).rows[0]?.role,
     ).toBe("owner,viewer");
     expect(await counts()).toEqual({ ...before, memberCount: 3 });
+  }, 120_000);
+});
+
+describe("organization member role HTTP contract", () => {
+  it("accepts opaque member IDs, gives an admin identical denials for owner and absent targets, and redacts logs", async () => {
+    const ownerClient = await admit("roleOwner");
+    const adminClient = await admit("roleAdmin");
+    const viewerClient = await admit("roleViewer");
+    const ids = {
+      owner: userIds.get("roleOwner"),
+      admin: userIds.get("roleAdmin"),
+      viewer: userIds.get("roleViewer"),
+    };
+    if (!ids.owner || !ids.admin || !ids.viewer)
+      throw new Error("role membership users missing");
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $4, $5, 'owner', now(), now()),
+              ($2, $4, $6, 'admin', now(), now()),
+              ($3, $4, $7, 'viewer', now(), now())`,
+      [
+        memberIds.roleOwner,
+        memberIds.roleAdmin,
+        memberIds.roleViewer,
+        roleOrganizationId,
+        ids.owner,
+        ids.admin,
+        ids.viewer,
+      ],
+    );
+    const path = (memberId: string) =>
+      `/api/organizations/${roleOrganizationId}/members/${memberId}/role`;
+
+    auditLines.length = 0;
+    const changed = await ownerClient("PATCH", path(memberIds.roleViewer), {
+      role: "auditor",
+    });
+    expect(changed).toEqual({
+      status: 200,
+      json: {
+        member: {
+          id: memberIds.roleViewer,
+          userId: ids.viewer,
+          organizationId: roleOrganizationId,
+          role: "auditor",
+        },
+      },
+    });
+
+    const adminSaves = await adminClient("PATCH", path(memberIds.roleViewer), {
+      role: "viewer",
+    });
+    expect(adminSaves.status).toBe(200);
+
+    const ownerTarget = await adminClient("PATCH", path(memberIds.roleOwner), {
+      role: "viewer",
+    });
+    const absentTarget = await adminClient("PATCH", path(`absent-${run}`), {
+      role: "viewer",
+    });
+    const ownerGrant = await adminClient("PATCH", path(memberIds.roleViewer), {
+      role: "owner",
+    });
+    expect(ownerTarget.status).toBe(403);
+    expect(ownerTarget.json).toMatchObject({
+      error: { code: "PERMISSION_DENIED" },
+    });
+    expect(absentTarget).toEqual(ownerTarget);
+    expect(ownerGrant).toEqual(ownerTarget);
+    // A viewer gets the same full response for an existing and a missing target.
+    const viewerExisting = await viewerClient(
+      "PATCH",
+      path(memberIds.roleOwner),
+      { role: "viewer" },
+    );
+    const viewerMissing = await viewerClient("PATCH", path(`absent-${run}`), {
+      role: "viewer",
+    });
+    expect(viewerExisting.status).toBe(403);
+    expect(viewerMissing).toEqual(viewerExisting);
+    // An owner learns that a target is absent.
+    const ownerAbsent = await ownerClient("PATCH", path(`absent-${run}`), {
+      role: "viewer",
+    });
+    expect(ownerAbsent.status).toBe(404);
+    expect(ownerAbsent.json).toMatchObject({
+      error: { code: "MEMBER_NOT_FOUND" },
+    });
+    expect(
+      (
+        await owner.sql.query<{ role: string }>(
+          "select role from member where id = any($1::text[]) order by id",
+          [[memberIds.roleOwner, memberIds.roleViewer]],
+        )
+      ).rows.map((row) => row.role),
+    ).toEqual(["owner", "viewer"].sort());
+
+    for (const [body, memberId] of [
+      [{ role: "root" }, memberIds.roleViewer],
+      [{}, memberIds.roleViewer],
+    ] as const) {
+      const invalid = await ownerClient("PATCH", path(memberId), body);
+      expect(invalid).toEqual({
+        status: 400,
+        json: {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Request validation failed",
+          },
+        },
+      });
+    }
+
+    const logEntries = auditLines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>,
+    );
+    const serialized = JSON.stringify(logEntries);
+    for (const secret of [
+      roleOrganizationId,
+      memberIds.roleOwner,
+      memberIds.roleViewer,
+      `absent-${run}`,
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    const denials = logEntries.filter(
+      (entry) => entry.msg === "organization access denied",
+    );
+    expect(denials.map((denial) => denial.actorUserId)).toEqual([
+      ids.admin,
+      ids.admin,
+      ids.admin,
+      ids.viewer,
+      ids.viewer,
+    ]);
+    for (const denial of denials) {
+      expect(denial).toMatchObject({
+        action: "organization.member.role.update",
+        code: "PERMISSION_DENIED",
+      });
+    }
+    for (const completion of logEntries.filter(
+      (entry) => entry.msg === "request completed",
+    )) {
+      expect(completion.path).toBe(
+        "/api/organizations/:organizationId/members/:memberId/role",
+      );
+    }
   }, 120_000);
 });
 

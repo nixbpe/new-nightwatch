@@ -86,8 +86,12 @@ let tenant: TenantStub = {
   switchOrg: () => Promise.resolve(false),
 };
 
+// The page reads the signed-in user id from the confirmed context.
 vi.mock("../lib/tenant/TenantProvider", () => ({
-  useTenant: () => tenant,
+  useTenant: () => ({
+    ...tenant,
+    me: tenant.me && { user: { id: "user-1" }, ...tenant.me },
+  }),
 }));
 vi.mock("../lib/api/members", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),

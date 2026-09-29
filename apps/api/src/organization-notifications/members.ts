@@ -25,6 +25,8 @@ const ORGANIZATION_ROLES: Record<string, true> = {
   auditor: true,
 };
 
+const OWNER_ONLY_MESSAGE = "เฉพาะเจ้าขององค์กรเท่านั้นที่เปลี่ยนเจ้าของได้";
+
 function deny(message: string): never {
   throw new AppError(403, "PERMISSION_DENIED", message);
 }
@@ -188,6 +190,7 @@ async function lockedTarget(
   client: PoolClient,
   organizationId: string,
   memberId: string,
+  hideMissingFromAdmin = false,
 ): Promise<MemberRow> {
   const result = await client.query<MemberRow>(
     `select id, user_id as "userId", organization_id as "organizationId", role
@@ -195,7 +198,11 @@ async function lockedTarget(
     [organizationId, memberId],
   );
   const member = result.rows[0];
-  if (!member) memberNotFound();
+  if (!member) {
+    // An admin is denied for an owner target, so a missing id must look the same.
+    if (hideMissingFromAdmin) deny(OWNER_ONLY_MESSAGE);
+    memberNotFound();
+  }
   return member;
 }
 
@@ -227,7 +234,7 @@ async function assertOwnerMayChangeOwner(
   targetWillRemainOwner: boolean,
 ): Promise<void> {
   if (!isOwner(target) || targetWillRemainOwner) return;
-  if (!isOwner(actor)) deny("เฉพาะเจ้าขององค์กรเท่านั้นที่เปลี่ยนเจ้าของได้");
+  if (!isOwner(actor)) deny(OWNER_ONLY_MESSAGE);
   const owners = await client.query<{ count: number }>(
     `select count(*)::int as count from member
      where organization_id = $1
@@ -271,17 +278,14 @@ export async function updateOrganizationMemberRole(
       );
       // Before the target lookup so an unauthorized caller can't probe members.
       if (!isOwnerOrAdmin(actor)) deny("คุณไม่มีสิทธิ์เปลี่ยนบทบาทสมาชิก");
+      if (!isOwner(actor) && input.role === "owner") deny(OWNER_ONLY_MESSAGE);
       const target = await lockedTarget(
         client,
         input.organizationId,
         input.memberId,
+        !isOwner(actor),
       );
-      if (
-        (!isOwner(actor) && isOwner(target)) ||
-        (!isOwner(actor) && input.role === "owner")
-      ) {
-        deny("เฉพาะเจ้าขององค์กรเท่านั้นที่เปลี่ยนเจ้าของได้");
-      }
+      if (!isOwner(actor) && isOwner(target)) deny(OWNER_ONLY_MESSAGE);
       await assertOwnerMayChangeOwner(
         client,
         input.organizationId,
