@@ -349,10 +349,16 @@ async function openSocket(
   throw last;
 }
 
-function sameDestination(from: URL, to: URL): boolean {
+/** Secret headers travel only to the same origin, or on a default-port http to https upgrade (AC-44). */
+export function sameDestination(from: URL, to: URL): boolean {
   if (from.hostname !== to.hostname) return false;
   if (from.origin === to.origin) return true;
-  return from.protocol === "http:" && to.protocol === "https:"; // upgrade (AC-44)
+  return (
+    from.protocol === "http:" &&
+    to.protocol === "https:" &&
+    from.port === "" &&
+    to.port === ""
+  );
 }
 
 export async function sendOutboundRequest(

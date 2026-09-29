@@ -2,10 +2,12 @@ import type { Socket } from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  resolveOutboundHost,
   sendOutboundRequest,
   type OutboundDeps,
   type OutboundRequest,
 } from "../../src/outbound-http";
+import { sameDestination } from "../../src/outbound-http/send";
 import {
   createTestPki,
   respond,
@@ -262,22 +264,14 @@ describe("address policy at connect time", () => {
     expect(server.connections()).toBe(1);
   });
 
-  it("resolves again on every request, so a changed answer is blocked (AC-62)", async () => {
-    const server = await serve({
-      onRequest: ({ socket }) => {
-        okBody(socket);
-      },
-    });
+  it("re-applies the policy to a changed DNS answer on the next resolve (AC-62)", async () => {
     let answer = "93.184.216.34";
     const resolver = () => Promise.resolve([answer]);
-    const url = `http://changing.example.com:${String(server.port)}/`;
+    const url = new URL("http://changing.example.com/");
+    expect((await resolveOutboundHost(url, { resolver })).ok).toBe(true);
     answer = LOOPBACK;
-    const result = await sendOutboundRequest(
-      baseRequest(url),
-      deps({ resolver }),
-    );
-    expect(result.failure?.reason).toBe("blocked_address");
-    expect(server.connections()).toBe(0);
+    const changed = await resolveOutboundHost(url, { resolver });
+    expect(changed).toEqual({ ok: false, reason: "blocked_address" });
   });
 
   it("never puts a resolved address in the result", async () => {
@@ -548,7 +542,7 @@ describe("redirects", () => {
     expect(target.requests[0]?.head.toLowerCase()).not.toContain("x-secret");
   });
 
-  it("upgrades http to https on the same host and keeps secret headers", async () => {
+  it("drops secret headers on an http to https upgrade that changes to a non-default port", async () => {
     const secure = await serve({
       tls: pki.leaf.good,
       onRequest: ({ socket }) => {
@@ -564,13 +558,34 @@ describe("redirects", () => {
       },
     });
     const result = await sendOutboundRequest(
-      baseRequest(at(origin), { headers: { "X-Secret": "s3" } }),
+      baseRequest(at(origin), {
+        headers: { "X-Secret": "s3", "X-Public": "p" },
+      }),
       deps(),
     );
     expect(result.response?.body.toString()).toBe("secure");
-    expect(secure.requests[0]?.head.toLowerCase()).toContain("x-secret: s3");
+    const forwarded = secure.requests[0]?.head.toLowerCase() ?? "";
+    expect(forwarded).not.toContain("x-secret");
+    expect(forwarded).toContain("x-public: p");
     expect(result.tls?.reason).toBeNull();
     expect(result.tls?.issuer).toBe("NW Test");
+  });
+
+  it("keeps secrets only for same-origin or default-port http to https redirects", () => {
+    const keeps = (from: string, to: string) =>
+      sameDestination(new URL(from), new URL(to));
+    expect(keeps("http://a.example/", "https://a.example/")).toBe(true);
+    expect(keeps("http://a.example:80/", "https://a.example:443/")).toBe(true);
+    expect(keeps("https://a.example:8443/x", "https://a.example:8443/y")).toBe(
+      true,
+    );
+    expect(keeps("http://a.example/", "https://a.example:8443/")).toBe(false);
+    expect(keeps("http://a.example:8080/", "https://a.example/")).toBe(false);
+    expect(keeps("http://a.example:8080/", "http://a.example:9090/")).toBe(
+      false,
+    );
+    expect(keeps("http://a.example/", "https://b.example/")).toBe(false);
+    expect(keeps("https://a.example/", "http://a.example/")).toBe(false);
   });
 
   it("blocks https to http as redirect_blocked without contacting the target", async () => {
