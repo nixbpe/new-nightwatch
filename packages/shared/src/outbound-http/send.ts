@@ -38,6 +38,8 @@ export interface OutboundRequest {
   /** Header names dropped when a redirect leaves the original destination. */
   secretHeaderNames: string[];
   maxBodyBytes: number;
+  /** Caller abort (shutdown): tears the request down and reports `executor_error`, not `timeout`. */
+  signal?: AbortSignal;
 }
 
 export interface OutboundTls {
@@ -447,9 +449,16 @@ export async function sendOutboundRequest(
   const timer = setTimeout(() => {
     abort.abort();
   }, request.timeoutMs);
+  const caller = { aborted: false };
+  const onCallerAbort = () => {
+    caller.aborted = true;
+    abort.abort();
+  };
+  request.signal?.addEventListener("abort", onCallerAbort, { once: true });
   const sockets = new Set<net.Socket>();
   let lastTls: OutboundTls | undefined;
   try {
+    if (request.signal?.aborted) throw new OutboundError("executor_error");
     const method = request.method.toUpperCase();
     const first = validateOutboundUrl(request.url);
     if (!METHODS.has(method) || findInvalidHeader(request.headers) !== null) {
@@ -522,6 +531,8 @@ export async function sendOutboundRequest(
             )) &&
           name.toLowerCase() !== "accept-encoding",
       );
+      // No request byte after an abort, even if it landed while the socket was opening.
+      if (abort.signal.aborted) throw new OutboundError("timeout");
       let response: Http1Response;
       try {
         response = await abortable(
@@ -598,12 +609,13 @@ export async function sendOutboundRequest(
     }
   } catch (caught) {
     const error = abort.signal.aborted
-      ? new OutboundError("timeout")
+      ? new OutboundError(caller.aborted ? "executor_error" : "timeout")
       : caught instanceof OutboundError
         ? caught
         : new OutboundError("executor_error");
     const tlsInfo =
-      error.tls ?? (error.reason === "timeout" ? undefined : lastTls);
+      error.tls ??
+      (error.reason === "timeout" || caller.aborted ? undefined : lastTls);
     return {
       ok: false,
       failure: {
@@ -615,6 +627,7 @@ export async function sendOutboundRequest(
     };
   } finally {
     clearTimeout(timer);
+    request.signal?.removeEventListener("abort", onCallerAbort);
     for (const socket of sockets) socket.destroy();
   }
 }

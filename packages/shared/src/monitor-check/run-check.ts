@@ -167,6 +167,7 @@ export async function runCheck(
       maxRedirects: MAX_REDIRECTS,
       secretHeaderNames: built.secretHeaderNames,
       maxBodyBytes: MAX_BODY_BYTES,
+      ...(deps.signal ? { signal: deps.signal } : {}),
     },
     deps,
   );

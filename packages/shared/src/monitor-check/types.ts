@@ -55,6 +55,8 @@ export type MonitorSecrets = Readonly<Record<string, string>>;
 
 export interface CheckDeps extends OutboundDeps {
   clock?: () => Date;
+  /** Shutdown abort: the request is torn down and the result is `executor_error` (check_error). */
+  signal?: AbortSignal;
 }
 
 export const CHECK_FAILURE_REASONS = [
