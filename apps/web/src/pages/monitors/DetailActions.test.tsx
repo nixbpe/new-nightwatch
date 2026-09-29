@@ -186,14 +186,17 @@ describe("Pause and Resume", () => {
     expect(button).toHaveFocus();
   });
 
-  it("says 'สิทธิ์ของคุณเปลี่ยนแล้ว' and drops the buttons once the role is read-only", async () => {
+  it("says 'สิทธิ์ของคุณเปลี่ยนแล้ว' without a 'denied' flash and drops the buttons once the role is read-only", async () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail() });
     pauseMock.mockRejectedValue(
       new ApiError("PERMISSION_DENIED", "denied", 403),
     );
-    fetchMeContextMock
-      .mockResolvedValueOnce(context())
-      .mockResolvedValue(context("viewer"));
+    let finish: (value: ReturnType<typeof context>) => void = () => undefined;
+    fetchMeContextMock.mockResolvedValueOnce(context()).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
     const user = userEvent.setup();
     renderDetail();
     await user.click(
@@ -202,10 +205,17 @@ describe("Pause and Resume", () => {
     expect(
       await screen.findByText("สิทธิ์ของคุณเปลี่ยนแล้ว"),
     ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "หยุดชั่วคราว" })).toBeNull();
-    });
-    expect(screen.getByText("สิทธิ์ของคุณ: ดูอย่างเดียว")).toBeInTheDocument();
+    // The membership re-read is still open: the page must not claim access is denied.
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    expect(
+      screen.queryByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+    ).toBeNull();
+    finish(context("viewer"));
+    expect(
+      await screen.findByText("สิทธิ์ของคุณ: ดูอย่างเดียว"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "หยุดชั่วคราว" })).toBeNull();
+    expect(screen.getByText("สิทธิ์ของคุณเปลี่ยนแล้ว")).toBeInTheDocument();
   });
 
   it("turns into 'not found' when another session deleted the monitor first", async () => {

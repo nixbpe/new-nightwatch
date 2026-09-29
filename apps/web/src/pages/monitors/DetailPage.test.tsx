@@ -570,11 +570,27 @@ describe("Detail access", () => {
     expect(screen.queryByText("Payments API")).toBeNull();
   });
 
-  it("shows denied and refreshes the membership when the API refuses", async () => {
+  it("shows denied only after re-reading the membership when the API refuses", async () => {
     fetchDetailMock.mockRejectedValue(
       new ApiError("MEMBERSHIP_DENIED", "denied", 403),
     );
+    let finish: (value: ReturnType<typeof context>) => void = () => undefined;
+    fetchMeContextMock.mockResolvedValueOnce(context()).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
     renderDetail();
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+    // The re-read is still open: no "denied" and no monitor yet.
+    expect(
+      screen.queryByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+    ).toBeNull();
+    finish(
+      context("viewer", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
+    );
     expect(
       await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
     ).toBeInTheDocument();

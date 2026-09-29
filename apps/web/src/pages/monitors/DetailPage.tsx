@@ -1,6 +1,6 @@
 import type { Monitor } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { ArrowLeftIcon } from "../../components/shell/icons";
@@ -117,6 +117,16 @@ function DetailForMonitor({
   const isMember = organization !== undefined;
   const overviewPath = `/organizations/${organizationId}/monitors`;
 
+  // While the membership is re-read after a refusal, the page shows loading, never "denied" for a member who can still read.
+  const [refreshing, setRefreshing] = useState(false);
+  const [readRefresh, setReadRefresh] = useState<"idle" | "started">("idle");
+  const refreshContext = () => {
+    setRefreshing(true);
+    void refreshMembershipContext().finally(() => {
+      setRefreshing(false);
+    });
+  };
+
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{
@@ -135,6 +145,14 @@ function DetailForMonitor({
 
   const notFound = isNotFound(detail.error);
   const denied = isDenied(detail.error);
+  useEffect(() => {
+    if (!denied || readRefresh !== "idle") return;
+    setReadRefresh("started");
+    setRefreshing(true);
+    void refreshMembershipContext().finally(() => {
+      setRefreshing(false);
+    });
+  }, [denied, readRefresh, refreshMembershipContext]);
   const monitor = notFound || denied ? undefined : detail.data?.monitor;
 
   const invalidateAll = (refetchType: "active" | "none" = "active") =>
@@ -146,14 +164,14 @@ function DetailForMonitor({
   function handleWriteError(error: unknown, failure: string) {
     if (isPermissionDenied(error)) {
       setActionError(ROLE_CHANGED);
-      void refreshMembershipContext();
+      refreshContext();
     } else if (isNotFound(error)) {
       // Deleted elsewhere: the refetch turns the page into the "not found" state.
       setActionError(null);
       void invalidateAll();
     } else {
       setActionError(failure);
-      if (isDenied(error)) void refreshMembershipContext();
+      if (isDenied(error)) refreshContext();
     }
   }
 
@@ -239,10 +257,18 @@ function DetailForMonitor({
     </>
   );
 
-  if (mePending || switchedOrganization) {
+  if (
+    mePending ||
+    switchedOrganization ||
+    refreshing ||
+    (denied && readRefresh === "idle")
+  ) {
     return (
       <Page>
         {header()}
+        {actionError === null ? null : (
+          <Alert tone="error">{actionError}</Alert>
+        )}
         <DetailLoading />
       </Page>
     );
