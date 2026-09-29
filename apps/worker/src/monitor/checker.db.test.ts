@@ -725,7 +725,7 @@ describe("hourly rollup (AC-14)", () => {
 
 const credentialEnv = loadMonitorEnv({ REDIS_URL: "redis://unused" });
 
-/** Stores an encrypted slot the way Task 13 will; the API does not write secrets yet. */
+/** Stores an encrypted slot the way the API does. */
 async function storeSecret(
   monitor: SeededMonitor,
   slot: string,
@@ -785,6 +785,89 @@ describe("secrets in the checker (JOB-05)", () => {
       );
       expect(JSON.stringify(stored)).not.toContain(secretValue);
       expect(stored[0]?.outcome).toBe("pass");
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("sends basic credentials, an API key and a secret header on scheduled checks", async () => {
+    const target = await startTarget();
+    try {
+      const headerId = randomUUID();
+      const values = {
+        user: ["usr", randomUUID()].join("-"),
+        password: ["pwd", randomUUID()].join("-"),
+        key: ["key", randomUUID()].join("-"),
+        header: ["hdr", randomUUID()].join("-"),
+      };
+      const basic = await seedMonitor(db, {
+        url: `${target.url}/`,
+        authType: "basic",
+      });
+      await storeSecret(basic, "auth.username", values.user);
+      await storeSecret(basic, "auth.password", values.password);
+      const apiKey = await seedMonitor(db, {
+        url: `${target.url}/`,
+        authType: "apiKey",
+        apiKeyHeaderName: "X-Api-Key",
+      });
+      await storeSecret(apiKey, "auth.apiKey", values.key);
+      const header = await seedMonitor(db, {
+        url: `${target.url}/`,
+        headers: [{ id: headerId, name: "X-Secret", secret: true }],
+      });
+      await storeSecret(header, `header.${headerId}`, values.header);
+
+      for (const monitor of [basic, apiKey, header]) {
+        expect(await processMonitorCheck(monitor.job(), dependencies())).toBe(
+          "recorded",
+        );
+      }
+      const [first, second, third] = target.requests;
+      expect(first?.headers.authorization).toBe(
+        `Basic ${Buffer.from(`${values.user}:${values.password}`).toString("base64")}`,
+      );
+      expect(second?.headers["x-api-key"]).toBe(values.key);
+      expect(third?.headers["x-secret"]).toBe(values.header);
+      for (const monitor of [basic, apiKey, header]) {
+        const stored = await rows(
+          db,
+          monitor,
+          "select * from monitor_check_results where monitor_id = $1",
+          [monitor.monitorId],
+        );
+        expect(stored[0]?.outcome).toBe("pass");
+        for (const value of Object.values(values)) {
+          expect(JSON.stringify(stored)).not.toContain(value);
+        }
+      }
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a tampered ciphertext is check_error secret_decrypt_failed with no request", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        authType: "bearer",
+      });
+      await storeSecret(monitor, "auth.token", "tok");
+      await withTenantContextRaw(db.runtime, monitor.tenantId, (client) =>
+        client.query(
+          `update monitor_secrets
+           set ciphertext = set_byte(ciphertext, 0, get_byte(ciphertext, 0) # 255)
+           where monitor_id = $1`,
+          [monitor.monitorId],
+        ),
+      );
+      await processMonitorCheck(monitor.job(), dependencies());
+      expect(target.requests).toHaveLength(0);
+      expect((await results(monitor))[0]).toMatchObject({
+        outcome: "check_error",
+        failure_reason: "secret_decrypt_failed",
+      });
     } finally {
       await target.close();
     }

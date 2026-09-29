@@ -10,7 +10,11 @@ import {
   withTenantContextRaw,
   type Database,
 } from "@nightwatch/db";
-import { createLogger } from "@nightwatch/shared";
+import {
+  createLogger,
+  encryptSecret,
+  loadMonitorEnv,
+} from "@nightwatch/shared";
 import type { Queue } from "bullmq";
 import {
   afterAll,
@@ -301,6 +305,41 @@ describe("monitor scheduler", () => {
       expect(job.name).toBe("check");
     }
     expect(MONITOR_CHECK_QUEUE).toBe("monitor-check");
+  });
+
+  it("puts no stored secret into the job payload or options", async () => {
+    const fixture = await seed("now()");
+    const monitorId = fixture.monitorIds[0] as string;
+    const value = ["tok", randomUUID()].join("-");
+    const sealed = encryptSecret(
+      { tenantId: fixture.tenantId, monitorId, slot: "auth.token", value },
+      loadMonitorEnv({ REDIS_URL: "redis://unused" }),
+    );
+    await withTenantContextRaw(runtime, fixture.tenantId, (client) =>
+      client.query(
+        `insert into monitor_secrets
+           (monitor_id, tenant_id, slot, ciphertext, iv, auth_tag, key_version)
+         values ($1, $2, 'auth.token', $3, $4, $5, $6)`,
+        [
+          monitorId,
+          fixture.tenantId,
+          sealed.ciphertext,
+          sealed.iv,
+          sealed.authTag,
+          sealed.keyVersion,
+        ],
+      ),
+    );
+    const queue = newQueue();
+    await scheduler(queue).round();
+    const enqueued = await jobs(queue);
+    expect(enqueued).toHaveLength(1);
+    const text = JSON.stringify(
+      enqueued.map((job) => [job.data, job.opts, job.name]),
+    );
+    expect(text).not.toContain(value);
+    expect(text).not.toContain(sealed.ciphertext.toString("base64"));
+    expect(text).not.toContain(sealed.ciphertext.toString("hex"));
   });
 
   it("claims at most 500 monitors per round (50 batches of 10)", async () => {
