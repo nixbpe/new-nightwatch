@@ -25,8 +25,8 @@ async function fixture({
   ]);
   await writeFile(path.join(root, "AGENTS.md"), "# Rules\n");
   await writeFile(
-    path.join(root, ".claude/agents/lead.md"),
-    `---\nname: lead\n${toolsYaml}\n${skillsYaml}\n${modelYaml}\n---\n${refs}\n`,
+    path.join(root, ".claude/agents/tech-lead.md"),
+    `---\nname: tech-lead\n${toolsYaml}\n${skillsYaml}\n${modelYaml}\n---\n${refs}\n`,
   );
   await writeFile(
     path.join(root, ".claude/agents/worker.md"),
@@ -124,6 +124,44 @@ describe("agent config checker", () => {
     const result = check(root);
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain("missing preload skill missing");
+  });
+
+  test("keeps worker agents and leaf skills free of skill and agent references", async () => {
+    const workerRef = await fixture();
+    await writeFile(
+      path.join(workerRef, ".claude/agents/worker.md"),
+      "---\nname: worker\n---\nskill:`known`\n",
+    );
+    const workerPreload = await fixture();
+    await writeFile(
+      path.join(workerPreload, ".claude/agents/worker.md"),
+      "---\nname: worker\nskills: [known]\n---\n",
+    );
+    const leafSkill = await fixture();
+    await writeFile(
+      path.join(leafSkill, ".claude/skills/known/SKILL.md"),
+      "# Known\nagent:`worker`\n",
+    );
+    const cases = [
+      [workerRef, "worker agents do not reference skills"],
+      [workerPreload, "worker agents do not preload skills"],
+      [leafSkill, "leaf skills do not reference agents or skills"],
+    ];
+    for (const [root, message] of cases) {
+      const result = check(root);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.toString()).toContain(message);
+    }
+  });
+
+  test("lets commands and the lead wire agents and skills together", async () => {
+    const root = await fixture({ skillsYaml: "skills: [known]" });
+    await writeFile(
+      path.join(root, ".claude/skills/build/SKILL.md"),
+      '---\ndescription: build\nargument-hint: "<x>"\n---\nagent:`worker` skill:`known`\n',
+    );
+    const result = check(root);
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
   });
 
   test("rejects unsupported frontmatter keys", async () => {
