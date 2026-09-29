@@ -7,10 +7,12 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
+import { DataTable, DataTablePagination } from "../components/ui/data-table";
+import { StatusPill } from "../components/ui/status-pill";
+import { ROLE_LABELS } from "../lib/roles";
 import { Page, PageHeader } from "../components/shell/Page";
-import { Skeleton } from "../components/shell/Skeleton";
+import { PageState } from "../components/shell/PageState";
 import { ApiError } from "../lib/api/client";
 import {
   fetchOrganizationMembers,
@@ -201,17 +203,12 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <div
-          role="status"
-          aria-label="กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"
-          className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-        >
-          <p className="text-sm text-foreground-secondary">
-            กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก
-          </p>
-          <Skeleton className="h-4 w-72 max-w-full" />
-          <Skeleton className="h-64 w-full" />
-        </div>
+        <PageState
+          kind="loading"
+          label="กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"
+          layout="table"
+          visibleLabel
+        />
       </Page>
     );
   }
@@ -219,24 +216,33 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <Alert tone="error">ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้</Alert>
-        <Button onClick={() => void refreshAfterAuthorizationDenied()}>
-          ลองอีกครั้ง
-        </Button>
+        <PageState
+          kind="error"
+          message="ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={() => void refreshAfterAuthorizationDenied()}
+        />
       </Page>
     );
   }
   if (mePending) {
-    return <p role="status">กำลังโหลดสมาชิก</p>;
+    return (
+      <Page>
+        <PageHeader title="สมาชิกองค์กร" />
+        <PageState kind="loading" label="กำลังโหลดสมาชิก" layout="table" />
+      </Page>
+    );
   }
   if (meError !== null) {
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <Alert tone="error">ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้</Alert>
-        <Button onClick={() => void refreshMembershipContext()}>
-          ลองอีกครั้ง
-        </Button>
+        <PageState
+          kind="error"
+          message="ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={() => void refreshMembershipContext()}
+        />
       </Page>
     );
   }
@@ -244,28 +250,35 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <Alert tone="error">คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้</Alert>
+        <PageState
+          kind="denied"
+          message="คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"
+        />
       </Page>
     );
   }
   let directory: ReactNode;
   if (list.isFetching || invalidPage) {
     directory = (
-      <>
-        <p role="status">กำลังโหลดสมาชิก</p>
-        <Skeleton className="h-64 w-full" />
-      </>
+      <PageState
+        kind="loading"
+        label="กำลังโหลดสมาชิก"
+        layout="table"
+        rows={5}
+      />
     );
   } else if (list.isError || membershipRefreshState === "list-failed") {
     directory = (
-      <>
-        <Alert tone="error">โหลดสมาชิกไม่สำเร็จ</Alert>
-        {offset > 0 ? (
-          <div className="flex gap-2">
-            <Button onClick={() => void retryAfterListFailure()}>
-              ลองอีกครั้ง
-            </Button>
+      <PageState
+        kind="error"
+        message="โหลดสมาชิกไม่สำเร็จ"
+        retryLabel="ลองอีกครั้ง"
+        onRetry={() => void retryAfterListFailure()}
+        actions={
+          offset > 0 ? (
             <Button
+              type="button"
+              variant="secondary"
               onClick={() => {
                 memberPageHeadingRef.current?.focus();
                 setOffset((value) => Math.max(0, value - LIMIT));
@@ -273,13 +286,9 @@ function OrganizationMembersPageForOrganization({
             >
               ก่อนหน้า
             </Button>
-          </div>
-        ) : (
-          <Button onClick={() => void retryAfterListFailure()}>
-            ลองอีกครั้ง
-          </Button>
-        )}
-      </>
+          ) : undefined
+        }
+      />
     );
   } else {
     const data = list.data;
@@ -289,73 +298,60 @@ function OrganizationMembersPageForOrganization({
     const hasNext = offset + data.members.length < data.page.total;
     directory = (
       <>
-        <div
-          tabIndex={0}
-          role="region"
-          aria-label="ตารางสมาชิก"
-          className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
-        >
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead className="border-b border-foreground/10 text-foreground-secondary">
-              <tr>
-                <th className="p-4">ชื่อ</th>
-                <th className="p-4">อีเมล</th>
-                <th className="p-4">บทบาท</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.members.map((member) => (
-                <tr
-                  className="border-b border-foreground/10 last:border-0"
-                  key={member.id}
-                >
-                  <td className="p-4">{member.name}</td>
-                  <td className="p-4">{member.email}</td>
-                  <td className="p-4">{member.role}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <nav
-          aria-label="หน้าสมาชิก"
-          className="flex flex-wrap items-center justify-between gap-4"
-        >
-          <p className="text-sm text-foreground-secondary">
-            แสดง {data.members.length === 0 ? 0 : offset + 1}–
-            {offset + data.members.length} จาก {data.page.total}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              disabled={!hasPrevious}
-              onClick={() => {
-                setOffset((value) => Math.max(0, value - LIMIT));
-              }}
-            >
-              ก่อนหน้า
-            </Button>
-            <Button
-              disabled={!hasNext}
-              onClick={() => {
-                setOffset((value) => value + LIMIT);
-              }}
-            >
-              ถัดไป
-            </Button>
-          </div>
-        </nav>
+        <DataTable
+          ariaLabel="ตารางสมาชิก"
+          columns={[
+            { key: "name", header: "ชื่อ", width: "30%", cell: (m) => m.name },
+            { key: "email", header: "อีเมล", cell: (m) => m.email },
+            {
+              key: "role",
+              header: "บทบาท",
+              width: "160px",
+              cell: (m) => (
+                <StatusPill>{ROLE_LABELS[m.role] ?? m.role}</StatusPill>
+              ),
+            },
+          ]}
+          rows={data.members}
+          rowKey={(m) => m.id}
+          empty={`สมาชิกทั้งหมด ${String(data.page.total)} คน`}
+        />
+        <DataTablePagination
+          ariaLabel="หน้าสมาชิก"
+          summary={
+            <>
+              แสดง {data.members.length === 0 ? 0 : offset + 1}–
+              {offset + data.members.length} จาก {data.page.total}
+            </>
+          }
+          previousLabel="ก่อนหน้า"
+          nextLabel="ถัดไป"
+          hasPrevious={hasPrevious}
+          hasNext={hasNext}
+          onPrevious={() => {
+            setOffset((value) => Math.max(0, value - LIMIT));
+          }}
+          onNext={() => {
+            setOffset((value) => value + LIMIT);
+          }}
+        />
       </>
     );
   }
   return (
     <Page>
       <PageHeader
-        eyebrow={`${organization.name} · ${organization.slug}`}
+        scope={{ mark: organization.name, label: organization.name }}
         title="สมาชิก"
-        description={
-          !list.isFetching && !list.isError && !invalidPage && list.data
-            ? `สมาชิกทั้งหมด ${String(list.data.page.total)} คน`
-            : undefined
+        status={
+          <>
+            <span>
+              slug <span className="font-mono">{organization.slug}</span>
+            </span>
+            {!list.isFetching && !list.isError && !invalidPage && list.data ? (
+              <span>{`สมาชิกทั้งหมด ${String(list.data.page.total)} คน`}</span>
+            ) : null}
+          </>
         }
         titleRef={memberPageHeadingRef}
         titleTabIndex={-1}

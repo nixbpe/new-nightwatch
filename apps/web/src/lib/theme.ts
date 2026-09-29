@@ -41,6 +41,19 @@ export function setTheme(next: ThemePreference): void {
   for (const listener of listeners) {
     listener();
   }
+  syncThemeColor();
+}
+
+// Canvas tokens from docs/design-system.md; the meta keeps browser chrome on the same plane.
+function syncThemeColor(): void {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta === null) return;
+  const explicit = document.documentElement.getAttribute("data-theme");
+  const dark =
+    explicit === "dark" ||
+    (explicit !== "light" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
+  meta.setAttribute("content", dark ? "#0b0c0e" : "#f7f8fa");
 }
 
 export function useTheme(): {

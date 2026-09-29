@@ -55,7 +55,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
               {activeOrg.name}
             </span>
             <span className="block truncate text-xs text-foreground-secondary">
-              องค์กร · {roleLabel}
+              องค์กร <span className="ps-1">{roleLabel}</span>
             </span>
           </span>
           {canSwitch ? (
@@ -100,7 +100,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
           role="menu"
           aria-label="สลับองค์กร"
           tabIndex={-1}
-          className="absolute top-full left-2 z-50 mt-1 w-64 rounded-md border border-foreground/10 bg-surface p-1 shadow-lg focus:outline-none"
+          className="overlay-enter absolute top-full left-2 z-50 mt-1 w-64 rounded-md border border-foreground/10 bg-surface p-1 shadow-lg focus:outline-none"
         >
           <p className="px-2.5 py-1.5 text-xs text-foreground-secondary">
             องค์กรของคุณ
@@ -159,7 +159,7 @@ function OrgMark({ name }: { name: string }) {
   return (
     <span
       aria-hidden="true"
-      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-surface text-xs font-semibold text-foreground"
+      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-primary/35 bg-primary/14 text-xs font-semibold text-primary"
     >
       {initialsOf(name)}
     </span>

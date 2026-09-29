@@ -15,10 +15,16 @@ import {
   SlidersIcon,
 } from "../components/shell/icons";
 import { Page, PageHeader } from "../components/shell/Page";
-import { Skeleton } from "../components/shell/Skeleton";
+import { PageState } from "../components/shell/PageState";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
+import { Notice } from "../components/ui/notice";
 import { ApiError } from "../lib/api/client";
+import {
+  formatDateTime,
+  usePreferences,
+  type Preferences,
+} from "../lib/preferences";
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -28,6 +34,9 @@ import {
   type NotificationPage,
 } from "../lib/api/notifications";
 import { useTenant } from "../lib/tenant/TenantProvider";
+import { Card } from "../components/ui/card";
+import { StatusPill } from "../components/ui/status-pill";
+import { IconTile } from "../components/ui/icon-tile";
 
 function itemTitle(item: NotificationItem) {
   if (item.scope === "organization") {
@@ -38,21 +47,20 @@ function itemTitle(item: NotificationItem) {
     return "เปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว";
   return "ปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว";
 }
-function itemContext(item: NotificationItem) {
+// Scope and category, rendered as two parts rather than one dotted string.
+function itemContext(item: NotificationItem): [string, string] {
   return item.scope === "organization"
-    ? "องค์กร · การตั้งค่าการแจ้งเตือน"
-    : "บัญชีของคุณ · ความปลอดภัย";
+    ? ["องค์กร", "การตั้งค่าการแจ้งเตือน"]
+    : ["บัญชีของคุณ", "ความปลอดภัย"];
 }
 function ItemIcon({ item, size }: { item: NotificationItem; size: number }) {
   if (item.scope === "organization") return <SlidersIcon size={size} />;
   if (item.eventType === "PASSWORD_CHANGED") return <KeyIcon size={size} />;
   return <ShieldIcon size={size} />;
 }
-function itemTime(value: string) {
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+// Absolute times follow the time zone and hour cycle chosen on /settings/display.
+function itemTime(value: string, preferences: Preferences) {
+  return formatDateTime(new Date(value), preferences);
 }
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["minute", 60],
@@ -60,7 +68,7 @@ const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["day", 7],
 ];
 /** "5 นาทีที่แล้ว" for the last week; the absolute time beyond that. */
-function relativeTime(value: string) {
+function relativeTime(value: string, preferences: Preferences) {
   let elapsed = (Date.now() - new Date(value).getTime()) / 60_000;
   if (elapsed < 1) return "เมื่อสักครู่";
   const format = new Intl.RelativeTimeFormat("th-TH", { numeric: "auto" });
@@ -68,7 +76,7 @@ function relativeTime(value: string) {
     if (elapsed < next) return format.format(-Math.floor(elapsed), unit);
     elapsed /= next;
   }
-  return itemTime(value);
+  return itemTime(value, preferences);
 }
 function problem(error: unknown) {
   if (
@@ -107,6 +115,7 @@ export function NotificationRows({
   onOpen: (id: string) => void;
   popoverItems?: boolean;
 }) {
+  const { preferences } = usePreferences();
   return (
     <ul className="divide-y divide-foreground/10">
       {items.map((item) => (
@@ -117,19 +126,17 @@ export function NotificationRows({
               onOpen(item.id);
             }}
             data-popover-item={popoverItems ? "" : undefined}
-            className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-foreground/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            className="relative flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-100 hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
-            <span className="flex h-8 w-2 shrink-0 items-center">
-              {item.readAt === null ? (
-                <span
-                  aria-label="ยังไม่อ่าน"
-                  className="h-2 w-2 rounded-full bg-primary"
-                />
-              ) : null}
-            </span>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground-secondary">
+            {item.readAt === null ? (
+              <span
+                aria-label="ยังไม่อ่าน"
+                className="absolute inset-y-3 left-0 w-0.5 rounded-full bg-foreground"
+              />
+            ) : null}
+            <IconTile size={32}>
               <ItemIcon item={item} size={16} />
-            </span>
+            </IconTile>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span
                 className={`text-sm ${item.readAt === null ? "font-medium" : ""}`}
@@ -137,13 +144,15 @@ export function NotificationRows({
                 {itemTitle(item)}
               </span>
               <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-foreground-secondary">
-                <span>{itemContext(item)}</span>
+                {itemContext(item).map((part) => (
+                  <span key={part}>{part}</span>
+                ))}
                 <time
                   dateTime={item.occurredAt}
-                  title={itemTime(item.occurredAt)}
-                  className="font-mono text-xs"
+                  title={itemTime(item.occurredAt, preferences)}
+                  className="font-mono text-xs text-foreground"
                 >
-                  {relativeTime(item.occurredAt)}
+                  {relativeTime(item.occurredAt, preferences)}
                 </time>
               </span>
             </span>
@@ -173,6 +182,7 @@ function NotificationsPageForOrganization({
   initialDetailId: string | null;
   serverActiveOrgId: string | null;
 }) {
+  const { preferences } = usePreferences();
   const client = useQueryClient();
   const [detailId, setDetailId] = useState(initialDetailId);
   // Later pages are valid only for the first page whose cursor chain they continue; a refetched first page drops them.
@@ -270,17 +280,7 @@ function NotificationsPageForOrganization({
       return (
         <Page>
           {backButton}
-          <div
-            role="status"
-            className="flex gap-4 rounded-md border border-foreground/10 bg-surface p-6"
-          >
-            <span className="sr-only">กำลังเปิดการแจ้งเตือน…</span>
-            <Skeleton className="h-10 w-10 shrink-0" />
-            <span className="flex flex-1 flex-col gap-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-6 w-64 max-w-full" />
-            </span>
-          </div>
+          <PageState kind="loading" label="กำลังเปิดการแจ้งเตือน…" />
         </Page>
       );
     }
@@ -288,7 +288,7 @@ function NotificationsPageForOrganization({
       return (
         <Page>
           {backButton}
-          <Alert tone="error">{problem(open.error)}</Alert>
+          <PageState kind="error" message={problem(open.error)} />
         </Page>
       );
     }
@@ -296,39 +296,22 @@ function NotificationsPageForOrganization({
     return (
       <Page>
         {backButton}
-        <article className="rounded-md border border-foreground/10 bg-surface">
-          <header className="flex items-start gap-4 border-b border-foreground/10 p-6">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground-secondary">
-              <ItemIcon item={detail} size={20} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm text-foreground-secondary">
-                {itemContext(detail)}
-              </p>
-              <h1 className="mt-1 text-xl font-semibold">
-                {itemTitle(detail)}
-              </h1>
-            </div>
-          </header>
+        <PageHeader
+          scope={{ label: itemContext(detail)[0], tag: itemContext(detail)[1] }}
+          title={itemTitle(detail)}
+        />
+        <Card as="article">
           <dl className="grid gap-x-8 gap-y-1 p-6 text-sm sm:grid-cols-[max-content_1fr] sm:gap-y-4">
             <dt className="text-foreground-secondary">สถานะ</dt>
             <dd className="mb-3 sm:mb-0">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-xs">
-                <span
-                  aria-hidden="true"
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    detail.readAt === null
-                      ? "bg-primary"
-                      : "bg-foreground-secondary"
-                  }`}
-                />
+              <StatusPill dot>
                 {detail.readAt === null ? "ยังไม่อ่าน" : "อ่านแล้ว"}
-              </span>
+              </StatusPill>
             </dd>
             <dt className="text-foreground-secondary">เวลาที่เกิดเหตุการณ์</dt>
             <dd className="mb-3 sm:mb-0">
               <time dateTime={detail.occurredAt} className="font-mono">
-                {itemTime(detail.occurredAt)}
+                {itemTime(detail.occurredAt, preferences)}
               </time>
             </dd>
             {detail.readAt === null ? null : (
@@ -336,7 +319,7 @@ function NotificationsPageForOrganization({
                 <dt className="text-foreground-secondary">อ่านเมื่อ</dt>
                 <dd className="mb-3 sm:mb-0">
                   <time dateTime={detail.readAt} className="font-mono">
-                    {itemTime(detail.readAt)}
+                    {itemTime(detail.readAt, preferences)}
                   </time>
                 </dd>
               </>
@@ -348,62 +331,55 @@ function NotificationsPageForOrganization({
               </>
             ) : null}
           </dl>
-        </article>
+        </Card>
       </Page>
     );
   }
+  const scope = {
+    label: "บัญชีของคุณ",
+    tag:
+      serverActiveOrgId === null ? "ไม่มีองค์กรที่ใช้งาน" : "องค์กรที่ใช้งาน",
+  };
   if (list.isPending)
     return (
       <Page>
-        <div
-          role="status"
-          className="rounded-md border border-foreground/10 bg-surface"
-        >
-          <span className="sr-only">กำลังโหลดการแจ้งเตือน…</span>
-          {[0, 1, 2].map((row) => (
-            <div
-              key={row}
-              className="flex gap-3 border-b border-foreground/10 px-4 py-3 last:border-b-0"
-            >
-              <Skeleton className="ml-5 h-8 w-8 shrink-0" />
-              <span className="flex flex-1 flex-col gap-2">
-                <Skeleton className="h-4 w-56 max-w-full" />
-                <Skeleton className="h-3 w-32" />
-              </span>
-            </div>
-          ))}
-        </div>
+        <PageHeader scope={scope} title="การแจ้งเตือน" />
+        <PageState
+          kind="loading"
+          label="กำลังโหลดการแจ้งเตือน…"
+          layout="rows"
+        />
       </Page>
     );
   if (list.isError)
     return (
       <Page>
-        <Alert tone="error">{problem(list.error)}</Alert>
-        <div>
-          <Button variant="secondary" onClick={() => void list.refetch()}>
-            ลองใหม่
-          </Button>
-        </div>
+        <PageHeader scope={scope} title="การแจ้งเตือน" />
+        <PageState
+          kind="error"
+          message={problem(list.error)}
+          retryLabel="ลองใหม่"
+          onRetry={() => void list.refetch()}
+        />
       </Page>
     );
   const { unreadCount } = list.data;
   return (
     <Page>
       <PageHeader
-        eyebrow={
-          serverActiveOrgId === null
-            ? "บัญชีของคุณ · ไม่มีองค์กรที่ใช้งาน"
-            : "บัญชีของคุณ · องค์กรที่ใช้งาน"
-        }
+        scope={scope}
         title="การแจ้งเตือน"
-        description={
-          unreadCount === 0 ? (
-            "อ่านครบทุกรายการแล้ว"
-          ) : (
-            <>
-              ยังไม่อ่าน <span className="font-mono">{unreadCount}</span> รายการ
-            </>
-          )
+        status={
+          <span>
+            {unreadCount === 0 ? (
+              "อ่านครบทุกรายการแล้ว"
+            ) : (
+              <>
+                ยังไม่อ่าน <span className="font-mono">{unreadCount}</span>{" "}
+                รายการ
+              </>
+            )}
+          </span>
         }
         actions={
           <Button
@@ -423,6 +399,9 @@ function NotificationsPageForOrganization({
           ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
         </Alert>
       ) : null}
+      {all.isSuccess && unreadCount === 0 ? (
+        <Notice tone="success">ทำเครื่องหมายว่าอ่านแล้วทั้งหมด</Notice>
+      ) : null}
       <div>
         {items.length === 0 ? (
           <EmptyState
@@ -431,7 +410,7 @@ function NotificationsPageForOrganization({
             description="เหตุการณ์ด้านความปลอดภัยของบัญชีและการเปลี่ยนแปลงขององค์กรจะแสดงที่นี่"
           />
         ) : (
-          <div className="overflow-hidden rounded-md border border-foreground/10 bg-surface">
+          <Card className="overflow-hidden">
             <NotificationRows items={items} onOpen={requestOpen} />
             {nextCursor === null ? null : (
               <div className="border-t border-foreground/10 p-2">
@@ -452,7 +431,7 @@ function NotificationsPageForOrganization({
                 </Button>
               </div>
             )}
-          </div>
+          </Card>
         )}
       </div>
     </Page>

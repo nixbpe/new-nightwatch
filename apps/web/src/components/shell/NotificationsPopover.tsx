@@ -87,7 +87,7 @@ export function NotificationsPopover() {
           role="dialog"
           aria-label="การแจ้งเตือน"
           tabIndex={-1}
-          className="fixed inset-4 z-50 mx-auto flex w-auto max-w-[380px] flex-col overflow-hidden rounded-md border border-foreground/10 bg-surface shadow-lg focus:outline-none sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100vh-5rem)]"
+          className="overlay-enter fixed inset-4 z-50 mx-auto flex w-auto max-w-[380px] flex-col overflow-hidden rounded-md border border-foreground/10 bg-surface shadow-lg focus:outline-none sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100vh-5rem)]"
         >
           <div className="flex shrink-0 items-center justify-between border-b border-foreground/10 px-4 py-3">
             <h2 className="text-sm font-semibold">การแจ้งเตือน</h2>

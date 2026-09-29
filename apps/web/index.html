@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NightWatch</title>
+    <!-- Browser chrome follows the Canvas token; the script below resolves the theme. -->
+    <meta name="theme-color" content="#f7f8fa" />
     <script>
       // Apply a persisted explicit theme choice before first paint, so
       // there's no flash of the system-default theme. Reads the same
@@ -15,6 +17,12 @@
           if (theme === "light" || theme === "dark") {
             document.documentElement.setAttribute("data-theme", theme);
           }
+          var dark =
+            theme === "dark" ||
+            (theme !== "light" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", dark ? "#0b0c0e" : "#f7f8fa");
         } catch (_error) {
           // Storage unavailable (private mode, etc.) — system default applies.
         }

@@ -7,8 +7,10 @@ import {
   SmartphoneIcon,
 } from "../../components/shell/icons";
 import { Skeleton } from "../../components/shell/Skeleton";
+import { EmptyState } from "../../components/shell/EmptyState";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Notice } from "../../components/ui/notice";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
 import { formatDateTime, usePreferences } from "../../lib/preferences";
 import { deviceLabel } from "../../lib/sessions/device-label";
@@ -17,6 +19,9 @@ import {
   SESSIONS_QUERY_KEY,
   type SessionRow,
 } from "../../lib/sessions/sessions";
+import { Card, CardHeader, CardFooter } from "../../components/ui/card";
+import { StatusPill } from "../../components/ui/status-pill";
+import { IconTile } from "../../components/ui/icon-tile";
 
 const OTHERS = "__others__";
 
@@ -34,6 +39,7 @@ export function SessionsPage() {
 
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [revoked, setRevoked] = useState(false);
   const [failure, setFailure] = useState<{
     key: string;
     message: string;
@@ -62,6 +68,7 @@ export function SessionsPage() {
   ) => {
     setBusy(key);
     setFailure(null);
+    setRevoked(false);
     try {
       const { error } = await run();
       if (error != null) {
@@ -72,6 +79,7 @@ export function SessionsPage() {
         return;
       }
       closeConfirm(null);
+      setRevoked(true);
       await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
     } catch {
       setFailure({
@@ -85,16 +93,17 @@ export function SessionsPage() {
 
   if (query.isPending) {
     return (
-      <section
+      <Card
+        as="section"
         role="status"
         aria-label="กำลังโหลดรายการเซสชัน"
-        className="flex flex-col gap-3 rounded-md border border-foreground/10 bg-surface p-6"
+        className="gap-3 p-6"
       >
         <Skeleton className="h-4 w-56" />
         {[0, 1, 2].map((row) => (
           <Skeleton key={row} className="h-16 w-full" />
         ))}
-      </section>
+      </Card>
     );
   }
 
@@ -136,18 +145,12 @@ export function SessionsPage() {
       : rows.filter((row) => row.token !== currentToken);
 
   return (
-    <section
-      aria-labelledby="sessions-card-title"
-      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-    >
-      <div>
-        <h2 id="sessions-card-title" className="text-base font-semibold">
-          อุปกรณ์ที่เข้าสู่ระบบอยู่
-        </h2>
-        <p className="mt-1 text-sm text-foreground-secondary">
-          เซสชันทั้งหมดของบัญชีนี้ ออกจากระบบอุปกรณ์ที่ไม่รู้จักได้ทันที
-        </p>
-      </div>
+    <Card as="section" aria-labelledby="sessions-card-title" padding="md">
+      <CardHeader
+        id="sessions-card-title"
+        title="อุปกรณ์ที่เข้าสู่ระบบอยู่"
+        description="เซสชันทั้งหมดของบัญชีนี้ ออกจากระบบอุปกรณ์ที่ไม่รู้จักได้ทันที"
+      />
 
       <ul className="flex flex-col rounded-md border border-foreground/10">
         {rows.map((row, index) => {
@@ -165,16 +168,13 @@ export function SessionsPage() {
               }`}
             >
               <div className="flex flex-wrap items-center gap-3">
-                <span
-                  aria-hidden="true"
-                  className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-foreground/5 text-foreground-secondary"
-                >
+                <IconTile>
                   {device.kind === "phone" ? (
                     <SmartphoneIcon size={20} />
                   ) : (
                     <LaptopIcon size={20} />
                   )}
-                </span>
+                </IconTile>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
@@ -184,27 +184,29 @@ export function SessionsPage() {
                       {device.label}
                     </span>
                     {isCurrent ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-xs font-medium text-primary">
-                        <span
-                          aria-hidden="true"
-                          className="h-1.5 w-1.5 rounded-full bg-current"
-                        />
+                      <StatusPill tone="primary" dot>
                         อุปกรณ์นี้
-                      </span>
+                      </StatusPill>
                     ) : null}
                   </div>
-                  <p className="truncate text-xs text-foreground-secondary">
-                    {row.ipAddress === null ||
-                    row.ipAddress === undefined ||
-                    row.ipAddress.trim() === "" ? (
-                      "ไม่ทราบ IP"
-                    ) : (
-                      <span className="font-mono">{row.ipAddress}</span>
-                    )}
-                    {" · ใช้งานล่าสุด "}
-                    <time dateTime={row.updatedAt.toISOString()}>
-                      {lastActive}
-                    </time>
+                  <p className="flex flex-wrap gap-x-2 text-xs text-foreground-secondary">
+                    <span>
+                      {row.ipAddress === null ||
+                      row.ipAddress === undefined ||
+                      row.ipAddress.trim() === "" ? (
+                        "ไม่ทราบ IP"
+                      ) : (
+                        <span className="font-mono text-foreground">
+                          {row.ipAddress}
+                        </span>
+                      )}
+                    </span>
+                    <span>
+                      ใช้งานล่าสุด{" "}
+                      <time dateTime={row.updatedAt.toISOString()}>
+                        {lastActive}
+                      </time>
+                    </span>
                   </p>
                 </div>
                 {currentToken === null || isCurrent ? null : isConfirming ? (
@@ -264,13 +266,15 @@ export function SessionsPage() {
         })}
       </ul>
 
+      <Notice tone="success">{revoked ? "ออกจากระบบอุปกรณ์แล้ว" : null}</Notice>
       {others?.length === 0 ? (
-        <Alert tone="info">
-          ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ มีเพียงอุปกรณ์นี้เท่านั้น
-        </Alert>
+        <EmptyState
+          icon={<LaptopIcon size={20} />}
+          title="ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ มีเพียงอุปกรณ์นี้เท่านั้น"
+        />
       ) : null}
       {others !== null && others.length > 0 ? (
-        <div className="flex flex-col gap-3 border-t border-foreground/10 pt-4">
+        <CardFooter variant="stack">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-foreground-secondary">
               อุปกรณ์นี้จะยังเข้าสู่ระบบอยู่ อุปกรณ์อื่นต้องเข้าสู่ระบบใหม่
@@ -325,9 +329,9 @@ export function SessionsPage() {
               {failure.message}
             </p>
           ) : null}
-        </div>
+        </CardFooter>
       ) : null}
-    </section>
+    </Card>
   );
 }
 
