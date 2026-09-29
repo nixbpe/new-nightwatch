@@ -73,9 +73,12 @@ export class MonitorScheduler {
   async #guard(message: string, work: () => Promise<void>): Promise<void> {
     try {
       await work();
-    } catch {
-      // Error objects can carry connection strings; log only the stage.
-      this.logger.error({}, message);
+    } catch (error) {
+      // Messages can carry connection strings; log only the error name.
+      this.logger.error(
+        { errorName: error instanceof Error ? error.name : "unknown" },
+        message,
+      );
     }
   }
 
@@ -85,12 +88,16 @@ export class MonitorScheduler {
       const claims = await claimDueMonitorChecks(this.database, {
         limit: MONITOR_CLAIM_BATCH_SIZE,
       });
-      for (const claim of claims) await this.#enqueue(claim);
+      for (const claim of claims) {
+        // Redis is unavailable: stop claiming. The rest of this batch
+        // keeps its lease and is claimed again once the lease expires.
+        if (!(await this.#enqueue(claim))) return;
+      }
       if (claims.length < MONITOR_CLAIM_BATCH_SIZE) return;
     }
   }
 
-  async #enqueue(claim: MonitorCheckClaim): Promise<void> {
+  async #enqueue(claim: MonitorCheckClaim): Promise<boolean> {
     const job: MonitorCheckJob = {
       tenantId: claim.tenantId,
       monitorId: claim.monitorId,
@@ -106,12 +113,14 @@ export class MonitorScheduler {
         }),
         this.#enqueueTimeoutMs,
       );
+      return true;
     } catch {
       // The lease expires and a later round claims the monitor again.
       this.logger.error(
         { monitorId: claim.monitorId, tenantId: claim.tenantId },
         "monitor check enqueue failed",
       );
+      return false;
     }
   }
 
@@ -123,7 +132,6 @@ export class MonitorScheduler {
     ) {
       return;
     }
-    this.#lastPartitionCheck = now.getTime();
     const result = await this.database.sql.query<{ relname: string }>(
       `select c.relname
        from pg_inherits as i
@@ -133,6 +141,7 @@ export class MonitorScheduler {
          and parent.relname = any($1::text[])`,
       [PARTITIONED_TABLES],
     );
+    this.#lastPartitionCheck = now.getTime();
     const present = new Set(result.rows.map((row) => row.relname));
     const missing = PARTITIONED_TABLES.flatMap((table) =>
       aheadSuffixes(now).flatMap((suffix) =>
@@ -149,7 +158,7 @@ export class MonitorScheduler {
 }
 
 /** `YYYYMM` of the next MIN months after the current UTC month. */
-function aheadSuffixes(now: Date): string[] {
+export function aheadSuffixes(now: Date): string[] {
   const suffixes: string[] = [];
   for (let offset = 1; offset <= MONITOR_PARTITION_MONTHS_AHEAD_MIN; offset++) {
     const month = new Date(

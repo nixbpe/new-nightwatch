@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { monitorCheckJobId } from "./queue";
 import {
+  aheadSuffixes,
   MONITOR_SCHEDULER_INTERVAL_MS,
   startMonitorSchedule,
 } from "./scheduler";
@@ -94,5 +95,15 @@ describe("WORKER_ROLES parsing", () => {
     const result = await runWorker("monitor-checker");
     expect(result.code).not.toBe(0);
     expect(result.output).toContain("monitor-checker is not implemented yet");
+  });
+});
+
+describe("aheadSuffixes", () => {
+  it.each([
+    ["2026-09-30T00:00:00Z", ["202610", "202611"]],
+    ["2026-11-15T00:00:00Z", ["202612", "202701"]],
+    ["2026-12-31T23:59:59Z", ["202701", "202702"]],
+  ])("lists the next two UTC months after %s", (now, expected) => {
+    expect(aheadSuffixes(new Date(now))).toEqual(expected);
   });
 });

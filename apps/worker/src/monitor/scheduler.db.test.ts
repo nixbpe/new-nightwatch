@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createServer } from "node:net";
+import { createServer, Socket } from "node:net";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +24,7 @@ import {
 
 import {
   createMonitorCheckQueue,
+  MONITOR_CHECK_JOB_OPTIONS,
   MONITOR_CHECK_QUEUE,
   monitorCheckJobId,
   type MonitorCheckJob,
@@ -160,6 +161,31 @@ async function jobs(queue: Queue<MonitorCheckJob>) {
   return queue.getJobs(["waiting", "delayed", "active", "prioritized"]);
 }
 
+type QueryFn = (text: string, values?: unknown[]) => Promise<unknown>;
+/** Runtime database whose queries are counted and can be failed by SQL text. */
+function spyDatabase(hooks: { failWhen?: (text: string) => boolean } = {}): {
+  database: Database;
+  count: (fragment: string) => number;
+} {
+  const seen: string[] = [];
+  const sql = new Proxy(runtime.sql, {
+    get(target, property, receiver): unknown {
+      if (property !== "query") return Reflect.get(target, property, receiver);
+      const query = target.query.bind(target) as QueryFn;
+      return (text: string, values?: unknown[]) => {
+        seen.push(text);
+        if (hooks.failWhen?.(text))
+          return Promise.reject(new Error("injected query failure"));
+        return query(text, values);
+      };
+    },
+  });
+  return {
+    database: { ...runtime, sql },
+    count: (fragment) => seen.filter((text) => text.includes(fragment)).length,
+  };
+}
+
 function scheduler(queue: Queue<MonitorCheckJob>, logger = silent) {
   return new MonitorScheduler(runtime, queue, logger);
 }
@@ -277,12 +303,67 @@ describe("monitor scheduler", () => {
     expect(MONITOR_CHECK_QUEUE).toBe("monitor-check");
   });
 
-  it("claims past the 50-batch round in more than one batch (up to 500 per round)", async () => {
-    const fixture = await seed("now()", 35);
+  it("claims at most 500 monitors per round (50 batches of 10)", async () => {
+    await seed("now()", 501);
     const queue = newQueue();
-    await scheduler(queue).round();
-    expect(await jobs(queue)).toHaveLength(fixture.monitorIds.length);
+    const single = scheduler(queue);
+    await single.round();
+    expect(await jobs(queue)).toHaveLength(500);
+    await single.round();
+    expect(await jobs(queue)).toHaveLength(501);
+  }, 60_000);
+
+  it("adding the same claim twice yields one job", async () => {
+    const queue = newQueue();
+    const options = { ...MONITOR_CHECK_JOB_OPTIONS, jobId: "monitor-check-x" };
+    const data = {
+      tenantId: randomUUID(),
+      monitorId: randomUUID(),
+      claimToken: randomUUID(),
+      checkConfigVersion: 1,
+      scheduledFor: new Date().toISOString(),
+    };
+    await queue.add("check", data, options);
+    await queue.add("check", data, options);
+    expect(await jobs(queue)).toHaveLength(1);
   });
+
+  it("ends the round at the first enqueue failure; unqueued claims recover after the lease (F-01)", async () => {
+    const fixture = await seed("now()", 11);
+    const deadQueue = newQueue(
+      `redis://127.0.0.1:${String(await closedPort())}`,
+    );
+    unreachable.add(deadQueue);
+    let adds = 0;
+    const counting = {
+      add: (...args: Parameters<typeof deadQueue.add>) => {
+        adds += 1;
+        return deadQueue.add(...args);
+      },
+      waitUntilReady: () => deadQueue.waitUntilReady(),
+      close: () => deadQueue.close(),
+    };
+    const started = Date.now();
+    await new MonitorScheduler(runtime, counting, silent, {
+      enqueueTimeoutMs: 300,
+    }).round();
+
+    expect(adds).toBe(1);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    const claimed = await schedules(fixture);
+    expect(claimed.filter((row) => row.claim_token !== null)).toHaveLength(10);
+
+    await withTenantContextRaw(runtime, fixture.tenantId, (client) =>
+      client.query(
+        `update monitor_schedule set claimed_until = now() - interval '1 second',
+           next_check_at = now() - interval '1 second' where monitor_id = any($1::uuid[])`,
+        [fixture.monitorIds],
+      ),
+    );
+    const live = newQueue();
+    await scheduler(live).round();
+    expect(await jobs(live)).toHaveLength(11);
+  }, 30_000);
 
   it("re-claims after Redis was down during enqueue once the lease expires (AC-37)", async () => {
     const fixture = await seed("now()", 1);
@@ -358,33 +439,15 @@ describe("monitor scheduler", () => {
         [fixture.monitorIds[0], fixture.tenantId],
       ),
     );
-    let purgeCalls = 0;
-    const sql = new Proxy(runtime.sql, {
-      get(target, property, receiver): unknown {
-        if (property !== "query")
-          return Reflect.get(target, property, receiver);
-        const query = target.query.bind(target) as (
-          text: string,
-          values?: unknown[],
-        ) => Promise<unknown>;
-        return (text: string, values?: unknown[]) => {
-          if (text.includes("purge_expired_monitor_data")) purgeCalls += 1;
-          if (text.includes("claim_due_monitor_checks"))
-            return Promise.reject(new Error("injected claim failure"));
-          return query(text, values);
-        };
-      },
+    const spy = spyDatabase({
+      failWhen: (text) => text.includes("claim_due_monitor_checks"),
     });
-    const faulty = new MonitorScheduler(
-      { ...runtime, sql },
-      newQueue(),
-      silent,
-    );
+    const faulty = new MonitorScheduler(spy.database, newQueue(), silent);
     await faulty.round();
     await faulty.round();
     await faulty.round();
 
-    expect(purgeCalls).toBe(3);
+    expect(spy.count("purge_expired_monitor_data")).toBe(3);
     const remaining = await withTenantContextRaw(
       runtime,
       fixture.tenantId,
@@ -409,8 +472,10 @@ describe("monitor scheduler", () => {
       waitUntilReady: () => real.waitUntilReady(),
       close: () => real.close(),
     };
-    const single = new MonitorScheduler(runtime, slow, silent);
+    const spy = spyDatabase();
+    const single = new MonitorScheduler(spy.database, slow, silent);
     await Promise.all([single.round(), single.round(), single.round()]);
+    expect(spy.count("claim_due_monitor_checks")).toBe(1);
     expect(adds).toBe(3);
     expect(await jobs(real)).toHaveLength(3);
   });
@@ -435,6 +500,34 @@ describe("monitor scheduler", () => {
     expect(warnings).toHaveLength(1);
     const entry = JSON.parse(warnings[0] as string) as { missing: string[] };
     expect(entry.missing.length).toBe(4);
+  });
+
+  it("retries the partition check next round after its query failed (F-02)", async () => {
+    let failed = false;
+    const spy = spyDatabase({
+      failWhen: (text) => {
+        if (!text.includes("pg_inherits") || failed) return false;
+        failed = true;
+        return true;
+      },
+    });
+    const capture = captureLogger();
+    const lagging = new MonitorScheduler(
+      spy.database,
+      newQueue(),
+      capture.logger,
+      {
+        now: () => new Date(Date.now() + 200 * 24 * 60 * 60 * 1000),
+      },
+    );
+    await lagging.round();
+    expect(
+      capture.lines.some((line) => line.includes("partitions ahead")),
+    ).toBe(false);
+    await lagging.round();
+    expect(
+      capture.lines.some((line) => line.includes("partitions ahead")),
+    ).toBe(true);
   });
 });
 
@@ -461,8 +554,6 @@ describe("worker shutdown", () => {
       child.once("close", resolve),
     );
     await ready.promise;
-    // Signal handlers are registered right after the ready log line.
-    await new Promise((resolve) => setTimeout(resolve, 300));
     child.kill("SIGTERM");
 
     expect(await exited).toBe(0);
@@ -472,4 +563,70 @@ describe("worker shutdown", () => {
     expect(stopped).toBeGreaterThan(requested);
     expect(output).not.toContain("failed");
   }, 30_000);
+
+  it("exits 0 on SIGTERM while an enqueue is in flight (F-06)", async () => {
+    // A TCP relay to Redis that can be blackholed after startup keeps the
+    // child's add() pending without writing into the shared Redis.
+    const target = new URL(redisUrl);
+    let blackhole = false;
+    const sockets = new Set<Socket>();
+    const relay = createServer((client) => {
+      const upstream = new Socket();
+      sockets.add(client).add(upstream);
+      upstream.connect(Number(target.port), target.hostname);
+      client.on("data", (chunk) => {
+        if (!blackhole) upstream.write(chunk);
+      });
+      upstream.on("data", (chunk) => client.write(chunk));
+      client.on("error", () => upstream.destroy());
+      upstream.on("error", () => client.destroy());
+      client.on("close", () => upstream.destroy());
+    });
+    await new Promise<void>((resolve) => relay.listen(0, "127.0.0.1", resolve));
+    const address = relay.address();
+    const relayPort = typeof address === "object" && address ? address.port : 0;
+    const child = spawn("bun", ["run", workerEntry], {
+      env: {
+        PATH: process.env.PATH,
+        DATABASE_URL: runtimeUrl,
+        REDIS_URL: `redis://127.0.0.1:${String(relayPort)}`,
+        WORKER_ROLES: "monitor-scheduler",
+        NODE_ENV: "test",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    const ready = Promise.withResolvers<undefined>();
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+      if (output.includes("worker ready")) ready.resolve(undefined);
+    });
+    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
+    const exited = new Promise<number | null>((resolve) =>
+      child.once("close", resolve),
+    );
+    try {
+      await ready.promise;
+      blackhole = true;
+      const fixture = await seed("now()", 1);
+      // The next 10 s round claims the monitor; its add() then hangs.
+      const deadline = Date.now() + 20_000;
+      while (Date.now() < deadline) {
+        const [row] = await schedules(fixture);
+        if (row?.claim_token) break;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      const [claimed] = await schedules(fixture);
+      expect(claimed?.claim_token).not.toBeNull();
+      child.kill("SIGTERM");
+
+      expect(await exited).toBe(0);
+      expect(output).toContain("monitor scheduler stopped");
+      expect(output).not.toContain("round failed");
+    } finally {
+      child.kill("SIGKILL");
+      for (const socket of sockets) socket.destroy();
+      await new Promise((resolve) => relay.close(resolve));
+    }
+  }, 60_000);
 });

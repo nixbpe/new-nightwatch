@@ -42,25 +42,26 @@ const database = createDatabase(databaseUrl);
 
 const worker = roles.has("consumer") ? startConsumer() : null;
 const queue = roles.has("scheduler") ? createDispatchQueue(redisUrl) : null;
-await Promise.all([queue?.waitUntilReady(), worker?.waitUntilReady()]);
+const monitorQueue = roles.has("monitor-scheduler")
+  ? createMonitorCheckQueue(redisUrl)
+  : null;
+await Promise.all([
+  queue?.waitUntilReady(),
+  worker?.waitUntilReady(),
+  monitorQueue?.waitUntilReady(),
+]);
 const stopSchedule = queue
   ? startDispatchSchedule(
       new NotificationDispatchScheduler(database, queue, logger),
       logger,
     )
   : null;
-const monitorQueue = roles.has("monitor-scheduler")
-  ? createMonitorCheckQueue(redisUrl)
-  : null;
-await monitorQueue?.waitUntilReady();
 const monitorSchedule = monitorQueue
   ? startMonitorSchedule(
       new MonitorScheduler(database, monitorQueue, logger),
       logger,
     )
   : null;
-logger.info({ roles: [...roles] }, "in-app materialize worker ready");
-
 let stopping = false;
 async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (stopping) return;
@@ -72,13 +73,40 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   stopSchedule?.();
   await worker?.close();
   await queue?.close();
-  await monitorQueue?.close();
+  if (monitorQueue) await closeWithin(monitorQueue, 5_000);
   await database.close();
   logger.flush();
 }
 
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+// Handlers are registered before this line, so a signal sent once the ready
+// line is visible always runs the graceful shutdown.
+// e2e and the quality README wait for the in-app line; keep it for those roles.
+logger.info(
+  { roles: [...roles] },
+  worker || queue ? "in-app materialize worker ready" : "monitor worker ready",
+);
+
+/** close() waits on Redis; when Redis is unreachable, drop the connection instead. */
+async function closeWithin(
+  target: { close(): Promise<void>; disconnect(): Promise<void> },
+  ms: number,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => {
+      resolve("timeout");
+    }, ms);
+  });
+  const outcome = await Promise.race([
+    target.close().then(() => "closed" as const),
+    timedOut,
+  ]);
+  clearTimeout(timer);
+  if (outcome === "timeout") await target.disconnect();
+}
 
 function requireEnvironment(name: "DATABASE_URL" | "REDIS_URL"): string {
   const value = process.env[name];
