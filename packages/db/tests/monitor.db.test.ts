@@ -408,6 +408,109 @@ async function insertChildRow(
   }
 }
 
+describe("monitors config CHECK constraints", () => {
+  async function insertWith(
+    column: string,
+    value: string | number | null,
+    cast = "",
+  ): Promise<void> {
+    const base: Record<string, string> = {
+      name: "cfg",
+      url: "https://target.example.test/",
+    };
+    const columns = Object.keys(base).filter((c) => c !== column);
+    const values = columns.map((c) => base[c]);
+    await withTenantContextRaw(database, tenantA, (client) =>
+      client.query(
+        `insert into monitors
+           (tenant_id, client_request_id, ${[...columns, column].join(", ")})
+         values ($1, $2, ${[...columns, column]
+           .map(
+             (_, i) => `$${String(i + 3)}${i === columns.length ? cast : ""}`,
+           )
+           .join(", ")})`,
+        [tenantA, randomUUID(), ...values, value],
+      ),
+    );
+  }
+
+  it.each(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])(
+    "accepts method %s",
+    async (method) => {
+      await insertWith("method", method);
+    },
+  );
+
+  it("rejects an unknown method", async () => {
+    await expect(insertWith("method", "TRACE")).rejects.toThrow(
+      /monitors_method_check/,
+    );
+  });
+
+  it.each([
+    ["headers", 20, 21],
+    ["query_params", 20, 21],
+    ["assertions", 10, 11],
+    ["expected_status_ranges", 10, 11],
+  ] as const)(
+    "%s accepts %i entries and rejects %i",
+    async (column, ok, over) => {
+      const list = (n: number) =>
+        JSON.stringify(Array.from({ length: n }, () => ({})));
+      await insertWith(column, list(ok), "::jsonb");
+      await expect(insertWith(column, list(over), "::jsonb")).rejects.toThrow(
+        new RegExp(`monitors_${column}_check`),
+      );
+    },
+  );
+
+  it.each(["headers", "query_params", "assertions", "expected_status_ranges"])(
+    "%s must be a JSON array",
+    async (column) => {
+      await expect(insertWith(column, "{}", "::jsonb")).rejects.toThrow(
+        new RegExp(`monitors_${column}_check`),
+      );
+    },
+  );
+
+  it("bounds name, url, body, auth type, body type and timeout", async () => {
+    await insertWith("name", "n".repeat(100));
+    await expect(insertWith("name", "n".repeat(101))).rejects.toThrow(
+      /monitors_name_check/,
+    );
+    await insertWith("url", `https://t.example.test/${"u".repeat(2048 - 23)}`);
+    await expect(
+      insertWith("url", `https://t.example.test/${"u".repeat(2048 - 22)}`),
+    ).rejects.toThrow(/monitors_url_check/);
+    await insertWith("body_content", "b".repeat(65536));
+    await expect(insertWith("body_content", "b".repeat(65537))).rejects.toThrow(
+      /monitors_body_content_check/,
+    );
+    for (const type of ["none", "bearer", "basic", "apiKey"]) {
+      await insertWith("auth_type", type);
+    }
+    await expect(insertWith("auth_type", "digest")).rejects.toThrow(
+      /monitors_auth_type_check/,
+    );
+    for (const type of ["json", "text"]) await insertWith("body_type", type);
+    await expect(insertWith("body_type", "xml")).rejects.toThrow(
+      /monitors_body_type_check/,
+    );
+    await insertWith("api_key_header_name", "h".repeat(256));
+    await expect(
+      insertWith("api_key_header_name", "h".repeat(257)),
+    ).rejects.toThrow(/monitors_api_key_header_name_check/);
+    await insertWith("timeout_seconds", 30);
+    await expect(insertWith("timeout_seconds", 31)).rejects.toThrow(
+      /monitors_timeout_seconds_check/,
+    );
+    // default interval is 300 s, so a timeout at or above it violates the pair check
+    await expect(insertWith("timeout_seconds", 0)).rejects.toThrow(
+      /monitors_timeout_seconds_check/,
+    );
+  });
+});
+
 describe("claim_due_monitor_checks", () => {
   const ancient = "2000-01-01T00:00:00Z";
 

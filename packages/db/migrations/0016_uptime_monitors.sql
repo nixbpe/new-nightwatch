@@ -9,17 +9,23 @@ create table monitors (
   tenant_id uuid not null references organization (id) on delete cascade,
   name text not null check (char_length(name) between 1 and 100),
   url text not null check (char_length(url) between 1 and 2048),
-  method text not null default 'GET' check (method in ('GET', 'HEAD')),
-  headers jsonb not null default '[]'::jsonb,
-  query_params jsonb not null default '[]'::jsonb,
+  method text not null default 'GET'
+    check (method in ('GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD')),
+  headers jsonb not null default '[]'::jsonb
+    check (jsonb_typeof(headers) = 'array' and jsonb_array_length(headers) <= 20),
+  query_params jsonb not null default '[]'::jsonb
+    check (jsonb_typeof(query_params) = 'array' and jsonb_array_length(query_params) <= 20),
   body_type text check (body_type in ('json', 'text')),
   body_content text check (octet_length(body_content) <= 65536),
   auth_type text not null default 'none'
     check (auth_type in ('none', 'bearer', 'basic', 'apiKey')),
-  api_key_header_name text,
+  api_key_header_name text check (char_length(api_key_header_name) <= 256),
   expected_status_text text not null default '200-299',
-  expected_status_ranges jsonb not null default '[{"from":200,"to":299}]'::jsonb,
-  assertions jsonb not null default '[]'::jsonb,
+  expected_status_ranges jsonb not null default '[{"from":200,"to":299}]'::jsonb
+    check (jsonb_typeof(expected_status_ranges) = 'array'
+      and jsonb_array_length(expected_status_ranges) <= 10),
+  assertions jsonb not null default '[]'::jsonb
+    check (jsonb_typeof(assertions) = 'array' and jsonb_array_length(assertions) <= 10),
   interval_seconds integer not null default 300 check (interval_seconds > 0),
   timeout_seconds integer not null default 10
     check (timeout_seconds between 1 and 30),
