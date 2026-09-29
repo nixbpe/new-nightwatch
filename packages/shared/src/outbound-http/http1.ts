@@ -26,7 +26,7 @@ interface ExchangeOptions {
 }
 
 type Framing = "none" | "length" | "chunked" | "close";
-type ChunkState = "size" | "data" | "crlf" | "trailer";
+type ChunkState = "size" | "data" | "crlf";
 
 /**
  * One HTTP/1.1 request/response on an open socket: `Connection: close`,
@@ -88,7 +88,7 @@ export function exchange(
         return false;
       }
       status = Number(match[1]);
-      headers = {};
+      headers = Object.create(null) as Record<string, string>;
       for (const line of lines.slice(1)) {
         const colon = line.indexOf(":");
         if (colon <= 0) {
@@ -161,7 +161,12 @@ export function exchange(
             return;
           }
           chunkRemaining = parseInt(token, 16);
-          chunkState = chunkRemaining === 0 ? "trailer" : "data";
+          if (chunkRemaining === 0) {
+            // Connection: close, so trailers are discarded rather than parsed.
+            succeed();
+            return;
+          }
+          chunkState = "data";
         } else if (chunkState === "data") {
           if (pending.length === 0) return;
           const take = Math.min(chunkRemaining, pending.length);
@@ -170,7 +175,7 @@ export function exchange(
           chunkRemaining -= take;
           if (chunkRemaining === 0) chunkState = "crlf";
           collect(piece);
-        } else if (chunkState === "crlf") {
+        } else {
           if (pending.length < 2) return;
           if (pending[0] !== 0x0d || pending[1] !== 0x0a) {
             fail("invalid chunk terminator");
@@ -178,14 +183,6 @@ export function exchange(
           }
           pending = pending.subarray(2);
           chunkState = "size";
-        } else {
-          const end = pending.indexOf("\r\n");
-          if (end === -1) return;
-          if (end === 0) {
-            succeed();
-            return;
-          }
-          pending = pending.subarray(end + 2);
         }
       }
     };
@@ -195,6 +192,10 @@ export function exchange(
         const end = pending.indexOf("\r\n\r\n");
         if (end === -1) {
           if (pending.length > MAX_HEAD_BYTES) fail("response head too large");
+          return;
+        }
+        if (end > MAX_HEAD_BYTES) {
+          fail("response head too large");
           return;
         }
         const raw = pending.subarray(0, end).toString("latin1");

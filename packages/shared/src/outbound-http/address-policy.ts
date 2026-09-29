@@ -114,7 +114,10 @@ const FORBIDDEN_V4 = [
 const FORBIDDEN_V6 = [
   "::/128",
   "::1/128",
+  "::/96", // IPv4-compatible
+  "::ffff:0:0:0/96", // IPv4-translated
   "64:ff9b::/96",
+  "64:ff9b:1::/48", // local-use NAT64
   "100::/64",
   "2001::/32",
   "2001:db8::/32",

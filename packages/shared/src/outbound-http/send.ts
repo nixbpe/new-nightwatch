@@ -95,6 +95,13 @@ const MESSAGES: Record<OutboundFailureReason, string> = {
   executor_error: "Request could not be executed",
 };
 
+const MAX_REDIRECTS = 5;
+/** Dropped with `secretHeaderNames` whenever a redirect leaves the original destination. */
+const DESTINATION_BOUND_HEADERS = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+]);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const METHODS = new Set([
   "GET",
@@ -153,7 +160,14 @@ function classifyConnectError(
 ): OutboundError {
   if (error instanceof OutboundError) return error;
   const code = errorCode(error);
-  const tlsReason = tlsReasonFor(code);
+  // Bun raises a name mismatch with an empty cert when the peer is not speaking TLS at all.
+  const cert = (error as { cert?: unknown } | null)?.cert;
+  const hasCert =
+    typeof cert === "object" && cert !== null && Object.keys(cert).length > 0;
+  const tlsReason =
+    code === "ERR_TLS_CERT_ALTNAME_INVALID" && !hasCert
+      ? null
+      : tlsReasonFor(code);
   if (tlsReason) {
     return new OutboundError("tls_invalid", tlsReason, {
       reason: tlsReason,
@@ -252,6 +266,7 @@ function connectOnce(
   url: URL,
   deps: OutboundDeps,
   signal: AbortSignal,
+  attemptMs: number,
   track: (socket: net.Socket) => void,
 ): Promise<OpenedSocket> {
   const secure = url.protocol === "https:";
@@ -260,20 +275,30 @@ function connectOnce(
     new Promise<OpenedSocket>((resolve, reject) => {
       let tcpConnected = false;
       let socket: net.Socket;
-      const onError = (error: unknown) => {
+      const attemptTimer = setTimeout(() => {
         socket.destroy();
-        reject(classifyConnectError(error, secure, tcpConnected));
+        reject(new OutboundError("connect_failed"));
+      }, attemptMs);
+      const settle = <T>(finish: (value: T) => void, value: T) => {
+        clearTimeout(attemptTimer);
+        finish(value);
       };
-      const onTcpConnect = () => {
-        tcpConnected = true;
-        // Connection-time check: the socket must be on the address that was validated.
+      const onError = (error: unknown) => {
+        const connected = tcpConnected || socket.remoteAddress !== undefined;
+        socket.destroy();
+        settle(reject, classifyConnectError(error, secure, connected));
+      };
+      // Connection-time check: the socket must be on the address that was validated.
+      const remoteMatches = (): boolean => {
         if (
-          !socket.remoteAddress ||
-          !sameAddress(socket.remoteAddress, address)
+          socket.remoteAddress &&
+          sameAddress(socket.remoteAddress, address)
         ) {
-          socket.destroy();
-          reject(new OutboundError("blocked_address"));
+          return true;
         }
+        socket.destroy();
+        settle(reject, new OutboundError("blocked_address"));
+        return false;
       };
       if (secure) {
         const literal = literalHost(url) !== null;
@@ -286,14 +311,19 @@ function connectOnce(
           rejectUnauthorized: true,
         });
         socket = secureSocket;
-        socket.once("connect", onTcpConnect);
+        socket.once("connect", () => {
+          tcpConnected = true;
+          remoteMatches();
+        });
         socket.once("secureConnect", () => {
+          // Checked again here so the guarantee does not rest on `connect` firing on a TLSSocket.
+          if (!remoteMatches()) return;
           // An empty object comes back when no certificate is available.
           const peer: Partial<tls.PeerCertificate> =
             secureSocket.getPeerCertificate();
           const issuer = peer.issuer?.O ?? peer.issuer?.CN;
           const notAfter = peer.valid_to ? new Date(peer.valid_to) : null;
-          resolve({
+          settle(resolve, {
             socket,
             tls: {
               reason: null,
@@ -306,8 +336,8 @@ function connectOnce(
       } else {
         socket = net.connect({ host: address, port });
         socket.once("connect", () => {
-          onTcpConnect();
-          if (!socket.destroyed) resolve({ socket, tls: null });
+          tcpConnected = true;
+          if (remoteMatches()) settle(resolve, { socket, tls: null });
         });
       }
       socket.once("error", onError);
@@ -322,12 +352,25 @@ async function openSocket(
   url: URL,
   deps: OutboundDeps,
   signal: AbortSignal,
+  deadline: number,
   track: (socket: net.Socket) => void,
 ): Promise<OpenedSocket> {
   let last: OutboundError = new OutboundError("connect_failed");
-  for (const address of addresses) {
+  for (const [index, address] of addresses.entries()) {
+    // Each attempt gets an equal share of what is left, so a blackholed address cannot use it all.
+    const attemptMs = Math.max(
+      1,
+      (deadline - Date.now()) / (addresses.length - index),
+    );
     try {
-      const opened = await connectOnce(address, url, deps, signal, track);
+      const opened = await connectOnce(
+        address,
+        url,
+        deps,
+        signal,
+        attemptMs,
+        track,
+      );
       // Only errors raised after this point belong to the request phase.
       opened.socket.removeAllListeners("error");
       return opened;
@@ -361,6 +404,15 @@ export function sameDestination(from: URL, to: URL): boolean {
   );
 }
 
+/**
+ * Sends one request through the SSRF policy.
+ *
+ * `failure.reason` includes `invalid_request` for a URL, method or header that
+ * the policy rejects before any connection. Callers pre-validate with
+ * `validateOutboundUrl` and `findInvalidHeader`; the check executor maps this
+ * value to `executor_error` (check_error). `maxRedirects` is capped at 5, and
+ * any redirect beyond the cap (including a cap of 0) is `redirect_limit`.
+ */
 export async function sendOutboundRequest(
   request: OutboundRequest,
   deps: OutboundDeps = {},
@@ -412,20 +464,37 @@ export async function sendOutboundRequest(
         );
       }
 
-      const opened = await openSocket(
-        resolved.addresses,
-        current,
-        deps,
-        abort.signal,
-        (socket) => {
-          sockets.add(socket);
-        },
-      );
+      let opened: OpenedSocket;
+      try {
+        opened = await openSocket(
+          resolved.addresses,
+          current,
+          deps,
+          abort.signal,
+          started + request.timeoutMs,
+          (socket) => {
+            sockets.add(socket);
+          },
+        );
+      } catch (error) {
+        // The connection-time address check follows the same hop naming as the DNS check.
+        if (
+          error instanceof OutboundError &&
+          error.reason === "blocked_address"
+        ) {
+          throw new OutboundError(hopBlocked);
+        }
+        throw error;
+      }
       lastTls = opened.tls ?? undefined;
 
       const headers = Object.entries(request.headers).filter(
         ([name]) =>
-          (keepSecrets || !secretNames.has(name.toLowerCase())) &&
+          (keepSecrets ||
+            !(
+              secretNames.has(name.toLowerCase()) ||
+              DESTINATION_BOUND_HEADERS.has(name.toLowerCase())
+            )) &&
           name.toLowerCase() !== "accept-encoding",
       );
       let response: Http1Response;
@@ -473,7 +542,7 @@ export async function sendOutboundRequest(
         };
       }
 
-      if (redirects >= request.maxRedirects)
+      if (redirects >= Math.min(request.maxRedirects, MAX_REDIRECTS))
         throw new OutboundError("redirect_limit");
       let next: URL;
       try {

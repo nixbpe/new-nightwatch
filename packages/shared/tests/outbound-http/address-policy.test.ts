@@ -27,7 +27,10 @@ const FORBIDDEN_V4: [string, string, string][] = [
 const FORBIDDEN_V6: [string, string, string][] = [
   ["::/128", "::", "::"],
   ["::1/128", "::1", "::1"],
+  ["::/96", "::", "::ffff:ffff"],
+  ["::ffff:0:0:0/96", "::ffff:0:0:0", "::ffff:0:ffff:ffff"],
   ["64:ff9b::/96", "64:ff9b::", "64:ff9b::ffff:ffff"],
+  ["64:ff9b:1::/48", "64:ff9b:1::", "64:ff9b:1:ffff:ffff:ffff:ffff:ffff"],
   ["100::/64", "100::", "100::ffff:ffff:ffff:ffff"],
   ["2001::/32", "2001::", "2001:0:ffff:ffff:ffff:ffff:ffff:ffff"],
   ["2001:db8::/32", "2001:db8::", "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff"],
@@ -78,6 +81,11 @@ const PUBLIC_V6 = [
   "2000::",
   "fbff::1",
   "fec0::",
+  "::1:0:0",
+  "::ffff:1:0:0",
+  "64:ff9b:2::",
+  "64:ff9b:0:1::",
+  "64:ff9a::",
 ];
 
 describe("isForbiddenAddress", () => {
