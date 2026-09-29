@@ -2,7 +2,7 @@
 
 | Field           | Value                                                    |
 | --------------- | -------------------------------------------------------- |
-| ID / revision   | DIR-001 / v2                                             |
+| ID / revision   | DIR-001 / v3                                             |
 | document_status | Direction Approved                                       |
 | outcome_status  | Not measured                                             |
 | Owner           | Product Owner role; accountable person not yet confirmed |
@@ -30,8 +30,8 @@ Product intent only; it lists neither implemented capabilities nor validated dem
 **Principle.** One customer is one Organization and the isolation boundary; a Project holds authorized cloud scope and observations, and comparisons never leave one Organization, whatever other memberships a user has. Keep provenance, scope and freshness visible: missing context is not low risk, and no findings is not proof of safe or complete collection. Advice is never execution, assignment or proof of a fix. Partial, stale or uneven data and missing permissions stay understandable, and unsupported inferences never appear as facts.
 
 - S1 Out of the first scope: autonomous cloud changes, certification guarantees, exhaustive-detection claims and provider parity. AWS-first is not full AWS coverage; other providers need their own decision.
-- S2 Reports, notifications, health and SLOs, access governance and broader compliance are possible later capabilities.
-- S3 This document does not authorize collecting customer credentials or sensitive evidence.
+- S2 Reports, notifications, SLOs, access governance and broader compliance are possible later capabilities. Availability monitoring of HTTP(S) endpoints that an Organization specifies (uptime, response time, SSL expiry, in-app alerts) is in scope as a supporting capability; it is not the core positioning and does not change D1-D9.
+- S3 This document does not authorize collecting customer credentials or sensitive evidence, with one exception: auth values and secret headers of an availability monitor (S2) may be stored encrypted at rest, are write-only in UI and API, are decrypted only in a credential helper per JOB-05, and never appear in responses, logs, notifications or test results. All other customer credentials remain out of scope.
 
 ## Discovery (all Hypothesis, Not run)
 
