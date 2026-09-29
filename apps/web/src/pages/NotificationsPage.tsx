@@ -28,6 +28,9 @@ import {
   type NotificationPage,
 } from "../lib/api/notifications";
 import { useTenant } from "../lib/tenant/TenantProvider";
+import { Card } from "../components/ui/card";
+import { StatusPill } from "../components/ui/status-pill";
+import { IconTile } from "../components/ui/icon-tile";
 
 function itemTitle(item: NotificationItem) {
   if (item.scope === "organization") {
@@ -127,9 +130,9 @@ export function NotificationRows({
                 />
               ) : null}
             </span>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground-secondary">
+            <IconTile size={32}>
               <ItemIcon item={item} size={16} />
-            </span>
+            </IconTile>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span
                 className={`text-sm ${item.readAt === null ? "font-medium" : ""}`}
@@ -270,17 +273,14 @@ function NotificationsPageForOrganization({
       return (
         <Page>
           {backButton}
-          <div
-            role="status"
-            className="flex gap-4 rounded-md border border-foreground/10 bg-surface p-6"
-          >
+          <Card role="status" className="flex-row gap-4 p-6">
             <span className="sr-only">กำลังเปิดการแจ้งเตือน…</span>
             <Skeleton className="h-10 w-10 shrink-0" />
             <span className="flex flex-1 flex-col gap-2">
               <Skeleton className="h-4 w-40" />
               <Skeleton className="h-6 w-64 max-w-full" />
             </span>
-          </div>
+          </Card>
         </Page>
       );
     }
@@ -296,11 +296,11 @@ function NotificationsPageForOrganization({
     return (
       <Page>
         {backButton}
-        <article className="rounded-md border border-foreground/10 bg-surface">
+        <Card as="article">
           <header className="flex items-start gap-4 border-b border-foreground/10 p-6">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground-secondary">
+            <IconTile>
               <ItemIcon item={detail} size={20} />
-            </span>
+            </IconTile>
             <div className="min-w-0">
               <p className="text-sm text-foreground-secondary">
                 {itemContext(detail)}
@@ -313,17 +313,9 @@ function NotificationsPageForOrganization({
           <dl className="grid gap-x-8 gap-y-1 p-6 text-sm sm:grid-cols-[max-content_1fr] sm:gap-y-4">
             <dt className="text-foreground-secondary">สถานะ</dt>
             <dd className="mb-3 sm:mb-0">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-xs">
-                <span
-                  aria-hidden="true"
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    detail.readAt === null
-                      ? "bg-primary"
-                      : "bg-foreground-secondary"
-                  }`}
-                />
+              <StatusPill dot>
                 {detail.readAt === null ? "ยังไม่อ่าน" : "อ่านแล้ว"}
-              </span>
+              </StatusPill>
             </dd>
             <dt className="text-foreground-secondary">เวลาที่เกิดเหตุการณ์</dt>
             <dd className="mb-3 sm:mb-0">
@@ -348,17 +340,14 @@ function NotificationsPageForOrganization({
               </>
             ) : null}
           </dl>
-        </article>
+        </Card>
       </Page>
     );
   }
   if (list.isPending)
     return (
       <Page>
-        <div
-          role="status"
-          className="rounded-md border border-foreground/10 bg-surface"
-        >
+        <Card role="status">
           <span className="sr-only">กำลังโหลดการแจ้งเตือน…</span>
           {[0, 1, 2].map((row) => (
             <div
@@ -372,7 +361,7 @@ function NotificationsPageForOrganization({
               </span>
             </div>
           ))}
-        </div>
+        </Card>
       </Page>
     );
   if (list.isError)
@@ -431,7 +420,7 @@ function NotificationsPageForOrganization({
             description="เหตุการณ์ด้านความปลอดภัยของบัญชีและการเปลี่ยนแปลงขององค์กรจะแสดงที่นี่"
           />
         ) : (
-          <div className="overflow-hidden rounded-md border border-foreground/10 bg-surface">
+          <Card className="overflow-hidden">
             <NotificationRows items={items} onOpen={requestOpen} />
             {nextCursor === null ? null : (
               <div className="border-t border-foreground/10 p-2">
@@ -452,7 +441,7 @@ function NotificationsPageForOrganization({
                 </Button>
               </div>
             )}
-          </div>
+          </Card>
         )}
       </div>
     </Page>

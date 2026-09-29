@@ -22,6 +22,9 @@ import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert, Field, FieldValidationError, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
+import { Card, CardHeader } from "../../components/ui/card";
+import { StatusPill } from "../../components/ui/status-pill";
+import { IconTile } from "../../components/ui/icon-tile";
 
 type EnrollmentDraft = { totpURI: string; backupCodes: string[] };
 
@@ -289,22 +292,26 @@ export function MfaCard({
         : groupedSecret(secret);
 
   return (
-    <section
-      aria-labelledby="mfa-card-title"
-      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-    >
-      <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
-        <div className="min-w-0">
-          <h2 id="mfa-card-title" className="text-base font-semibold">
-            ยืนยันสองขั้นตอน (MFA)
-          </h2>
-          <p className="mt-1 text-sm text-foreground-secondary">
-            ใช้รหัส 6 หลักจากแอปยืนยันตัวตน (TOTP) เพิ่มอีกชั้นเมื่อเข้าสู่ระบบ
-            ไม่บังคับ แต่แนะนำสำหรับเจ้าของและผู้ดูแลองค์กร
-          </p>
-        </div>
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
-      </div>
+    <Card as="section" aria-labelledby="mfa-card-title" padding="md">
+      <CardHeader
+        id="mfa-card-title"
+        title="ยืนยันสองขั้นตอน (MFA)"
+        description="ใช้รหัส 6 หลักจากแอปยืนยันตัวตน (TOTP) เพิ่มอีกชั้นเมื่อเข้าสู่ระบบ ไม่บังคับ แต่แนะนำสำหรับเจ้าของและผู้ดูแลองค์กร"
+        action={
+          <StatusPill
+            tone={
+              status.tone === "positive"
+                ? "primary"
+                : status.tone === "caution"
+                  ? "caution"
+                  : "muted"
+            }
+            dot
+          >
+            {status.label}
+          </StatusPill>
+        }
+      />
 
       {enabled ? (
         <>
@@ -922,7 +929,7 @@ export function MfaCard({
           </form>
         </>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -1036,50 +1043,5 @@ function BackupCodes({ codes }: { codes: string[] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-function IconTile({
-  tone = "neutral",
-  children,
-}: {
-  tone?: "neutral" | "positive";
-  children: ReactNode;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-foreground/5 ${
-        tone === "positive" ? "text-primary" : "text-foreground-secondary"
-      }`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function StatusBadge({
-  tone,
-  children,
-}: {
-  tone: "neutral" | "caution" | "positive";
-  children: ReactNode;
-}) {
-  const color =
-    tone === "positive"
-      ? "text-primary"
-      : tone === "caution"
-        ? "text-caution"
-        : "text-foreground-secondary";
-  return (
-    <span
-      className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border border-foreground/10 bg-surface px-2 py-0.5 text-xs font-medium whitespace-nowrap ${color}`}
-    >
-      <span
-        aria-hidden="true"
-        className="h-1.5 w-1.5 rounded-full bg-current"
-      />
-      {children}
-    </span>
   );
 }

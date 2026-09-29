@@ -9,9 +9,7 @@ import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { ROLE_LABELS } from "../lib/roles";
 import { useTenant } from "../lib/tenant/TenantProvider";
-
-const CARD =
-  "flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6";
+import { Card } from "../components/ui/card";
 
 export function WorkspacePage() {
   const { me, mePending, meError, retryMe, activeOrg } = useTenant();
@@ -19,12 +17,12 @@ export function WorkspacePage() {
   if (mePending) {
     return (
       <Page>
-        <div role="status" className={CARD}>
+        <Card role="status" padding="md">
           <span className="sr-only">กำลังโหลดข้อมูลองค์กร…</span>
           <Skeleton className="h-3 w-40" />
           <Skeleton className="h-7 w-56" />
           <Skeleton className="h-4 w-full max-w-lg" />
-        </div>
+        </Card>
       </Page>
     );
   }
@@ -33,7 +31,7 @@ export function WorkspacePage() {
     // A failed request is never "zero memberships"; offer an explicit retry.
     return (
       <Page>
-        <section className={CARD}>
+        <Card as="section" padding="md">
           <h1 className="text-xl font-semibold">โหลดข้อมูลองค์กรไม่สำเร็จ</h1>
           <Alert tone="error">
             {meError?.message ||
@@ -49,7 +47,7 @@ export function WorkspacePage() {
               ลองใหม่
             </Button>
           </div>
-        </section>
+        </Card>
       </Page>
     );
   }
@@ -83,7 +81,7 @@ function AccessNeeded({ email }: { email: string }) {
   const navigate = useNavigate();
   return (
     <Page>
-      <section className={CARD}>
+      <Card as="section" padding="md">
         <div>
           <h1 className="text-xl font-semibold">
             ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร
@@ -111,7 +109,7 @@ function AccessNeeded({ email }: { email: string }) {
             ออกจากระบบ
           </Button>
         </div>
-      </section>
+      </Card>
     </Page>
   );
 }

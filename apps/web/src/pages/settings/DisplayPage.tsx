@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { usePreferences, type Preferences } from "../../lib/preferences";
 import { useTheme, type ThemePreference } from "../../lib/theme";
+import { Card, CardHeader, CardFooter } from "../../components/ui/card";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "light", label: "สว่าง" },
@@ -113,18 +114,12 @@ export function DisplayPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section
-        aria-labelledby="theme-card-title"
-        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-      >
-        <div>
-          <h2 id="theme-card-title" className="text-base font-semibold">
-            ธีม
-          </h2>
-          <p className="mt-1 text-sm text-foreground-secondary">
-            มีผลทันทีกับอุปกรณ์นี้ และจำไว้สำหรับครั้งถัดไป
-          </p>
-        </div>
+      <Card as="section" aria-labelledby="theme-card-title" padding="md">
+        <CardHeader
+          id="theme-card-title"
+          title="ธีม"
+          description="มีผลทันทีกับอุปกรณ์นี้ และจำไว้สำหรับครั้งถัดไป"
+        />
         <div
           role="group"
           aria-label="ธีม"
@@ -152,21 +147,14 @@ export function DisplayPage() {
             );
           })}
         </div>
-      </section>
+      </Card>
 
-      <section
-        aria-labelledby="locale-card-title"
-        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-      >
-        <div>
-          <h2 id="locale-card-title" className="text-base font-semibold">
-            ภาษาและเวลา
-          </h2>
-          <p className="mt-1 text-sm text-foreground-secondary">
-            ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป
-            เก็บไว้ในเบราว์เซอร์นี้เท่านั้น
-          </p>
-        </div>
+      <Card as="section" aria-labelledby="locale-card-title" padding="md">
+        <CardHeader
+          id="locale-card-title"
+          title="ภาษาและเวลา"
+          description="ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป เก็บไว้ในเบราว์เซอร์นี้เท่านั้น"
+        />
 
         {saved ? (
           <Alert tone="success">บันทึกแล้ว ใช้กับเบราว์เซอร์นี้</Alert>
@@ -265,7 +253,7 @@ export function DisplayPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-foreground/10 pt-4">
+        <CardFooter>
           <Button
             type="button"
             variant="ghost"
@@ -287,8 +275,8 @@ export function DisplayPage() {
           >
             บันทึกการเปลี่ยนแปลง
           </Button>
-        </div>
-      </section>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

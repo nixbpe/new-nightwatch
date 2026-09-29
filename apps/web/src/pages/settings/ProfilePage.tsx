@@ -8,6 +8,8 @@ import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
+import { Card, CardHeader, CardFooter } from "../../components/ui/card";
+import { StatusPill } from "../../components/ui/status-pill";
 
 const NAME_MAX = 100;
 
@@ -32,10 +34,11 @@ export function ProfilePage() {
 
   if (meQuery.isPending) {
     return (
-      <section
+      <Card
+        as="section"
         role="status"
         aria-label="กำลังโหลดโปรไฟล์"
-        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
+        padding="md"
       >
         <Skeleton className="h-4 w-40" />
         <div className="flex items-center gap-4">
@@ -43,7 +46,7 @@ export function ProfilePage() {
           <Skeleton className="h-3 w-56" />
         </div>
         <Skeleton className="h-10 w-full max-w-md" />
-      </section>
+      </Card>
     );
   }
 
@@ -137,18 +140,12 @@ function ProfileForm({
   };
 
   return (
-    <section
-      aria-labelledby="profile-card-title"
-      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-    >
-      <div>
-        <h2 id="profile-card-title" className="text-base font-semibold">
-          ข้อมูลโปรไฟล์
-        </h2>
-        <p className="mt-1 text-sm text-foreground-secondary">
-          ชื่อที่แสดงให้สมาชิกองค์กรอื่นเห็นในกิจกรรมและคำเชิญ
-        </p>
-      </div>
+    <Card as="section" aria-labelledby="profile-card-title" padding="md">
+      <CardHeader
+        id="profile-card-title"
+        title="ข้อมูลโปรไฟล์"
+        description="ชื่อที่แสดงให้สมาชิกองค์กรอื่นเห็นในกิจกรรมและคำเชิญ"
+      />
 
       {notice === null ? null : <Alert tone={notice.tone}>{notice.text}</Alert>}
 
@@ -210,13 +207,9 @@ function ProfileForm({
             >
               อีเมล
               {emailVerified ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-xs font-medium text-primary">
-                  <span
-                    aria-hidden="true"
-                    className="h-1.5 w-1.5 rounded-full bg-current"
-                  />
+                <StatusPill tone="primary" dot>
                   ยืนยันแล้ว
-                </span>
+                </StatusPill>
               ) : null}
             </Label>
             <Input
@@ -235,7 +228,7 @@ function ProfileForm({
             </p>
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-foreground/10 pt-4">
+        <CardFooter>
           <Button
             type="button"
             variant="ghost"
@@ -251,8 +244,8 @@ function ProfileForm({
           <Button type="submit" disabled={!dirty || saving}>
             {saving ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}
           </Button>
-        </div>
+        </CardFooter>
       </form>
-    </section>
+    </Card>
   );
 }

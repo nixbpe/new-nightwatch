@@ -24,9 +24,7 @@ import {
   ROLE_LABELS,
   type InvitableRole,
 } from "../../lib/roles";
-
-const CARD =
-  "flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6";
+import { Card, CardHeader, CardFooter } from "../../components/ui/card";
 
 export function InvitationPanel({
   organizationId,
@@ -141,16 +139,12 @@ export function InvitationPanel({
 
   if (!currentScope) return null;
   return (
-    <section aria-labelledby="invite-card-title" className={CARD}>
-      <div>
-        <h2 id="invite-card-title" className="text-base font-semibold">
-          เชิญสมาชิกเข้าสู่ {organizationName}
-        </h2>
-        <p className="mt-1 text-sm text-foreground-secondary">
-          ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร
-          คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น
-        </p>
-      </div>
+    <Card as="section" aria-labelledby="invite-card-title" padding="md">
+      <CardHeader
+        id="invite-card-title"
+        title={<>เชิญสมาชิกเข้าสู่ {organizationName}</>}
+        description="ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น"
+      />
       {notice && (
         <div
           ref={noticeRef}
@@ -225,7 +219,7 @@ export function InvitationPanel({
             </select>
           </Field>
         </div>
-        <div className="flex justify-end border-t border-foreground/10 pt-4">
+        <CardFooter>
           <Button
             type="submit"
             style={{ outlineColor: "var(--primary)" }}
@@ -233,8 +227,8 @@ export function InvitationPanel({
           >
             {pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}
           </Button>
-        </div>
+        </CardFooter>
       </form>
-    </section>
+    </Card>
   );
 }

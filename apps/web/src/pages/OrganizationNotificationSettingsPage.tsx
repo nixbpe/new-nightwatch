@@ -13,6 +13,7 @@ import {
   updateOrganizationNotificationSettings,
 } from "../lib/api/notifications";
 import { useTenant } from "../lib/tenant/TenantProvider";
+import { Card, CardFooter } from "../components/ui/card";
 
 export function OrganizationNotificationSettingsPage() {
   const organizationId = useParams().organizationId;
@@ -89,14 +90,11 @@ function OrganizationNotificationSettingsForOrganization({
     return (
       <Page>
         {header}
-        <div
-          role="status"
-          className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-        >
+        <Card role="status" padding="md">
           <span className="sr-only">กำลังโหลดการตั้งค่า…</span>
           <Skeleton className="h-4 w-72 max-w-full" />
           <Skeleton className="h-3 w-full max-w-md" />
-        </div>
+        </Card>
       </Page>
     );
   if (settings.isError)
@@ -118,7 +116,7 @@ function OrganizationNotificationSettingsForOrganization({
   return (
     <Page>
       {header}
-      <section className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6">
+      <Card as="section" padding="md">
         {save.isError ? (
           <Alert tone="error">
             {save.error instanceof ApiError &&
@@ -145,7 +143,7 @@ function OrganizationNotificationSettingsForOrganization({
             </span>
           </span>
         </label>
-        <div className="flex justify-end border-t border-foreground/10 pt-4">
+        <CardFooter>
           <Button
             className="h-auto min-h-10 w-full max-w-full break-words whitespace-normal sm:w-auto"
             disabled={
@@ -157,8 +155,8 @@ function OrganizationNotificationSettingsForOrganization({
           >
             บันทึกการเปลี่ยนแปลง
           </Button>
-        </div>
-      </section>
+        </CardFooter>
+      </Card>
     </Page>
   );
 }

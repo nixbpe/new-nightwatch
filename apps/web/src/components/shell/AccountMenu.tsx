@@ -13,6 +13,7 @@ import {
 import { initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
+import { StatusPill } from "../ui/status-pill";
 
 export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
@@ -90,13 +91,9 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
             <div className="pb-3" />
           ) : (
             <div className="flex items-center gap-2 px-3 pt-2 pb-3 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-foreground">
-                <span
-                  aria-hidden="true"
-                  className="h-1.5 w-1.5 rounded-full bg-foreground-secondary"
-                />
+              <StatusPill dot>
                 {ROLE_LABELS[activeOrg.role] ?? activeOrg.role}
-              </span>
+              </StatusPill>
               <span className="truncate text-foreground-secondary">
                 {activeOrg.name}
               </span>

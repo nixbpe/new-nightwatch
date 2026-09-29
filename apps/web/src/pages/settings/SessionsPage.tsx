@@ -17,6 +17,9 @@ import {
   SESSIONS_QUERY_KEY,
   type SessionRow,
 } from "../../lib/sessions/sessions";
+import { Card, CardHeader, CardFooter } from "../../components/ui/card";
+import { StatusPill } from "../../components/ui/status-pill";
+import { IconTile } from "../../components/ui/icon-tile";
 
 const OTHERS = "__others__";
 
@@ -85,16 +88,17 @@ export function SessionsPage() {
 
   if (query.isPending) {
     return (
-      <section
+      <Card
+        as="section"
         role="status"
         aria-label="กำลังโหลดรายการเซสชัน"
-        className="flex flex-col gap-3 rounded-md border border-foreground/10 bg-surface p-6"
+        className="gap-3 p-6"
       >
         <Skeleton className="h-4 w-56" />
         {[0, 1, 2].map((row) => (
           <Skeleton key={row} className="h-16 w-full" />
         ))}
-      </section>
+      </Card>
     );
   }
 
@@ -136,18 +140,12 @@ export function SessionsPage() {
       : rows.filter((row) => row.token !== currentToken);
 
   return (
-    <section
-      aria-labelledby="sessions-card-title"
-      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-    >
-      <div>
-        <h2 id="sessions-card-title" className="text-base font-semibold">
-          อุปกรณ์ที่เข้าสู่ระบบอยู่
-        </h2>
-        <p className="mt-1 text-sm text-foreground-secondary">
-          เซสชันทั้งหมดของบัญชีนี้ ออกจากระบบอุปกรณ์ที่ไม่รู้จักได้ทันที
-        </p>
-      </div>
+    <Card as="section" aria-labelledby="sessions-card-title" padding="md">
+      <CardHeader
+        id="sessions-card-title"
+        title="อุปกรณ์ที่เข้าสู่ระบบอยู่"
+        description="เซสชันทั้งหมดของบัญชีนี้ ออกจากระบบอุปกรณ์ที่ไม่รู้จักได้ทันที"
+      />
 
       <ul className="flex flex-col rounded-md border border-foreground/10">
         {rows.map((row, index) => {
@@ -165,16 +163,13 @@ export function SessionsPage() {
               }`}
             >
               <div className="flex flex-wrap items-center gap-3">
-                <span
-                  aria-hidden="true"
-                  className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-foreground/5 text-foreground-secondary"
-                >
+                <IconTile>
                   {device.kind === "phone" ? (
                     <SmartphoneIcon size={20} />
                   ) : (
                     <LaptopIcon size={20} />
                   )}
-                </span>
+                </IconTile>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
@@ -184,13 +179,9 @@ export function SessionsPage() {
                       {device.label}
                     </span>
                     {isCurrent ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-xs font-medium text-primary">
-                        <span
-                          aria-hidden="true"
-                          className="h-1.5 w-1.5 rounded-full bg-current"
-                        />
+                      <StatusPill tone="primary" dot>
                         อุปกรณ์นี้
-                      </span>
+                      </StatusPill>
                     ) : null}
                   </div>
                   <p className="truncate text-xs text-foreground-secondary">
@@ -270,7 +261,7 @@ export function SessionsPage() {
         </Alert>
       ) : null}
       {others !== null && others.length > 0 ? (
-        <div className="flex flex-col gap-3 border-t border-foreground/10 pt-4">
+        <CardFooter variant="stack">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-foreground-secondary">
               อุปกรณ์นี้จะยังเข้าสู่ระบบอยู่ อุปกรณ์อื่นต้องเข้าสู่ระบบใหม่
@@ -325,9 +316,9 @@ export function SessionsPage() {
               {failure.message}
             </p>
           ) : null}
-        </div>
+        </CardFooter>
       ) : null}
-    </section>
+    </Card>
   );
 }
 

@@ -6,6 +6,7 @@ import { Alert, FieldValidationError, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
+import { Card, CardHeader, CardFooter } from "../../components/ui/card";
 
 const MIN_LENGTH = 8;
 
@@ -60,18 +61,14 @@ export function PasswordCard() {
   };
 
   return (
-    <section
-      aria-labelledby="password-card-title"
-      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-    >
-      <div>
-        <h2 id="password-card-title" className="text-base font-semibold">
-          รหัสผ่าน
-        </h2>
-        <p className="mt-1 text-sm text-foreground-secondary">
-          ต้องมีอย่างน้อย {MIN_LENGTH} ตัวอักษร และไม่ซ้ำกับรหัสผ่านเดิม
-        </p>
-      </div>
+    <Card as="section" aria-labelledby="password-card-title" padding="md">
+      <CardHeader
+        id="password-card-title"
+        title="รหัสผ่าน"
+        description={
+          <>ต้องมีอย่างน้อย {MIN_LENGTH} ตัวอักษร และไม่ซ้ำกับรหัสผ่านเดิม</>
+        }
+      />
 
       {notice === null ? null : <Alert tone="success">{notice}</Alert>}
       {formError === null ? null : <Alert tone="error">{formError}</Alert>}
@@ -180,7 +177,7 @@ export function PasswordCard() {
             )}
           </form.Field>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-foreground/10 pt-4">
+        <CardFooter variant="split">
           <p className="text-xs text-foreground-secondary">
             เปลี่ยนรหัสผ่านแล้ว อุปกรณ์อื่นทุกเครื่องจะถูกออกจากระบบ
           </p>
@@ -192,9 +189,9 @@ export function PasswordCard() {
               </Button>
             )}
           />
-        </div>
+        </CardFooter>
       </form>
-    </section>
+    </Card>
   );
 }
 

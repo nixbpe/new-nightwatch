@@ -18,6 +18,7 @@ import {
 } from "../lib/api/members";
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
+import { Card } from "../components/ui/card";
 
 const LIMIT = 50;
 
@@ -201,17 +202,17 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <div
+        <Card
           role="status"
           aria-label="กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"
-          className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
+          padding="md"
         >
           <p className="text-sm text-foreground-secondary">
             กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก
           </p>
           <Skeleton className="h-4 w-72 max-w-full" />
           <Skeleton className="h-64 w-full" />
-        </div>
+        </Card>
       </Page>
     );
   }
