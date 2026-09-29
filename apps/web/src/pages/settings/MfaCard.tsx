@@ -22,6 +22,9 @@ import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert, Field, FieldValidationError, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
+import { CardHeader, CardSection } from "../../components/ui/card";
+import { StatusPill } from "../../components/ui/status-pill";
+import { IconTile } from "../../components/ui/icon-tile";
 
 type EnrollmentDraft = { totpURI: string; backupCodes: string[] };
 
@@ -289,22 +292,26 @@ export function MfaCard({
         : groupedSecret(secret);
 
   return (
-    <section
-      aria-labelledby="mfa-card-title"
-      className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-    >
-      <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
-        <div className="min-w-0">
-          <h2 id="mfa-card-title" className="text-base font-semibold">
-            ยืนยันสองขั้นตอน (MFA)
-          </h2>
-          <p className="mt-1 text-sm text-foreground-secondary">
-            ใช้รหัส 6 หลักจากแอปยืนยันตัวตน (TOTP) เพิ่มอีกชั้นเมื่อเข้าสู่ระบบ
-            ไม่บังคับ แต่แนะนำสำหรับเจ้าของและผู้ดูแลองค์กร
-          </p>
-        </div>
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
-      </div>
+    <CardSection aria-labelledby="mfa-card-title">
+      <CardHeader
+        id="mfa-card-title"
+        title="ยืนยันสองขั้นตอน (MFA)"
+        description="ใช้รหัส 6 หลักจากแอปยืนยันตัวตน (TOTP) เพิ่มอีกชั้นเมื่อเข้าสู่ระบบ ไม่บังคับ แต่แนะนำสำหรับเจ้าของและผู้ดูแลองค์กร"
+        action={
+          <StatusPill
+            tone={
+              status.tone === "positive"
+                ? "primary"
+                : status.tone === "caution"
+                  ? "caution"
+                  : "muted"
+            }
+            dot
+          >
+            {status.label}
+          </StatusPill>
+        }
+      />
 
       {enabled ? (
         <>
@@ -317,7 +324,7 @@ export function MfaCard({
           <div className="flex flex-col rounded-md border border-foreground/10">
             <div className="flex items-center justify-between gap-3 border-b border-foreground/10 p-4">
               <div className="flex min-w-0 items-center gap-3">
-                <IconTile tone="positive">
+                <IconTile>
                   <SmartphoneIcon size={20} />
                 </IconTile>
                 <div className="min-w-0">
@@ -681,7 +688,12 @@ export function MfaCard({
             </div>
             <StepFooter
               left={
-                <Button type="button" variant="ghost" onClick={resetEnrollment}>
+                <Button
+                  wrap
+                  type="button"
+                  variant="ghost"
+                  onClick={resetEnrollment}
+                >
                   ยกเลิก
                 </Button>
               }
@@ -689,7 +701,7 @@ export function MfaCard({
                 <enableForm.Subscribe
                   selector={(state) => state.isSubmitting}
                   children={(submitting) => (
-                    <Button type="submit" disabled={submitting}>
+                    <Button wrap type="submit" disabled={submitting}>
                       {submitting ? "กำลังตรวจสอบ…" : "ถัดไป: สแกนคิวอาร์โค้ด"}
                       <ArrowRightIcon size={16} />
                     </Button>
@@ -729,11 +741,12 @@ export function MfaCard({
                 <p className="text-sm text-foreground-secondary">
                   หรือกรอกคีย์นี้ในแอปด้วยตนเองถ้าสแกนไม่ได้
                 </p>
-                <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center [&_button]:h-auto [&_button]:min-w-0 [&_button]:whitespace-normal">
+                <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                   <code className="block min-w-0 flex-1 break-all rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-sm tracking-wider">
                     {secretDisplay}
                   </code>
                   <Button
+                    wrap
                     type="button"
                     variant="secondary"
                     size="sm"
@@ -777,6 +790,7 @@ export function MfaCard({
           <StepFooter
             left={
               <Button
+                wrap
                 type="button"
                 variant="ghost"
                 onClick={() => {
@@ -792,6 +806,7 @@ export function MfaCard({
             }
             right={
               <Button
+                wrap
                 type="button"
                 disabled={!acknowledged}
                 onClick={() => {
@@ -825,13 +840,9 @@ export function MfaCard({
                 <span className="font-mono">30</span> วินาที
               </p>
               {error === null ? null : codeInvalid ? (
-                <p
-                  id={VERIFY_TOTP_SERVER_ERROR_ID}
-                  role="alert"
-                  className="rounded-md border border-danger/40 bg-danger/8 px-3 py-2 text-sm text-danger"
-                >
+                <Alert id={VERIFY_TOTP_SERVER_ERROR_ID} tone="error">
                   {error}
-                </p>
+                </Alert>
               ) : (
                 <Alert tone="error">{error}</Alert>
               )}
@@ -886,6 +897,7 @@ export function MfaCard({
             <StepFooter
               left={
                 <Button
+                  wrap
                   type="button"
                   variant="ghost"
                   onClick={() => {
@@ -902,7 +914,7 @@ export function MfaCard({
                 <verifyForm.Subscribe
                   selector={(state) => state.isSubmitting}
                   children={(submitting) => (
-                    <Button type="submit" disabled={submitting}>
+                    <Button wrap type="submit" disabled={submitting}>
                       <CheckIcon size={16} />
                       {submitting ? "กำลังยืนยัน…" : "ยืนยันและเปิดใช้งาน"}
                     </Button>
@@ -913,7 +925,7 @@ export function MfaCard({
           </form>
         </>
       )}
-    </section>
+    </CardSection>
   );
 }
 
@@ -970,7 +982,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
 
 function StepFooter({ left, right }: { left: ReactNode; right: ReactNode }) {
   return (
-    <div className="flex flex-col items-stretch gap-2 border-t border-foreground/10 pt-4 sm:flex-row sm:items-center sm:justify-between [&_button]:h-auto [&_button]:min-h-10 [&_button]:min-w-0 [&_button]:whitespace-normal [&_button]:py-2">
+    <div className="flex flex-col items-stretch gap-2 border-t border-foreground/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
       {left}
       {right}
     </div>
@@ -996,12 +1008,13 @@ function CodesHeader({
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-foreground-secondary">{description}</p>
       </div>
-      <div className="flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:flex-wrap sm:items-center [&_button]:h-auto [&_button]:min-w-0 [&_button]:whitespace-normal">
-        <Button type="button" variant="ghost" size="sm" onClick={onCopy}>
+      <div className="flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:flex-wrap sm:items-center">
+        <Button wrap type="button" variant="ghost" size="sm" onClick={onCopy}>
           <CopyIcon size={14} />
           {copied ? "คัดลอกแล้ว" : "คัดลอกทั้งหมด"}
         </Button>
         <Button
+          wrap
           type="button"
           variant="ghost"
           size="sm"
@@ -1026,50 +1039,5 @@ function BackupCodes({ codes }: { codes: string[] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-function IconTile({
-  tone = "neutral",
-  children,
-}: {
-  tone?: "neutral" | "positive";
-  children: ReactNode;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-foreground/5 ${
-        tone === "positive" ? "text-primary" : "text-foreground-secondary"
-      }`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function StatusBadge({
-  tone,
-  children,
-}: {
-  tone: "neutral" | "caution" | "positive";
-  children: ReactNode;
-}) {
-  const color =
-    tone === "positive"
-      ? "text-primary"
-      : tone === "caution"
-        ? "text-caution"
-        : "text-foreground-secondary";
-  return (
-    <span
-      className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border border-foreground/10 bg-surface px-2 py-0.5 text-xs font-medium whitespace-nowrap ${color}`}
-    >
-      <span
-        aria-hidden="true"
-        className="h-1.5 w-1.5 rounded-full bg-current"
-      />
-      {children}
-    </span>
   );
 }

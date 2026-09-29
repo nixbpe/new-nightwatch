@@ -86,9 +86,8 @@ describe("OrganizationNotificationSettingsPage", () => {
       version: 1,
     });
     renderPage();
-    expect(
-      await screen.findByText("Org A · ตั้งค่าองค์กร"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Org A")).toBeInTheDocument();
+    expect(screen.getByText("ตั้งค่าองค์กร")).toBeInTheDocument();
     // The slug is the unique identifier; names may repeat.
     expect(screen.getByText("org-a")).toBeInTheDocument();
   });
@@ -120,6 +119,7 @@ describe("OrganizationNotificationSettingsPage", () => {
     );
 
     expect(await screen.findByRole("checkbox")).not.toBeChecked();
+    expect(await screen.findByText("บันทึกแล้ว")).toBeInTheDocument();
   });
 
   it("shows a distinct permission denial and optimistic-concurrency conflict", async () => {

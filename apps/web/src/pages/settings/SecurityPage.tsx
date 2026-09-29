@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import { MfaCard } from "./MfaCard";
 import { PasswordCard } from "./PasswordCard";
+import { Card } from "../../components/ui/card";
 
 // The server's twoFactorEnabled flag is the only source of the card's enabled state.
 export function SecurityPage() {
@@ -16,15 +17,11 @@ export function SecurityPage() {
 
   if (meQuery.isPending) {
     return (
-      <div
-        role="status"
-        aria-label="กำลังโหลดข้อมูลความปลอดภัย"
-        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-      >
+      <Card role="status" aria-label="กำลังโหลดข้อมูลความปลอดภัย" padding="md">
         <Skeleton className="h-4 w-48" />
         <Skeleton className="h-3 w-full max-w-lg" />
         <Skeleton className="h-16 w-full" />
-      </div>
+      </Card>
     );
   }
 
@@ -57,12 +54,12 @@ export function SecurityPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <Card className="divide-y divide-foreground/10">
       <MfaCard
         enabled={meQuery.data.user.twoFactorEnabled}
         refreshStatus={refreshStatus}
       />
       <PasswordCard />
-    </div>
+    </Card>
   );
 }

@@ -3,9 +3,10 @@ import { useState } from "react";
 import { useParams } from "react-router";
 
 import { Page, PageHeader } from "../components/shell/Page";
-import { Skeleton } from "../components/shell/Skeleton";
+import { PageState } from "../components/shell/PageState";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
+import { Notice } from "../components/ui/notice";
 import { ApiError } from "../lib/api/client";
 import {
   fetchOrganizationNotificationSettings,
@@ -13,6 +14,7 @@ import {
   updateOrganizationNotificationSettings,
 } from "../lib/api/notifications";
 import { useTenant } from "../lib/tenant/TenantProvider";
+import { Card, CardFooter, CardHeader } from "../components/ui/card";
 
 export function OrganizationNotificationSettingsPage() {
   const organizationId = useParams().organizationId;
@@ -67,65 +69,92 @@ function OrganizationNotificationSettingsForOrganization({
   );
   const header = (
     <PageHeader
-      eyebrow={
+      scope={
         organization === undefined
-          ? "ตั้งค่าองค์กร"
-          : `${organization.name} · ตั้งค่าองค์กร`
+          ? { label: "ตั้งค่าองค์กร" }
+          : {
+              mark: organization.name,
+              label: organization.name,
+              tag: "ตั้งค่าองค์กร",
+            }
       }
       title="ตั้งค่าการแจ้งเตือน"
-      description={
-        organization === undefined ? (
-          "ใช้กับสมาชิกทุกคนขององค์กรนี้"
-        ) : (
-          <>
-            slug <span className="font-mono">{organization.slug}</span> ·
-            ใช้กับสมาชิกทุกคนขององค์กรนี้
-          </>
+      status={
+        organization === undefined ? undefined : (
+          <span>
+            slug <span className="font-mono">{organization.slug}</span>
+          </span>
         )
       }
+      description="ใช้กับสมาชิกทุกคนขององค์กรนี้"
     />
   );
   if (settings.isPending)
     return (
-      <Page>
+      <Page width="form">
         {header}
-        <div
-          role="status"
-          className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-        >
-          <span className="sr-only">กำลังโหลดการตั้งค่า…</span>
-          <Skeleton className="h-4 w-72 max-w-full" />
-          <Skeleton className="h-3 w-full max-w-md" />
-        </div>
+        <PageState kind="loading" label="กำลังโหลดการตั้งค่า…" />
       </Page>
     );
   if (settings.isError)
     return (
-      <Page>
+      <Page width="form">
         {header}
-        <Alert tone="error">
-          {settings.error instanceof ApiError &&
-          ["PERMISSION_DENIED", "MEMBERSHIP_DENIED"].includes(
-            settings.error.code,
-          )
-            ? "คุณไม่มีสิทธิ์จัดการการตั้งค่านี้"
-            : "โหลดการตั้งค่าไม่สำเร็จ"}
-        </Alert>
+        {settings.error instanceof ApiError &&
+        ["PERMISSION_DENIED", "MEMBERSHIP_DENIED"].includes(
+          settings.error.code,
+        ) ? (
+          <PageState
+            kind="denied"
+            message="คุณไม่มีสิทธิ์จัดการการตั้งค่านี้"
+          />
+        ) : (
+          <PageState
+            kind="error"
+            message="โหลดการตั้งค่าไม่สำเร็จ"
+            retryLabel="ลองใหม่"
+            onRetry={() => void settings.refetch()}
+          />
+        )}
       </Page>
     );
   const settingsData = settings.data;
   const value = enabled ?? settingsData.settingsChangedEnabled;
   return (
-    <Page>
+    <Page width="form">
       {header}
-      <section className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6">
+      <Card
+        as="section"
+        aria-labelledby="notification-settings-card-title"
+        padding="md"
+      >
+        <CardHeader
+          id="notification-settings-card-title"
+          title="ตั้งค่าการแจ้งเตือน"
+        />
         {save.isError ? (
-          <Alert tone="error">
-            {save.error instanceof ApiError &&
-            save.error.code === "SETTINGS_VERSION_CONFLICT"
-              ? "การตั้งค่าถูกเปลี่ยนโดยผู้อื่น กรุณาโหลดใหม่"
-              : "บันทึกการตั้งค่าไม่สำเร็จ"}
-          </Alert>
+          <div className="flex flex-col gap-3">
+            <Alert tone="error">
+              {save.error instanceof ApiError &&
+              save.error.code === "SETTINGS_VERSION_CONFLICT"
+                ? "การตั้งค่าถูกเปลี่ยนโดยผู้อื่น กรุณาโหลดใหม่"
+                : "บันทึกการตั้งค่าไม่สำเร็จ"}
+            </Alert>
+            <div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  save.reset();
+                  setEnabled(null);
+                  void settings.refetch();
+                }}
+              >
+                ลองใหม่
+              </Button>
+            </div>
+          </div>
         ) : null}
         <label className="flex items-start gap-3">
           <input
@@ -145,9 +174,11 @@ function OrganizationNotificationSettingsForOrganization({
             </span>
           </span>
         </label>
-        <div className="flex justify-end border-t border-foreground/10 pt-4">
+        <CardFooter variant="split">
+          <Notice tone="success">{save.isSuccess ? "บันทึกแล้ว" : null}</Notice>
           <Button
-            className="h-auto min-h-10 w-full max-w-full break-words whitespace-normal sm:w-auto"
+            type="button"
+            wrap
             disabled={
               value === settingsData.settingsChangedEnabled || save.isPending
             }
@@ -155,10 +186,10 @@ function OrganizationNotificationSettingsForOrganization({
               save.mutate({ value, expectedVersion: settingsData.version });
             }}
           >
-            บันทึกการเปลี่ยนแปลง
+            {save.isPending ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}
           </Button>
-        </div>
-      </section>
+        </CardFooter>
+      </Card>
     </Page>
   );
 }

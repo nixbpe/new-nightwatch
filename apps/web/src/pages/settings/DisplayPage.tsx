@@ -1,11 +1,17 @@
 import { useId, useMemo, useState } from "react";
 
-import { MonitorIcon } from "../../components/shell/icons";
 import { Alert, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { SegmentedControl } from "../../components/ui/segmented-control";
 import { Label } from "../../components/ui/label";
 import { usePreferences, type Preferences } from "../../lib/preferences";
 import { useTheme, type ThemePreference } from "../../lib/theme";
+import {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardSection,
+} from "../../components/ui/card";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "light", label: "สว่าง" },
@@ -112,61 +118,29 @@ export function DisplayPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <section
-        aria-labelledby="theme-card-title"
-        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-      >
-        <div>
-          <h2 id="theme-card-title" className="text-base font-semibold">
-            ธีม
-          </h2>
-          <p className="mt-1 text-sm text-foreground-secondary">
-            มีผลทันทีกับอุปกรณ์นี้ และจำไว้สำหรับครั้งถัดไป
-          </p>
-        </div>
-        <div
-          role="group"
-          aria-label="ธีม"
-          className="inline-flex self-start gap-0.5 rounded-md border border-foreground/10 p-0.5"
-        >
-          {THEME_OPTIONS.map((option) => {
-            const active = option.value === theme;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  setTheme(option.value);
-                }}
-                className={`inline-flex h-8 items-center gap-2 rounded-md px-3.5 text-sm ${
-                  active
-                    ? "bg-foreground/8 font-medium text-foreground"
-                    : "text-foreground-secondary hover:text-foreground"
-                }`}
-              >
-                {option.value === "system" ? <MonitorIcon size={16} /> : null}
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+    <Card className="divide-y divide-foreground/10">
+      <CardSection aria-labelledby="theme-card-title">
+        <CardHeader
+          id="theme-card-title"
+          title="ธีม"
+          description="มีผลทันทีกับอุปกรณ์นี้ และจำไว้สำหรับครั้งถัดไป"
+        />
+        <SegmentedControl
+          label="ธีม"
+          value={theme}
+          options={THEME_OPTIONS}
+          onChange={(value) => {
+            setTheme(value);
+          }}
+        />
+      </CardSection>
 
-      <section
-        aria-labelledby="locale-card-title"
-        className="flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6"
-      >
-        <div>
-          <h2 id="locale-card-title" className="text-base font-semibold">
-            ภาษาและเวลา
-          </h2>
-          <p className="mt-1 text-sm text-foreground-secondary">
-            ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป
-            เก็บไว้ในเบราว์เซอร์นี้เท่านั้น
-          </p>
-        </div>
+      <CardSection aria-labelledby="locale-card-title">
+        <CardHeader
+          id="locale-card-title"
+          title="ภาษาและเวลา"
+          description="ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป เก็บไว้ในเบราว์เซอร์นี้เท่านั้น"
+        />
 
         {saved ? (
           <Alert tone="success">บันทึกแล้ว ใช้กับเบราว์เซอร์นี้</Alert>
@@ -265,7 +239,7 @@ export function DisplayPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-foreground/10 pt-4">
+        <CardFooter>
           <Button
             type="button"
             variant="ghost"
@@ -287,8 +261,8 @@ export function DisplayPage() {
           >
             บันทึกการเปลี่ยนแปลง
           </Button>
-        </div>
-      </section>
-    </div>
+        </CardFooter>
+      </CardSection>
+    </Card>
   );
 }

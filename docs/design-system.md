@@ -6,13 +6,14 @@ Calm, precise security operations: readable evidence, clear scope, obvious next 
 
 ## Tokens
 
-Nine semantic roles, the same in both themes. Every color in the product comes from this table.
+Ten semantic roles, the same in both themes. Every color in the product comes from this table.
 
 | Role             | Light     | Dark      | Use                                          |
 | ---------------- | --------- | --------- | -------------------------------------------- |
-| Canvas           | `#f7f8fa` | `#000000` | Page background                              |
-| Surface          | `#ffffff` | `#121316` | Cards, panels, overlays, controls            |
+| Canvas           | `#f7f8fa` | `#0b0c0e` | Page background                              |
+| Surface          | `#ffffff` | `#0e0f12` | Cards, panels, overlays, controls            |
 | Text             | `#171a1f` | `#f3f4f6` | Body text, icons                             |
+| Heading          | `#171a1f` | `#ffffff` | Page and card titles                         |
 | Secondary text   | `#5b6470` | `#adb5bf` | Descriptions, eyebrows, timestamps           |
 | Control boundary | `#7b8490` | `#5b6470` | Input and secondary-button borders           |
 | Primary          | `#087a55` | `#3ecf8e` | Primary action fill, focus ring, active icon |

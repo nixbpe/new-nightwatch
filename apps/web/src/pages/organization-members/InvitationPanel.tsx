@@ -24,9 +24,7 @@ import {
   ROLE_LABELS,
   type InvitableRole,
 } from "../../lib/roles";
-
-const CARD =
-  "flex flex-col gap-6 rounded-md border border-foreground/10 bg-surface p-6";
+import { Card, CardHeader } from "../../components/ui/card";
 
 export function InvitationPanel({
   organizationId,
@@ -141,16 +139,11 @@ export function InvitationPanel({
 
   if (!currentScope) return null;
   return (
-    <section aria-labelledby="invite-card-title" className={CARD}>
-      <div>
-        <h2 id="invite-card-title" className="text-base font-semibold">
-          เชิญสมาชิกเข้าสู่ {organizationName}
-        </h2>
-        <p className="mt-1 text-sm text-foreground-secondary">
-          ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร
-          คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น
-        </p>
-      </div>
+    <Card as="section" aria-labelledby="invite-card-title" padding="md">
+      <CardHeader
+        id="invite-card-title"
+        title={<>เชิญสมาชิกเข้าสู่ {organizationName}</>}
+      />
       {notice && (
         <div
           ref={noticeRef}
@@ -160,12 +153,12 @@ export function InvitationPanel({
           {notice.tone === "error" ? (
             <Alert tone="error">{notice.text}</Alert>
           ) : (
-            <p
+            <Alert
+              tone={notice.tone === "warning" ? "warning" : "success"}
               role="status"
-              className={`rounded-md border px-3 py-2 text-sm ${notice.tone === "warning" ? "border-caution/40 text-caution" : "border-primary/40 text-primary"}`}
             >
               {notice.text}
-            </p>
+            </Alert>
           )}
         </div>
       )}
@@ -174,38 +167,27 @@ export function InvitationPanel({
           event.preventDefault();
           void submit();
         }}
-        className="flex flex-col gap-6"
+        className="flex flex-col gap-3"
         noValidate
       >
-        <div className="grid max-w-2xl gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
-          <div>
-            <Field label="อีเมลของผู้ได้รับเชิญ">
-              <Input
-                ref={emailRef}
-                type="email"
-                name="invite-email"
-                autoComplete="off"
-                value={email}
-                style={{ outlineColor: "var(--primary)" }}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  setFieldError(null);
-                }}
-                aria-invalid={fieldError !== null}
-                aria-describedby={fieldError ? "invite-email-error" : undefined}
-              />
-            </Field>
-            {fieldError && (
-              <span
-                id="invite-email-error"
-                role="alert"
-                className="mt-1 block text-sm text-danger"
-              >
-                {fieldError}
-              </span>
-            )}
-          </div>
-          <Field label="บทบาท">
+        {/* Bottom-aligned so the button meets the fields whatever the label height; the error sits under the row. */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+          <Field label="อีเมลของผู้ได้รับเชิญ" className="min-w-0 flex-1">
+            <Input
+              ref={emailRef}
+              type="email"
+              name="invite-email"
+              autoComplete="off"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setFieldError(null);
+              }}
+              aria-invalid={fieldError !== null}
+              aria-describedby={fieldError ? "invite-email-error" : undefined}
+            />
+          </Field>
+          <Field label="บทบาท" className="sm:w-[200px]">
             <select
               name="invite-role"
               value={role}
@@ -224,17 +206,24 @@ export function InvitationPanel({
               ))}
             </select>
           </Field>
-        </div>
-        <div className="flex justify-end border-t border-foreground/10 pt-4">
-          <Button
-            type="submit"
-            style={{ outlineColor: "var(--primary)" }}
-            disabled={pending}
-          >
+          <Button type="submit" disabled={pending}>
             {pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}
           </Button>
         </div>
+        {fieldError && (
+          <span
+            id="invite-email-error"
+            role="alert"
+            className="text-sm text-danger"
+          >
+            {fieldError}
+          </span>
+        )}
+        <p className="text-xs text-foreground-secondary">
+          ผู้ได้รับเชิญต้องยืนยันอีเมลก่อนเข้าถึงองค์กร
+          คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น
+        </p>
       </form>
-    </section>
+    </Card>
   );
 }

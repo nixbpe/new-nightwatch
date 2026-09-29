@@ -46,7 +46,7 @@ export function Header({
     "inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground";
 
   return (
-    <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-foreground/10 bg-surface px-3 sm:px-4">
+    <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-foreground/10 bg-background px-3 sm:px-4">
       <button
         ref={mobileMenuButtonRef}
         type="button"

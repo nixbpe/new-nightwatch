@@ -1,6 +1,6 @@
 # App shell
 
-The shell is the chrome around every signed-in page: a sidebar, a header and a scrollable main column. Tokens, type and spacing follow `docs/design-system.md`. Routes without chrome (sign-in, password reset, invitation, two-factor, e-mail verification, onboarding) render in a bare layout; the not-found page stands outside both.
+The shell is the chrome around every signed-in page: a sidebar, a header and a scrollable main column. Sidebar and header sit on Canvas behind hairline edges; Surface is for cards, fields and overlays. Tokens, type and spacing follow `docs/design-system.md`. Routes without chrome (sign-in, password reset, invitation, two-factor, e-mail verification, onboarding) render in a bare layout; the not-found page stands outside both.
 
 ## Layout
 
@@ -22,7 +22,7 @@ The shell is the chrome around every signed-in page: a sidebar, a header and a s
 | Sidebar, rail     | 56 px icon rail below 1024 px                                                                                          |
 | Sidebar, drawer   | Slide-in over the page below 640 px; modal, focus moves to its close control on open and back to the toggle on close   |
 | Header            | 56 px: sidebar toggle, breadcrumb, search-all field with a ⌘K / Ctrl+K hint, notifications; no product logo or avatar |
-| Main              | Scrollable, 32 px padding; page column 960 px left-aligned with 24 px rhythm                                           |
+| Main              | Scrollable, 32 px padding; data pages fill the column, form pages cap at 720 px; 24 px rhythm; overview, inbox and directory carry a canvas grain |
 
 The header toggle overrides the breakpoint default until the breakpoint itself changes. ⌘K / Ctrl+K opens the command palette from anywhere in the shell. The product mark appears only where there is no organization to show: sign-in, auth cards, not-found, and the sidebar of a user without membership.
 
@@ -35,7 +35,7 @@ One navigation definition feeds the sidebar, the command palette and the setting
 - A path may carry an organization parameter resolved against the active organization; a leaf that needs one is hidden when there is none.
 - Palette entries are searchable in ⌘K under the leaf's label and form the leaf's tab strip, but are never sidebar rows. The leaf is active on every one of its tabs.
 - Only real destinations are listed; no placeholder routes.
-- Active row: Text at low opacity as fill, medium weight, Primary icon, `aria-current="page"`.
+- Active row: Primary at 12% as fill with Primary text, a 3 px Primary bar on the left edge (also on the rail button), medium weight, `aria-current="page"`. The sidebar width changes over 150 ms; hover fills over 100 ms.
 
 Example (NightWatch): ภาพรวม; การแจ้งเตือน; การตั้งค่าส่วนตัว with tabs โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล; group องค์กร with สมาชิก and ตั้งค่าการแจ้งเตือน (owner, admin).
 
@@ -57,7 +57,7 @@ Shared menu-button behavior: focus moves in on open; ↑↓ move between items; 
 
 ## Page frame
 
-Every routed page uses one frame: a 960 px left-aligned column with 24 px rhythm and a page header with an eyebrow for scope, the title, an optional description and actions on the right that wrap under the title when the width runs out. Cards are hairline panels, never shadows. Forms bound their fields (about 448 px wide or a two-column grid) and put actions in a row under a hairline. Page-level loading and error states render as cards inside the frame, never as their own main region.
+Every routed page uses one frame: a fluid column (forms cap at 720 px) with 24 px rhythm and a page header with a scope row (organization or account mark, name and a role or context pill, no separator characters), the 24 px title, a status line for facts (slug, counts, freshness; identifiers and numbers in monospace), an optional description and actions on the right that wrap under the title when the width runs out. Cards are hairline panels, never shadows. Forms bound their fields (about 448 px wide or a two-column grid) and put actions in a row under a hairline. Page-level loading and error states render as cards inside the frame, never as their own main region.
 
 ## Theme
 

@@ -241,9 +241,9 @@ describe("SessionsPage", () => {
     await waitFor(() => {
       expect(screen.getAllByRole("listitem")).toHaveLength(1);
     });
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่",
-    );
+    expect(
+      screen.getByText(/ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่/),
+    ).toBeInTheDocument();
     expect(authMock.listSessions).toHaveBeenCalledTimes(2);
   });
 

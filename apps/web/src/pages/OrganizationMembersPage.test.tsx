@@ -620,7 +620,7 @@ describe("OrganizationMembersPage", () => {
     await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
     expect(await screen.findByText("workspace")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });
@@ -723,7 +723,7 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
-    expect(screen.getByText("Beta · beta")).toBeInTheDocument();
+    expect(screen.getByText("beta")).toBeInTheDocument();
     expect(screen.getByText("แสดง 1–1 จาก 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
@@ -912,7 +912,7 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationId}/members`,
     );
-    expect(screen.getByText("Acme · acme")).toBeInTheDocument();
+    expect(screen.getByText("acme")).toBeInTheDocument();
     expect(screen.getByText("A-second")).toBeInTheDocument();
     expect(screen.queryByText("B-only")).not.toBeInTheDocument();
     expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
@@ -989,7 +989,7 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationId}/members`,
     );
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
     expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
@@ -1001,7 +1001,7 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
   });
 
   it("announces a pending membership refresh and recovers after a denied list", async () => {
@@ -1139,7 +1139,7 @@ describe("OrganizationMembersPage", () => {
 
     expect(await screen.findByText("workspace")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
     expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
@@ -1175,7 +1175,7 @@ describe("OrganizationMembersPage", () => {
     expect(
       screen.getByRole("button", { name: "ลองอีกครั้ง" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1207,7 +1207,7 @@ describe("OrganizationMembersPage", () => {
     expect(
       screen.getByRole("button", { name: "ลองอีกครั้ง" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1333,7 +1333,7 @@ describe("OrganizationMembersPage", () => {
     await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
     expect(await screen.findByText("workspace")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1402,8 +1402,8 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
-    expect(screen.getByText("Beta · beta")).toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
+    expect(screen.getByText("beta")).toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
       1,
       organizationId,
@@ -1473,7 +1473,7 @@ describe("OrganizationMembersPage", () => {
 
     expect(await screen.findByText("workspace")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(screen.queryByText("Acme · acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("acme")).not.toBeInTheDocument();
     expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();

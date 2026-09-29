@@ -13,6 +13,7 @@ import {
 import { initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
+import { StatusPill } from "../ui/status-pill";
 
 export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
@@ -75,7 +76,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
           role="menu"
           aria-label="บัญชีของฉัน"
           tabIndex={-1}
-          className="absolute bottom-full left-2 z-50 mb-2 w-72 rounded-md border border-foreground/10 bg-surface shadow-lg focus:outline-none"
+          className="overlay-enter absolute bottom-full left-2 z-50 mb-2 w-72 rounded-md border border-foreground/10 bg-surface shadow-lg focus:outline-none"
         >
           <div className="flex items-center gap-3 px-3 pt-3">
             <Avatar name={name} size="lg" />
@@ -90,13 +91,9 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
             <div className="pb-3" />
           ) : (
             <div className="flex items-center gap-2 px-3 pt-2 pb-3 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2 py-0.5 text-foreground">
-                <span
-                  aria-hidden="true"
-                  className="h-1.5 w-1.5 rounded-full bg-foreground-secondary"
-                />
+              <StatusPill dot>
                 {ROLE_LABELS[activeOrg.role] ?? activeOrg.role}
-              </span>
+              </StatusPill>
               <span className="truncate text-foreground-secondary">
                 {activeOrg.name}
               </span>
@@ -151,7 +148,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex flex-shrink-0 items-center justify-center rounded-full border border-foreground/10 bg-surface font-medium text-foreground ${
+      className={`inline-flex flex-shrink-0 items-center justify-center rounded-full border border-primary/35 bg-primary/14 font-medium text-primary ${
         size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs"
       }`}
     >
