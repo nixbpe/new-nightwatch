@@ -4,6 +4,7 @@ import {
   checkMonitorUrl,
   monitorConfigSchema,
   monitorCreateSchema,
+  monitorEditSchema,
   monitorHistoryQuerySchema,
   monitorListQuerySchema,
   monitorRecentEventsQuerySchema,
@@ -562,5 +563,93 @@ describe("read query schemas", () => {
     expect(
       monitorResponseTimesQuerySchema.safeParse({ range: "1y" }).success,
     ).toBe(false);
+  });
+});
+
+describe("secret entries", () => {
+  const id = "5b0c1a3e-6f0a-4a57-9c4e-8d1b2a3c4d5e";
+  const created = (extra: Record<string, unknown>) =>
+    monitorCreateSchema.safeParse({
+      ...base,
+      clientRequestId: crypto.randomUUID(),
+      ...extra,
+    });
+  const failures = (result: ReturnType<typeof created>) =>
+    result.success
+      ? []
+      : result.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          reason:
+            issue.code === "custom"
+              ? (issue.params as { reason: string }).reason
+              : issue.code,
+        }));
+
+  it("keeps rejecting a secrets field on the plain config", () => {
+    expect(
+      monitorConfigSchema.safeParse({
+        ...base,
+        secrets: [{ slot: "auth.token", value: "x" }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts Create entries and defaults to none", () => {
+    expect(created({}).success).toBe(true);
+    expect(
+      created({
+        headers: [{ id, name: "X-S", secret: true }],
+        secrets: [{ slot: `header.${id.toUpperCase()}`, value: "v" }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("names the entry field and reason for each bad value", () => {
+    expect(
+      failures(created({ secrets: [{ slot: "auth.other", value: "v" }] })),
+    ).toEqual([{ path: "secrets.0.slot", reason: "invalid_format" }]);
+    expect(
+      failures(
+        created({
+          secrets: [
+            { slot: "auth.token", value: "a" },
+            { slot: "auth.token", value: "b" },
+          ],
+        }),
+      ),
+    ).toEqual([{ path: "secrets.1.slot", reason: "duplicate" }]);
+    expect(
+      failures(created({ secrets: [{ slot: "auth.token", value: "a\r\nb" }] })),
+    ).toEqual([{ path: "secrets.0.value", reason: "crlf" }]);
+    expect(
+      failures(
+        created({ secrets: [{ slot: "auth.token", value: "é".repeat(2049) }] }),
+      ),
+    ).toEqual([{ path: "secrets.0.value", reason: "too_long" }]);
+  });
+
+  it("requires a client-chosen id for a secret header", () => {
+    expect(
+      failures(created({ headers: [{ name: "X-S", secret: true }] })),
+    ).toEqual([{ path: "headers.0.id", reason: "required" }]);
+  });
+
+  it("checks Edit actions against their values", () => {
+    const edited = (secrets: unknown[]) =>
+      monitorEditSchema.safeParse({ ...base, expectedVersion: 1, secrets });
+    expect(
+      edited([
+        { slot: "auth.token", action: "keep" },
+        { slot: "auth.password", action: "delete" },
+      ]).success,
+    ).toBe(true);
+    for (const entry of [
+      { slot: "auth.token", action: "replace" },
+      { slot: "auth.token", action: "replace", value: "" },
+      { slot: "auth.token", action: "keep", value: "x" },
+      { slot: "auth.token", action: "rotate", value: "x" },
+    ]) {
+      expect(edited([entry]).success, JSON.stringify(entry)).toBe(false);
+    }
   });
 });

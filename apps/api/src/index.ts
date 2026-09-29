@@ -30,6 +30,7 @@ const app = createApp({
   mailer,
   redis,
   outbound: { testAllowedHosts: monitorEnv.OUTBOUND_TEST_ALLOWED_HOSTS },
+  credentialEnv: monitorEnv,
 });
 
 const server = Bun.serve({

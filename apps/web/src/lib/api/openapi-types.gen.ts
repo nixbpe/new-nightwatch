@@ -1589,6 +1589,11 @@ export interface paths {
                             type: "apiKey";
                             headerName: string;
                         };
+                        /** @default [] */
+                        secrets?: {
+                            slot: string;
+                            value: string;
+                        }[];
                     };
                 };
             };
@@ -1737,7 +1742,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The rate limiter is unavailable; no request was sent */
+                /** @description The rate limiter is unavailable, or credential encryption is not configured for a kept secret; no request was sent */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1747,6 +1752,12 @@ export interface paths {
                             error: {
                                 /** @enum {string} */
                                 code: "RATE_LIMIT_UNAVAILABLE";
+                                message: string;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "CREDENTIALS_UNAVAILABLE";
                                 message: string;
                             };
                         };
@@ -1849,6 +1860,13 @@ export interface paths {
                             type: "apiKey";
                             headerName: string;
                         };
+                        /** @default [] */
+                        secrets?: {
+                            slot: string;
+                            /** @enum {string} */
+                            action: "keep" | "replace" | "delete";
+                            value?: string;
+                        }[];
                     };
                 };
             };
@@ -1994,6 +2012,21 @@ export interface paths {
                         };
                     };
                 };
+                /** @description The scheme, host or port changed while a stored secret is kept; nothing was sent */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_SECRET_ORIGIN_CHANGED";
+                                message: string;
+                            };
+                        };
+                    };
+                };
                 /** @description Test rate limit reached; Retry-After carries the wait in seconds */
                 429: {
                     headers: {
@@ -2012,7 +2045,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The rate limiter is unavailable; no request was sent */
+                /** @description The rate limiter is unavailable, or credential encryption is not configured for a kept secret; no request was sent */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2022,6 +2055,12 @@ export interface paths {
                             error: {
                                 /** @enum {string} */
                                 code: "RATE_LIMIT_UNAVAILABLE";
+                                message: string;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "CREDENTIALS_UNAVAILABLE";
                                 message: string;
                             };
                         };
@@ -2271,6 +2310,11 @@ export interface paths {
                         };
                         /** Format: uuid */
                         clientRequestId: string;
+                        /** @default [] */
+                        secrets?: {
+                            slot: string;
+                            value: string;
+                        }[];
                     };
                 };
             };
@@ -2471,6 +2515,21 @@ export interface paths {
                                     /** @enum {string} */
                                     field: "url";
                                 };
+                            };
+                        };
+                    };
+                };
+                /** @description Credential encryption is not configured, so secret values cannot be stored or read */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "CREDENTIALS_UNAVAILABLE";
+                                message: string;
                             };
                         };
                     };
@@ -2926,6 +2985,13 @@ export interface paths {
                             headerName: string;
                         };
                         expectedVersion: number;
+                        /** @default [] */
+                        secrets?: {
+                            slot: string;
+                            /** @enum {string} */
+                            action: "keep" | "replace" | "delete";
+                            value?: string;
+                        }[];
                     };
                 };
             };
@@ -3129,7 +3195,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description The host is or resolves to a forbidden address */
+                /** @description The host is or resolves to a forbidden address, or the scheme, host or port changed while a secret is kept */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -3144,6 +3210,27 @@ export interface paths {
                                     /** @enum {string} */
                                     field: "url";
                                 };
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_SECRET_ORIGIN_CHANGED";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Credential encryption is not configured, so secret values cannot be stored or read */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "CREDENTIALS_UNAVAILABLE";
+                                message: string;
                             };
                         };
                     };

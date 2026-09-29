@@ -244,23 +244,28 @@ describe("role x operation", () => {
     expect(JSON.stringify(response.json)).not.toContain("auth.token");
   });
 
-  it("rejects a secrets field and unknown keys", async () => {
-    const response = await ctx.call(
-      org.users.owner,
-      "POST",
-      monitorsPath(org.id),
-      {
+  it("rejects an unknown key and a malformed secret slot with the field named", async () => {
+    const send = (extra: Record<string, unknown>) =>
+      ctx.call(org.users.owner, "POST", monitorsPath(org.id), {
         ...validConfig(),
         clientRequestId: crypto.randomUUID(),
-        secrets: [{ slot: "auth.token", value: "s" }],
-      },
-    );
-    expect(response.status).toBe(400);
-    expect(response.json).toEqual({
+        ...extra,
+      });
+    const unknown = await send({ mode: "basic" });
+    expect(unknown.status).toBe(400);
+    expect(unknown.json).toEqual({
       error: {
         code: "MONITOR_INVALID",
         message: "Invalid monitor input",
         details: { fields: [{ field: "request", reason: "invalid_format" }] },
+      },
+    });
+    const slot = await send({ secrets: [{ slot: "auth.nope", value: "s" }] });
+    expect(slot.json).toMatchObject({
+      error: {
+        details: {
+          fields: [{ field: "secrets.0.slot", reason: "invalid_format" }],
+        },
       },
     });
   });

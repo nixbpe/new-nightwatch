@@ -97,8 +97,9 @@ export function assignHeaderIds(
 // slot id only, whatever value the client sent.
 function storedHeader(header: MonitorConfig["headers"][number]): StoredHeader {
   if (header.secret) {
+    // The id is the slot name, which is stored lowercase.
     return {
-      ...(header.id === undefined ? {} : { id: header.id }),
+      ...(header.id === undefined ? {} : { id: header.id.toLowerCase() }),
       name: header.name,
       secret: true,
     };

@@ -9,8 +9,10 @@ import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import {
   AppError,
   buildCheckUrl,
+  encryptSecret,
   maskUrl,
   resolveOutboundHost,
+  type CredentialEnv,
   type OutboundDeps,
   type ResolveOutcome,
   type UrlRejection,
@@ -33,11 +35,20 @@ import {
   type MonitorRow,
   type StoredConfig,
 } from "./record";
+import {
+  assertSameOrigin,
+  planSecrets,
+  requiredSlots,
+  type SecretPlan,
+} from "./secrets";
 
 export type MonitorMutation = {
   monitor: MonitorRecord;
   /** False for an idempotent no-op or a replayed Create: nothing was written. */
   changed: boolean;
+  /** Slots this mutation stored for the first time or overwrote (AC-61). */
+  secretsSet?: number;
+  secretsReplaced?: number;
 };
 
 const UUID_PATTERN =
@@ -164,6 +175,71 @@ async function secretSlots(
   return result.rows.map((row) => row.slot);
 }
 
+export function requireCredentials(
+  env: CredentialEnv | undefined,
+): CredentialEnv {
+  if (!env) {
+    throw new AppError(
+      503,
+      "CREDENTIALS_UNAVAILABLE",
+      "credential encryption is not configured",
+    );
+  }
+  return env;
+}
+
+// Encryption is CPU work only, so it may run inside the transaction. The row
+// is bound to the tenant and monitor through the ciphertext AAD.
+async function storeSecrets(
+  client: PoolClient,
+  identity: Identity,
+  monitorId: string,
+  plan: SecretPlan,
+  stored: ReadonlySet<string>,
+  env: CredentialEnv | undefined,
+): Promise<{ set: number; replaced: number; deleted: number }> {
+  let set = 0;
+  let replaced = 0;
+  for (const { slot, value } of plan.writes) {
+    const encrypted = encryptSecret(
+      {
+        tenantId: identity.organizationId,
+        monitorId,
+        slot,
+        value,
+      },
+      requireCredentials(env),
+    );
+    await client.query(
+      `insert into monitor_secrets
+       (monitor_id, tenant_id, slot, ciphertext, iv, auth_tag, key_version)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (monitor_id, slot) do update set
+       ciphertext = excluded.ciphertext, iv = excluded.iv,
+       auth_tag = excluded.auth_tag, key_version = excluded.key_version,
+       updated_at = now()`,
+      [
+        monitorId,
+        identity.organizationId,
+        slot,
+        encrypted.ciphertext,
+        encrypted.iv,
+        encrypted.authTag,
+        encrypted.keyVersion,
+      ],
+    );
+    if (stored.has(slot)) replaced += 1;
+    else set += 1;
+  }
+  if (plan.deletes.length > 0) {
+    await client.query(
+      "delete from monitor_secrets where monitor_id = $1 and slot = any($2::text[])",
+      [monitorId, plan.deletes],
+    );
+  }
+  return { set, replaced, deleted: plan.deletes.length };
+}
+
 async function loadRecord(
   client: PoolClient,
   row: MonitorRow,
@@ -237,7 +313,11 @@ async function findReplay(
 
 export async function createMonitor(
   database: Database,
-  input: Identity & { input: MonitorCreateInput; outbound?: OutboundDeps },
+  input: Identity & {
+    input: MonitorCreateInput;
+    outbound?: OutboundDeps;
+    credentialEnv?: CredentialEnv;
+  },
 ): Promise<MonitorMutation> {
   await assertMemberPermissionBeforeTenantContext(database, {
     organizationId: input.organizationId,
@@ -255,9 +335,19 @@ export async function createMonitor(
     },
   );
   if (replayed) return { monitor: replayed, changed: false };
-  await validateSaveTarget(input.input, input.outbound ?? {});
   const stored = toStoredConfig(input.input);
   stored.headers = assignHeaderIds(stored.headers, []);
+  const plan = planSecrets({
+    required: requiredSlots(stored),
+    entries: input.input.secrets.map((entry) => ({
+      ...entry,
+      action: "replace" as const,
+    })),
+    stored: new Set(),
+    mode: "save",
+  });
+  if (plan.writes.length > 0) requireCredentials(input.credentialEnv);
+  await validateSaveTarget(input.input, input.outbound ?? {});
 
   return withTenantContextRaw(
     database,
@@ -310,7 +400,20 @@ export async function createMonitor(
        values ($1, $2, now(), 1, $3, $4)`,
         [row.id, input.organizationId, row.intervalSeconds, row.timeoutSeconds],
       );
-      return { monitor: toRecord(row, []), changed: true };
+      const written = await storeSecrets(
+        client,
+        input,
+        row.id,
+        plan,
+        new Set(),
+        input.credentialEnv,
+      );
+      return {
+        monitor: toRecord(row, plan.writes.map((write) => write.slot).sort()),
+        changed: true,
+        secretsSet: written.set,
+        secretsReplaced: written.replaced,
+      };
     },
   );
 }
@@ -321,6 +424,7 @@ export async function editMonitor(
     monitorId: string;
     input: MonitorEditInput;
     outbound?: OutboundDeps;
+    credentialEnv?: CredentialEnv;
   },
 ): Promise<MonitorMutation> {
   await assertMemberPermissionBeforeTenantContext(database, {
@@ -330,6 +434,9 @@ export async function editMonitor(
   });
   const monitorId = parseMonitorId(input.monitorId);
   await assertMonitorExists(database, input, monitorId);
+  if (input.input.secrets.some((entry) => entry.action === "replace")) {
+    requireCredentials(input.credentialEnv);
+  }
   const maskedUrl = await validateSaveTarget(input.input, input.outbound ?? {});
   const next = toStoredConfig(input.input);
 
@@ -349,11 +456,21 @@ export async function editMonitor(
       }
       const previous = storedFromRow(row);
       next.headers = assignHeaderIds(next.headers, previous.headers);
-      if (sameConfig(previous, next)) {
+      const stored = new Set(await secretSlots(client, monitorId));
+      const plan = planSecrets({
+        required: requiredSlots(next),
+        entries: input.input.secrets,
+        stored,
+        mode: "save",
+      });
+      // A kept value was entered for the old destination (AC-44).
+      if (plan.keeps.length > 0) assertSameOrigin(previous, next);
+      const secretsChanged = plan.writes.length > 0 || plan.deletes.length > 0;
+      if (sameConfig(previous, next) && !secretsChanged) {
         return { monitor: await loadRecord(client, row), changed: false };
       }
 
-      const impacted = affectsChecks(previous, next);
+      const impacted = secretsChanged || affectsChecks(previous, next);
       const intervalChanged = previous.intervalSeconds !== next.intervalSeconds;
       const updated = await client.query<
         MonitorRow & { checkConfigVersion: number }
@@ -415,7 +532,20 @@ export async function editMonitor(
        values ($1, $2, 'config_changed', $3)`,
         [monitorId, input.organizationId, urlMarker(previous, maskedUrl)],
       );
-      return { monitor: await loadRecord(client, saved), changed: true };
+      const written = await storeSecrets(
+        client,
+        input,
+        monitorId,
+        plan,
+        stored,
+        input.credentialEnv,
+      );
+      return {
+        monitor: await loadRecord(client, saved),
+        changed: true,
+        secretsSet: written.set,
+        secretsReplaced: written.replaced,
+      };
     },
   );
 }

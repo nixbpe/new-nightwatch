@@ -3,11 +3,15 @@ import {
   emailNotVerifiedErrorResponseSchema,
   invalidInputErrorResponseSchema,
   membershipDeniedErrorResponseSchema,
-  monitorConfigSchema,
+  canonicalSecretSlot,
+  credentialsUnavailableErrorResponseSchema,
   monitorInvalidErrorResponseSchema,
   monitorNotFoundErrorResponseSchema,
   monitorOrganizationParamsSchema,
   monitorParamsSchema,
+  monitorSecretOriginChangedErrorResponseSchema,
+  monitorTestCreateSchema,
+  monitorTestEditSchema,
   monitorTestRateLimitedErrorResponseSchema,
   monitorTestResponseSchema,
   normalizeMonitorConfig,
@@ -16,14 +20,18 @@ import {
   unauthenticatedErrorResponseSchema,
   unsupportedMediaTypeErrorResponseSchema,
   type MonitorConfig,
+  type MonitorSecretEditEntry,
   type MonitorTestResult,
 } from "@nightwatch/api-contract";
-import type { Database } from "@nightwatch/db";
+import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import {
   AppError,
   buildCheckUrl,
+  decryptSecret,
   runCheck,
+  type CredentialEnv,
   type Logger,
+  type MonitorSecrets,
   type NormalizedMonitorConfig,
   type OutboundDeps,
 } from "@nightwatch/shared";
@@ -35,7 +43,26 @@ import { consumeMonitorTestRateLimit, type RateLimiter } from "../rate-limit";
 import { auditMonitorDenials } from "./audit";
 import { monitorInvalidInputHook } from "./invalid-input";
 import { assertMemberPermissionBeforeTenantContext } from "./permissions";
-import { assertMonitorExists, parseMonitorId, URL_REASONS } from "./service";
+import {
+  MONITOR_COLUMNS,
+  assignHeaderIds,
+  storedFromRow,
+  toStoredConfig,
+  type MonitorRow,
+  type StoredConfig,
+} from "./record";
+import {
+  assertSameOrigin,
+  planSecrets,
+  requiredSlots,
+  type SecretPlan,
+} from "./secrets";
+import {
+  assertMonitorExists,
+  parseMonitorId,
+  requireCredentials,
+  URL_REASONS,
+} from "./service";
 
 const jsonError = (description: string, schema: z.ZodType) =>
   ({ description, content: { "application/json": { schema } } }) as const;
@@ -74,13 +101,20 @@ const testResponses = {
     monitorTestRateLimitedErrorResponseSchema,
   ),
   503: jsonError(
-    "The rate limiter is unavailable; no request was sent",
-    rateLimitUnavailableErrorResponseSchema,
+    "The rate limiter is unavailable, or credential encryption is not configured for a kept secret; no request was sent",
+    z.union([
+      rateLimitUnavailableErrorResponseSchema,
+      credentialsUnavailableErrorResponseSchema,
+    ]),
   ),
 } as const;
 
-const configBody = {
-  content: { "application/json": { schema: monitorConfigSchema } },
+const createBody = {
+  content: { "application/json": { schema: monitorTestCreateSchema } },
+  required: true,
+} as const;
+const editBody = {
+  content: { "application/json": { schema: monitorTestEditSchema } },
   required: true,
 } as const;
 
@@ -90,7 +124,7 @@ export const monitorTestRouteDeclarations = {
     path: `${monitorBase}/test`,
     tags,
     summary: "Test a monitor configuration before it is created",
-    request: { params: monitorOrganizationParamsSchema, body: configBody },
+    request: { params: monitorOrganizationParamsSchema, body: createBody },
     responses: testResponses,
   }),
   testExisting: createRoute({
@@ -98,7 +132,7 @@ export const monitorTestRouteDeclarations = {
     path: `${monitorBase}/{monitorId}/test`,
     tags,
     summary: "Test a configuration in the edit form of an existing monitor",
-    request: { params: monitorParamsSchema, body: configBody },
+    request: { params: monitorParamsSchema, body: editBody },
     responses: {
       200: testResponses[200],
       400: testResponses[400],
@@ -109,6 +143,10 @@ export const monitorTestRouteDeclarations = {
         monitorNotFoundErrorResponseSchema,
       ),
       415: testResponses[415],
+      422: jsonError(
+        "The scheme, host or port changed while a stored secret is kept; nothing was sent",
+        monitorSecretOriginChangedErrorResponseSchema,
+      ),
       429: testResponses[429],
       503: testResponses[503],
     },
@@ -123,6 +161,8 @@ export type MonitorTestRouteDeps = {
   outbound?: OutboundDeps;
   /** Absent when the API has no Redis: every Test then answers 503. */
   rateLimiter?: RateLimiter;
+  /** Decrypts kept secrets; absent, a Test that keeps one answers 503. */
+  credentialEnv?: CredentialEnv;
 };
 
 // The URL a check requests must be well formed before quota is spent. A forbidden
@@ -136,19 +176,149 @@ function assertRequestableUrl(config: MonitorConfig): void {
   }
 }
 
-function toNormalizedConfig(config: MonitorConfig): NormalizedMonitorConfig {
+function toNormalizedConfig(
+  config: MonitorConfig,
+  headers: StoredConfig["headers"],
+): NormalizedMonitorConfig {
   const { expectedStatusRanges, assertions } = normalizeMonitorConfig(config);
   return {
     url: config.url,
     method: config.method,
     timeoutSeconds: config.timeoutSeconds,
-    headers: config.headers,
+    headers,
     queryParams: config.queryParams,
     body: config.body,
     expectedStatus: expectedStatusRanges,
     assertions,
     auth: config.auth,
   };
+}
+
+type SecretRow = {
+  slot: string;
+  ciphertext: Buffer;
+  iv: Buffer;
+  auth_tag: Buffer;
+  key_version: string;
+};
+
+type TestSecrets = {
+  headers: StoredConfig["headers"];
+  /** Values typed in the form, for this request only. */
+  provided: Record<string, string>;
+  /** Stored rows of the `keep` slots, decrypted after the connection is released. */
+  kept: SecretRow[];
+};
+
+// Reads the stored monitor and only the ciphertext of `keep` slots, in one
+// short transaction; the outbound request starts after the connection is back
+// in the pool. A destination change with a kept slot ends here, before any
+// quota is spent or request sent (AC-44).
+async function prepareEditSecrets(
+  database: Database,
+  input: {
+    organizationId: string;
+    monitorId: string;
+    config: MonitorConfig;
+    entries: MonitorSecretEditEntry[];
+    credentialEnv: CredentialEnv | undefined;
+  },
+): Promise<TestSecrets> {
+  return withTenantContextRaw(
+    database,
+    input.organizationId,
+    async (client) => {
+      const found = await client.query<MonitorRow>(
+        `select ${MONITOR_COLUMNS} from monitors
+         where id = $1 and tenant_id = $2`,
+        [input.monitorId, input.organizationId],
+      );
+      const row = found.rows[0];
+      if (!row) {
+        throw new AppError(404, "MONITOR_NOT_FOUND", "ไม่พบมอนิเตอร์นี้");
+      }
+      const previous = storedFromRow(row);
+      const next = toStoredConfig(input.config);
+      next.headers = assignHeaderIds(next.headers, previous.headers);
+      const slots = await client.query<{ slot: string }>(
+        "select slot from monitor_secrets where monitor_id = $1",
+        [input.monitorId],
+      );
+      const plan = planSecrets({
+        required: requiredSlots(next),
+        entries: input.entries,
+        stored: new Set(slots.rows.map((entry) => entry.slot)),
+        mode: "test",
+      });
+      if (plan.keeps.length > 0) {
+        assertSameOrigin(previous, next);
+        requireCredentials(input.credentialEnv);
+      }
+      const kept =
+        plan.keeps.length === 0
+          ? []
+          : (
+              await client.query<SecretRow>(
+                `select slot, ciphertext, iv, auth_tag, key_version
+                 from monitor_secrets
+                 where monitor_id = $1 and slot = any($2::text[])`,
+                [input.monitorId, plan.keeps],
+              )
+            ).rows;
+      return { headers: next.headers, provided: valuesOf(plan), kept };
+    },
+  );
+}
+
+function valuesOf(plan: SecretPlan): Record<string, string> {
+  return Object.fromEntries(plan.writes.map((w) => [w.slot, w.value]));
+}
+
+function prepareCreateSecrets(
+  config: MonitorConfig & {
+    secrets: { slot: string; value: string }[];
+  },
+): TestSecrets {
+  const stored = toStoredConfig(config);
+  const plan = planSecrets({
+    required: requiredSlots(stored),
+    entries: config.secrets.map((entry) => ({
+      ...entry,
+      action: "replace" as const,
+    })),
+    stored: new Set(),
+    mode: "test",
+  });
+  return { headers: stored.headers, provided: valuesOf(plan), kept: [] };
+}
+
+// A row that cannot be decrypted is left out; the executor then reports the
+// missing slot as a check error, as the scheduled check does.
+function decryptKept(
+  input: { organizationId: string; monitorId: string },
+  secrets: TestSecrets,
+  env: CredentialEnv | undefined,
+): MonitorSecrets {
+  const values: Record<string, string> = { ...secrets.provided };
+  for (const row of secrets.kept) {
+    try {
+      values[row.slot] = decryptSecret(
+        {
+          tenantId: input.organizationId,
+          monitorId: input.monitorId,
+          slot: canonicalSecretSlot(row.slot),
+          keyVersion: row.key_version,
+          iv: row.iv,
+          authTag: row.auth_tag,
+          ciphertext: row.ciphertext,
+        },
+        requireCredentials(env),
+      );
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+    }
+  }
+  return values;
 }
 
 async function runTest(
@@ -158,10 +328,17 @@ async function runTest(
     actorUserId: string;
     monitorId?: string;
     config: MonitorConfig;
+    /** Create-style entries (test before create) or Edit-style entries. */
+    entries: {
+      slot: string;
+      action?: MonitorSecretEditEntry["action"];
+      value?: string;
+    }[];
     signal: AbortSignal;
   },
 ): Promise<{ result: MonitorTestResult } | { retryAfterSeconds: number }> {
   const { database, logger, outbound, rateLimiter } = deps;
+  let monitorId: string | undefined;
   await auditMonitorDenials(
     logger,
     input.actorUserId,
@@ -174,15 +351,33 @@ async function runTest(
       });
       if (input.monitorId !== undefined) {
         // The connection goes back to the pool before the outbound request starts.
-        await assertMonitorExists(
-          database,
-          input,
-          parseMonitorId(input.monitorId),
-        );
+        monitorId = parseMonitorId(input.monitorId);
+        await assertMonitorExists(database, input, monitorId);
       }
     },
   );
   assertRequestableUrl(input.config);
+
+  const secrets =
+    monitorId === undefined
+      ? prepareCreateSecrets({
+          ...input.config,
+          secrets: input.entries.map((entry) => ({
+            slot: entry.slot,
+            value: entry.value ?? "",
+          })),
+        })
+      : await prepareEditSecrets(database, {
+          organizationId: input.organizationId,
+          monitorId,
+          config: input.config,
+          entries: input.entries.map((entry) => ({
+            slot: entry.slot,
+            action: entry.action ?? "replace",
+            ...(entry.value === undefined ? {} : { value: entry.value }),
+          })),
+          credentialEnv: deps.credentialEnv,
+        });
 
   // Nothing above touched the network, and validation failures took no quota.
   if (!rateLimiter) {
@@ -198,10 +393,15 @@ async function runTest(
   });
   if (!limit.allowed) return { retryAfterSeconds: limit.retryAfterSeconds };
 
-  // Task 13 replaces the empty secrets with the stored ones for `keep` slots.
   const checked = await runCheck(
-    toNormalizedConfig(input.config),
-    {},
+    toNormalizedConfig(input.config, secrets.headers),
+    monitorId === undefined
+      ? secrets.provided
+      : decryptKept(
+          { organizationId: input.organizationId, monitorId },
+          secrets,
+          deps.credentialEnv,
+        ),
     { ...outbound, signal: input.signal },
   );
   return {
@@ -249,6 +449,7 @@ export function registerMonitorTestRoutes(
     routes.test,
     async (c) => {
       const { organizationId } = c.req.valid("param");
+      const body = c.req.valid("json");
       const session = await requireVerifiedSession(
         deps.auth,
         c.req.raw.headers,
@@ -256,7 +457,8 @@ export function registerMonitorTestRoutes(
       const outcome = await runTest(deps, {
         organizationId,
         actorUserId: session.user.id,
-        config: c.req.valid("json"),
+        config: body,
+        entries: body.secrets,
         signal: c.req.raw.signal,
       });
       if ("retryAfterSeconds" in outcome) {
@@ -273,6 +475,7 @@ export function registerMonitorTestRoutes(
     routes.testExisting,
     async (c) => {
       const { organizationId, monitorId } = c.req.valid("param");
+      const body = c.req.valid("json");
       const session = await requireVerifiedSession(
         deps.auth,
         c.req.raw.headers,
@@ -281,7 +484,8 @@ export function registerMonitorTestRoutes(
         organizationId,
         actorUserId: session.user.id,
         monitorId,
-        config: c.req.valid("json"),
+        config: body,
+        entries: body.secrets,
         signal: c.req.raw.signal,
       });
       if ("retryAfterSeconds" in outcome) {

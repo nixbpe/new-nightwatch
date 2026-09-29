@@ -11,6 +11,7 @@ import {
   type AuthEnv,
   type Env,
   type Logger,
+  type CredentialEnv,
   type OutboundDeps,
 } from "@nightwatch/shared";
 import { cors } from "hono/cors";
@@ -49,6 +50,9 @@ export type AppDeps = {
   redis?: Redis;
   // Save-time monitor checks: DNS resolver and OUTBOUND_TEST_ALLOWED_HOSTS.
   outbound?: OutboundDeps;
+  // Secret values are encrypted and decrypted with these keys. Optional so
+  // route tests and OpenAPI emission need no keys; only secret operations fail.
+  credentialEnv?: CredentialEnv;
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
@@ -396,6 +400,7 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       logger: deps.logger,
       outbound: deps.outbound,
       redis: deps.redis,
+      credentialEnv: deps.credentialEnv,
     });
     registerMonitorReadRoutes(app, {
       auth,

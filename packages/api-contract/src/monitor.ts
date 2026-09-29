@@ -118,6 +118,7 @@ export const MONITOR_ERROR_CODES = [
   "MONITOR_VERSION_CONFLICT",
   "MONITOR_TEST_RATE_LIMITED",
   "RATE_LIMIT_UNAVAILABLE",
+  "CREDENTIALS_UNAVAILABLE",
 ] as const;
 export type MonitorErrorCode = (typeof MONITOR_ERROR_CODES)[number];
 
@@ -300,7 +301,7 @@ const authSchema = z.discriminatedUnion("type", [
 ]);
 
 // No `mode` field: basic and advanced mode belong to the UI.
-// Strict: `secrets` belongs to Task 13 and must not be silently ignored.
+// Strict: an unknown field (a `secrets` on the plain config) must not be silently ignored.
 export const monitorConfigBaseSchema = z.strictObject({
   name: z.string().trim().min(1).max(MONITOR_NAME_MAX_LENGTH),
   url: z
@@ -481,14 +482,144 @@ export const monitorConfigSchema =
 export type MonitorConfig = z.output<typeof monitorConfigSchema>;
 export type MonitorConfigInput = z.input<typeof monitorConfigSchema>;
 
+// ---- Secret entries (S07) ----------------------------------------------------
+
+export const MONITOR_SECRET_MAX_BYTES = 4096;
+export const MONITOR_MAX_SECRETS = 32;
+export const MONITOR_SECRET_ACTIONS = ["keep", "replace", "delete"] as const;
+export type MonitorSecretAction = (typeof MONITOR_SECRET_ACTIONS)[number];
+
+/** A header slot is `header.<headerId>`; a header id is a UUID stored lowercase. */
+const SECRET_SLOT_INPUT =
+  /^(auth\.(token|username|password|apiKey)|header\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+/** The slot name as stored: the header id part is lowercase. */
+export function canonicalSecretSlot(slot: string): string {
+  return slot.startsWith("header.") ? slot.toLowerCase() : slot;
+}
+
+const secretSlotInputSchema = z.string().max(64);
+
+export const monitorSecretCreateEntrySchema = z.strictObject({
+  slot: secretSlotInputSchema,
+  value: z.string().min(1).max(MONITOR_SECRET_MAX_BYTES),
+});
+export const monitorSecretEditEntrySchema = z.strictObject({
+  slot: secretSlotInputSchema,
+  action: z.enum(MONITOR_SECRET_ACTIONS),
+  value: z.string().max(MONITOR_SECRET_MAX_BYTES).optional(),
+});
+export type MonitorSecretCreateEntry = z.output<
+  typeof monitorSecretCreateEntrySchema
+>;
+export type MonitorSecretEditEntry = z.output<
+  typeof monitorSecretEditEntrySchema
+>;
+
+const secretsCreateField = z
+  .array(monitorSecretCreateEntrySchema)
+  .max(MONITOR_MAX_SECRETS)
+  .default([]);
+const secretsEditField = z
+  .array(monitorSecretEditEntrySchema)
+  .max(MONITOR_MAX_SECRETS)
+  .default([]);
+
+/**
+ * Per-entry rules that need no stored state: slot name, duplicates and value
+ * limits. Which slots the auth type and headers require is checked at save.
+ */
+function refineSecretEntries(
+  entries: { slot: string; action?: MonitorSecretAction; value?: string }[],
+  ctx: z.RefinementCtx,
+): void {
+  const add = (
+    path: (string | number)[],
+    reason: MonitorInvalidReason,
+  ): void => {
+    ctx.addIssue({ code: "custom", path, message: reason, params: { reason } });
+  };
+  const seen = new Set<string>();
+  entries.forEach((entry, index) => {
+    if (!SECRET_SLOT_INPUT.test(entry.slot)) {
+      add(["secrets", index, "slot"], "invalid_format");
+    } else if (seen.has(canonicalSecretSlot(entry.slot))) {
+      add(["secrets", index, "slot"], "duplicate");
+    }
+    seen.add(canonicalSecretSlot(entry.slot));
+
+    const action = entry.action ?? "replace";
+    if (action !== "replace") {
+      if (entry.value !== undefined)
+        add(["secrets", index, "value"], "invalid_format");
+      return;
+    }
+    const value = entry.value;
+    if (value === undefined || value === "") {
+      add(["secrets", index, "value"], "required");
+    } else if (!isStorableText(value)) {
+      add(["secrets", index, "value"], "invalid_format");
+    } else if (LINE_BREAKS.test(value)) {
+      // Every slot ends up in a request header.
+      add(["secrets", index, "value"], "crlf");
+    } else if (utf8Length(value) > MONITOR_SECRET_MAX_BYTES) {
+      add(["secrets", index, "value"], "too_long");
+    }
+  });
+}
+
+// A secret header names its slot by id, so a client that sets a value before
+// the monitor exists must pick the id.
+function refineSecretHeaderIds(config: ConfigBase, ctx: z.RefinementCtx): void {
+  config.headers.forEach((header, index) => {
+    if (header.secret && header.id === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["headers", index, "id"],
+        message: "required",
+        params: { reason: "required" satisfies MonitorInvalidReason },
+      });
+    }
+  });
+}
+
+/** Test of a configuration that is not saved yet: values are used for that request only. */
+export const monitorTestCreateSchema = monitorConfigBaseSchema
+  .extend({ secrets: secretsCreateField })
+  .superRefine((config, ctx) => {
+    refineMonitorConfig(config, ctx);
+    refineSecretHeaderIds(config, ctx);
+    refineSecretEntries(config.secrets, ctx);
+  });
+export type MonitorTestCreateInput = z.output<typeof monitorTestCreateSchema>;
+
+/** Test in the Edit form: `keep` uses the stored value, `replace` is for that request only. */
+export const monitorTestEditSchema = monitorConfigBaseSchema
+  .extend({ secrets: secretsEditField })
+  .superRefine((config, ctx) => {
+    refineMonitorConfig(config, ctx);
+    refineSecretEntries(config.secrets, ctx);
+  });
+export type MonitorTestEditInput = z.output<typeof monitorTestEditSchema>;
+
 export const monitorCreateSchema = monitorConfigBaseSchema
-  .extend({ clientRequestId: z.uuid() })
-  .superRefine(refineMonitorConfig);
+  .extend({ clientRequestId: z.uuid(), secrets: secretsCreateField })
+  .superRefine((config, ctx) => {
+    refineMonitorConfig(config, ctx);
+    refineSecretHeaderIds(config, ctx);
+    refineSecretEntries(config.secrets, ctx);
+  });
 export type MonitorCreateInput = z.output<typeof monitorCreateSchema>;
 
 export const monitorEditSchema = monitorConfigBaseSchema
-  .extend({ expectedVersion: z.number().int().min(1) })
-  .superRefine(refineMonitorConfig);
+  .extend({
+    expectedVersion: z.number().int().min(1),
+    secrets: secretsEditField,
+  })
+  .superRefine((config, ctx) => {
+    refineMonitorConfig(config, ctx);
+    refineSecretEntries(config.secrets, ctx);
+  });
 export type MonitorEditInput = z.output<typeof monitorEditSchema>;
 
 // ---- Normalized forms stored in the database --------------------------------
@@ -980,4 +1111,10 @@ export const monitorTestRateLimitedErrorResponseSchema =
   );
 export const rateLimitUnavailableErrorResponseSchema = monitorErrorSchema(
   "RATE_LIMIT_UNAVAILABLE",
+);
+export const monitorSecretOriginChangedErrorResponseSchema = monitorErrorSchema(
+  "MONITOR_SECRET_ORIGIN_CHANGED",
+);
+export const credentialsUnavailableErrorResponseSchema = monitorErrorSchema(
+  "CREDENTIALS_UNAVAILABLE",
 );

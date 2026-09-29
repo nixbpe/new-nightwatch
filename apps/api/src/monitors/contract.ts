@@ -1,5 +1,6 @@
 import { createRoute } from "@hono/zod-openapi";
 import {
+  credentialsUnavailableErrorResponseSchema,
   emailNotVerifiedErrorResponseSchema,
   invalidInputErrorResponseSchema,
   membershipDeniedErrorResponseSchema,
@@ -10,6 +11,7 @@ import {
   monitorNotFoundErrorResponseSchema,
   monitorOrganizationParamsSchema,
   monitorParamsSchema,
+  monitorSecretOriginChangedErrorResponseSchema,
   monitorTargetBlockedErrorResponseSchema,
   monitorVersionConflictErrorResponseSchema,
   monitorWriteResponseSchema,
@@ -46,6 +48,11 @@ const notFoundResponse = jsonError(
   monitorNotFoundErrorResponseSchema,
 );
 
+const credentialsResponse = jsonError(
+  "Credential encryption is not configured, so secret values cannot be stored or read",
+  credentialsUnavailableErrorResponseSchema,
+);
+
 const monitorBase = "/api/organizations/{organizationId}/monitors";
 const tags = ["monitors"];
 
@@ -78,6 +85,7 @@ export const monitorWriteRouteDeclarations = {
         "The host is or resolves to a forbidden address",
         monitorTargetBlockedErrorResponseSchema,
       ),
+      503: credentialsResponse,
     },
   }),
   edit: createRoute({
@@ -106,9 +114,13 @@ export const monitorWriteRouteDeclarations = {
         monitorVersionConflictErrorResponseSchema,
       ),
       422: jsonError(
-        "The host is or resolves to a forbidden address",
-        monitorTargetBlockedErrorResponseSchema,
+        "The host is or resolves to a forbidden address, or the scheme, host or port changed while a secret is kept",
+        z.union([
+          monitorTargetBlockedErrorResponseSchema,
+          monitorSecretOriginChangedErrorResponseSchema,
+        ]),
       ),
+      503: credentialsResponse,
     },
   }),
   pause: createRoute({

@@ -2,10 +2,12 @@ import type { MonitorConfigInput } from "@nightwatch/api-contract";
 import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
 import {
   createLogger,
+  loadMonitorEnv,
   type AuthEnv,
   type Env,
   type Logger,
 } from "@nightwatch/shared";
+import type { Redis } from "ioredis";
 import { fileURLToPath } from "node:url";
 
 import { createApp } from "../app";
@@ -38,6 +40,7 @@ export const STUB_HOSTS = {
   mixed: "mixed.monitor-test.example",
   loopback: "loopback.monitor-test.example",
   allowed: "allowed.monitor-test.example",
+  allowedOther: "allowed-other.monitor-test.example",
   missing: "missing.monitor-test.example",
   hang: "hang.monitor-test.example",
 } as const;
@@ -48,6 +51,7 @@ const STUB_ADDRESSES: Record<string, string[]> = {
   [STUB_HOSTS.mixed]: ["93.184.216.34", "10.0.0.5"],
   [STUB_HOSTS.loopback]: ["127.0.0.1"],
   [STUB_HOSTS.allowed]: ["127.0.0.1"],
+  [STUB_HOSTS.allowedOther]: ["127.0.0.1"],
 };
 
 export function validConfig(
@@ -66,6 +70,10 @@ export function validConfig(
  */
 export async function openMonitorTestContext(options?: {
   auditFailure?: boolean;
+  /** Builds the app without the credential env, as route tests do. */
+  withoutCredentials?: boolean;
+  /** Backs the Test rate limit; without it every Test answers 503. */
+  redis?: Redis;
 }) {
   const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
   const migrationsDir =
@@ -124,6 +132,10 @@ export async function openMonitorTestContext(options?: {
       verify: () => Promise.resolve(),
     },
     logger,
+    ...(options?.redis ? { redis: options.redis } : {}),
+    credentialEnv: options?.withoutCredentials
+      ? undefined
+      : loadMonitorEnv({ NODE_ENV: "test", REDIS_URL: "redis://unused" }),
     outbound: {
       resolver: (hostname) => {
         resolverCalls.push(hostname);
@@ -137,7 +149,7 @@ export async function openMonitorTestContext(options?: {
         }
         return Promise.resolve(addresses);
       },
-      testAllowedHosts: [STUB_HOSTS.allowed],
+      testAllowedHosts: [STUB_HOSTS.allowed, STUB_HOSTS.allowedOther],
     },
   });
 

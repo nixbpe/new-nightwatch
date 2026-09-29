@@ -1,6 +1,6 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Database } from "@nightwatch/db";
-import type { Logger, OutboundDeps } from "@nightwatch/shared";
+import type { CredentialEnv, Logger, OutboundDeps } from "@nightwatch/shared";
 import type { Redis } from "ioredis";
 
 import type { Auth } from "../auth";
@@ -26,7 +26,35 @@ export type MonitorRouteDeps = {
   outbound?: OutboundDeps;
   /** Backs the Test rate limit; without it every Test answers 503. */
   redis?: Redis;
+  /** Without it, a request that stores or reads a secret answers 503. */
+  credentialEnv?: CredentialEnv;
 };
+
+// One line per successful mutation that stored or overwrote a slot (AC-61).
+function auditSecrets(
+  logger: Logger,
+  event: {
+    actorUserId: string;
+    organizationId: string;
+    monitorId: string;
+    secretsSet?: number;
+    secretsReplaced?: number;
+  },
+): void {
+  const { secretsSet, secretsReplaced, ...identity } = event;
+  if ((secretsSet ?? 0) > 0) {
+    auditMonitorMutation(logger, {
+      ...identity,
+      action: "organization.monitor.secret.set",
+    });
+  }
+  if ((secretsReplaced ?? 0) > 0) {
+    auditMonitorMutation(logger, {
+      ...identity,
+      action: "organization.monitor.secret.replace",
+    });
+  }
+}
 
 // GET /monitors/recent-events must be registered before GET /monitors/{monitorId}
 // (Task 06B): monitorId is a plain string and would capture "recent-events".
@@ -35,13 +63,14 @@ export function registerMonitorRoutes(
   app: OpenAPIHono,
   deps: MonitorRouteDeps,
 ): void {
-  const { auth, database, logger, outbound, redis } = deps;
+  const { auth, database, logger, outbound, redis, credentialEnv } = deps;
 
   registerMonitorTestRoutes(app, {
     auth,
     database,
     logger,
     outbound,
+    credentialEnv,
     rateLimiter: redis ? createRateLimiter({ redis, logger }) : undefined,
   });
 
@@ -52,24 +81,33 @@ export function registerMonitorRoutes(
       const input = c.req.valid("json");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
-      const { monitor, changed } = await auditMonitorDenials(
-        logger,
-        actorUserId,
-        "organization.monitor.create",
-        () =>
-          createMonitor(database, {
-            organizationId,
-            actorUserId,
-            input,
-            outbound,
-          }),
-      );
+      const { monitor, changed, secretsSet, secretsReplaced } =
+        await auditMonitorDenials(
+          logger,
+          actorUserId,
+          "organization.monitor.create",
+          () =>
+            createMonitor(database, {
+              organizationId,
+              actorUserId,
+              input,
+              outbound,
+              credentialEnv,
+            }),
+        );
       if (changed) {
         auditMonitorMutation(logger, {
           actorUserId,
           action: "organization.monitor.create",
           organizationId,
           monitorId: monitor.id,
+        });
+        auditSecrets(logger, {
+          actorUserId,
+          organizationId,
+          monitorId: monitor.id,
+          secretsSet,
+          secretsReplaced,
         });
       }
       return c.json({ monitor }, 201);
@@ -95,6 +133,7 @@ export function registerMonitorRoutes(
             monitorId,
             input,
             outbound,
+            credentialEnv,
           }),
       );
       if (result.changed) {
@@ -103,6 +142,13 @@ export function registerMonitorRoutes(
           action: "organization.monitor.update",
           organizationId,
           monitorId: result.monitor.id,
+        });
+        auditSecrets(logger, {
+          actorUserId,
+          organizationId,
+          monitorId: result.monitor.id,
+          secretsSet: result.secretsSet,
+          secretsReplaced: result.secretsReplaced,
         });
       }
       return c.json({ monitor: result.monitor }, 200);

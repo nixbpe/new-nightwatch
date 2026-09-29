@@ -29,9 +29,12 @@ afterAll(async () => {
 });
 
 const owner = () => org.users.owner;
+const SECRET_ID = "5b0c1a3e-6f0a-4a57-9c4e-8d1b2a3c4d5e";
+
+type WithSecrets = MonitorConfigInput & { secrets?: unknown[] };
 
 async function create(
-  config: MonitorConfigInput = validConfig(),
+  config: WithSecrets = validConfig(),
   organization: TestOrganization = org,
   clientRequestId: string = crypto.randomUUID(),
 ) {
@@ -44,7 +47,7 @@ async function create(
   return { response, clientRequestId };
 }
 
-async function created(config: MonitorConfigInput = validConfig()) {
+async function created(config: WithSecrets = validConfig()) {
   const { response } = await create(config);
   expect(response.status).toBe(201);
   return monitorWriteResponseSchema.parse(response.json).monitor;
@@ -52,7 +55,7 @@ async function created(config: MonitorConfigInput = validConfig()) {
 
 const edit = (
   monitor: MonitorRecord,
-  config: MonitorConfigInput,
+  config: WithSecrets,
   expectedVersion: number = monitor.version,
 ) =>
   ctx.call(owner(), "PATCH", monitorsPath(org.id, `/${monitor.id}`), {
@@ -63,7 +66,9 @@ const edit = (
 const action = (monitor: MonitorRecord, name: "pause" | "resume") =>
   ctx.call(owner(), "POST", monitorsPath(org.id, `/${monitor.id}/${name}`));
 
-const configOf = (monitor: MonitorRecord): MonitorConfigInput => ({
+// Keeps every configured slot, as an Edit form that changed no secret does.
+const configOf = (monitor: MonitorRecord): WithSecrets => ({
+  secrets: monitor.secretSlots.map(({ slot }) => ({ slot, action: "keep" })),
   name: monitor.name,
   url: monitor.url,
   intervalSeconds: monitor.intervalSeconds,
@@ -218,11 +223,12 @@ describe("Create", () => {
 
   it("never stores the value of a secret header", async () => {
     const marker = "value-that-must-not-be-stored";
-    const monitor = await created(
-      validConfig({
-        headers: [{ name: "X-Secret", value: marker, secret: true }],
+    const monitor = await created({
+      ...validConfig({
+        headers: [{ id: SECRET_ID, name: "X-Secret", secret: true }],
       }),
-    );
+      secrets: [{ slot: `header.${SECRET_ID}`, value: marker }],
+    });
     expect(JSON.stringify(monitor)).not.toContain(marker);
     const stored = JSON.stringify((await monitorRow(monitor.id)).headers);
     expect(stored).not.toContain(marker);
@@ -352,10 +358,14 @@ describe("Create replay before save-time checks", () => {
 });
 
 describe("Edit header ids and URL trimming", () => {
-  const secretHeader = { name: "X-Secret", secret: true } as const;
+  const secretHeader = { id: SECRET_ID, name: "X-Secret", secret: true };
+  const secretConfig = (): WithSecrets => ({
+    ...validConfig({ headers: [secretHeader] }),
+    secrets: [{ slot: `header.${SECRET_ID}`, value: "s3cret" }],
+  });
 
   it("keeps a secret header's id when an edit omits ids", async () => {
-    const monitor = await created(validConfig({ headers: [secretHeader] }));
+    const monitor = await created(secretConfig());
     const id = monitor.headers[0]?.id;
     expect(id).toBeDefined();
 
@@ -405,7 +415,7 @@ describe("Edit header ids and URL trimming", () => {
   ])(
     "rejects an Edit whose header id is %s and writes nothing",
     async (_label, id) => {
-      const monitor = await created(validConfig({ headers: [secretHeader] }));
+      const monitor = await created(secretConfig());
       const response = await edit(monitor, {
         ...configOf(monitor),
         headers: [{ id, name: "X-Secret", secret: true }],
@@ -423,7 +433,7 @@ describe("Edit header ids and URL trimming", () => {
   );
 
   it("rejects a renamed header that keeps an id another id-less header matches by name", async () => {
-    const monitor = await created(validConfig({ headers: [secretHeader] }));
+    const monitor = await created(secretConfig());
     const id = monitor.headers[0]?.id;
     const response = await edit(monitor, {
       ...configOf(monitor),
@@ -442,8 +452,36 @@ describe("Edit header ids and URL trimming", () => {
     expect(await monitorRow(monitor.id)).toMatchObject({ version: 1 });
   });
 
-  it("gives a genuinely new secret header a new id", async () => {
-    const monitor = await created(validConfig({ headers: [secretHeader] }));
+  it("adds a new secret header under the id and value the client sends", async () => {
+    const monitor = await created(secretConfig());
+    const otherId = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      headers: [
+        { name: "X-Secret", secret: true },
+        { id: otherId, name: "X-Other", secret: true },
+      ],
+      secrets: [
+        { slot: `header.${SECRET_ID}`, action: "keep" },
+        { slot: `header.${otherId}`, action: "replace", value: "other" },
+      ],
+    });
+    expect(response.status).toBe(200);
+    const saved = monitorWriteResponseSchema.parse(response.json).monitor;
+    expect(saved.headers.map((header) => header.id)).toEqual([
+      SECRET_ID,
+      otherId,
+    ]);
+    expect(saved.secretSlots.map((entry) => entry.slot).sort()).toEqual(
+      [`header.${SECRET_ID}`, `header.${otherId}`].sort(),
+    );
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      check_config_version: 2,
+    });
+  });
+
+  it("rejects a new secret header without an id because no slot can name it", async () => {
+    const monitor = await created(secretConfig());
     const response = await edit(monitor, {
       ...configOf(monitor),
       headers: [
@@ -451,14 +489,13 @@ describe("Edit header ids and URL trimming", () => {
         { name: "X-Other", secret: true },
       ],
     });
-    const headers = monitorWriteResponseSchema.parse(response.json).monitor
-      .headers;
-    expect(headers[0]?.id).toBe(monitor.headers[0]?.id);
-    expect(headers[1]?.id).toBeDefined();
-    expect(headers[1]?.id).not.toBe(headers[0]?.id);
-    expect(await monitorRow(monitor.id)).toMatchObject({
-      check_config_version: 2,
+    expect(response.status).toBe(400);
+    expect(response.json).toMatchObject({
+      error: {
+        details: { fields: [{ field: "headers.1.value", reason: "required" }] },
+      },
     });
+    expect(await monitorRow(monitor.id)).toMatchObject({ version: 1 });
   });
 
   it("treats a URL that differs only by surrounding spaces as unchanged", async () => {
