@@ -9,6 +9,7 @@ import {
 const KIND_NOTES = {
   value: "",
   "no-response": "ตรวจแล้ว ไม่มีเวลาตอบสนอง",
+  "check-error": "ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
   gap: "ไม่มีข้อมูล",
   pause: "หยุดชั่วคราว",
 } as const;

@@ -17,6 +17,8 @@ export type ChartBucket = {
   maxMs: number | null;
   /** Checks behind the value; 0 means nothing was recorded. */
   checks: number;
+  /** The check could not run on NightWatch's side; it says nothing about the target (AC-39). */
+  checkError?: boolean;
 };
 export type ChartInterval = { from: string; to: string };
 export type ChartConfigChange = {
@@ -46,6 +48,7 @@ export function toChartProps(
       avgMs: point.responseTimeMs,
       maxMs: point.responseTimeMs,
       checks: 1,
+      checkError: point.outcome === "check_error",
     }));
     const gaps: ChartBucket[] = response.gaps.map((gap) => ({
       at: gap.from,
@@ -77,7 +80,8 @@ export function toChartProps(
   };
 }
 
-export type SeriesKind = "value" | "no-response" | "gap" | "pause";
+export type SeriesKind =
+  "value" | "no-response" | "check-error" | "gap" | "pause";
 
 export type SeriesEntry = {
   /** Kind and start time: stable across refetches, unlike an array index. */
@@ -116,6 +120,8 @@ export function buildSeries(props: ResponseTimeChartProps): SeriesEntry[] {
     let kind: SeriesKind = "value";
     if (bucket.checks === 0) {
       kind = overlapsPause(at, end, pauses) ? "pause" : "gap";
+    } else if (bucket.checkError === true) {
+      kind = "check-error";
     } else if (bucket.avgMs === null) {
       kind = "no-response";
     }
@@ -194,6 +200,8 @@ export function describeEntry(range: ChartRange, entry: SeriesEntry): string {
       return `${time} ไม่มีข้อมูล`;
     case "no-response":
       return `${time} ตรวจแล้ว ไม่มีเวลาตอบสนอง`;
+    case "check-error":
+      return `${time} ตรวจไม่ได้ (ปัญหาฝั่งระบบ)`;
     case "value": {
       const value = entry.avgMs ?? 0;
       return entry.end > entry.at

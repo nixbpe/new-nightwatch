@@ -9,6 +9,7 @@ import {
   describeEntry,
   summarize,
   summaryText,
+  toChartProps,
   type ResponseTimeChartProps,
 } from "./response-time-series";
 
@@ -75,6 +76,33 @@ describe("series", () => {
     expect(texts[3]).toContain("ไม่มีข้อมูล");
     expect(texts[4]).toContain("หยุดชั่วคราว");
     expect(texts[6]).toContain("ตรวจแล้ว ไม่มีเวลาตอบสนอง");
+  });
+
+  it("words a check NightWatch could not run as 'ตรวจไม่ได้', apart from a check without a time", () => {
+    const { buckets } = toChartProps({
+      range: "24h",
+      unit: "ms",
+      points: [
+        { at: T("07:00"), responseTimeMs: null, outcome: "check_error" },
+        { at: T("07:05"), responseTimeMs: null, outcome: "fail" },
+      ],
+      gaps: [],
+      pauses: [],
+      configChanges: [],
+    });
+    const series = buildSeries({
+      range: "24h",
+      buckets,
+      pauses: [],
+      configChanges: [],
+    });
+    expect(series.map((entry) => entry.kind)).toEqual([
+      "check-error",
+      "no-response",
+    ]);
+    const [first] = series;
+    if (first === undefined) throw new Error("no entry");
+    expect(describeEntry("24h", first)).toContain("ตรวจไม่ได้ (ปัญหาฝั่งระบบ)");
   });
 
   it("summarizes average, maximum and gaps with adjacent hourly gaps as one", () => {
