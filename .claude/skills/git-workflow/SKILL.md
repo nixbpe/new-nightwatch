@@ -6,7 +6,7 @@ description: Structures git workflow practices. Use when making any code change.
 
 ## Overview
 
-Git is your safety net. Treat commits as save points, branches as sandboxes, and history as documentation. With AI agents generating code at high speed, disciplined version control is the mechanism that keeps changes manageable, reviewable, and reversible.
+Commits are save points, branches are sandboxes and history is documentation. Disciplined version control keeps fast AI-generated changes reviewable and reversible.
 
 ## When to Use
 
@@ -16,7 +16,7 @@ Always. Every code change flows through git.
 
 ### Trunk-Based Development (Recommended)
 
-Keep `main` always deployable. Work in short-lived feature branches that merge back within 1-3 days — long-lived branches diverge, create merge conflicts, and delay integration.
+Keep `main` always deployable. Work in short-lived feature branches that merge back within 1-3 days, since long-lived branches diverge, conflict and delay integration.
 
 ```
 main ──●──●──●──●──●──●──  (always deployable)
@@ -58,7 +58,7 @@ Zod at the route handler level (consistent with auth.ts).
 
 ### 4. Keep Concerns Separate
 
-Don't combine formatting, refactors, and features in one commit — ideally not in one PR either. Small cleanups (renaming a variable) can still ride along in a feature commit at reviewer discretion; keeping the rest separate makes each change easier to review, revert, and understand in history.
+Don't combine formatting, refactors, and features in one commit, ideally not in one PR either. Small cleanups (renaming a variable) can ride along in a feature commit at reviewer discretion.
 
 ### 5. Size Your Changes
 
@@ -67,8 +67,7 @@ Target ~100 lines per commit/PR; split anything over ~1000.
 ## Branching Strategy
 
 - One feature per branch (`feature/task-creation`), branched from `main`
-- Keep branches short-lived (merge within 1-3 days) and delete them after merge
-- Prefer feature flags over long-lived branches for incomplete features
+- Delete branches after merge
 
 **Naming:** `feature/<desc>`, `fix/<desc>`, `chore/<desc>`, `refactor/<desc>`.
 
@@ -103,7 +102,7 @@ POTENTIAL CONCERNS:
 - Added zod as a dependency (72KB gzipped)
 ```
 
-This catches wrong assumptions early. The "DIDN'T TOUCH" section matters most — it shows you exercised scope discipline instead of an unsolicited renovation.
+The "DIDN'T TOUCH" section matters most: it shows scope discipline.
 
 ## Pre-Commit Hygiene
 
@@ -122,8 +121,6 @@ This catches wrong assumptions early. The "DIDN'T TOUCH" section matters most �
 | "I'll commit when the feature is done" | Large unreviewed changes hide defects; keep scoped checkpoints and make authorized commits atomic. |
 | "The message doesn't matter" | Messages are documentation. Future you (and future agents) need to understand what changed and why. |
 | "I'll squash it all later" | Squashing destroys the development narrative. Prefer clean incremental commits from the start. |
-| "Branches add overhead" | Short-lived branches are free and prevent conflicting work from colliding. Long-lived branches are the problem. |
-| "I don't need a .gitignore" | Until `.env` with production secrets gets committed. Set it up immediately. |
 
 ## Red Flags
 

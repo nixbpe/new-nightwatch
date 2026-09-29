@@ -8,11 +8,11 @@ argument-hint: "<Feature id, PR number or URL>"
 
 ## What this is for
 
-Implementation stops at review-ready or merge-ready. Preparing a release is its own task: check the target environment, lock the exact code with a fingerprint, run the full gates against it, and finish with a final review. Any file change after the lock breaks it and the affected checks run again. Release and deploy approval stay with people.
+Implementation stops at review-ready or merge-ready. Preparing a release is its own task: check the target environment, lock the exact code with a fingerprint, run the full gates against it, and finish with a final review. Any file change after the lock breaks it and the affected checks rerun. Release and deploy approval stay with people.
 
 ## Running it as a command
 
-Run in a main session started as the Technical Lead (`claude --agent tech-lead`). Require one Feature id, PR number or URL that names a merge-ready change; if it is not merge-ready, stop and say so. The run stops at `release-ready`. Deployment or production actions need the user's exact target and scope, relayed to the platform worker.
+Run in a main session started as the Technical Lead (`claude --agent tech-lead`). Require one Feature id, PR number or URL naming a merge-ready change; if it is not merge-ready, stop and say so. The run stops at `release-ready`. Deployment or production actions need the user's exact target and scope, relayed to the platform worker.
 
 ## 1. Environment readiness
 
@@ -43,17 +43,17 @@ bun run security:image
 ```
 PR CI never runs `e2e`; only the human-dispatched `full` job does, so run it locally or report it not verified.
 
-agent:`code-reviewer` then reviews the bound evidence. The Technical Lead accepts the candidate only when, on the same binding, every required criterion is observed pass and every manifest file, including deleted paths, is scanned or scanner-skipped with reason (`nonCandidateExclusions` are reconciled separately). Missing, mismatched or not-verified evidence blocks acceptance; author-produced results are not independent evidence.
+agent:`code-reviewer` then reviews the bound evidence. The Technical Lead accepts the candidate only when, on the same binding, every required criterion is observed pass and every manifest file, including deleted paths, is scanned or scanner-skipped with reason (`nonCandidateExclusions` are reconciled separately as outside the candidate). Missing, mismatched or not-verified evidence blocks acceptance; author-produced results are not independent evidence.
 
 Scanner evidence from agent:`platform-engineer`: candidate binding, command, tool version, configuration, execution identity, date, exit code and result location, plus every candidate manifest path accounted as scanned or scanner-skipped with reason. Deletions count as skipped. Non-candidate exclusions are listed separately and never waive scanning of candidate source.
 
-Bound-evidence review by agent:`code-reviewer`: judge pass or fail only from bound gate evidence, verify that every producer result names the same binding and scope, account every manifest file as scanned or scanner-skipped with reason (including deletions), reconcile `nonCandidateExclusions` separately as outside the candidate, and map each required criterion to observed pass, observed fail or not verified.
+Bound-evidence review by agent:`code-reviewer`: judge pass or fail only from bound gate evidence, verify that every producer result names the same binding and scope, check the manifest accounting above, and map each required criterion to observed pass, observed fail or not verified.
 
-Final delta review of a frozen candidate checks only that the candidate matches its manifest, prior findings are closed against their evidence, repairs introduced no new regression, the full-verification evidence is bound to this exact candidate, and no out-of-scope observation is mixed in rather than filed as a follow-up. The verdict is APPROVED, or CHANGES_REQUESTED naming Blocker/Major finding IDs. An addition that violates neither the frozen acceptance matrix nor an existing architecture invariant is not a finding.
+Final delta review of a frozen candidate checks only that the candidate matches its manifest, prior findings are closed against their evidence, repairs introduced no new regression, the full-verification evidence is bound to this exact candidate, and out-of-scope observations are filed as follow-ups. The verdict is APPROVED, or CHANGES_REQUESTED naming Blocker/Major finding IDs. An addition that violates neither the frozen acceptance matrix nor an existing architecture invariant is not a finding.
 
 ## 4. Repair and cap
 
-Collect all findings and failed gates into one batch, repair with the focused checks in skill:`delivery-orchestration` step 5, rerun only the failed gates, and never send a candidate with a red gate to final review. Allow one repair cycle and one final delta review; a reproducible Blocker or Major found there gets a second and last cycle. Minor issues become follow-ups, and a new requirement goes through the After freeze rules in skill:`technical-spec`. When the cap is used up, stop and give the user the evidence and the decision needed.
+Batch all findings and failed gates, repair with the focused checks in skill:`delivery-orchestration` step 5, rerun only the failed gates, and never send a candidate with a red gate to final review. Allow one repair cycle and one final delta review; a reproducible Blocker or Major found there gets a second and last cycle. Minor issues become follow-ups, and a new requirement goes through the After freeze rules in skill:`technical-spec`. When the cap is used up, stop and give the user the evidence and the decision needed.
 
 ## 5. Done
 

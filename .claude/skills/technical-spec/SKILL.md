@@ -8,9 +8,9 @@ argument-hint: "<Feature, e.g. F-002>"
 
 ## What this is for
 
-The Feature says what to build and how to know it is done. The Technical Spec says how it will be built: the contracts other work depends on, the design choices and the Tasks. The user approves it before any code is written, so surprises surface while they are cheap.
+The Feature says what to build and how to know it is done. The Technical Spec says how: the contracts other work depends on, the design choices and the Tasks. The user approves it before any code is written, so surprises surface while cheap.
 
-The approved spec is the source of truth for implementation and review. Workers build to its contracts and Tasks (`VERIFY`, `PROOF`, `Covers`); reviewers judge the work against them and against the `AC-<NN>` rows they map to. Approving the spec freezes those criteria (see Acceptance freeze below).
+The approved spec is the source of truth for implementation and review. Workers build to its contracts and Tasks (`VERIFY`, `PROOF`, `Covers`); reviewers judge against them and the `AC-<NN>` rows they map to. Approval freezes those criteria (see Acceptance freeze below).
 
 ## Steps
 
@@ -33,7 +33,7 @@ Acceptance criteria are numbered `AC-01`, `AC-02`… across the whole Feature an
 - **Security**: data never disclosed, log redaction, fresh-auth boundary.
 - **Verification**: the scenario or command that proves each item.
 
-When the user approves the spec, set `acceptanceVersion: <Feature-id>-AC-<n>` and `status: frozen` in the Feature file, and record the approval date in the spec. Frozen fixes the criteria only; it does not authorize releasing. Before approval, criteria change freely without a version bump.
+When the user approves the spec, set `acceptanceVersion: <Feature-id>-AC-<n>` and `status: frozen` in the Feature file, and record the approval date in the spec. Frozen fixes the criteria only; it does not authorize a release. Before approval, criteria change freely without a version bump.
 
 After freeze:
 
@@ -44,9 +44,7 @@ After freeze:
 
 ## Architecture drivers
 
-Check only the qualities a design decision touches, so small changes stay small. DB/RLS and security checks that the change requires are never optional. Weigh each touched driver against the requirements, constraints and principles already approved:
-
-Weigh each touched driver against the requirements, constraints and principles already approved:
+Check only the qualities a design decision touches. DB/RLS and security checks that the change requires are never optional. Weigh each touched driver against the requirements, constraints and principles already approved:
 
 - **Runtime**: performance (response time/latency), scalability (load per window), availability (nines as permitted downtime) and disaster recovery (RTO/RPO).
 - **Protection**: security (authentication, authorization, confidentiality in transit/at rest, OWASP), privacy (personal data/GDPR), audit (who, when, why, before/after values and erasure conflicts), and legal/compliance (AML, GDPR, digital-services taxation).

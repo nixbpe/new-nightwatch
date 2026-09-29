@@ -7,11 +7,11 @@ description: Conducts static multi-axis code review by reading source, tests and
 
 ## Overview
 
-Multi-dimensional code review with quality gates. Every change that edits code gets reviewed before merge. A change with no code edit (docs-only, config-only or other non-code content) needs no code review, per file:`AGENTS.md`. Review covers five axes: correctness, readability, architecture, security, and performance.
+Every change that edits code gets reviewed before merge. A change with no code edit (docs-only, config-only or other non-code content) needs no code review, per file:`AGENTS.md`. Review covers five axes: correctness, readability, architecture, security, and performance.
 
 **Static review only.** The reviewer reads source, tests and the author's evidence. It does not run the app, tests, builds, profilers or benchmarks. Where a judgment depends on a runtime fact (a measured latency, a query plan, a bundle size), cite the author's evidence or ask for it; do not estimate one.
 
-**The approval standard:** Approve a change when it definitely improves overall code health, even if it isn't perfect. Perfect code doesn't exist — the goal is continuous improvement. Don't block a change because it isn't exactly how you would have written it. If it improves the codebase and follows the project's conventions, approve it.
+**The approval standard:** Approve a change when it definitely improves overall code health, even if it isn't perfect. Perfect code doesn't exist. Don't block a change because it isn't exactly how you would have written it. If it improves the codebase and follows the project's conventions, approve it.
 
 ## When to Use
 
@@ -23,15 +23,12 @@ Multi-dimensional code review with quality gates. Every change that edits code g
 
 ## The Five-Axis Review
 
-Every review evaluates code across these dimensions:
-
 ### 1. Correctness
 
 Does the code do what it claims to do?
 
 - Does it match the spec or task requirements?
-- Are edge cases handled (null, empty, boundary values)?
-- Are error paths handled (not just the happy path)?
+- Are edge cases (null, empty, boundary values) and error paths handled, not just the happy path?
 - Does it pass all tests? Are the tests actually testing the right things?
 - Are there off-by-one errors, race conditions, or state inconsistencies?
 
@@ -47,7 +44,7 @@ Can another engineer (or agent) understand this code without the author explaini
 - **Are abstractions earning their complexity?** (Don't generalize until the third use case)
 - Would comments help clarify non-obvious intent? (But don't comment obvious code.)
 - Are there dead code artifacts: no-op variables (`_unused`), backwards-compat shims, or `// removed` comments?
-- **Is a new conditional bolted onto an unrelated flow?** That's a design smell, not a nit — push the logic into its own helper, state, or policy instead of tangling an existing path.
+- **Is a new conditional bolted onto an unrelated flow?** That's a design smell, not a nit: push the logic into its own helper, state, or policy.
 - **Do repeated conditionals on the same shape appear?** They signal a missing model or dispatcher. A "temporary" branch is usually permanent debt.
 
 ### 3. Architecture
@@ -59,9 +56,9 @@ Does the change fit the system's design?
 - Is there code duplication that should be shared?
 - Are dependencies flowing in the right direction (no circular dependencies)?
 - Is the abstraction level appropriate (not over-engineered, not too coupled)?
-- **Does this refactor reduce complexity or just relocate it?** Count the concepts a reader must hold to follow the change. If a "cleaner" version leaves that count unchanged, it isn't cleaner — prefer the restructuring that makes whole branches, modes, or layers disappear over one that re-centralizes the same logic. Prefer deleting an abstraction to polishing it.
+- **Does this refactor reduce complexity or just relocate it?** Count the concepts a reader must hold to follow the change. If a "cleaner" version leaves that count unchanged, it isn't cleaner. Prefer the restructuring that makes whole branches, modes, or layers disappear over one that re-centralizes the same logic. Prefer deleting an abstraction to polishing it.
 - **Is feature-specific logic leaking into a shared or general-purpose module?** Keep logic in its owning layer, reuse the existing canonical helper instead of a near-duplicate, and don't normalize architectural drift.
-- **Are type boundaries explicit?** Question gratuitous `any`/`unknown`/optional/casts and silent fallbacks that paper over an unclear invariant — making the boundary explicit often makes the surrounding control flow simpler.
+- **Are type boundaries explicit?** Question gratuitous `any`/`unknown`/optional/casts and silent fallbacks that paper over an unclear invariant; an explicit boundary often simplifies the surrounding control flow.
 
 ### 4. Security
 
@@ -115,10 +112,9 @@ Judge from the source. Flag a pattern with a known cost; when the impact depends
 - An "optimization" that drops work the product needs (skipped validation, cached data that must be fresh, a removed load-bearing `await`) is a regression.
 - A test changed, skipped or deleted to make an optimization pass.
 
-
 ## Structural Remedies
 
-When you flag a structural problem, propose the move — not just the problem. A review that only says "this is complex" leaves the author guessing. Reach for a named restructuring:
+When you flag a structural problem, propose the move, not just the problem. Reach for a named restructuring:
 
 - **Replace a chain of conditionals** with a typed model or an explicit dispatcher.
 - **Collapse duplicate branches** into a single clearer flow.
@@ -138,8 +134,6 @@ Flag a change over ~300 changed lines, one that mixes refactoring with new behav
 ## Review Process
 
 ### Step 1: Understand the Context
-
-Before looking at code, understand the intent:
 
 ```
 - What is this change trying to accomplish?
@@ -161,8 +155,6 @@ Tests reveal intent and coverage:
 
 ### Step 3: Review the Implementation
 
-Walk through the code with the five axes in mind:
-
 ```
 For each file changed:
 1. Correctness: Does this code do what the test says it should?
@@ -180,13 +172,11 @@ Label every comment with its severity so the author knows what's required vs opt
 |--------|---------|---------------|
 | *(no prefix)* | Required change | Must address before merge |
 | **Critical:** | Blocks merge | Security vulnerability, data loss, broken functionality |
-| **Nit:** | Minor, optional | Author may ignore — formatting, style preferences |
+| **Nit:** | Minor, optional | Author may ignore (formatting, style preferences) |
 | **Optional:** / **Consider:** | Suggestion | Worth considering but not required |
-| **FYI** | Informational only | No action needed — context for future reference |
+| **FYI** | Informational only | No action needed |
 
-This prevents authors from treating all feedback as mandatory and wasting time on optional suggestions.
-
-**Lead with what matters.** Order findings by leverage: correctness and security first, then structural regressions and missed simplifications, then everything else. Don't bury a real issue under cosmetic nits — a few high-conviction comments beat a long list. If you have one structural problem and ten nits, the structural problem *is* the review.
+**Lead with what matters.** Order findings by leverage: correctness and security first, then structural regressions and missed simplifications, then everything else. A few high-conviction comments beat a long list. If you have one structural problem and ten nits, the structural problem *is* the review.
 
 ### Step 5: Verify the Verification
 
@@ -204,7 +194,7 @@ Report a missing item as a gap. Do not run tests, builds or profilers to fill it
 
 ## Multi-Model Review Pattern
 
-Use different models for different review perspectives:
+Use different models for different review perspectives, since different models have different blind spots:
 
 ```
 Model A writes the code
@@ -219,8 +209,6 @@ Model A addresses the feedback
 Human makes the final call
 ```
 
-This catches issues that a single model might miss — different models have different blind spots.
-
 **Example prompt for a review agent:**
 ```
 Review this code change for correctness, security, and adherence to
@@ -230,11 +218,11 @@ Flag any issues as Critical, Required, Optional, or Nit.
 
 ## Review Speed
 
-Slow reviews block entire teams. The cost of context-switching to review is less than the waiting cost imposed on others.
+Slow reviews block entire teams; the cost of context-switching to review is less than the waiting cost imposed on others.
 
-- **Respond within one business day** — this is the maximum, not the target
+- **Respond within one business day**, the maximum, not the target
 - **Ideal cadence:** Respond shortly after a review request arrives, unless deep in focused coding. A typical change should complete multiple review rounds in a single day
-- **Prioritize fast individual responses** over quick final approval. Quick feedback reduces frustration even if multiple rounds are needed
+- **Prioritize fast individual responses** over quick final approval
 - **Large changes:** Ask the author to split them rather than reviewing one massive changeset
 
 ## Handling Disagreements
@@ -246,17 +234,17 @@ When resolving review disputes, apply this hierarchy:
 3. **Software design** must be evaluated on engineering principles, not personal preference
 4. **Codebase consistency** is acceptable if it doesn't degrade overall health
 
-**Don't accept "I'll clean it up later."** Experience shows deferred cleanup rarely happens. Require cleanup before submission unless it's a genuine emergency. If surrounding issues can't be addressed in this change, require filing a bug with self-assignment.
+**Don't accept "I'll clean it up later."** Deferred cleanup rarely happens. Require cleanup before submission unless it's a genuine emergency. If surrounding issues can't be addressed in this change, require filing a bug with self-assignment.
 
 ## Honesty in Review
 
-When reviewing code — whether written by you, another agent, or a human:
+When reviewing code, whether written by you, another agent, or a human:
 
 - **Don't rubber-stamp.** "LGTM" without evidence of review helps no one.
 - **Don't soften real issues.** "This might be a minor concern" when it's a bug that will hit production is dishonest.
 - **Quantify problems from the code, not from guesses.** "This loop issues one query per row, so a 100-row page costs 101 queries" is better than "this could be slow." Do not invent latency figures.
-- **Push back on approaches with clear problems.** Sycophancy is a failure mode in reviews. If the implementation has issues, say so directly and propose alternatives.
-- **Accept override gracefully.** If the author has full context and disagrees, defer to their judgment. Comment on code, not people — reframe personal critiques to focus on the code itself.
+- **Push back on approaches with clear problems.** Sycophancy is a failure mode in reviews. Say so directly and propose alternatives.
+- **Accept override gracefully.** If the author has full context and disagrees, defer to their judgment. Comment on code, not people.
 
 ## See Also
 
@@ -268,10 +256,10 @@ When reviewing code — whether written by you, another agent, or a human:
 |---|---|
 | "It works, that's good enough" | Working code that's unreadable, insecure, or architecturally wrong creates debt that compounds. |
 | "I wrote it, so I know it's correct" | Authors are blind to their own assumptions. Every change benefits from another set of eyes. |
-| "We'll clean it up later" | Later never comes. The review is the quality gate — use it. Require cleanup before merge, not after. |
+| "We'll clean it up later" | Later never comes. Require cleanup before merge, not after. |
 | "AI-generated code is probably fine" | AI code needs more scrutiny, not less. It's confident and plausible, even when wrong. |
-| "The tests pass, so it's good" | Tests are necessary but not sufficient. They don't catch architecture problems, security issues, or readability concerns. |
-| "The refactor makes it cleaner" | Relocating complexity isn't reducing it. If the reader still holds the same number of concepts, the structure didn't improve — look for the version where branches disappear. |
+| "The tests pass, so it's good" | Tests don't catch architecture problems, security issues, or readability concerns. |
+| "The refactor makes it cleaner" | Relocating complexity isn't reducing it. Look for the version where branches disappear. |
 | "It's only a small addition to this file" | Small diffs still push files past a healthy size and bolt branches onto unrelated flows. Judge the resulting structure, not the diff size. |
 | "We'll optimize later" | Fix known anti-patterns (N+1, unbounded fetch, per-request pools) now; defer micro-optimizations. |
 | "This optimization is obvious" | Then the author can cite the measurement. Unmeasured wins are how neutral complexity lands. |
@@ -281,14 +269,13 @@ When reviewing code — whether written by you, another agent, or a human:
 
 ## Red Flags
 
-- PRs merged without any review
+- PRs merged without any review, or "LGTM" without evidence of review
 - Review that only checks if tests pass (ignoring other axes)
-- "LGTM" without evidence of actual review
 - Security-sensitive changes without security-focused review
 - Large PRs that are "too big to review properly" (split them)
 - No regression tests with bug fix PRs
-- Review comments without severity labels — makes it unclear what's required vs optional
-- Accepting "I'll fix it later" — it never happens
+- Review comments without severity labels
+- Accepting "I'll fix it later"
 - N+1 query, unbounded list, or cache key missing tenant/viewer in the diff
 - Performance complexity added with no author measurement
 - Review that runs code or estimates runtime numbers instead of reading the source and the author's evidence

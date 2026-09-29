@@ -7,7 +7,7 @@ description: Guides systematic root-cause debugging. Use when tests fail, builds
 
 ## Overview
 
-Systematic debugging with structured triage. When something breaks, stop adding features, preserve evidence, and follow a structured process to find and fix the root cause. Guessing wastes time. The triage checklist works for test failures, build errors, runtime bugs, and production incidents.
+Systematic debugging with structured triage. When something breaks, stop adding features, preserve evidence, and follow a structured process to find and fix the root cause. The triage checklist works for test failures, build errors, runtime bugs, and production incidents.
 
 ## When to Use
 
@@ -31,7 +31,7 @@ When anything unexpected happens:
 6. RESUME only after verification passes
 ```
 
-**Don't push past a failing test or broken build to work on the next feature.** Errors compound. A bug in Step 3 that goes unfixed makes Steps 4-6 wrong.
+**Don't push past a failing test or broken build to work on the next feature.** Errors compound: an unfixed bug in Step 3 makes Steps 4-6 wrong.
 
 ## The Triage Checklist
 
@@ -39,7 +39,7 @@ Work through these steps in order. Do not skip steps.
 
 ### Step 1: Reproduce
 
-Make the failure happen reliably. If you can't reproduce it, you can't fix it with confidence.
+Make the failure happen reliably; without that, no fix is verifiable.
 
 ```
 Can you reproduce the failure?
@@ -72,7 +72,7 @@ Cannot reproduce on demand:
     └── Document the conditions observed and revisit when it recurs
 ```
 
-For test failures (npm shown — substitute the repository's own test command, found by checking how the repository tests):
+For test failures (npm shown; substitute the repository's own test command, found by checking how the repository tests):
 ```bash
 # Run the specific failing test
 npm test -- --grep "test name"
@@ -116,8 +116,6 @@ Create the minimal failing case:
 - Simplify the input to the smallest example that triggers the failure
 - Strip the test to the bare minimum that reproduces the issue
 
-A minimal reproduction makes the root cause obvious and prevents fixing symptoms instead of causes.
-
 ### Step 4: Fix the Root Cause
 
 Fix the underlying issue, not the symptom:
@@ -133,7 +131,7 @@ Root cause fix (good):
   → Fix the query, add a DISTINCT, or fix the data model
 ```
 
-Ask: "Why does this happen?" until you reach the actual cause, not just where it manifests.
+Ask "Why does this happen?" until you reach the actual cause, not just where it manifests.
 
 ### Step 5: Guard Against Recurrence
 
@@ -144,9 +142,6 @@ Write a test that reproduces this specific failure. It fails without the fix and
 After fixing, verify the complete scenario with the repository's own commands (npm shown):
 
 ```bash
-# Run the specific test
-npm test -- --grep "specific test"
-
 # Run the full test suite (check for regressions)
 npm test
 
@@ -230,8 +225,6 @@ function renderChart(data: ChartData[]) {
 
 ## Instrumentation Guidelines
 
-Add logging only when it helps. Remove it when done.
-
 **When to add instrumentation:**
 - You can't localize the failure to a specific line
 - The issue is intermittent and needs monitoring
@@ -239,7 +232,7 @@ Add logging only when it helps. Remove it when done.
 
 **When to remove it:**
 - The bug is fixed and tests guard against recurrence
-- The log is only useful during development (not in production)
+- The log is only useful during development
 - It contains sensitive data (always remove these)
 
 **Permanent instrumentation (keep):**
@@ -253,15 +246,13 @@ Add logging only when it helps. Remove it when done.
 |---|---|
 | "I know what the bug is, I'll just fix it" | You might be right 70% of the time. The other 30% costs hours. Reproduce first. |
 | "The failing test is probably wrong" | Verify that assumption. If the test is wrong, fix the test. Don't just skip it. |
-| "It works on my machine" | Environments differ. Check CI, check config, check dependencies. |
+| "It works on my machine" | Environments differ. Check CI, config, dependencies. |
 | "I'll fix it in the next commit" | Fix it now. The next commit will introduce new bugs on top of this one. |
 | "This is a flaky test, ignore it" | Flaky tests mask real bugs. Fix the flakiness or understand why it's intermittent. |
 
 ## Red Flags
 
 - Skipping a failing test to work on new features
-- Guessing at fixes without reproducing the bug
-- Fixing symptoms instead of root causes
 - "It works now" without understanding what changed
 - No regression test added after a bug fix
 - Multiple unrelated changes made while debugging (contaminating the fix)
@@ -274,6 +265,5 @@ After fixing a bug:
 - [ ] Root cause is identified and documented
 - [ ] Fix addresses the root cause, not just symptoms
 - [ ] A regression test exists that fails without the fix
-- [ ] All existing tests pass
-- [ ] Build succeeds
+- [ ] All existing tests pass and the build succeeds
 - [ ] The original bug scenario is verified end-to-end
