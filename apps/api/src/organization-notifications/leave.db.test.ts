@@ -104,6 +104,14 @@ async function snapshot(): Promise<Snapshot> {
   };
 }
 
+const ownerRows = async (memberIds: string[]) =>
+  (
+    await owner.query<{ id: string; role: string }>(
+      "select id, role from member where id = any($1::text[]) order by id",
+      [memberIds],
+    )
+  ).rows;
+
 const ownerCount = async () =>
   (
     await owner.query<{ count: number }>(
@@ -321,6 +329,14 @@ describe("locked organization self-leave", () => {
         outcomes.find((outcome) => outcome.status === "rejected")?.reason,
       ).toMatchObject({ statusCode: 400, code: "LAST_OWNER" });
       expect(await ownerCount()).toBe(1);
+      // The loser's membership persists; exactly one of the two rows is gone.
+      const rows = await ownerRows([members.owner, secondOwner.member]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.role).toBe("owner");
+      const winner = outcomes.find((outcome) => outcome.status === "fulfilled");
+      expect(winner?.status === "fulfilled" && winner.value.id).not.toBe(
+        rows[0]?.id,
+      );
     }
   });
 
@@ -340,43 +356,45 @@ describe("locked organization self-leave", () => {
     expect(await ownerCount()).toBe(1);
   });
 
-  it("serializes an owner leaving with the other owner's demotion so one owner remains", async () => {
-    for (let round = 0; round < 5; round += 1) {
-      await reset();
-      const outcomes = await Promise.allSettled([
-        leave(users.owner),
-        updateOrganizationMemberRole(database, {
-          organizationId,
-          actorUserId: secondOwner.user,
-          memberId: members.owner,
-          role: "viewer",
-        }),
-      ]);
-      expect(await ownerCount()).toBe(1);
-      expect(
-        outcomes.filter((outcome) => outcome.status === "fulfilled").length,
-      ).toBeGreaterThanOrEqual(1);
-    }
-  });
-
-  it("serializes a leave with the same owner demoting the leaver so owner count stays at least one", async () => {
-    for (let round = 0; round < 5; round += 1) {
-      await reset();
-      const outcomes = await Promise.allSettled([
-        leave(secondOwner.user),
-        updateOrganizationMemberRole(database, {
-          organizationId,
-          actorUserId: users.owner,
-          memberId: secondOwner.member,
-          role: "viewer",
-        }),
-      ]);
-      expect(await ownerCount()).toBe(1);
-      expect(
-        outcomes.filter((outcome) => outcome.status === "fulfilled").length,
-      ).toBeGreaterThanOrEqual(1);
-    }
-  });
+  it.each([
+    { leaver: users.owner, demoter: secondOwner },
+    {
+      leaver: secondOwner.user,
+      demoter: { user: users.owner, member: members.owner },
+    },
+  ])(
+    "serializes one owner leaving with the other demoting themselves so one wins and one gets LAST_OWNER",
+    async ({ leaver, demoter }) => {
+      for (let round = 0; round < 5; round += 1) {
+        await reset();
+        const outcomes = await Promise.allSettled([
+          leave(leaver),
+          updateOrganizationMemberRole(database, {
+            organizationId,
+            actorUserId: demoter.user,
+            memberId: demoter.member,
+            role: "viewer",
+          }),
+        ]);
+        expect(
+          outcomes.filter((outcome) => outcome.status === "fulfilled"),
+        ).toHaveLength(1);
+        expect(
+          outcomes.find((outcome) => outcome.status === "rejected")?.reason,
+        ).toMatchObject({ statusCode: 400, code: "LAST_OWNER" });
+        expect(await ownerCount()).toBe(1);
+        // Both users keep a membership unless the leave won.
+        const leaverMember = everyone.find((entry) => entry.user === leaver);
+        const rows = await ownerRows([
+          leaverMember?.member ?? "",
+          demoter.member,
+        ]);
+        const leaveWon = outcomes[0].status === "fulfilled";
+        expect(rows).toHaveLength(leaveWon ? 1 : 2);
+        expect(rows.filter((row) => row.role === "owner")).toHaveLength(1);
+      }
+    },
+  );
 
   it("rechecks a member removed while a leave waits and reports a former member denial", async () => {
     await reset();
