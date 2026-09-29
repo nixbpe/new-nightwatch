@@ -17,6 +17,7 @@ import {
 } from "./materialize";
 import { createMonitorCheckQueue } from "./monitor/queue";
 import { MonitorScheduler, startMonitorSchedule } from "./monitor/scheduler";
+import { armHardDeadline, closeWithin } from "./shutdown";
 
 const WORKER_ROLES = [
   "consumer",
@@ -25,6 +26,9 @@ const WORKER_ROLES = [
   "monitor-checker",
 ] as const;
 type WorkerRole = (typeof WORKER_ROLES)[number];
+
+// Inside the 30 s shutdown budget of the spec.
+const SHUTDOWN_DEADLINE_MS = 25_000;
 
 const env = loadEnv();
 const databaseUrl = requireEnvironment("DATABASE_URL");
@@ -66,14 +70,15 @@ let stopping = false;
 async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (stopping) return;
   stopping = true;
+  armHardDeadline(SHUTDOWN_DEADLINE_MS, logger);
   logger.info({ signal }, "worker shutdown requested");
   // The monitor scheduler stops first so no claim is made while closing.
   await monitorSchedule?.stop();
   if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
-  await worker?.close();
-  await queue?.close();
-  if (monitorQueue) await closeWithin(monitorQueue, 5_000);
+  if (worker) await closeWithin(worker);
+  if (queue) await closeWithin(queue);
+  if (monitorQueue) await closeWithin(monitorQueue);
   await database.close();
   logger.flush();
 }
@@ -88,25 +93,6 @@ logger.info(
   { roles: [...roles] },
   worker || queue ? "in-app materialize worker ready" : "monitor worker ready",
 );
-
-/** close() waits on Redis; when Redis is unreachable, drop the connection instead. */
-async function closeWithin(
-  target: { close(): Promise<void>; disconnect(): Promise<void> },
-  ms: number,
-): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => {
-      resolve("timeout");
-    }, ms);
-  });
-  const outcome = await Promise.race([
-    target.close().then(() => "closed" as const),
-    timedOut,
-  ]);
-  clearTimeout(timer);
-  if (outcome === "timeout") await target.disconnect();
-}
 
 function requireEnvironment(name: "DATABASE_URL" | "REDIS_URL"): string {
   const value = process.env[name];

@@ -315,11 +315,16 @@ describe("monitor scheduler", () => {
 
   it("adding the same claim twice yields one job", async () => {
     const queue = newQueue();
-    const options = { ...MONITOR_CHECK_JOB_OPTIONS, jobId: "monitor-check-x" };
+    const monitorId = randomUUID();
+    const claimToken = randomUUID();
+    const options = {
+      ...MONITOR_CHECK_JOB_OPTIONS,
+      jobId: monitorCheckJobId(monitorId, claimToken),
+    };
     const data = {
       tenantId: randomUUID(),
-      monitorId: randomUUID(),
-      claimToken: randomUUID(),
+      monitorId,
+      claimToken,
       checkConfigVersion: 1,
       scheduledFor: new Date().toISOString(),
     };
@@ -564,69 +569,89 @@ describe("worker shutdown", () => {
     expect(output).not.toContain("failed");
   }, 30_000);
 
-  it("exits 0 on SIGTERM while an enqueue is in flight (F-06)", async () => {
-    // A TCP relay to Redis that can be blackholed after startup keeps the
-    // child's add() pending without writing into the shared Redis.
-    const target = new URL(redisUrl);
-    let blackhole = false;
-    const sockets = new Set<Socket>();
-    const relay = createServer((client) => {
-      const upstream = new Socket();
-      sockets.add(client).add(upstream);
-      upstream.connect(Number(target.port), target.hostname);
-      client.on("data", (chunk) => {
-        if (!blackhole) upstream.write(chunk);
+  it.each(["blackholed", "refused"] as const)(
+    "exits 0 on SIGTERM while an enqueue is in flight and Redis is %s",
+    async (mode) => {
+      // A TCP relay to Redis that can be blackholed after startup keeps the
+      // child's add() pending without writing into the shared Redis.
+      const target = new URL(redisUrl);
+      let blackhole = false;
+      const sockets = new Set<Socket>();
+      const relay = createServer((client) => {
+        const upstream = new Socket();
+        sockets.add(client).add(upstream);
+        upstream.connect(Number(target.port), target.hostname);
+        client.on("data", (chunk) => {
+          if (!blackhole) upstream.write(chunk);
+        });
+        upstream.on("data", (chunk) => client.write(chunk));
+        client.on("error", () => upstream.destroy());
+        upstream.on("error", () => client.destroy());
+        client.on("close", () => upstream.destroy());
       });
-      upstream.on("data", (chunk) => client.write(chunk));
-      client.on("error", () => upstream.destroy());
-      upstream.on("error", () => client.destroy());
-      client.on("close", () => upstream.destroy());
-    });
-    await new Promise<void>((resolve) => relay.listen(0, "127.0.0.1", resolve));
-    const address = relay.address();
-    const relayPort = typeof address === "object" && address ? address.port : 0;
-    const child = spawn("bun", ["run", workerEntry], {
-      env: {
-        PATH: process.env.PATH,
-        DATABASE_URL: runtimeUrl,
-        REDIS_URL: `redis://127.0.0.1:${String(relayPort)}`,
-        WORKER_ROLES: "monitor-scheduler",
-        NODE_ENV: "test",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let output = "";
-    const ready = Promise.withResolvers<undefined>();
-    child.stdout.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-      if (output.includes("worker ready")) ready.resolve(undefined);
-    });
-    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
-    const exited = new Promise<number | null>((resolve) =>
-      child.once("close", resolve),
-    );
-    try {
-      await ready.promise;
-      blackhole = true;
-      const fixture = await seed("now()", 1);
-      // The next 10 s round claims the monitor; its add() then hangs.
-      const deadline = Date.now() + 20_000;
-      while (Date.now() < deadline) {
-        const [row] = await schedules(fixture);
-        if (row?.claim_token) break;
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-      const [claimed] = await schedules(fixture);
-      expect(claimed?.claim_token).not.toBeNull();
-      child.kill("SIGTERM");
+      await new Promise<void>((resolve) =>
+        relay.listen(0, "127.0.0.1", resolve),
+      );
+      const address = relay.address();
+      const relayPort =
+        typeof address === "object" && address ? address.port : 0;
+      const child = spawn("bun", ["run", workerEntry], {
+        env: {
+          PATH: process.env.PATH,
+          DATABASE_URL: runtimeUrl,
+          REDIS_URL: `redis://127.0.0.1:${String(relayPort)}`,
+          WORKER_ROLES: "monitor-scheduler",
+          NODE_ENV: "test",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let output = "";
+      const ready = Promise.withResolvers<undefined>();
+      child.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+        if (output.includes("worker ready")) ready.resolve(undefined);
+      });
+      child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
+      const exited = new Promise<number | null>((resolve) =>
+        child.once("close", resolve),
+      );
+      try {
+        await ready.promise;
+        blackhole = true;
+        const fixture = await seed("now()", 1);
+        // The next 10 s round claims the monitor; its add() then hangs.
+        const deadline = Date.now() + 20_000;
+        while (Date.now() < deadline) {
+          const [row] = await schedules(fixture);
+          if (row?.claim_token) break;
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        const [claimed] = await schedules(fixture);
+        expect(claimed?.claim_token).not.toBeNull();
+        if (mode === "refused") {
+          // Connection refused: ioredis goes to reconnecting with a non-empty offline queue.
+          for (const socket of sockets) socket.destroy();
+          await new Promise((resolve) => relay.close(resolve));
+        }
+        const signalled = Date.now();
+        child.kill("SIGTERM");
 
-      expect(await exited).toBe(0);
-      expect(output).toContain("monitor scheduler stopped");
-      expect(output).not.toContain("round failed");
-    } finally {
-      child.kill("SIGKILL");
-      for (const socket of sockets) socket.destroy();
-      await new Promise((resolve) => relay.close(resolve));
-    }
-  }, 60_000);
+        expect(await exited).toBe(0);
+        expect(Date.now() - signalled).toBeLessThan(15_000);
+        expect(output).toContain("monitor scheduler stopped");
+        for (const line of [
+          "round failed",
+          "purge failed",
+          "claim round failed",
+        ])
+          expect(output).not.toContain(line);
+      } finally {
+        child.kill("SIGKILL");
+        for (const socket of sockets) socket.destroy();
+        if (relay.listening)
+          await new Promise((resolve) => relay.close(resolve));
+      }
+    },
+    60_000,
+  );
 });
