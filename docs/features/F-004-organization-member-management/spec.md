@@ -139,3 +139,13 @@ Issue [#11](https://github.com/nixbpe/new-nightwatch/issues/11) authorizes this 
 ### Open decisions
 
 No new technical or product behavior decision for issue #11. Existing Feature accountability question and authorization limits outside this node remain unchanged.
+
+## Issue #13 execution addendum: `NODE-F004-04`
+
+Issue [#13](https://github.com/nixbpe/new-nightwatch/issues/13) authorizes this node only, with `COMMIT_MODE: owned-slice` and `STOP_AT: merge-ready`. This authorization supersedes the legacy `COMMIT_MODE: none` and no-start statements above and in [`specs/04-revoke.md`](specs/04-revoke.md) only for issue #13; it does not authorize `NODE-F004-05`, deployment or release. `F-004-AC-2` remains frozen; `NODE-F004-03` (PR #44) is merged. Contracts, shared-file policy and `specs/04-revoke.md` are authoritative for behavior.
+
+| Task | Definition |
+| --- | --- |
+| `ISSUE-13-REVOKE` | **OWNER:** `software-engineer` (integration owner). **READY:** node 03 merged, `MemberActionDialog` and member page present. **OUTCOME:** confirmed revoke via existing DELETE, scoped list/context refresh, revoked-session denial on next A request. **SOURCE:** #13, `F-004-AC-2` AC-04 (revoke), AC-11, AC-12, AC-15 (revoke), AC-16-AC-17 (revoke); `specs/04-revoke.md`. **FILES:** as in `specs/04-revoke.md`. **NON-GOALS:** delete user, revoke invitation, cross-tab sync, self-leave. **VERIFY/PROOF:** as in `specs/04-revoke.md`. **COMMIT_MODE:** `owned-slice`. |
+
+No new open decision.
