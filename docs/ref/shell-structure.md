@@ -35,7 +35,7 @@ One navigation definition feeds the sidebar, the command palette and the setting
 - A path may carry an organization parameter resolved against the active organization; a leaf that needs one is hidden when there is none.
 - Palette entries are searchable in ⌘K under the leaf's label and form the leaf's tab strip, but are never sidebar rows. The leaf is active on every one of its tabs.
 - Only real destinations are listed; no placeholder routes.
-- Active row: Text at low opacity as fill, medium weight, Primary icon, `aria-current="page"`.
+- Active row: Text at low opacity as fill, a 3 px Primary bar on the left edge (also on the rail button), medium weight, Primary icon, `aria-current="page"`. The sidebar width changes over 150 ms; hover fills over 100 ms.
 
 Example (NightWatch): ภาพรวม; การแจ้งเตือน; การตั้งค่าส่วนตัว with tabs โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล; group องค์กร with สมาชิก and ตั้งค่าการแจ้งเตือน (owner, admin).
 
