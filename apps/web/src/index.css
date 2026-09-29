@@ -141,3 +141,30 @@ body {
 @utility surface-active {
   @apply bg-foreground/8;
 }
+
+/* Overlays enter over 120 ms (opacity plus a 4 px rise) and leave at once;
+   the reduced-motion rule above collapses the animation to a single frame. */
+@keyframes overlay-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@utility overlay-enter {
+  animation: overlay-enter 120ms ease-out;
+}
+@utility backdrop-enter {
+  animation: backdrop-enter 120ms ease-out;
+}

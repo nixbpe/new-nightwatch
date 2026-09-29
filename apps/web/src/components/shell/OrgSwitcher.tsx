@@ -100,7 +100,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
           role="menu"
           aria-label="สลับองค์กร"
           tabIndex={-1}
-          className="absolute top-full left-2 z-50 mt-1 w-64 rounded-md border border-foreground/10 bg-surface p-1 shadow-lg focus:outline-none"
+          className="overlay-enter absolute top-full left-2 z-50 mt-1 w-64 rounded-md border border-foreground/10 bg-surface p-1 shadow-lg focus:outline-none"
         >
           <p className="px-2.5 py-1.5 text-xs text-foreground-secondary">
             องค์กรของคุณ

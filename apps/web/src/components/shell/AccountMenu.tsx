@@ -76,7 +76,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
           role="menu"
           aria-label="บัญชีของฉัน"
           tabIndex={-1}
-          className="absolute bottom-full left-2 z-50 mb-2 w-72 rounded-md border border-foreground/10 bg-surface shadow-lg focus:outline-none"
+          className="overlay-enter absolute bottom-full left-2 z-50 mb-2 w-72 rounded-md border border-foreground/10 bg-surface shadow-lg focus:outline-none"
         >
           <div className="flex items-center gap-3 px-3 pt-3">
             <Avatar name={name} size="lg" />
