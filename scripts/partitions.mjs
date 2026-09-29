@@ -7,13 +7,13 @@
  *
  * The function creates the previous, current and next N month partitions of
  * the monitor result tables and drops partitions older than 31 days. The
- * drop takes an ACCESS EXCLUSIVE lock on the partitioned parent, so the call
+ * create or drop needs a lock on the partitioned parent (inferred), so the call
  * runs in one transaction with a lock_timeout: on timeout the transaction
  * rolls back (no partial state), the script exits 1 and a rerun is safe.
  *
  * Environment: same resolution as `db:migrate` (scripts/dev-env.mjs).
  *   PARTITION_MONTHS_AHEAD  optional, integer 0..12, default 3
- *   PARTITION_LOCK_TIMEOUT_MS  optional, integer 1..600000, default 5000
+ *   PARTITION_LOCK_TIMEOUT_MS  optional, integer 1..30000, default 5000
  */
 import { SQL } from "bun";
 
@@ -33,7 +33,7 @@ function intFromEnv(name, fallback, min, max) {
 }
 
 const monthsAhead = intFromEnv("PARTITION_MONTHS_AHEAD", 3, 0, 12);
-const lockTimeoutMs = intFromEnv("PARTITION_LOCK_TIMEOUT_MS", 5000, 1, 600000);
+const lockTimeoutMs = intFromEnv("PARTITION_LOCK_TIMEOUT_MS", 5000, 1, 30000);
 
 const url = env.DATABASE_OWNER_URL;
 if (!url) {
@@ -52,23 +52,31 @@ try {
     await tx.unsafe(`set local lock_timeout = ${lockTimeoutMs}`);
     await tx`select ensure_monitor_partitions(${monthsAhead})`;
   });
-  const rows = await sql`
-    select c.relname as name
-    from pg_inherits i
-    join pg_class c on c.oid = i.inhrelid
-    join pg_class p on p.oid = i.inhparent
-    where p.relname in ('monitor_check_results', 'monitor_check_hourly')
-    order by c.relname`;
-  console.log(
-    `[partitions] ok: months ahead ${monthsAhead}, ${rows.length} partitions: ` +
-      rows.map((r) => r.name).join(", "),
-  );
+  console.log(`[partitions] ok: months ahead ${monthsAhead}`);
+  try {
+    const rows = await sql`
+      select c.relname as name
+      from pg_inherits i
+      join pg_class c on c.oid = i.inhrelid
+      join pg_class p on p.oid = i.inhparent
+      where p.relname in ('monitor_check_results', 'monitor_check_hourly')
+      order by c.relname`;
+    console.log(
+      `[partitions] ${rows.length} partitions: ` +
+        rows.map((r) => r.name).join(", "),
+    );
+  } catch (error) {
+    // Partitions are already committed; only the listing failed.
+    console.warn(
+      `[partitions] partitions committed; listing skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 } catch (error) {
   exitCode = 1;
   if (error?.errno === "55P03") {
     console.error(
       `[partitions] lock timeout after ${lockTimeoutMs} ms; transaction rolled back, nothing changed. ` +
-        "Retry when monitor queries are idle or raise PARTITION_LOCK_TIMEOUT_MS.",
+        "Rerun at low traffic; keep the timeout short.",
     );
   } else {
     console.error(

@@ -172,8 +172,8 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   of `monitor_check_results` and `monitor_check_hourly`, drops partitions whose
   whole range is older than 31 days, and is safe to rerun. Run it after
   `db:migrate` in every environment and at least monthly. It sets a
-  transaction-local `lock_timeout` (`PARTITION_LOCK_TIMEOUT_MS`, default 5000)
-  because a drop locks the parent table; on timeout the transaction rolls back,
+  transaction-local `lock_timeout` (`PARTITION_LOCK_TIMEOUT_MS`, 1..30000, default 5000)
+  because a create or drop needs a lock on the parent table (inferred); on timeout the transaction rolls back,
   the script prints the reason and exits 1. `PARTITION_MONTHS_AHEAD` (0..12,
   default 3) overrides the horizon.
 - Env names (validated by `loadMonitorEnv()` in `packages/shared/src/env.ts`):
@@ -187,9 +187,13 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   `dev`; production refuses that key and version.
 - CI (jobs `test` and `full`): the job generates a random key per run into
   `CREDENTIAL_ENCRYPTION_KEYS` (version `ci`, masked), sets
-  `OUTBOUND_TEST_ALLOWED_HOSTS=localhost`, and runs `bun run db:partitions` after
+  `OUTBOUND_TEST_ALLOWED_HOSTS=target.nw-test.internal` (mapped to 127.0.0.1 in
+  `/etc/hosts` by a job step, because the SSRF helper blocks `localhost`), and runs `bun run db:partitions` after
   `db:migrate`. Job `build` gets none of these. `MONITOR_EGRESS_CANARY_URLS` is
-  unset in CI because runners may lack internet; tests inject the canary.
+  unset in CI because runners may lack internet; tests are intended to inject
+  the canary (not yet exercised).
+- `turbo.json` `globalPassThroughEnv` forwards the four monitor variables to
+  turbo-run tasks without putting key values in the cache hash.
 - Bun runtime: `test` and `test:coverage` run vitest on Node. Job `test` also
   runs `bun run --cwd packages/shared test:bun` (`bun --bun vitest run`) so the
   SSRF helper is exercised on the pinned Bun.

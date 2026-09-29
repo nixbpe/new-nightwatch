@@ -87,7 +87,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: ci
       # CI and e2e only, never production (refused when NODE_ENV=production).
-      OUTBOUND_TEST_ALLOWED_HOSTS: localhost
+      OUTBOUND_TEST_ALLOWED_HOSTS: target.nw-test.internal
     services: &db_services
       postgres:
         image: postgres:17.11-alpine
@@ -128,6 +128,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Generate development secret
         run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+      - name: Map harness hostname to loopback
+        run: echo "127.0.0.1 target.nw-test.internal" | sudo tee -a /etc/hosts
       - name: Generate credential encryption key
         run: |
           key="$(openssl rand -base64 32)"
@@ -153,6 +155,7 @@ jobs:
       - name: Shared tests on Bun
         run: bun run --cwd packages/shared test:bun
       - uses: actions/upload-artifact@v6
+        if: always()
         with:
           name: coverage-report
           path: apps/*/coverage/
@@ -238,7 +241,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION: ci
       # CI and e2e only, never production (refused when NODE_ENV=production).
-      OUTBOUND_TEST_ALLOWED_HOSTS: localhost
+      OUTBOUND_TEST_ALLOWED_HOSTS: target.nw-test.internal
       E2E_REQUIRE_CREDENTIALS: "1"
       E2E_EMAIL: settings-e2e@nightwatch.invalid
       E2E_PASSWORD: "nightwatch-ci-disposable-only-06!"
@@ -254,6 +257,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Generate development secret
         run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+      - name: Map harness hostname to loopback
+        run: echo "127.0.0.1 target.nw-test.internal" | sudo tee -a /etc/hosts
       - name: Generate credential encryption key
         run: |
           key="$(openssl rand -base64 32)"
