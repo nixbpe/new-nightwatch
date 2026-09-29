@@ -50,6 +50,17 @@ const organizationPathBase = "/api/organizations";
 const membersSegment = "members";
 const invitationsSegment = "invitations";
 const notificationSettingsSegment = "notification-settings";
+const monitorsSegment = "monitors";
+// `test` and `recent-events` are routes, not monitor ids, so they stay static.
+const monitorStaticSegments = new Set(["test", "recent-events"]);
+const monitorActionSegments = new Set([
+  "pause",
+  "resume",
+  "test",
+  "checks",
+  "incidents",
+  "response-times",
+]);
 
 function encodedCharacterLength(
   path: string,
@@ -136,6 +147,8 @@ function logSafeOrganizationPath(path: string): string {
     | "organization-route"
     | "member"
     | "member-route"
+    | "monitors"
+    | "monitor-route"
     | "other" = "organization";
   const safeSegments = path
     .slice(namespaceEnd)
@@ -161,6 +174,22 @@ function logSafeOrganizationPath(path: string): string {
       if (state === "organization-route" && segment === invitationsSegment) {
         state = "other";
         return invitationsSegment;
+      }
+      if (state === "organization-route" && segment === monitorsSegment) {
+        state = "monitors";
+        return monitorsSegment;
+      }
+      if (state === "monitors") {
+        if (monitorStaticSegments.has(segment)) {
+          state = "other";
+          return segment;
+        }
+        state = "monitor-route";
+        return ":monitorId";
+      }
+      if (state === "monitor-route" && monitorActionSegments.has(segment)) {
+        state = "other";
+        return segment;
       }
       if (state === "member") {
         state = "member-route";
