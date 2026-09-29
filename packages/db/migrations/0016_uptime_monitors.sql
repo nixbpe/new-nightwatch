@@ -118,9 +118,13 @@ create table monitor_check_hourly (
   checks integer not null default 0,
   passed integer not null default 0,
   covered_seconds integer not null default 0,
+  -- Results that had a response time; avg = response_ms_sum / response_checks.
+  response_checks integer not null default 0,
   response_ms_sum bigint not null default 0,
   response_ms_max integer,
   primary key (monitor_id, hour_start),
+  constraint monitor_check_hourly_response_checks_check
+    check (response_checks >= 0 and response_checks <= checks),
   foreign key (monitor_id, tenant_id)
     references monitors (id, tenant_id) on delete cascade
 ) partition by range (hour_start);

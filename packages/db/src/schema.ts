@@ -562,6 +562,7 @@ export const monitorCheckHourly = pgTable(
     checks: integer("checks").notNull().default(0),
     passed: integer("passed").notNull().default(0),
     coveredSeconds: integer("covered_seconds").notNull().default(0),
+    responseChecks: integer("response_checks").notNull().default(0),
     responseMsSum: bigint("response_ms_sum", { mode: "number" })
       .notNull()
       .default(0),

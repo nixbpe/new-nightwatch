@@ -408,6 +408,84 @@ async function insertChildRow(
   }
 }
 
+describe("monitor_check_hourly response_checks", () => {
+  const hour = "date_trunc('hour', now()) - interval '3 days'";
+
+  it("defaults to 0 and separates response-less results from the average", async () => {
+    const stats = await withTenantContextRaw(
+      database,
+      tenantA,
+      async (client) => {
+        const monitorId = await insertMonitor(client, tenantA);
+        const defaults = await client.query<{ response_checks: number }>(
+          `insert into monitor_check_hourly (monitor_id, tenant_id, hour_start)
+         values ($1, $2, ${hour}) returning response_checks`,
+          [monitorId, tenantA],
+        );
+        // A timeout counts as a check but adds no response time; then a 120 ms
+        // and a 80 ms response, each through the upsert the rollup writer uses.
+        const upsert = (responseMs: number | null) =>
+          client.query(
+            `insert into monitor_check_hourly
+             (monitor_id, tenant_id, hour_start, checks, response_checks,
+              response_ms_sum, response_ms_max)
+           values ($1, $2, ${hour}, 1, case when $3::int is null then 0 else 1 end,
+                   coalesce($3::int, 0), $3::int)
+           on conflict (monitor_id, hour_start) do update set
+             checks = monitor_check_hourly.checks + 1,
+             response_checks = monitor_check_hourly.response_checks
+               + case when $3::int is null then 0 else 1 end,
+             response_ms_sum = monitor_check_hourly.response_ms_sum + coalesce($3::int, 0),
+             response_ms_max = greatest(monitor_check_hourly.response_ms_max, $3::int)`,
+            [monitorId, tenantA, responseMs],
+          );
+        await upsert(120);
+        await upsert(null);
+        await upsert(80);
+        const row = await client.query<{
+          checks: number;
+          response_checks: number;
+          response_ms_sum: string;
+        }>(
+          `select checks, response_checks, response_ms_sum from monitor_check_hourly
+         where monitor_id = $1`,
+          [monitorId],
+        );
+        return {
+          defaults: defaults.rows[0]?.response_checks,
+          row: row.rows[0],
+        };
+      },
+    );
+    expect(stats.defaults).toBe(0);
+    expect(stats.row).toEqual({
+      checks: 3,
+      response_checks: 2,
+      response_ms_sum: "200",
+    });
+  });
+
+  it.each([
+    ["more than checks", 2, 1],
+    ["negative", -1, 1],
+  ])(
+    "rejects response_checks that is %s",
+    async (_label, responseChecks, checks) => {
+      await expect(
+        withTenantContextRaw(database, tenantA, async (client) => {
+          const monitorId = await insertMonitor(client, tenantA);
+          await client.query(
+            `insert into monitor_check_hourly
+             (monitor_id, tenant_id, hour_start, checks, response_checks)
+           values ($1, $2, ${hour}, $3, $4)`,
+            [monitorId, tenantA, checks, responseChecks],
+          );
+        }),
+      ).rejects.toThrow(/monitor_check_hourly_response_checks_check/);
+    },
+  );
+});
+
 describe("monitors config CHECK constraints", () => {
   async function insertWith(
     column: string,
