@@ -58,12 +58,33 @@ export type StoredConfig = {
   assertions: StoredAssertion[];
 };
 
+/**
+ * Gives every secret header an id (its future slot name). A header sent
+ * without one reuses the id of the stored header with the same name, so an edit
+ * that omits ids is not read as deleting and re-adding the header.
+ */
+export function assignHeaderIds(
+  headers: StoredHeader[],
+  stored: StoredHeader[],
+): StoredHeader[] {
+  return headers.map((header) => {
+    if (!header.secret || header.id !== undefined) return header;
+    const match = stored.find(
+      (candidate) =>
+        candidate.secret &&
+        candidate.id !== undefined &&
+        candidate.name.toLowerCase() === header.name.toLowerCase(),
+    );
+    return { ...header, id: match?.id ?? crypto.randomUUID() };
+  });
+}
+
 // Secrets never enter the `headers` column: a secret header keeps its name and
 // slot id only, whatever value the client sent.
 function storedHeader(header: MonitorConfig["headers"][number]): StoredHeader {
   if (header.secret) {
     return {
-      id: header.id ?? crypto.randomUUID(),
+      ...(header.id === undefined ? {} : { id: header.id }),
       name: header.name,
       secret: true,
     };

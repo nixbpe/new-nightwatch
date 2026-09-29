@@ -20,12 +20,15 @@ import {
 let ctx: MonitorTestContext;
 let org: TestOrganization;
 let otherOrg: TestOrganization;
+// Separate Organizations keep each section below the 50-monitor limit.
+let vOrg: TestOrganization;
 let outsider: string;
 
 beforeAll(async () => {
   ctx = await openMonitorTestContext();
   org = await ctx.createOrganization("monitor-a");
   otherOrg = await ctx.createOrganization("monitor-b");
+  vOrg = await ctx.createOrganization("monitor-v");
   outsider = await ctx.createUser("monitor-outsider");
 }, 120_000);
 
@@ -44,8 +47,12 @@ const create = (
     clientRequestId,
   });
 
-async function createdBy(userId: string, config = validConfig()) {
-  const response = await create(org.id, userId, config);
+async function createdBy(
+  userId: string,
+  config = validConfig(),
+  organization = org,
+) {
+  const response = await create(organization.id, userId, config);
   expect(response.status).toBe(201);
   return monitorWriteResponseSchema.parse(response.json).monitor;
 }
@@ -527,13 +534,63 @@ describe("validation over HTTP", () => {
       assertions: [{ kind: "responseTimeBelow", ms: 5000 }],
     }),
     bad("missing name", { name: undefined }, "name", "required"),
+    ok("name of 100 characters", { name: "n".repeat(100) }),
+    bad(
+      "name of 101 characters",
+      { name: "n".repeat(101) },
+      "name",
+      "too_long",
+    ),
+    bad("NUL in the name", { name: "a\0b" }, "name", "invalid_format"),
+    bad(
+      "NUL in the URL path",
+      { url: `https://${STUB_HOSTS.public}/a\0b` },
+      "url",
+      "invalid_format",
+    ),
+    bad(
+      "NUL in a text body",
+      { method: "POST", body: { type: "text", content: "a\0b" } },
+      "body.content",
+      "invalid_format",
+    ),
+    bad(
+      "NUL in a query value",
+      { queryParams: [{ name: "q", value: "a\0" }] },
+      "queryParams.0.value",
+      "invalid_format",
+    ),
+    bad(
+      "lone surrogate in a query value",
+      { queryParams: [{ name: "q", value: "a\uD800" }] },
+      "queryParams.0.value",
+      "invalid_format",
+    ),
+    bad(
+      "lone surrogate in a header value",
+      { headers: [{ name: "x-a", value: "\uDC00", secret: false }] },
+      "headers.0.value",
+      "invalid_format",
+    ),
+    bad(
+      "NUL in an assertion expected value",
+      {
+        assertions: [{ kind: "jsonPathEquals", path: "$.a", expected: "a\0" }],
+      },
+      "assertions.0.expected",
+      "invalid_format",
+    ),
   ];
 
   it.each(cases)("$label", async ({ config, status, fields }) => {
-    const before = (await monitorRows(org.id)).length;
-    const response = await create(org.id, org.users.owner, validConfig(config));
+    const before = (await monitorRows(vOrg.id)).length;
+    const response = await create(
+      vOrg.id,
+      vOrg.users.owner,
+      validConfig(config),
+    );
     expect(response.status).toBe(status);
-    const after = (await monitorRows(org.id)).length;
+    const after = (await monitorRows(vOrg.id)).length;
     if (status === 201) {
       expect(after).toBe(before + 1);
       return;
@@ -563,9 +620,9 @@ describe("validation over HTTP", () => {
     "answers %s with a client error envelope, not a 500",
     async (_label, contentType, text, status, code) => {
       const response = await ctx.call(
-        org.users.owner,
+        vOrg.users.owner,
         "POST",
-        monitorsPath(org.id),
+        monitorsPath(vOrg.id),
         undefined,
         { text, contentType },
       );
@@ -574,11 +631,28 @@ describe("validation over HTTP", () => {
     },
   );
 
+  it("stores a well-formed emoji name and trims the URL", async () => {
+    const response = await create(
+      vOrg.id,
+      vOrg.users.owner,
+      validConfig({
+        name: "ok \u{1F600}",
+        url: ` https://${STUB_HOSTS.public}/t `,
+      }),
+    );
+    expect(response.status).toBe(201);
+    const { monitor } = monitorWriteResponseSchema.parse(response.json);
+    expect(monitor).toMatchObject({
+      name: "ok \u{1F600}",
+      url: `https://${STUB_HOSTS.public}/t`,
+    });
+  });
+
   it("never echoes input values in errors", async () => {
     const marker = "sk_live_marker_9f3a";
     const response = await create(
-      org.id,
-      org.users.owner,
+      vOrg.id,
+      vOrg.users.owner,
       validConfig({
         url: `ftp://user:${marker}@${STUB_HOSTS.public}/?token=${marker}`,
         headers: [{ name: "Host", value: marker, secret: false }],
@@ -627,11 +701,11 @@ describe("save-time target checks (AC-09)", () => {
         // Resolves to 127.0.0.1 where the listener runs; it must see nothing.
         `http://${STUB_HOSTS.loopback}:${port}/`,
       ];
-      const before = (await monitorRows(org.id)).length;
+      const before = (await monitorRows(vOrg.id)).length;
       for (const url of urls) {
         const response = await create(
-          org.id,
-          org.users.owner,
+          vOrg.id,
+          vOrg.users.owner,
           validConfig({ url }),
         );
         expect(response.status, url).toBe(422);
@@ -646,7 +720,7 @@ describe("save-time target checks (AC-09)", () => {
           /10\.0\.0|127\.0|169\.254|::1/,
         );
       }
-      expect((await monitorRows(org.id)).length).toBe(before);
+      expect((await monitorRows(vOrg.id)).length).toBe(before);
       expect(target.connections()).toBe(0);
     } finally {
       await target.close();
@@ -654,27 +728,39 @@ describe("save-time target checks (AC-09)", () => {
   });
 
   it("blocks an Edit to a forbidden host and leaves the row unchanged", async () => {
-    const monitor = await createdBy(org.users.owner);
-    const before = await monitorRows(org.id);
+    const monitor = await createdBy(vOrg.users.owner, validConfig(), vOrg);
+    const before = await monitorRows(vOrg.id);
     const response = await ctx.call(
-      org.users.owner,
+      vOrg.users.owner,
       "PATCH",
-      monitorsPath(org.id, `/${monitor.id}`),
+      monitorsPath(vOrg.id, `/${monitor.id}`),
       {
         ...validConfig({ url: `http://${STUB_HOSTS.internal}/` }),
         expectedVersion: monitor.version,
       },
     );
     expect(response.status).toBe(422);
-    expect(await monitorRows(org.id)).toEqual(before);
+    expect(await monitorRows(vOrg.id)).toEqual(before);
+  });
+
+  it("saves a host whose lookup hangs once the deadline passes", async () => {
+    const started = Date.now();
+    const response = await create(
+      vOrg.id,
+      vOrg.users.owner,
+      validConfig({ url: `https://${STUB_HOSTS.hang}/` }),
+    );
+    expect(response.status).toBe(201);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(4900);
+    expect(Date.now() - started).toBeLessThan(15_000);
   });
 
   it("saves a host that does not resolve, and a test-allowed hostname", async () => {
     expect(
       (
         await create(
-          org.id,
-          org.users.owner,
+          vOrg.id,
+          vOrg.users.owner,
           validConfig({ url: `https://${STUB_HOSTS.missing}/` }),
         )
       ).status,
@@ -682,8 +768,8 @@ describe("save-time target checks (AC-09)", () => {
     expect(
       (
         await create(
-          org.id,
-          org.users.owner,
+          vOrg.id,
+          vOrg.users.owner,
           validConfig({ url: `http://${STUB_HOSTS.allowed}:8080/` }),
         )
       ).status,

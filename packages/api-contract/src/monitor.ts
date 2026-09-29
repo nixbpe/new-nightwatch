@@ -65,7 +65,16 @@ export function isValidMonitorHeaderName(name: string): boolean {
   return HEADER_TOKEN.test(name);
 }
 
-const CONTROL_CHARACTERS = /[\r\n\0]/;
+const LINE_BREAKS = /[\r\n]/;
+// Postgres rejects U+0000 in text and jsonb and unpaired surrogate escapes in
+// jsonb, and node-pg rewrites them in text, so neither may reach storage.
+const UNPAIRED_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+/** False for U+0000 and for text that is not well-formed Unicode. */
+export function isStorableText(value: string): boolean {
+  return !value.includes("\0") && !UNPAIRED_SURROGATE.test(value);
+}
 
 /** Allowed ports: 80, 443 and 1024-65535 (AC-28). */
 export function isAllowedMonitorPort(port: number): boolean {
@@ -292,7 +301,10 @@ const authSchema = z.discriminatedUnion("type", [
 // Strict: `secrets` belongs to Task 13 and must not be silently ignored.
 export const monitorConfigBaseSchema = z.strictObject({
   name: z.string().trim().min(1).max(MONITOR_NAME_MAX_LENGTH),
-  url: z.string().max(MONITOR_URL_MAX_LENGTH * 2),
+  url: z
+    .string()
+    .trim()
+    .max(MONITOR_URL_MAX_LENGTH * 2),
   intervalSeconds: z.number().default(MONITOR_DEFAULT_INTERVAL_SECONDS),
   timeoutSeconds: z
     .number()
@@ -326,8 +338,16 @@ function refineMonitorConfig(config: ConfigBase, ctx: z.RefinementCtx): void {
     ctx.addIssue({ code: "custom", path, message: reason, params: { reason } });
   };
 
+  // Every free-text field passes through here before the field's own rules.
+  const badText = (path: (string | number)[], value: string): boolean => {
+    if (isStorableText(value)) return false;
+    add(path, "invalid_format");
+    return true;
+  };
+
+  badText(["name"], config.name);
   const url = checkMonitorUrl(config.url);
-  if (!url.ok) add(["url"], url.reason);
+  if (!badText(["url"], config.url) && !url.ok) add(["url"], url.reason);
 
   // Every allowed interval (60 s and up) exceeds the 30 s timeout cap, so the
   // "timeout below interval" rule needs no separate check.
@@ -370,21 +390,27 @@ function refineMonitorConfig(config: ConfigBase, ctx: z.RefinementCtx): void {
     if (header.secret) return;
     if (header.value === undefined) {
       add(["headers", index, "value"], "required");
-    } else if (CONTROL_CHARACTERS.test(header.value)) {
+    } else if (LINE_BREAKS.test(header.value)) {
       add(["headers", index, "value"], "crlf");
+    } else if (badText(["headers", index, "value"], header.value)) {
+      // reported
     } else if (utf8Length(header.value) > MONITOR_ROW_VALUE_MAX_BYTES) {
       add(["headers", index, "value"], "too_long");
     }
   });
 
   config.queryParams.forEach((param, index) => {
+    badText(["queryParams", index, "name"], param.name);
+    if (badText(["queryParams", index, "value"], param.value)) return;
     if (utf8Length(param.value) > MONITOR_ROW_VALUE_MAX_BYTES) {
       add(["queryParams", index, "value"], "too_long");
     }
   });
 
   if (config.body !== null) {
-    if (utf8Length(config.body.content) > MONITOR_BODY_MAX_BYTES) {
+    if (badText(["body", "content"], config.body.content)) {
+      // reported
+    } else if (utf8Length(config.body.content) > MONITOR_BODY_MAX_BYTES) {
       add(["body", "content"], "too_long");
     } else if (config.body.type === "json") {
       try {
@@ -410,6 +436,7 @@ function refineMonitorConfig(config: ConfigBase, ctx: z.RefinementCtx): void {
       return;
     }
     if (assertion.kind === "bodyContains") {
+      if (badText(["assertions", index, "text"], assertion.text)) return;
       if (assertion.text === "") {
         add(["assertions", index, "text"], "required");
       } else if (
@@ -420,7 +447,12 @@ function refineMonitorConfig(config: ConfigBase, ctx: z.RefinementCtx): void {
       return;
     }
     const path = parseJsonPath(assertion.path);
-    if (!path.ok) add(["assertions", index, "path"], path.reason);
+    if (badText(["assertions", index, "path"], assertion.path)) {
+      // reported
+    } else if (!path.ok) {
+      add(["assertions", index, "path"], path.reason);
+    }
+    if (badText(["assertions", index, "expected"], assertion.expected)) return;
     if (assertion.expected === "") {
       add(["assertions", index, "expected"], "required");
     } else if (

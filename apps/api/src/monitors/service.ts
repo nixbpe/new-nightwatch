@@ -12,6 +12,7 @@ import {
   maskUrl,
   resolveOutboundHost,
   type OutboundDeps,
+  type ResolveOutcome,
   type UrlRejection,
 } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
@@ -23,6 +24,7 @@ import {
 } from "./permissions";
 import {
   affectsChecks,
+  assignHeaderIds,
   MONITOR_COLUMNS,
   sameConfig,
   storedFromRow,
@@ -71,6 +73,29 @@ function targetBlocked(): never {
   );
 }
 
+export const SAVE_RESOLVE_TIMEOUT_MS = 5000;
+
+// A lookup that hangs must not hold the request: it counts as an unresolvable
+// host, which is savable.
+async function resolveWithDeadline(
+  url: URL,
+  outbound: OutboundDeps,
+): Promise<ResolveOutcome | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      resolveOutboundHost(url, outbound),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => {
+          resolve(null);
+        }, SAVE_RESOLVE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Save-time URL checks (AC-09, AC-28). The URL is built exactly as a check
  * builds it, so a URL that only becomes too long after the query params are
@@ -90,8 +115,10 @@ async function validateSaveTarget(
       fields: [{ field: "url", reason: URL_REASONS[built.reason] }],
     });
   }
-  const resolved = await resolveOutboundHost(built.url, outbound);
-  if (!resolved.ok && resolved.reason === "blocked_address") targetBlocked();
+  const resolved = await resolveWithDeadline(built.url, outbound);
+  if (resolved?.ok === false && resolved.reason === "blocked_address") {
+    targetBlocked();
+  }
   return maskUrl(built.url.href);
 }
 
@@ -196,6 +223,18 @@ function configParameters(stored: StoredConfig): unknown[] {
   ];
 }
 
+async function findReplay(
+  client: PoolClient,
+  input: Identity & { input: MonitorCreateInput },
+): Promise<MonitorRow | undefined> {
+  const result = await client.query<MonitorRow>(
+    `select ${MONITOR_COLUMNS} from monitors
+     where tenant_id = $1 and client_request_id = $2`,
+    [input.organizationId, input.input.clientRequestId],
+  );
+  return result.rows[0];
+}
+
 export async function createMonitor(
   database: Database,
   input: Identity & { input: MonitorCreateInput; outbound?: OutboundDeps },
@@ -205,8 +244,20 @@ export async function createMonitor(
     userId: input.actorUserId,
     permission: "write",
   });
+  // A replay wins over everything below, including a host that now resolves
+  // to a blocked address; the original was already accepted.
+  const replayed = await withTenantContextRaw(
+    database,
+    input.organizationId,
+    async (client) => {
+      const found = await findReplay(client, input);
+      return found ? loadRecord(client, found) : undefined;
+    },
+  );
+  if (replayed) return { monitor: replayed, changed: false };
   await validateSaveTarget(input.input, input.outbound ?? {});
   const stored = toStoredConfig(input.input);
+  stored.headers = assignHeaderIds(stored.headers, []);
 
   return withTenantContextRaw(
     database,
@@ -218,12 +269,7 @@ export async function createMonitor(
       ]);
 
       // A replay must win over the limit: the original already counts.
-      const replay = await client.query<MonitorRow>(
-        `select ${MONITOR_COLUMNS} from monitors
-       where tenant_id = $1 and client_request_id = $2`,
-        [input.organizationId, input.input.clientRequestId],
-      );
-      const original = replay.rows[0];
+      const original = await findReplay(client, input);
       if (original) {
         return { monitor: await loadRecord(client, original), changed: false };
       }
@@ -302,6 +348,7 @@ export async function editMonitor(
         );
       }
       const previous = storedFromRow(row);
+      next.headers = assignHeaderIds(next.headers, previous.headers);
       if (sameConfig(previous, next)) {
         return { monitor: await loadRecord(client, row), changed: false };
       }

@@ -2,6 +2,8 @@ import {
   ASSERTION_REASONS,
   CHECK_FAILURE_REASONS,
   isAllowedMonitorPort,
+  isValidMonitorHeaderName,
+  monitorConfigSchema,
   isForbiddenMonitorHeaderName,
   MONITOR_FORBIDDEN_HEADER_NAMES,
   MONITOR_METHODS,
@@ -38,6 +40,44 @@ describe("contract and packages/shared agree", () => {
     for (const name of ["Authorization", "X-Api-Key", "Accept", "proxy"]) {
       expect(findInvalidHeader({ [name]: "v" })).toBeNull();
       expect(isForbiddenMonitorHeaderName(name)).toBe(false);
+    }
+  });
+
+  it("accept and reject the same header names and values", () => {
+    for (let code = 1; code < 128; code += 1) {
+      const name = `x${String.fromCharCode(code)}y`;
+      expect(isValidMonitorHeaderName(name), `name code ${String(code)}`).toBe(
+        findInvalidHeader({ [name]: "v" }) === null,
+      );
+    }
+    for (const name of ["", "a b", "a:b", "é", "X-Ok_1.~"]) {
+      expect(isValidMonitorHeaderName(name), name).toBe(
+        name !== "" && findInvalidHeader({ [name]: "v" }) === null,
+      );
+    }
+    // CR, LF and NUL are refused by both, under different reasons in the contract.
+    const reasonOf = (value: string) => {
+      const result = monitorConfigSchema.safeParse({
+        name: "n",
+        url: "https://example.com/",
+        headers: [{ name: "x-a", value, secret: false }],
+      });
+      if (result.success) return null;
+      const issue = result.error.issues[0];
+      return issue?.code === "custom"
+        ? ((issue.params as { reason: string } | undefined)?.reason ?? null)
+        : null;
+    };
+    for (const [value, reason] of [
+      ["a\rb", "crlf"],
+      ["a\nb", "crlf"],
+      ["a\0b", "invalid_format"],
+      ["plain", null],
+    ] as const) {
+      expect(findInvalidHeader({ "x-a": value }) !== null).toBe(
+        reason !== null,
+      );
+      expect(reasonOf(value)).toBe(reason);
     }
   });
 

@@ -332,6 +332,126 @@ describe("Create", () => {
   });
 });
 
+describe("Create replay before save-time checks", () => {
+  it("returns the original even when the host now resolves to a blocked address", async () => {
+    const first = await create();
+    const { monitor } = monitorWriteResponseSchema.parse(first.response.json);
+    const calls = ctx.resolverCalls.length;
+    const replay = await create(
+      validConfig({ url: `https://${STUB_HOSTS.internal}/` }),
+      org,
+      first.clientRequestId,
+    );
+    expect(replay.response.status).toBe(201);
+    expect(
+      monitorWriteResponseSchema.parse(replay.response.json).monitor.id,
+    ).toBe(monitor.id);
+    expect(ctx.resolverCalls.length).toBe(calls);
+    expect(mutationLines(monitor.id)).toHaveLength(1);
+  });
+});
+
+describe("Edit header ids and URL trimming", () => {
+  const secretHeader = { name: "X-Secret", secret: true } as const;
+
+  it("keeps a secret header's id when an edit omits ids", async () => {
+    const monitor = await created(validConfig({ headers: [secretHeader] }));
+    const id = monitor.headers[0]?.id;
+    expect(id).toBeDefined();
+
+    const withIds = await edit(
+      monitor,
+      configOf({ ...monitor, name: "with ids" }),
+    );
+    expect(withIds.status).toBe(200);
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      version: 2,
+      check_config_version: 1,
+    });
+
+    const withoutIds = await edit(
+      monitor,
+      {
+        ...configOf({ ...monitor, name: "without ids" }),
+        headers: [{ name: "X-Secret", secret: true }],
+      },
+      2,
+    );
+    expect(withoutIds.status).toBe(200);
+    const saved = monitorWriteResponseSchema.parse(withoutIds.json).monitor;
+    expect(saved.headers[0]?.id).toBe(id);
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      version: 3,
+      check_config_version: 1,
+    });
+
+    // Repeating the same id-less request changes nothing.
+    const again = await edit(
+      saved,
+      { ...configOf(saved), headers: [{ name: "X-Secret", secret: true }] },
+      3,
+    );
+    expect(monitorWriteResponseSchema.parse(again.json).monitor.version).toBe(
+      3,
+    );
+    expect(await events(monitor.id)).toHaveLength(2);
+  });
+
+  it("gives a genuinely new secret header a new id", async () => {
+    const monitor = await created(validConfig({ headers: [secretHeader] }));
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      headers: [
+        { name: "X-Secret", secret: true },
+        { name: "X-Other", secret: true },
+      ],
+    });
+    const headers = monitorWriteResponseSchema.parse(response.json).monitor
+      .headers;
+    expect(headers[0]?.id).toBe(monitor.headers[0]?.id);
+    expect(headers[1]?.id).toBeDefined();
+    expect(headers[1]?.id).not.toBe(headers[0]?.id);
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      check_config_version: 2,
+    });
+  });
+
+  it("treats a URL that differs only by surrounding spaces as unchanged", async () => {
+    const monitor = await created();
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      url: ` ${monitor.url} `,
+    });
+    expect(
+      monitorWriteResponseSchema.parse(response.json).monitor.version,
+    ).toBe(1);
+    expect(await events(monitor.id)).toEqual([]);
+  });
+});
+
+describe("Pause racing Delete (AC-50)", () => {
+  it("gives the loser the committed result or 404", async () => {
+    for (let round = 0; round < 5; round += 1) {
+      const monitor = await created();
+      const [pause, remove] = await Promise.all([
+        action(monitor, "pause"),
+        ctx.call(owner(), "DELETE", monitorsPath(org.id, `/${monitor.id}`)),
+      ]);
+      expect([200, 404]).toContain(pause.status);
+      expect(remove.status).toBe(204);
+      const left = await ctx.owner.sql.query(
+        "select 1 from monitors where id = $1",
+        [monitor.id],
+      );
+      expect(left.rows).toHaveLength(0);
+      const paused = mutationLines(monitor.id).some(
+        (line) => line.action === "organization.monitor.pause",
+      );
+      expect(paused).toBe(pause.status === 200);
+    }
+  });
+});
+
 describe("Edit", () => {
   it("lets one of two sessions win with the same expectedVersion", async () => {
     const monitor = await created();

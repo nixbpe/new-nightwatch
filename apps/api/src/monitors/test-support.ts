@@ -39,6 +39,7 @@ export const STUB_HOSTS = {
   loopback: "loopback.monitor-test.example",
   allowed: "allowed.monitor-test.example",
   missing: "missing.monitor-test.example",
+  hang: "hang.monitor-test.example",
 } as const;
 
 const STUB_ADDRESSES: Record<string, string[]> = {
@@ -127,6 +128,8 @@ export async function openMonitorTestContext(options?: {
       resolver: (hostname) => {
         resolverCalls.push(hostname);
         const addresses = STUB_ADDRESSES[hostname];
+        // A lookup that never answers, for the save-time deadline.
+        if (hostname === STUB_HOSTS.hang) return new Promise(() => undefined);
         if (!addresses) {
           return Promise.reject(
             Object.assign(new Error("not found"), { code: "ENOTFOUND" }),

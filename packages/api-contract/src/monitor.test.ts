@@ -360,6 +360,94 @@ describe("monitorConfigSchema", () => {
   });
 });
 
+describe("storable text", () => {
+  const lone = "a\uD800b";
+  it.each([
+    ["name", { name: "a\0b" }, "name"],
+    ["url", { url: "https://example.com/a\0b" }, "url"],
+    [
+      "body",
+      { method: "POST", body: { type: "text", content: "a\0b" } },
+      "body.content",
+    ],
+    [
+      "query name",
+      { queryParams: [{ name: "a\0", value: "v" }] },
+      "queryParams.0.name",
+    ],
+    [
+      "query value",
+      { queryParams: [{ name: "q", value: "a\0" }] },
+      "queryParams.0.value",
+    ],
+    [
+      "query value with a lone surrogate",
+      { queryParams: [{ name: "q", value: lone }] },
+      "queryParams.0.value",
+    ],
+    [
+      "header value with NUL",
+      { headers: [{ name: "x-a", value: "a\0", secret: false }] },
+      "headers.0.value",
+    ],
+    [
+      "header value with a lone surrogate",
+      { headers: [{ name: "x-a", value: lone, secret: false }] },
+      "headers.0.value",
+    ],
+    [
+      "JSON body with a lone surrogate",
+      { method: "POST", body: { type: "json", content: `"${lone}"` } },
+      "body.content",
+    ],
+    [
+      "assertion expected",
+      {
+        assertions: [{ kind: "jsonPathEquals", path: "$.a", expected: "a\0" }],
+      },
+      "assertions.0.expected",
+    ],
+    [
+      "assertion path",
+      {
+        assertions: [
+          { kind: "jsonPathEquals", path: "$['a\0']", expected: "1" },
+        ],
+      },
+      "assertions.0.path",
+    ],
+    [
+      "assertion text",
+      { assertions: [{ kind: "bodyContains", text: lone }] },
+      "assertions.0.text",
+    ],
+  ])("rejects %s as invalid_format", (_label, input, path) => {
+    expect(reasons(input)).toEqual([{ path, reason: "invalid_format" }]);
+  });
+
+  it("keeps crlf for line breaks in header values and accepts paired surrogates", () => {
+    expect(
+      reasons({ headers: [{ name: "x-a", value: "a\nb", secret: false }] }),
+    ).toEqual([{ path: "headers.0.value", reason: "crlf" }]);
+    expect(reasons({ name: "ok \u{1F600}" })).toEqual([]);
+  });
+});
+
+describe("name and url normalization", () => {
+  it("accepts a name of 100 characters and rejects 101", () => {
+    expect(reasons({ name: "n".repeat(100) })).toEqual([]);
+    expect(reasons({ name: "n".repeat(101) })).toEqual([
+      { path: "name", reason: "too_big" },
+    ]);
+  });
+
+  it("trims the url", () => {
+    expect(
+      monitorConfigSchema.parse({ ...base, url: " https://example.com/ " }).url,
+    ).toBe("https://example.com/");
+  });
+});
+
 describe("normalizeMonitorConfig", () => {
   it("keeps typed text next to the normalized forms", () => {
     const config = monitorConfigSchema.parse({
