@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import { textInputClass } from "../../components/ui";
+import { cn } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
 import { ApiError } from "../../lib/api/client";
 import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
@@ -289,11 +290,11 @@ export function MemberRoleActions({
   if (actorRole === "admin" && member.role === "owner") return null;
   const roles = actorRole === "owner" ? INVITABLE_ROLES : ADMIN_INVITABLE_ROLES;
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
       <select
         {...{ [MEMBER_SELECT_ATTRIBUTE]: member.id }}
         aria-label={`บทบาทใหม่ของ ${member.name}`}
-        className={`${textInputClass} h-8 w-auto min-w-28 py-0 text-xs`}
+        className={cn(textInputClass, "h-8 w-32 shrink-0 py-0 text-[13px]")}
         value={role}
         disabled={pending}
         onChange={(event) => {
