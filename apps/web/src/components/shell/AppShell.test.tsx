@@ -839,6 +839,79 @@ describe("AppShell", () => {
     expect(within(breadcrumb).getByText("การแจ้งเตือน")).toBeInTheDocument();
   });
 
+  it("lists monitor notifications in the popover with title, icon and monitor link", async () => {
+    const monitorId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const base = {
+      scope: "organization" as const,
+      organizationId: ORG_A,
+      occurredAt: "2026-09-25T03:00:00.000Z",
+      readAt: null,
+      actor: null,
+      category: "monitor" as const,
+      subject: { monitorId, monitorName: "Checkout" },
+    };
+    const items: NotificationItem[] = [
+      {
+        ...base,
+        id: "10000000-0000-4000-8000-000000000001",
+        eventType: "MONITOR_DOWN",
+        reason: "http_status",
+        sslNotAfter: null,
+      },
+      {
+        ...base,
+        id: "10000000-0000-4000-8000-000000000002",
+        eventType: "MONITOR_RECOVERED",
+        reason: null,
+        sslNotAfter: null,
+      },
+      ...(["CAUTION", "DANGER", "EXPIRED"] as const).map(
+        (level, index): NotificationItem => ({
+          ...base,
+          id: `10000000-0000-4000-8000-00000000000${String(index + 3)}`,
+          eventType: `MONITOR_SSL_${level}`,
+          reason: null,
+          sslNotAfter: "2026-10-20T00:00:00.000Z",
+        }),
+      ),
+    ];
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 5 });
+    fetchNotificationsMock.mockResolvedValue({
+      items,
+      nextCursor: null,
+      unreadCount: 5,
+    });
+    const user = userEvent.setup();
+    renderShell();
+
+    await screen.findByRole("link", { name: "Org A" });
+    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    const popover = await screen.findByRole("dialog", {
+      name: "การแจ้งเตือน",
+    });
+    const rows = within(popover).getAllByRole("listitem");
+
+    expect(
+      rows.map((row) => within(row).getByRole("button").textContent),
+    ).toEqual([
+      expect.stringContaining("มอนิเตอร์ Checkout ล่ม"),
+      expect.stringContaining("มอนิเตอร์ Checkout กลับมาทำงานแล้ว"),
+      expect.stringContaining("ใกล้หมดอายุ (เหลือไม่เกิน 30 วัน)"),
+      expect.stringContaining("ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)"),
+      expect.stringContaining("หมดอายุแล้ว"),
+    ]);
+    for (const row of rows) {
+      expect(row.querySelector("svg")).not.toBeNull();
+      expect(
+        within(row).getByRole("link", { name: "เปิดมอนิเตอร์" }),
+      ).toHaveAttribute(
+        "href",
+        `/organizations/${ORG_A}/monitors/${monitorId}`,
+      );
+    }
+  });
+
   it("shows a popover open failure while keeping the list for retry", async () => {
     const notification: NotificationItem = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

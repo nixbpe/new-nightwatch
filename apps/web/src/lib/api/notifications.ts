@@ -8,6 +8,7 @@ import {
   notificationSettingsUpdateSchema,
   organizationNotificationSettingsSchema,
   type NotificationListResponse,
+  type NotificationSettingsUpdate,
 } from "@nightwatch/api-contract";
 
 import { ApiError, request } from "./client";
@@ -102,7 +103,7 @@ export function fetchOrganizationNotificationSettings(organizationId: string) {
 }
 export function updateOrganizationNotificationSettings(
   organizationId: string,
-  update: { settingsChangedEnabled: boolean; expectedVersion: number },
+  update: NotificationSettingsUpdate,
 ) {
   const body = notificationSettingsUpdateSchema.parse(update);
   return request(

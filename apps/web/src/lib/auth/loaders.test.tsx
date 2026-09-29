@@ -324,6 +324,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     fetchOrganizationNotificationSettingsMock.mockResolvedValue({
       organizationId: "11111111-1111-4111-8111-111111111111",
       settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
       version: 2,
     });
     renderAt(
@@ -349,6 +350,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     ).toEqual({
       organizationId: "11111111-1111-4111-8111-111111111111",
       settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
       version: 2,
     });
   });
