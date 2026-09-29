@@ -1,5 +1,5 @@
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
-import type { CheckResult } from "@nightwatch/shared";
+import { sslLevel, type CheckResult } from "@nightwatch/shared";
 
 /** The transaction handle of `withTenantContextRaw`. */
 export type TenantClient = Parameters<
@@ -41,6 +41,12 @@ export type MonitorEvent = EventContext &
         /** Whether a MONITOR_DOWN notification went out for this incident. */
         downNotified: boolean;
       }
+    | {
+        type: "ssl_level_entered";
+        level: "caution" | "danger" | "expired";
+        host: string;
+        notAfter: Date;
+      }
   );
 
 export type MonitorEventHook = (
@@ -60,6 +66,10 @@ type LockedMonitor = {
   name: string;
   consecutive_failures: number;
   last_passed_config_version: number | null;
+  ssl_host: string | null;
+  ssl_issuer: string | null;
+  ssl_not_after: Date | null;
+  ssl_state: string | null;
 };
 
 type OpenIncident = { id: string; down_notified: boolean };
@@ -99,6 +109,7 @@ function attempt(
   onEvent: MonitorEventHook,
   membershipLocked: boolean,
 ): Promise<RecordOutcome> {
+  const { result } = input;
   return withTenantContextRaw(database, input.tenantId, async (client) => {
     await client.query("select id from organization where id = $1 for share", [
       input.tenantId,
@@ -109,7 +120,8 @@ function attempt(
       ]);
     }
     const monitorRows = await client.query<LockedMonitor>(
-      `select name, consecutive_failures, last_passed_config_version
+      `select name, consecutive_failures, last_passed_config_version,
+              ssl_host, ssl_issuer, ssl_not_after, ssl_state
        from monitors where id = $1 and tenant_id = $2 for update`,
       [input.monitorId, input.tenantId],
     );
@@ -130,12 +142,12 @@ function attempt(
     );
     const open = incidentRows.rows[0] ?? null;
     const next = nextState(monitor, open !== null, input);
-    if (!membershipLocked && next.event !== null) {
+    const ssl = nextSsl(monitor, result);
+    if (!membershipLocked && (next.event !== null || ssl.event !== null)) {
       throw new NeedsMembershipLock();
     }
 
     if (!(await insertResult(client, input))) return "duplicate";
-    const { result } = input;
     if (result.outcome !== "check_error") await upsertRollup(client, input);
     await client.query(
       `update monitors set consecutive_failures = $2, last_check_at = $3,
@@ -190,8 +202,122 @@ function attempt(
         downNotified: open.down_notified,
       });
     }
+    if (ssl.update) {
+      await client.query(
+        `update monitors set ssl_host = $2, ssl_issuer = $3, ssl_not_after = $4,
+           ssl_state = $5, ssl_reason = $6 where id = $1`,
+        [
+          input.monitorId,
+          ssl.update.host,
+          ssl.update.issuer,
+          ssl.update.notAfter,
+          ssl.update.state,
+          ssl.update.reason,
+        ],
+      );
+    }
+    if (ssl.event) {
+      await onEvent(client, {
+        ...context,
+        type: "ssl_level_entered",
+        ...ssl.event,
+      });
+    }
     return "recorded";
   });
+}
+
+type SslUpdate = {
+  host: string | null;
+  issuer: string | null;
+  notAfter: Date | null;
+  state: string;
+  reason: string | null;
+};
+
+/**
+ * SSL state of the last hop's hostname, per (ssl_host, ssl_not_after). A check
+ * that never reached a handshake (network failure, check_error) keeps the
+ * previous state. An event fires when the level worsens into caution, danger
+ * or expired for a certificate identity, and again for a new identity that
+ * starts in one of them; Task 09 decides what to notify.
+ */
+function nextSsl(
+  monitor: LockedMonitor,
+  result: CheckResult,
+): {
+  update: SslUpdate | null;
+  event: {
+    level: "caution" | "danger" | "expired";
+    host: string;
+    notAfter: Date;
+  } | null;
+} {
+  const none = { update: null, event: null };
+  if (result.outcome === "check_error") return none;
+  const { tls } = result;
+  if (tls?.notAfter) {
+    const { level } = sslLevel(tls.notAfter, result.checkedAt);
+    const update: SslUpdate = {
+      host: tls.host,
+      issuer: tls.issuer,
+      notAfter: tls.notAfter,
+      state: level,
+      reason: result.tlsReason,
+    };
+    const sameCertificate =
+      monitor.ssl_host === tls.host &&
+      monitor.ssl_not_after?.getTime() === tls.notAfter.getTime();
+    if (level === "ok" || (sameCertificate && monitor.ssl_state === level)) {
+      return { update, event: null };
+    }
+    return { update, event: { level, host: tls.host, notAfter: tls.notAfter } };
+  }
+  if (tls) {
+    // An expired certificate fails the handshake before its dates can be
+    // read. The expiry stored from earlier checks of the same host still
+    // applies, so the level can still be entered.
+    if (result.tlsReason === "expired") {
+      const sameHost = monitor.ssl_host === tls.host;
+      const notAfter = sameHost ? monitor.ssl_not_after : null;
+      return {
+        update: {
+          host: tls.host,
+          issuer: sameHost ? monitor.ssl_issuer : null,
+          notAfter,
+          state: "expired",
+          reason: "expired",
+        },
+        event:
+          notAfter && monitor.ssl_state !== "expired"
+            ? { level: "expired", host: tls.host, notAfter }
+            : null,
+      };
+    }
+    return {
+      update: {
+        host: tls.host,
+        issuer: null,
+        notAfter: null,
+        state: "unreadable",
+        reason: result.tlsReason,
+      },
+      event: null,
+    };
+  }
+  if (result.httpStatus !== null) {
+    return {
+      update: {
+        host: null,
+        issuer: null,
+        notAfter: null,
+        state: "not_https",
+        reason: null,
+      },
+      event: null,
+    };
+  }
+  return none;
 }
 
 /**
