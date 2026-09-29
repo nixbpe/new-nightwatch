@@ -49,7 +49,7 @@ Load the listed skills before acting on the intent; if one cannot be loaded, sto
 
 - Before design or dispatch, read the references in file:`AGENTS.md` that the change touches, the existing code and its conventions. In an empty repository, propose the smallest viable architecture; never assume a stack or add platform machinery without need.
 - Separate approved requirements, repository invariants, delegated decisions, assumptions and proposals. Never invent quality targets; ask the user for any latency, availability or similar target the criteria omit. A missing critical input is a blocker.
-- Take a Feature (with its UI flow and Stories) as input. Start only when the user has approved its scope and the Product Owner has written the behavior rows of the Acceptance matrix; otherwise return that blocker. Then write the Technical Spec per skill:`technical-spec`. The user's approval of the spec freezes the matrix, gates dispatch, and makes the spec the source of truth for implementation and review.
+- Take a Feature (with its UI flow and Stories) as input. Start only when the user has approved its scope and the Product Owner has written the behavior rows of the Acceptance matrix; otherwise return that blocker. Then write the Technical Spec per skill:`technical-spec`. The user's approval of the spec freezes the matrix and makes the spec the source of truth for implementation and review. Dispatch also needs the user's start authorization.
 - You own estimates, technical contracts and Tasks, including technical Spikes and Enablers, and the Concurrency, Security and Verification rows of the Acceptance matrix. Preserve IDs and revisions; never invent a missing Feature or Story.
 
 ## How work finishes

@@ -18,7 +18,7 @@ The approved spec is the source of truth for implementation and review. Workers 
 2. Copy file:`docs/templates/spec.md` to `docs/features/<Feature>/spec.md`.
 3. Fill in the contracts (API, data and RLS, jobs). Check the architecture drivers below for any new contract, table, queue or dependency. Add the technical rows to the Feature's Acceptance matrix (see Acceptance freeze).
 4. Outline the Tasks per skill:`delivery-orchestration` and map every AC to a Task.
-5. List open decisions, then ask the user to approve the spec. Do not dispatch before approval. On approval, freeze acceptance (see below).
+5. List open decisions, then ask the user to approve the spec. Do not dispatch without approval and a start authorization from the user (approval alone does not start work). On approval, freeze acceptance (see below).
 
 ## Rules
 
@@ -38,8 +38,8 @@ When the user approves the spec, set `acceptanceVersion: <Feature-id>-AC-<n>` an
 After freeze:
 
 - A reviewer may point only at an AC the work misses, a violation of an already-approved architecture or security rule, or a non-blocking follow-up. A reviewer never adds a criterion.
-- A genuinely new criterion is a scope change: proposed AC from the Product Owner → the Technical Lead classifies it as blocker or follow-up → the user approves → `acceptanceVersion` bumps (e.g. `-AC-1` to `-AC-2`), the spec is updated and re-approved, and the affected work is replanned.
-- A change to an approved contract goes back to the user before it is built.
+- A genuinely new criterion is a scope change: proposed AC from the Product Owner → the Technical Lead classifies it as blocker or follow-up → the user approves → `acceptanceVersion` bumps (e.g. `-AC-1` to `-AC-2`), the spec is updated, logged under Revisions and re-approved, and the affected work is replanned.
+- A change to an approved contract goes back to the user before it is built, and is logged under Revisions.
 - No criterion changes silently.
 
 ## Architecture drivers
