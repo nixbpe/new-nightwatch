@@ -137,11 +137,11 @@ export function Alert({
   // Text stays the only fully-saturated use of the tone colour; info is neutral by design.
   const className =
     tone === "error"
-      ? "border-danger/40 bg-danger/8 text-danger"
+      ? "border-danger/25 bg-danger/10 text-danger"
       : tone === "success"
-        ? "border-primary/40 bg-primary/8 text-primary"
+        ? "border-primary/25 bg-primary/10 text-primary"
         : tone === "warning"
-          ? "border-caution/40 bg-caution/8 text-caution"
+          ? "border-caution/25 bg-caution/10 text-caution"
           : "border-foreground/15 bg-foreground/4 text-foreground";
   return (
     <p

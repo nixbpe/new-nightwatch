@@ -32,7 +32,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #000000;
+    --background: #0b0c0e;
     --surface: #121316;
     --foreground: #f3f4f6;
     --foreground-secondary: #adb5bf;
@@ -60,7 +60,7 @@
 }
 
 :root[data-theme="dark"] {
-  --background: #000000;
+  --background: #0b0c0e;
   --surface: #121316;
   --foreground: #f3f4f6;
   --foreground-secondary: #adb5bf;
@@ -167,4 +167,14 @@ body {
 }
 @utility backdrop-enter {
   animation: backdrop-enter 120ms ease-out;
+}
+
+/* Canvas grain for data-dense views (docs/design-system.md, Layout): 1 px
+   dots at Text 6% on a 24 px grid, on Canvas only, never on Surface. */
+@utility canvas-grain {
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--color-foreground) 6%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
 }

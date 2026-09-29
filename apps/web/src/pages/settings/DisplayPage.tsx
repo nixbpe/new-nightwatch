@@ -6,7 +6,12 @@ import { SegmentedControl } from "../../components/ui/segmented-control";
 import { Label } from "../../components/ui/label";
 import { usePreferences, type Preferences } from "../../lib/preferences";
 import { useTheme, type ThemePreference } from "../../lib/theme";
-import { Card, CardHeader, CardFooter } from "../../components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardSection,
+} from "../../components/ui/card";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "light", label: "สว่าง" },
@@ -113,8 +118,8 @@ export function DisplayPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <Card as="section" aria-labelledby="theme-card-title" padding="md">
+    <Card className="divide-y divide-foreground/10">
+      <CardSection aria-labelledby="theme-card-title">
         <CardHeader
           id="theme-card-title"
           title="ธีม"
@@ -128,9 +133,9 @@ export function DisplayPage() {
             setTheme(value);
           }}
         />
-      </Card>
+      </CardSection>
 
-      <Card as="section" aria-labelledby="locale-card-title" padding="md">
+      <CardSection aria-labelledby="locale-card-title">
         <CardHeader
           id="locale-card-title"
           title="ภาษาและเวลา"
@@ -257,7 +262,7 @@ export function DisplayPage() {
             บันทึกการเปลี่ยนแปลง
           </Button>
         </CardFooter>
-      </Card>
-    </div>
+      </CardSection>
+    </Card>
   );
 }

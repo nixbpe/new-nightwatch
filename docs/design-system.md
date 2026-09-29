@@ -10,7 +10,7 @@ Nine semantic roles, the same in both themes. Every color in the product comes f
 
 | Role             | Light     | Dark      | Use                                          |
 | ---------------- | --------- | --------- | -------------------------------------------- |
-| Canvas           | `#f7f8fa` | `#000000` | Page background                              |
+| Canvas           | `#f7f8fa` | `#0b0c0e` | Page background                              |
 | Surface          | `#ffffff` | `#121316` | Cards, panels, overlays, controls            |
 | Text             | `#171a1f` | `#f3f4f6` | Body text, icons                             |
 | Secondary text   | `#5b6470` | `#adb5bf` | Descriptions, eyebrows, timestamps           |

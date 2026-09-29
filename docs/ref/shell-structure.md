@@ -22,7 +22,7 @@ The shell is the chrome around every signed-in page: a sidebar, a header and a s
 | Sidebar, rail     | 56 px icon rail below 1024 px                                                                                          |
 | Sidebar, drawer   | Slide-in over the page below 640 px; modal, focus moves to its close control on open and back to the toggle on close   |
 | Header            | 56 px: sidebar toggle, breadcrumb, search-all field with a ⌘K / Ctrl+K hint, notifications; no product logo or avatar |
-| Main              | Scrollable, 32 px padding; data pages fill the column, form pages cap at 720 px; 24 px rhythm                          |
+| Main              | Scrollable, 32 px padding; data pages fill the column, form pages cap at 720 px; 24 px rhythm; overview, inbox and directory carry a canvas grain |
 
 The header toggle overrides the breakpoint default until the breakpoint itself changes. ⌘K / Ctrl+K opens the command palette from anywhere in the shell. The product mark appears only where there is no organization to show: sign-in, auth cards, not-found, and the sidebar of a user without membership.
 

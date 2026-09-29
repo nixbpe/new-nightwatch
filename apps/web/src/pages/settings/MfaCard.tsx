@@ -22,7 +22,7 @@ import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert, Field, FieldValidationError, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
-import { Card, CardHeader } from "../../components/ui/card";
+import { CardHeader, CardSection } from "../../components/ui/card";
 import { StatusPill } from "../../components/ui/status-pill";
 import { IconTile } from "../../components/ui/icon-tile";
 
@@ -292,7 +292,7 @@ export function MfaCard({
         : groupedSecret(secret);
 
   return (
-    <Card as="section" aria-labelledby="mfa-card-title" padding="md">
+    <CardSection aria-labelledby="mfa-card-title">
       <CardHeader
         id="mfa-card-title"
         title="ยืนยันสองขั้นตอน (MFA)"
@@ -925,7 +925,7 @@ export function MfaCard({
           </form>
         </>
       )}
-    </Card>
+    </CardSection>
   );
 }
 

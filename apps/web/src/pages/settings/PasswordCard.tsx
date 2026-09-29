@@ -6,7 +6,7 @@ import { Alert, FieldValidationError, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
-import { Card, CardHeader, CardFooter } from "../../components/ui/card";
+import { CardHeader, CardFooter, CardSection } from "../../components/ui/card";
 
 const MIN_LENGTH = 8;
 
@@ -61,7 +61,7 @@ export function PasswordCard() {
   };
 
   return (
-    <Card as="section" aria-labelledby="password-card-title" padding="md">
+    <CardSection aria-labelledby="password-card-title">
       <CardHeader
         id="password-card-title"
         title="รหัสผ่าน"
@@ -191,7 +191,7 @@ export function PasswordCard() {
           />
         </CardFooter>
       </form>
-    </Card>
+    </CardSection>
   );
 }
 

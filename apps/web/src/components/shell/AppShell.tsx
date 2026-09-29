@@ -4,7 +4,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
 
 import { ErrorBoundary } from "../ErrorBoundary";
 import { CommandPalette } from "./CommandPalette";
@@ -23,7 +23,11 @@ const FOCUSABLE_DRAWER_SELECTOR = [
 ].join(",");
 
 // The header toggle overrides the breakpoint default only until the breakpoint changes, so no stale override remains.
+// Grain belongs to data-dense views only (overview, inbox, directory), never to forms.
+const DATA_DENSE_ROUTE = /^\/(workspace|notifications)(\/|$)|\/members$/;
+
 export function AppShell() {
+  const { pathname } = useLocation();
   const isLarge = useMediaQuery("(min-width: 1024px)", true);
   const isDesktop = useMediaQuery("(min-width: 640px)", false);
   const [override, setOverride] = useState<{
@@ -163,7 +167,9 @@ export function AppShell() {
           <main
             id="main-content"
             tabIndex={-1}
-            className="flex-1 overflow-y-auto focus:outline-none"
+            className={`flex-1 overflow-y-auto focus:outline-none ${
+              DATA_DENSE_ROUTE.test(pathname) ? "canvas-grain" : ""
+            }`}
           >
             <div className="flex min-h-full flex-col">
               <div className="flex-1 px-4 py-6 sm:px-8 sm:py-8">

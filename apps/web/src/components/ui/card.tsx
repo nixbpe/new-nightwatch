@@ -103,4 +103,20 @@ function CardFooter({
   );
 }
 
-export { Card, CardHeader, CardFooter };
+// One section inside a grouped Card (`divide-y divide-foreground/10`): the
+// page-card inset without its own border, so related sections share a frame.
+function CardSection({
+  className,
+  as: Tag = "section",
+  ...props
+}: ComponentProps<"div"> & { as?: "section" | "div" }) {
+  return (
+    <Tag
+      data-slot="card-section"
+      className={cn("flex flex-col gap-6 p-6", className)}
+      {...props}
+    />
+  );
+}
+
+export { Card, CardHeader, CardFooter, CardSection };

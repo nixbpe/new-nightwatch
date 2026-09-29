@@ -54,12 +54,12 @@ export function SecurityPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <Card className="divide-y divide-foreground/10">
       <MfaCard
         enabled={meQuery.data.user.twoFactorEnabled}
         refreshStatus={refreshStatus}
       />
       <PasswordCard />
-    </div>
+    </Card>
   );
 }
