@@ -10,6 +10,7 @@ import { createApp } from "./app";
 import { createAuth } from "./auth";
 import { createMailer } from "./auth/mailer";
 import { createRedisClient } from "./rate-limit";
+import { API_IDLE_TIMEOUT_SECONDS } from "./server-options";
 
 const env = loadEnv();
 const authEnv = loadAuthEnv();
@@ -31,7 +32,11 @@ const app = createApp({
   outbound: { testAllowedHosts: monitorEnv.OUTBOUND_TEST_ALLOWED_HOSTS },
 });
 
-const server = Bun.serve({ port: env.PORT, fetch: app.fetch });
+const server = Bun.serve({
+  port: env.PORT,
+  idleTimeout: API_IDLE_TIMEOUT_SECONDS,
+  fetch: app.fetch,
+});
 logger.info({ port: env.PORT, nodeEnv: env.NODE_ENV }, "api listening");
 
 function shutdown(signal: "SIGINT" | "SIGTERM"): void {

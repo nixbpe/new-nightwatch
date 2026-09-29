@@ -156,6 +156,9 @@ jobs:
         run: bun run --cwd packages/shared test:bun
       - name: Worker checker tests on Bun
         run: bun run --cwd apps/worker test:bun
+      # The Test endpoint runs on a real Bun.serve listener here.
+      - name: API monitor Test route on Bun
+        run: bun run --cwd apps/api test:bun
       - uses: actions/upload-artifact@v6
         if: always()
         with:

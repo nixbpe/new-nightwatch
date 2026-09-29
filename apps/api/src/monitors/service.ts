@@ -48,12 +48,12 @@ function monitorNotFound(): never {
 }
 
 // A malformed id answers like a missing or foreign one (AC-48).
-function parseMonitorId(raw: string): string {
+export function parseMonitorId(raw: string): string {
   if (!UUID_PATTERN.test(raw)) monitorNotFound();
   return raw;
 }
 
-const URL_REASONS: Record<
+export const URL_REASONS: Record<
   Exclude<UrlRejection, "blocked_address">,
   MonitorInvalidReason
 > = {
@@ -187,7 +187,7 @@ async function lockMonitor(
 }
 
 // Existence check before any network work; the real lookup repeats under lock.
-async function assertMonitorExists(
+export async function assertMonitorExists(
   database: Database,
   identity: Identity,
   monitorId: string,

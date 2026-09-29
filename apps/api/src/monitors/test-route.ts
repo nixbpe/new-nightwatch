@@ -16,10 +16,9 @@ import {
   unauthenticatedErrorResponseSchema,
   unsupportedMediaTypeErrorResponseSchema,
   type MonitorConfig,
-  type MonitorInvalidReason,
   type MonitorTestResult,
 } from "@nightwatch/api-contract";
-import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import type { Database } from "@nightwatch/db";
 import {
   AppError,
   buildCheckUrl,
@@ -27,7 +26,6 @@ import {
   type Logger,
   type NormalizedMonitorConfig,
   type OutboundDeps,
-  type UrlRejection,
 } from "@nightwatch/shared";
 import { z } from "zod";
 
@@ -37,6 +35,7 @@ import { consumeMonitorTestRateLimit, type RateLimiter } from "../rate-limit";
 import { auditMonitorDenials } from "./audit";
 import { monitorInvalidInputHook } from "./invalid-input";
 import { assertMemberPermissionBeforeTenantContext } from "./permissions";
+import { assertMonitorExists, parseMonitorId, URL_REASONS } from "./service";
 
 const jsonError = (description: string, schema: z.ZodType) =>
   ({ description, content: { "application/json": { schema } } }) as const;
@@ -126,41 +125,6 @@ export type MonitorTestRouteDeps = {
   rateLimiter?: RateLimiter;
 };
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function monitorNotFound(): never {
-  throw new AppError(404, "MONITOR_NOT_FOUND", "ไม่พบมอนิเตอร์นี้");
-}
-
-// A malformed, missing or foreign id all answer the same (AC-48).
-async function assertMonitorExists(
-  database: Database,
-  organizationId: string,
-  rawMonitorId: string,
-): Promise<void> {
-  if (!UUID_PATTERN.test(rawMonitorId)) monitorNotFound();
-  // The connection goes back to the pool before the outbound request starts.
-  const found = await withTenantContextRaw(database, organizationId, (client) =>
-    client.query("select 1 from monitors where id = $1 and tenant_id = $2", [
-      rawMonitorId,
-      organizationId,
-    ]),
-  );
-  if (found.rows.length === 0) monitorNotFound();
-}
-
-const URL_REASONS: Record<
-  Exclude<UrlRejection, "blocked_address">,
-  MonitorInvalidReason
-> = {
-  invalid_url: "invalid_format",
-  unsupported_scheme: "blocked_scheme",
-  userinfo_not_allowed: "embedded_credentials",
-  url_too_long: "too_long",
-  port_not_allowed: "blocked_port",
-};
-
 // The URL a check requests must be well formed before quota is spent. A forbidden
 // address is not rejected here: Test reports it as a result (AC-62).
 function assertRequestableUrl(config: MonitorConfig): void {
@@ -209,10 +173,11 @@ async function runTest(
         permission: "write",
       });
       if (input.monitorId !== undefined) {
+        // The connection goes back to the pool before the outbound request starts.
         await assertMonitorExists(
           database,
-          input.organizationId,
-          input.monitorId,
+          input,
+          parseMonitorId(input.monitorId),
         );
       }
     },

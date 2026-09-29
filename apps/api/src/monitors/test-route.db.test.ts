@@ -25,6 +25,7 @@ import {
   createRedisClient,
   type RateLimiter,
 } from "../rate-limit";
+import { API_IDLE_TIMEOUT_SECONDS } from "../server-options";
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { createSelfSignedCertificates } from "../testing/self-signed-certificates";
 import { registerMonitorTestRoutes } from "./test-route";
@@ -555,6 +556,39 @@ describe("role x operation", () => {
     expect(anonymous.status).toBe(401);
     expect(outboundSeen()).toBe(0);
   });
+
+  it.each(["auditor", "viewer"] as const)(
+    "writes one denial line for a %s on each variant, without ids or the URL",
+    async (role) => {
+      const monitorId = crypto.randomUUID();
+      for (const path of [testPath(org.id), testPath(org.id, monitorId)]) {
+        const start = logLines.length;
+        const reply = await call(
+          fullApp,
+          org.users[role],
+          path,
+          config(target(http1, "/ok")),
+        );
+        expect(errorCode(reply)).toBe("PERMISSION_DENIED");
+        const lines = logLines
+          .slice(start)
+          .filter((line) => line.includes("organization.monitor.test"));
+        expect(lines).toHaveLength(1);
+        const record = JSON.parse(lines[0] as string) as Record<
+          string,
+          unknown
+        >;
+        expect(record).toMatchObject({
+          level: 40,
+          action: "organization.monitor.test",
+          code: "PERMISSION_DENIED",
+        });
+        for (const secret of [org.id, monitorId, TARGET_HOST]) {
+          expect(lines[0]).not.toContain(secret);
+        }
+      }
+    },
+  );
 
   it("answers a viewer 403 before it looks the monitor up", async () => {
     resetCounters();
@@ -1177,6 +1211,75 @@ describe("client disconnect", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     // The target sees its socket closed long before the 30 s timeout.
+    expect(http1.heldClosed()).toBe(1);
+  }, 20_000);
+});
+
+// Bun closes an idle HTTP connection after 10 s by default; app.fetch on Node
+// cannot show that, so these cases run on a real Bun.serve (`bun run test:bun`).
+describe.runIf(typeof Bun !== "undefined")("on a real Bun listener", () => {
+  let server: ReturnType<typeof Bun.serve>;
+
+  beforeAll(() => {
+    server = Bun.serve({
+      port: 0,
+      hostname: LOOPBACK,
+      idleTimeout: API_IDLE_TIMEOUT_SECONDS,
+      fetch: fullApp.fetch,
+    });
+  });
+  afterAll(async () => {
+    await server.stop(true);
+  });
+
+  const send = (body: unknown, signal?: AbortSignal) =>
+    fetch(`http://${LOOPBACK}:${String(server.port)}${testPath(org.id)}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: appUrl,
+        "x-test-user": org.users.admin,
+      },
+      body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
+    });
+
+  it("returns the timeout result of a Test that waits past Bun's 10 s default", async () => {
+    await clearRateLimitKeys();
+    http1.reset();
+    const started = Date.now();
+    const response = await send(
+      config(target(http1, "/hold"), { timeoutSeconds: 15 }),
+    );
+    const elapsed = Date.now() - started;
+    expect(response.status).toBe(200);
+    const { result } = (await response.json()) as { result: unknown };
+    expect(monitorTestResultSchema.strict().parse(result)).toMatchObject({
+      outcome: "fail",
+      failureReason: "timeout",
+    });
+    expect(elapsed).toBeGreaterThanOrEqual(14_000);
+  }, 40_000);
+
+  it("aborts the outbound request when the client closes its connection", async () => {
+    await clearRateLimitKeys();
+    http1.reset();
+    const controller = new AbortController();
+    const pending = send(
+      config(target(http1, "/hold"), { timeoutSeconds: 30 }),
+      controller.signal,
+    ).catch((error: unknown) => error);
+    const deadline = Date.now() + 5000;
+    while (http1.requests() === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(http1.requests()).toBe(1);
+    controller.abort();
+    await pending;
+    const closeDeadline = Date.now() + 3000;
+    while (http1.heldClosed() === 0 && Date.now() < closeDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     expect(http1.heldClosed()).toBe(1);
   }, 20_000);
 });
