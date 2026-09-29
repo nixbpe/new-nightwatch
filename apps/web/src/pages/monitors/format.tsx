@@ -1,4 +1,7 @@
-import type { MonitorHealthReason } from "@nightwatch/api-contract";
+import type {
+  CHECK_FAILURE_REASONS,
+  MonitorHealthReason,
+} from "@nightwatch/api-contract";
 
 export const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -34,6 +37,14 @@ export function formatTimeWithSeconds(iso: string): string {
 
 export function formatDateTime(iso: string): string {
   return dateTimeFormat.format(new Date(iso));
+}
+
+/** Time of day for today, date and time otherwise, so yesterday never reads as today. */
+export function formatTimeOrDate(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  return at.toDateString() === now.toDateString()
+    ? timeFormat.format(at)
+    : dateTimeFormat.format(at);
 }
 
 export function formatNumber(value: number): string {
@@ -76,7 +87,10 @@ export const HEALTH_REASON_LABELS: Record<
 };
 
 // Incident start reasons are check failure codes; end reasons are `recovered` or `paused_by_user`.
-const INCIDENT_REASON_LABELS: Record<string, string> = {
+const INCIDENT_REASON_LABELS: Record<
+  (typeof CHECK_FAILURE_REASONS)[number] | "recovered" | "paused_by_user",
+  string
+> = {
   http_status: "รหัสสถานะ HTTP ไม่ตรงเงื่อนไข",
   assertion_failed: "Assertion ไม่ผ่าน",
   timeout: "หมดเวลารอ",
@@ -88,10 +102,19 @@ const INCIDENT_REASON_LABELS: Record<string, string> = {
   redirect_blocked: "redirect ไปที่อยู่ต้องห้าม",
   redirect_limit: "redirect เกินกำหนด",
   body_read_failed: "อ่านเนื้อหาตอบกลับไม่สำเร็จ",
+  secret_decrypt_failed: "ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
+  internal_egress_failed: "ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
+  resolver_unavailable: "ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
+  executor_error: "ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
   recovered: "กลับมาปกติ",
   paused_by_user: "หยุดชั่วคราวโดยผู้ใช้",
 };
 
 export function incidentReasonLabel(reason: string): string {
-  return INCIDENT_REASON_LABELS[reason] ?? "ตรวจไม่ผ่าน";
+  // `reason` is a free string on the wire; an unknown code gets the generic label.
+  return (
+    Object.entries(INCIDENT_REASON_LABELS).find(
+      ([code]) => code === reason,
+    )?.[1] ?? "ตรวจไม่ผ่าน"
+  );
 }

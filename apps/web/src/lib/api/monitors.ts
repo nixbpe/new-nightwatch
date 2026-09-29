@@ -1,4 +1,6 @@
 import {
+  MONITOR_LIST_DEFAULT_LIMIT,
+  MONITOR_RECENT_EVENTS_DEFAULT,
   monitorListResponseSchema,
   monitorRecentEventsResponseSchema,
   type MonitorHealthName,
@@ -14,8 +16,10 @@ export type MonitorRecentEventsResponse = z.infer<
   typeof monitorRecentEventsResponseSchema
 >;
 
-export const MONITOR_LIST_PAGE_SIZE = 25;
-export const MONITOR_RECENT_EVENTS_LIMIT = 10;
+export const MONITOR_LIST_PAGE_SIZE = MONITOR_LIST_DEFAULT_LIMIT;
+export const MONITOR_RECENT_EVENTS_LIMIT = MONITOR_RECENT_EVENTS_DEFAULT;
+// The Overview and its recent-events card refetch on this interval without announcing it.
+export const MONITOR_REFETCH_INTERVAL_MS = 30_000;
 
 export type MonitorListParams = {
   limit: number;

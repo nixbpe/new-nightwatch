@@ -22,7 +22,7 @@ import {
   fetchMonitorRecentEvents,
 } from "../../lib/api/monitors";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
-import { formatTimeWithSeconds } from "./format";
+import { formatDateTime, formatTimeWithSeconds, TIME_ZONE } from "./format";
 import { OverviewPage } from "./OverviewPage";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -172,7 +172,11 @@ function renderPage(organizationId = A) {
   };
 }
 
+// "Today" decides whether a time shows its date, so the clock is fixed; timers stay real.
+const NOW = new Date("2026-09-30T08:00:00.000Z");
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   fetchMeContextMock.mockResolvedValue(context());
   fetchEventsMock.mockResolvedValue(noEvents);
 });
@@ -277,12 +281,15 @@ describe("Overview states", () => {
     fetchMeContextMock.mockResolvedValue(
       context("owner", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
     );
+    fetchListMock.mockResolvedValue(list([item({ name: "SecretMonitor" })]));
     renderPage(A);
     expect(
       await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
     ).toBeInTheDocument();
     expect(fetchListMock).not.toHaveBeenCalled();
-    expect(screen.queryByText("Acme")).toBeNull();
+    expect(screen.queryByText("SecretMonitor")).toBeNull();
+    // Beta is the only org staged in this context; the denied page names no organization.
+    expect(screen.queryByText("Beta")).toBeNull();
     expect(screen.queryByText(/มอนิเตอร์ทั้งหมด/)).toBeNull();
   });
 
@@ -297,6 +304,12 @@ describe("Overview states", () => {
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
     });
+    // A second denial after the refresh must not start another refresh.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+    ).toBeInTheDocument();
   });
 
   it("shows the filtered empty state with a clear action and announces the result once", async () => {
@@ -402,7 +415,7 @@ describe("Overview success", () => {
         selector: "[data-slot=status-pill]",
       });
     const up = pillOf("UpRow", "ปกติ");
-    expect(up.className).toContain("text-primary");
+    expect(up).toHaveClass("text-primary");
     expect(up.querySelector("svg")).not.toBeNull();
 
     for (const [name, text] of [
@@ -412,7 +425,7 @@ describe("Overview success", () => {
       ["PausedRow", "หยุดชั่วคราว"],
     ] as const) {
       const pill = pillOf(name, text);
-      expect(pill.className).not.toContain("text-primary");
+      expect(pill).not.toHaveClass("text-primary");
       expect(pill.querySelector("svg")).toBeNull();
     }
     expect(within(rowOf("DownRow")).getByText(/สาเหตุ/)).toHaveTextContent(
@@ -448,7 +461,7 @@ describe("Overview success", () => {
     await screen.findByText("Flaky");
 
     const flaky = rowOf("Flaky");
-    expect(within(flaky).getByText("ล้มเหลว 1 ครั้ง").className).toContain(
+    expect(within(flaky).getByText("ล้มเหลว 1 ครั้ง")).toHaveClass(
       "text-caution",
     );
     expect(within(flaky).getByText("ปกติ")).toBeInTheDocument();
@@ -525,7 +538,7 @@ describe("Overview success", () => {
 
     levels.forEach(([, text, tone], index) => {
       const label = within(rowOf(`Ssl${String(index)}`)).getByText(text);
-      expect(label.className).toContain(tone);
+      expect(label).toHaveClass(tone);
     });
   });
 
@@ -562,6 +575,158 @@ describe("Overview success", () => {
     expect(
       screen.getByRole("columnheader", { name: /ตรวจล่าสุด \(/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Overview times, focus and filter failures", () => {
+  it("shows the date for a time that is not today and only the time for today", async () => {
+    const earlier = "2026-09-28T07:02:00.000Z";
+    fetchListMock.mockResolvedValue(
+      list([
+        item({
+          name: "DownOld",
+          health: "down",
+          openIncident: { startedAt: earlier, reason: "timeout" },
+          lastCheckAt: earlier,
+        }),
+        item({
+          name: "StaleOld",
+          health: "unknown",
+          healthReason: "stale",
+          lastCheckAt: earlier,
+        }),
+        item({ name: "Today", lastCheckAt: "2026-09-30T07:30:00.000Z" }),
+      ]),
+    );
+    renderPage();
+    await screen.findByText("DownOld");
+
+    const withDate = formatDateTime(earlier);
+    expect(within(rowOf("DownOld")).getAllByText(withDate)).toHaveLength(2);
+    expect(within(rowOf("StaleOld")).getAllByText(withDate)).toHaveLength(2);
+    expect(within(rowOf("Today")).getByText(/^\d{2}:\d{2}$/)).toHaveAttribute(
+      "datetime",
+      "2026-09-30T07:30:00.000Z",
+    );
+    expect(
+      screen.getByRole("columnheader", { name: `สถานะ (${TIME_ZONE})` }),
+    ).toBeInTheDocument();
+  });
+
+  it("names the timezone on the recent events card and shows each event's date", async () => {
+    const at = "2026-09-29T07:02:00.000Z";
+    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchEventsMock.mockResolvedValue({
+      events: [
+        {
+          kind: "incident_opened",
+          monitorId: item().id,
+          monitorName: "Payments",
+          at,
+          reason: "timeout",
+        },
+      ],
+    });
+    renderPage();
+    const card = await screen.findByRole("region", { name: "เหตุการณ์ล่าสุด" });
+    expect(await within(card).findByText(formatDateTime(at))).toHaveAttribute(
+      "datetime",
+      at,
+    );
+    expect(card).toHaveTextContent(`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`);
+  });
+
+  it("keeps focus on the refresh button while it refreshes and ignores a second press", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValueOnce(list([item({ name: "Web" })]));
+    renderPage();
+    await screen.findByText("Web");
+
+    const pending = Promise.withResolvers<MonitorListResponse>();
+    fetchListMock.mockReturnValue(pending.promise);
+    const callsBefore = fetchListMock.mock.calls.length;
+    const button = screen.getByRole("button", { name: "รีเฟรช" });
+    await user.click(button);
+
+    const busy = screen.getByRole("button", { name: "กำลังรีเฟรช…" });
+    expect(busy).toBe(button);
+    expect(busy).toHaveFocus();
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    await user.click(busy);
+    expect(fetchListMock.mock.calls.length).toBe(callsBefore + 1);
+
+    await act(async () => {
+      pending.resolve(list([item({ name: "Web" })]));
+      await pending.promise;
+    });
+    expect(await screen.findByRole("button", { name: "รีเฟรช" })).toHaveFocus();
+  });
+
+  it("keeps the filter controls and offers a clear action when a new filter fails to load", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockImplementation((_org, params) =>
+      params.health === "down"
+        ? Promise.reject(new ApiError("NETWORK_ERROR", "x", 0))
+        : Promise.resolve(list([item({ name: "Web" })])),
+    );
+    renderPage();
+    await screen.findByText("Web");
+
+    await user.selectOptions(screen.getByLabelText("สถานะ"), "down");
+    expect(
+      await screen.findByText("โหลดมอนิเตอร์ไม่สำเร็จ"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("สถานะ")).toHaveValue("down");
+    expect(screen.getByLabelText("ค้นหาชื่อหรือ URL")).toBeInTheDocument();
+    expect(screen.queryByText("ยังไม่มีมอนิเตอร์")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "ล้างตัวกรอง" }));
+    expect(await screen.findByText("Web")).toBeInTheDocument();
+    expect(screen.getByLabelText("สถานะ")).toHaveValue("");
+  });
+
+  it("shows the failure count on an unknown row whose first result in the new config failed", async () => {
+    fetchListMock.mockResolvedValue(
+      list([
+        item({
+          name: "FirstFail",
+          health: "unknown",
+          healthReason: null,
+          consecutiveFailures: 1,
+        }),
+      ]),
+    );
+    renderPage();
+    await screen.findByText("FirstFail");
+    const row = within(rowOf("FirstFail"));
+    expect(row.getByText("ล้มเหลว 1 ครั้ง")).toHaveClass("text-caution");
+    expect(row.getByText("ไม่ทราบสถานะ")).toBeInTheDocument();
+  });
+
+  it("offers no add control until the monitor count is known", async () => {
+    fetchListMock.mockReturnValue(new Promise(() => undefined));
+    renderPage();
+    await screen.findByRole("status", { name: "กำลังโหลดมอนิเตอร์" });
+    expect(screen.queryByText("เพิ่มมอนิเตอร์")).toBeNull();
+  });
+
+  it("hides the pagination summary under the filtered-empty state", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockImplementation((_org, params) =>
+      Promise.resolve(
+        params.health === "down"
+          ? list([], { total: 2, pageTotal: 0 })
+          : list([item({ name: "Web" })]),
+      ),
+    );
+    renderPage();
+    await screen.findByText("Web");
+    await user.selectOptions(screen.getByLabelText("สถานะ"), "down");
+    await screen.findByText("ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง");
+    expect(
+      screen.queryByRole("navigation", { name: "หน้ามอนิเตอร์" }),
+    ).toBeNull();
+    expect(screen.queryByText(/แสดง 0/)).toBeNull();
   });
 });
 
@@ -647,7 +812,7 @@ describe("Overview recent events", () => {
 
 describe("Overview refetch and announcements", () => {
   it("announces a filter result once and leaves the live region alone through two 30 s refetches", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
     const user = userEvent.setup({
       advanceTimers: (ms) => vi.advanceTimersByTime(ms),
     });
@@ -720,7 +885,7 @@ describe("Overview refetch and announcements", () => {
   });
 
   it("keeps the data and warns with its time when a refetch fails", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
     fetchListMock.mockResolvedValueOnce(list([item({ name: "Web" })]));
     fetchListMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
     renderPage();

@@ -9,7 +9,7 @@ import {
 import { HealthPill } from "./HealthPill";
 import {
   formatNumber,
-  formatTime,
+  formatTimeOrDate,
   HEALTH_REASON_LABELS,
   incidentReasonLabel,
   Time,
@@ -27,8 +27,9 @@ function StatusDetail({ row }: { row: Row }) {
   if (row.health === "down" && row.openIncident !== null) {
     lines.push(
       <span key="incident">
-        ตั้งแต่ <Time iso={row.openIncident.startedAt} /> สาเหตุ{" "}
-        {incidentReasonLabel(row.openIncident.reason)}
+        ตั้งแต่{" "}
+        <Time iso={row.openIncident.startedAt} format={formatTimeOrDate} />{" "}
+        สาเหตุ {incidentReasonLabel(row.openIncident.reason)}
       </span>,
     );
   }
@@ -36,7 +37,8 @@ function StatusDetail({ row }: { row: Row }) {
     if (row.healthReason === "stale" && row.lastCheckAt !== null) {
       lines.push(
         <span key="reason">
-          {HEALTH_REASON_LABELS.stale}ตั้งแต่ <Time iso={row.lastCheckAt} />
+          {HEALTH_REASON_LABELS.stale}ตั้งแต่{" "}
+          <Time iso={row.lastCheckAt} format={formatTimeOrDate} />
         </span>,
       );
     } else if (row.healthReason !== null) {
@@ -91,7 +93,7 @@ export function MonitorTable({
   const columns: DataTableColumn<Row>[] = [
     {
       key: "health",
-      header: "สถานะ",
+      header: `สถานะ (${TIME_ZONE})`,
       cell: (row) => (
         <span className="flex flex-col items-start py-1.5">
           <HealthPill health={row.health} />
@@ -154,7 +156,7 @@ export function MonitorTable({
         row.lastCheckAt === null ? (
           <span>{NO_DATA}</span>
         ) : (
-          <Time iso={row.lastCheckAt} format={formatTime} />
+          <Time iso={row.lastCheckAt} format={formatTimeOrDate} />
         ),
     },
   ];

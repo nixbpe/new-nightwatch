@@ -19,6 +19,7 @@ import { ApiError } from "../../lib/api/client";
 import {
   fetchMonitorList,
   MONITOR_LIST_PAGE_SIZE,
+  MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../lib/api/monitors";
 import { ROLE_LABELS } from "../../lib/roles";
@@ -28,7 +29,6 @@ import { HEALTH_LABELS } from "./HealthPill";
 import { MonitorTable } from "./MonitorTable";
 import { RecentEventsCard } from "./RecentEventsCard";
 
-const REFETCH_INTERVAL_MS = 30_000;
 const SEARCH_DEBOUNCE_MS = 300;
 const SUMMARY_ORDER = ["up", "down", "unknown", "paused"] as const;
 
@@ -127,7 +127,7 @@ function OverviewForOrganization({
     queryKey: monitorQueryKeys.list(organizationId, listParams),
     queryFn: () => fetchMonitorList(organizationId, listParams),
     enabled: isMember,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
     // Safe across filters because the component is keyed by Organization.
     placeholderData: keepPreviousData,
   });
@@ -236,7 +236,7 @@ function OverviewForOrganization({
   const addPath = `/organizations/${organizationId}/monitors/new`;
 
   let actions: ReactNode;
-  if (canWrite && !firstRun) {
+  if (canWrite && data !== undefined && !firstRun) {
     actions = limitReached ? (
       <>
         <span
@@ -258,17 +258,91 @@ function OverviewForOrganization({
   }
   const status = canWrite ? undefined : <span>สิทธิ์ของคุณ: ดูอย่างเดียว</span>;
 
+  const clearFilters = () => {
+    pendingAnnouncement.current = true;
+    setSearchText("");
+    setQ("");
+    setHealth(undefined);
+    setOffset(0);
+  };
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await list.refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const filtered = q !== "" || health !== undefined;
+  const filterControls = (
+    <div className="flex flex-wrap items-end gap-4">
+      <Label className="flex min-w-[240px] flex-1 flex-col gap-2 text-sm">
+        ค้นหาชื่อหรือ URL
+        <Input
+          type="search"
+          value={searchText}
+          maxLength={200}
+          onChange={(event) => {
+            setSearchText(event.target.value);
+          }}
+        />
+      </Label>
+      <Label className="flex flex-col gap-2 text-sm">
+        สถานะ
+        <select
+          className={textInputClass}
+          value={health ?? ""}
+          onChange={(event) => {
+            pendingAnnouncement.current = true;
+            setOffset(0);
+            setHealth(
+              event.target.value === ""
+                ? undefined
+                : (event.target.value as MonitorHealthName),
+            );
+          }}
+        >
+          <option value="">ทั้งหมด</option>
+          {SUMMARY_ORDER.map((value) => (
+            <option key={value} value={value}>
+              {HEALTH_LABELS[value]}
+            </option>
+          ))}
+        </select>
+      </Label>
+      {data === undefined ? null : (
+        <p className="pb-2.5 text-sm text-foreground-secondary tabular-nums">
+          พบ {data.page.total} จาก {data.summary.total}
+        </p>
+      )}
+    </div>
+  );
+
   if (data === undefined) {
     return (
       <Page>
         {header(actions, status)}
         {list.isError ? (
-          <PageState
-            kind="error"
-            message="โหลดมอนิเตอร์ไม่สำเร็จ"
-            retryLabel="ลองอีกครั้ง"
-            onRetry={() => void list.refetch()}
-          />
+          <>
+            {filterControls}
+            <PageState
+              kind="error"
+              message="โหลดมอนิเตอร์ไม่สำเร็จ"
+              retryLabel="ลองอีกครั้ง"
+              onRetry={() => void list.refetch()}
+              actions={
+                filtered ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={clearFilters}
+                  >
+                    ล้างตัวกรอง
+                  </Button>
+                ) : undefined
+              }
+            />
+          </>
         ) : (
           <OverviewLoading />
         )}
@@ -304,22 +378,6 @@ function OverviewForOrganization({
     );
   }
 
-  const clearFilters = () => {
-    pendingAnnouncement.current = true;
-    setSearchText("");
-    setQ("");
-    setHealth(undefined);
-    setOffset(0);
-  };
-  const refresh = async () => {
-    setRefreshing(true);
-    try {
-      await list.refetch();
-    } finally {
-      setRefreshing(false);
-    }
-  };
-  const filtered = q !== "" || health !== undefined;
   const { page } = data;
   const shownFrom = page.total === 0 ? 0 : page.offset + 1;
   const shownTo = page.offset + data.monitors.length;
@@ -342,8 +400,11 @@ function OverviewForOrganization({
           type="button"
           variant="secondary"
           size="sm"
-          disabled={refreshing}
-          onClick={() => void refresh()}
+          aria-disabled={refreshing}
+          className={refreshing ? "opacity-60" : undefined}
+          onClick={() => {
+            if (!refreshing) void refresh();
+          }}
         >
           {refreshing ? "กำลังรีเฟรช…" : "รีเฟรช"}
         </Button>
@@ -355,45 +416,7 @@ function OverviewForOrganization({
         </Alert>
       ) : null}
       <SummaryStrip summary={data.summary} />
-      <div className="flex flex-wrap items-end gap-4">
-        <Label className="flex min-w-[240px] flex-1 flex-col gap-2 text-sm">
-          ค้นหาชื่อหรือ URL
-          <Input
-            type="search"
-            value={searchText}
-            maxLength={200}
-            onChange={(event) => {
-              setSearchText(event.target.value);
-            }}
-          />
-        </Label>
-        <Label className="flex flex-col gap-2 text-sm">
-          สถานะ
-          <select
-            className={textInputClass}
-            value={health ?? ""}
-            onChange={(event) => {
-              pendingAnnouncement.current = true;
-              setOffset(0);
-              setHealth(
-                event.target.value === ""
-                  ? undefined
-                  : (event.target.value as MonitorHealthName),
-              );
-            }}
-          >
-            <option value="">ทั้งหมด</option>
-            {SUMMARY_ORDER.map((value) => (
-              <option key={value} value={value}>
-                {HEALTH_LABELS[value]}
-              </option>
-            ))}
-          </select>
-        </Label>
-        <p className="pb-2.5 text-sm text-foreground-secondary tabular-nums">
-          พบ {page.total} จาก {data.summary.total}
-        </p>
-      </div>
+      {filterControls}
       <p role="status" aria-label="ผลการกรอง" className="sr-only">
         <span key={announcement.count}>{announcement.text}</span>
       </p>
@@ -415,24 +438,26 @@ function OverviewForOrganization({
           />
         </div>
       )}
-      <DataTablePagination
-        ariaLabel="หน้ามอนิเตอร์"
-        summary={
-          <>
-            แสดง {shownFrom}–{shownTo} จาก {page.total}
-          </>
-        }
-        previousLabel="ก่อนหน้า"
-        nextLabel="ถัดไป"
-        hasPrevious={page.offset > 0}
-        hasNext={page.offset + data.monitors.length < page.total}
-        onPrevious={() => {
-          setOffset(Math.max(0, page.offset - MONITOR_LIST_PAGE_SIZE));
-        }}
-        onNext={() => {
-          setOffset(page.offset + MONITOR_LIST_PAGE_SIZE);
-        }}
-      />
+      {page.total === 0 ? null : (
+        <DataTablePagination
+          ariaLabel="หน้ามอนิเตอร์"
+          summary={
+            <>
+              แสดง {shownFrom}–{shownTo} จาก {page.total}
+            </>
+          }
+          previousLabel="ก่อนหน้า"
+          nextLabel="ถัดไป"
+          hasPrevious={page.offset > 0}
+          hasNext={page.offset + data.monitors.length < page.total}
+          onPrevious={() => {
+            setOffset(Math.max(0, page.offset - MONITOR_LIST_PAGE_SIZE));
+          }}
+          onNext={() => {
+            setOffset(page.offset + MONITOR_LIST_PAGE_SIZE);
+          }}
+        />
+      )}
       <RecentEventsCard organizationId={organizationId} />
     </Page>
   );

@@ -10,9 +10,11 @@ import { StatusPill } from "../../components/ui/status-pill";
 import { Skeleton } from "../../components/shell/Skeleton";
 import {
   fetchMonitorRecentEvents,
+  MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../lib/api/monitors";
 import {
+  TIME_ZONE,
   formatDateTime,
   formatDuration,
   incidentReasonLabel,
@@ -101,7 +103,7 @@ export function RecentEventsCard({
   const events = useQuery({
     queryKey: monitorQueryKeys.recentEvents(organizationId),
     queryFn: () => fetchMonitorRecentEvents(organizationId),
-    refetchInterval: 30_000,
+    refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
   });
   let body: ReactNode;
   if (events.data !== undefined) {
@@ -151,6 +153,7 @@ export function RecentEventsCard({
       <CardHeader
         id="recent-events-title"
         title="เหตุการณ์ล่าสุด"
+        description={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}
         className="border-b border-foreground/10 p-4"
       />
       {body}
