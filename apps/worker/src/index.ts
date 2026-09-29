@@ -1,5 +1,5 @@
 import { createDatabase, failNotificationDispatch } from "@nightwatch/db";
-import { createLogger, loadEnv } from "@nightwatch/shared";
+import { createLogger, loadEnv, loadMonitorEnv } from "@nightwatch/shared";
 import { Worker } from "bullmq";
 
 import {
@@ -15,15 +15,29 @@ import {
   processMaterialization,
   type MaterializeJobData,
 } from "./materialize";
+import { createMonitorCheckQueue } from "./monitor/queue";
+import { MonitorScheduler, startMonitorSchedule } from "./monitor/scheduler";
+
+const WORKER_ROLES = [
+  "consumer",
+  "scheduler",
+  "monitor-scheduler",
+  "monitor-checker",
+] as const;
+type WorkerRole = (typeof WORKER_ROLES)[number];
 
 const env = loadEnv();
 const databaseUrl = requireEnvironment("DATABASE_URL");
-const redisUrl = requireEnvironment("REDIS_URL");
 const logger = createLogger({
   level: env.LOG_LEVEL,
   name: "nightwatch-worker",
 });
 const roles = workerRoles(process.env.WORKER_ROLES);
+if (roles.has("monitor-checker")) {
+  throw new Error("WORKER_ROLES monitor-checker is not implemented yet");
+}
+const monitorEnv = roles.has("monitor-scheduler") ? loadMonitorEnv() : null;
+const redisUrl = monitorEnv?.REDIS_URL ?? requireEnvironment("REDIS_URL");
 const database = createDatabase(databaseUrl);
 
 const worker = roles.has("consumer") ? startConsumer() : null;
@@ -35,6 +49,16 @@ const stopSchedule = queue
       logger,
     )
   : null;
+const monitorQueue = roles.has("monitor-scheduler")
+  ? createMonitorCheckQueue(redisUrl)
+  : null;
+await monitorQueue?.waitUntilReady();
+const monitorSchedule = monitorQueue
+  ? startMonitorSchedule(
+      new MonitorScheduler(database, monitorQueue, logger),
+      logger,
+    )
+  : null;
 logger.info({ roles: [...roles] }, "in-app materialize worker ready");
 
 let stopping = false;
@@ -42,9 +66,13 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (stopping) return;
   stopping = true;
   logger.info({ signal }, "worker shutdown requested");
+  // The monitor scheduler stops first so no claim is made while closing.
+  await monitorSchedule?.stop();
+  if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
   await worker?.close();
   await queue?.close();
+  await monitorQueue?.close();
   await database.close();
   logger.flush();
 }
@@ -58,14 +86,15 @@ function requireEnvironment(name: "DATABASE_URL" | "REDIS_URL"): string {
   return value;
 }
 
-function workerRoles(value: string | undefined): Set<"consumer" | "scheduler"> {
-  const roles = new Set<"consumer" | "scheduler">();
+function workerRoles(value: string | undefined): Set<WorkerRole> {
+  const roles = new Set<WorkerRole>();
   for (const token of (value ?? "consumer").split(",")) {
     const role = token.trim();
-    if (role !== "consumer" && role !== "scheduler") {
+    const known = WORKER_ROLES.find((candidate) => candidate === role);
+    if (!known) {
       throw new Error(`WORKER_ROLES has unknown role: ${role}`);
     }
-    roles.add(role);
+    roles.add(known);
   }
   return roles;
 }
