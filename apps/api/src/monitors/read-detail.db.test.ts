@@ -486,7 +486,10 @@ describe("uptime and coverage", () => {
       const { uptime } = await detailOf(detail, id);
       // Expected 10 days = 864,000 s; covered 240 h x 3,600 s.
       expect(uptime.d30.coveragePercent).toBeCloseTo(100, 0);
-      expect(uptime.d7.coveragePercent).toBeCloseTo(100, 0);
+      // The 7-day window also expects the current hour, which has no rollup
+      // row yet, so it can read up to 1 h in 167 h (0.6 %) short.
+      expect(uptime.d7.coveragePercent).toBeGreaterThan(99);
+      expect(uptime.d7.coveragePercent).toBeLessThanOrEqual(100);
     });
 
     it("paused 40 days ago, resumed 35 days ago: not paused inside the window", async () => {

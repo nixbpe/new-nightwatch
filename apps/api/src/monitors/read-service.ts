@@ -231,6 +231,16 @@ type AggregateRow = {
   coveredSeconds: number;
 };
 
+type HourlyRow = {
+  monitorId: string;
+  checks7: number;
+  passed7: number;
+  covered7: number;
+  checks30: number;
+  passed30: number;
+  covered30: number;
+};
+
 const EMPTY_AGGREGATE: UptimeAggregate = {
   checks: 0,
   passed: 0,
@@ -259,38 +269,59 @@ export async function loadUptime(
   const start7 = windowStart("7d", now);
   const start30 = windowStart("30d", now);
 
+  // One primary-key range per monitor: `unnest` drives a lateral probe on
+  // (monitor_id, scheduled_for) and (monitor_id, hour_start), so the plan never
+  // scans a partition for a whole Organization.
   const raw = await client.query<AggregateRow>(
-    `select monitor_id as "monitorId",
-         (count(*) filter (where outcome <> 'check_error'))::int as checks,
+    `select t.id as "monitorId", a.checks, a.passed, a."coveredSeconds"
+     from unnest($2::uuid[]) as t(id)
+     cross join lateral (
+       select (count(*) filter (where outcome <> 'check_error'))::int as checks,
          (count(*) filter (where outcome = 'pass'))::int as passed,
          coalesce(sum(interval_seconds) filter (where outcome <> 'check_error'), 0)::int
            as "coveredSeconds"
-       from monitor_check_results
-       where tenant_id = $1 and monitor_id = any($2::uuid[]) and scheduled_for >= $3
-       group by monitor_id`,
+       from monitor_check_results r
+       where r.monitor_id = t.id and r.tenant_id = $1 and r.scheduled_for >= $3
+     ) a`,
     [organizationId, ids, start24],
   );
-  const hourly = await client.query<AggregateRow & { window: "d7" | "d30" }>(
-    `select monitor_id as "monitorId", w.name as window,
-         coalesce(sum(h.checks), 0)::int as checks,
-         coalesce(sum(h.passed), 0)::int as passed,
-         coalesce(sum(h.covered_seconds), 0)::int as "coveredSeconds"
+  const hourly = await client.query<HourlyRow>(
+    `select t.id as "monitorId",
+       a.checks7, a.passed7, a.covered7, a.checks30, a.passed30, a.covered30
+     from unnest($2::uuid[]) as t(id)
+     cross join lateral (
+       select
+         coalesce(sum(h.checks) filter (where h.hour_start >= $3), 0)::int as checks7,
+         coalesce(sum(h.passed) filter (where h.hour_start >= $3), 0)::int as passed7,
+         coalesce(sum(h.covered_seconds) filter (where h.hour_start >= $3), 0)::int
+           as covered7,
+         coalesce(sum(h.checks), 0)::int as checks30,
+         coalesce(sum(h.passed), 0)::int as passed30,
+         coalesce(sum(h.covered_seconds), 0)::int as covered30
        from monitor_check_hourly h
-       join (values ('d7', $3::timestamptz), ('d30', $4::timestamptz)) as w(name, start)
-         on h.hour_start >= w.start
-       where h.tenant_id = $1 and h.monitor_id = any($2::uuid[]) and h.hour_start >= $4
-       group by h.monitor_id, w.name`,
+       where h.monitor_id = t.id and h.tenant_id = $1 and h.hour_start >= $4
+     ) a`,
     [organizationId, ids, start7, start30],
   );
-  const events = await loadPauseEvents(client, organizationId, ids, start30);
 
   const h24 = aggregateByMonitor(raw.rows);
   const d7 = aggregateByMonitor(
-    hourly.rows.filter((row) => row.window === "d7"),
+    hourly.rows.map((row) => ({
+      monitorId: row.monitorId,
+      checks: row.checks7,
+      passed: row.passed7,
+      coveredSeconds: row.covered7,
+    })),
   );
   const d30 = aggregateByMonitor(
-    hourly.rows.filter((row) => row.window === "d30"),
+    hourly.rows.map((row) => ({
+      monitorId: row.monitorId,
+      checks: row.checks30,
+      passed: row.passed30,
+      coveredSeconds: row.covered30,
+    })),
   );
+  const events = await loadPauseEvents(client, organizationId, ids, start30);
 
   return new Map(
     monitors.map((monitor) => {
