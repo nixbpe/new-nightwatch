@@ -132,11 +132,11 @@ export async function rollupFromResults(
   await ctx.owner.sql.query(
     `insert into monitor_check_hourly
        (monitor_id, tenant_id, hour_start, checks, passed, covered_seconds,
-        response_ms_sum, response_ms_max)
+        response_checks, response_ms_sum, response_ms_max)
      select monitor_id, tenant_id, date_trunc('hour', scheduled_for),
        count(*), count(*) filter (where outcome = 'pass'),
-       sum(interval_seconds), sum(coalesce(response_time_ms, 0)),
-       max(response_time_ms)
+       sum(interval_seconds), count(response_time_ms),
+       sum(coalesce(response_time_ms, 0)), max(response_time_ms)
      from monitor_check_results
      where monitor_id = $1 and outcome <> 'check_error'
      group by monitor_id, tenant_id, date_trunc('hour', scheduled_for)`,
@@ -154,6 +154,8 @@ export async function seedHourly(
     checks: number;
     passed: number;
     coveredSeconds: number;
+    /** Results that had a response time; defaults to `checks` when a max is given, else 0. */
+    responseChecks?: number;
     responseMsSum?: number;
     responseMsMax?: number | null;
   },
@@ -161,9 +163,9 @@ export async function seedHourly(
   await ctx.owner.sql.query(
     `insert into monitor_check_hourly
        (monitor_id, tenant_id, hour_start, checks, passed, covered_seconds,
-        response_ms_sum, response_ms_max)
+        response_checks, response_ms_sum, response_ms_max)
      select $1, $2, date_trunc('hour', now()) - make_interval(hours => h.n),
-       $3, $4, $5, $6, $7
+       $3, $4, $5, $9, $6, $7
      from unnest($8::int[]) as h(n)`,
     [
       monitorId,
@@ -174,6 +176,7 @@ export async function seedHourly(
       row.responseMsSum ?? 0,
       row.responseMsMax ?? null,
       hoursAgo,
+      row.responseChecks ?? (row.responseMsMax == null ? 0 : row.checks),
     ],
   );
 }

@@ -690,6 +690,13 @@ const sslListSchema = z.object({
   host: z.string().nullable(),
 });
 
+/**
+ * `percent` is passed / (passed + failed), null when there is no pass or fail
+ * result (check_error is not counted). `coveragePercent` is covered seconds over
+ * expected seconds, 0 when expected seconds is 0 or less (created just now, or
+ * paused for the whole window). Both round to 2 decimals and a value below 100
+ * never shows as 100.
+ */
 const uptimeWindowSchema = z.object({
   percent: z.number().min(0).max(100).nullable(),
   checks: z.number().int().min(0),

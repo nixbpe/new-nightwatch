@@ -172,7 +172,9 @@ describe("7 d and 30 d", () => {
       checks: 4,
       passed: 4,
       coveredSeconds: 240,
-      responseMsSum: 1000,
+      // 2 of the 4 checks had a response: the average ignores the other two.
+      responseChecks: 2,
+      responseMsSum: 600,
       responseMsMax: 400,
     });
     // Every check of this hour timed out without a response.
@@ -199,7 +201,7 @@ describe("7 d and 30 d", () => {
           new Date(hour - hoursAgo * 3_600_000).toISOString(),
       );
     expect(at(1)).toMatchObject({ avgMs: 100, maxMs: 300, checks: 60 });
-    expect(at(3)).toMatchObject({ avgMs: 250, maxMs: 400, checks: 4 });
+    expect(at(3)).toMatchObject({ avgMs: 300, maxMs: 400, checks: 4 });
     expect(at(5)).toMatchObject({ avgMs: null, maxMs: null, checks: 3 });
     expect(at(2)).toMatchObject({ avgMs: null, maxMs: null, checks: 0 });
     expect(at(0)).toMatchObject({ avgMs: null, maxMs: null, checks: 0 });

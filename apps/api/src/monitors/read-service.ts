@@ -899,10 +899,11 @@ export async function getResponseTimes(
     const rows = await client.query<{
       hourStart: Date;
       checks: number;
+      responseChecks: number;
       responseMsSum: string;
       responseMsMax: number | null;
     }>(
-      `select hour_start as "hourStart", checks,
+      `select hour_start as "hourStart", checks, response_checks as "responseChecks",
          response_ms_sum::text as "responseMsSum",
          response_ms_max as "responseMsMax"
        from monitor_check_hourly
@@ -916,11 +917,12 @@ export async function getResponseTimes(
     const buckets = [];
     for (let hour = start.getTime(); hour < now.getTime(); hour += HOUR_MS) {
       const row = byHour.get(hour);
-      const measured = row !== undefined && row.responseMsMax !== null;
+      const measured = row !== undefined && row.responseChecks > 0;
       buckets.push({
         hourStart: new Date(hour).toISOString(),
         avgMs: measured
-          ? Math.round((Number(row.responseMsSum) / row.checks) * 100) / 100
+          ? Math.round((Number(row.responseMsSum) / row.responseChecks) * 100) /
+            100
           : null,
         maxMs: measured ? row.responseMsMax : null,
         checks: row?.checks ?? 0,
