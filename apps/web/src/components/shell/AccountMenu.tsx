@@ -148,7 +148,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex flex-shrink-0 items-center justify-center rounded-full border border-foreground/10 bg-surface font-medium text-foreground ${
+      className={`inline-flex flex-shrink-0 items-center justify-center rounded-full border border-primary/35 bg-primary/14 font-medium text-primary ${
         size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs"
       }`}
     >

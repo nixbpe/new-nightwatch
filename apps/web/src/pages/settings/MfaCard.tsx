@@ -324,7 +324,7 @@ export function MfaCard({
           <div className="flex flex-col rounded-md border border-foreground/10">
             <div className="flex items-center justify-between gap-3 border-b border-foreground/10 p-4">
               <div className="flex min-w-0 items-center gap-3">
-                <IconTile tone="positive">
+                <IconTile>
                   <SmartphoneIcon size={20} />
                 </IconTile>
                 <div className="min-w-0">

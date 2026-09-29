@@ -103,7 +103,7 @@ function NavRow({
         onClick={onNavigate}
         className={`relative mx-auto flex h-9 w-9 items-center justify-center rounded-md transition-colors duration-100 ${
           active
-            ? "bg-foreground/8 text-primary before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-primary"
+            ? "bg-primary/12 text-primary before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-primary"
             : "text-foreground-secondary hover:bg-foreground/5 hover:text-foreground"
         }`}
       >
@@ -117,7 +117,7 @@ function NavRow({
       onClick={onNavigate}
       className={`relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors duration-100 ${
         active
-          ? "bg-foreground/8 font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-primary"
+          ? "bg-primary/12 font-medium text-primary before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-primary"
           : "text-foreground-secondary hover:bg-foreground/5 hover:text-foreground"
       }`}
     >

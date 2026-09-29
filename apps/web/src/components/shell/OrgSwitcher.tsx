@@ -159,7 +159,7 @@ function OrgMark({ name }: { name: string }) {
   return (
     <span
       aria-hidden="true"
-      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-surface text-xs font-semibold text-foreground"
+      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-primary/35 bg-primary/14 text-xs font-semibold text-primary"
     >
       {initialsOf(name)}
     </span>

@@ -23,6 +23,7 @@
   --background: #f7f8fa;
   --surface: #ffffff;
   --foreground: #171a1f;
+  --heading: #171a1f;
   --foreground-secondary: #5b6470;
   --primary: #087a55;
   --on-primary: #ffffff;
@@ -35,8 +36,9 @@
   :root {
     color-scheme: dark;
     --background: #0b0c0e;
-    --surface: #121316;
+    --surface: #0e0f12;
     --foreground: #f3f4f6;
+    --heading: #ffffff;
     --foreground-secondary: #adb5bf;
     --primary: #3ecf8e;
     --on-primary: #11251c;
@@ -54,6 +56,7 @@
   --background: #f7f8fa;
   --surface: #ffffff;
   --foreground: #171a1f;
+  --heading: #171a1f;
   --foreground-secondary: #5b6470;
   --primary: #087a55;
   --on-primary: #ffffff;
@@ -65,8 +68,9 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --background: #0b0c0e;
-  --surface: #121316;
+  --surface: #0e0f12;
   --foreground: #f3f4f6;
+  --heading: #ffffff;
   --foreground-secondary: #adb5bf;
   --primary: #3ecf8e;
   --on-primary: #11251c;
@@ -79,6 +83,7 @@
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-foreground: var(--foreground);
+  --color-heading: var(--heading);
   --color-foreground-secondary: var(--foreground-secondary);
   --color-primary: var(--primary);
   --color-on-primary: var(--on-primary);
@@ -174,10 +179,10 @@ body {
 }
 
 /* Canvas grain for data-dense views (docs/design-system.md, Layout): 1 px
-   dots at Text 6% on a 24 px grid, on Canvas only, never on Surface. */
+   dots at Text 4% on a 24 px grid, on Canvas only, never on Surface. */
 @utility canvas-grain {
   background-image: radial-gradient(
-    color-mix(in oklab, var(--color-foreground) 6%, transparent) 1px,
+    color-mix(in oklab, var(--color-foreground) 4%, transparent) 1px,
     transparent 1px
   );
   background-size: 24px 24px;

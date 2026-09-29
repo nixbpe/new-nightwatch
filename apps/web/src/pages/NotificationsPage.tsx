@@ -150,7 +150,7 @@ export function NotificationRows({
                 <time
                   dateTime={item.occurredAt}
                   title={itemTime(item.occurredAt, preferences)}
-                  className="font-mono text-xs"
+                  className="font-mono text-xs text-foreground"
                 >
                   {relativeTime(item.occurredAt, preferences)}
                 </time>

@@ -55,7 +55,7 @@ function CardHeader({
       )}
     >
       <div className="min-w-0">
-        <h2 id={id} className="text-base font-semibold">
+        <h2 id={id} className="text-base font-semibold text-heading">
           {title}
         </h2>
         {description === undefined ? null : (

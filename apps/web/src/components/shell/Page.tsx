@@ -42,7 +42,7 @@ function ScopeMark({ name, shape }: { name: string; shape: "org" | "person" }) {
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center border border-foreground/10 bg-surface text-[10px] font-semibold text-foreground",
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center border border-primary/35 bg-primary/14 text-[10px] font-semibold text-primary",
         shape === "person" ? "rounded-full" : "rounded-[3px]",
       )}
     >
@@ -83,13 +83,13 @@ export function PageHeader({
             )}
             <span className="truncate">{scope.label}</span>
             {scope.tag === undefined ? null : (
-              <StatusPill tone="muted">{scope.tag}</StatusPill>
+              <StatusPill tone="primary">{scope.tag}</StatusPill>
             )}
           </p>
         )}
         <h1
           className={cn(
-            "mt-2 text-2xl leading-8 font-semibold",
+            "mt-2 text-[28px] leading-9 font-semibold text-heading",
             titleClassName,
           )}
           ref={titleRef}
@@ -98,7 +98,7 @@ export function PageHeader({
           {title}
         </h1>
         {status === undefined ? null : (
-          <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-secondary">
+          <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-secondary [&_.font-mono]:text-foreground">
             {status}
           </p>
         )}

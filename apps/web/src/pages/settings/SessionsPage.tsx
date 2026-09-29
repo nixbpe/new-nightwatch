@@ -196,7 +196,9 @@ export function SessionsPage() {
                       row.ipAddress.trim() === "" ? (
                         "ไม่ทราบ IP"
                       ) : (
-                        <span className="font-mono">{row.ipAddress}</span>
+                        <span className="font-mono text-foreground">
+                          {row.ipAddress}
+                        </span>
                       )}
                     </span>
                     <span>
