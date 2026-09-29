@@ -92,6 +92,14 @@ type LoadedMonitor = {
   timeout_seconds: number;
   schedule_claim_token: string | null;
   schedule_check_config_version: number;
+  /** Bytes are hex so they survive json_agg. */
+  secrets: {
+    slot: string;
+    key_version: string;
+    iv: string;
+    auth_tag: string;
+    ciphertext: string;
+  }[];
 };
 
 type LoadedSecret = {
@@ -144,7 +152,12 @@ function toConfig(row: LoadedMonitor): NormalizedMonitorConfig {
   };
 }
 
-/** Transaction A: load what the check needs, or null when the claim is stale. */
+/**
+ * Transaction A: load what the check needs, or null when the claim is stale.
+ * The monitor row and its secret slots come from one statement, so they share
+ * one snapshot: an Edit committing in between cannot pair a new secret with the
+ * old URL (transactions are READ COMMITTED, one snapshot per statement).
+ */
 async function prepare(
   database: Database,
   job: MonitorCheckJob,
@@ -156,7 +169,14 @@ async function prepare(
               m.api_key_header_name, m.expected_status_ranges, m.assertions,
               m.interval_seconds, m.timeout_seconds,
               s.claim_token as schedule_claim_token,
-              s.check_config_version as schedule_check_config_version
+              s.check_config_version as schedule_check_config_version,
+              (select coalesce(json_agg(json_build_object(
+                        'slot', ms.slot, 'key_version', ms.key_version,
+                        'iv', encode(ms.iv, 'hex'),
+                        'auth_tag', encode(ms.auth_tag, 'hex'),
+                        'ciphertext', encode(ms.ciphertext, 'hex'))), '[]'::json)
+                 from monitor_secrets as ms
+                where ms.monitor_id = m.id and ms.tenant_id = m.tenant_id) as secrets
        from monitors as m
        join monitor_schedule as s on s.monitor_id = m.id
        where m.id = $1 and m.tenant_id = $2`,
@@ -172,14 +192,15 @@ async function prepare(
     ) {
       return null;
     }
-    const secrets = await client.query<LoadedSecret>(
-      `select slot, key_version, iv, auth_tag, ciphertext
-       from monitor_secrets where monitor_id = $1 and tenant_id = $2`,
-      [job.monitorId, job.tenantId],
-    );
     return {
       config: toConfig(row),
-      secrets: secrets.rows,
+      secrets: row.secrets.map((secret): LoadedSecret => ({
+        slot: secret.slot,
+        key_version: secret.key_version,
+        iv: Buffer.from(secret.iv, "hex"),
+        auth_tag: Buffer.from(secret.auth_tag, "hex"),
+        ciphertext: Buffer.from(secret.ciphertext, "hex"),
+      })),
       intervalSeconds: row.interval_seconds,
     };
   });

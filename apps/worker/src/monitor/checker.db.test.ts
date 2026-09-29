@@ -846,6 +846,62 @@ describe("secrets in the checker (JOB-05)", () => {
     }
   });
 
+  it("loads the monitor row and its secret slots in one statement", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        authType: "bearer",
+      });
+      await storeSecret(monitor, "auth.token", "tok");
+      const statements: string[] = [];
+      const sql = new Proxy(db.runtime.sql, {
+        get(pool, property): unknown {
+          if (property !== "connect") {
+            const value: unknown = Reflect.get(pool, property);
+            return typeof value === "function"
+              ? (value as (...args: unknown[]) => unknown).bind(pool)
+              : value;
+          }
+          return async (): Promise<unknown> => {
+            const client = await pool.connect();
+            return new Proxy(client, {
+              get(inner, name): unknown {
+                const value: unknown = Reflect.get(inner, name);
+                if (name !== "query") {
+                  return typeof value === "function"
+                    ? (value as (...args: unknown[]) => unknown).bind(inner)
+                    : value;
+                }
+                return (text: unknown, ...rest: unknown[]) => {
+                  if (typeof text === "string") statements.push(text);
+                  return (inner.query as (...args: unknown[]) => unknown)(
+                    text,
+                    ...rest,
+                  );
+                };
+              },
+            });
+          };
+        },
+      });
+      await processMonitorCheck(
+        monitor.job(),
+        dependencies({ database: { ...db.runtime, sql } }),
+      );
+      // Two statements are two READ COMMITTED snapshots: an Edit committing
+      // between them could pair a new secret with the old URL.
+      const reads = statements.filter((text) =>
+        text.includes("monitor_secrets"),
+      );
+      expect(reads).toHaveLength(1);
+      expect(reads[0]).toMatch(/from\s+monitors\s+as\s+m/);
+      expect(target.requests[0]?.headers.authorization).toBe("Bearer tok");
+    } finally {
+      await target.close();
+    }
+  });
+
   it("a tampered ciphertext is check_error secret_decrypt_failed with no request", async () => {
     const target = await startTarget();
     try {

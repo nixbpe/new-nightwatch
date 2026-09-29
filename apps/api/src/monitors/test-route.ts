@@ -202,6 +202,15 @@ type SecretRow = {
   key_version: string;
 };
 
+// Bytes travel as hex through json_agg.
+type KeptSecret = {
+  slot: string;
+  key_version: string;
+  iv: string;
+  auth_tag: string;
+  ciphertext: string;
+};
+
 type TestSecrets = {
   headers: StoredConfig["headers"];
   /** Values typed in the form, for this request only. */
@@ -228,10 +237,24 @@ async function prepareEditSecrets(
     database,
     input.organizationId,
     async (client) => {
-      const found = await client.query<MonitorRow>(
-        `select ${MONITOR_COLUMNS} from monitors
-         where id = $1 and tenant_id = $2`,
-        [input.monitorId, input.organizationId],
+      // One statement: the row and the ciphertext of the requested `keep` slots
+      // share a snapshot. Two statements are two READ COMMITTED snapshots, and an
+      // Edit committing between them would pair a new secret with the old origin.
+      const keepSlots = input.entries
+        .filter((entry) => entry.action === "keep")
+        .map((entry) => canonicalSecretSlot(entry.slot));
+      const found = await client.query<MonitorRow & { secrets: KeptSecret[] }>(
+        `select ${MONITOR_COLUMNS},
+           (select coalesce(json_agg(json_build_object(
+                     'slot', ms.slot, 'key_version', ms.key_version,
+                     'iv', encode(ms.iv, 'hex'),
+                     'auth_tag', encode(ms.auth_tag, 'hex'),
+                     'ciphertext', encode(ms.ciphertext, 'hex'))), '[]'::json)
+              from monitor_secrets as ms
+             where ms.monitor_id = m.id and ms.slot = any($3::text[])) as secrets
+         from monitors as m
+         where m.id = $1 and m.tenant_id = $2`,
+        [input.monitorId, input.organizationId, keepSlots],
       );
       const row = found.rows[0];
       if (!row) {
@@ -240,31 +263,25 @@ async function prepareEditSecrets(
       const previous = storedFromRow(row);
       const next = toStoredConfig(input.config);
       next.headers = assignHeaderIds(next.headers, previous.headers);
-      const slots = await client.query<{ slot: string }>(
-        "select slot from monitor_secrets where monitor_id = $1",
-        [input.monitorId],
-      );
       const plan = planSecrets({
         required: requiredSlots(next),
         entries: input.entries,
-        stored: new Set(slots.rows.map((entry) => entry.slot)),
+        stored: new Set(row.secrets.map((entry) => entry.slot)),
         mode: "test",
       });
       if (plan.keeps.length > 0) {
         assertSameOrigin(previous, next);
         requireCredentials(input.credentialEnv);
       }
-      const kept =
-        plan.keeps.length === 0
-          ? []
-          : (
-              await client.query<SecretRow>(
-                `select slot, ciphertext, iv, auth_tag, key_version
-                 from monitor_secrets
-                 where monitor_id = $1 and slot = any($2::text[])`,
-                [input.monitorId, plan.keeps],
-              )
-            ).rows;
+      const kept = row.secrets
+        .filter((entry) => plan.keeps.includes(entry.slot))
+        .map((entry): SecretRow => ({
+          slot: entry.slot,
+          key_version: entry.key_version,
+          iv: Buffer.from(entry.iv, "hex"),
+          auth_tag: Buffer.from(entry.auth_tag, "hex"),
+          ciphertext: Buffer.from(entry.ciphertext, "hex"),
+        }));
       return { headers: next.headers, provided: valuesOf(plan), kept };
     },
   );
@@ -408,11 +425,15 @@ async function runTest(
     opened.values,
     { ...outbound, signal: input.signal },
   );
-  // The scheduled check reports the same condition under the same reason.
-  const checked =
-    opened.undecryptable && ran.failureReason === "executor_error"
-      ? { ...ran, failureReason: "secret_decrypt_failed" as const }
-      : ran;
+  // The scheduled check reports an undecryptable slot the same way, even when
+  // the URL is refused before the request would have needed the secret.
+  const checked = opened.undecryptable
+    ? {
+        ...ran,
+        outcome: "check_error" as const,
+        failureReason: "secret_decrypt_failed" as const,
+      }
+    : ran;
   return {
     result: {
       checkedAt: checked.checkedAt.toISOString(),

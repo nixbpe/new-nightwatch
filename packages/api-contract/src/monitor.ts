@@ -489,9 +489,12 @@ export const MONITOR_MAX_SECRETS = 32;
 export const MONITOR_SECRET_ACTIONS = ["keep", "replace", "delete"] as const;
 export type MonitorSecretAction = (typeof MONITOR_SECRET_ACTIONS)[number];
 
-/** A header slot is `header.<headerId>`; a header id is a UUID stored lowercase. */
+/**
+ * A header slot is `header.<headerId>`; a header id is a UUID stored lowercase.
+ * Only the UUID part is case-insensitive: `AUTH.TOKEN` is rejected.
+ */
 const SECRET_SLOT_INPUT =
-  /^(auth\.(token|username|password|apiKey)|header\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^(auth\.(token|username|password|apiKey)|header\.[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
 
 /** The slot name as stored: the header id part is lowercase. */
 export function canonicalSecretSlot(slot: string): string {
@@ -500,6 +503,22 @@ export function canonicalSecretSlot(slot: string): string {
 
 const secretSlotInputSchema = z.string().max(64);
 
+/**
+ * Field paths of `MONITOR_INVALID` for secret entries, so a form knows where to
+ * attach each error:
+ * - `secrets.N.slot`: `invalid_format` for a malformed slot, or a slot the saved
+ *   auth type and headers do not use (keep or replace); `duplicate` for a slot
+ *   named twice; `required` for a `delete` of a slot the saved config still needs.
+ * - `secrets.N.value`: `required` (empty value, or replace without one),
+ *   `too_long` (over 4 KiB), `crlf` (CR or LF), `invalid_format` (NUL, lone
+ *   surrogate, or any value on keep or delete).
+ * - `secrets.N`: `required` for a keep whose slot has no stored value (Edit).
+ * - `auth`: `required` when an auth slot has neither a value nor a kept slot.
+ * - `headers.N.value`: `required` when a secret header's slot has neither.
+ * - `headers.N.id`: `required` for a secret header without an id on Create and
+ *   Test before create (the client generates the UUID).
+ * Test does not enforce the `required` rule for missing slots.
+ */
 export const monitorSecretCreateEntrySchema = z.strictObject({
   slot: secretSlotInputSchema,
   value: z.string().min(1).max(MONITOR_SECRET_MAX_BYTES),
@@ -1036,6 +1055,8 @@ export const monitorResponseTimesResponseSchema = z.discriminatedUnion(
             avgMs: z.number().nullable(),
             maxMs: z.number().int().nullable(),
             checks: z.number().int().min(0),
+            /** Results of the hour that had a response time: the weight of `avgMs`. */
+            responseChecks: z.number().int().min(0),
           }),
         )
         .max(720),

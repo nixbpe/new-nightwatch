@@ -3,7 +3,11 @@ import {
   monitorWriteResponseSchema,
   type MonitorRecord,
 } from "@nightwatch/api-contract";
-import { decryptSecret, loadMonitorEnv } from "@nightwatch/shared";
+import {
+  decryptSecret,
+  encryptSecret,
+  loadMonitorEnv,
+} from "@nightwatch/shared";
 import type { Redis } from "ioredis";
 import http from "node:http";
 import type net from "node:net";
@@ -28,13 +32,15 @@ const credentialEnv = loadMonitorEnv({
 const LOOPBACK = "127.0.0.1";
 const HEADER_ID = "5b0c1a3e-6f0a-4a57-9c4e-8d1b2a3c4d5e";
 const HEADER_SLOT = `header.${HEADER_ID}`;
-// Distinct, greppable values: any appearance outside the request under test is a leak.
-const TOKEN = "tok-3f9a1c7e-do-not-leak";
-const USERNAME = "user-7d2b-do-not-leak";
-const PASSWORD = "pass-88c1-do-not-leak";
-const API_KEY = "key-52ee-do-not-leak";
-const HEADER_VALUE = "hdr-91ab-do-not-leak";
-const NEW_TOKEN = "tok-replaced-0b4d-do-not-leak";
+// Run-unique values: any appearance outside the request under test is a leak,
+// and a value cannot match a leftover from an earlier run.
+const RUN = crypto.randomUUID();
+const TOKEN = `tok-${RUN}-a`;
+const USERNAME = `user-${RUN}-b`;
+const PASSWORD = `pass-${RUN}-c`;
+const API_KEY = `key-${RUN}-d`;
+const HEADER_VALUE = `hdr-${RUN}-e`;
+const NEW_TOKEN = `tok-${RUN}-replaced`;
 const KNOWN_SECRETS = [
   TOKEN,
   USERNAME,
@@ -105,6 +111,7 @@ async function listen(
 
 let ctx: MonitorTestContext;
 let bare: MonitorTestContext;
+let failing: MonitorTestContext;
 let redis: Redis;
 let org: TestOrganization;
 // Listening before collection lets the `it.each` tables name the real port.
@@ -123,6 +130,7 @@ beforeAll(async () => {
   redis = createRedisClient(redisUrl);
   ctx = await openMonitorTestContext({ redis });
   bare = await openMonitorTestContext({ withoutCredentials: true });
+  failing = await openMonitorTestContext({ auditFailure: true });
   org = await ctx.createOrganization("secrets");
   organizationIds.push(org.id);
 }, 120_000);
@@ -133,6 +141,7 @@ afterAll(async () => {
   await clearRateLimitKeys();
   redis.disconnect();
   await bare.close();
+  await failing.close();
   await ctx.close();
 });
 
@@ -872,6 +881,153 @@ describe("Test in Edit with stored and replaced secrets (AC-45)", () => {
   });
 });
 
+describe("Test in Edit reads (R13-01, R13-02, quota)", () => {
+  it("reads the monitor and its kept ciphertext in one statement", async () => {
+    const monitor = await created(bearer());
+    ctx.statements.length = 0;
+    const response = await testEdit(monitor);
+    expect(response.status).toBe(200);
+    // Two statements are two READ COMMITTED snapshots: an Edit committing between
+    // them could pair a new secret with the old origin.
+    const reads = ctx.statements.filter((text) =>
+      text.includes("monitor_secrets"),
+    );
+    expect(reads).toHaveLength(1);
+    expect(reads[0]).toMatch(/from\s+monitors\s+as\s+m/);
+  });
+
+  it("reports secret_decrypt_failed even when the stored URL is a blocked address", async () => {
+    const monitor = await created(bearer());
+    const blocked = `http://${STUB_HOSTS.internal}:8080/x`;
+    await ctx.owner.sql.query("update monitors set url = $2 where id = $1", [
+      monitor.id,
+      blocked,
+    ]);
+    await ctx.owner.sql.query(
+      `update monitor_secrets set ciphertext = set_byte(ciphertext, 0,
+         get_byte(ciphertext, 0) # 255) where monitor_id = $1`,
+      [monitor.id],
+    );
+    const refreshed = { ...monitor, url: blocked };
+    const response = await testEdit(refreshed);
+    expect(response.status).toBe(200);
+    expect(response.json).toMatchObject({
+      result: {
+        outcome: "check_error",
+        failureReason: "secret_decrypt_failed",
+      },
+    });
+  });
+
+  it("spends no rate-limit quota on the origin-change 422", async () => {
+    const monitor = await created(bearer());
+    const key = `rl:monitor-test:u:${owner()}:o:${org.id}`;
+    const moved = await testEdit(monitor, {
+      url: `http://${STUB_HOSTS.allowedOther}:${String(target.port)}/reflect`,
+    });
+    expect(moved.status).toBe(422);
+    expect(await redis.zcard(key)).toBe(0);
+    expect(await redis.zcard(`rl:monitor-test:o:${org.id}`)).toBe(0);
+    expect((await testEdit(monitor)).status).toBe(200);
+    expect(await redis.zcard(key)).toBe(1);
+  });
+});
+
+describe("Audit lines for secrets (AC-61)", () => {
+  const actionsAfter = async (
+    monitorId: string,
+    work: () => Promise<unknown>,
+  ): Promise<string[]> => {
+    const before = auditActions(monitorId).length;
+    await work();
+    return auditActions(monitorId).slice(before);
+  };
+
+  it("writes one secret.set for a Create with two slots", async () => {
+    const monitor = await created(basic());
+    expect(
+      auditActions(monitor.id).filter((action) =>
+        action.endsWith("secret.set"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("writes one set and one replace when an Edit stores a new slot and overwrites one", async () => {
+    const monitor = await created(basic());
+    const actions = await actionsAfter(monitor.id, () =>
+      editOk(monitor, {
+        headers: [{ id: HEADER_ID, name: "X-Secret", secret: true }],
+        secrets: [
+          { slot: "auth.username", action: "keep" },
+          { slot: "auth.password", action: "replace", value: NEW_TOKEN },
+          { slot: HEADER_SLOT, action: "replace", value: HEADER_VALUE },
+        ],
+      }),
+    );
+    expect(actions.sort()).toEqual([
+      "organization.monitor.secret.replace",
+      "organization.monitor.secret.set",
+      "organization.monitor.update",
+    ]);
+  });
+
+  it("writes a set for the new slot when the auth type changes", async () => {
+    const monitor = await created(bearer());
+    const actions = await actionsAfter(monitor.id, () =>
+      editOk(monitor, {
+        auth: { type: "apiKey", headerName: "X-Api-Key" },
+        secrets: [{ slot: "auth.apiKey", action: "replace", value: API_KEY }],
+      }),
+    );
+    expect(actions.sort()).toEqual([
+      "organization.monitor.secret.set",
+      "organization.monitor.update",
+    ]);
+  });
+
+  it("writes nothing for a denied secret Edit", async () => {
+    const monitor = await created(bearer());
+    const actions = await actionsAfter(monitor.id, () =>
+      edit(
+        monitor,
+        {
+          secrets: [
+            { slot: "auth.token", action: "replace", value: NEW_TOKEN },
+          ],
+        },
+        org.users.viewer,
+      ),
+    );
+    expect(actions).toEqual([]);
+  });
+
+  it("does not fail a committed mutation when the audit logger throws", async () => {
+    const organization = await failing.createOrganization("audit-fail");
+    const created = await failing.call(
+      organization.users.owner,
+      "POST",
+      monitorsPath(organization.id),
+      { clientRequestId: crypto.randomUUID(), ...bearer() },
+    );
+    expect(created.status).toBe(201);
+    const monitor = monitorWriteResponseSchema.parse(created.json).monitor;
+    const edited = await failing.call(
+      organization.users.owner,
+      "PATCH",
+      monitorsPath(organization.id, `/${monitor.id}`),
+      editBody(monitor, {
+        secrets: [{ slot: "auth.token", action: "replace", value: NEW_TOKEN }],
+      }),
+    );
+    expect(edited.status).toBe(200);
+    const rows = await failing.owner.sql.query(
+      "select slot from monitor_secrets where monitor_id = $1",
+      [monitor.id],
+    );
+    expect(rows.rows).toEqual([{ slot: "auth.token" }]);
+  });
+});
+
 // ---- Credentials unavailable ----------------------------------------------------------
 
 describe("An app built without the credential env", () => {
@@ -896,6 +1052,70 @@ describe("An app built without the credential env", () => {
       [organization.id],
     );
     expect(rows.rows).toEqual([{ total: 1 }]);
+  });
+
+  it("answers 503 on Edit with replace and on Test in Edit with keep, changing nothing", async () => {
+    const organization = await bare.createOrganization("bare-edit");
+    const owner = organization.users.owner;
+    const id = crypto.randomUUID();
+    await bare.owner.sql.query(
+      `insert into monitors (id, tenant_id, name, url, auth_type, client_request_id)
+       values ($1, $2, 'Bare', $3, 'bearer', $4)`,
+      [id, organization.id, targetUrl(), crypto.randomUUID()],
+    );
+    const sealed = encryptSecret(
+      {
+        tenantId: organization.id,
+        monitorId: id,
+        slot: "auth.token",
+        value: TOKEN,
+      },
+      credentialEnv,
+    );
+    await bare.owner.sql.query(
+      `insert into monitor_secrets
+         (monitor_id, tenant_id, slot, ciphertext, iv, auth_tag, key_version)
+       values ($1, $2, 'auth.token', $3, $4, $5, $6)`,
+      [
+        id,
+        organization.id,
+        sealed.ciphertext,
+        sealed.iv,
+        sealed.authTag,
+        sealed.keyVersion,
+      ],
+    );
+    const config = {
+      name: "Bare",
+      url: targetUrl(),
+      auth: { type: "bearer" },
+    };
+    const path = monitorsPath(organization.id, `/${id}`);
+    const edited = await bare.call(owner, "PATCH", path, {
+      ...config,
+      expectedVersion: 1,
+      secrets: [{ slot: "auth.token", action: "replace", value: NEW_TOKEN }],
+    });
+    expect(edited.status).toBe(503);
+    expect(edited.json).toMatchObject({
+      error: { code: "CREDENTIALS_UNAVAILABLE" },
+    });
+    const tested = await bare.call(owner, "POST", `${path}/test`, {
+      ...config,
+      secrets: [{ slot: "auth.token", action: "keep" }],
+    });
+    expect(tested.status).toBe(503);
+    expect(tested.json).toMatchObject({
+      error: { code: "CREDENTIALS_UNAVAILABLE" },
+    });
+    expect(JSON.stringify([edited.json, tested.json])).not.toMatch(
+      /KEYS|ACTIVE_KEY/,
+    );
+    const after = await bare.owner.sql.query<{ version: number }>(
+      "select version from monitors where id = $1",
+      [id],
+    );
+    expect(after.rows).toEqual([{ version: 1 }]);
   });
 });
 
@@ -944,6 +1164,33 @@ describe("Scan for known secret values (AC-43)", () => {
     for (const [name, text] of haystacks) {
       for (const value of [...KNOWN_SECRETS, encodedBasic]) {
         expect(text.includes(value), `${name} contains a secret`).toBe(false);
+      }
+    }
+    // The stored bytes stay in monitor_secrets: ciphertext, iv and tag must not
+    // appear, in hex or base64, in any response, log line or other table.
+    const stored = await ctx.owner.sql.query<{
+      ciphertext: Buffer;
+      iv: Buffer;
+      auth_tag: Buffer;
+    }>(
+      // A row a test overwrote with a few bytes would match anywhere.
+      `select ciphertext, iv, auth_tag from monitor_secrets
+       where tenant_id = $1 and length(ciphertext) >= 8`,
+      [org.id],
+    );
+    expect(stored.rows.length).toBeGreaterThan(5);
+    const bytes = stored.rows.flatMap((row) =>
+      [row.ciphertext, row.iv, row.auth_tag].flatMap((part) => [
+        part.toString("hex"),
+        part.toString("base64"),
+      ]),
+    );
+    for (const [name, text] of haystacks) {
+      if (name === "monitor_secrets") continue;
+      for (const form of bytes) {
+        expect(text.includes(form), `${name} contains stored bytes`).toBe(
+          false,
+        );
       }
     }
   });

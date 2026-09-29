@@ -85,6 +85,41 @@ export async function openMonitorTestContext(options?: {
   const owner: Database = createDatabase(ownerUrl);
   await runMigrations({ url: ownerUrl, migrationsDir });
 
+  // Every statement the app runs on a pooled client, for single-query proofs.
+  const statements: string[] = [];
+  const recorded: Database = {
+    ...runtime,
+    sql: new Proxy(runtime.sql, {
+      get(target, property, receiver): unknown {
+        if (property !== "connect")
+          return Reflect.get(target, property, receiver);
+        // Pool.query calls connect with a callback; only the promise form is recorded.
+        return async (...args: unknown[]) => {
+          if (typeof args[0] === "function") {
+            return (target.connect as (...rest: unknown[]) => unknown)(...args);
+          }
+          const client = await target.connect();
+          return new Proxy(client, {
+            get(inner, name): unknown {
+              const value: unknown = Reflect.get(inner, name);
+              if (name === "query") {
+                return (text: unknown, ...rest: unknown[]) => {
+                  if (typeof text === "string") statements.push(text);
+                  return (inner.query as (...args: unknown[]) => unknown)(
+                    text,
+                    ...rest,
+                  );
+                };
+              }
+              return typeof value === "function"
+                ? (value as (...args: unknown[]) => unknown).bind(inner)
+                : value;
+            },
+          });
+        };
+      },
+    }),
+  };
   const run = crypto.randomUUID().slice(0, 8);
   const lines: string[] = [];
   const base = createLogger(
@@ -126,7 +161,7 @@ export async function openMonitorTestContext(options?: {
     env,
     authEnv,
     auth,
-    database: runtime,
+    database: recorded,
     mailer: {
       send: () => Promise.resolve(),
       verify: () => Promise.resolve(),
@@ -245,6 +280,7 @@ export async function openMonitorTestContext(options?: {
     runtime,
     owner,
     lines,
+    statements,
     resolverCalls,
     createUser,
     createOrganization,

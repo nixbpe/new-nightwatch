@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "test:bun": "bun --bun vitest run --project integration src/monitors/test-route.db.test.ts",
+    "test:bun": "bun --bun vitest run --project integration src/monitors/test-route.db.test.ts src/monitors/secrets.db.test.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
