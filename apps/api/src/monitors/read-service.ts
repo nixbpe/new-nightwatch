@@ -965,6 +965,7 @@ export async function getResponseTimes(
           : null,
         maxMs: measured ? row.responseMsMax : null,
         checks: row?.checks ?? 0,
+        responseChecks: row?.responseChecks ?? 0,
       });
     }
     return { range, buckets, ...common };

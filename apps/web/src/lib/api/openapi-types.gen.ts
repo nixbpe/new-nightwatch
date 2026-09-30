@@ -4112,6 +4112,7 @@ export interface paths {
                                 avgMs: number | null;
                                 maxMs: number | null;
                                 checks: number;
+                                responseChecks: number;
                             }[];
                             /** @enum {string} */
                             unit: "ms";

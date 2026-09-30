@@ -200,10 +200,30 @@ describe("7 d and 30 d", () => {
           bucket.hourStart ===
           new Date(hour - hoursAgo * 3_600_000).toISOString(),
       );
-    expect(at(1)).toMatchObject({ avgMs: 100, maxMs: 300, checks: 60 });
-    expect(at(3)).toMatchObject({ avgMs: 300, maxMs: 400, checks: 4 });
-    expect(at(5)).toMatchObject({ avgMs: null, maxMs: null, checks: 3 });
-    expect(at(2)).toMatchObject({ avgMs: null, maxMs: null, checks: 0 });
+    expect(at(1)).toMatchObject({
+      avgMs: 100,
+      maxMs: 300,
+      checks: 60,
+      responseChecks: 60,
+    });
+    expect(at(3)).toMatchObject({
+      avgMs: 300,
+      maxMs: 400,
+      checks: 4,
+      responseChecks: 2,
+    });
+    expect(at(5)).toMatchObject({
+      avgMs: null,
+      maxMs: null,
+      checks: 3,
+      responseChecks: 0,
+    });
+    expect(at(2)).toMatchObject({
+      avgMs: null,
+      maxMs: null,
+      checks: 0,
+      responseChecks: 0,
+    });
     expect(at(0)).toMatchObject({ avgMs: null, maxMs: null, checks: 0 });
 
     const month = await series(id, "30d");
@@ -259,6 +279,7 @@ describe("7 d and 30 d", () => {
         avgMs: 100,
         maxMs: 150,
         checks: 12,
+        responseChecks: 12,
       },
     ]);
     for (const hoursAgo of [3, 4, 5]) {
