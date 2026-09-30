@@ -40,10 +40,7 @@ readable with the old key until it is removed from the map.
 
 ## Run the Worker roles
 
-`WORKER_ROLES` is a comma-separated list. The behaviour below for
-`monitor-scheduler` and `monitor-checker`, SIGTERM order and the partition
-warning applies after NODE-F005-08S/08 merge; until then `WORKER_ROLES` with
-the new roles is rejected as an unknown role. Roles: `consumer`, `scheduler`,
+`WORKER_ROLES` is a comma-separated list. Roles: `consumer`, `scheduler`,
 `monitor-scheduler` (claims due checks every 10 s, purges expired data),
 `monitor-checker` (runs checks, concurrency 20).
 
@@ -51,11 +48,14 @@ the new roles is rejected as an unknown role. Roles: `consumer`, `scheduler`,
   `OUTBOUND_TEST_ALLOWED_HOSTS` ban apply. The Worker process itself treats a
   missing `NODE_ENV` as development; the image entrypoint prevents that (see
   Worker image).
+- Egress canary: a wrong `MONITOR_EGRESS_CANARY_URLS` entry (does not resolve or
+  points at a forbidden address) is cached as failed, so every network-level
+  failure becomes `check_error` and no incident or DOWN alert opens. Verify the
+  canary URLs resolve from the Worker network before release.
 - Run at least one `monitor-scheduler` and one `monitor-checker`. Several of
   each are safe: claims use `FOR UPDATE SKIP LOCKED` and job ids are
   deterministic.
-- Local dev: the `WORKER_ROLES` in `apps/worker/package.json` is changed by
-  NODE-F005-08; after that merge the full list is
+- Local dev: the `dev` script in `apps/worker/package.json` runs
   `consumer,scheduler,monitor-scheduler,monitor-checker`.
 - Stop with SIGTERM; the scheduler stops before the checker.
 
@@ -113,7 +113,7 @@ Deployment dependencies before release (not part of this image):
 ## Partitions
 
 `bun run db:partitions` after every `db:migrate` and at least monthly (see
-`scripts/quality/README.md`). After NODE-F005-08S merges, the scheduler logs a
+`scripts/quality/README.md`). The scheduler logs a
 warning when fewer than 2 months ahead exist. On a `lock timeout` exit nothing
 changed: rerun at low traffic with a short timeout (default 5000 ms, max 30000
 ms). Do not raise the timeout to wait out a long lock. Creating or dropping a
