@@ -133,7 +133,7 @@ describe("createRedactor work bound for a displayed value", () => {
     expect(shown.truncated).toBe(true);
   });
 
-  it("scans a contiguous 1 MiB run once, with no rescans per occurrence", () => {
+  it("smoke: a contiguous 1 MiB run takes one search per occurrence", () => {
     const text = "a".repeat(1 << 20);
     // 100 needle forms, all absent except the one that fills the text.
     const redact = createRedactor([
@@ -168,23 +168,80 @@ describe("createRedactor work bound for a displayed value", () => {
     expect(searches).toBeLessThan(10);
   });
 
-  it("matches the unbounded redactor on random texts from a small alphabet", () => {
+  it("hides a 4096-character periodic secret in a 1 MiB value within a work bound", () => {
+    const secret = "a".repeat(4096);
+    const text = "a".repeat(1 << 20);
+    const indexOf = vi.spyOn(String.prototype, "indexOf");
+    let shown;
+    let searches;
+    try {
+      shown = shownOf(createRedactor([secret]), text);
+      searches = indexOf.mock.calls.length;
+    } finally {
+      indexOf.mockRestore();
+    }
+    // Each search past the first costs about the secret's length; the budget is 8 x text length.
+    expect(searches).toBeLessThan((8 * (1 << 20)) / 4096 + 100);
+    expect(shown.text).not.toContain("a");
+    expect(shown.text).toBe("•••");
+  });
+
+  // Independent oracle: mark every code unit covered by any occurrence of any
+  // form of any secret, one mask per contiguous marked run.
+  const oracle = (secrets: string[], text: string) => {
+    const forms = new Set(
+      secrets.flatMap((s) => [
+        s,
+        JSON.stringify(s).slice(1, -1),
+        encodeURIComponent(s),
+      ]),
+    );
+    const marked = Array.from({ length: text.length }, () => false);
+    for (const form of forms) {
+      for (let at = 0; at + form.length <= text.length; at++) {
+        if (text.startsWith(form, at)) {
+          marked.fill(true, at, at + form.length);
+        }
+      }
+    }
+    let out = "";
+    for (let i = 0; i < text.length; i++) {
+      if (!marked[i]) out += text[i] ?? "";
+      else if (!marked[i - 1] || i === 0) out += "•••";
+    }
+    return { out, forms };
+  };
+
+  it("matches an independent oracle on random texts and leaves no secret", () => {
     let seed = 12345;
     const random = (n: number) => {
       seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
       return seed % n;
     };
-    const alphabet = ["a", "b", "c", "ab", "bc", "\\u{1F600}", '"', "x"];
-    const secretSets = [["a"], ["ab", "bc"], ["abc", "b"], ['a"b', "x"], ["c"]];
+    const alphabet = ["a", "a", "b", "c", "ab", "bc", "\u{1F600}", '"', "x"];
+    const secretSets = [
+      ["a"],
+      ["aa"],
+      ["aba"],
+      ["ab", "bc"],
+      ["abc", "b"],
+      ['a"b', "x"],
+      ["\u{1F600}a"],
+      ["c"],
+    ];
     for (let round = 0; round < 3000; round++) {
-      const redact = createRedactor(
-        secretSets[random(secretSets.length)] ?? [],
-      );
+      const secrets = secretSets[random(secretSets.length)] ?? [];
+      const redact = createRedactor(secrets);
       let text = "";
       const pieces = random(400);
-      for (let i = 0; i < pieces; i++)
+      for (let i = 0; i < pieces; i++) {
         text += alphabet[random(alphabet.length)] ?? "";
-      expect(shownOf(redact, text), text).toEqual(truncateActual(redact(text)));
+      }
+      const expected = oracle(secrets, text);
+      const full = redact(text);
+      expect(full, text).toBe(expected.out);
+      for (const form of expected.forms) expect(full).not.toContain(form);
+      expect(shownOf(redact, text), text).toEqual(truncateActual(full));
     }
   });
 

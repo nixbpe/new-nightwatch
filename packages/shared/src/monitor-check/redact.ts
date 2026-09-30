@@ -8,6 +8,13 @@ export const ACTUAL_MAX_CHARS = 200;
  * call would show. Text before the first match that would fill the prefix is
  * never scanned for later matches; one contiguous run of matches is scanned to
  * its end because the text after it is part of the shown output.
+ *
+ * A call also has a scan budget. A secret with a long period (such as 4096
+ * `a`) in a value of `a` makes every search find the next overlap one position
+ * on, at a cost of the secret's length each. Past the budget the call returns
+ * the output up to the current group and one mask, dropping the rest of the
+ * text: it may mask more than the full output would (so it is then not an
+ * exact prefix of it), and it never shows a secret.
  */
 export type Redactor = (text: string, maxChars?: number) => string;
 
@@ -36,8 +43,18 @@ export function createRedactor(
   return (text, maxChars) => {
     // Code units are at least code points, so this many units hold maxChars + 1 points.
     const cap = maxChars === undefined ? Infinity : 2 * (maxChars + 1);
+    // Characters one search can scan: up to the match, plus its length.
+    let work = 0;
+    const budget = 4 * (needles.length + 1) * (text.length + 1);
+    const search = (needle: string, from: number) => {
+      const at = text.indexOf(needle, from);
+      work +=
+        (at === -1 ? Math.max(0, text.length - from) : at - from) +
+        needle.length;
+      return at;
+    };
     // Next occurrence per needle; a min-heap of the needles that still have one.
-    const next = needles.map((needle) => text.indexOf(needle));
+    const next = needles.map((needle) => search(needle, 0));
     const heap = next.flatMap((at, i) => (at === -1 ? [] : [i]));
     const before = (a: number, b: number) =>
       (next[a] as number) < (next[b] as number);
@@ -78,10 +95,8 @@ export function createRedactor(
         const at = next[i] as number;
         end = Math.max(end, at + needle.length);
         // Occurrences that start before end - length + 1 end inside this group.
-        const again = text.indexOf(
-          needle,
-          Math.max(at + 1, end - needle.length + 1),
-        );
+        const again = search(needle, Math.max(at + 1, end - needle.length + 1));
+        if (work > budget) return out + text.slice(cursor, start) + MASK;
         if (again === -1) {
           heap[0] = heap[heap.length - 1] as number;
           heap.pop();
