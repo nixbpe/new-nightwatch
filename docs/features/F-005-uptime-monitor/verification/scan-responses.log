@@ -1,0 +1,17 @@
+# API response bodies (secrets only; query and body values are readable in a config read by design, AC-47)
+clean    118836 bytes  ev/final1-responses.txt
+clean      1513 bytes  ev/alerts1-responses.txt
+clean      8183 bytes  ev/secrets2-responses.txt
+clean      8182 bytes  ev/secrets1-responses.txt
+clean     55806 bytes  ev/matrix-responses.txt
+clean     10539 bytes  ev/rate1-responses.txt
+needles: 35 exact values + 5 prefix patterns; files: 6; bytes: 203059; hits: 0
+
+# Earlier runs (script bug: it wrote the redirect token into its own response file, fixed before final1)
+HIT      103293 bytes  ev/all1-responses.txt
+HIT        7704 bytes  ev/ssrf1-responses.txt
+needles: 35 exact values + 5 prefix patterns; files: 2; bytes: 110997; hits: 2
+# same two files with the one planted redirect-token line removed
+clean    103270 bytes  ev/all1-stripped.txt
+clean      7681 bytes  ev/ssrf1-stripped.txt
+needles: 35 exact values + 5 prefix patterns; files: 2; bytes: 110951; hits: 0
