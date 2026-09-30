@@ -95,13 +95,14 @@ async function abortWhen<T>(
     () => {
       expect(ready()).toBe(true);
     },
-    { timeout: 20_000, interval: 5 },
+    { timeout: 25_000, interval: 5 },
   );
   controller.abort();
   return pending;
 }
 
-describe("caller abort of sendOutboundRequest", () => {
+// Without an abort the request resolves as `timeout` after its 10 s limit, so the test limit must exceed that.
+describe("caller abort of sendOutboundRequest", { timeout: 30_000 }, () => {
   it("makes no connection and no lookup for an already aborted signal", async () => {
     const server = await hangingServer();
     servers.push(server);
@@ -131,7 +132,6 @@ describe("caller abort of sendOutboundRequest", () => {
           }),
         ),
     );
-    // The 10 s request timeout would report `timeout` instead.
     expect(result.failure?.reason).toBe("executor_error");
   });
 
@@ -168,7 +168,7 @@ describe("caller abort of sendOutboundRequest", () => {
     });
   });
 
-  it("stops during the body read and closes the connection", async () => {
+  it("stops while the response body is being read and closes the connection", async () => {
     const server = await hangingServer((socket) => {
       socket.write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\npartial");
     });
@@ -205,7 +205,7 @@ describe("caller abort of sendOutboundRequest", () => {
   });
 });
 
-describe("caller abort of runCheck", () => {
+describe("caller abort of runCheck", { timeout: 30_000 }, () => {
   it("returns check_error executor_error and every assertion not evaluated", async () => {
     const server = await hangingServer();
     servers.push(server);

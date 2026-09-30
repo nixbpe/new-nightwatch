@@ -940,9 +940,9 @@ describe("connection-time address check", () => {
       deps({ resolver: () => Promise.resolve(["192.0.2.1", LOOPBACK]) }),
     );
     expect(result.ok).toBe(true);
-    // The blackholed first address may use half of 6 s, never all of it.
-    expect(result.response?.elapsedMs).toBeLessThan(5800);
-  });
+    // The blackholed first address gets half of 6 s; the rest is slack.
+    expect(result.response?.elapsedMs).toBeLessThan(4500);
+  }, 15_000);
 });
 
 describe("response parsing bounds", () => {
@@ -965,7 +965,7 @@ describe("response parsing bounds", () => {
     );
     expect(result.response?.body.toString()).toBe("hi");
     expect(Date.now() - started).toBeLessThan(4000);
-  });
+  }, 15_000);
 
   it("rejects a head over 64 KiB even when it arrives in one read with its terminator", async () => {
     const server = await serve({
