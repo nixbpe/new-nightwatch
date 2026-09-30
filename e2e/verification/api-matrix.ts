@@ -650,10 +650,26 @@ async function ssrf() {
 // job payloads that are removed on completion are still scanned (AC-56).
 let redisTrace = "";
 let redisMonitor: ReturnType<typeof Bun.spawn> | null = null;
+const redisContainer = () => process.env.REDIS_CONTAINER ?? "nw-dev-23-redis-1";
+const monitorClientIds = () =>
+  Bun.spawnSync([
+    "docker",
+    "exec",
+    redisContainer(),
+    "redis-cli",
+    "CLIENT",
+    "LIST",
+  ])
+    .stdout.toString()
+    .split("\n")
+    .filter((line) => line.includes("cmd=monitor"))
+    .map((line) => /id=(\d+)/.exec(line)?.[1])
+    .filter((id): id is string => id !== undefined);
+let monitorsBefore = new Set<string>();
 function startRedisMonitor() {
-  const container = process.env.REDIS_CONTAINER ?? "nw-dev-23-redis-1";
+  monitorsBefore = new Set(monitorClientIds());
   redisMonitor = Bun.spawn(
-    ["docker", "exec", container, "redis-cli", "MONITOR"],
+    ["docker", "exec", redisContainer(), "redis-cli", "MONITOR"],
     { stdout: "pipe", stderr: "ignore" },
   );
   void (async () => {
@@ -663,6 +679,24 @@ function startRedisMonitor() {
       redisTrace += decoder.decode(chunk);
     }
   })();
+}
+/** Killing `docker exec` leaves the MONITOR client alive inside Redis; remove the ones this run added. */
+function stopRedisMonitor() {
+  redisMonitor?.kill();
+  for (const id of monitorClientIds()) {
+    if (!monitorsBefore.has(id)) {
+      Bun.spawnSync([
+        "docker",
+        "exec",
+        redisContainer(),
+        "redis-cli",
+        "CLIENT",
+        "KILL",
+        "ID",
+        id,
+      ]);
+    }
+  }
 }
 
 async function secrets() {
@@ -1144,7 +1178,7 @@ async function scanStores() {
   ]);
   const text = dump.stdout.toString();
   const redisHits = needles.filter((n) => text.includes(n));
-  redisMonitor?.kill();
+  stopRedisMonitor();
   const traced = needles.filter((n) => redisTrace.includes(n));
   const enqueued = (redisTrace.match(/monitor-check/g) ?? []).length;
   check(
