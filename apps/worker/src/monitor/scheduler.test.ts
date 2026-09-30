@@ -107,7 +107,7 @@ describe("aheadSuffixes", () => {
 });
 
 describe("MonitorScheduler stop", () => {
-  it("claims nothing more and enqueues nothing once stop() is called mid-round", async () => {
+  it("enqueues the batch it already claimed and claims no more once stop() is called mid-round", async () => {
     let claims = 0;
     const firstClaim = Promise.withResolvers<undefined>();
     const release = Promise.withResolvers<undefined>();
@@ -148,7 +148,7 @@ describe("MonitorScheduler stop", () => {
     await round;
 
     expect(claims).toBe(1);
-    expect(added).toEqual([]);
+    expect(added).toHaveLength(10);
     // A later round is a no-op too.
     await scheduler.round();
     expect(claims).toBe(1);

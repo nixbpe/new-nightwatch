@@ -46,12 +46,18 @@ export class MonitorScheduler {
     this.#enqueueTimeoutMs = options.enqueueTimeoutMs ?? ENQUEUE_TIMEOUT_MS;
   }
 
-  /** Stops claiming at once: the round in flight ends before its next batch or enqueue. */
+  /**
+   * Stops claiming: the round in flight ends before its next batch and before
+   * the purge. Claims already committed are still enqueued, otherwise those
+   * monitors would lose their slot until the lease expires.
+   */
   stop(): void {
     this.#stopping = true;
   }
 
-  // A method, not a field read: stop() flips it while a round awaits.
+  // A method, not a field read: after an earlier check TypeScript narrows the
+  // field to false and the lint rule flags the later check, although stop()
+  // can flip it while the round awaits.
   #isStopping(): boolean {
     return this.#stopping;
   }
@@ -102,8 +108,6 @@ export class MonitorScheduler {
         limit: MONITOR_CLAIM_BATCH_SIZE,
       });
       for (const claim of claims) {
-        // Unqueued claims keep their lease and are claimed again after it expires.
-        if (this.#isStopping()) return;
         // Redis is unavailable: stop claiming. The rest of this batch
         // keeps its lease and is claimed again once the lease expires.
         if (!(await this.#enqueue(claim))) return;
