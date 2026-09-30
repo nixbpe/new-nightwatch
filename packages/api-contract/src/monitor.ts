@@ -830,11 +830,22 @@ export const checkResultSchema = z.object({
 
 export type CheckResultView = z.infer<typeof checkResultSchema>;
 
-/** A Test is not recorded, so its result has no schedule slot and no config version. */
-export const monitorTestResultSchema = checkResultSchema.omit({
-  scheduledFor: true,
-  configVersion: true,
-});
+/**
+ * A Test is not recorded, so its result has no schedule slot and no config
+ * version. `ssl` carries the certificate facts of this one check (AC-08): the
+ * level comes from the server clock, `no_data` means no TLS attempt happened.
+ */
+export const monitorTestResultSchema = checkResultSchema
+  .omit({ scheduledFor: true, configVersion: true })
+  .extend({
+    ssl: z.object({
+      level: z.enum(SSL_LEVELS),
+      daysRemaining: z.number().int().nullable(),
+      host: z.string().nullable(),
+      issuer: z.string().nullable(),
+      notAfter: isoDateTime.nullable(),
+    }),
+  });
 export type MonitorTestResult = z.infer<typeof monitorTestResultSchema>;
 
 export const monitorTestResponseSchema = z.object({

@@ -94,7 +94,7 @@ export function createSelfSignedCertificates(host: string): {
   const valid = issue(
     "valid",
     new Date(Date.now() - day),
-    new Date(Date.now() + 30 * day),
+    new Date(Date.now() + 90 * day),
   );
   const expired = issue(
     "expired",

@@ -29,9 +29,11 @@ import {
   buildCheckUrl,
   decryptSecret,
   runCheck,
+  sslLevel,
   type CredentialEnv,
   type Logger,
   type MonitorSecrets,
+  type CheckResult,
   type NormalizedMonitorConfig,
   type OutboundDeps,
 } from "@nightwatch/shared";
@@ -340,6 +342,43 @@ function decryptKept(
   return { values, undecryptable };
 }
 
+/**
+ * Certificate facts of one check, from this check only (a Test has no stored
+ * certificate). An expired certificate fails the handshake before its dates can
+ * be read, so it has a level but no days or notAfter.
+ */
+export function sslOfCheck(checked: CheckResult): MonitorTestResult["ssl"] {
+  const none = {
+    daysRemaining: null,
+    host: null,
+    issuer: null,
+    notAfter: null,
+  };
+  if (checked.outcome === "check_error") return { level: "no_data", ...none };
+  const { tls } = checked;
+  if (tls?.notAfter) {
+    const { level, daysRemaining } = sslLevel(tls.notAfter, checked.checkedAt);
+    return {
+      level,
+      daysRemaining,
+      host: tls.host,
+      issuer: tls.issuer,
+      notAfter: tls.notAfter.toISOString(),
+    };
+  }
+  if (tls) {
+    return {
+      ...none,
+      level: checked.tlsReason === "expired" ? "expired" : "unreadable",
+      host: tls.host,
+    };
+  }
+  return {
+    level: checked.httpStatus === null ? "no_data" : "not_https",
+    ...none,
+  };
+}
+
 async function runTest(
   deps: MonitorTestRouteDeps,
   input: {
@@ -453,6 +492,7 @@ async function runTest(
       })),
       url: checked.url,
       evaluatedFromPrefix: checked.evaluatedFromPrefix,
+      ssl: sslOfCheck(checked),
     },
   };
 }

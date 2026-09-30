@@ -968,6 +968,33 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
     expect(http1.requests()).toBe(1);
   });
 
+  it("reports the certificate facts of an https target", async () => {
+    const result = await outcome({ url: target(https1, "/ok", "https") });
+    expect(result).toMatchObject({ outcome: "pass", tlsReason: null });
+    expect(result.ssl).toMatchObject({ level: "ok", host: TARGET_HOST });
+    expect(result.ssl.daysRemaining).toBeGreaterThanOrEqual(89);
+    expect(result.ssl.issuer).toContain(TARGET_HOST);
+    expect(new Date(result.ssl.notAfter as string).getTime()).toBeGreaterThan(
+      Date.now() + 89 * 86_400_000,
+    );
+  });
+
+  it("reports not_https for an http target and no_data when no TLS happened", async () => {
+    expect((await outcome({ url: target(http1, "/ok") })).ssl.level).toBe(
+      "not_https",
+    );
+    const dnsFailure = await outcome({
+      url: `https://missing.nw-test.example:${String(https1.port)}/`,
+    });
+    expect(dnsFailure.ssl).toEqual({
+      level: "no_data",
+      daysRemaining: null,
+      host: null,
+      issuer: null,
+      notAfter: null,
+    });
+  });
+
   it("503 is a failed check with the status", async () => {
     const result = await outcome({ url: target(http1, "/down") });
     expect(result).toMatchObject({
@@ -1018,6 +1045,13 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
       outcome: "fail",
       failureReason: "tls_invalid",
       tlsReason: "expired",
+    });
+    expect(result.ssl).toEqual({
+      level: "expired",
+      daysRemaining: null,
+      host: TARGET_HOST,
+      issuer: null,
+      notAfter: null,
     });
     expectNoResponse(result);
     // The handshake fails before any request byte is sent.
