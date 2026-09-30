@@ -151,12 +151,22 @@ test.describe("role x screen table (AC-02, AC-03)", () => {
   }) => {
     await signIn(page, people.nonmember);
     await page.goto(overview());
+    // The denied state must be on screen before the absence checks mean anything.
+    await expect(
+      page.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+    ).toBeVisible();
     await expect(page.getByText(monitorName)).toHaveCount(0);
     await expect(page.getByText(host)).toHaveCount(0);
     await page.goto(detail());
+    await expect(
+      page.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+    ).toBeVisible();
     await expect(page.getByText(monitorName)).toHaveCount(0);
     await expect(page.getByText(host)).toHaveCount(0);
     await page.goto(`${overview()}/new`);
+    await expect(
+      page.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
     ).toHaveCount(0);
@@ -244,6 +254,9 @@ test.describe("two sessions change the role (AC-49)", () => {
     );
     expect(removal.status).toBeLessThan(300);
     await view.reload();
+    await expect(
+      view.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+    ).toBeVisible();
     await expect(view.getByText(monitorName)).toHaveCount(0);
     await expect(view.getByText(host)).toHaveCount(0);
     await context.close();
@@ -269,13 +282,18 @@ test.describe("two sessions change the role (AC-49)", () => {
     );
     expect(removal.status).toBeLessThan(300);
 
-    await form.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
+    // A background refresh may already have locked the form; either way it must refuse.
+    const saveEdit = form.getByRole("button", { name: "บันทึกการแก้ไข" });
+    if (await saveEdit.isEnabled()) await saveEdit.click();
     await expect(
       form
         .getByText(/สิทธิ์ของคุณเปลี่ยนแล้ว|ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้/)
         .first(),
     ).toBeVisible();
     await view.reload();
+    await expect(
+      view.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+    ).toBeVisible();
     await expect(view.getByText(monitorName)).toHaveCount(0);
     await expect(view.getByText(host)).toHaveCount(0);
     await context.close();
@@ -540,13 +558,18 @@ test.describe("reflow at 200% (640 px viewport, LAY-02)", () => {
       for (const [path, names] of screens) {
         await page.goto(path);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-        await page.waitForTimeout(600);
-        const overflow = await page.evaluate(
-          () =>
-            document.documentElement.scrollWidth -
-            document.documentElement.clientWidth,
-        );
-        expect(overflow, `${path} sideways overflow`).toBeLessThanOrEqual(0);
+        // Polled so late layout (fonts, data) is measured, not a fixed wait.
+        await expect
+          .poll(
+            () =>
+              page.evaluate(
+                () =>
+                  document.documentElement.scrollWidth -
+                  document.documentElement.clientWidth,
+              ),
+            { message: `${path} sideways overflow`, timeout: 5000 },
+          )
+          .toBeLessThanOrEqual(0);
         await shot(
           page,
           `reflow-640-${theme}-${path.endsWith("/new") ? "new" : path.endsWith("/edit") ? "edit" : path.includes(monitorId) ? "detail" : "overview"}`,

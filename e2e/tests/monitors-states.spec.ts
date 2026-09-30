@@ -37,6 +37,8 @@ let monitorId: string;
 let otherMonitorId: string;
 const people = {} as Record<Role, Person>;
 const userIds: string[] = [];
+// Organizations that single tests create; the afterAll removes them even when a test fails.
+const extraOrgs: string[] = [];
 const monitorName = `states-${run}`;
 
 const urlOf = (path: string) => `http://${host}:${String(target.port)}${path}`;
@@ -79,7 +81,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   try {
-    await cleanUp(pool, userIds, [orgA, orgEmpty, orgOther]);
+    await cleanUp(pool, userIds, [orgA, orgEmpty, orgOther, ...extraOrgs]);
   } finally {
     await database.close();
     await target.close();
@@ -405,6 +407,7 @@ test("AC-11 the Test limit shows the wait from the server and disables the butto
   page,
 }) => {
   const org = await createOrganization(pool, `E2E Rate ${run}`);
+  extraOrgs.push(org);
   const person = await createPerson(pool, "rate", org);
   userIds.push(person.userId);
   await addMember(pool, org, person.userId, "owner");
@@ -526,6 +529,7 @@ test("AC-31 an Organization at 50 monitors shows the reason and the API refuses 
 }) => {
   test.setTimeout(90_000);
   const org = await createOrganization(pool, `E2E Limit ${run}`);
+  extraOrgs.push(org);
   const person = await createPerson(pool, "limit", org);
   userIds.push(person.userId);
   await addMember(pool, org, person.userId, "owner");
