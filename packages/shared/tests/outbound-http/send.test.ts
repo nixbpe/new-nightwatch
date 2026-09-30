@@ -930,7 +930,7 @@ describe("connection-time address check", () => {
   it("keeps the certificate when the server stalls after a completed handshake", async () => {
     const silent = await serve({ tls: pki.leaf.good });
     const result = await sendOutboundRequest(
-      baseRequest(at(silent, "/", "https"), { timeoutMs: 300 }),
+      baseRequest(at(silent, "/", "https"), { timeoutMs: 2000 }),
       deps(),
     );
     expect(result.failure?.reason).toBe("timeout");
@@ -963,11 +963,14 @@ describe("connection-time address check", () => {
   });
 
   it("has no certificate when the caller aborts after the handshake", async () => {
-    const silent = await serve({ tls: pki.leaf.good });
     const controller = new AbortController();
-    setTimeout(() => {
-      controller.abort();
-    }, 200);
+    // The request head reaching the server proves the client finished its handshake.
+    const silent = await serve({
+      tls: pki.leaf.good,
+      onRequest: () => {
+        controller.abort();
+      },
+    });
     const result = await sendOutboundRequest(
       baseRequest(at(silent, "/", "https"), {
         timeoutMs: 5000,
@@ -975,6 +978,7 @@ describe("connection-time address check", () => {
       }),
       deps(),
     );
+    expect(silent.requests).toHaveLength(1);
     expect(result.ok).toBe(false);
     expect(result.tls).toBeUndefined();
   });

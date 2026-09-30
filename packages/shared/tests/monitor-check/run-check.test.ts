@@ -204,6 +204,24 @@ describe("no response (AC-32) and classification (AC-10)", () => {
     expect(allNotEvaluated(result)).toBe(true);
   }, 10_000);
 
+  it("timeout after a completed handshake keeps the certificate", async () => {
+    // Completes TLS, then never answers.
+    const silent = await startRawServer({ tls: pki.leaf.good });
+    servers.push(silent);
+    const result = await runCheck(
+      { ...configFor("https", silent.port), timeoutSeconds: 2 },
+      {},
+      deps({ ca: pki.ca }),
+    );
+    expect(result).toMatchObject({
+      ...failOutcome,
+      failureReason: "timeout",
+      tlsReason: null,
+    });
+    expect(result.tls?.notAfter).toBeInstanceOf(Date);
+    expect(result.tls?.host).toBe(TARGET_HOST);
+  }, 10_000);
+
   it("connect_refused is a fail", async () => {
     const server = await serve(() => ({}));
     const port = server.port;
