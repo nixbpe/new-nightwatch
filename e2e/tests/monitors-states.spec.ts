@@ -11,6 +11,7 @@ import {
   createPerson,
   databaseOwnerUrl,
   monitorPath,
+  shot,
   signInApi,
   targetHostname,
   type ApiSession,
@@ -432,4 +433,90 @@ test("AC-11 the Test limit shows the wait from the server and disables the butto
   ).toHaveAttribute("aria-disabled", "true");
   expect(target.hits.length).toBe(before);
   await pool.query("delete from organization where id = $1", [org]);
+});
+
+test.describe("AC-25, AC-26, AC-44, AC-47 secrets in the browser", () => {
+  test("Edit shows set slots, refuses an empty replace, warns on a type change and blocks a new origin", async ({
+    page,
+  }) => {
+    const token = `ui-token-${randomUUID()}`;
+    const created = await ownerSession.request("POST", monitorPath(orgA), {
+      ...basicConfig(`secret-ui-${run}`, urlOf("/health")),
+      auth: { type: "bearer" },
+      secrets: [{ slot: "auth.token", value: token }],
+      clientRequestId: randomUUID(),
+    });
+    const id = (created.body as { monitor: { id: string } }).monitor.id;
+    await signIn(page, owner);
+
+    // Viewers and owners see the state, never the value.
+    await page.goto(`${overview()}/${id}`);
+    await expect(page.getByText("ตั้งค่าแล้ว").first()).toBeVisible();
+    await expect(page.getByText(token)).toHaveCount(0);
+
+    await page.goto(`${overview()}/${id}/edit`);
+    await page.getByRole("radio", { name: "ขั้นสูง" }).click();
+    await expect(page.getByText("ตั้งค่าแล้ว").first()).toBeVisible();
+    await expect(page.getByText(token)).toHaveCount(0);
+    expect(await page.content()).not.toContain(token);
+
+    await shot(page, "edit-secret-set");
+    // Replace with nothing typed is refused beside the field (AC-26).
+    await page.getByRole("button", { name: "แทนที่ Token" }).click();
+    await shot(page, "edit-secret-replace-open");
+    await page.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
+    await expect(
+      page.getByText("กรอกค่าใหม่ หรือกดยกเลิกการแทนที่"),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }).click();
+
+    // Changing the type says the old value is dropped before saving (AC-26).
+    await page.locator("#monitor-form-auth-type").selectOption("basic");
+    await expect(page.getByText("ค่าลับของชนิดเดิมจะถูกลบ")).toBeVisible();
+    await page.locator("#monitor-form-auth-type").selectOption("bearer");
+
+    // A new origin with a kept secret cannot be saved or tested (AC-44).
+    await page
+      .getByLabel("URL", { exact: true })
+      .fill(`http://${host}:${String(target.port + 1)}/health`);
+    await expect(
+      page
+        .getByText("เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม")
+        .first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "บันทึกการแก้ไข" }),
+    ).toBeDisabled();
+  });
+
+  test("query and body fields carry the permanent warning (AC-47)", async ({
+    page,
+  }) => {
+    await signIn(page, owner);
+    await page.goto(`${overview()}/new`);
+    await page.getByRole("radio", { name: "ขั้นสูง" }).click();
+    await expect(
+      page.getByText(
+        "ผู้ที่ดูมอนิเตอร์เห็นค่านี้ได้ ห้ามใส่ความลับ ใช้ header ลับแทน",
+      ),
+    ).not.toHaveCount(0);
+  });
+});
+
+test("AC-54 a first failing result reads as one failure, not as down", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const created = await ownerSession.request("POST", monitorPath(orgA), {
+    ...basicConfig(`first-fail-${run}`, urlOf("/status/503")),
+    clientRequestId: randomUUID(),
+  });
+  const id = (created.body as { monitor: { id: string } }).monitor.id;
+  await signIn(page, owner);
+  await page.goto(`${overview()}/${id}`);
+  await expect(page.getByText("ล้มเหลว 1 ครั้ง").first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByText("ล่ม", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("ไม่ทราบสถานะ", { exact: true })).toBeVisible();
 });

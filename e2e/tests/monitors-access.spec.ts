@@ -11,6 +11,7 @@ import {
   createPerson,
   databaseOwnerUrl,
   monitorPath,
+  shot,
   signInApi,
   targetHostname,
   type ApiSession,
@@ -299,13 +300,6 @@ test.describe("two sessions change the role (AC-49)", () => {
     await expect(page.getByText(monitorName)).toHaveCount(0);
   });
 });
-
-// Screenshots for docs/features/F-005-uptime-monitor/verification/ when asked.
-async function shot(page: Page, name: string) {
-  const dir = process.env.VERIFY_SHOTS_DIR;
-  if (dir)
-    await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
-}
 
 async function focusedName(page: Page): Promise<string> {
   return page.evaluate(() => {

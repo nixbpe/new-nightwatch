@@ -1,5 +1,6 @@
 import { hashPassword } from "better-auth/crypto";
 import { randomUUID } from "node:crypto";
+import type { Page } from "@playwright/test";
 import type { Pool } from "pg";
 
 import { resolveDevEnv } from "../../scripts/dev-env.mjs";
@@ -164,4 +165,11 @@ export function basicConfig(name: string, url: string) {
     auth: { type: "none" },
     secrets: [],
   };
+}
+
+/** Full-page screenshot into VERIFY_SHOTS_DIR when set (docs/features/F-005-uptime-monitor/verification/). */
+export async function shot(page: Page, name: string): Promise<void> {
+  const dir = process.env.VERIFY_SHOTS_DIR;
+  if (dir)
+    await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
 }
