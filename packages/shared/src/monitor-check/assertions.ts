@@ -1,4 +1,9 @@
-import { findSpans, indexContainers, jsonTypeAt } from "./json-scan";
+import {
+  findSpans,
+  indexContainers,
+  isJsonPrefix,
+  jsonTypeAt,
+} from "./json-scan";
 import { truncateActual } from "./redact";
 import type {
   AssertionReason,
@@ -50,8 +55,6 @@ function decodeBody(response: EvaluatedResponse): Decoded {
       return { ok: false };
   }
 }
-
-const JSON_START = /^\s*[[{"\-0-9tfn]/;
 
 function isJson(text: string): boolean {
   try {
@@ -136,17 +139,20 @@ export function evaluateAssertions(
         : outcome("fail", "text_not_found");
     }
 
-    // A truncated body is a prefix, so only its start can say whether it is JSON.
+    // A truncated body is a prefix: it is JSON when no structural error precedes its end.
     const truncated = response.bodyTruncated;
-    valid ??= truncated ? JSON_START.test(body.text) : isJson(body.text);
+    valid ??= truncated ? isJsonPrefix(body.text) : isJson(body.text);
     if (!valid) return outcome("fail", "not_json");
     ends ??= indexContainers(body.text);
-    const { spans, incomplete } = findSpans(
-      body.text,
-      assertion.pathSegments,
-      ends,
-      truncated,
-    );
+    let scanned: ReturnType<typeof findSpans>;
+    try {
+      scanned = findSpans(body.text, assertion.pathSegments, ends, truncated);
+    } catch (error) {
+      // Last line of defence: the validity check above should make this unreachable.
+      if (error instanceof SyntaxError) return outcome("fail", "not_json");
+      throw error;
+    }
+    const { spans, incomplete } = scanned;
     if (spans.length === 0) {
       // The prefix ended before the path could be decided: not an endpoint failure.
       return incomplete

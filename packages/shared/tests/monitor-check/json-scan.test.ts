@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { evaluateAssertions } from "../../src/monitor-check/assertions";
-import { findAll, findSpans } from "../../src/monitor-check/json-scan";
+import {
+  findAll,
+  findSpans,
+  isJsonPrefix,
+} from "../../src/monitor-check/json-scan";
 import type { NormalizedAssertion } from "../../src/monitor-check";
 
 afterEach(() => {
@@ -116,6 +120,129 @@ describe("a prefix cut inside the document", () => {
       incomplete: false,
     });
     expect(findSpans('{"a":1}', ["a"], undefined, true).spans).toHaveLength(1);
+  });
+});
+
+describe("isJsonPrefix", () => {
+  const sample =
+    '{"a":{"b":[1,2,{"c":"x\\"y\\u00e9z"}]},"d":"end","e":-12.5e3,"f":true,"g":null,"h":[],"i":{}}';
+
+  it("accepts every prefix of a valid document", () => {
+    for (let cut = 0; cut <= sample.length; cut++) {
+      expect(isJsonPrefix(sample.slice(0, cut)), sample.slice(0, cut)).toBe(
+        true,
+      );
+    }
+  });
+
+  it.each([
+    "{'a':1",
+    "{a:1",
+    "404 Not Found",
+    '[a"b,"]",[',
+    '{"a":1}{"b":2}',
+    '{"a":1}\n{"b":2}',
+    "[1]\n[2]",
+    "1 2",
+    '"a" "b"',
+    "[1,]",
+    '{"a":1,}',
+    "{,}",
+    '{"a" 1}',
+    '{"a":}',
+    "[1 2]",
+    '{"a":01}',
+    "[01]",
+    "-x",
+    "1.x",
+    "1ee",
+    "1e+x",
+    "tru3",
+    "nulx",
+    '"\\x"',
+    '"\\u12g4"',
+    '"a\nb"',
+    "<html>",
+    "]",
+    "}",
+    '{"a":1]',
+    "[1}",
+  ])("rejects %j", (text) => {
+    expect(isJsonPrefix(text)).toBe(false);
+  });
+
+  it.each([
+    "",
+    "  ",
+    "-",
+    "1.",
+    "1e",
+    "1e+",
+    "tr",
+    "nu",
+    '"abc',
+    '{"a',
+    '{"a":',
+    "[",
+    "[1,",
+    '{"a":1,',
+  ])("accepts the prefix %j", (text) => {
+    expect(isJsonPrefix(text)).toBe(true);
+  });
+
+  it("accepts whatever JSON.parse accepts, and is linear on a long body", () => {
+    const big = `[${"1,".repeat(500_000)}1]`;
+    expect(isJsonPrefix(big)).toBe(true);
+    expect(isJsonPrefix("[".repeat(300_000))).toBe(true);
+  });
+});
+
+describe("malformed text never hangs or escapes as anything but SyntaxError", () => {
+  // Deterministic LCG so a failure reproduces.
+  let seed = 12345;
+  const next = (n: number) => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed % n;
+  };
+  const alphabet = '{}[]",:\\ 01a-.etrufnl\n';
+  const random = () =>
+    Array.from({ length: next(40) }, () =>
+      alphabet.charAt(next(alphabet.length)),
+    ).join("");
+  const paths: (string | number)[][] = [
+    [],
+    ["a"],
+    ["a", 0],
+    [0],
+    ["a", "b"],
+    [1, "a"],
+  ];
+
+  it("holds for random text, with and without the validity check", () => {
+    for (let round = 0; round < 3000; round++) {
+      const text = random();
+      let parsed = true;
+      try {
+        JSON.parse(text);
+      } catch {
+        parsed = false;
+      }
+      const prefix = isJsonPrefix(text);
+      if (parsed) expect(prefix, text).toBe(true);
+      for (const path of paths) {
+        try {
+          findSpans(text, path, undefined, true);
+        } catch (error) {
+          expect(error, text).toBeInstanceOf(SyntaxError);
+        }
+        if (prefix) {
+          expect(
+            () => findSpans(text, path, undefined, true),
+            text,
+          ).not.toThrow();
+        }
+      }
+    }
   });
 });
 

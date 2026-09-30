@@ -315,6 +315,29 @@ describe("body assertions against real responses (AC-33)", () => {
       expect(assertion).toMatchObject({ status: "fail", reason: "not_json" });
     });
 
+    it.each([
+      ["a single-quoted key", "{'a':1,"],
+      ["an unquoted key", "{a:1,"],
+      ["a plain-text error page", "404 Not Found "],
+      ["a malformed array", '[a"b,"]",['],
+      ["NDJSON", '{"status":"ok"}\n{"status":"ok"}\n'],
+      ["concatenated values", '{"status":"ok"}{"status":"ok"}'],
+    ])("reports not_json for a truncated body of %s", async (_name, start) => {
+      const { assertion } = await assertOnce(
+        { body: `${start}${pad}` },
+        status("ok"),
+      );
+      expect(assertion).toMatchObject({ status: "fail", reason: "not_json" });
+    });
+
+    it("reads a truncated 404 page as text, not as the number 404", async () => {
+      const { assertion } = await assertOnce(
+        { body: `404 Not Found ${pad}` },
+        { kind: "jsonPathEquals", pathSegments: [], expectedValue: 404 },
+      );
+      expect(assertion).toMatchObject({ status: "fail", reason: "not_json" });
+    });
+
     it("is not evaluated when a later duplicate key could still supply the path", async () => {
       const { assertion } = await assertOnce(
         { headers: JSON_HEADERS, body: `{"a":{"b":1},"pad":"${pad}"}` },

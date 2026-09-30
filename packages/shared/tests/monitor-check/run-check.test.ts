@@ -150,6 +150,29 @@ describe("expected status and outcome", () => {
     });
   });
 
+  it("fails the check, not check_error, for an oversized malformed JSON body", async () => {
+    const pad = "x".repeat(1.2 * 1024 * 1024);
+    const server = await serve(() => ({ body: `{'status':'ok',${pad}` }));
+    const result = await runCheck(
+      configFor("http", server.port, {
+        assertions: [
+          {
+            kind: "jsonPathEquals",
+            pathSegments: ["status"],
+            expectedValue: "ok",
+          },
+        ],
+      }),
+      {},
+      deps(),
+    );
+    expect(result).toMatchObject({
+      outcome: "fail",
+      failureReason: "assertion_failed",
+    });
+    expect(first(result.assertions).reason).toBe("not_json");
+  });
+
   it("still fails when another assertion fails beside a prefix-ended one", async () => {
     const pad = "x".repeat(1.2 * 1024 * 1024);
     const server = await serve(() => ({

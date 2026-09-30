@@ -1,6 +1,8 @@
 import type { PathSegment } from "./types";
 
-// Every function here takes text that `JSON.parse` already accepted, so none handles malformed input.
+// The scanners below expect a whole JSON document (`JSON.parse` accepted it) or a valid
+// prefix of one (`isJsonPrefix` accepted it). On other text they still terminate, because
+// every loop must advance, but they may throw `SyntaxError`.
 const isSpace = (c: string) =>
   c === " " || c === "\t" || c === "\r" || c === "\n";
 
@@ -17,6 +19,153 @@ function skipString(text: string, start: number): number {
     i += text.charAt(i) === "\\" ? 2 : 1;
   }
   return i + 1;
+}
+
+const WORDS = ["true", "false", "null"];
+const isDigit = (c: string) => c >= "0" && c <= "9";
+
+/**
+ * True when `text` is valid JSON or a prefix of one: the first structural
+ * error that is not the end of the text makes it false. A second top-level
+ * value after the first one ends (NDJSON) is an error. One iterative pass,
+ * linear in the text, for a body the reader cut at its size limit.
+ */
+export function isJsonPrefix(text: string): boolean {
+  const n = text.length;
+  // true: object, false: array.
+  const stack: boolean[] = [];
+  type State = "value" | "first" | "key" | "colon" | "after";
+  let state: State = "value";
+  let i = 0;
+  while (i < n) {
+    const c = text.charAt(i);
+    if (isSpace(c)) {
+      i++;
+      continue;
+    }
+    const top = stack[stack.length - 1];
+    if (state === "after") {
+      if (top === undefined) return false; // a second document
+      if (c === ",") state = top ? "key" : "value";
+      else if (c === (top ? "}" : "]")) {
+        stack.pop();
+      } else return false;
+      i++;
+      continue;
+    }
+    if (state === "colon") {
+      if (c !== ":") return false;
+      state = "value";
+      i++;
+      continue;
+    }
+    if (state === "first" || state === "key") {
+      // Inside an object: a key string (or `}` straight after `{`).
+      if (c === "}" && state === "first") {
+        stack.pop();
+        state = "after";
+        i++;
+        continue;
+      }
+      if (c !== '"') return false;
+      const end = skipJsonString(text, i);
+      if (end === -1) return false;
+      if (end > n) return true;
+      i = end;
+      state = "colon";
+      continue;
+    }
+    // state === "value".
+    if (c === "{") {
+      stack.push(true);
+      state = "first";
+      i++;
+    } else if (c === "[") {
+      stack.push(false);
+      state = "value";
+      i++;
+      const next = skipSpace(text, i);
+      if (next < n && text.charAt(next) === "]") {
+        stack.pop();
+        state = "after";
+        i = next + 1;
+      }
+    } else if (c === '"') {
+      const end = skipJsonString(text, i);
+      if (end === -1) return false;
+      if (end > n) return true;
+      i = end;
+      state = "after";
+    } else if (c === "-" || isDigit(c)) {
+      const end = skipJsonNumber(text, i);
+      if (end === -1) return false;
+      i = end;
+      state = "after";
+    } else {
+      const word = WORDS.find((w) => w.charAt(0) === c);
+      if (word === undefined) return false;
+      const part = text.slice(i, i + word.length);
+      if (part !== word.slice(0, part.length)) return false;
+      i += part.length;
+      state = "after";
+    }
+  }
+  return true;
+}
+
+/** End of the string at `start`: -1 when malformed, past the text when the text ends inside it. */
+function skipJsonString(text: string, start: number): number {
+  const n = text.length;
+  let i = start + 1;
+  while (i < n) {
+    const c = text.charAt(i);
+    if (c === '"') return i + 1;
+    if (c < " ") return -1;
+    if (c === "\\") {
+      if (i + 1 >= n) return n + 1;
+      const e = text.charAt(i + 1);
+      if (e === "u") {
+        for (let k = 2; k <= 5; k++) {
+          if (i + k >= n) return n + 1;
+          if (!/[0-9a-fA-F]/.test(text.charAt(i + k))) return -1;
+        }
+        i += 6;
+        continue;
+      }
+      if (!'"\\/bfnrt'.includes(e)) return -1;
+      i += 2;
+      continue;
+    }
+    i++;
+  }
+  return n + 1;
+}
+
+/** End of the number at `start`: -1 when malformed; the text end when it may continue. */
+function skipJsonNumber(text: string, start: number): number {
+  const n = text.length;
+  let j = start;
+  if (text.charAt(j) === "-") j++;
+  if (j >= n) return n;
+  if (text.charAt(j) === "0") j++;
+  else if (isDigit(text.charAt(j)))
+    while (j < n && isDigit(text.charAt(j))) j++;
+  else return -1;
+  if (j < n && text.charAt(j) === ".") {
+    j++;
+    if (j >= n) return n;
+    if (!isDigit(text.charAt(j))) return -1;
+    while (j < n && isDigit(text.charAt(j))) j++;
+  }
+  if (j < n && (text.charAt(j) === "e" || text.charAt(j) === "E")) {
+    j++;
+    if (j >= n) return n;
+    if (text.charAt(j) === "+" || text.charAt(j) === "-") j++;
+    if (j >= n) return n;
+    if (!isDigit(text.charAt(j))) return -1;
+    while (j < n && isDigit(text.charAt(j))) j++;
+  }
+  return j;
 }
 
 /**
@@ -47,7 +196,11 @@ export function indexContainers(text: string): Int32Array {
 function skipValue(text: string, ends: Int32Array, start: number): number {
   const first = text.charAt(start);
   if (first === '"') return skipString(text, start);
-  if (first === "{" || first === "[") return ends[start] ?? text.length;
+  if (first === "{" || first === "[") {
+    const end = ends[start] ?? 0;
+    // 0 means the scan never closed this container (malformed text): treat it as cut.
+    return end > start ? end : text.length + 1;
+  }
   let i = start;
   while (i < text.length && !",]} \t\r\n".includes(text.charAt(i))) i++;
   return i;
@@ -67,6 +220,7 @@ function forEachMember(
   let i = skipSpace(text, start + 1);
   let index = 0;
   while (i < text.length) {
+    const before = i;
     const c = text.charAt(i);
     if (c === "}" || c === "]") return false;
     let key: string | number = index++;
@@ -80,6 +234,8 @@ function forEachMember(
     if (visit(key, i)) return false;
     i = skipSpace(text, skipValue(text, ends, i));
     if (text.charAt(i) === ",") i = skipSpace(text, i + 1);
+    // Every pass must move forward, so malformed text cannot loop.
+    if (i <= before) return true;
   }
   return true;
 }
