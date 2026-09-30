@@ -848,6 +848,50 @@ describe("Test panel with secrets", () => {
     await user.type(screen.getByLabelText("Token"), "x");
     expect(screen.getByText("ผลนี้ไม่ตรงกับค่าปัจจุบัน")).toBeVisible();
   });
+
+  it("marks a result stale when a secret is typed while the test is in flight", async () => {
+    const user = await openCreate();
+    await chooseAuth(user, "bearer");
+    await user.type(screen.getByLabelText("Token"), SECRET);
+    let release: (value: typeof testResult) => void = () => undefined;
+    draftMock.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    await user.click(testButton());
+    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+    await user.type(screen.getByLabelText("Token"), "x");
+    release(testResult);
+    await screen.findByText("การทดสอบผ่าน");
+    expect(screen.getByText("ผลนี้ไม่ตรงกับค่าปัจจุบัน")).toBeVisible();
+  });
+
+  it("marks a result stale once a replacement is opened, and current again after cancelling it untouched", async () => {
+    const user = await openEdit();
+    await user.click(testButton());
+    await screen.findByText("การทดสอบผ่าน");
+    expect(screen.queryByText("ผลนี้ไม่ตรงกับค่าปัจจุบัน")).toBeNull();
+    // keep becomes replace: the shape changes, though nothing was typed.
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
+    expect(screen.getByText("ผลนี้ไม่ตรงกับค่าปัจจุบัน")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
+    );
+    expect(screen.queryByText("ผลนี้ไม่ตรงกับค่าปัจจุบัน")).toBeNull();
+  });
+
+  it("keeps a result stale after a replacement was typed and then cancelled", async () => {
+    const user = await openEdit();
+    await user.click(testButton());
+    await screen.findByText("การทดสอบผ่าน");
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
+    await user.type(screen.getByLabelText("Token"), "x");
+    await user.click(
+      screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
+    );
+    expect(screen.getByText("ผลนี้ไม่ตรงกับค่าปัจจุบัน")).toBeVisible();
+  });
 });
 
 describe("Server refusals of secret entries", () => {
@@ -944,7 +988,7 @@ describe("Server refusals of secret entries are placed beside the slot's field",
     },
   );
 
-  it("places a keep with no stored value and a slot the config does not use at their fields", async () => {
+  it("places a keep with no stored value, and the section-level auth required, at the token field", async () => {
     const { ApiError } = await import("../../lib/api/client");
     updateMock.mockRejectedValue(
       new ApiError("MONITOR_INVALID", "invalid", 400, {
@@ -963,6 +1007,32 @@ describe("Server refusals of secret entries are placed beside the slot's field",
     );
     expect(screen.queryByText(/^ค่าลับ: /)).toBeNull();
   });
+
+  it.each([
+    ["invalid_format", "ค่าลับนี้ไม่ตรงกับการตั้งค่าปัจจุบัน"],
+    ["duplicate", "ค่าลับนี้ถูกระบุซ้ำ"],
+    ["required", "ค่าลับนี้ยังจำเป็นต้องใช้ ลบไม่ได้"],
+  ])(
+    "places secrets.N.slot %s at the field of that slot",
+    async (reason, message) => {
+      const { ApiError } = await import("../../lib/api/client");
+      updateMock.mockRejectedValue(
+        new ApiError("MONITOR_INVALID", "invalid", 400, {
+          fields: [{ field: "secrets.0.slot", reason }],
+        }),
+      );
+      const user = await openEdit();
+      await user.click(saveEdit());
+      const replace = await screen.findByRole("button", {
+        name: "แทนที่ Token",
+      });
+      await waitFor(() => {
+        expect(replace).toHaveAttribute("aria-invalid", "true");
+      });
+      expect(replace).toHaveAccessibleDescription(message);
+      expect(screen.queryByText(/^ค่าลับ: /)).toBeNull();
+    },
+  );
 
   it("lists an entry no field matches in the summary line", async () => {
     const user = await openWithAuthAndHeader();
