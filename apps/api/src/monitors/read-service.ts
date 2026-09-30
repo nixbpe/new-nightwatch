@@ -18,7 +18,11 @@ import { AppError } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
 import { computeHealth, computeSsl } from "./health";
-import { assertMemberPermissionBeforeTenantContext } from "./permissions";
+import {
+  assertMemberPermissionBeforeTenantContext,
+  assertMonitorPermission,
+  membershipDenied,
+} from "./permissions";
 import { MONITOR_COLUMNS, toRecord, type MonitorRow } from "./record";
 import {
   computeGaps,
@@ -47,9 +51,12 @@ export function parseMonitorId(raw: string): string {
 }
 
 /**
- * Membership and read permission are checked before tenant context, then all
- * queries of a request run in one transaction, so `now()` is one instant for
- * freshness, SSL level, uptime windows and `dataAsOf`.
+ * Membership and read permission are checked before tenant context (cheap
+ * denial, no transaction), then again inside the transaction under the
+ * organization row lock, the same first step as the write path: a removal that
+ * commits between the two checks cannot hand the removed user the data. All
+ * queries of a request run in that one transaction, so `now()` is one instant
+ * for freshness, SSL level, uptime windows and `dataAsOf`.
  */
 export async function readInTenant<T>(
   database: Database,
@@ -65,6 +72,17 @@ export async function readInTenant<T>(
     database,
     identity.organizationId,
     async (client) => {
+      const organization = await client.query(
+        "select id from organization where id = $1 for share",
+        [identity.organizationId],
+      );
+      if (organization.rows.length === 0) membershipDenied();
+      const member = await client.query<{ role: string }>(
+        "select role from member where organization_id = $1 and user_id = $2",
+        [identity.organizationId, identity.actorUserId],
+      );
+      assertMonitorPermission(member.rows[0]?.role, "read");
+
       const clock = await client.query<{ now: Date }>("select now() as now");
       const now = clock.rows[0]?.now;
       if (!now) throw new Error("database returned no time");
