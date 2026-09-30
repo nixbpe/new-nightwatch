@@ -1630,6 +1630,15 @@ export interface paths {
                                 }[];
                                 url: string;
                                 evaluatedFromPrefix: boolean;
+                                ssl: {
+                                    /** @enum {string} */
+                                    level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
+                                    daysRemaining: number | null;
+                                    host: string | null;
+                                    issuer: string | null;
+                                    /** Format: date-time */
+                                    notAfter: string | null;
+                                };
                             };
                         };
                     };
@@ -1903,6 +1912,15 @@ export interface paths {
                                 }[];
                                 url: string;
                                 evaluatedFromPrefix: boolean;
+                                ssl: {
+                                    /** @enum {string} */
+                                    level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
+                                    daysRemaining: number | null;
+                                    host: string | null;
+                                    issuer: string | null;
+                                    /** Format: date-time */
+                                    notAfter: string | null;
+                                };
                             };
                         };
                     };

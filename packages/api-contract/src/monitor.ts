@@ -1068,8 +1068,6 @@ export const monitorResponseTimesResponseSchema = z.discriminatedUnion(
             checks: z.number().int().min(0),
             /** Results of the hour that had a response time: the weight of `avgMs`. */
             responseChecks: z.number().int().min(0),
-            /** Results of the hour that had a response time: the weight of `avgMs`. */
-            responseChecks: z.number().int().min(0),
           }),
         )
         .max(720),
