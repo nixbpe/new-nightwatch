@@ -297,6 +297,59 @@ describe("SSL state of the last hop (AC-35)", () => {
     }
   });
 
+  it("a target that completes the handshake and then stalls still reports its certificate", async () => {
+    const stalled = await startTlsTarget(
+      pki.issue(TARGET_HOST, { days: 8 }),
+      () => undefined,
+    );
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${stalled.url}/`,
+        timeoutSeconds: 1,
+      });
+      const events: MonitorEvent[] = [];
+      await check(monitor, events);
+      await check(monitor, events);
+
+      const state = await ssl(monitor);
+      expect(state).toMatchObject({
+        ssl_host: TARGET_HOST,
+        ssl_state: "caution",
+      });
+      expect(state.ssl_issuer).toContain("NW Worker Test CA");
+      const remainingDays =
+        ((state.ssl_not_after?.getTime() ?? 0) - Date.now()) / DAY;
+      expect(remainingDays).toBeGreaterThan(7);
+      expect(remainingDays).toBeLessThan(9);
+      expect(sslEvents(events)).toEqual([
+        { level: "caution", host: TARGET_HOST },
+      ]);
+      const stored = await rows<{
+        outcome: string;
+        failure_reason: string;
+        tls_reason: string | null;
+      }>(
+        db,
+        monitor,
+        "select outcome, failure_reason, tls_reason from monitor_check_results where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(stored).toEqual([
+        { outcome: "fail", failure_reason: "timeout", tls_reason: null },
+        { outcome: "fail", failure_reason: "timeout", tls_reason: null },
+      ]);
+      const [streak] = await rows<{ failures: number }>(
+        db,
+        monitor,
+        "select consecutive_failures as failures from monitors where id = $1",
+        [monitor.monitorId],
+      );
+      expect(streak?.failures).toBe(2);
+    } finally {
+      await stalled.close();
+    }
+  });
+
   it("a connection failure before any handshake keeps the last known SSL state", async () => {
     const target = await startTlsTarget(pki.issue(TARGET_HOST, { days: 20 }));
     const monitor = await seedMonitor(db, { url: `${target.url}/` });
