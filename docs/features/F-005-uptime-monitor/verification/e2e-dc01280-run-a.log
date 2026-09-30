@@ -1,0 +1,86 @@
+$ bun run --cwd e2e test monitors.spec.ts monitors-access.spec.ts monitors-states.spec.ts
+$ playwright test monitors.spec.ts monitors-access.spec.ts monitors-states.spec.ts
+
+Running 44 tests using 3 workers
+
+  ✘   2 [chromium] › tests/monitors.spec.ts:99:1 › owner tests a config before saving, sees pass and a failing target, then saves (5.1s)
+  -   4 [chromium] › tests/monitors.spec.ts:132:1 › owner sees the first result within a scheduler poll
+  -   5 [chromium] › tests/monitors.spec.ts:147:1 › owner pauses, resumes and deletes the monitor
+  -   6 [chromium] › tests/monitors.spec.ts:184:1 › viewer reads Overview and Detail and sees no action
+  -   7 [chromium] › tests/monitors.spec.ts:222:1 › Organization switch leaves Overview, Detail and the form for the new Organization
+  -   8 [chromium] › tests/monitors.spec.ts:292:1 › a target that goes down and comes back reaches the inbox once each
+  -   9 [chromium] › tests/monitors.spec.ts:324:1 › a notification of a deleted monitor stays and its link reads as not found (AC-19, AC-52)
+  -  10 [chromium] › tests/monitors.spec.ts:352:1 › Resume shows unknown until a new result arrives (AC-19)
+  ✓   3 [chromium] › tests/monitors-access.spec.ts:100:5 › role x screen table (AC-02, AC-03) › owner: Overview, Detail, new and edit screens (5.6s)
+  ✓   1 [chromium] › tests/monitors-states.spec.ts:93:5 › AC-01 leaf in the sidebar and the command palette › owner: leaf is present, active on every sub-route, found by the palette (6.0s)
+  ✓  11 [chromium] › tests/monitors-access.spec.ts:100:5 › role x screen table (AC-02, AC-03) › admin: Overview, Detail, new and edit screens (1.9s)
+  ✓  12 [chromium] › tests/monitors-states.spec.ts:93:5 › AC-01 leaf in the sidebar and the command palette › admin: leaf is present, active on every sub-route, found by the palette (2.2s)
+  ✓  13 [chromium] › tests/monitors-access.spec.ts:100:5 › role x screen table (AC-02, AC-03) › viewer: Overview, Detail, new and edit screens (1.6s)
+  ✓  14 [chromium] › tests/monitors-states.spec.ts:93:5 › AC-01 leaf in the sidebar and the command palette › viewer: leaf is present, active on every sub-route, found by the palette (1.8s)
+  ✓  15 [chromium] › tests/monitors-access.spec.ts:100:5 › role x screen table (AC-02, AC-03) › auditor: Overview, Detail, new and edit screens (1.5s)
+  ✓  16 [chromium] › tests/monitors-states.spec.ts:93:5 › AC-01 leaf in the sidebar and the command palette › auditor: leaf is present, active on every sub-route, found by the palette (1.8s)
+  ✓  17 [chromium] › tests/monitors-access.spec.ts:149:3 › role x screen table (AC-02, AC-03) › non-member sees a denied state and no monitor data (1.2s)
+  ✓  19 [chromium] › tests/monitors-access.spec.ts:179:3 › two sessions change the role (AC-49) › form, Detail and dialog refuse after a demotion and keep typed values (3.2s)
+  ✓  20 [chromium] › tests/monitors-access.spec.ts:267:3 › two sessions change the role (AC-49) › removal while Detail and the form are open leaves no data behind (1.8s)
+  ✓  21 [chromium] › tests/monitors-access.spec.ts:306:3 › two sessions change the role (AC-49) › Organization switch on the Edit page leaves it for the new Organization (1.2s)
+  ✓  22 [chromium] › tests/monitors-access.spec.ts:366:5 › keyboard and screen structure, light theme (AC-20 to AC-23) › Overview: Tab order, filter announcement, table name, status words (1.6s)
+  ✓  23 [chromium] › tests/monitors-access.spec.ts:411:5 › keyboard and screen structure, light theme (AC-20 to AC-23) › Form: first invalid field takes focus, errors are described, Test keeps focus, radiogroup uses arrows, rows are named (4.1s)
+  ✓  18 [chromium] › tests/monitors-states.spec.ts:121:3 › AC-04 Overview states › first-run empty, filtered empty, loading, error with retry, stale warning (16.5s)
+  ✓  24 [chromium] › tests/monitors-access.spec.ts:472:5 › keyboard and screen structure, light theme (AC-20 to AC-23) › Detail: headings in order, chart table, Delete dialog focus, Pause keeps focus (8.3s)
+  ✓  25 [chromium] › tests/monitors-states.spec.ts:183:3 › AC-06, AC-07, AC-09, AC-10 create form › defaults, mode switch keeps values, validation beside the field, one monitor on a double click (6.2s)
+  ✓  26 [chromium] › tests/monitors-access.spec.ts:522:5 › keyboard and screen structure, light theme (AC-20 to AC-23) › Delete confirm returns focus to the Overview heading (4.6s)
+  ✓  27 [chromium] › tests/monitors-states.spec.ts:232:3 › AC-06, AC-07, AC-09, AC-10 create form › a forbidden address is refused beside the URL field without any connection (2.1s)
+  ✓  28 [chromium] › tests/monitors-access.spec.ts:366:5 › keyboard and screen structure, dark theme (AC-20 to AC-23) › Overview: Tab order, filter announcement, table name, status words (2.0s)
+  ✓  29 [chromium] › tests/monitors-states.spec.ts:255:3 › AC-06, AC-07, AC-09, AC-10 create form › timeout and unresolvable host show their own messages, apart from the target's result (2.7s)
+  ✓  30 [chromium] › tests/monitors-access.spec.ts:411:5 › keyboard and screen structure, dark theme (AC-20 to AC-23) › Form: first invalid field takes focus, errors are described, Test keeps focus, radiogroup uses arrows, rows are named (1.3s)
+  ✓  31 [chromium] › tests/monitors-states.spec.ts:281:3 › AC-18, AC-40, AC-50 edit, change and races › a concurrent edit shows the conflict and keeps typed values (AC-18) (2.5s)
+  ✓  32 [chromium] › tests/monitors-access.spec.ts:472:5 › keyboard and screen structure, dark theme (AC-20 to AC-23) › Detail: headings in order, chart table, Delete dialog focus, Pause keeps focus (2.6s)
+  ✓  34 [chromium] › tests/monitors-access.spec.ts:522:5 › keyboard and screen structure, dark theme (AC-20 to AC-23) › Delete confirm returns focus to the Overview heading (1.1s)
+  ✓  35 [chromium] › tests/monitors-access.spec.ts:545:5 › reflow at 200% (640 px viewport, LAY-02) › light: no sideways page scroll, actions and labels remain (1.5s)
+  ✓  36 [chromium] › tests/monitors-access.spec.ts:545:5 › reflow at 200% (640 px viewport, LAY-02) › dark: no sideways page scroll, actions and labels remain (1.6s)
+  ✓  33 [chromium] › tests/monitors-states.spec.ts:317:3 › AC-18, AC-40, AC-50 edit, change and races › an id of another Organization reads as not found on Detail and Edit (AC-18, AC-48) (6.1s)
+  ✓  37 [chromium] › tests/monitors-states.spec.ts:332:3 › AC-18, AC-40, AC-50 edit, change and races › editing the URL shows unknown until the new configuration has a result (AC-40) (1.1m)
+  ✓  38 [chromium] › tests/monitors-states.spec.ts:362:3 › AC-18, AC-40, AC-50 edit, change and races › deleting a monitor that another session deleted goes to Overview with the notice (AC-50) (976ms)
+  ✓  39 [chromium] › tests/monitors-states.spec.ts:385:3 › AC-18, AC-40, AC-50 edit, change and races › a Detail left open shows not found after the monitor is deleted elsewhere (AC-50) (2.1s)
+  ✓  40 [chromium] › tests/monitors-states.spec.ts:406:1 › AC-11 the Test limit shows the wait from the server and disables the button (888ms)
+  ✓  41 [chromium] › tests/monitors-states.spec.ts:442:3 › AC-25, AC-26, AC-44, AC-47 secrets in the browser › Edit shows set slots, refuses an empty replace, warns on a type change and blocks a new origin (1.1s)
+  ✓  42 [chromium] › tests/monitors-states.spec.ts:495:3 › AC-25, AC-26, AC-44, AC-47 secrets in the browser › query and body fields carry the permanent warning (AC-47) (702ms)
+  ✓  43 [chromium] › tests/monitors-states.spec.ts:509:1 › AC-54 a first failing result reads as one failure, not as down (30.9s)
+  ✓  44 [chromium] › tests/monitors-states.spec.ts:527:1 › AC-31 an Organization at 50 monitors shows the reason and the API refuses a 51st (1.2s)
+
+
+  1) [chromium] › tests/monitors.spec.ts:99:1 › owner tests a config before saving, sees pass and a failing target, then saves
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 2
+
+      110 |   await expect(page.getByText("การทดสอบผ่าน")).toBeVisible();
+      111 |   await expect(page.getByText("รหัสสถานะ 200")).toBeVisible();
+    > 112 |   expect(target.hitsFor("/health").length).toBe(hitsBefore + 1);
+          |                                            ^
+      113 |
+      114 |   target.setMode("down");
+      115 |   await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
+        at <repo>/e2e/tests/monitors.spec.ts:112:44
+
+    Error Context: test-results/monitors-owner-tests-a-con-3fe87-a-failing-target-then-saves-chromium/error-context.md
+
+    Error Context: test-results/monitors-owner-tests-a-con-3fe87-a-failing-target-then-saves-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/monitors-owner-tests-a-con-3fe87-a-failing-target-then-saves-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/monitors-owner-tests-a-con-3fe87-a-failing-target-then-saves-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests/monitors.spec.ts:99:1 › owner tests a config before saving, sees pass and a failing target, then saves
+  7 did not run
+  36 passed (2.6m)
+error: script "test" exited with code 1
+error: script "e2e" exited with code 1
+EXIT 1
