@@ -304,7 +304,8 @@ export function buildSeries(props: ResponseTimeChartProps): SeriesEntry[] {
 /**
  * True when pauses leave no part of the window uncovered. The window comes from
  * the Detail read and the pauses from a later read, so a sliver at either edge
- * (under twice the interval) does not count as uncovered.
+ * (under twice the interval) does not count as uncovered; a stretch between
+ * two pauses is never tolerated.
  */
 export function pausedThroughout(props: ResponseTimeChartProps): boolean {
   const window = chartWindow(props);
@@ -314,8 +315,11 @@ export function pausedThroughout(props: ResponseTimeChartProps): boolean {
     to: Date.parse(pause.to),
   }));
   const tolerance = (props.intervalSeconds ?? 30) * 2 * 1000;
+  // Only a sliver at the window's edge is tolerated; an uncovered stretch between pauses is real activity.
   return subtract(window, pauses).every(
-    (piece) => piece.to - piece.from <= tolerance,
+    (piece) =>
+      piece.to - piece.from <= tolerance &&
+      (piece.from === window.from || piece.to === window.to),
   );
 }
 

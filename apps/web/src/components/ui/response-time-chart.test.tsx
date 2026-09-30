@@ -483,6 +483,38 @@ describe("7 d and 30 d as the API shapes them", () => {
   });
 });
 
+describe("pausedThroughout tolerates only the window's edges", () => {
+  const window = { from: T("00:00"), to: T("12:00") };
+  const paused = (pauses: { from: string; to: string }[]) =>
+    pausedThroughout({
+      range: "24h",
+      buckets: [],
+      pauses,
+      configChanges: [],
+      window,
+      intervalSeconds: 300,
+    });
+
+  it("is false when short active stretches sit between pauses", () => {
+    // Active 5 minutes twice (under 2 x 300 s each) in an otherwise paused window.
+    expect(
+      paused([
+        { from: T("00:00"), to: T("03:00") },
+        { from: T("03:05"), to: T("08:00") },
+        { from: T("08:05"), to: T("12:00") },
+      ]),
+    ).toBe(false);
+  });
+
+  it("is still true for slivers at the start and the end", () => {
+    expect(paused([{ from: T("00:04"), to: T("11:56") }])).toBe(true);
+  });
+
+  it("is false when an edge sliver is too long", () => {
+    expect(paused([{ from: T("00:20"), to: T("12:00") }])).toBe(false);
+  });
+});
+
 describe("pause slack applies to the clipped current hour only", () => {
   const window = { from: T("08:00"), to: T("10:30") };
   const kinds = (
