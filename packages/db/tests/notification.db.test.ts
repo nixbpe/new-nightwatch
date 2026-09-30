@@ -68,7 +68,7 @@ beforeAll(async () => {
      values ($1, 'Tenant A', $2), ($3, 'Tenant B', $4)`,
     [tenantA, `notification-a-${run}`, tenantB, `notification-b-${run}`],
   );
-});
+}, 60_000);
 
 afterAll(async () => {
   if (ownerConnected) {
@@ -81,7 +81,7 @@ afterAll(async () => {
     await owner.end();
   }
   await database.close();
-});
+}, 60_000);
 
 describe("notification database scopes", () => {
   it("enforces account context and exposes only bounded ledger claims", async () => {
@@ -1366,5 +1366,5 @@ describe("legacy MFA projection migration", () => {
       await admin.end().catch(() => undefined);
       await rm(legacyMigrationsDir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });

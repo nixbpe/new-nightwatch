@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Client, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -21,9 +24,21 @@ if (!runtimeUrl || !ownerUrl) {
   );
 }
 
-const database = createDatabase(runtimeUrl);
-const ownerDatabase = createDatabase(ownerUrl);
-const owner = new Client({ connectionString: ownerUrl });
+// This file creates and drops monitor partitions, which lock the parent
+// tables against every other suite that deletes organizations or calls
+// ensure_monitor_partitions on the shared database (deadlocks, dropped
+// fixtures). It therefore runs in its own database on the same cluster.
+const databaseName = `monitor_db_${randomUUID().replaceAll("-", "")}`;
+const isolatedOwnerUrl = new URL(ownerUrl);
+isolatedOwnerUrl.pathname = `/${databaseName}`;
+const isolatedRuntimeUrl = new URL(runtimeUrl);
+isolatedRuntimeUrl.pathname = `/${databaseName}`;
+const admin = new Client({ connectionString: ownerUrl });
+let adminConnected = false;
+let migrationsCopyDir: string | undefined;
+const database = createDatabase(isolatedRuntimeUrl.toString());
+const ownerDatabase = createDatabase(isolatedOwnerUrl.toString());
+const owner = new Client({ connectionString: isolatedOwnerUrl.toString() });
 const run = randomUUID();
 const tenantA = randomUUID();
 const tenantB = randomUUID();
@@ -154,10 +169,36 @@ function must<T>(value: T | undefined): T {
 let seededA: Seeded;
 let seededB: Seeded;
 
+/** Copies the migrations with `create role` made idempotent: roles are
+ * cluster-global and already exist once any NightWatch database on the
+ * cluster has been migrated (architecture DB-13). */
+async function copyMigrationsWithIdempotentRoles(): Promise<string> {
+  const source = new URL("../migrations", import.meta.url).pathname;
+  const target = await mkdtemp(
+    join(tmpdir(), "nightwatch-monitor-migrations-"),
+  );
+  for (const name of await readdir(source)) {
+    const sql = (await readFile(join(source, name), "utf8")).replace(
+      /create role (\w+)([^;]*);/g,
+      (_match, role: string, options: string) =>
+        `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
+    );
+    await writeFile(join(target, name), sql);
+  }
+  return target;
+}
+
 beforeAll(async () => {
+  await admin.connect();
+  adminConnected = true;
+  await admin.query(`create database ${databaseName}`);
+  await admin.query(
+    `grant connect, temporary on database ${databaseName} to nightwatch`,
+  );
+  migrationsCopyDir = await copyMigrationsWithIdempotentRoles();
   await runMigrations({
-    url: ownerUrl,
-    migrationsDir: new URL("../migrations", import.meta.url).pathname,
+    url: isolatedOwnerUrl.toString(),
+    migrationsDir: migrationsCopyDir,
     log: () => undefined,
   });
   await owner.connect();
@@ -169,19 +210,35 @@ beforeAll(async () => {
   );
   seededA = await seedTenant(tenantA);
   seededB = await seedTenant(tenantB);
-});
+}, 120_000);
 
 afterAll(async () => {
-  if (ownerConnected) {
-    // Organization delete cascades to every monitor table.
-    await owner.query("delete from organization where id = any($1::uuid[])", [
-      [tenantA, tenantB],
-    ]);
-    await owner.end();
+  try {
+    await database.close();
+    await ownerDatabase.close();
+    if (ownerConnected) await owner.end();
+  } finally {
+    try {
+      if (adminConnected) {
+        try {
+          await admin.query(`drop database if exists ${databaseName}`);
+        } catch {
+          await admin.query(
+            `select pg_terminate_backend(pid) from pg_stat_activity
+             where datname = $1 and pid <> pg_backend_pid()`,
+            [databaseName],
+          );
+          await admin.query(`drop database if exists ${databaseName}`);
+        }
+      }
+    } finally {
+      await admin.end().catch(() => undefined);
+      if (migrationsCopyDir) {
+        await rm(migrationsCopyDir, { recursive: true, force: true });
+      }
+    }
   }
-  await database.close();
-  await ownerDatabase.close();
-});
+}, 60_000);
 
 describe("monitor tenant isolation", () => {
   it.each(MONITOR_TABLES)(
@@ -669,8 +726,12 @@ describe("claim_due_monitor_checks", () => {
     for (let i = 0; i < 6; i += 1) {
       await dueMonitor(tenantA, ancient);
     }
-    const first = new Client({ connectionString: runtimeUrl });
-    const second = new Client({ connectionString: runtimeUrl });
+    const first = new Client({
+      connectionString: isolatedRuntimeUrl.toString(),
+    });
+    const second = new Client({
+      connectionString: isolatedRuntimeUrl.toString(),
+    });
     await first.connect();
     await second.connect();
     try {
