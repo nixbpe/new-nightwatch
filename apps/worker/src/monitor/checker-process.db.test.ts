@@ -58,14 +58,14 @@ function writeDns(map: Record<string, string>): void {
   writeFileSync(dnsFile, JSON.stringify(map));
 }
 
-function spawnWorker(): Promise<WorkerProcess> {
+function spawnWorker(roles = "monitor-checker"): Promise<WorkerProcess> {
   const output: string[] = [];
   const child = spawn("bun", ["run", "--preload", preload, workerEntry], {
     env: {
       PATH: process.env.PATH,
       DATABASE_URL: db.runtimeUrl,
       REDIS_URL: redis.url,
-      WORKER_ROLES: "monitor-checker",
+      WORKER_ROLES: roles,
       OUTBOUND_TEST_ALLOWED_HOSTS: TARGET_HOST,
       NW_TEST_DNS_FILE: dnsFile,
     },
@@ -418,6 +418,36 @@ describe("monitor-checker process", () => {
     expect(await resultCount(monitor)).toBe(0);
     console.info(
       `SIGTERM abandoned a hanging check after ${String(waitedMs)} ms`,
+    );
+  }, 60_000);
+
+  it("SIGTERM in a Worker with both monitor roles stops claiming and exits 0 inside the deadline (FC-01)", async () => {
+    const hanging = await target(() => undefined);
+    const monitors: SeededMonitor[] = [];
+    for (let index = 0; index < 60; index += 1) {
+      monitors.push(
+        await seedDue(`${hanging.url}/`, {
+          timeoutSeconds: 30,
+          intervalSeconds: 60,
+        }),
+      );
+    }
+    const worker = await spawnWorker("monitor-scheduler,monitor-checker");
+    // The first round runs at startup; wait until checks are in flight.
+    await waitFor(
+      () => Promise.resolve(hanging.requests.length >= 1),
+      15_000,
+      "request",
+    );
+    const signalled = Date.now();
+    worker.child.kill("SIGTERM");
+    const exit = await worker.exited;
+    const waitedMs = Date.now() - signalled;
+
+    expect(exit.code).toBe(0);
+    expect(waitedMs).toBeLessThan(22_000);
+    console.info(
+      `SIGTERM with both monitor roles exited after ${String(waitedMs)} ms`,
     );
   }, 60_000);
 

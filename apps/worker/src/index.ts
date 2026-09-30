@@ -90,20 +90,29 @@ let stopping = false;
 async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (stopping) return;
   stopping = true;
+  const shutdownStarted = Date.now();
   armHardDeadline(SHUTDOWN_DEADLINE_MS, logger);
   logger.info({ signal }, "worker shutdown requested");
-  // The monitor scheduler stops first so no claim is made while closing.
+  // The monitor scheduler stops first: no batch or enqueue starts after
+  // stop(), and stop() waits only for the call already in flight. The drain
+  // and close budgets below count from the start of shutdown so they stay
+  // inside the hard deadline.
   await monitorSchedule?.stop();
   if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
   // Closes run together so the slowest one, not their sum, bounds shutdown.
+  const elapsed = Date.now() - shutdownStarted;
   const abort = monitorChecker
-    ? setTimeout(() => {
-        checkerShutdown.abort();
-      }, CHECKER_DRAIN_MS)
+    ? setTimeout(
+        () => {
+          checkerShutdown.abort();
+        },
+        Math.max(0, CHECKER_DRAIN_MS - elapsed),
+      )
     : undefined;
   await Promise.all([
-    monitorChecker && closeWithin(monitorChecker, CHECKER_CLOSE_MS),
+    monitorChecker &&
+      closeWithin(monitorChecker, Math.max(1_000, CHECKER_CLOSE_MS - elapsed)),
     worker && closeWithin(worker),
     queue && closeWithin(queue),
     monitorQueue && closeWithin(monitorQueue),

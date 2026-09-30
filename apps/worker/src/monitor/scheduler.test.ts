@@ -3,14 +3,17 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import type { Database } from "@nightwatch/db";
+
 import { monitorCheckJobId } from "./queue";
 import {
   aheadSuffixes,
+  MonitorScheduler,
   MONITOR_SCHEDULER_INTERVAL_MS,
   startMonitorSchedule,
 } from "./scheduler";
 
-const logger = { error: () => undefined } as never;
+const logger = { error: () => undefined, warn: () => undefined } as never;
 
 describe("monitor scheduler constants and ids", () => {
   it("polls every 10 seconds in production", () => {
@@ -43,6 +46,7 @@ describe("startMonitorSchedule", () => {
       idle: async () => {
         await inFlight;
       },
+      stop: () => undefined,
     };
     const handle = startMonitorSchedule(scheduler, logger, 5);
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -99,5 +103,54 @@ describe("aheadSuffixes", () => {
     ["2026-12-31T23:59:59Z", ["202701", "202702"]],
   ])("lists the next two UTC months after %s", (now, expected) => {
     expect(aheadSuffixes(new Date(now))).toEqual(expected);
+  });
+});
+
+describe("MonitorScheduler stop", () => {
+  it("claims nothing more and enqueues nothing once stop() is called mid-round", async () => {
+    let claims = 0;
+    const firstClaim = Promise.withResolvers<undefined>();
+    const release = Promise.withResolvers<undefined>();
+    const row = () => ({
+      monitor_id: "m",
+      tenant_id: "t",
+      claim_token: "c",
+      check_config_version: 1,
+      scheduled_for: new Date(),
+    });
+    const database = {
+      sql: {
+        query: async (text: string) => {
+          if (!text.includes("claim_due_monitor_checks")) return { rows: [] };
+          claims += 1;
+          firstClaim.resolve(undefined);
+          await release.promise;
+          // A full batch, so an unstopped round would go on claiming.
+          return { rows: Array.from({ length: 10 }, row) };
+        },
+      },
+    } as unknown as Database;
+    const added: string[] = [];
+    const queue = {
+      add: (name: string) => {
+        added.push(name);
+        return Promise.resolve();
+      },
+      waitUntilReady: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    } as never;
+    const scheduler = new MonitorScheduler(database, queue, logger);
+
+    const round = scheduler.round();
+    await firstClaim.promise;
+    scheduler.stop();
+    release.resolve(undefined);
+    await round;
+
+    expect(claims).toBe(1);
+    expect(added).toEqual([]);
+    // A later round is a no-op too.
+    await scheduler.round();
+    expect(claims).toBe(1);
   });
 });

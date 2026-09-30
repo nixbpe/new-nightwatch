@@ -32,6 +32,7 @@ export type MonitorSchedulerOptions = {
 export class MonitorScheduler {
   #running: Promise<void> | null = null;
   #lastPartitionCheck: number | null = null;
+  #stopping = false;
   readonly #now: () => Date;
   readonly #enqueueTimeoutMs: number;
 
@@ -45,9 +46,19 @@ export class MonitorScheduler {
     this.#enqueueTimeoutMs = options.enqueueTimeoutMs ?? ENQUEUE_TIMEOUT_MS;
   }
 
+  /** Stops claiming at once: the round in flight ends before its next batch or enqueue. */
+  stop(): void {
+    this.#stopping = true;
+  }
+
+  // A method, not a field read: stop() flips it while a round awaits.
+  #isStopping(): boolean {
+    return this.#stopping;
+  }
+
   /** Runs one round; a round that is still in flight makes this a no-op. */
   round(): Promise<void> {
-    if (this.#running) return Promise.resolve();
+    if (this.#running || this.#stopping) return Promise.resolve();
     const running = this.#round().finally(() => {
       this.#running = null;
     });
@@ -63,6 +74,7 @@ export class MonitorScheduler {
   async #round(): Promise<void> {
     await this.#guard("partition check failed", () => this.#checkPartitions());
     await this.#guard("monitor claim round failed", () => this.#claimRound());
+    if (this.#isStopping()) return;
     await this.#guard("monitor purge failed", async () => {
       await purgeExpiredMonitorData(this.database, {
         limit: MONITOR_PURGE_LIMIT,
@@ -84,11 +96,14 @@ export class MonitorScheduler {
 
   async #claimRound(): Promise<void> {
     for (let batch = 0; batch < MONITOR_MAX_BATCHES_PER_ROUND; batch += 1) {
+      if (this.#isStopping()) return;
       // Each claim commits before any enqueue: no transaction spans Redis.
       const claims = await claimDueMonitorChecks(this.database, {
         limit: MONITOR_CLAIM_BATCH_SIZE,
       });
       for (const claim of claims) {
+        // Unqueued claims keep their lease and are claimed again after it expires.
+        if (this.#isStopping()) return;
         // Redis is unavailable: stop claiming. The rest of this batch
         // keeps its lease and is claimed again once the lease expires.
         if (!(await this.#enqueue(claim))) return;
@@ -187,7 +202,7 @@ export type MonitorScheduleHandle = { stop(): Promise<void> };
 
 /** Interval is injectable for tests only; production uses the 10 s constant. */
 export function startMonitorSchedule(
-  scheduler: Pick<MonitorScheduler, "round" | "idle">,
+  scheduler: Pick<MonitorScheduler, "round" | "idle" | "stop">,
   logger: Logger,
   intervalMs: number = MONITOR_SCHEDULER_INTERVAL_MS,
 ): MonitorScheduleHandle {
@@ -201,6 +216,7 @@ export function startMonitorSchedule(
   return {
     async stop() {
       clearInterval(timer);
+      scheduler.stop();
       await scheduler.idle();
     },
   };
