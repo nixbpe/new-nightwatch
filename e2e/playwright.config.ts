@@ -13,7 +13,9 @@ const apiUrl = `http://localhost:${apiPort}`;
 // here. APP_URL/BETTER_AUTH_URL/CORS_ORIGIN fall back to the resolved dev
 // origins (same computation as scripts/dev.mjs) so the webServer block is
 // self-contained; database/auth/Redis values must come from the caller when
-// the API or worker needs them.
+// the API or worker needs them. Monitor credential keys may stay unset outside
+// production (development fallback); OUTBOUND_TEST_ALLOWED_HOSTS is required by
+// e2e/tests/monitors.spec.ts (see scripts/quality/README.md).
 const RUNTIME_ENV_NAMES = [
   "DATABASE_URL",
   "DATABASE_OWNER_URL",
@@ -25,6 +27,10 @@ const RUNTIME_ENV_NAMES = [
   "SMTP_PASSWORD",
   "SMTP_FROM",
   "REDIS_URL",
+  "CREDENTIAL_ENCRYPTION_KEYS",
+  "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION",
+  "OUTBOUND_TEST_ALLOWED_HOSTS",
+  "MONITOR_EGRESS_CANARY_URLS",
 ] as const;
 
 function runtimeEnv(): Record<string, string> {
@@ -61,7 +67,10 @@ export default defineConfig({
     {
       command: "bun run --cwd apps/worker start",
       cwd: "..",
-      env: { ...runtimeEnv(), WORKER_ROLES: "consumer,scheduler" },
+      env: {
+        ...runtimeEnv(),
+        WORKER_ROLES: "consumer,scheduler,monitor-scheduler,monitor-checker",
+      },
       stdout: "pipe",
       wait: { stdout: /in-app materialize worker ready/ },
       gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
