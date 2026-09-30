@@ -650,7 +650,12 @@ async function ssrf() {
 // job payloads that are removed on completion are still scanned (AC-56).
 let redisTrace = "";
 let redisMonitor: ReturnType<typeof Bun.spawn> | null = null;
-const redisContainer = () => process.env.REDIS_CONTAINER ?? "nw-dev-23-redis-1";
+const redisContainer = () => {
+  const name = process.env.REDIS_CONTAINER;
+  if (!name)
+    throw new Error("REDIS_CONTAINER must name the Redis container to inspect");
+  return name;
+};
 const monitorClientIds = () =>
   Bun.spawnSync([
     "docker",
@@ -1165,7 +1170,7 @@ async function scanStores() {
     hits.length === 0,
     hits,
   );
-  const container = process.env.REDIS_CONTAINER ?? "nw-dev-23-redis-1";
+  const container = redisContainer();
   const dump = Bun.spawnSync([
     "docker",
     "exec",
