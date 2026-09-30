@@ -20,6 +20,8 @@ import {
   createMonitor,
   fetchMonitorDetail,
   monitorQueryKeys,
+  testMonitorDraft,
+  testMonitorEdit,
   updateMonitor,
 } from "../../../lib/api/monitors";
 import { ROLE_LABELS } from "../../../lib/roles";
@@ -28,6 +30,7 @@ import type { MonitorFlashState } from "../flash";
 import { AssertionsSection } from "./AssertionsSection";
 import { BasicSection } from "./BasicSection";
 import { RequestSection } from "./RequestSection";
+import { TestPanel } from "./TestPanel";
 import { SecretsSection } from "./SecretsSection";
 import {
   ADVANCED_ONLY_PATH,
@@ -40,6 +43,8 @@ import {
   SECRET_ORIGIN_MESSAGE,
   secretOriginChanged,
   serverFieldErrors,
+  testCreatePayload,
+  testEditPayload,
   URL_BLOCKED_MESSAGE,
   validateValues,
   valuesFromRecord,
@@ -56,6 +61,16 @@ const ORIGIN_BLOCK_NOTE =
   "การแก้ค่าลับจะทำได้ในส่วนค่าลับ (ยังไม่เปิดใช้) จึงยังบันทึกหรือทดสอบไม่ได้";
 
 type Mode = "basic" | "advanced";
+
+// Errors of a Test that describe the form, its permission or its monitor; anything else is the service's.
+const FORM_ERROR_CODES: ReadonlySet<string> = new Set([
+  "MONITOR_INVALID",
+  "MONITOR_TARGET_BLOCKED",
+  "MONITOR_SECRET_ORIGIN_CHANGED",
+  "MONITOR_NOT_FOUND",
+  "PERMISSION_DENIED",
+  "MEMBERSHIP_DENIED",
+]);
 
 export function MonitorForm({
   organization,
@@ -98,6 +113,7 @@ export function MonitorForm({
   const [conflict, setConflict] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [focusToken, setFocusToken] = useState(0);
   const [focusTarget, setFocusTarget] = useState<string | null>(null);
   const saveInFlight = useRef(false);
@@ -123,6 +139,11 @@ export function MonitorForm({
   const { placed, unplaced } = placeErrors(allErrors, values);
 
   const originBlocked = secretOriginChanged(base, values);
+  const blockedReason = roleLost
+    ? ROLE_CHANGED
+    : originBlocked
+      ? SECRET_ORIGIN_MESSAGE
+      : null;
   const controlsOff = saving || roleLost;
 
   useEffect(() => {
@@ -211,9 +232,24 @@ export function MonitorForm({
     }
   }
 
+  /** Refusals that belong to the form; a service failure stays in the Test panel. */
+  function handleTestError(error: unknown): boolean {
+    if (!(error instanceof ApiError) || !FORM_ERROR_CODES.has(error.code)) {
+      return false;
+    }
+    return handleError(error, "ทดสอบไม่สำเร็จ ลองอีกครั้ง");
+  }
+
+  function validateForTest(): boolean {
+    const errors = validateValues(values);
+    if (Object.keys(errors).length === 0) return true;
+    showFirstInvalid(errors);
+    return false;
+  }
+
   async function save(event: SyntheticEvent) {
     event.preventDefault();
-    if (saveInFlight.current || controlsOff || originBlocked) return;
+    if (saveInFlight.current || testing || controlsOff || originBlocked) return;
     const errors = validateValues(values);
     if (Object.keys(errors).length > 0) {
       showFirstInvalid(errors);
@@ -376,6 +412,27 @@ export function MonitorForm({
             <AssertionsSection {...sectionProps} />
           </>
         ) : null}
+        <TestPanel
+          payload={
+            base === null
+              ? testCreatePayload(values)
+              : testEditPayload(values, base)
+          }
+          validate={validateForTest}
+          send={() =>
+            base === null || monitorId === undefined
+              ? testMonitorDraft(organizationId, testCreatePayload(values))
+              : testMonitorEdit(
+                  organizationId,
+                  monitorId,
+                  testEditPayload(values, base),
+                )
+          }
+          onFormError={handleTestError}
+          blockedReason={blockedReason}
+          saving={saving}
+          onPendingChange={setTesting}
+        />
         {roleLost ? <Alert tone="error">{ROLE_CHANGED}</Alert> : null}
         {conflict ? (
           <div className="flex flex-col gap-2">
@@ -413,9 +470,9 @@ export function MonitorForm({
           </Button>
           <Button
             type="submit"
-            aria-disabled={saving}
+            aria-disabled={saving || testing}
             disabled={roleLost || originBlocked}
-            className={saving ? "opacity-60" : undefined}
+            className={saving || testing ? "opacity-60" : undefined}
           >
             {saving
               ? "กำลังบันทึก…"
