@@ -24,41 +24,45 @@ export type SecretAccess = {
 };
 
 export type SecretStore = SecretAccess & {
-  /** Counts writes per slot: a value-free way to tell that a value changed. */
-  revision: (slot: string) => number;
+  /** True once any secret was typed, replaced or dropped since the last `markClean`. Holds no value or digest. */
+  changed: boolean;
+  markClean: () => void;
   clear: () => void;
 };
 
 export function useSecretStore(): SecretStore {
   const values = useRef(new Map<string, string>());
-  const revisions = useRef(new Map<string, number>());
   const [version, setVersion] = useState(0);
+  const [changed, setChanged] = useState(false);
   return useMemo(() => {
-    const bump = (slot: string) => {
-      revisions.current.set(slot, (revisions.current.get(slot) ?? 0) + 1);
+    const touch = () => {
+      setChanged(true);
+      setVersion((current) => current + 1);
     };
     return {
       version,
+      changed,
       get: (slot) => values.current.get(slot) ?? "",
-      revision: (slot) => revisions.current.get(slot) ?? 0,
       set: (slot, value) => {
         values.current.set(slot, value);
-        bump(slot);
-        setVersion((current) => current + 1);
+        touch();
       },
       drop: (slots) => {
-        for (const slot of slots) {
-          if (values.current.delete(slot)) bump(slot);
-        }
-        setVersion((current) => current + 1);
+        let dropped = false;
+        for (const slot of slots)
+          dropped = values.current.delete(slot) || dropped;
+        if (dropped) touch();
+        else setVersion((current) => current + 1);
+      },
+      markClean: () => {
+        setChanged(false);
       },
       clear: () => {
-        for (const slot of values.current.keys()) bump(slot);
         values.current.clear();
         setVersion((current) => current + 1);
       },
     };
-  }, [version]);
+  }, [version, changed]);
 }
 
 /** Nothing typed stays in memory once the form is gone. */
@@ -214,18 +218,9 @@ export function editEntries(entries: PlannedEntry[]): EditEntry[] {
   );
 }
 
-/** What the Test panel compares to tell a result is stale: entries and change counters, never a value. */
-export function secretFingerprint(
-  entries: PlannedEntry[],
-  revision: (slot: string) => number,
-): string {
-  return JSON.stringify(
-    entries.map((entry) => [
-      entry.slot,
-      entry.action,
-      entry.action === "replace" ? revision(entry.slot) : 0,
-    ]),
-  );
+/** Which slots go with which action: the value-free part of a request the Test panel compares. */
+export function secretShape(entries: PlannedEntry[]): string {
+  return JSON.stringify(entries.map((entry) => [entry.slot, entry.action]));
 }
 
 export const REPLACE_EMPTY_MESSAGE = "กรอกค่าใหม่ หรือกดยกเลิกการแทนที่";

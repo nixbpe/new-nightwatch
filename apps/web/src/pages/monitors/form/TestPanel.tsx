@@ -106,6 +106,8 @@ function retryAfterOf(error: ApiError): number | null {
  */
 export function TestPanel({
   payload,
+  secretsChanged,
+  onRun,
   validate,
   send,
   onFormError,
@@ -116,6 +118,10 @@ export function TestPanel({
 }: {
   /** What a result is compared with to tell it is stale; it holds no secret value. */
   payload: TestPayload;
+  /** A secret was typed, replaced or dropped since the last test started. */
+  secretsChanged: boolean;
+  /** A test is starting: the form resets its changed flag. */
+  onRun: () => void;
   /** Shows field errors and returns false when the form cannot be sent. */
   validate: () => boolean;
   /** Sends the configuration `payload` describes, with the secret values built at that moment. */
@@ -154,6 +160,7 @@ export function TestPanel({
     if (!validate()) return;
     inFlight.current = true;
     const sent = payload;
+    onRun();
     setState({ kind: "running" });
     onPendingChange(true);
     try {
@@ -181,7 +188,7 @@ export function TestPanel({
 
   const stale =
     state.kind === "result" &&
-    JSON.stringify(state.sent) !== JSON.stringify(payload);
+    (secretsChanged || JSON.stringify(state.sent) !== JSON.stringify(payload));
 
   let statusText: string;
   if (state.kind === "running") statusText = "กำลังส่งคำขอทดสอบ";

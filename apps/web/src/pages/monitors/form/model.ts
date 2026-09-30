@@ -23,7 +23,7 @@ import {
   editEntries,
   keptSlots,
   placeSecretPath,
-  secretFingerprint,
+  secretShape,
   secretIssues,
   type PlannedEntry,
 } from "./secrets";
@@ -275,18 +275,14 @@ export function testEditPayload(
   return { ...configInput(values), secrets: editEntries(entries) };
 }
 
-/** The Test panel's copy of what was sent: the configuration and a value-free stamp of the secrets. */
-export type TestSnapshot = MonitorConfigInput & { secretStamp: string };
+/** The Test panel's copy of what was sent: the configuration and which slots were kept or replaced, never a value. */
+export type TestSnapshot = MonitorConfigInput & { secretShape: string };
 
 export function testSnapshot(
   values: FormValues,
   entries: PlannedEntry[],
-  revision: (slot: string) => number,
 ): TestSnapshot {
-  return {
-    ...configInput(values),
-    secretStamp: secretFingerprint(entries, revision),
-  };
+  return { ...configInput(values), secretShape: secretShape(entries) };
 }
 
 // ---- Errors -------------------------------------------------------------------
@@ -422,7 +418,8 @@ const FIELD_MESSAGES: Record<
     invalid_format: "ชื่อ header ไม่ถูกต้อง",
     blocked_header: "ชื่อ header นี้ระบบตั้งเอง ตั้งเองไม่ได้",
   },
-  "secrets.#": { required: "ไม่พบค่าลับที่เก็บไว้ของรายการนี้" },
+  // `secrets.N` loses its index like `headers.N`: a keep whose slot has no stored value.
+  secrets: { required: "ไม่พบค่าลับที่เก็บไว้ของรายการนี้" },
   "secrets.#.slot": {
     invalid_format: "ค่าลับนี้ไม่ตรงกับการตั้งค่าปัจจุบัน",
     duplicate: "ค่าลับนี้ถูกระบุซ้ำ",

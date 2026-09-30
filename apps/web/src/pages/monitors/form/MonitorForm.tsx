@@ -467,7 +467,9 @@ export function MonitorForm({
           </>
         ) : null}
         <TestPanel
-          payload={testSnapshot(values, entriesNow(), secretStore.revision)}
+          payload={testSnapshot(values, entriesNow())}
+          secretsChanged={secretStore.changed}
+          onRun={secretStore.markClean}
           validate={validateForTest}
           send={() =>
             base === null || monitorId === undefined

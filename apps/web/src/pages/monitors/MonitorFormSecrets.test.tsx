@@ -786,6 +786,92 @@ describe("Server refusals of secret entries", () => {
   });
 });
 
+describe("Server refusals of secret entries are placed beside the slot's field", () => {
+  const reasons = [
+    ["required", "กรอกค่าลับ"],
+    ["too_long", "ค่าลับยาวได้ไม่เกิน 4 KiB"],
+    ["invalid_format", "ค่าลับมีอักขระที่ใช้ไม่ได้"],
+    ["crlf", "ค่าลับห้ามมีการขึ้นบรรทัดใหม่"],
+  ] as const;
+
+  async function refuse(fields: { field: string; reason: string }[]) {
+    const { ApiError } = await import("../../lib/api/client");
+    createMock.mockRejectedValue(
+      new ApiError("MONITOR_INVALID", "invalid", 400, { fields }),
+    );
+  }
+
+  async function openWithAuthAndHeader() {
+    const user = await openCreate();
+    await chooseAuth(user, "basic");
+    await user.type(screen.getByLabelText("ชื่อผู้ใช้"), "svc");
+    await user.type(screen.getByLabelText("รหัสผ่าน"), SECRET);
+    await user.click(screen.getByRole("button", { name: "เพิ่ม header" }));
+    await user.type(screen.getByLabelText("ชื่อ header แถวที่ 1"), "X-Key");
+    await user.click(screen.getByLabelText("ค่าลับ header แถวที่ 1"));
+    await user.type(screen.getByLabelText("ค่า header แถวที่ 1"), OTHER_SECRET);
+    return user;
+  }
+
+  it.each(reasons)(
+    "places secrets.N.value %s at the auth field and at the header row",
+    async (reason, message) => {
+      const user = await openWithAuthAndHeader();
+      // Entries: 0 auth.username, 1 auth.password, 2 the header slot.
+      await refuse([
+        { field: "secrets.1.value", reason },
+        { field: "secrets.2.value", reason },
+      ]);
+      await user.click(saveCreate());
+      await waitFor(() => {
+        expect(screen.getByLabelText("รหัสผ่าน")).toHaveAttribute(
+          "aria-invalid",
+          "true",
+        );
+      });
+      for (const label of ["รหัสผ่าน", "ค่า header แถวที่ 1"]) {
+        const field = screen.getByLabelText(label);
+        expect(field).toHaveAttribute("aria-invalid", "true");
+        expect(field).toHaveAccessibleDescription(
+          expect.stringContaining(message),
+        );
+      }
+      expect(screen.getByLabelText("ชื่อผู้ใช้")).not.toHaveAttribute(
+        "aria-invalid",
+      );
+      // Nothing falls back to the summary line.
+      expect(screen.queryByText(/^ค่าลับ: /)).toBeNull();
+    },
+  );
+
+  it("places a keep with no stored value and a slot the config does not use at their fields", async () => {
+    const { ApiError } = await import("../../lib/api/client");
+    updateMock.mockRejectedValue(
+      new ApiError("MONITOR_INVALID", "invalid", 400, {
+        fields: [
+          { field: "secrets.0", reason: "required" },
+          { field: "auth", reason: "required" },
+        ],
+      }),
+    );
+    const user = await openEdit();
+    await user.click(saveEdit());
+    const replace = await screen.findByRole("button", { name: "แทนที่Token" });
+    expect(replace).toHaveAttribute("aria-invalid", "true");
+    expect(replace).toHaveAccessibleDescription(
+      /ไม่พบค่าลับที่เก็บไว้ของรายการนี้/,
+    );
+    expect(screen.queryByText(/^ค่าลับ: /)).toBeNull();
+  });
+
+  it("lists an entry no field matches in the summary line", async () => {
+    const user = await openWithAuthAndHeader();
+    await refuse([{ field: "secrets.9.value", reason: "too_long" }]);
+    await user.click(saveCreate());
+    expect(await screen.findByText(/^ค่าลับ: /)).toBeVisible();
+  });
+});
+
 describe("Detail shows secrets as set only", () => {
   it.each(["viewer", "auditor"] as const)(
     "shows %s the auth type and 'ตั้งค่าแล้ว' with no field, button or value",
