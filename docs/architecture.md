@@ -9,7 +9,7 @@ NightWatch is one multi-tenant application (a modular monolith) whose organizati
 
 ## System parts
 
-Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app notifications and uptime monitor checks. `Implemented`: the Worker role `monitor` (`monitor-scheduler`, `monitor-checker`) and the queue `monitor-check`, the shared SSRF helper (OUT-01), the Redis rate limiter (REQ-04), credential encryption (DB-14) and monthly partitions of the monitor result tables. Deferred: other Worker roles and queues, a shared queue package, and a marketing site.
+Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app notifications and uptime monitor checks. `Implemented`: the Worker roles `monitor-scheduler` and `monitor-checker` and the queue `monitor-check`, the shared SSRF helper (OUT-01), the Redis rate limiter (REQ-04), credential encryption (DB-14) and monthly partitions of the monitor result tables. Deferred: other Worker roles and queues, a shared queue package, and a marketing site.
 
 **Principle.** PostgreSQL holds all state; Redis only carries jobs. Users reach data only through the Web app calling the API with a session cookie, and only the API and Worker call outside systems. The marketing site gets no login data, cookies or internal data. Platform-admin access is checked per operation and never bypasses tenant isolation. Commit to the database before enqueueing, and record enqueue failures in the database.
 
