@@ -1,0 +1,6 @@
+PASS AC-60 one purge call with limit 2 removes at most 2 rows
+PASS AC-41 results older than 30 days are gone, the 4 younger remain
+PASS AC-41 the incident closed 44 days ago is gone
+PASS AC-41 the open incident older than 30 days and the recently closed one remain
+PASS AC-60 the runner on a fresh database created previous, current and 3 later months
+failed: 0

@@ -1,0 +1,302 @@
+PASS matrix setup created monitors
+┌────┬───────────┬────────────────────────┬────────┬───────────────────┬───────────┬───────────┬────────────┐
+│    │ role      │ op                     │ status │ code              │ probeHits │ unchanged │ auditLines │
+├────┼───────────┼────────────────────────┼────────┼───────────────────┼───────────┼───────────┼────────────┤
+│  0 │ owner     │ read list              │ 200    │ null              │ 0         │ true      │ 0          │
+│  1 │ owner     │ read recent-events     │ 200    │ null              │ 0         │ true      │ 0          │
+│  2 │ owner     │ read detail            │ 200    │ null              │ 0         │ true      │ 0          │
+│  3 │ owner     │ read checks            │ 200    │ null              │ 0         │ true      │ 0          │
+│  4 │ owner     │ read incidents         │ 200    │ null              │ 0         │ true      │ 0          │
+│  5 │ owner     │ read response-times    │ 200    │ null              │ 0         │ true      │ 0          │
+│  6 │ owner     │ create                 │ 201    │ null              │ 0         │ false     │ 1          │
+│  7 │ owner     │ create with secret     │ 201    │ null              │ 0         │ false     │ 2          │
+│  8 │ owner     │ edit                   │ 200    │ null              │ 0         │ null      │ 1          │
+│  9 │ owner     │ edit secret replace    │ 200    │ null              │ 0         │ null      │ 2          │
+│ 10 │ owner     │ test draft             │ 200    │ null              │ 1         │ true      │ 0          │
+│ 11 │ owner     │ test draft with secret │ 200    │ null              │ 1         │ true      │ 0          │
+│ 12 │ owner     │ test edit              │ 200    │ null              │ 1         │ null      │ 0          │
+│ 13 │ owner     │ pause                  │ 200    │ null              │ 0         │ null      │ 1          │
+│ 14 │ owner     │ resume                 │ 200    │ null              │ 0         │ null      │ 1          │
+│ 15 │ owner     │ delete                 │ 204    │ null              │ 0         │ null      │ 1          │
+│ 16 │ owner     │ monitor alerts toggle  │ 200    │ null              │ 0         │ true      │ 1          │
+│ 17 │ admin     │ read list              │ 200    │ null              │ 0         │ true      │ 0          │
+│ 18 │ admin     │ read recent-events     │ 200    │ null              │ 0         │ true      │ 0          │
+│ 19 │ admin     │ read detail            │ 200    │ null              │ 0         │ true      │ 0          │
+│ 20 │ admin     │ read checks            │ 200    │ null              │ 0         │ true      │ 0          │
+│ 21 │ admin     │ read incidents         │ 200    │ null              │ 0         │ true      │ 0          │
+│ 22 │ admin     │ read response-times    │ 200    │ null              │ 0         │ true      │ 0          │
+│ 23 │ admin     │ create                 │ 201    │ null              │ 0         │ false     │ 1          │
+│ 24 │ admin     │ create with secret     │ 201    │ null              │ 0         │ false     │ 2          │
+│ 25 │ admin     │ edit                   │ 200    │ null              │ 0         │ null      │ 1          │
+│ 26 │ admin     │ edit secret replace    │ 200    │ null              │ 0         │ null      │ 2          │
+│ 27 │ admin     │ test draft             │ 200    │ null              │ 1         │ true      │ 0          │
+│ 28 │ admin     │ test draft with secret │ 200    │ null              │ 1         │ true      │ 0          │
+│ 29 │ admin     │ test edit              │ 200    │ null              │ 1         │ null      │ 0          │
+│ 30 │ admin     │ pause                  │ 200    │ null              │ 0         │ null      │ 1          │
+│ 31 │ admin     │ resume                 │ 200    │ null              │ 0         │ null      │ 1          │
+│ 32 │ admin     │ delete                 │ 204    │ null              │ 0         │ null      │ 1          │
+│ 33 │ admin     │ monitor alerts toggle  │ 200    │ null              │ 0         │ true      │ 1          │
+│ 34 │ viewer    │ read list              │ 200    │ null              │ 0         │ true      │ 0          │
+│ 35 │ viewer    │ read recent-events     │ 200    │ null              │ 0         │ true      │ 0          │
+│ 36 │ viewer    │ read detail            │ 200    │ null              │ 0         │ true      │ 0          │
+│ 37 │ viewer    │ read checks            │ 200    │ null              │ 0         │ true      │ 0          │
+│ 38 │ viewer    │ read incidents         │ 200    │ null              │ 0         │ true      │ 0          │
+│ 39 │ viewer    │ read response-times    │ 200    │ null              │ 0         │ true      │ 0          │
+│ 40 │ viewer    │ create                 │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 41 │ viewer    │ create with secret     │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 42 │ viewer    │ edit                   │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 43 │ viewer    │ edit secret replace    │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 44 │ viewer    │ test draft             │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 45 │ viewer    │ test draft with secret │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 46 │ viewer    │ test edit              │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 47 │ viewer    │ pause                  │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 48 │ viewer    │ resume                 │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 49 │ viewer    │ delete                 │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 50 │ viewer    │ monitor alerts toggle  │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 51 │ auditor   │ read list              │ 200    │ null              │ 0         │ true      │ 0          │
+│ 52 │ auditor   │ read recent-events     │ 200    │ null              │ 0         │ true      │ 0          │
+│ 53 │ auditor   │ read detail            │ 200    │ null              │ 0         │ true      │ 0          │
+│ 54 │ auditor   │ read checks            │ 200    │ null              │ 0         │ true      │ 0          │
+│ 55 │ auditor   │ read incidents         │ 200    │ null              │ 0         │ true      │ 0          │
+│ 56 │ auditor   │ read response-times    │ 200    │ null              │ 0         │ true      │ 0          │
+│ 57 │ auditor   │ create                 │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 58 │ auditor   │ create with secret     │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 59 │ auditor   │ edit                   │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 60 │ auditor   │ edit secret replace    │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 61 │ auditor   │ test draft             │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 62 │ auditor   │ test draft with secret │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 63 │ auditor   │ test edit              │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 64 │ auditor   │ pause                  │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 65 │ auditor   │ resume                 │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 66 │ auditor   │ delete                 │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 67 │ auditor   │ monitor alerts toggle  │ 403    │ PERMISSION_DENIED │ 0         │ true      │ 0          │
+│ 68 │ nonmember │ read list              │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 69 │ nonmember │ read recent-events     │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 70 │ nonmember │ read detail            │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 71 │ nonmember │ read checks            │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 72 │ nonmember │ read incidents         │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 73 │ nonmember │ read response-times    │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 74 │ nonmember │ create                 │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 75 │ nonmember │ create with secret     │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 76 │ nonmember │ edit                   │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 77 │ nonmember │ edit secret replace    │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 78 │ nonmember │ test draft             │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 79 │ nonmember │ test draft with secret │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 80 │ nonmember │ test edit              │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 81 │ nonmember │ pause                  │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 82 │ nonmember │ resume                 │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 83 │ nonmember │ delete                 │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+│ 84 │ nonmember │ monitor alerts toggle  │ 403    │ MEMBERSHIP_DENIED │ 0         │ true      │ 0          │
+└────┴───────────┴────────────────────────┴────────┴───────────────────┴───────────┴───────────┴────────────┘
+PASS matrix owner / read list -> 200
+PASS matrix owner / read recent-events -> 200
+PASS matrix owner / read detail -> 200
+PASS matrix owner / read checks -> 200
+PASS matrix owner / read incidents -> 200
+PASS matrix owner / read response-times -> 200
+PASS matrix owner / create -> 201
+PASS audit owner / create: 1 monitor mutation line(s)
+PASS matrix owner / create with secret -> 201
+PASS audit owner / create with secret: 2 monitor mutation line(s)
+PASS matrix owner / edit -> 200
+PASS audit owner / edit: 1 monitor mutation line(s)
+PASS matrix owner / edit secret replace -> 200
+PASS audit owner / edit secret replace: 2 monitor mutation line(s)
+PASS matrix owner / test draft -> 200
+PASS test owner / test draft sent exactly one request
+PASS matrix owner / test draft with secret -> 200
+PASS test owner / test draft with secret sent exactly one request
+PASS matrix owner / test edit -> 200
+PASS test owner / test edit sent exactly one request
+PASS matrix owner / pause -> 200
+PASS audit owner / pause: 1 monitor mutation line(s)
+PASS matrix owner / resume -> 200
+PASS audit owner / resume: 1 monitor mutation line(s)
+PASS matrix owner / delete -> 204
+PASS audit owner / delete: 1 monitor mutation line(s)
+PASS matrix owner / monitor alerts toggle -> 200
+PASS audit owner / monitor alerts toggle: 1 monitor mutation line(s)
+PASS matrix admin / read list -> 200
+PASS matrix admin / read recent-events -> 200
+PASS matrix admin / read detail -> 200
+PASS matrix admin / read checks -> 200
+PASS matrix admin / read incidents -> 200
+PASS matrix admin / read response-times -> 200
+PASS matrix admin / create -> 201
+PASS audit admin / create: 1 monitor mutation line(s)
+PASS matrix admin / create with secret -> 201
+PASS audit admin / create with secret: 2 monitor mutation line(s)
+PASS matrix admin / edit -> 200
+PASS audit admin / edit: 1 monitor mutation line(s)
+PASS matrix admin / edit secret replace -> 200
+PASS audit admin / edit secret replace: 2 monitor mutation line(s)
+PASS matrix admin / test draft -> 200
+PASS test admin / test draft sent exactly one request
+PASS matrix admin / test draft with secret -> 200
+PASS test admin / test draft with secret sent exactly one request
+PASS matrix admin / test edit -> 200
+PASS test admin / test edit sent exactly one request
+PASS matrix admin / pause -> 200
+PASS audit admin / pause: 1 monitor mutation line(s)
+PASS matrix admin / resume -> 200
+PASS audit admin / resume: 1 monitor mutation line(s)
+PASS matrix admin / delete -> 204
+PASS audit admin / delete: 1 monitor mutation line(s)
+PASS matrix admin / monitor alerts toggle -> 200
+PASS audit admin / monitor alerts toggle: 1 monitor mutation line(s)
+PASS matrix viewer / read list -> 200
+PASS matrix viewer / read recent-events -> 200
+PASS matrix viewer / read detail -> 200
+PASS matrix viewer / read checks -> 200
+PASS matrix viewer / read incidents -> 200
+PASS matrix viewer / read response-times -> 200
+PASS matrix viewer / create -> 403 PERMISSION_DENIED
+PASS matrix viewer / create sends nothing out and changes nothing
+PASS matrix viewer / create with secret -> 403 PERMISSION_DENIED
+PASS matrix viewer / create with secret sends nothing out and changes nothing
+PASS matrix viewer / edit -> 403 PERMISSION_DENIED
+PASS matrix viewer / edit sends nothing out and changes nothing
+PASS matrix viewer / edit secret replace -> 403 PERMISSION_DENIED
+PASS matrix viewer / edit secret replace sends nothing out and changes nothing
+PASS matrix viewer / test draft -> 403 PERMISSION_DENIED
+PASS matrix viewer / test draft sends nothing out and changes nothing
+PASS matrix viewer / test draft with secret -> 403 PERMISSION_DENIED
+PASS matrix viewer / test draft with secret sends nothing out and changes nothing
+PASS matrix viewer / test edit -> 403 PERMISSION_DENIED
+PASS matrix viewer / test edit sends nothing out and changes nothing
+PASS matrix viewer / pause -> 403 PERMISSION_DENIED
+PASS matrix viewer / pause sends nothing out and changes nothing
+PASS matrix viewer / resume -> 403 PERMISSION_DENIED
+PASS matrix viewer / resume sends nothing out and changes nothing
+PASS matrix viewer / delete -> 403 PERMISSION_DENIED
+PASS matrix viewer / delete sends nothing out and changes nothing
+PASS matrix viewer / monitor alerts toggle -> 403 PERMISSION_DENIED
+PASS matrix viewer / monitor alerts toggle sends nothing out and changes nothing
+PASS matrix auditor / read list -> 200
+PASS matrix auditor / read recent-events -> 200
+PASS matrix auditor / read detail -> 200
+PASS matrix auditor / read checks -> 200
+PASS matrix auditor / read incidents -> 200
+PASS matrix auditor / read response-times -> 200
+PASS matrix auditor / create -> 403 PERMISSION_DENIED
+PASS matrix auditor / create sends nothing out and changes nothing
+PASS matrix auditor / create with secret -> 403 PERMISSION_DENIED
+PASS matrix auditor / create with secret sends nothing out and changes nothing
+PASS matrix auditor / edit -> 403 PERMISSION_DENIED
+PASS matrix auditor / edit sends nothing out and changes nothing
+PASS matrix auditor / edit secret replace -> 403 PERMISSION_DENIED
+PASS matrix auditor / edit secret replace sends nothing out and changes nothing
+PASS matrix auditor / test draft -> 403 PERMISSION_DENIED
+PASS matrix auditor / test draft sends nothing out and changes nothing
+PASS matrix auditor / test draft with secret -> 403 PERMISSION_DENIED
+PASS matrix auditor / test draft with secret sends nothing out and changes nothing
+PASS matrix auditor / test edit -> 403 PERMISSION_DENIED
+PASS matrix auditor / test edit sends nothing out and changes nothing
+PASS matrix auditor / pause -> 403 PERMISSION_DENIED
+PASS matrix auditor / pause sends nothing out and changes nothing
+PASS matrix auditor / resume -> 403 PERMISSION_DENIED
+PASS matrix auditor / resume sends nothing out and changes nothing
+PASS matrix auditor / delete -> 403 PERMISSION_DENIED
+PASS matrix auditor / delete sends nothing out and changes nothing
+PASS matrix auditor / monitor alerts toggle -> 403 PERMISSION_DENIED
+PASS matrix auditor / monitor alerts toggle sends nothing out and changes nothing
+PASS matrix nonmember / read list -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / read list sends nothing out and changes nothing
+PASS matrix nonmember / read recent-events -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / read recent-events sends nothing out and changes nothing
+PASS matrix nonmember / read detail -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / read detail sends nothing out and changes nothing
+PASS matrix nonmember / read checks -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / read checks sends nothing out and changes nothing
+PASS matrix nonmember / read incidents -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / read incidents sends nothing out and changes nothing
+PASS matrix nonmember / read response-times -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / read response-times sends nothing out and changes nothing
+PASS matrix nonmember / create -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / create sends nothing out and changes nothing
+PASS matrix nonmember / create with secret -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / create with secret sends nothing out and changes nothing
+PASS matrix nonmember / edit -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / edit sends nothing out and changes nothing
+PASS matrix nonmember / edit secret replace -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / edit secret replace sends nothing out and changes nothing
+PASS matrix nonmember / test draft -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / test draft sends nothing out and changes nothing
+PASS matrix nonmember / test draft with secret -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / test draft with secret sends nothing out and changes nothing
+PASS matrix nonmember / test edit -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / test edit sends nothing out and changes nothing
+PASS matrix nonmember / pause -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / pause sends nothing out and changes nothing
+PASS matrix nonmember / resume -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / resume sends nothing out and changes nothing
+PASS matrix nonmember / delete -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / delete sends nothing out and changes nothing
+PASS matrix nonmember / monitor alerts toggle -> 403 MEMBERSHIP_DENIED
+PASS matrix nonmember / monitor alerts toggle sends nothing out and changes nothing
+PASS non-member list body carries no name, URL, host or count
+PASS AC-48 id kinds x 9 operations all 404 with one code
+PASS AC-48 other-organization and missing id have byte-identical bodies
+PASS AC-55 http://127.0.0.1:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://localhost:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://0.0.0.0:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://2130706433:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://0x7f.0.0.1:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://[::1]:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://[::ffff:127.0.0.1]:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://[::ffff:7f00:1]:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://169.254.169.254:64247/latest/meta-data blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://10.0.0.1:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://192.168.1.1:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://172.16.0.1:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://100.64.0.1:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://[fe80::1]:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://[fd00::1]:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 http://foo.127.0.0.1.nip.io:64247/x blocked in Test and Save, no resolved IP shown
+PASS AC-55 blocked addresses produced zero connections at the listener
+PASS AC-55 redirect to a blocked host is refused
+PASS AC-55 blocked redirect reached nothing
+PASS AC-55 redirect to another origin dropped the Authorization header
+PASS AC-25 Test with bearer passes against a credential-checking target
+PASS AC-25 create with bearer returns secretSlots only
+PASS AC-25 Test with basic passes against a credential-checking target
+PASS AC-25 create with basic returns secretSlots only
+PASS AC-25 Test with apiKey passes against a credential-checking target
+PASS AC-25 create with apiKey returns secretSlots only
+PASS AC-25 Test with header passes against a credential-checking target
+PASS AC-25 create with header returns secretSlots only
+PASS AC-56 scheduled check with bearer secret authenticated (pass)
+PASS AC-56 scheduled check with basic secret authenticated (pass)
+PASS AC-56 scheduled check with apiKey secret authenticated (pass)
+PASS AC-56 scheduled check with header secret authenticated (pass)
+PASS AC-25 viewer sees slots, never values
+PASS AC-45 Test in Edit with keep uses the stored value
+PASS AC-45 Test with replace sends the new value and does not store it
+PASS AC-44 origin change with keep is refused in Edit and Test (422)
+PASS AC-26 replace with an empty value is MONITOR_INVALID required
+PASS AC-46 changing auth type deletes the old slot
+PASS AC-43 reflected secret is redacted to bullets in the Test result
+PASS AC-56 a ciphertext moved to another row fails as secret_decrypt_failed (AAD)
+PASS AC-39 secret_decrypt_failed opened no incident
+PASS AC-42 Test result shows the query as name=•••, never the value
+PASS AC-42 stored result carries the masked URL only
+PASS AC-42 the request itself carried the query and the body (target saw a POST)
+PASS AC-42 no result, incident, event, schedule or notification row holds a query or body value
+PASS AC-46 deleting a monitor deletes its secrets
+PASS AC-61 audit lines of the secret scenario carry no secret, URL or body
+PASS AC-56 20 needles absent from 9 tables (incl. bytea as hex)
+PASS AC-56 needles absent from Redis keys (894 bytes) and from every Redis command during the scenario (269758 bytes, 3124 monitor-check references)
+PASS AC-11 user limit: 10 Tests pass, the 11th and 12th get 429 MONITOR_TEST_RATE_LIMITED with retryAfterSeconds
+PASS AC-11 limited Tests sent nothing out
+PASS AC-11 organization limit: the 31st Test in 60 s is refused for a user with no own history
+PASS AC-11 exactly 30 requests reached the listener
+PASS AC-57 permission is checked before the limiter: viewer and non-member get 403, not 429
+PASS AC-57 no request left for denied or limited Tests
+PASS AC-59 60 concurrent creates at limit 50 made exactly 50
+PASS AC-59 concurrent Edit with one version: one 200, one 409, 8 of 8 rounds
+PASS AC-59 no monitor has two open incidents
+PASS AC-38 result of a check in flight during pause is dropped
+PASS AC-38 result of a check in flight during edit is dropped
+PASS AC-38 result of a check in flight during delete is dropped
+checks: 211 failed: 0
+EXIT 0

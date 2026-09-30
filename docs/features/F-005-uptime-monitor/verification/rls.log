@@ -1,0 +1,34 @@
+PASS monitors: row level security enabled and forced
+PASS monitors: has a restrictive guard policy (2 policies)
+PASS monitor_secrets: row level security enabled and forced
+PASS monitor_secrets: has a restrictive guard policy (2 policies)
+PASS monitor_schedule: row level security enabled and forced
+PASS monitor_schedule: has a restrictive guard policy (4 policies)
+PASS monitor_check_results: row level security enabled and forced
+PASS monitor_check_results: has a restrictive guard policy (4 policies)
+PASS monitor_check_hourly: row level security enabled and forced
+PASS monitor_check_hourly: has a restrictive guard policy (4 policies)
+PASS monitor_incidents: row level security enabled and forced
+PASS monitor_incidents: has a restrictive guard policy (4 policies)
+PASS monitor_events: row level security enabled and forced
+PASS monitor_events: has a restrictive guard policy (4 policies)
+PASS claim_due_monitor_checks: security definer, fixed search_path, no PUBLIC execute
+PASS claim_due_monitor_checks: runtime role execute is granted
+PASS claim_due_monitor_checks: owned by a nologin role (nightwatch_monitor_schedule_owner)
+PASS ensure_monitor_partitions: security definer, fixed search_path, no PUBLIC execute
+PASS ensure_monitor_partitions: runtime role execute is denied
+PASS purge_expired_monitor_data: security definer, fixed search_path, no PUBLIC execute
+PASS purge_expired_monitor_data: runtime role execute is granted
+PASS purge_expired_monitor_data: owned by a nologin role (nightwatch_monitor_retention_owner)
+PASS runtime role has no superuser or BYPASSRLS
+PASS monitors: context A sees only A rows, context B only B rows
+PASS monitor_secrets: context A sees only A rows, context B only B rows
+PASS monitor_schedule: context A sees only A rows, context B only B rows
+PASS monitor_events: context A sees only A rows, context B only B rows
+PASS monitor_incidents: context A sees only A rows, context B only B rows
+PASS monitor_check_results: context A sees only A rows, context B only B rows
+PASS no tenant context sees no monitor rows
+PASS context A cannot read B's monitor by id
+PASS context A cannot update B's monitor
+PASS context A cannot write a row for B (RLS check)
+failed: 0
