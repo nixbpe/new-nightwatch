@@ -379,6 +379,74 @@ describe("Test result wording", () => {
   });
 });
 
+describe("Test panel SSL line", () => {
+  it.each([
+    [
+      "ok",
+      128,
+      "SSL: เหลือ 128 วัน (ผู้ออก Example CA) โฮสต์ api.acme.example",
+    ],
+    [
+      "caution",
+      21,
+      "SSL: ใกล้หมดอายุ เหลือ 21 วัน (ผู้ออก Example CA) โฮสต์ api.acme.example",
+    ],
+    [
+      "danger",
+      5,
+      "SSL: หมดอายุใน 5 วัน (ผู้ออก Example CA) โฮสต์ api.acme.example",
+    ],
+    [
+      "expired",
+      -2,
+      "SSL: หมดอายุแล้ว เมื่อ 2 วันก่อน (ผู้ออก Example CA) โฮสต์ api.acme.example",
+    ],
+    [
+      "unreadable",
+      null,
+      "SSL: อ่านใบรับรองไม่ได้ (ผู้ออก Example CA) โฮสต์ api.acme.example",
+    ],
+    [
+      "not_https",
+      null,
+      "SSL: ไม่ใช้ HTTPS (ผู้ออก Example CA) โฮสต์ api.acme.example",
+    ],
+  ] as const)("words level %s", async (level, daysRemaining, text) => {
+    draftMock.mockResolvedValue(
+      result({
+        ssl: {
+          level,
+          daysRemaining,
+          host: "api.acme.example",
+          issuer: "Example CA",
+          notAfter: "2027-02-05T00:00:00.000Z",
+        },
+      }),
+    );
+    const user = await openCreate();
+    await user.click(testButton());
+    expect(await screen.findByText(/^SSL:/)).toHaveTextContent(text);
+  });
+
+  it("renders no SSL line for no_data", async () => {
+    draftMock.mockResolvedValue(
+      result({
+        ssl: {
+          level: "no_data",
+          daysRemaining: null,
+          host: null,
+          issuer: null,
+          notAfter: null,
+        },
+      }),
+    );
+    const user = await openCreate();
+    await user.click(testButton());
+    await screen.findByText("การทดสอบผ่าน");
+    expect(screen.queryByText(/SSL:/)).toBeNull();
+  });
+});
+
 describe("Test service errors", () => {
   it.each([
     ["RATE_LIMIT_UNAVAILABLE", 503],
