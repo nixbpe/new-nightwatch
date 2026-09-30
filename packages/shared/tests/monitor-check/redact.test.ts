@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   CHECK_FAILURE_REASONS,
+  ACTUAL_MAX_CHARS,
   createRedactor,
   outcomeForFailure,
+  truncateActual,
 } from "../../src/monitor-check";
 
 describe("createRedactor", () => {
@@ -105,5 +107,63 @@ describe("createRedactor with a lone surrogate", () => {
 
   it("keeps masking the other secrets", () => {
     expect(createRedactor([secret, "plain"])("plain")).toBe("•••");
+  });
+});
+
+describe("createRedactor work bound for a displayed value", () => {
+  const shownOf = (redact: ReturnType<typeof createRedactor>, text: string) =>
+    truncateActual(redact(text, ACTUAL_MAX_CHARS));
+
+  it("does bounded work on a 1 MiB scalar with a 1-character secret found 500k times", () => {
+    const text = "ab".repeat(512 * 1024);
+    const redact = createRedactor(["a"]);
+    const indexOf = vi.spyOn(String.prototype, "indexOf");
+    let shown;
+    let searches;
+    try {
+      shown = shownOf(redact, text);
+      searches = indexOf.mock.calls.length;
+    } finally {
+      indexOf.mockRestore();
+    }
+    // One initial search per needle form plus one per occurrence that is actually emitted.
+    expect(searches).toBeLessThan(400);
+    expect(shown.text).toBe("•••b".repeat(50).slice(0, 200));
+    expect(shown.text).not.toContain("a");
+    expect(shown.truncated).toBe(true);
+  });
+
+  it("returns exactly what the unbounded redactor would show", () => {
+    const secrets = ["ab", "bcd", 'q"x'];
+    const redact = createRedactor(secrets);
+    const texts = [
+      "abcd".repeat(300),
+      `${"z".repeat(190)}abcd${"y".repeat(300)}`,
+      `${"z".repeat(197)}q"x${"y".repeat(50)}`,
+      "\u{1F600}".repeat(150) + "ab".repeat(200),
+      "short ab",
+      "a".repeat(5000),
+    ];
+    for (const text of texts) {
+      expect(shownOf(redact, text)).toEqual(truncateActual(redact(text)));
+    }
+  });
+
+  it("masks a secret that straddles the 200-character cut", () => {
+    const secret = "S3CR3T-VALUE";
+    for (const lead of [190, 195, 198, 199, 200]) {
+      const text = `${"a".repeat(lead)}${secret}${"b".repeat(400)}`;
+      const shown = shownOf(createRedactor([secret]), text).text;
+      expect(shown).not.toMatch(/S3C|R3T|VAL|LUE|-V/);
+      expect(shown.startsWith("a".repeat(lead))).toBe(true);
+    }
+  });
+
+  it("keeps a masked range that spans the whole text as one mask", () => {
+    const text = "a".repeat(100_000);
+    expect(shownOf(createRedactor(["a"]), text)).toEqual({
+      text: "•••",
+      truncated: false,
+    });
   });
 });

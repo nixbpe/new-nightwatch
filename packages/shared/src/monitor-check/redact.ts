@@ -2,54 +2,71 @@ const MASK = "•••";
 export const ACTUAL_MAX_CHARS = 200;
 
 /**
+ * `maxChars` bounds the work for a value that is shown cut to that many code
+ * points: the result is a prefix of the full output holding at least
+ * `maxChars + 1` code points when the full output is longer, so the caller's
+ * cut lands on exactly the text an unbounded call would show.
+ */
+export type Redactor = (text: string, maxChars?: number) => string;
+
+/**
  * Masks every secret value, its JSON-escaped and URL-encoded forms, and the
  * base64 of a Basic credential. Overlapping matches merge into one mask, so
- * "abc" and "bcd" in "abcd" leave no fragment.
+ * "abc" and "bcd" in "abcd" leave no fragment. Matches are merged as they are
+ * found, so memory does not grow with the number of occurrences.
  */
 export function createRedactor(
   secretValues: readonly string[],
   extra: readonly string[] = [],
-): (text: string) => string {
-  const needles = new Set<string>();
+): Redactor {
+  const found = new Set<string>();
   for (const value of [...secretValues, ...extra]) {
-    needles.add(value);
-    needles.add(JSON.stringify(value).slice(1, -1));
+    found.add(value);
+    found.add(JSON.stringify(value).slice(1, -1));
     try {
-      needles.add(encodeURIComponent(value));
+      found.add(encodeURIComponent(value));
     } catch {
       // A lone surrogate has no URL-encoded form; the other forms still apply.
     }
   }
-  needles.delete("");
-  return (text) => {
-    const ranges: [number, number][] = [];
-    for (const needle of needles) {
-      for (
-        let at = text.indexOf(needle);
-        at !== -1;
-        at = text.indexOf(needle, at + 1)
-      ) {
-        ranges.push([at, at + needle.length]);
-      }
-    }
-    if (ranges.length === 0) return text;
-    ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  found.delete("");
+  const needles = [...found];
+  return (text, maxChars) => {
+    // Code units are at least code points, so this many units hold maxChars + 1 points.
+    const cap = maxChars === undefined ? Infinity : 2 * (maxChars + 1);
+    const next = needles.map((needle) => text.indexOf(needle));
     let out = "";
     let cursor = 0;
-    let [start, end] = ranges[0] ?? [0, 0];
-    const flush = () => {
+    for (;;) {
+      let first = -1;
+      for (let i = 0; i < needles.length; i++) {
+        const at = next[i] as number;
+        if (at !== -1 && (first === -1 || at < (next[first] as number))) {
+          first = i;
+        }
+      }
+      if (first === -1) break;
+      const start = next[first] as number;
+      let end = start;
+      for (let i = 0; i < needles.length;) {
+        const at = next[i] as number;
+        if (at !== -1 && at <= end) {
+          const needle = needles[i] as string;
+          end = Math.max(end, at + needle.length);
+          next[i] = text.indexOf(needle, at + 1);
+          i = 0;
+        } else {
+          i++;
+        }
+      }
       out += text.slice(cursor, start) + MASK;
       cursor = end;
-    };
-    for (const [from, to] of ranges.slice(1)) {
-      if (from <= end) end = Math.max(end, to);
-      else {
-        flush();
-        [start, end] = [from, to];
-      }
+      if (out.length >= cap) return out;
     }
-    flush();
-    return out + text.slice(cursor);
+    if (cursor === 0) return text;
+    return (
+      out + text.slice(cursor, cap === Infinity ? undefined : cursor + cap)
+    );
   };
 }
 

@@ -4,7 +4,7 @@ import {
   isJsonPrefix,
   jsonTypeAt,
 } from "./json-scan";
-import { truncateActual } from "./redact";
+import { ACTUAL_MAX_CHARS, truncateActual, type Redactor } from "./redact";
 import type {
   AssertionReason,
   AssertionResult,
@@ -86,7 +86,7 @@ function expectedText(assertion: NormalizedAssertion): string {
 export function evaluateAssertions(
   assertions: readonly NormalizedAssertion[],
   response: EvaluatedResponse | null,
-  redact: (text: string) => string,
+  redact: Redactor,
 ): { results: AssertionResult[]; evaluatedFromPrefix: boolean } {
   let decoded: Decoded | undefined;
   // One validity parse per response, shared by every JSONPath assertion.
@@ -96,7 +96,7 @@ export function evaluateAssertions(
     (decoded ??= decodeBody(from));
 
   const shown = (value: string) => {
-    const cut = truncateActual(redact(value));
+    const cut = truncateActual(redact(value, ACTUAL_MAX_CHARS));
     return { actual: cut.text, actualTruncated: cut.truncated };
   };
 
