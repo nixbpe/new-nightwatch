@@ -44,6 +44,7 @@ Stack: API, Worker with roles `consumer,scheduler,monitor-scheduler,monitor-chec
 | Command | Result | Evidence |
 | --- | --- | --- |
 | `bun run e2e` (all specs, no stack running, `OUTBOUND_TEST_ALLOWED_HOSTS=127.0.0.1.nip.io`) at `1e5a150` | passed: 56 passed, 4 skipped, 3.6 min | `verification/e2e-1e5a150.log` |
+| `bun run e2e` (all specs) at `1f9975f` (freeze HEAD `c3c2e4f` plus the 1440 x 900 screenshot helper) on a temporary stack | passed: 56 passed, 4 skipped, 3.7 min. This run also produced the screenshots | `verification/e2e-1f9975f.log` |
 | `monitors-access.spec.ts` + `monitors-states.spec.ts` + `monitors.spec.ts` at `dc01280` on a temporary stack (run A) | access 18 passed, states 18 passed, `monitors.spec.ts` test 1 failed (a listener counted a scheduled check as the Test request; the assertion was narrowed to the probe query), 7 did not run; 36 passed, 2.6 min | `verification/e2e-dc01280-run-a.log` |
 | `monitors.spec.ts` at `dc01280`+ working tree (narrowed assertion) on the same stack (run B) | passed: 8 of 8, 3.7 min (all 8 tests, including the down and recovered flow) | `verification/e2e-dc01280-run-b.log` |
 | `bun e2e/verification/api-matrix.ts` (scenarios matrix, ssrf, secrets, ratelimit, concurrency) | passed: 211 checks, 0 failed | `verification/api-matrix.log` |
@@ -181,6 +182,8 @@ Also not covered by any run here: contrast of the status pills (design review), 
 - A false defect report (Resume showing "ปกติ") was sent and withdrawn: the new pass arrived within seconds of Resume.
 
 ## Screenshots
+
+Desktop shots are 1440 x 900 and were taken by the `1f9975f` run; the reflow shots are 640 x 900.
 
 `overview-light.png`, `overview-dark.png`, `detail-light.png`, `detail-dark.png`, `form-test-result-light.png`, `form-test-result-dark.png`, `edit-secret-set.png` (Edit before Replace), `edit-secret-replace-open.png` (Edit after pressing "แทนที่"), and the 640 px reflow set `reflow-640-light-overview.png`, `reflow-640-light-detail.png`, `reflow-640-light-new.png`, `reflow-640-light-edit.png`, `reflow-640-dark-detail.png`. All sit in `docs/features/F-005-uptime-monitor/verification/`. They were taken by the spec runs with `VERIFY_SHOTS_DIR` set.
 
