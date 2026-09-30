@@ -56,6 +56,10 @@ export function resolveDevEnv(sourceEnv = process.env) {
     SMTP_SECURE: "false",
     SMTP_FROM: "NightWatch Dev <noreply@nightwatch.local>",
     REDIS_URL: `redis://127.0.0.1:${redisPort}`,
+    // Monitor credential keys: dev uses the built-in development key of
+    // loadMonitorEnv() (refused when NODE_ENV=production), so nothing is
+    // fabricated here. Canary and OUTBOUND_TEST_ALLOWED_HOSTS stay unset in
+    // dev: an unset canary is "unknown" and the allow-list is CI/e2e only.
   };
 
   const env = { ...sourceEnv };

@@ -1,0 +1,55 @@
+# Local Worker roles for the dev stack. Run together with compose.yaml: same
+# project name (nw-dev-<NW_SLOT>) and same variables as `bun run db:up` computes
+# (scripts/db.mjs), so the roles join the running Postgres and Redis:
+#   bun run db:up
+#   set -a; . ./.env.compose.local; set +a
+#   export NW_SLOT=<slot> NW_DB_PORT=<5400+slot> NW_MAIL_SMTP_PORT=<7400+slot> \
+#     NW_MAIL_UI_PORT=<7500+slot> NW_REDIS_PORT=<6380+slot>
+#   docker compose -f compose.yaml -f compose.worker.yaml up -d --build \
+#     monitor-scheduler monitor-checker
+#
+# <slot> is printed by `bun scripts/db.mjs env` (project nw-dev-<slot>). A wrong
+# NW_SLOT starts a new, empty project instead of joining the running one.
+#
+# This file builds a separate development image (nightwatch-worker:dev, build arg
+# WORKER_ALLOW_DEVELOPMENT=1) and sets NODE_ENV=development. Only that build
+# accepts development; the production image (nightwatch-worker) refuses it. The
+# Worker then uses its built-in public dev credential key (version dev), which
+# needs no key variables here. Do not reuse this file, image or key for a shared
+# or production environment. OUTBOUND_TEST_ALLOWED_HOSTS is intentionally absent.
+x-worker: &worker
+  # Local development build only (accepts NODE_ENV=development); never the
+  # production artifact, which is tagged nightwatch-worker.
+  image: nightwatch-worker:dev
+  build:
+    context: .
+    dockerfile: apps/worker/Dockerfile
+    args:
+      WORKER_ALLOW_DEVELOPMENT: "1"
+  # The Worker registers its SIGTERM handler after start; init forwards signals
+  # so a stop during startup does not wait out the grace period.
+  init: true
+  stop_grace_period: 30s
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  environment: &worker-env
+    NODE_ENV: development
+    LOG_LEVEL: info
+    DATABASE_URL: postgres://nightwatch:${NW_DB_PASSWORD:?run bun run db:up}@postgres:5432/nightwatch
+    REDIS_URL: redis://redis:6379
+
+services:
+  monitor-scheduler:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLES: monitor-scheduler
+
+  monitor-checker:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLES: monitor-checker

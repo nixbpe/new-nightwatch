@@ -15,18 +15,21 @@ export function SegmentedControl<Value extends string>({
   options,
   onChange,
   className,
+  disabled = false,
 }: {
   label: string;
   value: Value;
   options: readonly SegmentedOption<Value>[];
   onChange: (value: Value) => void;
   className?: string;
+  /** Ignores input but keeps the focus, like an aria-disabled button. */
+  disabled?: boolean;
 }) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const move = (from: number, delta: number) => {
     const next = (from + delta + options.length) % options.length;
     const option = options[next];
-    if (option === undefined) return;
+    if (option === undefined || disabled) return;
     onChange(option.value);
     buttons.current[next]?.focus();
   };
@@ -34,6 +37,7 @@ export function SegmentedControl<Value extends string>({
     <div
       role="radiogroup"
       aria-label={label}
+      aria-disabled={disabled ? true : undefined}
       className={cn(
         "inline-flex self-start gap-0.5 rounded-md border border-foreground/10 p-0.5",
         className,
@@ -52,7 +56,7 @@ export function SegmentedControl<Value extends string>({
             aria-checked={selected}
             tabIndex={selected ? 0 : -1}
             onClick={() => {
-              onChange(option.value);
+              if (!disabled) onChange(option.value);
             }}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowDown") {

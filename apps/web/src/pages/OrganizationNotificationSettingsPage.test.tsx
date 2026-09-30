@@ -15,6 +15,7 @@ import { OrganizationNotificationSettingsPage } from "./OrganizationNotification
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
+const SETTINGS_CHANGED_LABEL = /แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน/;
 
 vi.mock("../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
@@ -83,6 +84,7 @@ describe("OrganizationNotificationSettingsPage", () => {
     fetchSettingsMock.mockResolvedValue({
       organizationId: ORG_A,
       settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
       version: 1,
     });
     renderPage();
@@ -97,28 +99,81 @@ describe("OrganizationNotificationSettingsPage", () => {
       .mockResolvedValueOnce({
         organizationId: ORG_A,
         settingsChangedEnabled: true,
+        monitorAlertsEnabled: true,
         version: 4,
       })
       .mockResolvedValue({
         organizationId: ORG_A,
         settingsChangedEnabled: false,
+        monitorAlertsEnabled: true,
         version: 5,
       });
     updateSettingsMock.mockResolvedValue({
       organizationId: ORG_A,
       settingsChangedEnabled: false,
+      monitorAlertsEnabled: true,
       version: 5,
     });
     const user = userEvent.setup();
     renderPage();
 
-    const toggle = await screen.findByRole("checkbox");
+    const toggle = await screen.findByRole("checkbox", {
+      name: SETTINGS_CHANGED_LABEL,
+    });
     await user.click(toggle);
     await user.click(
       screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
     );
 
-    expect(await screen.findByRole("checkbox")).not.toBeChecked();
+    expect(
+      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+    ).not.toBeChecked();
+    expect(await screen.findByText("บันทึกแล้ว")).toBeInTheDocument();
+  });
+
+  it("shows the monitor alerts checkbox and saves only that toggle", async () => {
+    fetchSettingsMock
+      .mockResolvedValueOnce({
+        organizationId: ORG_A,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: true,
+        version: 6,
+      })
+      .mockResolvedValue({
+        organizationId: ORG_A,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: false,
+        version: 7,
+      });
+    updateSettingsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: false,
+      version: 7,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const monitorToggle = await screen.findByRole("checkbox", {
+      name: /แจ้งเตือนมอนิเตอร์/,
+    });
+    expect(monitorToggle).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
+    ).toBeDisabled();
+
+    await user.click(monitorToggle);
+    await user.click(
+      screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
+    );
+
+    expect(updateSettingsMock).toHaveBeenCalledWith(ORG_A, {
+      monitorAlertsEnabled: false,
+      expectedVersion: 6,
+    });
+    expect(
+      await screen.findByRole("checkbox", { name: /แจ้งเตือนมอนิเตอร์/ }),
+    ).not.toBeChecked();
     expect(await screen.findByText("บันทึกแล้ว")).toBeInTheDocument();
   });
 
@@ -135,6 +190,7 @@ describe("OrganizationNotificationSettingsPage", () => {
     fetchSettingsMock.mockResolvedValue({
       organizationId: ORG_A,
       settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
       version: 4,
     });
     updateSettingsMock.mockRejectedValue(
@@ -142,7 +198,9 @@ describe("OrganizationNotificationSettingsPage", () => {
     );
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole("checkbox"));
+    await user.click(
+      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+    );
     await user.click(
       screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
     );
@@ -156,6 +214,7 @@ describe("OrganizationNotificationSettingsPage", () => {
       Promise.resolve({
         organizationId,
         settingsChangedEnabled: true,
+        monitorAlertsEnabled: true,
         version: organizationId === ORG_A ? 4 : 9,
       }),
     );
@@ -166,14 +225,20 @@ describe("OrganizationNotificationSettingsPage", () => {
       </Link>,
     );
 
-    await user.click(await screen.findByRole("checkbox"));
-    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    await user.click(
+      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+    );
+    expect(
+      screen.getByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+    ).not.toBeChecked();
     await user.click(screen.getByRole("link", { name: "องค์กร B" }));
 
     await vi.waitFor(() => {
       expect(fetchSettingsMock).toHaveBeenCalledWith(ORG_B);
     });
-    expect(await screen.findByRole("checkbox")).toBeChecked();
+    expect(
+      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+    ).toBeChecked();
     expect(updateSettingsMock).not.toHaveBeenCalled();
   });
 });

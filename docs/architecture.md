@@ -9,7 +9,7 @@ NightWatch is one multi-tenant application (a modular monolith) whose organizati
 
 ## System parts
 
-Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app notifications only. Deferred: other Worker roles and queues, a shared queue package, and a marketing site.
+Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app notifications and uptime monitor checks. `Implemented`: the Worker roles `monitor-scheduler` and `monitor-checker` and the queue `monitor-check`, the shared SSRF helper (OUT-01), the Redis rate limiter (REQ-04), credential encryption (DB-14) and monthly partitions of the monitor result tables. Deferred: other Worker roles and queues, a shared queue package, and a marketing site.
 
 **Principle.** PostgreSQL holds all state; Redis only carries jobs. Users reach data only through the Web app calling the API with a session cookie, and only the API and Worker call outside systems. The marketing site gets no login data, cookies or internal data. Platform-admin access is checked per operation and never bypasses tenant isolation. Commit to the database before enqueueing, and record enqueue failures in the database.
 
@@ -50,7 +50,7 @@ Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app noti
 
 ## Background jobs
 
-Only the in-app notification channel is built; later queues follow the same rules.
+The in-app notification channel and the `monitor-check` queue (Worker roles `monitor-scheduler` and `monitor-checker`) are `Implemented`; later queues follow the same rules.
 
 **Principle.** A job may run twice, stop halfway or never arrive, so running it twice must equal running it once (a unique work key plus an upsert). Jobs point at committed data, and only a committed database claim grants access. Concurrency 1 is not a singleton; enforce "only one" in the database. Keep retry, waiting and gave-up states distinct, let follow-up work report its own failures, fail stuck work, and test shutdown and interrupted jobs. Choose Worker roles explicitly before adding replicas.
 

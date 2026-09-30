@@ -8,7 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import { Button } from "../../components/ui/button";
+import { Button } from "./button";
 
 const FOCUSABLE = [
   "a[href]",
@@ -20,12 +20,12 @@ const FOCUSABLE = [
 ].join(",");
 
 /**
- * Confirmation overlay shared by member actions. The caller supplies the
+ * Confirmation overlay shared by member and monitor actions. The caller supplies the
  * consequence text and owns the mutation; the dialog owns focus: initial focus
  * on Cancel, a Tab trap, Escape and return to the opener (or `fallbackFocus`
  * once the opener is gone).
  */
-export function MemberActionDialog({
+export function ConfirmDialog({
   title,
   description,
   confirmLabel,

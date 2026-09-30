@@ -145,6 +145,7 @@ export function NotificationsPopover() {
                   if (open.isPending) return;
                   open.mutate(id);
                 }}
+                onNavigate={popover.close}
                 popoverItems
               />
             )}

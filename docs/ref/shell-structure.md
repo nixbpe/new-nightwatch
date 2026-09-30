@@ -37,7 +37,7 @@ One navigation definition feeds the sidebar, the command palette and the setting
 - Only real destinations are listed; no placeholder routes.
 - Active row: Primary at 12% as fill with Primary text, a 3 px Primary bar on the left edge (also on the rail button), medium weight, `aria-current="page"`. The sidebar width changes over 150 ms; hover fills over 100 ms.
 
-Example (NightWatch): ภาพรวม; การแจ้งเตือน; การตั้งค่าส่วนตัว with tabs โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล; group องค์กร with สมาชิก and ตั้งค่าการแจ้งเตือน (owner, admin).
+Example (NightWatch): ภาพรวม; ตรวจสถานะบริการ; การแจ้งเตือน; การตั้งค่าส่วนตัว with tabs โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล; group องค์กร with สมาชิก and ตั้งค่าการแจ้งเตือน (owner, admin).
 
 ## Sidebar
 

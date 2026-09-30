@@ -22,7 +22,7 @@ import {
 } from "../lib/api/members";
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
-import { MemberActionDialog } from "./organization-members/MemberActionDialog";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import {
   MemberRevokeButton,
   useMemberRevoke,
@@ -520,7 +520,7 @@ function OrganizationMembersPageForOrganization({
         )
       ) : null}
       {revoke.scopeCurrent && revoke.confirmation !== null ? (
-        <MemberActionDialog
+        <ConfirmDialog
           title="ยืนยันการถอนสมาชิก"
           description={
             <>
@@ -548,7 +548,7 @@ function OrganizationMembersPageForOrganization({
       {roleChange.scopeCurrent &&
       actorRole === "owner" &&
       roleChange.confirmation !== null ? (
-        <MemberActionDialog
+        <ConfirmDialog
           title="ยืนยันการเปลี่ยนบทบาท"
           description={
             <>

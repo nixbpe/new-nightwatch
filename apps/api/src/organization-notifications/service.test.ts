@@ -48,6 +48,7 @@ describe("getOrganizationNotificationSettings", () => {
     ).resolves.toEqual({
       organizationId: ORGANIZATION_ID,
       settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
       version: 0,
     });
     expect(queries.map((query) => query.trim())).toMatchObject([
@@ -97,6 +98,7 @@ describe("updateOrganizationNotificationSettings", () => {
     ).resolves.toEqual({
       organizationId: ORGANIZATION_ID,
       settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
       version: 2,
     });
     expect(

@@ -16,6 +16,12 @@
     "SMTP_PASSWORD",
     "SMTP_FROM"
   ],
+  "globalPassThroughEnv": [
+    "CREDENTIAL_ENCRYPTION_KEYS",
+    "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION",
+    "OUTBOUND_TEST_ALLOWED_HOSTS",
+    "MONITOR_EGRESS_CANARY_URLS"
+  ],
   "tasks": {
     "dev": {
       "persistent": true,

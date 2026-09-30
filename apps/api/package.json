@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
+    "test:bun": "bun --bun vitest run --project integration src/monitors/test-route.db.test.ts src/monitors/secrets.db.test.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@nightwatch/shared": "workspace:*",
     "better-auth": "1.6.23",
     "hono": "~4.13.5",
+    "ioredis": "5.11.1",
     "nodemailer": "^10.0.1",
     "pg": "^8.23.0",
     "zod": "^4.0.0"

@@ -1,0 +1,12 @@
+# Fingerprint-scoped false positive: a fake bearer token literal ("tok-...")
+# used as a test fixture in commit d9f133d (apps/worker checker.db.test.ts).
+# It is not a credential and was replaced by a runtime-built value in 6f77949.
+# History is not rewritten; suppress only this fingerprint, never the rule.
+d9f133d8b80823e519cc2f7aee41b11c41729c9f:apps/worker/src/monitor/checker.db.test.ts:generic-api-key:747
+
+# Fingerprint-scoped false positives: SECRET_ID is a random UUID test fixture
+# (a monitor secret slot id), not a credential. Commits b4656808f7, 97140c1b3e
+# and 82d4e15ec2. History is not rewritten; suppress only these fingerprints.
+b4656808f704c426f4e813576cfb719bd0332dbd:apps/web/src/pages/monitors/MonitorFormRepair.test.tsx:generic-api-key:52
+97140c1b3e9a166ca81f6d20a281811258895640:apps/web/src/pages/monitors/MonitorFormEdit.test.tsx:generic-api-key:49
+82d4e15ec2de4c147b82b9789b9e00bef08e49eb:apps/api/src/monitors/write-lifecycle.db.test.ts:generic-api-key:32

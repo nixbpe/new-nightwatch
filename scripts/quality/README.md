@@ -30,6 +30,7 @@ bun run db:logs    # follow container logs
 bun run db:psql    # owner psql shell (DDL/migrations only)
 bun run db:mail    # print the Mailpit web UI URL
 bun run db:migrate # schema migrations (owned by @nightwatch/db)
+bun run db:partitions # monitor result partitions (owner role), after db:migrate
 bun run provision:organization -- \
   --name "Acme" --slug acme --owner-email admin@example.com
                    # first-org operator provisioning (invitation-only;
@@ -92,9 +93,11 @@ NOCREATEDB NOCREATEROLE NOBYPASSRLS`). The runtime role is created by
 - Thresholds (80% lines / statements / functions, 70% branches) live in **each
   app's `vitest.config`** (`apps/api`, `apps/web`). Do not duplicate them at
   the root, and never lower them to make the gate pass.
-- Root `test:coverage` is `turbo run test:coverage`: it passes through to the
-  app-level coverage runs and collects their reports; the root sets no
-  thresholds of its own.
+- Root `test:coverage` is `turbo run test:coverage --concurrency=1`: it passes
+  through to the app-level coverage runs and collects their reports; the root
+  sets no thresholds of its own. Packages run one at a time because the DB
+  suites share one Postgres, and parallel runs hit timeouts under load (a claim
+  test at 5 s, a lock wait of 5 s).
 - Coverage is always measured and reported. Thresholds **fail the run only
   when `COVERAGE_GATE=1`** is set in the app's environment. The gate is **on**
   in the CI `test` job (`COVERAGE_GATE: "1"`) since the first domain feature
@@ -162,6 +165,51 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   task-owned fresh PostgreSQL cluster, reuses the same role bootstrap, and
   removes only its own cluster. Migration `0008_notification_function_owners.sql`
   cannot be clean-applied to a second database on the shared cluster (architecture DB-13).
+
+## Monitor environment and partitions
+
+- `bun run db:partitions` (`scripts/partitions.mjs`) calls
+  `ensure_monitor_partitions(3)` with `DATABASE_OWNER_URL` only; the runtime role
+  has no `EXECUTE`. It creates the previous, current and next 3 month partitions
+  of `monitor_check_results` and `monitor_check_hourly`, drops partitions whose
+  whole range is older than 31 days, and is safe to rerun. Run it after
+  `db:migrate` in every environment and at least monthly. It sets a
+  transaction-local `lock_timeout` (`PARTITION_LOCK_TIMEOUT_MS`, 1..30000, default 5000)
+  because a create or drop needs a lock on the parent table (inferred); on timeout the transaction rolls back,
+  the script prints the reason and exits 1. `PARTITION_MONTHS_AHEAD` (0..12,
+  default 3) overrides the horizon.
+- Env names (validated by `loadMonitorEnv()` in `packages/shared/src/env.ts`):
+  `CREDENTIAL_ENCRYPTION_KEYS` (JSON map of key version to base64 32-byte key),
+  `CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION`, `REDIS_URL`,
+  `MONITOR_EGRESS_CANARY_URLS` (optional), `OUTBOUND_TEST_ALLOWED_HOSTS`
+  (optional, hostnames, CI and e2e only; startup fails when set with
+  `NODE_ENV=production`).
+- Dev: nothing is generated. When `CREDENTIAL_ENCRYPTION_KEYS` is unset outside
+  production, `loadMonitorEnv()` uses a public development key with version
+  `dev`; production refuses that key and version.
+- CI (jobs `test` and `full`): the job generates a random key per run into
+  `CREDENTIAL_ENCRYPTION_KEYS` (version `ci`, masked), sets
+  `OUTBOUND_TEST_ALLOWED_HOSTS=target.nw-test.internal` (mapped to 127.0.0.1 in
+  `/etc/hosts` by a job step, because the SSRF helper blocks `localhost`), and runs `bun run db:partitions` after
+  `db:migrate`. Job `build` gets none of these. `MONITOR_EGRESS_CANARY_URLS` is
+  unset in CI because runners may lack internet; tests are intended to inject
+  the canary (not yet exercised).
+- e2e (`e2e/tests/monitors.spec.ts`): `playwright.config.ts` starts the Worker
+  with all four roles and forwards the four monitor variables above to the Worker
+  and API. The spec needs `OUTBOUND_TEST_ALLOWED_HOSTS` to name a hostname that
+  resolves to 127.0.0.1; it starts its own target server on 127.0.0.1 (from
+  `e2e/support/monitor-target.mjs`) and reaches it through that hostname. CI
+  provides `target.nw-test.internal`. Locally, when that name does not resolve
+  and `/etc/hosts` is not editable, use `OUTBOUND_TEST_ALLOWED_HOSTS=127.0.0.1.nip.io`
+  (public wildcard DNS, needs internet). The credential keys stay unset outside
+  production (development key). The down and recovered flow waits for real
+  schedule rounds (1 minute interval), so the spec takes about 5 minutes.
+- `turbo.json` `globalPassThroughEnv` forwards the four monitor variables to
+  turbo-run tasks without putting key values in the cache hash.
+- Bun runtime: `test` and `test:coverage` run vitest on Node. Job `test` also
+  runs `bun run --cwd packages/shared test:bun` (`bun --bun vitest run`) so the
+  SSRF helper is exercised on the pinned Bun.
+- Runbook: [uptime monitor operations](../../docs/runbooks/uptime-monitor.md).
 
 ## OpenAPI client drift
 
@@ -243,7 +291,8 @@ suite. It then runs the same root `e2e` command.
   - `security:secrets` → gitleaks with `.gitleaks.toml`
   - `security:sast` → semgrep registry packs `p/typescript` +
     `p/security-audit` with `--error`
-- `security:image` → docker build + trivy `--severity HIGH,CRITICAL
---exit-code 1` once `apps/api/Dockerfile` exists; skips with a message
-  otherwise. Scanner execution errors must fail — never swallow a scanner
-  non-zero exit as a pass.
+- `security:image` → for `api` then `worker`: docker build of
+  `apps/<app>/Dockerfile` (tags `nightwatch-<app>:trivy-scan`) and trivy
+  `--severity HIGH,CRITICAL --exit-code 1`. Fail-fast: an API image failure
+  stops before the Worker image. Scanner execution errors must fail, never
+  swallow a scanner non-zero exit as a pass.

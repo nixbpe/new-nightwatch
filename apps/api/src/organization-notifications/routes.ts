@@ -15,6 +15,7 @@ import type { Auth } from "../auth";
 import { buildInvitationEmail } from "../auth/emails";
 import type { Mailer } from "../auth/mailer";
 import { requireVerifiedSession } from "../me/service";
+import { auditMonitorMutation } from "../monitors/audit";
 import { notificationRouteDeclarations } from "../notifications/contract";
 import { invalidInputHook } from "../notifications/invalid-input";
 import { createOrganizationInvitation } from "./invitations";
@@ -294,6 +295,14 @@ export function registerOrganizationNotificationSettingsRoutes(
             userId: session.user.id,
             actorDisplayName: session.user.name,
             update,
+            onMonitorAlertsChanged: () => {
+              auditMonitorMutation(deps.logger, {
+                actorUserId: session.user.id,
+                action:
+                  "organization.notification-settings.monitor-alerts.update",
+                organizationId,
+              });
+            },
           }),
       );
       return c.json(body, 200);

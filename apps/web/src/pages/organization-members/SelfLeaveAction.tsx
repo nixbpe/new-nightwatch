@@ -7,7 +7,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardHeader } from "../../components/ui/card";
 import { ApiError } from "../../lib/api/client";
 import { leaveOrganization } from "../../lib/api/members";
-import { MemberActionDialog } from "./MemberActionDialog";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { useOrganizationScope } from "./useOrganizationScope";
 
 const LEAVE_ATTRIBUTE = "data-self-leave";
@@ -199,7 +199,7 @@ export function SelfLeaveSection({
         ) : null}
       </Card>
       {selfLeave.confirmation !== null ? (
-        <MemberActionDialog
+        <ConfirmDialog
           title="ยืนยันการออกจากองค์กร"
           description={
             <>

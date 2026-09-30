@@ -28,6 +28,9 @@ const memberIds = {
   target: crypto.randomUUID(),
   leaver: crypto.randomUUID(),
   settingsOwner: crypto.randomUUID(),
+  monitorOwner: crypto.randomUUID(),
+  settingsAdmin: crypto.randomUUID(),
+  settingsViewer: crypto.randomUUID(),
   lastOwner: crypto.randomUUID(),
   homeowner: crypto.randomUUID(),
   secondOwner: crypto.randomUUID(),
@@ -47,6 +50,9 @@ const emails = {
   target: `member-target-${run}@example.test`,
   leaver: `member-leaver-${run}@example.test`,
   settingsOwner: `settings-owner-${run}@example.test`,
+  monitorOwner: `monitor-owner-${run}@example.test`,
+  settingsAdmin: `settings-admin-${run}@example.test`,
+  settingsViewer: `settings-viewer-${run}@example.test`,
   lastOwner: `last-owner-${run}@example.test`,
   homeowner: `homeowner-${run}@example.test`,
   secondOwner: `second-owner-${run}@example.test`,
@@ -1030,6 +1036,7 @@ describe("organization notification settings HTTP input validation", () => {
     expect(initial.json).toEqual({
       organizationId: settingsOrganizationId,
       settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
       version: 0,
     });
 
@@ -1042,6 +1049,7 @@ describe("organization notification settings HTTP input validation", () => {
     expect(updated.json).toEqual({
       organizationId: settingsOrganizationId,
       settingsChangedEnabled: false,
+      monitorAlertsEnabled: true,
       version: 1,
     });
 
@@ -1054,6 +1062,132 @@ describe("organization notification settings HTTP input validation", () => {
       error: { code: "UNAUTHENTICATED" },
     });
   }, 120_000);
+});
+
+describe("organization monitor alerts setting HTTP contract", () => {
+  it("edits monitorAlertsEnabled as owner or admin with audit, CAS and settings-changed rules", async () => {
+    const settingsPath = `/api/organizations/${settingsOrganizationId}/notification-settings`;
+    const ownerClient = await admit("monitorOwner");
+    const adminClient = await admit("settingsAdmin");
+    const viewerClient = await admit("settingsViewer");
+    const ownerId = userIds.get("monitorOwner") as string;
+    for (const [key, role] of [
+      ["monitorOwner", "owner"],
+      ["settingsAdmin", "viewer,admin"],
+      ["settingsViewer", "viewer"],
+    ] as const) {
+      await owner.sql.query(
+        `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+         values ($1, $2, $3, $4, now(), now())`,
+        [memberIds[key], settingsOrganizationId, userIds.get(key), role],
+      );
+    }
+    const alertAudits = () =>
+      auditLines
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter(
+          (entry) =>
+            entry.action ===
+            "organization.notification-settings.monitor-alerts.update",
+        );
+    const changedIntents = async () =>
+      (
+        await owner.sql.query(
+          `select 1 from notification_intents
+           where tenant_id = $1 and event_type = 'ORG-NOTIFICATION-SETTINGS-CHANGED'`,
+          [settingsOrganizationId],
+        )
+      ).rowCount;
+    const current = async () =>
+      (await ownerClient("GET", settingsPath)).json as {
+        settingsChangedEnabled: boolean;
+        monitorAlertsEnabled: boolean;
+        version: number;
+      };
+
+    // settingsChangedEnabled only: the previous client contract keeps working.
+    let state = await current();
+    const legacy = await ownerClient("PATCH", settingsPath, {
+      settingsChangedEnabled: true,
+      expectedVersion: state.version,
+    });
+    expect(legacy.status).toBe(200);
+    expect(legacy.json).toMatchObject({
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+    });
+    expect(alertAudits()).toHaveLength(0);
+
+    // At least one toggle is required.
+    state = await current();
+    const empty = await ownerClient("PATCH", settingsPath, {
+      expectedVersion: state.version,
+    });
+    expect(empty.status).toBe(400);
+    expect(empty.json).toMatchObject({ error: { code: "INVALID_INPUT" } });
+
+    // Owner changes only the monitor toggle: settings-changed rule applies, audit line follows.
+    const intentsBefore = await changedIntents();
+    const changed = await ownerClient("PATCH", settingsPath, {
+      monitorAlertsEnabled: false,
+      expectedVersion: state.version,
+    });
+    expect(changed.status).toBe(200);
+    expect(changed.json).toEqual({
+      organizationId: settingsOrganizationId,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: false,
+      version: state.version + 1,
+    });
+    expect(await changedIntents()).toBe((intentsBefore ?? 0) + 1);
+    expect(alertAudits()).toHaveLength(1);
+    expect(alertAudits()[0]).toMatchObject({
+      actorUserId: ownerId,
+      organizationId: settingsOrganizationId,
+    });
+    expect(alertAudits()[0]).not.toHaveProperty("monitorId");
+
+    // Stale version: 409, no write, no audit.
+    const conflict = await ownerClient("PATCH", settingsPath, {
+      monitorAlertsEnabled: true,
+      expectedVersion: state.version,
+    });
+    expect(conflict.status).toBe(409);
+    expect(conflict.json).toMatchObject({
+      error: { code: "SETTINGS_VERSION_CONFLICT" },
+    });
+
+    // Viewer: 403, no write, no audit.
+    state = await current();
+    const denied = await viewerClient("PATCH", settingsPath, {
+      monitorAlertsEnabled: true,
+      expectedVersion: state.version,
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.json).toMatchObject({ error: { code: "PERMISSION_DENIED" } });
+    expect(await current()).toEqual(state);
+
+    // Same value: no version bump and no audit.
+    const noop = await ownerClient("PATCH", settingsPath, {
+      monitorAlertsEnabled: false,
+      expectedVersion: state.version,
+    });
+    expect(noop.status).toBe(200);
+    expect(noop.json).toMatchObject({ version: state.version });
+    expect(alertAudits()).toHaveLength(1);
+
+    // Admin may edit it back; second audit line names the admin.
+    const restored = await adminClient("PATCH", settingsPath, {
+      monitorAlertsEnabled: true,
+      expectedVersion: state.version,
+    });
+    expect(restored.status).toBe(200);
+    expect(restored.json).toMatchObject({ monitorAlertsEnabled: true });
+    expect(alertAudits()).toHaveLength(2);
+    expect(alertAudits()[1]).toMatchObject({
+      actorUserId: userIds.get("settingsAdmin"),
+    });
+  }, 180_000);
 });
 
 describe("organization member revoke HTTP contract", () => {

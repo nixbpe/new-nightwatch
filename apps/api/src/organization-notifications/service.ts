@@ -6,7 +6,11 @@ import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 
 type MembershipRow = { role: string };
-type SettingsRow = { settingsChangedEnabled: boolean; version: number };
+type SettingsRow = {
+  settingsChangedEnabled: boolean;
+  monitorAlertsEnabled: boolean;
+  version: number;
+};
 type OrganizationRow = { id: string };
 
 function settingsResponse(
@@ -16,6 +20,7 @@ function settingsResponse(
   return {
     organizationId,
     settingsChangedEnabled: row?.settingsChangedEnabled ?? true,
+    monitorAlertsEnabled: row?.monitorAlertsEnabled ?? true,
     version: row?.version ?? 0,
   };
 }
@@ -109,7 +114,8 @@ export async function getOrganizationNotificationSettings(
         ),
       );
       const result = await client.query<SettingsRow>(
-        `select org_settings_changed_enabled as "settingsChangedEnabled", version
+        `select org_settings_changed_enabled as "settingsChangedEnabled",
+              monitor_alerts_enabled as "monitorAlertsEnabled", version
        from notification_org_settings
        where tenant_id = $1`,
         [input.organizationId],
@@ -128,6 +134,8 @@ export async function updateOrganizationNotificationSettings(
     userId: string;
     actorDisplayName: string;
     update: NotificationSettingsUpdate;
+    /** Called after commit when `monitorAlertsEnabled` really changed (audit hook). */
+    onMonitorAlertsChanged?: () => void;
   },
 ): Promise<OrganizationNotificationSettings> {
   await assertMemberBeforeTenantContext(
@@ -135,7 +143,8 @@ export async function updateOrganizationNotificationSettings(
     input.organizationId,
     input.userId,
   );
-  return withTenantContextRaw(
+  const change = { monitorAlertsChanged: false };
+  const settings = await withTenantContextRaw(
     database,
     input.organizationId,
     async (client) => {
@@ -162,7 +171,8 @@ export async function updateOrganizationNotificationSettings(
       );
 
       const current = await client.query<SettingsRow>(
-        `select org_settings_changed_enabled as "settingsChangedEnabled", version
+        `select org_settings_changed_enabled as "settingsChangedEnabled",
+              monitor_alerts_enabled as "monitorAlertsEnabled", version
        from notification_org_settings
        where tenant_id = $1`,
         [input.organizationId],
@@ -177,25 +187,38 @@ export async function updateOrganizationNotificationSettings(
           { current: currentSettings },
         );
       }
+      const next = {
+        settingsChangedEnabled:
+          input.update.settingsChangedEnabled ??
+          currentSettings.settingsChangedEnabled,
+        monitorAlertsEnabled:
+          input.update.monitorAlertsEnabled ??
+          currentSettings.monitorAlertsEnabled,
+      };
       if (
-        currentSettings.settingsChangedEnabled ===
-        input.update.settingsChangedEnabled
+        next.settingsChangedEnabled ===
+          currentSettings.settingsChangedEnabled &&
+        next.monitorAlertsEnabled === currentSettings.monitorAlertsEnabled
       ) {
         return currentSettings;
       }
+      change.monitorAlertsChanged =
+        next.monitorAlertsEnabled !== currentSettings.monitorAlertsEnabled;
 
       const nextVersion = currentSettings.version + 1;
       await client.query(
         `insert into notification_org_settings
-        (tenant_id, org_settings_changed_enabled, version)
-       values ($1, $2, $3)
+        (tenant_id, org_settings_changed_enabled, monitor_alerts_enabled, version)
+       values ($1, $2, $3, $4)
        on conflict (tenant_id) do update
        set org_settings_changed_enabled = excluded.org_settings_changed_enabled,
+           monitor_alerts_enabled = excluded.monitor_alerts_enabled,
            version = excluded.version,
            updated_at = now()`,
         [
           input.organizationId,
-          input.update.settingsChangedEnabled,
+          next.settingsChangedEnabled,
+          next.monitorAlertsEnabled,
           nextVersion,
         ],
       );
@@ -251,9 +274,11 @@ export async function updateOrganizationNotificationSettings(
 
       return {
         organizationId: input.organizationId,
-        settingsChangedEnabled: input.update.settingsChangedEnabled,
+        ...next,
         version: nextVersion,
       };
     },
   );
+  if (change.monitorAlertsChanged) input.onMonitorAlertsChanged?.();
+  return settings;
 }

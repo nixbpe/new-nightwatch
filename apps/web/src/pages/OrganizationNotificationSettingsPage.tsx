@@ -1,3 +1,4 @@
+import type { NotificationSettingsUpdate } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useParams } from "react-router";
@@ -36,7 +37,11 @@ function OrganizationNotificationSettingsForOrganization({
   organizationId: string;
 }) {
   const client = useQueryClient();
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  // null keeps the saved value; only a toggled setting is sent.
+  const [draft, setDraft] = useState<{
+    settingsChangedEnabled: boolean | null;
+    monitorAlertsEnabled: boolean | null;
+  }>({ settingsChangedEnabled: null, monitorAlertsEnabled: null });
   const settingsQueryKey =
     organizationNotificationSettingsQueryKey(organizationId);
   const settings = useQuery({
@@ -44,19 +49,10 @@ function OrganizationNotificationSettingsForOrganization({
     queryFn: () => fetchOrganizationNotificationSettings(organizationId),
   });
   const save = useMutation({
-    mutationFn: ({
-      value,
-      expectedVersion,
-    }: {
-      value: boolean;
-      expectedVersion: number;
-    }) =>
-      updateOrganizationNotificationSettings(organizationId, {
-        settingsChangedEnabled: value,
-        expectedVersion,
-      }),
+    mutationFn: (update: NotificationSettingsUpdate) =>
+      updateOrganizationNotificationSettings(organizationId, update),
     onSuccess: async () => {
-      setEnabled(null);
+      setDraft({ settingsChangedEnabled: null, monitorAlertsEnabled: null });
       await client.invalidateQueries({
         queryKey: settingsQueryKey,
       });
@@ -119,7 +115,13 @@ function OrganizationNotificationSettingsForOrganization({
       </Page>
     );
   const settingsData = settings.data;
-  const value = enabled ?? settingsData.settingsChangedEnabled;
+  const settingsChanged =
+    draft.settingsChangedEnabled ?? settingsData.settingsChangedEnabled;
+  const monitorAlerts =
+    draft.monitorAlertsEnabled ?? settingsData.monitorAlertsEnabled;
+  const changed =
+    settingsChanged !== settingsData.settingsChangedEnabled ||
+    monitorAlerts !== settingsData.monitorAlertsEnabled;
   return (
     <Page width="form">
       {header}
@@ -147,7 +149,10 @@ function OrganizationNotificationSettingsForOrganization({
                 size="sm"
                 onClick={() => {
                   save.reset();
-                  setEnabled(null);
+                  setDraft({
+                    settingsChangedEnabled: null,
+                    monitorAlertsEnabled: null,
+                  });
                   void settings.refetch();
                 }}
               >
@@ -159,9 +164,12 @@ function OrganizationNotificationSettingsForOrganization({
         <label className="flex items-start gap-3">
           <input
             type="checkbox"
-            checked={value}
+            checked={settingsChanged}
             onChange={(event) => {
-              setEnabled(event.target.checked);
+              setDraft({
+                ...draft,
+                settingsChangedEnabled: event.target.checked,
+              });
             }}
             className="mt-1 h-4 w-4 accent-primary"
           />
@@ -174,16 +182,43 @@ function OrganizationNotificationSettingsForOrganization({
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={monitorAlerts}
+            onChange={(event) => {
+              setDraft({
+                ...draft,
+                monitorAlertsEnabled: event.target.checked,
+              });
+            }}
+            className="mt-1 h-4 w-4 accent-primary"
+          />
+          <span>
+            <span className="block font-medium">แจ้งเตือนมอนิเตอร์</span>
+            <span className="text-sm text-foreground-secondary">
+              เจ้าของและผู้ดูแลจะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม
+              กลับมาทำงานหลังจากที่แจ้งว่าล่มแล้ว และเมื่อใบรับรอง SSL
+              ใกล้หมดอายุหรือหมดอายุ
+            </span>
+          </span>
+        </label>
         <CardFooter variant="split">
           <Notice tone="success">{save.isSuccess ? "บันทึกแล้ว" : null}</Notice>
           <Button
             type="button"
             wrap
-            disabled={
-              value === settingsData.settingsChangedEnabled || save.isPending
-            }
+            disabled={!changed || save.isPending}
             onClick={() => {
-              save.mutate({ value, expectedVersion: settingsData.version });
+              save.mutate({
+                ...(settingsChanged !== settingsData.settingsChangedEnabled
+                  ? { settingsChangedEnabled: settingsChanged }
+                  : {}),
+                ...(monitorAlerts !== settingsData.monitorAlertsEnabled
+                  ? { monitorAlertsEnabled: monitorAlerts }
+                  : {}),
+                expectedVersion: settingsData.version,
+              });
             }}
           >
             {save.isPending ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}

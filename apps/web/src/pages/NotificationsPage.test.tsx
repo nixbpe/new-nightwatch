@@ -26,6 +26,54 @@ const notification: NotificationItem = {
   category: null,
 };
 
+const MONITOR_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const monitorBase = {
+  scope: "organization" as const,
+  organizationId: ORG_A,
+  occurredAt: "2026-09-25T03:00:00.000Z",
+  readAt: null,
+  actor: null,
+  category: "monitor" as const,
+  subject: { monitorId: MONITOR_ID, monitorName: "Checkout" },
+};
+const monitorNotifications: NotificationItem[] = [
+  {
+    ...monitorBase,
+    id: "10000000-0000-4000-8000-000000000001",
+    eventType: "MONITOR_DOWN",
+    reason: "timeout",
+    sslNotAfter: null,
+  },
+  {
+    ...monitorBase,
+    id: "10000000-0000-4000-8000-000000000002",
+    eventType: "MONITOR_RECOVERED",
+    reason: null,
+    sslNotAfter: null,
+  },
+  {
+    ...monitorBase,
+    id: "10000000-0000-4000-8000-000000000003",
+    eventType: "MONITOR_SSL_CAUTION",
+    reason: null,
+    sslNotAfter: "2026-10-20T00:00:00.000Z",
+  },
+  {
+    ...monitorBase,
+    id: "10000000-0000-4000-8000-000000000004",
+    eventType: "MONITOR_SSL_DANGER",
+    reason: null,
+    sslNotAfter: "2026-10-01T00:00:00.000Z",
+  },
+  {
+    ...monitorBase,
+    id: "10000000-0000-4000-8000-000000000005",
+    eventType: "MONITOR_SSL_EXPIRED",
+    reason: null,
+    sslNotAfter: "2026-09-25T00:00:00.000Z",
+  },
+];
+
 let userId = "user-a";
 let serverActiveOrgId: string | null = ORG_A;
 
@@ -94,6 +142,72 @@ describe("NotificationsPage", () => {
     );
 
     expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
+  });
+
+  it("shows title, icon, context and a monitor link for each monitor event type", async () => {
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: monitorNotifications,
+      nextCursor: null,
+      unreadCount: 5,
+    });
+    renderPage();
+
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows).toHaveLength(5);
+    const titles = [
+      "มอนิเตอร์ Checkout ล่ม",
+      "มอนิเตอร์ Checkout กลับมาทำงานแล้ว",
+      "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุ (เหลือไม่เกิน 30 วัน)",
+      "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)",
+      "ใบรับรอง SSL ของ Checkout หมดอายุแล้ว",
+    ];
+    rows.forEach((row, index) => {
+      expect(
+        within(row).getByText(titles[index] as string),
+      ).toBeInTheDocument();
+      expect(within(row).getByText("มอนิเตอร์")).toBeInTheDocument();
+      expect(row.querySelector("svg")).not.toBeNull();
+      expect(
+        within(row).getByRole("link", { name: "เปิดมอนิเตอร์ Checkout" }),
+      ).toHaveAttribute(
+        "href",
+        `/organizations/${ORG_A}/monitors/${MONITOR_ID}`,
+      );
+    });
+    expect(
+      within(rows[0] as HTMLElement).getByText(/หมดเวลารอการตอบกลับ/),
+    ).toBeInTheDocument();
+    expect(
+      within(rows[4] as HTMLElement).getByText(/ใบรับรองหมดอายุเมื่อ/),
+    ).toBeInTheDocument();
+  });
+
+  it("opens a monitor notification with its subject, reason and link", async () => {
+    const down = monitorNotifications[0] as NotificationItem;
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: [down],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    openNotificationMock.mockResolvedValue({
+      ...down,
+      readAt: "2026-09-25T03:01:00.000Z",
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", { name: /มอนิเตอร์ Checkout ล่ม/ }),
+    );
+
+    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
+    expect(screen.getByText(/หมดเวลารอการตอบกลับ/)).toBeInTheDocument();
+    expect(screen.getByText("(Checkout)")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "เปิดมอนิเตอร์ Checkout" }),
+    ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/${MONITOR_ID}`);
   });
 
   it("clears an open detail when the server-confirmed organization changes", async () => {

@@ -11,16 +11,22 @@ import {
   type AuthEnv,
   type Env,
   type Logger,
+  type CredentialEnv,
+  type OutboundDeps,
 } from "@nightwatch/shared";
 import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
 import { requestId } from "hono/request-id";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { Redis } from "ioredis";
 import type { QueryConfig } from "pg";
 import pkg from "../package.json";
 import type { Auth } from "./auth";
 import type { Mailer } from "./auth/mailer";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
+import { registerMonitorReadRoutes } from "./monitors/read-routes";
+import { registerMonitorRoutes } from "./monitors/routes";
 import { registerNotificationInboxRoutes } from "./notifications/routes";
 import { registerOnboardingRoutes } from "./onboarding/routes";
 import {
@@ -29,6 +35,7 @@ import {
   registerOrganizationMemberRoutes,
   registerOrganizationNotificationSettingsRoutes,
 } from "./organization-notifications/routes";
+import { RATE_LIMIT_TIMEOUT_MS } from "./rate-limit";
 
 export type AppDeps = {
   env: Env;
@@ -38,6 +45,14 @@ export type AppDeps = {
   auth?: Auth;
   database?: Database;
   mailer?: Mailer;
+  // Optional so route tests and OpenAPI emission need no Redis; readiness
+  // checks Redis only when a client is injected.
+  redis?: Redis;
+  // Save-time monitor checks: DNS resolver and OUTBOUND_TEST_ALLOWED_HOSTS.
+  outbound?: OutboundDeps;
+  // Secret values are encrypted and decrypted with these keys. Optional so
+  // route tests and OpenAPI emission need no keys; only secret operations fail.
+  credentialEnv?: CredentialEnv;
 };
 
 // Invitation IDs, reset tokens, and organization/member IDs must not appear in logs.
@@ -45,6 +60,17 @@ const organizationPathBase = "/api/organizations";
 const membersSegment = "members";
 const invitationsSegment = "invitations";
 const notificationSettingsSegment = "notification-settings";
+const monitorsSegment = "monitors";
+// `test` and `recent-events` are routes, not monitor ids, so they stay static.
+const monitorStaticSegments = new Set(["test", "recent-events"]);
+const monitorActionSegments = new Set([
+  "pause",
+  "resume",
+  "test",
+  "checks",
+  "incidents",
+  "response-times",
+]);
 
 function encodedCharacterLength(
   path: string,
@@ -131,6 +157,8 @@ function logSafeOrganizationPath(path: string): string {
     | "organization-route"
     | "member"
     | "member-route"
+    | "monitors"
+    | "monitor-route"
     | "other" = "organization";
   const safeSegments = path
     .slice(namespaceEnd)
@@ -156,6 +184,22 @@ function logSafeOrganizationPath(path: string): string {
       if (state === "organization-route" && segment === invitationsSegment) {
         state = "other";
         return invitationsSegment;
+      }
+      if (state === "organization-route" && segment === monitorsSegment) {
+        state = "monitors";
+        return monitorsSegment;
+      }
+      if (state === "monitors") {
+        if (monitorStaticSegments.has(segment)) {
+          state = "other";
+          return segment;
+        }
+        state = "monitor-route";
+        return ":monitorId";
+      }
+      if (state === "monitor-route" && monitorActionSegments.has(segment)) {
+        state = "other";
+        return segment;
       }
       if (state === "member") {
         state = "member-route";
@@ -199,7 +243,7 @@ const readinessRoute = createRoute({
   method: "get",
   path: "/ready",
   tags: ["system"],
-  summary: "Readiness probe (database check; no Redis in this phase)",
+  summary: "Readiness probe (database and Redis checks when configured)",
   responses: {
     200: {
       description: "Service is ready",
@@ -231,6 +275,22 @@ const databaseReadinessQuery: ReadinessQueryConfig = {
   text: "select 1",
   query_timeout: DB_READINESS_TIMEOUT_MS,
 };
+
+async function checkRedisReadiness(redis: Redis): Promise<void> {
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      redis.ping(),
+      new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => {
+          reject(new Error("redis readiness check timed out"));
+        }, RATE_LIMIT_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(deadline);
+  }
+}
 
 async function checkDatabaseReadiness(database: Database): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -334,6 +394,19 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       logger: deps.logger,
       mailer: deps.mailer,
     });
+    registerMonitorRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+      outbound: deps.outbound,
+      redis: deps.redis,
+      credentialEnv: deps.credentialEnv,
+    });
+    registerMonitorReadRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+    });
   }
 
   app.notFound((c) => {
@@ -368,6 +441,23 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       };
       return c.json(body, err.statusCode as ContentfulStatusCode);
     }
+    // Hono rejects unparsable bodies and wrong content types itself; that is a
+    // client error, not an internal one.
+    if (
+      err instanceof HTTPException &&
+      (err.status === 400 || err.status === 415)
+    ) {
+      const body: ErrorResponse = {
+        error:
+          err.status === 415
+            ? {
+                code: "UNSUPPORTED_MEDIA_TYPE",
+                message: "Unsupported media type",
+              }
+            : { code: "INVALID_INPUT", message: "Invalid request input" },
+      };
+      return c.json(body, err.status);
+    }
     deps.logger.error(
       {
         requestId: c.get("requestId"),
@@ -386,14 +476,25 @@ export function createApp(deps: AppDeps): OpenAPIHono {
   app.openapi(readinessRoute, async (c) => {
     const database = deps.database;
     const checks: Record<string, "ok" | "fail"> = {};
-    if (database) {
-      try {
-        await checkDatabaseReadiness(database);
-        checks.database = "ok";
-      } catch {
-        checks.database = "fail";
-      }
-    } else {
+    // Run in parallel so /ready stays bounded by the slowest single deadline.
+    const asCheck = (check: Promise<void>): Promise<"ok" | "fail"> =>
+      check.then(
+        () => "ok",
+        () => "fail",
+      );
+    await Promise.all([
+      database
+        ? asCheck(checkDatabaseReadiness(database)).then((result) => {
+            checks.database = result;
+          })
+        : undefined,
+      deps.redis
+        ? asCheck(checkRedisReadiness(deps.redis)).then((result) => {
+            checks.redis = result;
+          })
+        : undefined,
+    ]);
+    if (!database && !deps.redis) {
       checks.self = "ok";
     }
     const ready = !Object.values(checks).includes("fail");

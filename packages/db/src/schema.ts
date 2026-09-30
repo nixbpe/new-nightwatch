@@ -1,11 +1,17 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
+  customType,
+  foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -196,6 +202,9 @@ export const notificationOrgSettings = pgTable("notification_org_settings", {
   orgSettingsChangedEnabled: boolean("org_settings_changed_enabled")
     .notNull()
     .default(true),
+  monitorAlertsEnabled: boolean("monitor_alerts_enabled")
+    .notNull()
+    .default(true),
   version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
     .notNull()
@@ -228,6 +237,14 @@ export const notificationIntents = pgTable(
       onDelete: "set null",
     }),
     actorDisplayName: text("actor_display_name"),
+    // No FK: a monitor notification outlives its monitor (AC-19).
+    subjectMonitorId: uuid("subject_monitor_id"),
+    subjectMonitorName: text("subject_monitor_name"),
+    monitorReason: text("monitor_reason"),
+    sslNotAfter: timestamp("ssl_not_after", {
+      mode: "date",
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -301,6 +318,14 @@ export const notificationInboxItems = pgTable(
       onDelete: "set null",
     }),
     actorDisplayName: text("actor_display_name"),
+    // No FK: a monitor notification outlives its monitor (AC-19).
+    subjectMonitorId: uuid("subject_monitor_id"),
+    subjectMonitorName: text("subject_monitor_name"),
+    monitorReason: text("monitor_reason"),
+    sslNotAfter: timestamp("ssl_not_after", {
+      mode: "date",
+      withTimezone: true,
+    }),
     readAt: timestamp("read_at", { mode: "date", withTimezone: true }),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()
@@ -375,6 +400,263 @@ export const notificationDispatchLedger = pgTable(
   ],
 );
 
+const bytea = customType<{ data: Buffer }>({
+  dataType: () => "bytea",
+});
+
+export const monitors = pgTable(
+  "monitors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    method: text("method").notNull().default("GET"),
+    headers: jsonb("headers").notNull().default([]),
+    queryParams: jsonb("query_params").notNull().default([]),
+    bodyType: text("body_type"),
+    bodyContent: text("body_content"),
+    authType: text("auth_type").notNull().default("none"),
+    apiKeyHeaderName: text("api_key_header_name"),
+    expectedStatusText: text("expected_status_text")
+      .notNull()
+      .default("200-299"),
+    expectedStatusRanges: jsonb("expected_status_ranges")
+      .notNull()
+      .default([{ from: 200, to: 299 }]),
+    assertions: jsonb("assertions").notNull().default([]),
+    intervalSeconds: integer("interval_seconds").notNull().default(300),
+    timeoutSeconds: integer("timeout_seconds").notNull().default(10),
+    status: text("status").notNull().default("active"),
+    version: integer("version").notNull().default(1),
+    checkConfigVersion: integer("check_config_version").notNull().default(1),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastCheckAt: timestamp("last_check_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    lastOutcome: text("last_outcome"),
+    lastPassedConfigVersion: integer("last_passed_config_version"),
+    sslHost: text("ssl_host"),
+    sslIssuer: text("ssl_issuer"),
+    sslNotAfter: timestamp("ssl_not_after", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    sslState: text("ssl_state"),
+    sslReason: text("ssl_reason"),
+    sslNotifiedNotAfter: timestamp("ssl_notified_not_after", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    sslNotifiedLevel: text("ssl_notified_level"),
+    clientRequestId: uuid("client_request_id").notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("monitors_id_tenant_key").on(table.id, table.tenantId),
+    unique("monitors_client_request_key").on(
+      table.tenantId,
+      table.clientRequestId,
+    ),
+    index("monitors_tenant_idx").on(table.tenantId, table.id),
+  ],
+);
+
+export const monitorSecrets = pgTable(
+  "monitor_secrets",
+  {
+    monitorId: uuid("monitor_id").notNull(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    slot: text("slot").notNull(),
+    ciphertext: bytea("ciphertext").notNull(),
+    iv: bytea("iv").notNull(),
+    authTag: bytea("auth_tag").notNull(),
+    keyVersion: text("key_version").notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.monitorId, table.slot] }),
+    foreignKey({
+      columns: [table.monitorId, table.tenantId],
+      foreignColumns: [monitors.id, monitors.tenantId],
+    }).onDelete("cascade"),
+  ],
+);
+
+/** `nextCheckAt` is null while the monitor is paused (unclaimable). */
+export const monitorSchedule = pgTable(
+  "monitor_schedule",
+  {
+    monitorId: uuid("monitor_id").primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    nextCheckAt: timestamp("next_check_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    claimToken: text("claim_token"),
+    claimedUntil: timestamp("claimed_until", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    checkConfigVersion: integer("check_config_version").notNull(),
+    intervalSeconds: integer("interval_seconds").notNull(),
+    timeoutSeconds: integer("timeout_seconds").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.monitorId, table.tenantId],
+      foreignColumns: [monitors.id, monitors.tenantId],
+    }).onDelete("cascade"),
+  ],
+);
+
+/** Monthly partitions by `scheduledFor`; see `ensure_monitor_partitions`. */
+export const monitorCheckResults = pgTable(
+  "monitor_check_results",
+  {
+    monitorId: uuid("monitor_id").notNull(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    scheduledFor: timestamp("scheduled_for", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    checkedAt: timestamp("checked_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    outcome: text("outcome").notNull(),
+    httpStatus: integer("http_status"),
+    responseTimeMs: integer("response_time_ms"),
+    failureReason: text("failure_reason"),
+    tlsReason: text("tls_reason"),
+    assertions: jsonb("assertions").notNull().default([]),
+    urlMasked: text("url_masked").notNull(),
+    checkConfigVersion: integer("check_config_version").notNull(),
+    intervalSeconds: integer("interval_seconds").notNull(),
+    evaluatedFromPrefix: boolean("evaluated_from_prefix")
+      .notNull()
+      .default(false),
+  },
+  (table) => [
+    primaryKey({ columns: [table.monitorId, table.scheduledFor] }),
+    index("monitor_check_results_scheduled_idx").on(table.scheduledFor),
+    foreignKey({
+      columns: [table.monitorId, table.tenantId],
+      foreignColumns: [monitors.id, monitors.tenantId],
+    }).onDelete("cascade"),
+  ],
+);
+
+/** Monthly partitions by `hourStart`; see `ensure_monitor_partitions`. */
+export const monitorCheckHourly = pgTable(
+  "monitor_check_hourly",
+  {
+    monitorId: uuid("monitor_id").notNull(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    hourStart: timestamp("hour_start", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    checks: integer("checks").notNull().default(0),
+    passed: integer("passed").notNull().default(0),
+    coveredSeconds: integer("covered_seconds").notNull().default(0),
+    responseChecks: integer("response_checks").notNull().default(0),
+    responseMsSum: bigint("response_ms_sum", { mode: "number" })
+      .notNull()
+      .default(0),
+    responseMsMax: integer("response_ms_max"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.monitorId, table.hourStart] }),
+    index("monitor_check_hourly_hour_idx").on(table.hourStart),
+    foreignKey({
+      columns: [table.monitorId, table.tenantId],
+      foreignColumns: [monitors.id, monitors.tenantId],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const monitorIncidents = pgTable(
+  "monitor_incidents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    monitorId: uuid("monitor_id").notNull(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    startedAt: timestamp("started_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    endedAt: timestamp("ended_at", { mode: "date", withTimezone: true }),
+    startReason: text("start_reason").notNull(),
+    startHttpStatus: integer("start_http_status"),
+    endReason: text("end_reason"),
+    downNotified: boolean("down_notified").notNull().default(false),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.monitorId, table.tenantId],
+      foreignColumns: [monitors.id, monitors.tenantId],
+    }).onDelete("cascade"),
+    uniqueIndex("monitor_incidents_one_open_key")
+      .on(table.monitorId)
+      .where(sql`${table.endedAt} is null`),
+    index("monitor_incidents_history_idx").on(table.monitorId, table.startedAt),
+    index("monitor_incidents_retention_idx")
+      .on(table.endedAt)
+      .where(sql`${table.endedAt} is not null`),
+  ],
+);
+
+export const monitorEvents = pgTable(
+  "monitor_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    monitorId: uuid("monitor_id").notNull(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    occurredAt: timestamp("occurred_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+    urlMasked: text("url_masked"),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.monitorId, table.tenantId],
+      foreignColumns: [monitors.id, monitors.tenantId],
+    }).onDelete("cascade"),
+    index("monitor_events_monitor_idx").on(table.monitorId, table.occurredAt),
+    index("monitor_events_retention_idx").on(table.occurredAt),
+  ],
+);
+
 export const schema = {
   user,
   session,
@@ -390,4 +672,11 @@ export const schema = {
   notificationInboxItems,
   notificationAccountMfaState,
   notificationDispatchLedger,
+  monitors,
+  monitorSecrets,
+  monitorSchedule,
+  monitorCheckResults,
+  monitorCheckHourly,
+  monitorIncidents,
+  monitorEvents,
 };

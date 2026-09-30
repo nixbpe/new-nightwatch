@@ -3,14 +3,17 @@ import {
   type NotificationItem,
 } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "react-router";
+import { Link, useLocation } from "react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "../components/shell/EmptyState";
 import {
   BellIcon,
+  CheckIcon,
   ChevronLeftIcon,
   KeyIcon,
+  LockIcon,
+  MonitorIcon,
   ShieldIcon,
   SlidersIcon,
 } from "../components/shell/icons";
@@ -38,9 +41,27 @@ import { Card } from "../components/ui/card";
 import { StatusPill } from "../components/ui/status-pill";
 import { IconTile } from "../components/ui/icon-tile";
 
+type MonitorNotificationItem = Extract<
+  NotificationItem,
+  { category: "monitor" }
+>;
+
 function itemTitle(item: NotificationItem) {
   if (item.scope === "organization") {
-    return `การตั้งค่าการแจ้งเตือนเปลี่ยนโดย ${item.actor.displayName}`;
+    switch (item.eventType) {
+      case "ORG-NOTIFICATION-SETTINGS-CHANGED":
+        return `การตั้งค่าการแจ้งเตือนเปลี่ยนโดย ${item.actor.displayName}`;
+      case "MONITOR_DOWN":
+        return `มอนิเตอร์ ${item.subject.monitorName} ล่ม`;
+      case "MONITOR_RECOVERED":
+        return `มอนิเตอร์ ${item.subject.monitorName} กลับมาทำงานแล้ว`;
+      case "MONITOR_SSL_CAUTION":
+        return `ใบรับรอง SSL ของ ${item.subject.monitorName} ใกล้หมดอายุ (เหลือไม่เกิน 30 วัน)`;
+      case "MONITOR_SSL_DANGER":
+        return `ใบรับรอง SSL ของ ${item.subject.monitorName} ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)`;
+      case "MONITOR_SSL_EXPIRED":
+        return `ใบรับรอง SSL ของ ${item.subject.monitorName} หมดอายุแล้ว`;
+    }
   }
   if (item.eventType === "PASSWORD_CHANGED") return "มีการเปลี่ยนรหัสผ่าน";
   if (item.eventType === "MFA_ENABLED")
@@ -49,14 +70,68 @@ function itemTitle(item: NotificationItem) {
 }
 // Scope and category, rendered as two parts rather than one dotted string.
 function itemContext(item: NotificationItem): [string, string] {
-  return item.scope === "organization"
-    ? ["องค์กร", "การตั้งค่าการแจ้งเตือน"]
-    : ["บัญชีของคุณ", "ความปลอดภัย"];
+  if (item.scope !== "organization") return ["บัญชีของคุณ", "ความปลอดภัย"];
+  return item.category === "monitor"
+    ? ["องค์กร", "มอนิเตอร์"]
+    : ["องค์กร", "การตั้งค่าการแจ้งเตือน"];
 }
 function ItemIcon({ item, size }: { item: NotificationItem; size: number }) {
-  if (item.scope === "organization") return <SlidersIcon size={size} />;
+  if (item.scope === "organization") {
+    switch (item.eventType) {
+      case "ORG-NOTIFICATION-SETTINGS-CHANGED":
+        return <SlidersIcon size={size} />;
+      case "MONITOR_DOWN":
+        return <MonitorIcon size={size} />;
+      case "MONITOR_RECOVERED":
+        return <CheckIcon size={size} />;
+      default:
+        return <LockIcon size={size} />;
+    }
+  }
   if (item.eventType === "PASSWORD_CHANGED") return <KeyIcon size={size} />;
   return <ShieldIcon size={size} />;
+}
+const DOWN_REASONS: Record<string, string> = {
+  http_status: "รหัสตอบกลับ HTTP ไม่อยู่ในช่วงที่คาดหวัง",
+  assertion_failed: "ผลตอบกลับไม่ผ่านเงื่อนไขที่ตั้งไว้",
+  timeout: "หมดเวลารอการตอบกลับ",
+  dns_not_found: "ไม่พบชื่อโดเมนใน DNS",
+  connect_refused: "ปลายทางปฏิเสธการเชื่อมต่อ",
+  connect_failed: "เชื่อมต่อปลายทางไม่สำเร็จ",
+  tls_invalid: "ใบรับรอง TLS ไม่ถูกต้อง",
+  blocked_address: "ที่อยู่ปลายทางถูกบล็อก",
+  redirect_blocked: "การเปลี่ยนเส้นทาง (redirect) ถูกบล็อก",
+  redirect_limit: "เปลี่ยนเส้นทาง (redirect) เกินจำนวนที่กำหนด",
+  body_read_failed: "อ่านเนื้อหาตอบกลับไม่สำเร็จ",
+};
+function downReason(reason: string) {
+  return DOWN_REASONS[reason] ?? reason;
+}
+/** Monitor items link to the Detail page; a deleted monitor is reported there. */
+function monitorPath(item: MonitorNotificationItem) {
+  return `/organizations/${item.organizationId}/monitors/${item.subject.monitorId}`;
+}
+function MonitorFacts({
+  item,
+  preferences,
+}: {
+  item: MonitorNotificationItem;
+  preferences: Preferences;
+}) {
+  if (item.eventType === "MONITOR_DOWN") {
+    return <span>สาเหตุ: {downReason(item.reason)}</span>;
+  }
+  if (item.sslNotAfter === null) return null;
+  return (
+    <span>
+      {item.eventType === "MONITOR_SSL_EXPIRED"
+        ? "ใบรับรองหมดอายุเมื่อ "
+        : "ใบรับรองหมดอายุ "}
+      <time dateTime={item.sslNotAfter} className="font-mono">
+        {itemTime(item.sslNotAfter, preferences)}
+      </time>
+    </span>
+  );
 }
 // Absolute times follow the time zone and hour cycle chosen on /settings/display.
 function itemTime(value: string, preferences: Preferences) {
@@ -109,10 +184,13 @@ function notificationIdFromNavigation(
 export function NotificationRows({
   items,
   onOpen,
+  onNavigate,
   popoverItems = false,
 }: {
   items: NotificationItem[];
   onOpen: (id: string) => void;
+  /** Called when a monitor link is followed (the popover closes itself). */
+  onNavigate?: () => void;
   popoverItems?: boolean;
 }) {
   const { preferences } = usePreferences();
@@ -155,8 +233,24 @@ export function NotificationRows({
                   {relativeTime(item.occurredAt, preferences)}
                 </time>
               </span>
+              {item.scope === "organization" && item.category === "monitor" ? (
+                <span className="text-xs text-foreground-secondary">
+                  <MonitorFacts item={item} preferences={preferences} />
+                </span>
+              ) : null}
             </span>
           </button>
+          {item.scope === "organization" && item.category === "monitor" ? (
+            <Link
+              to={monitorPath(item)}
+              onClick={onNavigate}
+              data-popover-item={popoverItems ? "" : undefined}
+              className="mb-3 ml-[60px] inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              เปิดมอนิเตอร์
+              <span className="sr-only"> {item.subject.monitorName}</span>
+            </Link>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -324,10 +418,35 @@ function NotificationsPageForOrganization({
                 </dd>
               </>
             )}
-            {detail.scope === "organization" ? (
+            {detail.scope === "organization" && detail.actor !== null ? (
               <>
                 <dt className="text-foreground-secondary">ผู้เปลี่ยนแปลง</dt>
                 <dd>{detail.actor.displayName}</dd>
+              </>
+            ) : null}
+            {detail.scope === "organization" &&
+            detail.category === "monitor" ? (
+              <>
+                <dt className="text-foreground-secondary">มอนิเตอร์</dt>
+                <dd className="mb-3 sm:mb-0">
+                  <Link
+                    to={monitorPath(detail)}
+                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    เปิดมอนิเตอร์
+                    <span className="sr-only">
+                      {" "}
+                      {detail.subject.monitorName}
+                    </span>
+                  </Link>{" "}
+                  <span className="text-foreground-secondary">
+                    ({detail.subject.monitorName})
+                  </span>
+                </dd>
+                <dt className="text-foreground-secondary">รายละเอียด</dt>
+                <dd>
+                  <MonitorFacts item={detail} preferences={preferences} />
+                </dd>
               </>
             ) : null}
           </dl>
@@ -407,7 +526,7 @@ function NotificationsPageForOrganization({
           <EmptyState
             icon={<BellIcon size={20} />}
             title="ยังไม่มีการแจ้งเตือน"
-            description="เหตุการณ์ด้านความปลอดภัยของบัญชีและการเปลี่ยนแปลงขององค์กรจะแสดงที่นี่"
+            description="เหตุการณ์ด้านความปลอดภัยของบัญชี การเปลี่ยนแปลงขององค์กรและสถานะมอนิเตอร์จะแสดงที่นี่"
           />
         ) : (
           <Card className="overflow-hidden">

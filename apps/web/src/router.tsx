@@ -13,6 +13,10 @@ import { BrandMark } from "./components/shell/BrandMark";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import {
+  monitorCreateLoader,
+  monitorDetailLoader,
+  monitorEditLoader,
+  monitorsOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
   organizationMembersLoader,
@@ -31,6 +35,9 @@ import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { DetailPage } from "./pages/monitors/DetailPage";
+import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
+import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
 import { OrganizationMembersPage } from "./pages/OrganizationMembersPage";
@@ -129,6 +136,26 @@ export const routes: RouteObject[] = [
             path: "/workspace",
             loader: workspaceLoader,
             element: <WorkspacePage />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors",
+            loader: monitorsOverviewLoader,
+            element: <OverviewPage />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors/new",
+            loader: monitorCreateLoader,
+            element: <MonitorFormPage mode="create" />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId/edit",
+            loader: monitorEditLoader,
+            element: <MonitorFormPage mode="edit" />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId",
+            loader: monitorDetailLoader,
+            element: <DetailPage />,
           },
           {
             path: "/notifications",

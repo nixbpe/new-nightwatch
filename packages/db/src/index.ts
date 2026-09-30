@@ -15,6 +15,7 @@ export {
   createNotificationDispatch,
   initializeAccountMfaState,
   insertAccountNotificationIntent,
+  insertMonitorNotificationIntent,
   markNotificationDispatchEnqueued,
   recordAccountMfaTransition,
   requeueStaleNotificationDispatches,
@@ -24,10 +25,18 @@ export {
   withAccountContext,
   withAccountContextRaw,
   type AccountNotificationEventType,
+  type MonitorNotificationEventType,
+  type MonitorNotificationInput,
   type NotificationDispatchClaim,
   type NotificationDispatchFailureReason,
   type NotificationTransaction,
 } from "./notification";
+export {
+  claimDueMonitorChecks,
+  ensureMonitorPartitions,
+  purgeExpiredMonitorData,
+  type MonitorCheckClaim,
+} from "./monitor";
 export {
   listMigrations,
   runMigrations,

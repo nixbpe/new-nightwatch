@@ -228,6 +228,79 @@ export async function recordAccountMfaTransition(
   return { transitioned: true };
 }
 
+export type MonitorNotificationEventType =
+  | "MONITOR_DOWN"
+  | "MONITOR_RECOVERED"
+  | "MONITOR_SSL_CAUTION"
+  | "MONITOR_SSL_DANGER"
+  | "MONITOR_SSL_EXPIRED";
+
+export type MonitorNotificationInput = {
+  tenantId: string;
+  monitorId: string;
+  monitorName: string;
+  eventType: MonitorNotificationEventType;
+  /** Stable business identity; a replay with the same origin is a no-op. */
+  origin: string;
+  occurredAt: Date;
+  reason: string | null;
+  sslNotAfter: Date | null;
+};
+
+/**
+ * Writes a monitor intent, its recipient snapshot (current owners and admins,
+ * there is no actor to exclude) and the dispatch ledger row on the caller's
+ * open tenant transaction, so the notification commits or rolls back with the
+ * check result. Returns false when the origin already existed.
+ */
+export async function insertMonitorNotificationIntent(
+  client: { query: PoolClient["query"] },
+  input: MonitorNotificationInput,
+): Promise<boolean> {
+  assertNonEmpty(input.tenantId, "tenantId");
+  assertNonEmpty(input.origin, "origin");
+  const intentId = crypto.randomUUID();
+  const inserted = await client.query(
+    `insert into notification_intents
+       (id, scope_kind, tenant_id, origin, event_type, occurred_at,
+        subject_monitor_id, subject_monitor_name, monitor_reason, ssl_not_after)
+     values ($1, 'tenant', $2, $3, $4, $5, $6, $7, $8, $9)
+     on conflict (origin) do nothing
+     returning id`,
+    [
+      intentId,
+      input.tenantId,
+      input.origin,
+      input.eventType,
+      input.occurredAt,
+      input.monitorId,
+      input.monitorName,
+      input.reason,
+      input.sslNotAfter,
+    ],
+  );
+  if (inserted.rowCount === 0) return false;
+  await client.query(
+    `insert into notification_intent_recipients
+       (intent_id, origin, recipient_user_id, scope_kind, tenant_id)
+     select $1, $2, member.user_id, 'tenant', $3
+     from member
+     where member.organization_id = $3
+       and exists (
+         select 1
+         from unnest(string_to_array(member.role, ',')) as role_token(value)
+         where btrim(role_token.value) in ('owner', 'admin')
+       )
+     on conflict (origin, recipient_user_id) do nothing`,
+    [intentId, input.origin, input.tenantId],
+  );
+  await client.query("select create_notification_dispatch($1, $2)", [
+    crypto.randomUUID(),
+    intentId,
+  ]);
+  return true;
+}
+
 /** Claims at most 100 ledger rows without granting account-domain discovery. */
 export async function claimNotificationDispatches(
   database: Database,

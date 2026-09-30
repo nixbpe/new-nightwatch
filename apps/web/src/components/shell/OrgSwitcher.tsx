@@ -117,13 +117,19 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                 onClick={() => {
                   popover.close();
                   void switchOrg(org.id).then((switched) => {
+                    // A monitor page keeps its own redirect (useLeaveOnOrganizationSwitch), so only the lists are handled here.
+                    const match =
+                      /^\/organizations\/([^/]+)\/(members|monitors)$/.exec(
+                        location.pathname,
+                      );
+                    // Choosing the Organization the URL already names changes nothing on the page.
+                    const section = match?.[2];
                     if (
                       switched &&
-                      /^\/organizations\/[^/]+\/members$/.test(
-                        location.pathname,
-                      )
+                      section !== undefined &&
+                      match?.[1] !== org.id
                     ) {
-                      void navigate(`/organizations/${org.id}/members`, {
+                      void navigate(`/organizations/${org.id}/${section}`, {
                         replace: true,
                       });
                     }

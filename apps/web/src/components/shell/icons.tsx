@@ -145,6 +145,14 @@ export function MonitorIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function ActivityIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...iconProps(size)}>
+      <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
+    </svg>
+  );
+}
+
 export function LogOutIcon({ size = 18 }: { size?: number }) {
   return (
     <svg {...iconProps(size)}>
@@ -286,6 +294,7 @@ export const NAV_ICONS = {
   sliders: SlidersIcon,
   user: UserIcon,
   monitor: MonitorIcon,
+  activity: ActivityIcon,
 } as const;
 
 export type NavIconName = keyof typeof NAV_ICONS;

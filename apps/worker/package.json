@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "WORKER_ROLES=consumer,scheduler bun --watch src/index.ts",
+    "dev": "WORKER_ROLES=consumer,scheduler,monitor-scheduler,monitor-checker bun --watch src/index.ts",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --exclude 'src/**/*.db.test.ts'",
-    "test:integration": "vitest run src/materialize.db.test.ts src/dispatch.db.test.ts",
+    "test:integration": "vitest run src/materialize.db.test.ts src/dispatch.db.test.ts src/monitor/scheduler.db.test.ts src/monitor/checker.db.test.ts src/monitor/checker-process.db.test.ts src/monitor/checker-ssl.db.test.ts src/monitor/notifications.db.test.ts",
+    "test:bun": "bun --bun vitest run src/monitor/checker.db.test.ts src/monitor/checker-ssl.db.test.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {

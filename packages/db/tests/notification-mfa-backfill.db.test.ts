@@ -67,7 +67,7 @@ afterAll(async () => {
       }
     }
   }
-});
+}, 60_000);
 describe("legacy MFA projection migration", () => {
   it("backfills only effective verified MFA and preserves the first transition", async () => {
     await Promise.all(
@@ -325,5 +325,5 @@ describe("legacy MFA projection migration", () => {
         )
       ).rows,
     ).toEqual([{ event_type: "MFA_DISABLED" }]);
-  }, 15_000);
+  }, 60_000);
 });

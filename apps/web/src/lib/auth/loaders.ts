@@ -8,6 +8,12 @@ import {
 
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
+import {
+  fetchMonitorDetail,
+  fetchMonitorList,
+  monitorQueryKeys,
+  MONITOR_LIST_PAGE_SIZE,
+} from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import { authClient } from "../auth-client";
 import {
@@ -163,6 +169,118 @@ export async function notificationSettingsLoader({
       queryKey: organizationNotificationSettingsQueryKey(organizationId),
       queryFn: () => fetchOrganizationNotificationSettings(organizationId),
       staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
+}
+
+// Prefetches the first list page only for an Organization the user belongs to;
+// the page renders denied for any other and must not trigger a request for it.
+export async function monitorsOverviewLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const organizationId = params.organizationId;
+  if (organizationId === undefined) {
+    return null;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (
+    context?.organizations.some(
+      (organization) => organization.id === organizationId,
+    ) !== true
+  ) {
+    return null;
+  }
+  const listParams = { limit: MONITOR_LIST_PAGE_SIZE, offset: 0 };
+  await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+    .query({
+      queryKey: monitorQueryKeys.list(organizationId, listParams),
+      queryFn: () => fetchMonitorList(organizationId, listParams),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
+}
+
+// Same membership check as the Overview loader; a missing or foreign monitor is
+// left to the page, which shows the uniform "not found" state.
+export async function monitorDetailLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const { organizationId, monitorId } = params;
+  if (organizationId === undefined || monitorId === undefined) {
+    return null;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (
+    context?.organizations.some(
+      (organization) => organization.id === organizationId,
+    ) !== true
+  ) {
+    return null;
+  }
+  await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+    .query({
+      queryKey: monitorQueryKeys.detail(organizationId, monitorId),
+      queryFn: () => fetchMonitorDetail(organizationId, monitorId),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
+}
+
+// The form page gates on role itself (denied state), so this only warms the
+// membership context the page reads.
+export async function monitorCreateLoader({
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  await prefetchMeContext(sessionOrRedirect.user.id);
+  return null;
+}
+
+// Edit pins the version it loads, so it always starts from a fresh read
+// (staleTime 0) rather than a Detail poll that may be 30 s old.
+export async function monitorEditLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const { organizationId, monitorId } = params;
+  if (organizationId === undefined || monitorId === undefined) {
+    return null;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (
+    context?.organizations.some(
+      (organization) => organization.id === organizationId,
+    ) !== true
+  ) {
+    return null;
+  }
+  await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+    .query({
+      queryKey: monitorQueryKeys.detail(organizationId, monitorId),
+      queryFn: () => fetchMonitorDetail(organizationId, monitorId),
+      staleTime: 0,
+      // A missing monitor is the page's own state; a retry would only delay it.
+      retry: false,
     })
     .catch(() => undefined);
   return null;

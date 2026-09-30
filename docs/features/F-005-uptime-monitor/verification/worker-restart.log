@@ -1,0 +1,17 @@
+PASS check started on the first Worker
+PASS AC-60 SIGTERM during an 8 s check: Worker exited cleanly in 8044 ms (limit 25 000)
+PASS AC-60 the drained check was recorded exactly once, no incident
+PASS a longer check started on a new Worker
+PASS AC-60 SIGTERM during a 20 s check: Worker exited in 15019 ms (limit 25 000)
+PASS AC-60 the abandoned check left no row and no incident
+PASS AC-60 the Worker logged the abandonment
+PASS a new Worker picks the monitor up again after SIGTERM
+PASS AC-37 exactly one new result for the resumed round, no back-filled rounds
+PASS next round started
+PASS AC-60 SIGKILL mid-check: no result was written for the killed round
+PASS after SIGKILL the claim expires and a new Worker re-checks
+PASS AC-60 no duplicate results and no wrong incident after SIGKILL
+PASS no incident was opened by the interruptions
+PASS AC-37 two Workers over 200 s: at most one result per 60 s round
+failed: 0
+EXIT 0

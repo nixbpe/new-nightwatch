@@ -13,6 +13,7 @@ import {
   createDatabase,
   failNotificationDispatch,
   insertAccountNotificationIntent,
+  insertMonitorNotificationIntent,
   markNotificationDispatchEnqueued,
   purgeExpiredNotificationInboxItems,
   recordAccountMfaTransition,
@@ -67,7 +68,7 @@ beforeAll(async () => {
      values ($1, 'Tenant A', $2), ($3, 'Tenant B', $4)`,
     [tenantA, `notification-a-${run}`, tenantB, `notification-b-${run}`],
   );
-});
+}, 60_000);
 
 afterAll(async () => {
   if (ownerConnected) {
@@ -80,7 +81,7 @@ afterAll(async () => {
     await owner.end();
   }
   await database.close();
-});
+}, 60_000);
 
 describe("notification database scopes", () => {
   it("enforces account context and exposes only bounded ledger claims", async () => {
@@ -689,6 +690,149 @@ describe("notification database scopes", () => {
   });
 });
 
+describe("monitor notification schema", () => {
+  const MONITOR_EVENT_TYPES = [
+    "MONITOR_DOWN",
+    "MONITOR_RECOVERED",
+    "MONITOR_SSL_CAUTION",
+    "MONITOR_SSL_DANGER",
+    "MONITOR_SSL_EXPIRED",
+  ];
+  const tenantM = randomUUID();
+  const users = {
+    owner: randomUUID(),
+    admin: randomUUID(),
+    viewer: randomUUID(),
+    auditor: randomUUID(),
+  };
+
+  beforeAll(async () => {
+    await owner.query(
+      `insert into organization (id, name, slug) values ($1, 'Tenant M', $2)`,
+      [tenantM, `notification-m-${run}`],
+    );
+    for (const [role, id] of Object.entries(users)) {
+      await owner.query(
+        `insert into "user" (id, name, email, email_verified)
+         values ($1, $2, $3, true)`,
+        [id, role, `monitor-${role}-${run}@example.test`],
+      );
+      await owner.query(
+        `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+         values ($1, $2, $3, $4, now(), now())`,
+        [randomUUID(), tenantM, id, role === "admin" ? "viewer,admin" : role],
+      );
+    }
+  });
+
+  afterAll(async () => {
+    await owner.query("delete from organization where id = $1", [tenantM]);
+    await owner.query('delete from "user" where id = any($1::text[])', [
+      Object.values(users),
+    ]);
+  });
+
+  it("keeps exactly one event_type and one scope CHECK per table", async () => {
+    for (const table of ["notification_intents", "notification_inbox_items"]) {
+      const result = await owner.query<{ conname: string; def: string }>(
+        `select conname, pg_get_constraintdef(oid) as def
+         from pg_constraint
+         where conrelid = $1::regclass and contype = 'c'
+           and pg_get_constraintdef(oid) like '%event_type%'
+         order by conname`,
+        [table],
+      );
+      expect(result.rows.map((row) => row.conname)).toEqual([
+        `${table}_event_type_check`,
+        `${table}_scope_check`,
+      ]);
+      for (const row of result.rows) {
+        for (const type of MONITOR_EVENT_TYPES) expect(row.def).toContain(type);
+      }
+    }
+  });
+
+  it("accepts old event types and monitor types in tenant scope only", async () => {
+    const insertIntent = (
+      scope: "tenant" | "account",
+      eventType: string,
+    ): Promise<unknown> =>
+      owner.query(
+        `insert into notification_intents
+           (id, scope_kind, tenant_id, user_id, origin, event_type, occurred_at)
+         values ($1, $2, $3, $4, $5, $6, now())`,
+        [
+          randomUUID(),
+          scope,
+          scope === "tenant" ? tenantM : null,
+          scope === "account" ? users.owner : null,
+          `check-${randomUUID()}`,
+          eventType,
+        ],
+      );
+
+    await insertIntent("tenant", "ORG-NOTIFICATION-SETTINGS-CHANGED");
+    await insertIntent("account", "PASSWORD_CHANGED");
+    await insertIntent("account", "MFA_ENABLED");
+    await insertIntent("account", "MFA_DISABLED");
+    for (const type of MONITOR_EVENT_TYPES) {
+      await insertIntent("tenant", type);
+      await expect(insertIntent("account", type)).rejects.toThrow(
+        "notification_intents_scope_check",
+      );
+    }
+    await expect(insertIntent("tenant", "PASSWORD_CHANGED")).rejects.toThrow(
+      "notification_intents_scope_check",
+    );
+    await expect(insertIntent("tenant", "MONITOR_UNKNOWN")).rejects.toThrow(
+      "notification_intents_event_type_check",
+    );
+  });
+
+  it("snapshots owners and admins and stores the monitor subject without a monitor row", async () => {
+    const monitorId = randomUUID();
+    const origin = `monitor:${monitorId}:incident:${run}:down`;
+    const input = {
+      tenantId: tenantM,
+      monitorId,
+      monitorName: "Checkout",
+      eventType: "MONITOR_DOWN" as const,
+      origin,
+      occurredAt: new Date(),
+      reason: "http_status",
+      sslNotAfter: null,
+    };
+    const created = await withTenantContextRaw(database, tenantM, (client) =>
+      insertMonitorNotificationIntent(client, input),
+    );
+    const replay = await withTenantContextRaw(database, tenantM, (client) =>
+      insertMonitorNotificationIntent(client, input),
+    );
+    expect({ created, replay }).toEqual({ created: true, replay: false });
+
+    const rows = await owner.query(
+      `select intent.subject_monitor_id, intent.subject_monitor_name,
+              intent.monitor_reason, count(distinct ledger.id)::int as ledgers,
+              array_agg(recipient.recipient_user_id order by recipient.recipient_user_id) as recipients
+       from notification_intents intent
+       join notification_intent_recipients recipient on recipient.intent_id = intent.id
+       join notification_dispatch_ledger ledger on ledger.intent_id = intent.id
+       where intent.origin = $1
+       group by intent.id`,
+      [origin],
+    );
+    expect(rows.rows).toEqual([
+      {
+        subject_monitor_id: monitorId,
+        subject_monitor_name: "Checkout",
+        monitor_reason: "http_status",
+        ledgers: 1,
+        recipients: [users.owner, users.admin].sort(),
+      },
+    ]);
+  });
+});
+
 describe("notification dispatch function security", () => {
   it("uses dedicated restricted owners and preserves scoped dispatch and expiry work", async () => {
     const intentId = randomUUID();
@@ -1222,5 +1366,5 @@ describe("legacy MFA projection migration", () => {
       await admin.end().catch(() => undefined);
       await rm(legacyMigrationsDir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });
