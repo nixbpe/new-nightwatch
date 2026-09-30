@@ -149,7 +149,7 @@ type Identity = { organizationId: string; actorUserId: string };
 // per-Organization advisory lock (Create only), monitors row, schedule row,
 // incidents. The role is read again under the lock because it may have
 // changed since the pre-check.
-async function enterOrganization(
+export async function enterOrganization(
   client: PoolClient,
   identity: Identity,
 ): Promise<void> {

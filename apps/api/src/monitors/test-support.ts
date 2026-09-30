@@ -87,6 +87,7 @@ export async function openMonitorTestContext(options?: {
 
   // Every statement the app runs on a pooled client, for single-query proofs.
   const statements: string[] = [];
+  const hooks: { before?: (text: string) => Promise<void> | void } = {};
   const recorded: Database = {
     ...runtime,
     sql: new Proxy(runtime.sql, {
@@ -103,8 +104,10 @@ export async function openMonitorTestContext(options?: {
             get(inner, name): unknown {
               const value: unknown = Reflect.get(inner, name);
               if (name === "query") {
-                return (text: unknown, ...rest: unknown[]) => {
+                return async (text: unknown, ...rest: unknown[]) => {
                   if (typeof text === "string") statements.push(text);
+                  // Test seam: lets a test change state between two statements.
+                  if (typeof text === "string") await hooks.before?.(text);
                   return (inner.query as (...args: unknown[]) => unknown)(
                     text,
                     ...rest,
@@ -281,6 +284,7 @@ export async function openMonitorTestContext(options?: {
     owner,
     lines,
     statements,
+    hooks,
     resolverCalls,
     createUser,
     createOrganization,

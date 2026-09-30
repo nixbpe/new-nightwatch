@@ -61,6 +61,7 @@ import {
 } from "./secrets";
 import {
   assertMonitorExists,
+  enterOrganization,
   parseMonitorId,
   requireCredentials,
   URL_REASONS,
@@ -229,6 +230,7 @@ async function prepareEditSecrets(
   database: Database,
   input: {
     organizationId: string;
+    actorUserId: string;
     monitorId: string;
     config: MonitorConfig;
     entries: MonitorSecretEditEntry[];
@@ -239,6 +241,10 @@ async function prepareEditSecrets(
     database,
     input.organizationId,
     async (client) => {
+      // The role may have dropped since the pre-check; a removed or demoted
+      // user must not get a stored credential sent to the target. Same lock
+      // order as the write paths, and no lock is held once this returns.
+      await enterOrganization(client, input);
       // One statement: the row and the ciphertext of the requested `keep` slots
       // share a snapshot. Two statements are two READ COMMITTED snapshots, and an
       // Edit committing between them would pair a new secret with the old origin.
@@ -416,8 +422,9 @@ async function runTest(
   );
   assertRequestableUrl(input.config);
 
+  const editing = monitorId;
   const secrets =
-    monitorId === undefined
+    editing === undefined
       ? prepareCreateSecrets({
           ...input.config,
           secrets: input.entries.map((entry) => ({
@@ -425,17 +432,24 @@ async function runTest(
             value: entry.value ?? "",
           })),
         })
-      : await prepareEditSecrets(database, {
-          organizationId: input.organizationId,
-          monitorId,
-          config: input.config,
-          entries: input.entries.map((entry) => ({
-            slot: entry.slot,
-            action: entry.action ?? "replace",
-            ...(entry.value === undefined ? {} : { value: entry.value }),
-          })),
-          credentialEnv: deps.credentialEnv,
-        });
+      : await auditMonitorDenials(
+          logger,
+          input.actorUserId,
+          "organization.monitor.test",
+          () =>
+            prepareEditSecrets(database, {
+              organizationId: input.organizationId,
+              actorUserId: input.actorUserId,
+              monitorId: editing,
+              config: input.config,
+              entries: input.entries.map((entry) => ({
+                slot: entry.slot,
+                action: entry.action ?? "replace",
+                ...(entry.value === undefined ? {} : { value: entry.value }),
+              })),
+              credentialEnv: deps.credentialEnv,
+            }),
+        );
 
   // Nothing above touched the network, and validation failures took no quota.
   if (!rateLimiter) {

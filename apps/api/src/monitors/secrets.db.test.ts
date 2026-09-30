@@ -920,6 +920,52 @@ describe("Test in Edit reads (R13-01, R13-02, quota)", () => {
     });
   });
 
+  it("re-checks write permission before it reads or decrypts a kept secret", async () => {
+    const admin = await ctx.createUser("secrets-demoted");
+    await ctx.owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $2, $3, 'admin', now(), now())`,
+      [crypto.randomUUID(), org.id, admin],
+    );
+    const monitor = await created(bearer());
+    const path = monitorsPath(org.id, `/${monitor.id}/test`);
+    const body = editBody(monitor);
+    delete body.expectedVersion;
+
+    // The pre-check and the existence check have passed when the second
+    // tenant transaction (the secret read) begins: demote there.
+    let transactions = 0;
+    ctx.hooks.before = async (text) => {
+      if (!text.includes("set_config")) return;
+      transactions += 1;
+      if (transactions !== 2) return;
+      await ctx.owner.sql.query(
+        "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+        [org.id, admin],
+      );
+    };
+    target.seen.length = 0;
+    const response = await api(admin, "POST", path, body);
+    ctx.hooks.before = undefined;
+
+    expect(transactions).toBeGreaterThanOrEqual(2);
+    expect(response.status).toBe(403);
+    expect(response.json).toMatchObject({
+      error: { code: "PERMISSION_DENIED" },
+    });
+    expect(target.seen).toEqual([]);
+    expect(JSON.stringify(response.json)).not.toContain(TOKEN);
+    expect(
+      ctx
+        .logRecords()
+        .some(
+          (record) =>
+            record.action === "organization.monitor.test" &&
+            record.code === "PERMISSION_DENIED",
+        ),
+    ).toBe(true);
+  });
+
   it("spends no rate-limit quota on the origin-change 422", async () => {
     const monitor = await created(bearer());
     const key = `rl:monitor-test:u:${owner()}:o:${org.id}`;
