@@ -585,6 +585,7 @@ test.describe("reflow at 200% (640 px viewport, LAY-02)", () => {
         await shot(
           page,
           `reflow-640-${theme}-${path.endsWith("/new") ? "new" : path.endsWith("/edit") ? "edit" : path.includes(monitorId) ? "detail" : "overview"}`,
+          true,
         );
         for (const name of names) {
           const count =

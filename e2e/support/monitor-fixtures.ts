@@ -167,9 +167,20 @@ export function basicConfig(name: string, url: string) {
   };
 }
 
-/** Full-page screenshot into VERIFY_SHOTS_DIR when set (docs/features/F-005-uptime-monitor/verification/). */
-export async function shot(page: Page, name: string): Promise<void> {
+/**
+ * Screenshot into VERIFY_SHOTS_DIR when set (docs/features/F-005-uptime-monitor/verification/).
+ * Desktop shots use a 1440 x 900 viewport and restore the page size afterwards;
+ * `keepViewport` keeps the current size (the 640 px reflow shots).
+ */
+export async function shot(
+  page: Page,
+  name: string,
+  keepViewport = false,
+): Promise<void> {
   const dir = process.env.VERIFY_SHOTS_DIR;
-  if (dir)
-    await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
+  if (!dir) return;
+  const original = page.viewportSize();
+  if (!keepViewport) await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: `${dir}/${name}.png` });
+  if (!keepViewport && original) await page.setViewportSize(original);
 }
