@@ -615,9 +615,9 @@ export async function sendOutboundRequest(
       : caught instanceof OutboundError
         ? caught
         : new OutboundError("executor_error");
-    const tlsInfo =
-      error.tls ??
-      (error.reason === "timeout" || caller.aborted ? undefined : lastTls);
+    // lastTls is set only once a handshake finished on the current hop, so a request-phase
+    // timeout keeps that hop's certificate and a handshake-phase one has none.
+    const tlsInfo = error.tls ?? (caller.aborted ? undefined : lastTls);
     return {
       ok: false,
       failure: {

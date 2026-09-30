@@ -927,6 +927,58 @@ describe("connection-time address check", () => {
     expect([...reasons]).toEqual(["timeout"]);
   });
 
+  it("keeps the certificate when the server stalls after a completed handshake", async () => {
+    const silent = await serve({ tls: pki.leaf.good });
+    const result = await sendOutboundRequest(
+      baseRequest(at(silent, "/", "https"), { timeoutMs: 300 }),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("timeout");
+    expect(result.tls?.reason).toBeNull();
+    expect(result.tls?.issuer).toBe("NW Test");
+    expect(result.tls?.notAfter).toBeInstanceOf(Date);
+  });
+
+  it("has no certificate when the timeout or a caller abort lands during the handshake", async () => {
+    const stalled = await serve({});
+    const timedOut = await sendOutboundRequest(
+      baseRequest(at(stalled, "/", "https"), { timeoutMs: 200 }),
+      deps(),
+    );
+    expect(timedOut.failure?.reason).toBe("timeout");
+    expect(timedOut.tls).toBeUndefined();
+    const controller = new AbortController();
+    setTimeout(() => {
+      controller.abort();
+    }, 100);
+    const aborted = await sendOutboundRequest(
+      baseRequest(at(stalled, "/", "https"), {
+        timeoutMs: 5000,
+        signal: controller.signal,
+      }),
+      deps(),
+    );
+    expect(aborted.ok).toBe(false);
+    expect(aborted.tls).toBeUndefined();
+  });
+
+  it("has no certificate when the caller aborts after the handshake", async () => {
+    const silent = await serve({ tls: pki.leaf.good });
+    const controller = new AbortController();
+    setTimeout(() => {
+      controller.abort();
+    }, 200);
+    const result = await sendOutboundRequest(
+      baseRequest(at(silent, "/", "https"), {
+        timeoutMs: 5000,
+        signal: controller.signal,
+      }),
+      deps(),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.tls).toBeUndefined();
+  });
+
   it("reports a stalled TLS handshake after TCP connect as timeout", async () => {
     const silent = await serve({});
     const results = new Set<string | undefined>();
