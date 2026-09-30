@@ -235,7 +235,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                 y={y(tick)}
                 dy="0.32em"
                 textAnchor="end"
-                className="fill-foreground-secondary text-[11px]"
+                className="fill-foreground-secondary text-xs"
               >
                 {formatNumber(tick)}
               </text>
@@ -245,7 +245,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
             x={left - 8}
             y={10}
             textAnchor="end"
-            className="fill-foreground-secondary text-[11px]"
+            className="fill-foreground-secondary text-xs"
           >
             ms
           </text>
@@ -255,7 +255,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
               x={x(tick)}
               y={bottom + 16}
               textAnchor="middle"
-              className="fill-foreground-secondary text-[11px]"
+              className="fill-foreground-secondary text-xs"
             >
               {clockTicks ? clockFormat.format(tick) : dayFormat.format(tick)}
             </text>
@@ -264,7 +264,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
             x={right}
             y={HEIGHT - 4}
             textAnchor="end"
-            className="fill-foreground-secondary text-[11px]"
+            className="fill-foreground-secondary text-xs"
           >
             เวลา ({TIME_ZONE})
           </text>
@@ -285,7 +285,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                   <text
                     x={start + 6}
                     y={MARGIN.top + 14}
-                    className="fill-foreground-secondary text-[11px]"
+                    className="fill-foreground-secondary text-xs"
                   >
                     หยุดชั่วคราว
                   </text>
@@ -312,7 +312,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                     <text
                       x={start + 6}
                       y={MARGIN.top + 14}
-                      className="fill-foreground-secondary text-[11px]"
+                      className="fill-foreground-secondary text-xs"
                     >
                       ไม่มีข้อมูล
                     </text>
@@ -339,7 +339,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                 <text
                   x={at + 4}
                   y={bottom - 6}
-                  className="fill-caution text-[11px]"
+                  className="fill-caution text-xs"
                 >
                   {change.urlChanged ? "URL" : "แก้ค่า"}
                 </text>
