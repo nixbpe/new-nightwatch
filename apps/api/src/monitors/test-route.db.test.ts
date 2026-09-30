@@ -402,23 +402,29 @@ function resultOf(reply: Reply): MonitorTestResult {
   return monitorTestResultSchema.strict().parse(body.result);
 }
 
+// Counts per parent table: a partition another suite adds or drops while this
+// one runs must not change the set of tables or the counts (a partitioned
+// parent counts its rows across all partitions).
 async function monitorTableCounts(
   organizationId: string,
 ): Promise<Record<string, number>> {
-  const tables = await owner.sql.query<{ table_name: string }>(
-    `select c.table_name from information_schema.columns c
-     where c.table_schema = 'public' and c.table_name like 'monitor%'
-       and c.column_name = 'tenant_id'`,
-  );
-  const all = await owner.sql.query<{ tablename: string }>(
-    "select tablename from pg_tables where schemaname = 'public' and tablename like 'monitor%'",
+  const tables = await owner.sql.query<{
+    name: string;
+    has_tenant: boolean;
+  }>(
+    `select c.relname as name,
+            exists (select 1 from pg_attribute a
+                    where a.attrelid = c.oid and a.attname = 'tenant_id'
+                      and not a.attisdropped) as has_tenant
+     from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind in ('r', 'p')
+       and not c.relispartition and c.relname like 'monitor%'
+     order by c.relname`,
   );
   // A monitor table without tenant_id would escape the per-Organization count.
-  expect(all.rows.map((row) => row.tablename).sort()).toEqual(
-    tables.rows.map((row) => row.table_name).sort(),
-  );
+  expect(tables.rows.filter((row) => !row.has_tenant)).toEqual([]);
   const counts: Record<string, number> = {};
-  for (const { table_name: name } of tables.rows) {
+  for (const { name } of tables.rows) {
     const rows = await owner.sql.query<{ total: string }>(
       `select count(*) as total from "${name}" where tenant_id = $1`,
       [organizationId],
