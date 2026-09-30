@@ -520,3 +520,44 @@ test("AC-54 a first failing result reads as one failure, not as down", async ({
   await expect(page.getByText("ล่ม", { exact: true })).toHaveCount(0);
   await expect(page.getByText("ไม่ทราบสถานะ", { exact: true })).toBeVisible();
 });
+
+test("AC-31 an Organization at 50 monitors shows the reason and the API refuses a 51st", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const org = await createOrganization(pool, `E2E Limit ${run}`);
+  const person = await createPerson(pool, "limit", org);
+  userIds.push(person.userId);
+  await addMember(pool, org, person.userId, "owner");
+  const session = await signInApi(person);
+  // Same name and URL for all: duplicates are allowed inside an Organization.
+  for (let i = 0; i < 50; i++) {
+    const reply = await session.request("POST", monitorPath(org), {
+      ...basicConfig("same name", urlOf("/health")),
+      clientRequestId: randomUUID(),
+    });
+    expect(reply.status).toBe(201);
+  }
+  const over = await session.request("POST", monitorPath(org), {
+    ...basicConfig("same name", urlOf("/health")),
+    clientRequestId: randomUUID(),
+  });
+  expect(over.status).toBe(409);
+  expect((over.body as { error: { code: string } }).error.code).toBe(
+    "MONITOR_LIMIT_REACHED",
+  );
+  await signIn(page, person);
+  await page.goto(`/organizations/${org}/monitors`);
+  await expect(
+    page.getByText(/องค์กรนี้มีมอนิเตอร์ครบ 50 ตัวแล้ว/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "เพิ่มมอนิเตอร์" }),
+  ).toBeDisabled();
+  const kept = await pool.query(
+    "select count(*)::int n, count(*) filter (where status = 'active')::int active from monitors where tenant_id = $1",
+    [org],
+  );
+  expect(kept.rows[0]).toEqual({ n: 50, active: 50 });
+  await pool.query("delete from organization where id = $1", [org]);
+});

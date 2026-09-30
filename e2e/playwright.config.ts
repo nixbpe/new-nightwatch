@@ -81,6 +81,8 @@ export default defineConfig({
       cwd: "../apps/api",
       url: `${apiUrl}/health`,
       env: apiServerEnv(),
+      // API log lines reach the run output so a run can be scanned for secrets.
+      stdout: "pipe",
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },
