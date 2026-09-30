@@ -36,9 +36,16 @@ function deps(events: MonitorEvent[]): CheckerDependencies {
       testAllowedHosts: [TARGET_HOST, OTHER_HOST],
       ca: pki.ca,
     },
-    onEvent: (_tx, event) => {
+    // Like the notification writer, advance the reported level whether or not
+    // anything was sent: that is what stops a level from being entered twice.
+    onEvent: async (tx, event) => {
       events.push(event);
-      return Promise.resolve();
+      if (event.type !== "ssl_level_entered") return;
+      await tx.query(
+        `update monitors set ssl_notified_level = $2, ssl_notified_not_after = $3
+         where id = $1`,
+        [event.monitorId, event.level, event.notAfter],
+      );
     },
   };
 }
@@ -117,7 +124,7 @@ describe("SSL state of the last hop (AC-35)", () => {
         ssl_host: TARGET_HOST,
         ssl_state: "caution",
         ssl_reason: null,
-        ssl_notified_level: null,
+        ssl_notified_level: "caution",
       });
       expect(state.ssl_issuer).toContain("NW Worker Test CA");
       const remainingDays =
@@ -449,7 +456,7 @@ describe("SSL state of the last hop (AC-35)", () => {
       clock: () => new Date(Date.now() + days * DAY),
     });
 
-    it("enters the new level at the unreadable check and not again on the next readable ones", async () => {
+    it("enters the new level at the first readable check after an unreadable one, once", async () => {
       const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 8 }));
       const reset = await resetServer();
       try {
@@ -459,7 +466,8 @@ describe("SSL state of the last hop (AC-35)", () => {
         expect((await ssl(monitor)).ssl_state).toBe("caution");
 
         // Two and a half days on, the certificate is in danger, but the
-        // handshake cannot be read at that very check.
+        // handshake cannot be read at that very check; no level is entered
+        // from a date that this check did not read.
         await updateMonitor(
           db,
           monitor,
@@ -468,6 +476,9 @@ describe("SSL state of the last hop (AC-35)", () => {
         );
         await check(monitor, events, later(2.5));
         expect((await ssl(monitor)).ssl_state).toBe("unreadable");
+        expect(sslEvents(events)).toEqual([
+          { level: "caution", host: TARGET_HOST },
+        ]);
 
         await updateMonitor(
           db,
@@ -477,6 +488,70 @@ describe("SSL state of the last hop (AC-35)", () => {
         );
         await check(monitor, events, later(2.6));
         await check(monitor, events, later(2.7));
+        expect(sslEvents(events)).toEqual([
+          { level: "caution", host: TARGET_HOST },
+          { level: "danger", host: TARGET_HOST },
+        ]);
+      } finally {
+        await good.close();
+        await reset.close();
+      }
+    });
+
+    it("a renewal that cannot be verified never alerts for the old expiry (FCS-01)", async () => {
+      const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 8 }));
+      const otherPki = createTestPki();
+      // Valid for 90 days but signed by a CA the Worker does not trust.
+      const untrusted = await startTlsTarget(
+        otherPki.issue(TARGET_HOST, { days: 90 }),
+      );
+      try {
+        const monitor = await seedMonitor(db, { url: `${good.url}/` });
+        const events: MonitorEvent[] = [];
+        await check(monitor, events);
+        await updateMonitor(
+          db,
+          monitor,
+          "update monitors set url = $2 where id = $1",
+          [monitor.monitorId, `${untrusted.url}/`],
+        );
+        await check(monitor, events, later(2.5));
+        await check(monitor, events, later(9));
+        expect((await ssl(monitor)).ssl_state).toBe("unreadable");
+        expect(sslEvents(events)).toEqual([
+          { level: "caution", host: TARGET_HOST },
+        ]);
+      } finally {
+        await good.close();
+        await untrusted.close();
+        otherPki.dispose();
+      }
+    });
+
+    it("a boundary crossed during refused connections is entered at the next readable check", async () => {
+      const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 8 }));
+      const reset = await resetServer();
+      try {
+        const monitor = await seedMonitor(db, {
+          url: `${good.url}/`,
+          timeoutSeconds: 2,
+        });
+        const events: MonitorEvent[] = [];
+        await check(monitor, events);
+        const point = async (url: string) =>
+          updateMonitor(
+            db,
+            monitor,
+            "update monitors set url = $2 where id = $1",
+            [monitor.monitorId, url],
+          );
+        await point(`https://${TARGET_HOST}:${String(reset.port)}/`);
+        await check(monitor, events);
+        await point(`https://${TARGET_HOST}:${String(await closedPort())}/`);
+        await check(monitor, events, later(2.5));
+        await point(`${good.url}/`);
+        await check(monitor, events, later(2.5));
+        await check(monitor, events, later(2.6));
         expect(sslEvents(events)).toEqual([
           { level: "caution", host: TARGET_HOST },
           { level: "danger", host: TARGET_HOST },

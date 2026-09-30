@@ -71,8 +71,8 @@ type LockedMonitor = {
   ssl_host: string | null;
   ssl_issuer: string | null;
   ssl_not_after: Date | null;
-  ssl_state: string | null;
-  last_check_at: Date | null;
+  ssl_notified_level: string | null;
+  ssl_notified_not_after: Date | null;
 };
 
 type OpenIncident = { id: string; down_notified: boolean };
@@ -124,7 +124,8 @@ function attempt(
     }
     const monitorRows = await client.query<LockedMonitor>(
       `select name, consecutive_failures, last_passed_config_version,
-              ssl_host, ssl_issuer, ssl_not_after, ssl_state, last_check_at
+              ssl_host, ssl_issuer, ssl_not_after,
+              ssl_notified_level, ssl_notified_not_after
        from monitors where id = $1 and tenant_id = $2 for update`,
       [input.monitorId, input.tenantId],
     );
@@ -242,32 +243,31 @@ function attempt(
   });
 }
 
+const LEVEL_RANK: Record<string, number> & { expired: number } = {
+  caution: 1,
+  danger: 2,
+  expired: 3,
+};
+
 /**
- * Level last observed from a readable certificate. Non-TLS results (timeout,
- * refused, check_error) leave ssl_state alone, so it is the answer unless an
- * unreadable handshake overwrote it. Only then the stored expiry is
- * evaluated at the previous check; a boundary crossed between the last
- * readable check and that check is not reported.
+ * Rank of the level already handed to the event hook for this certificate
+ * (host and expiry). The hook advances ssl_notified_* even while monitor
+ * alerts are off, and a readable certificate with another identity resets
+ * them, so they do not depend on last_check_at or on what earlier checks
+ * could read.
  */
-function previousLevel(
+function reportedRank(
   monitor: LockedMonitor,
-  result: CheckResult,
-): string | null {
+  host: string,
+  notAfter: Date,
+): number {
   if (
-    monitor.ssl_state === "ok" ||
-    monitor.ssl_state === "caution" ||
-    monitor.ssl_state === "danger" ||
-    monitor.ssl_state === "expired"
+    monitor.ssl_host !== host ||
+    monitor.ssl_notified_not_after?.getTime() !== notAfter.getTime()
   ) {
-    return monitor.ssl_state;
+    return 0;
   }
-  if (monitor.ssl_state !== "unreadable" || monitor.ssl_not_after === null) {
-    return null;
-  }
-  return sslLevel(
-    monitor.ssl_not_after,
-    monitor.last_check_at ?? result.checkedAt,
-  ).level;
+  return LEVEL_RANK[monitor.ssl_notified_level ?? ""] ?? 0;
 }
 
 type SslUpdate = {
@@ -308,12 +308,9 @@ function nextSsl(
       state: level,
       reason: result.tlsReason,
     };
-    const sameCertificate =
-      monitor.ssl_host === tls.host &&
-      monitor.ssl_not_after?.getTime() === tls.notAfter.getTime();
     if (
       level === "ok" ||
-      (sameCertificate && previousLevel(monitor, result) === level)
+      (LEVEL_RANK[level] ?? 0) <= reportedRank(monitor, tls.host, tls.notAfter)
     ) {
       return { update, event: null };
     }
@@ -340,20 +337,19 @@ function nextSsl(
           reason: "expired",
         },
         event:
-          notAfter && previousLevel(monitor, result) !== "expired"
+          notAfter &&
+          LEVEL_RANK.expired > reportedRank(monitor, tls.host, notAfter)
             ? { level: "expired", host: tls.host, notAfter }
             : null,
       };
     }
     // The stored certificate identity stays for the same host, so the same
     // certificate seen again after a failed handshake does not enter its level
-    // a second time. Another host has no known identity yet.
+    // a second time. Another host has no known identity yet. No level event
+    // here: the stored expiry was not read at this check, and a certificate
+    // that replaced it (a renewal missing its intermediate, for one) must not
+    // alert for the old date. The next readable check decides.
     const sameHost = monitor.ssl_host === tls.host;
-    // The level of a known certificate follows from its expiry date, so a
-    // boundary crossed at this check is entered now. Waiting for a readable
-    // check would compare against this very check and lose the escalation.
-    const known = sameHost ? monitor.ssl_not_after : null;
-    const level = known ? sslLevel(known, result.checkedAt).level : "ok";
     return {
       update: {
         host: tls.host,
@@ -362,10 +358,7 @@ function nextSsl(
         state: "unreadable",
         reason: result.tlsReason,
       },
-      event:
-        known && level !== "ok" && previousLevel(monitor, result) !== level
-          ? { level, host: tls.host, notAfter: known }
-          : null,
+      event: null,
     };
   }
   if (result.httpStatus !== null) {
