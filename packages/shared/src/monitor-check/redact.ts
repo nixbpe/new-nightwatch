@@ -9,14 +9,26 @@ export const ACTUAL_MAX_CHARS = 200;
  * never scanned for later matches; one contiguous run of matches is scanned to
  * its end because the text after it is part of the shown output.
  *
- * A call also has a scan budget. A secret with a long period (such as 4096
- * `a`) in a value of `a` makes every search find the next overlap one position
- * on, at a cost of the secret's length each. Past the budget the call returns
- * the output up to the current group and one mask, dropping the rest of the
- * text: it may mask more than the full output would (so it is then not an
- * exact prefix of it), and it never shows a secret.
+ * A redactor also has one scan budget for all its calls (the caller makes one
+ * per check). A secret with a long period (such as 4096 `a`) in a value of `a`
+ * makes every search find the next overlap one position on, at a cost of the
+ * secret's length each. Past the budget a call returns the output up to the
+ * current group and one mask, dropping the rest of the text, and sets
+ * `cutShort`: it may mask more than the full output would (so it is then not
+ * an exact prefix of it), and it never shows a secret. `cutShort` describes
+ * the latest call.
  */
-export type Redactor = (text: string, maxChars?: number) => string;
+export type Redactor = {
+  (text: string, maxChars?: number): string;
+  readonly cutShort?: boolean;
+};
+
+/**
+ * Characters that overlap-chasing searches may scan per redactor. The first
+ * search of each needle form is not counted: it is one pass over the text per
+ * form, which the tenant's slot limit already bounds.
+ */
+const SCAN_BUDGET = 8 << 20;
 
 /**
  * Masks every secret value, its JSON-escaped and URL-encoded forms, and the
@@ -27,7 +39,7 @@ export type Redactor = (text: string, maxChars?: number) => string;
 export function createRedactor(
   secretValues: readonly string[],
   extra: readonly string[] = [],
-): Redactor {
+): Redactor & { cutShort: boolean } {
   const found = new Set<string>();
   for (const value of [...secretValues, ...extra]) {
     found.add(value);
@@ -40,21 +52,12 @@ export function createRedactor(
   }
   found.delete("");
   const needles = [...found];
-  return (text, maxChars) => {
+  let remaining = SCAN_BUDGET;
+  const redactOnce = (text: string, maxChars: number | undefined) => {
     // Code units are at least code points, so this many units hold maxChars + 1 points.
     const cap = maxChars === undefined ? Infinity : 2 * (maxChars + 1);
-    // Characters one search can scan: up to the match, plus its length.
-    let work = 0;
-    const budget = 4 * (needles.length + 1) * (text.length + 1);
-    const search = (needle: string, from: number) => {
-      const at = text.indexOf(needle, from);
-      work +=
-        (at === -1 ? Math.max(0, text.length - from) : at - from) +
-        needle.length;
-      return at;
-    };
     // Next occurrence per needle; a min-heap of the needles that still have one.
-    const next = needles.map((needle) => search(needle, 0));
+    const next = needles.map((needle) => text.indexOf(needle));
     const heap = next.flatMap((at, i) => (at === -1 ? [] : [i]));
     const before = (a: number, b: number) =>
       (next[a] as number) < (next[b] as number);
@@ -95,8 +98,16 @@ export function createRedactor(
         const at = next[i] as number;
         end = Math.max(end, at + needle.length);
         // Occurrences that start before end - length + 1 end inside this group.
-        const again = search(needle, Math.max(at + 1, end - needle.length + 1));
-        if (work > budget) return out + text.slice(cursor, start) + MASK;
+        const from = Math.max(at + 1, end - needle.length + 1);
+        const again = text.indexOf(needle, from);
+        // Characters this search scanned: up to the match, plus its length.
+        remaining -=
+          (again === -1 ? Math.max(0, text.length - from) : again - from) +
+          needle.length;
+        if (remaining < 0) {
+          redact.cutShort = true;
+          return out + text.slice(cursor, start) + MASK;
+        }
         if (again === -1) {
           heap[0] = heap[heap.length - 1] as number;
           heap.pop();
@@ -114,6 +125,29 @@ export function createRedactor(
       out + text.slice(cursor, cap === Infinity ? undefined : cursor + cap)
     );
   };
+
+  // A displayed value repeats across assertions of one check; redact it once.
+  const shownCache = new Map<
+    string,
+    { maxChars: number; out: string; cut: boolean }
+  >();
+  const redact = Object.assign(
+    (text: string, maxChars?: number): string => {
+      const hit = maxChars === undefined ? undefined : shownCache.get(text);
+      if (hit !== undefined && hit.maxChars === maxChars) {
+        redact.cutShort = hit.cut;
+        return hit.out;
+      }
+      redact.cutShort = false;
+      const out = redactOnce(text, maxChars);
+      if (maxChars !== undefined) {
+        shownCache.set(text, { maxChars, out, cut: redact.cutShort });
+      }
+      return out;
+    },
+    { cutShort: false },
+  );
+  return redact;
 }
 
 /** Cuts by code point so a surrogate pair is never split. */

@@ -171,19 +171,60 @@ describe("createRedactor work bound for a displayed value", () => {
   it("hides a 4096-character periodic secret in a 1 MiB value within a work bound", () => {
     const secret = "a".repeat(4096);
     const text = "a".repeat(1 << 20);
+    const redact = createRedactor([secret]);
     const indexOf = vi.spyOn(String.prototype, "indexOf");
     let shown;
     let searches;
     try {
-      shown = shownOf(createRedactor([secret]), text);
+      shown = shownOf(redact, text);
       searches = indexOf.mock.calls.length;
     } finally {
       indexOf.mockRestore();
     }
-    // Each search past the first costs about the secret's length; the budget is 8 x text length.
-    expect(searches).toBeLessThan((8 * (1 << 20)) / 4096 + 100);
-    expect(shown.text).not.toContain("a");
+    // Each search past the first costs about the secret's length; the budget is 8 Mi characters.
+    expect(searches).toBeLessThan((8 << 20) / 4096 + 100);
     expect(shown.text).toBe("•••");
+    expect(redact.cutShort).toBe(true);
+  });
+
+  it("shares one budget across ten values of one check with 32 periodic secrets", () => {
+    // Distinct lengths make 32 distinct needles that all chase each other.
+    const secrets = Array.from({ length: 32 }, (_v, i) => "a".repeat(4096 - i));
+    const redact = createRedactor(secrets);
+    const indexOf = vi.spyOn(String.prototype, "indexOf");
+    let searches;
+    const results = [];
+    try {
+      for (let i = 0; i < 10; i++) {
+        results.push(
+          shownOf(redact, `${"a".repeat((1 << 20) - 1)}${String(i)}`),
+        );
+      }
+      searches = indexOf.mock.calls.length;
+    } finally {
+      indexOf.mockRestore();
+    }
+    // 10 x (32 needles + 1 absorb check) first searches, plus the shared budget.
+    expect(searches).toBeLessThan(10 * 40 + (8 << 20) / 4000 + 100);
+    for (const shown of results) expect(shown.text).not.toContain("aaaa");
+    expect(redact.cutShort).toBe(true);
+  });
+
+  it("redacts a repeated displayed value once per check", () => {
+    const redact = createRedactor(["needle"]);
+    const text = `${"x".repeat(1000)}needle${"y".repeat(1000)}`;
+    const first = redact(text, ACTUAL_MAX_CHARS);
+    const indexOf = vi.spyOn(String.prototype, "indexOf");
+    let again;
+    let searches;
+    try {
+      again = redact(text, ACTUAL_MAX_CHARS);
+      searches = indexOf.mock.calls.length;
+    } finally {
+      indexOf.mockRestore();
+    }
+    expect(again).toBe(first);
+    expect(searches).toBe(0);
   });
 
   // Independent oracle: mark every code unit covered by any occurrence of any

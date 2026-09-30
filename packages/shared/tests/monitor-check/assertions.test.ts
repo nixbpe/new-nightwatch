@@ -435,4 +435,13 @@ describe("actual value cut (AC-17)", () => {
     expect(result.actual).toContain("•••");
     expect(result.actualTruncated).toBe(true);
   });
+
+  it("marks the actual as truncated when the redactor ran out of budget", () => {
+    const result = evaluate(
+      "a".repeat(1 << 20),
+      createRedactor(["a".repeat(4096)]),
+    );
+    expect(result.actual).toBe('"•••');
+    expect(result.actualTruncated).toBe(true);
+  });
 });

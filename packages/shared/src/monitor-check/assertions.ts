@@ -97,7 +97,10 @@ export function evaluateAssertions(
 
   const shown = (value: string) => {
     const cut = truncateActual(redact(value, ACTUAL_MAX_CHARS));
-    return { actual: cut.text, actualTruncated: cut.truncated };
+    return {
+      actual: cut.text,
+      actualTruncated: cut.truncated || redact.cutShort === true,
+    };
   };
 
   const evaluateOne = (assertion: NormalizedAssertion): AssertionResult => {
