@@ -428,4 +428,89 @@ describe("SSL state of the last hop (AC-35)", () => {
       await good.close();
     }
   });
+
+  describe("an unreadable handshake at a level boundary", () => {
+    async function resetServer() {
+      const server = net.createServer((socket) => {
+        socket.once("data", () => {
+          socket.destroy();
+        });
+        socket.on("error", () => undefined);
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      return {
+        port: (server.address() as net.AddressInfo).port,
+        close: () => new Promise((resolve) => server.close(resolve)),
+      };
+    }
+    const later = (days: number) => ({
+      clock: () => new Date(Date.now() + days * DAY),
+    });
+
+    it("enters the new level at the unreadable check and not again on the next readable ones", async () => {
+      const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 8 }));
+      const reset = await resetServer();
+      try {
+        const monitor = await seedMonitor(db, { url: `${good.url}/` });
+        const events: MonitorEvent[] = [];
+        await check(monitor, events);
+        expect((await ssl(monitor)).ssl_state).toBe("caution");
+
+        // Two and a half days on, the certificate is in danger, but the
+        // handshake cannot be read at that very check.
+        await updateMonitor(
+          db,
+          monitor,
+          "update monitors set url = $2 where id = $1",
+          [monitor.monitorId, `https://${TARGET_HOST}:${String(reset.port)}/`],
+        );
+        await check(monitor, events, later(2.5));
+        expect((await ssl(monitor)).ssl_state).toBe("unreadable");
+
+        await updateMonitor(
+          db,
+          monitor,
+          "update monitors set url = $2 where id = $1",
+          [monitor.monitorId, `${good.url}/`],
+        );
+        await check(monitor, events, later(2.6));
+        await check(monitor, events, later(2.7));
+        expect(sslEvents(events)).toEqual([
+          { level: "caution", host: TARGET_HOST },
+          { level: "danger", host: TARGET_HOST },
+        ]);
+      } finally {
+        await good.close();
+        await reset.close();
+      }
+    });
+
+    it("a certificate first seen in danger after an unreadable check is entered once", async () => {
+      const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 5 }));
+      const reset = await resetServer();
+      try {
+        const monitor = await seedMonitor(db, {
+          url: `https://${TARGET_HOST}:${String(reset.port)}/`,
+        });
+        const events: MonitorEvent[] = [];
+        await check(monitor, events);
+        await updateMonitor(
+          db,
+          monitor,
+          "update monitors set url = $2 where id = $1",
+          [monitor.monitorId, `${good.url}/`],
+        );
+        await check(monitor, events);
+        await check(monitor, events);
+        expect(sslEvents(events)).toEqual([
+          { level: "danger", host: TARGET_HOST },
+        ]);
+      } finally {
+        await good.close();
+        await reset.close();
+      }
+    });
+  });
 });

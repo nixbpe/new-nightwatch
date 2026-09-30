@@ -349,6 +349,11 @@ function nextSsl(
     // certificate seen again after a failed handshake does not enter its level
     // a second time. Another host has no known identity yet.
     const sameHost = monitor.ssl_host === tls.host;
+    // The level of a known certificate follows from its expiry date, so a
+    // boundary crossed at this check is entered now. Waiting for a readable
+    // check would compare against this very check and lose the escalation.
+    const known = sameHost ? monitor.ssl_not_after : null;
+    const level = known ? sslLevel(known, result.checkedAt).level : "ok";
     return {
       update: {
         host: tls.host,
@@ -357,7 +362,10 @@ function nextSsl(
         state: "unreadable",
         reason: result.tlsReason,
       },
-      event: null,
+      event:
+        known && level !== "ok" && previousLevel(monitor, result) !== level
+          ? { level, host: tls.host, notAfter: known }
+          : null,
     };
   }
   if (result.httpStatus !== null) {
