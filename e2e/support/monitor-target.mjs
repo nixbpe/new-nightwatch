@@ -6,7 +6,7 @@ import { createServer } from "node:http";
  * OUTBOUND_TEST_ALLOWED_HOSTS (the SSRF helper blocks loopback otherwise).
  *
  * Routes (any method):
- *   /health          200 JSON while `mode` is "up", 503 while "down"
+ *   /health          200 JSON while `mode` is "up", 503 while "down", after `delayMs`
  *   /status/:code    that status
  *   /slow?ms=N       200 after N ms
  *   /creds           200 only when every header in `credentials` matches, else 401
@@ -28,6 +28,7 @@ export async function startMonitorTarget(options = {}) {
   let mode = "up";
   /** @type {Record<string, string>} */
   let credentials = {};
+  let delayMs = 0;
   /** @type {TargetHit[]} */
   const hits = [];
 
@@ -49,8 +50,10 @@ export async function startMonitorTarget(options = {}) {
     };
 
     if (url.pathname === "/health") {
-      if (mode === "up") send(200, JSON.stringify({ status: "ok" }));
-      else send(503, JSON.stringify({ status: "down" }));
+      setTimeout(() => {
+        if (mode === "up") send(200, JSON.stringify({ status: "ok" }));
+        else send(503, JSON.stringify({ status: "down" }));
+      }, delayMs);
     } else if (url.pathname.startsWith("/status/")) {
       const code = Number(url.pathname.slice("/status/".length));
       send(Number.isInteger(code) ? code : 400, "{}");
@@ -92,6 +95,10 @@ export async function startMonitorTarget(options = {}) {
     /** @param {"up" | "down"} next */
     setMode(next) {
       mode = next;
+    },
+    /** @param {number} ms delay before /health answers */
+    setDelay(ms) {
+      delayMs = ms;
     },
     /** @param {Record<string, string>} next lower-case header name to expected value */
     setCredentials(next) {
