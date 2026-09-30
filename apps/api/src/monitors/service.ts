@@ -37,6 +37,7 @@ import {
 } from "./record";
 import {
   assertSameOrigin,
+  sameOrigin,
   planSecrets,
   requiredSlots,
   type SecretPlan,
@@ -485,6 +486,17 @@ export async function editMonitor(
          check_config_version = check_config_version + $17::int,
          consecutive_failures = case when $17::int = 1 then 0
                                      else consecutive_failures end,
+         -- The certificate belongs to the old destination; until a check of
+         -- the new one records its own, the SSL state is no_data.
+         ssl_host = case when $18::boolean then null else ssl_host end,
+         ssl_issuer = case when $18::boolean then null else ssl_issuer end,
+         ssl_not_after = case when $18::boolean then null else ssl_not_after end,
+         ssl_state = case when $18::boolean then null else ssl_state end,
+         ssl_reason = case when $18::boolean then null else ssl_reason end,
+         ssl_notified_not_after = case when $18::boolean then null
+                                       else ssl_notified_not_after end,
+         ssl_notified_level = case when $18::boolean then null
+                                   else ssl_notified_level end,
          updated_at = now()
        where id = $1 and tenant_id = $2
        returning ${MONITOR_COLUMNS}, check_config_version as "checkConfigVersion"`,
@@ -493,6 +505,7 @@ export async function editMonitor(
           input.organizationId,
           ...configParameters(next),
           impacted ? 1 : 0,
+          !sameOrigin(previous, next),
         ],
       );
       const saved = updated.rows[0];

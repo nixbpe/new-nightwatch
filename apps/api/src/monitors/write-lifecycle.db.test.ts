@@ -511,6 +511,122 @@ describe("Edit header ids and URL trimming", () => {
   });
 });
 
+describe("Edit and the certificate of the old destination", () => {
+  type SslRow = {
+    ssl_host: string | null;
+    ssl_issuer: string | null;
+    ssl_not_after: Date | null;
+    ssl_state: string | null;
+    ssl_reason: string | null;
+    ssl_notified_not_after: Date | null;
+    ssl_notified_level: string | null;
+  };
+  const sslRow = async (id: string) =>
+    (
+      await ctx.owner.sql.query<SslRow>(
+        `select ssl_host, ssl_issuer, ssl_not_after, ssl_state, ssl_reason,
+                ssl_notified_not_after, ssl_notified_level
+         from monitors where id = $1`,
+        [id],
+      )
+    ).rows[0];
+
+  async function withCertificate() {
+    const monitor = await created();
+    await ctx.owner.sql.query(
+      `update monitors set ssl_host = $2, ssl_issuer = 'Test CA',
+         ssl_not_after = now() + interval '10 days', ssl_state = 'ok',
+         ssl_notified_not_after = now() + interval '10 days',
+         ssl_notified_level = 'caution'
+       where id = $1`,
+      [monitor.id, STUB_HOSTS.public],
+    );
+    expect((await action(monitor, "pause")).status).toBe(200);
+    return { ...monitor, version: 2, status: "paused" as const };
+  }
+
+  async function sslViews(id: string) {
+    const detail = await ctx.call(
+      owner(),
+      "GET",
+      monitorsPath(org.id, `/${id}`),
+    );
+    const list = await ctx.call(
+      owner(),
+      "GET",
+      monitorsPath(org.id, "?limit=50"),
+    );
+    const item = (
+      list.json as { monitors: { id: string; ssl: { level: string } }[] }
+    ).monitors.find((candidate) => candidate.id === id);
+    return {
+      detail: (detail.json as { monitor: { ssl: { state: string } } }).monitor
+        .ssl.state,
+      list: item?.ssl.level,
+    };
+  }
+
+  it("clears the SSL state when the host changes, so a paused monitor shows no_data", async () => {
+    const monitor = await withCertificate();
+    expect(await sslViews(monitor.id)).toEqual({
+      detail: "caution",
+      list: "caution",
+    });
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      url: `https://${STUB_HOSTS.missing}/health`,
+    });
+    expect(response.status).toBe(200);
+    expect(await sslRow(monitor.id)).toEqual({
+      ssl_host: null,
+      ssl_issuer: null,
+      ssl_not_after: null,
+      ssl_state: null,
+      ssl_reason: null,
+      ssl_notified_not_after: null,
+      ssl_notified_level: null,
+    });
+    expect(await sslViews(monitor.id)).toEqual({
+      detail: "no_data",
+      list: "no_data",
+    });
+  });
+
+  it.each([
+    ["scheme", (url: string) => url.replace("https:", "http:")],
+    [
+      "port",
+      (url: string) =>
+        url.replace(STUB_HOSTS.public, `${STUB_HOSTS.public}:8443`),
+    ],
+  ])("clears the SSL state when the %s changes", async (_label, change) => {
+    const monitor = await withCertificate();
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      url: change(monitor.url),
+    });
+    expect(response.status).toBe(200);
+    expect((await sslRow(monitor.id))?.ssl_state).toBeNull();
+    expect((await sslRow(monitor.id))?.ssl_notified_level).toBeNull();
+  });
+
+  it("keeps the SSL state when only the path or query changes", async () => {
+    const monitor = await withCertificate();
+    const before = await sslRow(monitor.id);
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      url: `https://${STUB_HOSTS.public}/other-path`,
+      queryParams: [{ name: "q", value: "1" }],
+    });
+    expect(response.status).toBe(200);
+    expect(await sslRow(monitor.id)).toEqual(before);
+    expect(await sslViews(monitor.id)).toEqual({
+      detail: "caution",
+      list: "caution",
+    });
+  });
+});
+
 describe("Pause racing Delete (AC-50)", () => {
   it("gives the loser the committed result or 404", async () => {
     for (let round = 0; round < 5; round += 1) {

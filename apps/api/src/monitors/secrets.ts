@@ -129,12 +129,19 @@ function originOf(config: {
 }
 
 /** A path or query change keeps the origin; anything unparsable counts as changed. */
+export function sameOrigin(
+  previous: Parameters<typeof originOf>[0],
+  next: Parameters<typeof originOf>[0],
+): boolean {
+  const before = originOf(previous);
+  return before !== null && before === originOf(next);
+}
+
 export function assertSameOrigin(
   previous: Parameters<typeof originOf>[0],
   next: Parameters<typeof originOf>[0],
 ): void {
-  const before = originOf(previous);
-  if (before === null || before !== originOf(next)) {
+  if (!sameOrigin(previous, next)) {
     throw new AppError(
       422,
       "MONITOR_SECRET_ORIGIN_CHANGED",
