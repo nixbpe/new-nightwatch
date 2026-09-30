@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { evaluateAssertions } from "../../src/monitor-check/assertions";
-import { findAll } from "../../src/monitor-check/json-scan";
+import { findAll, findSpans } from "../../src/monitor-check/json-scan";
 import type { NormalizedAssertion } from "../../src/monitor-check";
 
 afterEach(() => {
@@ -59,6 +59,63 @@ describe("findAll", () => {
     expect(findAll(' {\n"a" : [ ] , "b" :\t{ } } ', ["b"])).toEqual([{}]);
     expect(findAll(' {"a":1} ', [])).toEqual([{ a: 1 }]);
     expect(findAll('{"a":[]}', ["a", 0])).toEqual([]);
+  });
+});
+
+describe("a prefix cut inside the document", () => {
+  const scan = (text: string, path: (string | number)[]) =>
+    findSpans(text, path, undefined, true);
+
+  it("terminates and does not throw at every cut position", () => {
+    const text =
+      '{"a":{"b":[1,2,{"c":"x\\"yz"}]},"d":"end","e":-12.5e3,"f":true}';
+    const paths: (string | number)[][] = [
+      [],
+      ["a"],
+      ["a", "b", 2, "c"],
+      ["d"],
+      ["e"],
+      ["f"],
+      ["zz"],
+      ["a", "b", 9],
+    ];
+    for (let cut = 0; cut <= text.length; cut++) {
+      for (const path of paths) {
+        expect(() => scan(text.slice(0, cut), path)).not.toThrow();
+      }
+    }
+  });
+
+  it("finds a value that lies completely inside the prefix", () => {
+    const text = '{"a":1,"b":"abc';
+    // `incomplete` is true too: a duplicate key could still follow the cut.
+    expect(scan(text, ["a"])).toEqual({ spans: [[5, 6]], incomplete: true });
+  });
+
+  it.each([
+    ["a string cut in the middle", '{"a":1,"b":"abc', ["b"]],
+    ["a number that may be cut", '{"a":12', ["a"]],
+    ["a key not yet reached", '{"a":1,"b":2', ["c"]],
+    ["a key cut in the middle", '{"a":1,"bb', ["b"]],
+    ["a value not started", '{"a":', ["a"]],
+    ["an array index not reached", '{"a":[1,2', ["a", 5]],
+    ["a cut inside a skipped container", '{"x":{"y":[1,{"z":', ["w"]],
+  ])("reports %s as incomplete with no span", (_name, text, path) => {
+    expect(scan(text, path)).toEqual({ spans: [], incomplete: true });
+  });
+
+  it("keeps a cut container as a span so its type is known", () => {
+    const text = '{"a":[1,2';
+    const { spans } = scan(text, ["a"]);
+    expect(spans).toEqual([[5, text.length]]);
+  });
+
+  it("does not call a complete document incomplete", () => {
+    expect(findSpans('{"a":1}', ["b"])).toEqual({
+      spans: [],
+      incomplete: false,
+    });
+    expect(findSpans('{"a":1}', ["a"], undefined, true).spans).toHaveLength(1);
   });
 });
 

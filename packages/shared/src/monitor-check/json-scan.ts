@@ -21,6 +21,7 @@ function skipString(text: string, start: number): number {
 
 /**
  * End offset of every container, by start offset (0 for any other offset).
+ * A container the text ends inside gets `text.length + 1`.
  * One iterative pass over the text, so a container is skipped by lookup.
  */
 export function indexContainers(text: string): Int32Array {
@@ -37,6 +38,8 @@ export function indexContainers(text: string): Int32Array {
     else if (c === "}" || c === "]") ends[open.pop() ?? 0] = i + 1;
     i++;
   }
+  // A prefix can end inside a container: it "ends" past the text so callers see it is cut.
+  for (const start of open) ends[start] = text.length + 1;
   return ends;
 }
 
@@ -50,27 +53,35 @@ function skipValue(text: string, ends: Int32Array, start: number): number {
   return i;
 }
 
-/** Starts of the members of an object or array; `visit` returns true to stop early. */
+/**
+ * Visits the members of an object or array; `visit` returns true to stop early.
+ * Returns true when the text ends inside the container (a cut prefix).
+ */
 function forEachMember(
   text: string,
   ends: Int32Array,
   start: number,
   visit: (key: string | number, valueStart: number) => boolean,
-): void {
+): boolean {
   const object = text.charAt(start) === "{";
   let i = skipSpace(text, start + 1);
   let index = 0;
-  while (i < text.length && text.charAt(i) !== "}" && text.charAt(i) !== "]") {
+  while (i < text.length) {
+    const c = text.charAt(i);
+    if (c === "}" || c === "]") return false;
     let key: string | number = index++;
     if (object) {
       const keyEnd = skipString(text, i);
+      if (keyEnd > text.length) return true;
       key = JSON.parse(text.slice(i, keyEnd)) as string;
       i = skipSpace(text, skipSpace(text, keyEnd) + 1); // past ":"
+      if (i >= text.length) return true;
     }
-    if (visit(key, i)) return;
+    if (visit(key, i)) return false;
     i = skipSpace(text, skipValue(text, ends, i));
     if (text.charAt(i) === ",") i = skipSpace(text, i + 1);
   }
+  return true;
 }
 
 /**
@@ -83,28 +94,46 @@ export function findSpans(
   text: string,
   segments: PathSegment[],
   ends: Int32Array = indexContainers(text),
-): [start: number, end: number][] {
+  truncated = false,
+): { spans: [start: number, end: number][]; incomplete: boolean } {
+  let incomplete = false;
   let starts: number[] = [skipSpace(text, 0)];
   for (const segment of segments) {
     const next: number[] = [];
     for (const start of starts) {
       const c = text.charAt(start);
+      let cut = false;
       if (typeof segment === "string" && c === "{") {
-        forEachMember(text, ends, start, (key, valueStart) => {
+        cut = forEachMember(text, ends, start, (key, valueStart) => {
           if (key === segment) next.push(valueStart);
           return false;
         });
       } else if (typeof segment === "number" && c === "[") {
-        forEachMember(text, ends, start, (key, valueStart) => {
+        cut = forEachMember(text, ends, start, (key, valueStart) => {
           if (key !== segment) return false;
           next.push(valueStart);
           return true;
         });
       }
+      if (cut) incomplete = true;
     }
     starts = next;
   }
-  return starts.map((start) => [start, skipValue(text, ends, start)]);
+  const spans: [number, number][] = [];
+  for (const start of starts) {
+    const end = skipValue(text, ends, start);
+    const c = text.charAt(start);
+    if (c === "{" || c === "[") {
+      // The type is known even when the prefix cuts the container.
+      spans.push([start, Math.min(end, text.length)]);
+    } else if (end > text.length || (truncated && end === text.length)) {
+      // A string or number the prefix cuts (or may cut) has no known value.
+      incomplete = true;
+    } else {
+      spans.push([start, end]);
+    }
+  }
+  return { spans, incomplete };
 }
 
 /** JSON type of the value starting at `start`, read from its first character. */
@@ -132,7 +161,7 @@ export function findAll(
   segments: PathSegment[],
   ends: Int32Array = indexContainers(text),
 ): unknown[] {
-  return findSpans(text, segments, ends).map(
+  return findSpans(text, segments, ends).spans.map(
     ([start, end]) => JSON.parse(text.slice(start, end)) as unknown,
   );
 }

@@ -137,7 +137,7 @@ export function evaluateAssertions(
     valid ??= isJson(body.text);
     if (!valid) return outcome("fail", "not_json");
     ends ??= indexContainers(body.text);
-    const spans = findSpans(body.text, assertion.pathSegments, ends);
+    const { spans } = findSpans(body.text, assertion.pathSegments, ends);
     if (spans.length === 0) return outcome("fail", "path_not_found");
     if (spans.length > 1) return outcome("fail", "multiple_matches");
     const [start, end] = spans[0] ?? [0, 0];
