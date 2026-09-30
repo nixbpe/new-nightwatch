@@ -452,6 +452,33 @@ describe("7 d and 30 d as the API shapes them", () => {
     );
   });
 
+  it("takes the window start from the first bucket when the two reads straddle an hour boundary", () => {
+    // The Detail read saw 07:59:59 (its own estimate of the start is 08:00) but this read ran after
+    // 08:00, so its first bucket is 09:00 and the pause covers exactly that.
+    const read = "2026-09-30T07:59:59.000Z";
+    const firstHour = "2026-09-23T09:00:00.000Z";
+    const props = toChartProps(
+      {
+        range: "7d",
+        unit: "ms",
+        buckets: [
+          {
+            hourStart: firstHour,
+            avgMs: null,
+            maxMs: null,
+            checks: 0,
+            responseChecks: 0,
+          },
+        ],
+        pauses: [{ from: firstHour, to: "2026-09-30T08:00:02.000Z" }],
+        configChanges: [],
+      },
+      { dataAsOf: read, intervalSeconds: 900 },
+    );
+    expect(props.window?.from).toBe(firstHour);
+    expect(pausedThroughout(props)).toBe(true);
+  });
+
   it("does not call a partly paused window paused throughout", () => {
     const props = toChartProps(
       response({
@@ -508,6 +535,21 @@ describe("pausedThroughout tolerates only the window's edges", () => {
 
   it("is still true for slivers at the start and the end", () => {
     expect(paused([{ from: T("00:04"), to: T("11:56") }])).toBe(true);
+  });
+
+  it("is false for a window with no pause in it, even a very short one", () => {
+    // A monitor created 3 minutes ago: the window is clipped to a sliver shorter than the tolerance.
+    expect(
+      pausedThroughout({
+        range: "24h",
+        buckets: [],
+        pauses: [],
+        configChanges: [],
+        window,
+        intervalSeconds: 300,
+        createdAt: T("11:57"),
+      }),
+    ).toBe(false);
   });
 
   it("is false when an edge sliver is too long", () => {

@@ -56,12 +56,20 @@ export function toChartProps(
 ): ResponseTimeChartProps {
   const { range, pauses, configChanges } = response;
   const end = Date.parse(context.dataAsOf);
-  // The hourly reads start at the next whole hour after now minus the range; a 24 h read starts exactly there.
+  // A 24 h read starts exactly at now minus 24 h. An hourly read starts at the next whole hour, and its
+  // first bucket says which hour that was, so the window takes it from the response itself: the
+  // Detail read and this read can straddle an hour boundary.
   const start = end - RANGE_MS[range];
+  const firstBucket =
+    response.range === "24h" ? undefined : response.buckets[0];
+  const from =
+    range === "24h"
+      ? start
+      : firstBucket === undefined
+        ? Math.ceil(start / HOUR_MS) * HOUR_MS
+        : Date.parse(firstBucket.hourStart);
   const window = {
-    from: new Date(
-      range === "24h" ? start : Math.ceil(start / HOUR_MS) * HOUR_MS,
-    ).toISOString(),
+    from: new Date(from).toISOString(),
     to: context.dataAsOf,
   };
   const { intervalSeconds, createdAt } = context;
@@ -314,6 +322,12 @@ export function pausedThroughout(props: ResponseTimeChartProps): boolean {
     from: Date.parse(pause.from),
     to: Date.parse(pause.to),
   }));
+  // Without a pause inside the window, nothing was paused, however short the window is (a monitor just created).
+  if (
+    !pauses.some((pause) => pause.from < window.to && pause.to > window.from)
+  ) {
+    return false;
+  }
   const tolerance = (props.intervalSeconds ?? 30) * 2 * 1000;
   // Only a sliver at the window's edge is tolerated; an uncovered stretch between pauses is real activity.
   return subtract(window, pauses).every(
