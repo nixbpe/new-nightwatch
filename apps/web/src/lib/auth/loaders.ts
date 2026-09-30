@@ -239,6 +239,51 @@ export async function monitorDetailLoader({
   return null;
 }
 
+// The form page gates on role itself (denied state), so this only warms the
+// membership context the page reads.
+export async function monitorCreateLoader({
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  await prefetchMeContext(sessionOrRedirect.user.id);
+  return null;
+}
+
+// Edit pins the version it loads, so it always starts from a fresh read
+// (staleTime 0) rather than a Detail poll that may be 30 s old.
+export async function monitorEditLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const { organizationId, monitorId } = params;
+  if (organizationId === undefined || monitorId === undefined) {
+    return null;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (
+    context?.organizations.some(
+      (organization) => organization.id === organizationId,
+    ) !== true
+  ) {
+    return null;
+  }
+  await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+    .query({
+      queryKey: monitorQueryKeys.detail(organizationId, monitorId),
+      queryFn: () => fetchMonitorDetail(organizationId, monitorId),
+      staleTime: 0,
+    })
+    .catch(() => undefined);
+  return null;
+}
+
 // AbortSignal changes across awaits; keep each check as a fresh read.
 function isNavigationAborted(signal: AbortSignal): boolean {
   return signal.aborted;

@@ -8,6 +8,7 @@ import {
   monitorListResponseSchema,
   monitorRecentEventsResponseSchema,
   monitorResponseTimesResponseSchema,
+  monitorTestResponseSchema,
   monitorWriteResponseSchema,
   type MonitorChecksResponse,
   type MonitorDetailResponse,
@@ -15,13 +16,26 @@ import {
   type MonitorIncidentsResponse,
   type MonitorListResponse,
   type MonitorResponseTimesResponse,
+  type MonitorTestResponse,
   type MonitorWriteResponse,
+} from "@nightwatch/api-contract";
+import type {
+  monitorCreateSchema,
+  monitorEditSchema,
+  monitorTestCreateSchema,
+  monitorTestEditSchema,
 } from "@nightwatch/api-contract";
 
 import type { z } from "zod";
 
 import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
 import { request } from "./client";
+
+// Requests are typed by the schema input: the server applies the defaults.
+export type MonitorCreateBody = z.input<typeof monitorCreateSchema>;
+export type MonitorEditBody = z.input<typeof monitorEditSchema>;
+export type MonitorTestCreateBody = z.input<typeof monitorTestCreateSchema>;
+export type MonitorTestEditBody = z.input<typeof monitorTestEditSchema>;
 
 export type MonitorRecentEventsResponse = z.infer<
   typeof monitorRecentEventsResponseSchema
@@ -222,5 +236,53 @@ export function deleteMonitor(
     "/api/organizations/{organizationId}/monitors/{monitorId}",
     undefined,
     { method: "DELETE", params: { organizationId, monitorId } },
+  );
+}
+
+export function createMonitor(
+  organizationId: string,
+  body: MonitorCreateBody,
+): Promise<MonitorWriteResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors",
+    monitorWriteResponseSchema,
+    { method: "POST", params: { organizationId }, body },
+  );
+}
+
+export function updateMonitor(
+  organizationId: string,
+  monitorId: string,
+  body: MonitorEditBody,
+): Promise<MonitorWriteResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}",
+    monitorWriteResponseSchema,
+    { method: "PATCH", params: { organizationId, monitorId }, body },
+  );
+}
+
+/** Test of a configuration that is not saved yet; nothing is stored. */
+export function testMonitorDraft(
+  organizationId: string,
+  body: MonitorTestCreateBody,
+): Promise<MonitorTestResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/test",
+    monitorTestResponseSchema,
+    { method: "POST", params: { organizationId }, body },
+  );
+}
+
+/** Test in the Edit form: the complete configuration, with `keep` for every stored secret. */
+export function testMonitorEdit(
+  organizationId: string,
+  monitorId: string,
+  body: MonitorTestEditBody,
+): Promise<MonitorTestResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}/test",
+    monitorTestResponseSchema,
+    { method: "POST", params: { organizationId, monitorId }, body },
   );
 }

@@ -117,8 +117,9 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                 onClick={() => {
                   popover.close();
                   void switchOrg(org.id).then((switched) => {
+                    // A monitor form or Edit page belongs to the old Organization, so it lands on the new Overview.
                     const section =
-                      /^\/organizations\/[^/]+\/(members|monitors)$/.exec(
+                      /^\/organizations\/[^/]+\/(members|monitors)(?:\/new|\/[^/]+\/edit)?$/.exec(
                         location.pathname,
                       )?.[1];
                     if (switched && section !== undefined) {
