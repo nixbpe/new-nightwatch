@@ -279,6 +279,8 @@ export async function monitorEditLoader({
       queryKey: monitorQueryKeys.detail(organizationId, monitorId),
       queryFn: () => fetchMonitorDetail(organizationId, monitorId),
       staleTime: 0,
+      // A missing monitor is the page's own state; a retry would only delay it.
+      retry: false,
     })
     .catch(() => undefined);
   return null;

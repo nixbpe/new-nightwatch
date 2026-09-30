@@ -37,7 +37,9 @@ import {
 import { detail } from "../../pages/monitors/detail-test-support";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
+  monitorCreateLoader,
   monitorDetailLoader,
+  monitorEditLoader,
   monitorsOverviewLoader,
   notificationSettingsLoader,
   notificationsLoader,
@@ -505,6 +507,93 @@ describe("monitorDetailLoader", () => {
     renderAt([route], path);
 
     expect(await screen.findByTestId("from")).toHaveTextContent(path);
+    expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("monitorEditLoader and monitorCreateLoader", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const monitorId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const editRoute: RouteObject = {
+    path: "/organizations/:organizationId/monitors/:monitorId/edit",
+    loader: monitorEditLoader,
+    element: <div>edit-area</div>,
+  };
+  const createRoute: RouteObject = {
+    path: "/organizations/:organizationId/monitors/new",
+    loader: monitorCreateLoader,
+    element: <div>create-area</div>,
+  };
+  const member = {
+    ...meContext,
+    organizations: [
+      {
+        id: organizationId,
+        name: "Acme",
+        slug: "acme",
+        role: "admin" as const,
+      },
+    ],
+    lastActiveTenantId: organizationId,
+  };
+  const editPath = `/organizations/${organizationId}/monitors/${monitorId}/edit`;
+
+  afterEach(() => {
+    sessionState.data = null;
+    resetQueryClientRegistry();
+    fetchMeContextMock.mockReset();
+    fetchMonitorDetailMock.mockReset();
+  });
+
+  it("reads the monitor fresh for Edit even when a Detail poll is cached", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(member);
+    const fresh = { monitor: detail({ version: 9 }) };
+    fetchMonitorDetailMock.mockResolvedValue(fresh);
+    renderAt([editRoute], editPath);
+
+    expect(await screen.findByText("edit-area")).toBeInTheDocument();
+    expect(fetchMonitorDetailMock).toHaveBeenCalledExactlyOnceWith(
+      organizationId,
+      monitorId,
+    );
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        monitorQueryKeys.detail(organizationId, monitorId),
+      ),
+    ).toEqual(fresh);
+  });
+
+  it("requests no monitor for an Organization the user does not belong to", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    renderAt([editRoute], editPath);
+
+    expect(await screen.findByText("edit-area")).toBeInTheDocument();
+    expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
+  });
+
+  it("renders the Edit page when the read fails so the page shows its own state", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(member);
+    fetchMonitorDetailMock.mockRejectedValue(new Error("404"));
+    renderAt([editRoute], editPath);
+
+    expect(await screen.findByText("edit-area")).toBeInTheDocument();
+  });
+
+  it("sends an anonymous visitor to sign in from Edit and from Create", async () => {
+    sessionState.data = null;
+    renderAt([editRoute], editPath);
+    expect(await screen.findByTestId("from")).toHaveTextContent(editPath);
+    expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
+  });
+
+  it("lets a signed-in member open Create without any monitor request", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(member);
+    renderAt([createRoute], `/organizations/${organizationId}/monitors/new`);
+    expect(await screen.findByText("create-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
   });
 });
