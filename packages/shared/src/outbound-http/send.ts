@@ -140,8 +140,10 @@ function errorCode(error: unknown): string {
 function tlsReasonFor(code: string): TlsReason | null {
   switch (code) {
     case "CERT_HAS_EXPIRED":
-    case "CERT_NOT_YET_VALID":
       return "expired";
+    case "CERT_NOT_YET_VALID":
+      // Not expired; the contract has no not-yet-valid value, so it is a failed handshake.
+      return "handshake_failed";
     case "ERR_TLS_CERT_ALTNAME_INVALID":
       return "hostname_mismatch";
     case "DEPTH_ZERO_SELF_SIGNED_CERT":

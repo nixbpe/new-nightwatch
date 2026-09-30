@@ -700,6 +700,23 @@ describe("TLS verification", () => {
     },
   );
 
+  it("does not report a not-yet-valid certificate as expired", async () => {
+    const server = await serve({
+      tls: pki.leaf.notYetValid,
+      onRequest: ({ socket }) => {
+        okBody(socket);
+      },
+    });
+    const result = await sendOutboundRequest(
+      baseRequest(at(server, "/", "https")),
+      deps(),
+    );
+    expect(result.failure?.reason).toBe("tls_invalid");
+    expect(result.failure?.tlsReason).toBe("handshake_failed");
+    expect(result.tls?.reason).toBe("handshake_failed");
+    expect(server.bytesReceived()).toBe(0);
+  });
+
   it("returns issuer and notAfter of a valid certificate", async () => {
     const server = await serve({
       tls: pki.leaf.good,

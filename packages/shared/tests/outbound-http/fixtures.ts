@@ -16,7 +16,12 @@ export const TARGET_HOST = "target.nw-test.internal";
 export interface TestPki {
   ca: string;
   leaf: Record<
-    "good" | "wrongName" | "expired" | "selfSigned" | "unknownCa",
+    | "good"
+    | "wrongName"
+    | "expired"
+    | "notYetValid"
+    | "selfSigned"
+    | "unknownCa",
     { key: string; cert: string }
   >;
   dispose: () => void;
@@ -171,6 +176,12 @@ export function createTestPki(): TestPki {
         "20200102000000Z",
       ]),
       selfSigned: { key: read("self.key"), cert: read("self.crt") },
+      notYetValid: issue("future", TARGET_HOST, "ca", [
+        "-startdate",
+        "20990101000000Z",
+        "-enddate",
+        "20990102000000Z",
+      ]),
       unknownCa: issue("unknown", TARGET_HOST, "ca2", valid),
     },
     dispose: () => {
