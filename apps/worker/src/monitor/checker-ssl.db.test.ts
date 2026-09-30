@@ -312,8 +312,13 @@ describe("SSL state of the last hop (AC-35)", () => {
 
   it("an unreadable handshake keeps the certificate identity, so the same certificate enters its level once", async () => {
     const good = await startTlsTarget(pki.issue(TARGET_HOST, { days: 5 }));
+    // Cut only after the ClientHello arrives: a reset at accept can reach the
+    // client before any handshake started, which is a connection failure.
     const reset = net.createServer((socket) => {
-      socket.destroy();
+      socket.once("data", () => {
+        socket.destroy();
+      });
+      socket.on("error", () => undefined);
     });
     await new Promise<void>((resolve) => reset.listen(0, "127.0.0.1", resolve));
     const resetPort = (reset.address() as net.AddressInfo).port;
