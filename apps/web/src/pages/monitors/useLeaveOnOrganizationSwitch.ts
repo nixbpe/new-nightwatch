@@ -3,16 +3,28 @@ import { useNavigate } from "react-router";
 
 import { useTenant } from "../../lib/tenant/TenantProvider";
 
-export function hasLeftOrganization(
-  openedIn: string | null,
-  active: string | null,
-  routeOrganizationId: string,
-): boolean {
+/**
+ * True once the server-active Organization moved to one that is not the one this
+ * page opened in. A deep link can name an Organization that is not active, so the
+ * anchor is the active one at open until the active one becomes the route's; from
+ * then on the route's Organization is the anchor.
+ */
+export function useOrganizationSwitched(routeOrganizationId: string): boolean {
+  const { serverActiveOrgId } = useTenant();
+  const [anchor, setAnchor] = useState(serverActiveOrgId);
+  if (anchor === null && serverActiveOrgId !== null) {
+    setAnchor(serverActiveOrgId);
+  } else if (
+    serverActiveOrgId === routeOrganizationId &&
+    anchor !== routeOrganizationId
+  ) {
+    setAnchor(routeOrganizationId);
+  }
   return (
-    openedIn !== null &&
-    active !== null &&
-    active !== openedIn &&
-    active !== routeOrganizationId
+    anchor !== null &&
+    serverActiveOrgId !== null &&
+    serverActiveOrgId !== anchor &&
+    serverActiveOrgId !== routeOrganizationId
   );
 }
 
@@ -27,17 +39,7 @@ export function useLeaveOnOrganizationSwitch(
 ): boolean {
   const { serverActiveOrgId } = useTenant();
   const navigate = useNavigate();
-  const [openedIn, setOpenedIn] = useState(serverActiveOrgId);
-  if (openedIn === null && serverActiveOrgId !== null) {
-    setOpenedIn(serverActiveOrgId);
-  }
-  // A deep link can name an Organization that is not the server-active one. Only a change
-  // of the active Organization to one the route does not name counts as leaving it.
-  const switched = hasLeftOrganization(
-    openedIn,
-    serverActiveOrgId,
-    routeOrganizationId,
-  );
+  const switched = useOrganizationSwitched(routeOrganizationId);
   useEffect(() => {
     if (switched && serverActiveOrgId !== null) {
       void navigate(`/organizations/${serverActiveOrgId}/monitors`, {

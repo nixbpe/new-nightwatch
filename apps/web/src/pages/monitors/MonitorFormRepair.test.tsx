@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -85,6 +85,13 @@ afterEach(() => {
 
 type User = ReturnType<typeof userEvent.setup>;
 
+/** Lets every pending promise continuation and effect run inside act. */
+async function flush() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 async function openCreate(user: User) {
   renderForm(newPath());
   await screen.findByLabelText("ชื่อมอนิเตอร์");
@@ -147,10 +154,9 @@ describe("a route Organization that is not the server-active one", () => {
     await user.type(name, " typed");
     await user.click(screen.getByRole("button", { name: /Beta/ }));
     await user.click(screen.getByRole("menuitemradio", { name: /Acme/ }));
-    await waitFor(() => {
-      expect(updateActiveOrganization).toHaveBeenCalledTimes(1);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The switcher shows Acme once the switch has settled.
+    await screen.findByRole("button", { name: /Acme/ });
+    await flush();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${A}/monitors/${MONITOR_ID}/edit`,
     );
@@ -171,10 +177,8 @@ describe("a route Organization that is not the server-active one", () => {
     await screen.findByRole("heading", { level: 1, name: "Payments API" });
     await user.click(screen.getByRole("button", { name: /Beta/ }));
     await user.click(screen.getByRole("menuitemradio", { name: /Acme/ }));
-    await waitFor(() => {
-      expect(updateActiveOrganization).toHaveBeenCalledTimes(1);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await screen.findByRole("button", { name: /Acme/ });
+    await flush();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${A}/monitors/${MONITOR_ID}`,
     );
@@ -199,6 +203,46 @@ describe("a route Organization that is not the server-active one", () => {
     expect(screen.queryByDisplayValue("typed")).toBeNull();
   });
 
+  it("leaves after the URL's Organization was picked and the first active one is picked again", async () => {
+    vi.mocked(updateActiveOrganization)
+      .mockResolvedValueOnce({ ...context(), lastActiveTenantId: A })
+      .mockResolvedValueOnce({ ...context(), lastActiveTenantId: B });
+    const user = userEvent.setup();
+    renderForm(newPath());
+    await user.type(await screen.findByLabelText("ชื่อมอนิเตอร์"), "typed");
+    await user.click(screen.getByRole("button", { name: /Beta/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Acme/ }));
+    await screen.findByRole("button", { name: /Acme/ });
+    await flush();
+    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("typed");
+    await user.click(screen.getByRole("button", { name: /Acme/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        `/organizations/${B}/monitors`,
+      );
+    });
+    expect(screen.queryByDisplayValue("typed")).toBeNull();
+  });
+
+  it("saves after the URL's Organization was picked", async () => {
+    vi.mocked(updateActiveOrganization).mockResolvedValue({
+      ...context(),
+      lastActiveTenantId: A,
+    });
+    const user = userEvent.setup();
+    await openCreate(user);
+    await user.click(screen.getByRole("button", { name: /Beta/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Acme/ }));
+    await screen.findByRole("button", { name: /Acme/ });
+    await user.click(saveCreate());
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        `/organizations/${A}/monitors/${MONITOR_ID}`,
+      );
+    });
+  });
+
   it("does not read Organization A's detail after the user switched away before the save landed", async () => {
     meMock.mockResolvedValue(threeOrgs(B));
     vi.mocked(updateActiveOrganization).mockResolvedValue(threeOrgs(C));
@@ -215,10 +259,10 @@ describe("a route Organization that is not the server-active one", () => {
         `/organizations/${C}/monitors`,
       );
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flush();
     const readsBefore = detailMock.mock.calls.length;
     pending.resolve({ monitor: record({ version: 4 }) });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flush();
     expect(detailMock.mock.calls).toHaveLength(readsBefore);
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${C}/monitors`,

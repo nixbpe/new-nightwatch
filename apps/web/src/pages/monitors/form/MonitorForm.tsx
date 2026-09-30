@@ -27,7 +27,7 @@ import {
 import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import type { MonitorFlashState } from "../flash";
-import { hasLeftOrganization } from "../useLeaveOnOrganizationSwitch";
+import { useOrganizationSwitched } from "../useLeaveOnOrganizationSwitch";
 import { AssertionsSection } from "./AssertionsSection";
 import { BasicSection } from "./BasicSection";
 import { RequestSection } from "./RequestSection";
@@ -99,7 +99,7 @@ export function MonitorForm({
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { serverActiveOrgId, refreshMembershipContext } = useTenant();
+  const { refreshMembershipContext } = useTenant();
   const organizationId = organization.id;
 
   // Pinned when the form opens: a refetch must not change what a save is checked against.
@@ -126,8 +126,6 @@ export function MonitorForm({
     crypto.randomUUID(),
   );
   const refused = useRef(false);
-  // The Organization the form opened in, which the route names: it can differ from the server-active one.
-  const [openedIn] = useState(serverActiveOrgId);
   const [membershipDenied, setMembershipDenied] = useState(false);
   // A refusal of the membership keeps actions off until a refresh proves it is back.
   const roleLost = roleLostByRole || membershipDenied;
@@ -146,13 +144,11 @@ export function MonitorForm({
   const saveInFlight = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const latestOrg = useRef(serverActiveOrgId);
-  latestOrg.current = serverActiveOrgId;
+  const switchedNow = useRef(false);
+  switchedNow.current = useOrganizationSwitched(organizationId);
   const mounted = useRef(true);
   /** The page is gone or the user switched Organization since the form opened. */
-  const leftOrganization = () =>
-    !mounted.current ||
-    hasLeftOrganization(openedIn, latestOrg.current, organizationId);
+  const leftOrganization = () => !mounted.current || switchedNow.current;
 
   useEffect(() => {
     // StrictMode runs the cleanup once before the real mount, so the flag is set again here.
