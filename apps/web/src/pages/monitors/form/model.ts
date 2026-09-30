@@ -1,4 +1,5 @@
 import {
+  canonicalSecretSlot,
   MONITOR_BODY_MAX_BYTES,
   MONITOR_DEFAULT_EXPECTED_STATUS,
   MONITOR_DEFAULT_INTERVAL_SECONDS,
@@ -163,7 +164,9 @@ function originOf(url: string): string | null {
 export function editBaseFromRecord(record: MonitorRecord): EditBase {
   return {
     version: record.version,
-    secretSlots: record.secretSlots.map((item) => item.slot),
+    secretSlots: record.secretSlots.map((item) =>
+      canonicalSecretSlot(item.slot),
+    ),
     origin: originOf(record.url),
   };
 }

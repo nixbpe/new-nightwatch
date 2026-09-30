@@ -130,7 +130,8 @@ export function requiredSlots(
   return slots;
 }
 
-function storedSet(base: EditBase | null): Set<string> {
+/** The one notion of a stored slot: the base's slots in their canonical (stored) spelling. */
+export function storedSet(base: EditBase | null): Set<string> {
   return new Set(base?.secretSlots.map(canonicalSecretSlot) ?? []);
 }
 

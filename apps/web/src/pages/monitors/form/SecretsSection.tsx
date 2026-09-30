@@ -8,8 +8,9 @@ import {
   isAuthSlot,
   keptSlots,
   requiredSlots,
+  storedSet,
 } from "./secrets";
-import { SecretSlot } from "./SecretSlot";
+import { replaceButtonId, SecretSlot } from "./SecretSlot";
 
 const AUTH_DROPPED_NOTE = "ค่าลับของชนิดเดิมจะถูกลบ";
 const AUTH_SLOT_PARTS = ["token", "username", "password", "apiKey"] as const;
@@ -30,7 +31,7 @@ export function SecretsSection({
   base,
 }: SectionProps & { base: EditBase | null }) {
   const { auth } = values;
-  const stored = new Set(base?.secretSlots ?? []);
+  const stored = storedSet(base);
   const slots = requiredSlots(values).filter((item) => isAuthSlot(item.slot));
   const dropped = droppedSlots(values, base).some(isAuthSlot);
   const storedInUse = keptSlots(values, base).some(isAuthSlot);
@@ -126,6 +127,8 @@ export function SecretsSection({
               { replacing: values.replacing.filter((s) => s !== item.slot) },
               "auth",
             );
+            // The cancel button unmounts: focus goes to this slot's replace button.
+            focusAfterRender(replaceButtonId(item.path));
           }}
           onType={() => {
             onChange({}, "auth");
@@ -140,7 +143,10 @@ export function SecretsSection({
             size="sm"
             aria-disabled={disabled}
             onClick={() => {
-              if (!disabled) changeType("none");
+              if (disabled) return;
+              changeType("none");
+              // This button unmounts with the stored secret: focus goes to the auth type.
+              focusAfterRender(fieldId("auth.type"));
             }}
           >
             เลิกใช้และลบค่าลับ

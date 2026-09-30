@@ -118,6 +118,10 @@ export function SecretControl({
           id={fieldId(path)}
           type="password"
           autoComplete="new-password"
+          // Monitor secrets are not the user's login: ask password managers not to offer to save them.
+          data-1p-ignore
+          data-lpignore="true"
+          data-bwignore="true"
           aria-label={ariaLabel}
           aria-invalid={error === undefined ? undefined : true}
           aria-describedby={describedBy === "" ? undefined : describedBy}

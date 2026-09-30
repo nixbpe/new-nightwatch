@@ -22,8 +22,8 @@ import {
   type HeaderRow,
   type MonitorMethod,
 } from "./model";
-import { headerSlot } from "./secrets";
-import { SecretSlot } from "./SecretSlot";
+import { headerSlot, storedSet } from "./secrets";
+import { replaceButtonId, SecretSlot } from "./SecretSlot";
 
 // AC-47: query parameters and the body are readable by every reader of the monitor.
 const VISIBLE_WARNING =
@@ -43,7 +43,7 @@ export function RequestSection({
   secrets,
   base,
 }: SectionProps & { base: EditBase | null }) {
-  const stored = new Set(base?.secretSlots ?? []);
+  const stored = storedSet(base);
   // Set when Add is pressed at the row limit; cleared when a row is removed.
   const [limit, setLimit] = useState<Rows | null>(null);
 
@@ -222,6 +222,7 @@ export function RequestSection({
                       },
                       `${path}.value`,
                     );
+                    focusAfterRender(replaceButtonId(`${path}.value`));
                   }}
                   onType={() => {
                     onChange({}, `${path}.value`);

@@ -180,7 +180,7 @@ describe("refusals with no control of their own", () => {
     );
     expect(screen.getByText("กรอกค่าลับของการยืนยันตัวตนให้ครบ")).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "แทนที่Token" }),
+      screen.getByRole("button", { name: "แทนที่ Token" }),
     ).toHaveAccessibleDescription("กรอกค่าลับของการยืนยันตัวตนให้ครบ");
     expect(
       screen.getByText("ค่าลับนี้ไม่ตรงกับการตั้งค่าปัจจุบัน"),

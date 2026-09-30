@@ -52,7 +52,7 @@ export function SecretSlot({
             variant="secondary"
             size="sm"
             aria-disabled={disabled}
-            aria-label={`แทนที่${label}`}
+            aria-label={`แทนที่ ${label}`}
             aria-invalid={error === undefined ? undefined : true}
             aria-describedby={error === undefined ? undefined : errorId(path)}
             onClick={() => {
@@ -88,7 +88,7 @@ export function SecretSlot({
           variant="ghost"
           size="sm"
           aria-disabled={disabled}
-          aria-label={`ยกเลิกการแทนที่${label}`}
+          aria-label={`ยกเลิกการแทนที่ ${label}`}
           onClick={() => {
             if (!disabled) onCancel();
           }}

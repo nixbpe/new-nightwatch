@@ -162,10 +162,10 @@ describe("Edit keeps stored secrets", () => {
     expect(within(auth).getByLabelText("ชนิด")).toHaveValue("bearer");
     expect(within(auth).getByText("ตั้งค่าแล้ว")).toBeInTheDocument();
     expect(
-      within(auth).getByRole("button", { name: "แทนที่Token" }),
+      within(auth).getByRole("button", { name: "แทนที่ Token" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "แทนที่ค่า header แถวที่ 1" }),
+      screen.getByRole("button", { name: "แทนที่ ค่า header แถวที่ 1" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "ลบ header แถวที่ 1" }),

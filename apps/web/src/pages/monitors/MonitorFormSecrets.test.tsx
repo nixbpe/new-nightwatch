@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchMeContext } from "../../lib/api/me";
+import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import {
   createMonitor,
   fetchMonitorChecks,
@@ -19,6 +19,7 @@ import {
 import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
 import {
   A,
+  B,
   context,
   detail,
   editPath,
@@ -55,8 +56,9 @@ const editTestMock = vi.mocked(testMonitorEdit);
 
 const HEADER_ID = "0f6a4b7e-1c2d-4e3f-8a9b-0c1d2e3f4a5b";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const SECRET = "s3cr3t-Value-9f2c";
-const OTHER_SECRET = "n3w-Value-77aa";
+// Unique per run, so a hit in a scan can only be this run's value.
+const SECRET = `s3cr3t-${crypto.randomUUID()}`;
+const OTHER_SECRET = `n3w-${crypto.randomUUID()}`;
 
 const testResult: { result: MonitorTestResult } = {
   result: {
@@ -416,7 +418,7 @@ describe("Edit: replace, keep and delete", () => {
 
   it("opens an empty password field on replace and sends the new value", async () => {
     const user = await openEdit();
-    await user.click(screen.getByRole("button", { name: "แทนที่Token" }));
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
     const token = screen.getByLabelText("Token");
     expect(token).toHaveValue("");
     expect(token).toHaveFocus();
@@ -434,14 +436,14 @@ describe("Edit: replace, keep and delete", () => {
 
   it("blocks an empty replacement with the message and cancelling it goes back to keep", async () => {
     const user = await openEdit();
-    await user.click(screen.getByRole("button", { name: "แทนที่Token" }));
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
     await user.click(saveEdit());
     expect(updateMock).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Token")).toHaveAccessibleDescription(
       /กรอกค่าใหม่ หรือกดยกเลิกการแทนที่/,
     );
     await user.click(
-      screen.getByRole("button", { name: "ยกเลิกการแทนที่Token" }),
+      screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
     );
     expect(within(authRegion()).getByText("ตั้งค่าแล้ว")).toBeVisible();
     await user.click(saveEdit());
@@ -455,10 +457,10 @@ describe("Edit: replace, keep and delete", () => {
 
   it("forgets a typed replacement that was cancelled", async () => {
     const user = await openEdit();
-    await user.click(screen.getByRole("button", { name: "แทนที่Token" }));
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
     await user.type(screen.getByLabelText("Token"), SECRET);
     await user.click(
-      screen.getByRole("button", { name: "ยกเลิกการแทนที่Token" }),
+      screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
     );
     await user.click(saveEdit());
     await waitFor(() => {
@@ -528,7 +530,7 @@ describe("Edit: replace, keep and delete", () => {
       const user = await openEdit(withHeader());
       expect(screen.getByLabelText("ค่าลับ header แถวที่ 1")).toBeChecked();
       await user.click(
-        screen.getByRole("button", { name: "แทนที่ค่า header แถวที่ 1" }),
+        screen.getByRole("button", { name: "แทนที่ ค่า header แถวที่ 1" }),
       );
       await user.type(screen.getByLabelText("ค่า header แถวที่ 1"), SECRET);
       await user.click(saveEdit());
@@ -600,6 +602,79 @@ describe("Edit: replace, keep and delete", () => {
   });
 });
 
+describe("Focus stays in the form when a pressed button goes away", () => {
+  const withHeaders = () =>
+    detail({
+      auth: { type: "bearer" },
+      headers: [
+        { id: HEADER_ID, name: "X-One", secret: true },
+        { name: "X-Team", value: "core", secret: false },
+      ],
+      secretSlots: [
+        { slot: "auth.token", configured: true },
+        { slot: `header.${HEADER_ID}`, configured: true },
+      ],
+    });
+
+  it("moves to the replace button of the same slot after cancelling a replacement", async () => {
+    const user = await openEdit(withHeaders());
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
+    await user.click(
+      screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
+    );
+    expect(screen.getByRole("button", { name: "แทนที่ Token" })).toHaveFocus();
+    await user.click(
+      screen.getByRole("button", { name: "แทนที่ ค่า header แถวที่ 1" }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "ยกเลิกการแทนที่ ค่า header แถวที่ 1",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "แทนที่ ค่า header แถวที่ 1" }),
+    ).toHaveFocus();
+  });
+
+  it("moves to the replacement field after pressing replace", async () => {
+    const user = await openEdit(withHeaders());
+    await user.click(
+      screen.getByRole("button", { name: "แทนที่ ค่า header แถวที่ 1" }),
+    );
+    expect(screen.getByLabelText("ค่า header แถวที่ 1")).toHaveFocus();
+  });
+
+  it("moves to the auth type after removing the auth secrets", async () => {
+    const user = await openEdit(withHeaders());
+    await user.click(
+      screen.getByRole("button", { name: "เลิกใช้และลบค่าลับ" }),
+    );
+    expect(within(authRegion()).getByLabelText("ชนิด")).toHaveFocus();
+  });
+
+  it("keeps the focus on the checkbox when a row is made secret or plain", async () => {
+    const user = await openEdit(withHeaders());
+    const box = screen.getByLabelText("ค่าลับ header แถวที่ 2");
+    await user.click(box);
+    expect(box).toHaveFocus();
+    await user.click(box);
+    expect(box).toHaveFocus();
+  });
+
+  it("moves to the name of the row that took its place after removing a secret row, else to the add button", async () => {
+    const user = await openEdit(withHeaders());
+    await user.click(
+      screen.getByRole("button", { name: "ลบ header แถวที่ 1" }),
+    );
+    expect(screen.getByLabelText("ชื่อ header แถวที่ 1")).toHaveFocus();
+    expect(screen.getByLabelText("ชื่อ header แถวที่ 1")).toHaveValue("X-Team");
+    await user.click(
+      screen.getByRole("button", { name: "ลบ header แถวที่ 1" }),
+    );
+    expect(screen.getByRole("button", { name: "เพิ่ม header" })).toHaveFocus();
+  });
+});
+
 describe("Edit: origin change (AC-44)", () => {
   const changeUrl = (value: string) => {
     fireEvent.change(screen.getByLabelText("URL"), { target: { value } });
@@ -613,7 +688,7 @@ describe("Edit: origin change (AC-44)", () => {
     );
     expect(saveEdit()).toBeDisabled();
     expect(testButton()).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "แทนที่Token" }));
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
     // An open replacement is not a kept value: Save is on, and it asks for the new value.
     await user.click(saveEdit());
     expect(updateMock).not.toHaveBeenCalled();
@@ -665,7 +740,32 @@ describe("Edit: origin change (AC-44)", () => {
     });
   });
 
-  it("does not block a path change or a monitor without secrets", async () => {
+  it.each([
+    ["a path", "https://api.acme.example/other"],
+    ["a query", "https://api.acme.example/health?probe=1"],
+    ["an explicit default port", "https://api.acme.example:443/health"],
+  ])(
+    "keeps Save and Test on with a kept secret when only %s changes",
+    async (_name, next) => {
+      const user = await openEdit();
+      changeUrl(next);
+      expect(saveEdit()).toBeEnabled();
+      expect(testButton()).toBeEnabled();
+      expect(screen.getByLabelText("URL")).not.toHaveAccessibleDescription(
+        /เปลี่ยนที่อยู่ปลายทาง/,
+      );
+      await user.click(saveEdit());
+      await waitFor(() => {
+        expect(updateMock).toHaveBeenCalledTimes(1);
+      });
+      expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+        url: next,
+        secrets: [{ slot: "auth.token", action: "keep" }],
+      });
+    },
+  );
+
+  it("does not block an origin change on a monitor without secrets", async () => {
     const user = await openEdit(detail());
     changeUrl("https://other.example/health");
     expect(saveEdit()).toBeEnabled();
@@ -714,7 +814,7 @@ describe("Test panel with secrets", () => {
       }),
     );
     await user.click(
-      screen.getByRole("button", { name: "แทนที่ค่า header แถวที่ 1" }),
+      screen.getByRole("button", { name: "แทนที่ ค่า header แถวที่ 1" }),
     );
     await user.type(screen.getByLabelText("ค่า header แถวที่ 1"), SECRET);
     await user.click(testButton());
@@ -730,7 +830,7 @@ describe("Test panel with secrets", () => {
 
   it("does not send a Test in Edit whose replacement is empty", async () => {
     const user = await openEdit();
-    await user.click(screen.getByRole("button", { name: "แทนที่Token" }));
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
     await user.click(testButton());
     expect(editTestMock).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Token")).toHaveAccessibleDescription(
@@ -856,7 +956,7 @@ describe("Server refusals of secret entries are placed beside the slot's field",
     );
     const user = await openEdit();
     await user.click(saveEdit());
-    const replace = await screen.findByRole("button", { name: "แทนที่Token" });
+    const replace = await screen.findByRole("button", { name: "แทนที่ Token" });
     expect(replace).toHaveAttribute("aria-invalid", "true");
     expect(replace).toHaveAccessibleDescription(
       /ไม่พบค่าลับที่เก็บไว้ของรายการนี้/,
@@ -903,7 +1003,14 @@ describe("Detail shows secrets as set only", () => {
 describe("Secret hygiene (AC-25)", () => {
   type Rendered = ReturnType<typeof renderForm>;
 
-  /** Every place a value could linger: markup, caches, storage and the console. */
+  // Saves and tests call the API functions directly, never useMutation, so the
+  // MutationCache (which would keep request bodies) must stay empty. Scanning it
+  // for a value would prove nothing while it is empty; assert that instead.
+  const expectNoRetainedRequests = (rendered: Rendered) => {
+    expect(rendered.queryClient.getMutationCache().getAll()).toHaveLength(0);
+  };
+
+  /** Every place a value could linger: markup, query cache, storage and the console. */
   function findSecrets(rendered: Rendered, values: string[]): string[] {
     const consoleCalls = [
       ...vi.mocked(console.log).mock.calls,
@@ -919,12 +1026,6 @@ describe("Secret hygiene (AC-25)", () => {
           .getQueryCache()
           .getAll()
           .map((query) => [query.queryKey, query.state.data]),
-      ),
-      mutationCache: JSON.stringify(
-        rendered.queryClient
-          .getMutationCache()
-          .getAll()
-          .map((mutation) => [mutation.state.variables, mutation.state.data]),
       ),
       localStorage: JSON.stringify(Object.entries(localStorage)),
       sessionStorage: JSON.stringify(Object.entries(sessionStorage)),
@@ -976,6 +1077,7 @@ describe("Secret hygiene (AC-25)", () => {
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(findSecrets(rendered, values)).toEqual([]);
     expect(passwordInputs()).toHaveLength(0);
+    expectNoRetainedRequests(rendered);
   });
 
   it("leaves no secret behind after an Edit that replaced one", async () => {
@@ -983,7 +1085,7 @@ describe("Secret hygiene (AC-25)", () => {
     const user = userEvent.setup();
     const rendered = renderForm(editPath());
     await screen.findByDisplayValue("Payments API");
-    await user.click(screen.getByRole("button", { name: "แทนที่Token" }));
+    await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
     await user.type(screen.getByLabelText("Token"), SECRET);
     await user.click(testButton());
     await screen.findByText("การทดสอบผ่าน");
@@ -994,6 +1096,7 @@ describe("Secret hygiene (AC-25)", () => {
     });
     expect(updateMock).toHaveBeenCalledTimes(1);
     expect(findSecrets(rendered, [SECRET])).toEqual([]);
+    expectNoRetainedRequests(rendered);
   });
 
   it("keeps the typed value out of the markup after a refused save, so a retry needs no retyping", async () => {
@@ -1018,5 +1121,90 @@ describe("Secret hygiene (AC-25)", () => {
     expect(findSecrets(rendered, ["Payments API"])).toContain(
       "Payments API in markup",
     );
+  });
+
+  it("finds a value seeded in each scanned place, so an empty result means something", async () => {
+    const seeded = `seed-${crypto.randomUUID()}`;
+    const rendered = renderForm(newPath());
+    await screen.findByLabelText("ชื่อมอนิเตอร์");
+    rendered.queryClient.setQueryData(["control"], { value: seeded });
+    localStorage.setItem("control", seeded);
+    sessionStorage.setItem("control", seeded);
+    console.log(seeded);
+    const el = document.createElement("i");
+    el.setAttribute("data-control", seeded);
+    document.body.append(el);
+    expect(findSecrets(rendered, [seeded]).sort()).toEqual(
+      [
+        `${seeded} in console`,
+        `${seeded} in localStorage`,
+        `${seeded} in markup`,
+        `${seeded} in queryCache`,
+        `${seeded} in sessionStorage`,
+      ].sort(),
+    );
+    el.remove();
+  });
+
+  describe("nothing typed survives leaving the form", () => {
+    async function typeToken(user: User) {
+      await chooseAuth(user, "bearer");
+      await user.type(screen.getByLabelText("Token"), SECRET);
+    }
+    async function reopenCreateFromOverview(user: User) {
+      await user.click(
+        await screen.findByRole("link", { name: /เพิ่มมอนิเตอร์/ }),
+      );
+      await screen.findByLabelText("ชื่อมอนิเตอร์");
+      await user.click(screen.getByRole("radio", { name: "ขั้นสูง" }));
+      await chooseAuth(user, "bearer");
+    }
+
+    it("on a route change: the form opened again has an empty field", async () => {
+      const user = await openCreate();
+      await typeToken(user);
+      await user.click(screen.getByRole("link", { name: "ยกเลิก" }));
+      expect(passwordInputs()).toHaveLength(0);
+      await reopenCreateFromOverview(user);
+      expect(screen.getByLabelText("Token")).toHaveValue("");
+    });
+
+    it("on an Organization switch: the form of the other Organization has an empty field", async () => {
+      vi.mocked(updateActiveOrganization).mockResolvedValue({
+        ...context(),
+        lastActiveTenantId: B,
+      });
+      const user = await openCreate();
+      await typeToken(user);
+      await user.click(screen.getByRole("button", { name: /Acme/ }));
+      await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId("location")).toHaveTextContent(
+          `/organizations/${B}/monitors`,
+        );
+      });
+      expect(passwordInputs()).toHaveLength(0);
+      expect(document.documentElement.outerHTML).not.toContain(SECRET);
+      await reopenCreateFromOverview(user);
+      expect(screen.getByLabelText("Token")).toHaveValue("");
+    });
+
+    it("on unmount: the store forgets the value", async () => {
+      const { renderHook, act } = await import("@testing-library/react");
+      const { useSecretStore, useClearSecretsOnUnmount } =
+        await import("./form/secrets");
+      const hook = renderHook(() => {
+        const store = useSecretStore();
+        useClearSecretsOnUnmount(store);
+        return store;
+      });
+      act(() => {
+        hook.result.current.set("auth.token", SECRET);
+      });
+      const read = hook.result.current.get;
+      expect(read("auth.token")).toBe(SECRET);
+      hook.unmount();
+      expect(read("auth.token")).toBe("");
+    });
   });
 });
