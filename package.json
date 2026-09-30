@@ -16,7 +16,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
-    "test:coverage": "turbo run test:coverage",
+    "test:coverage": "turbo run test:coverage --concurrency=1",
     "e2e": "bun run --cwd e2e test",
     "e2e:setup": "cd e2e && bun install --frozen-lockfile && bun x playwright install chromium",
     "db:up": "bun scripts/db.mjs up",

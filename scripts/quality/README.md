@@ -93,9 +93,11 @@ NOCREATEDB NOCREATEROLE NOBYPASSRLS`). The runtime role is created by
 - Thresholds (80% lines / statements / functions, 70% branches) live in **each
   app's `vitest.config`** (`apps/api`, `apps/web`). Do not duplicate them at
   the root, and never lower them to make the gate pass.
-- Root `test:coverage` is `turbo run test:coverage`: it passes through to the
-  app-level coverage runs and collects their reports; the root sets no
-  thresholds of its own.
+- Root `test:coverage` is `turbo run test:coverage --concurrency=1`: it passes
+  through to the app-level coverage runs and collects their reports; the root
+  sets no thresholds of its own. Packages run one at a time because the DB
+  suites share one Postgres, and parallel runs hit timeouts under load (a claim
+  test at 5 s, a lock wait of 5 s).
 - Coverage is always measured and reported. Thresholds **fail the run only
   when `COVERAGE_GATE=1`** is set in the app's environment. The gate is **on**
   in the CI `test` job (`COVERAGE_GATE: "1"`) since the first domain feature
