@@ -109,6 +109,41 @@ export const MONITOR_INVALID_REASONS = [
 export type MonitorInvalidReason = (typeof MONITOR_INVALID_REASONS)[number];
 export const monitorInvalidReasonSchema = z.enum(MONITOR_INVALID_REASONS);
 
+const MONITOR_INVALID_REASON_SET: ReadonlySet<string> = new Set(
+  MONITOR_INVALID_REASONS,
+);
+
+/**
+ * The reason a Zod issue of a monitor request is reported with. The API hook
+ * and the web form both use this one function, so a field gets the same
+ * reason on either side. Only the refinements above carry `params.reason`.
+ */
+export function monitorIssueReason(
+  issue: z.ZodError["issues"][number],
+): MonitorInvalidReason {
+  switch (issue.code) {
+    case "custom": {
+      const reason = (issue.params as { reason?: unknown } | undefined)?.reason;
+      return typeof reason === "string" &&
+        MONITOR_INVALID_REASON_SET.has(reason)
+        ? (reason as MonitorInvalidReason)
+        : "invalid_format";
+    }
+    case "invalid_type":
+      // Zod does not expose the input; a missing value is the only case that names "undefined".
+      return issue.message.endsWith("received undefined")
+        ? "required"
+        : "invalid_format";
+    case "too_small":
+      return issue.origin === "string" ? "required" : "out_of_range";
+    case "too_big":
+      if (issue.origin === "string") return "too_long";
+      return issue.origin === "array" ? "too_many" : "out_of_range";
+    default:
+      return "invalid_format";
+  }
+}
+
 export const MONITOR_ERROR_CODES = [
   "MONITOR_INVALID",
   "MONITOR_NOT_FOUND",

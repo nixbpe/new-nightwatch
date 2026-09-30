@@ -7,6 +7,7 @@ import {
   monitorCreateSchema,
   monitorEditSchema,
   monitorHistoryQuerySchema,
+  monitorIssueReason,
   monitorListQuerySchema,
   monitorRecentEventsQuerySchema,
   monitorResponseTimesQuerySchema,
@@ -668,5 +669,41 @@ describe("secret entries", () => {
     ]) {
       expect(edited([entry]).success, JSON.stringify(entry)).toBe(false);
     }
+  });
+});
+
+describe("monitorIssueReason", () => {
+  const reasonAt = (input: Record<string, unknown>, path: string) => {
+    const result = monitorConfigSchema.safeParse({ ...base, ...input });
+    if (result.success) return null;
+    const issue = result.error.issues.find(
+      (item) => item.path.join(".") === path,
+    );
+    return issue === undefined ? null : monitorIssueReason(issue);
+  };
+
+  it("names one reason for each kind of Zod issue", () => {
+    expect(reasonAt({ name: "" }, "name")).toBe("required");
+    expect(reasonAt({ name: "x".repeat(101) }, "name")).toBe("too_long");
+    expect(reasonAt({ timeoutSeconds: 31 }, "timeoutSeconds")).toBe(
+      "out_of_range",
+    );
+    expect(
+      reasonAt(
+        {
+          headers: Array.from({ length: 21 }, (_, i) => ({
+            name: `X-${String(i)}`,
+            value: "v",
+          })),
+        },
+        "headers",
+      ),
+    ).toBe("too_many");
+    expect(reasonAt({ timeoutSeconds: "x" }, "timeoutSeconds")).toBe(
+      "invalid_format",
+    );
+    expect(reasonAt({ url: "ftp://example.com" }, "url")).toBe(
+      "blocked_scheme",
+    );
   });
 });

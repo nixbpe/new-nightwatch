@@ -3,7 +3,6 @@ import {
   MONITOR_DEFAULT_EXPECTED_STATUS,
   MONITOR_DEFAULT_INTERVAL_SECONDS,
   MONITOR_DEFAULT_TIMEOUT_SECONDS,
-  MONITOR_INVALID_REASONS,
   MONITOR_MAX_ASSERTIONS,
   MONITOR_MAX_HEADERS,
   MONITOR_MAX_QUERY_PARAMS,
@@ -14,12 +13,11 @@ import {
   MONITOR_URL_MAX_LENGTH,
   monitorConfigSchema,
   monitorInvalidErrorResponseSchema,
+  monitorIssueReason,
   type MonitorConfigInput,
   type MonitorInvalidReason,
   type MonitorRecord,
 } from "@nightwatch/api-contract";
-import type { ZodError } from "zod";
-
 import type {
   MonitorCreateBody,
   MonitorEditBody,
@@ -276,32 +274,6 @@ export function testEditPayload(
 /** Field path (`headers.2.name`) to the message shown beside that field. */
 export type FieldErrors = Record<string, string>;
 
-const REASONS: ReadonlySet<string> = new Set(MONITOR_INVALID_REASONS);
-type Issue = ZodError["issues"][number];
-
-// Mirrors apps/api/src/monitors/invalid-input.ts so a field gets the same reason on either side.
-function reasonOf(issue: Issue): MonitorInvalidReason {
-  switch (issue.code) {
-    case "custom": {
-      const reason = (issue.params as { reason?: unknown } | undefined)?.reason;
-      return typeof reason === "string" && REASONS.has(reason)
-        ? (reason as MonitorInvalidReason)
-        : "invalid_format";
-    }
-    case "invalid_type":
-      return issue.message.endsWith("received undefined")
-        ? "required"
-        : "invalid_format";
-    case "too_small":
-      return issue.origin === "string" ? "required" : "out_of_range";
-    case "too_big":
-      if (issue.origin === "string") return "too_long";
-      return issue.origin === "array" ? "too_many" : "out_of_range";
-    default:
-      return "invalid_format";
-  }
-}
-
 const number = (value: number) => value.toLocaleString("en-US");
 
 export const URL_BLOCKED_MESSAGE =
@@ -454,7 +426,7 @@ export function validateValues(values: FormValues): FieldErrors {
   return issuesToErrors(
     parsed.error.issues.map((issue) => ({
       field: issue.path.join("."),
-      reason: reasonOf(issue),
+      reason: monitorIssueReason(issue),
     })),
   );
 }
