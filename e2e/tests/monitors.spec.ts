@@ -317,6 +317,34 @@ test("a target that goes down and comes back reaches the inbox once each", async
   ).toEqual({ MONITOR_DOWN: 1, MONITOR_RECOVERED: 1 });
 });
 
+test("a notification of a deleted monitor stays and its link reads as not found (AC-19, AC-52)", async ({
+  page,
+}) => {
+  const flap = await pool.query<{ id: string }>(
+    "select id from monitors where tenant_id = $1 and name = $2",
+    [orgA, flapName],
+  );
+  const session = await signInApi(owner);
+  const removed = await session.request(
+    "DELETE",
+    monitorPath(orgA, `/${flap.rows[0]!.id}`),
+  );
+  expect(removed.status).toBeLessThan(300);
+  await pool.query(
+    'update "user" set last_active_tenant_id = $2 where id = $1',
+    [owner.userId, orgA],
+  );
+  await signIn(page, owner);
+  await page.goto("/notifications");
+  await expect(page.getByText(`มอนิเตอร์ ${flapName} ล่ม`)).toBeVisible();
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(`เปิดมอนิเตอร์.*${flapName}`) })
+    .first()
+    .click();
+  await expect(page.getByText("ไม่พบมอนิเตอร์นี้")).toBeVisible();
+});
+
 test("Resume shows unknown until a new result arrives (AC-19)", async ({
   page,
 }) => {

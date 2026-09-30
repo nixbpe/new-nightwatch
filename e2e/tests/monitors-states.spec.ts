@@ -1,0 +1,435 @@
+import { randomUUID } from "node:crypto";
+import { expect, test, type Page } from "@playwright/test";
+
+import { createDatabase } from "../../packages/db/src/index.ts";
+import { startMonitorTarget } from "../support/monitor-target.mjs";
+import {
+  addMember,
+  basicConfig,
+  cleanUp,
+  createOrganization,
+  createPerson,
+  databaseOwnerUrl,
+  monitorPath,
+  signInApi,
+  targetHostname,
+  type ApiSession,
+  type Person,
+  type Role,
+} from "../support/monitor-fixtures";
+
+// Browser evidence for the scope, state and concurrency rows that need no long
+// schedule wait: AC-01, AC-04, AC-06, AC-07, AC-09, AC-10, AC-18, AC-40, AC-50.
+const run = randomUUID().slice(0, 8);
+const database = createDatabase(databaseOwnerUrl);
+const pool = database.sql;
+
+type Target = Awaited<ReturnType<typeof startMonitorTarget>>;
+let target: Target;
+let host: string;
+let orgA: string;
+let orgEmpty: string;
+let orgOther: string;
+let owner: Person;
+let ownerSession: ApiSession;
+let monitorId: string;
+let otherMonitorId: string;
+const people = {} as Record<Role, Person>;
+const userIds: string[] = [];
+const monitorName = `states-${run}`;
+
+const urlOf = (path: string) => `http://${host}:${String(target.port)}${path}`;
+const overview = () => `/organizations/${orgA}/monitors`;
+
+async function signIn(page: Page, person: Person) {
+  await page.goto("/login");
+  await page.getByLabel("อีเมล").fill(person.email);
+  await page.locator("#login-password").fill(person.password);
+  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.waitForURL(/\/workspace/);
+}
+
+test.beforeAll(async () => {
+  host = targetHostname();
+  target = await startMonitorTarget();
+  orgA = await createOrganization(pool, `E2E States A ${run}`);
+  orgEmpty = await createOrganization(pool, `E2E States Empty ${run}`);
+  orgOther = await createOrganization(pool, `E2E States Other ${run}`);
+  for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
+    people[role] = await createPerson(pool, role, orgA);
+    userIds.push(people[role].userId);
+    await addMember(pool, orgA, people[role].userId, role);
+  }
+  owner = people.owner;
+  await addMember(pool, orgEmpty, owner.userId, "owner");
+  await addMember(pool, orgOther, owner.userId, "owner");
+  ownerSession = await signInApi(owner);
+  const created = await ownerSession.request("POST", monitorPath(orgA), {
+    ...basicConfig(monitorName, urlOf("/health")),
+    clientRequestId: randomUUID(),
+  });
+  monitorId = (created.body as { monitor: { id: string } }).monitor.id;
+  const other = await ownerSession.request("POST", monitorPath(orgOther), {
+    ...basicConfig(`foreign-${run}`, urlOf("/health")),
+    clientRequestId: randomUUID(),
+  });
+  otherMonitorId = (other.body as { monitor: { id: string } }).monitor.id;
+});
+
+test.afterAll(async () => {
+  try {
+    await cleanUp(pool, userIds, [orgA, orgEmpty, orgOther]);
+  } finally {
+    await database.close();
+    await target.close();
+  }
+});
+
+test.describe("AC-01 leaf in the sidebar and the command palette", () => {
+  for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
+    test(`${role}: leaf is present, active on every sub-route, found by the palette`, async ({
+      page,
+    }) => {
+      await signIn(page, people[role]);
+      const nav = page.getByRole("navigation", { name: "เมนูหลัก" });
+      for (const path of ["", "/new", `/${monitorId}`, `/${monitorId}/edit`]) {
+        await page.goto(`${overview()}${path}`);
+        const leaf = nav.getByRole("link", { name: "ตรวจสถานะบริการ" });
+        await expect(leaf).toBeVisible();
+        await expect(leaf).toHaveAttribute("aria-current", "page");
+        await expect(leaf).toHaveAttribute("href", overview());
+      }
+      await page.goto("/workspace");
+      await expect(nav).toBeVisible();
+      await page.keyboard.press("ControlOrMeta+k");
+      const palette = page.getByRole("dialog", { name: "ค้นหาทั้งหมด" });
+      await expect(palette).toBeVisible();
+      await palette
+        .getByRole("combobox", { name: "ค้นหาทั้งหมด" })
+        .fill("ตรวจสถานะ");
+      await expect(
+        palette.getByRole("option", { name: /ตรวจสถานะบริการ/ }),
+      ).toBeVisible();
+    });
+  }
+});
+
+test.describe("AC-04 Overview states", () => {
+  test("first-run empty, filtered empty, loading, error with retry, stale warning", async ({
+    page,
+  }) => {
+    await signIn(page, owner);
+
+    await page.goto(`/organizations/${orgEmpty}/monitors`);
+    await expect(page.getByText("ยังไม่มีมอนิเตอร์")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "เพิ่มมอนิเตอร์" }).first(),
+    ).toBeVisible();
+
+    const listUrl = /\/api\/organizations\/[^/]+\/monitors(\?.*)?$/;
+    let failList = true;
+    let delayMs = 1500;
+    await page.route(listUrl, async (route) => {
+      if (failList) {
+        await route.abort();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, delayMs));
+      await route.continue();
+    });
+    await page.goto(overview());
+    // A failed load is an error with a retry, never an empty list.
+    await expect(page.getByText("โหลดมอนิเตอร์ไม่สำเร็จ")).toBeVisible();
+    await expect(page.getByText("ยังไม่มีมอนิเตอร์")).toHaveCount(0);
+    failList = false;
+    await page.getByRole("button", { name: /ลองใหม่|ลองอีกครั้ง/ }).click();
+    await expect(page.getByRole("link", { name: monitorName })).toBeVisible();
+
+    await page.getByLabel("ค้นหาชื่อหรือ URL").fill(`no-such-${run}`);
+    await expect(
+      page.getByText("ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง"),
+    ).toBeVisible();
+    await page.getByLabel("ค้นหาชื่อหรือ URL").fill("");
+    await expect(page.getByRole("link", { name: monitorName })).toBeVisible();
+
+    // Loading: a slow list shows the loading state first.
+    delayMs = 6000;
+    // "commit" returns before the dev server finishes loading modules, which can
+    // outlast the delay and hide the loading state.
+    await page.reload({ waitUntil: "commit" });
+    // The route loader fetches the list first, so the shell shows its page-opening status.
+    await expect(page.getByRole("status").first()).toContainText(
+      /กำลัง(เปิดหน้า|โหลดมอนิเตอร์)/,
+    );
+    await expect(page.getByRole("link", { name: monitorName })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Stale: a refresh that fails keeps the data and warns.
+    delayMs = 0;
+    failList = true;
+    await page.getByRole("button", { name: "รีเฟรช" }).click();
+    await expect(
+      page.getByText(/อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ/),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: monitorName })).toBeVisible();
+  });
+});
+
+test.describe("AC-06, AC-07, AC-09, AC-10 create form", () => {
+  test("defaults, mode switch keeps values, validation beside the field, one monitor on a double click", async ({
+    page,
+  }) => {
+    await signIn(page, owner);
+    await page.goto(`${overview()}/new`);
+    const group = page.getByRole("radiogroup", { name: "ตรวจทุก" });
+    await expect(group.getByRole("radio", { checked: true })).toHaveText(
+      "5 นาที",
+    );
+    await expect(group.getByRole("radio")).toHaveText([
+      "1 นาที",
+      "5 นาที",
+      "15 นาที",
+    ]);
+    await expect(
+      page.getByText("ถือว่าปกติเมื่อได้รหัส 200-299"),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
+    await expect(page.getByLabel("ชื่อมอนิเตอร์")).toBeFocused();
+    await expect(
+      page.getByLabel("URL", { exact: true }),
+    ).toHaveAccessibleDescription(/.+/);
+
+    await page.getByLabel("ชื่อมอนิเตอร์").fill(`double-${run}`);
+    await page.getByLabel("URL", { exact: true }).fill(urlOf("/health"));
+    await group.getByRole("radio", { name: "15 นาที" }).click();
+    await page.getByRole("radio", { name: "ขั้นสูง" }).click();
+    await page.getByRole("radio", { name: "พื้นฐาน" }).click();
+    await expect(page.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(`double-${run}`);
+    await expect(page.getByLabel("URL", { exact: true })).toHaveValue(
+      urlOf("/health"),
+    );
+    await expect(group.getByRole("radio", { checked: true })).toHaveText(
+      "15 นาที",
+    );
+
+    const save = page.getByRole("button", { name: "บันทึกมอนิเตอร์" });
+    await save.dblclick();
+    await expect(
+      page.getByRole("heading", { name: `double-${run}` }),
+    ).toBeVisible();
+    const count = await pool.query(
+      "select count(*)::int n from monitors where tenant_id = $1 and name = $2",
+      [orgA, `double-${run}`],
+    );
+    expect(count.rows[0].n).toBe(1);
+  });
+
+  test("a forbidden address is refused beside the URL field without any connection", async ({
+    page,
+  }) => {
+    await signIn(page, owner);
+    await page.goto(`${overview()}/new`);
+    const before = target.hits.length;
+    await page.getByLabel("ชื่อมอนิเตอร์").fill(`forbidden-${run}`);
+    await page
+      .getByLabel("URL", { exact: true })
+      .fill(`http://localhost:${String(target.port)}/health`);
+    await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
+    await expect(page.getByText("ที่อยู่นี้ไม่อนุญาตให้ตรวจสอบ")).toBeVisible();
+    await expect(page.getByLabel("URL", { exact: true })).toHaveValue(
+      `http://localhost:${String(target.port)}/health`,
+    );
+    const count = await pool.query(
+      "select count(*)::int n from monitors where tenant_id = $1 and name = $2",
+      [orgA, `forbidden-${run}`],
+    );
+    expect(count.rows[0].n).toBe(0);
+    expect(target.hits.length).toBe(before);
+  });
+
+  test("timeout and unresolvable host show their own messages, apart from the target's result", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await signIn(page, owner);
+    await page.goto(`${overview()}/new`);
+    await page.getByLabel("ชื่อมอนิเตอร์").fill(`timeout-${run}`);
+    await page.getByRole("radio", { name: "ขั้นสูง" }).click();
+    await page.getByLabel("หมดเวลารอ (วินาที)").fill("1");
+    await page.getByLabel("URL", { exact: true }).fill(urlOf("/slow?ms=4000"));
+    await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "หมดเวลารอ 1 วินาที" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page
+      .getByLabel("URL", { exact: true })
+      .fill(`http://no-such-host-${run}.invalid/`);
+    await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "ไม่พบชื่อโดเมนนี้" }),
+    ).toBeVisible({ timeout: 15_000 });
+  });
+});
+
+test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
+  test("a concurrent edit shows the conflict and keeps typed values (AC-18)", async ({
+    browser,
+  }) => {
+    const first = await browser.newContext();
+    const second = await browser.newContext();
+    const a = await first.newPage();
+    const b = await second.newPage();
+    await signIn(a, owner);
+    await signIn(b, owner);
+    for (const page of [a, b]) {
+      await page.goto(`${overview()}/${monitorId}/edit`);
+      await expect(page.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(monitorName);
+    }
+    await a.getByLabel("ชื่อมอนิเตอร์").fill(`${monitorName}-a`);
+    await a.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
+    await expect(
+      a.getByRole("heading", { name: `${monitorName}-a` }),
+    ).toBeVisible();
+    await b.getByLabel("ชื่อมอนิเตอร์").fill(`${monitorName}-b`);
+    await b.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
+    await expect(
+      b.getByText("มอนิเตอร์นี้ถูกแก้โดยผู้อื่น โหลดใหม่เพื่อดูค่าล่าสุด"),
+    ).toBeVisible();
+    await expect(b.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(`${monitorName}-b`);
+    const stored = await pool.query("select name from monitors where id = $1", [
+      monitorId,
+    ]);
+    expect(stored.rows[0].name).toBe(`${monitorName}-a`);
+    await first.close();
+    await second.close();
+    await pool.query("update monitors set name = $2 where id = $1", [
+      monitorId,
+      monitorName,
+    ]);
+  });
+
+  test("an id of another Organization reads as not found on Detail and Edit (AC-18, AC-48)", async ({
+    page,
+  }) => {
+    await signIn(page, owner);
+    for (const path of [
+      `/${otherMonitorId}`,
+      `/${otherMonitorId}/edit`,
+      "/not-a-uuid",
+    ]) {
+      await page.goto(`${overview()}${path}`);
+      await expect(page.getByText("ไม่พบมอนิเตอร์นี้")).toBeVisible();
+    }
+    await expect(page.getByText(`foreign-${run}`)).toHaveCount(0);
+  });
+
+  test("editing the URL shows unknown until the new configuration has a result (AC-40)", async ({
+    page,
+  }) => {
+    test.setTimeout(3 * 60_000);
+    const created = await ownerSession.request("POST", monitorPath(orgA), {
+      ...basicConfig(`change-${run}`, urlOf("/health")),
+      clientRequestId: randomUUID(),
+    });
+    const id = (created.body as { monitor: { id: string } }).monitor.id;
+    await signIn(page, owner);
+    await page.goto(`${overview()}/${id}`);
+    await expect(page.getByText("ปกติ", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
+
+    target.setDelay(8000);
+    await page.getByRole("link", { name: "แก้ไข" }).click();
+    await page
+      .getByLabel("URL", { exact: true })
+      .fill(urlOf("/health?changed=1"));
+    await page.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
+    await expect(page.getByText("บันทึกการแก้ไขแล้ว")).toBeVisible();
+    await expect(page.getByText("ไม่ทราบสถานะ", { exact: true })).toBeVisible();
+    await expect(page.getByText("ปกติ", { exact: true })).toHaveCount(0);
+    target.setDelay(0);
+    await expect(page.getByText("ปกติ", { exact: true })).toBeVisible({
+      timeout: 90_000,
+    });
+  });
+
+  test("deleting a monitor that another session deleted goes to Overview with the notice (AC-50)", async ({
+    page,
+  }) => {
+    const created = await ownerSession.request("POST", monitorPath(orgA), {
+      ...basicConfig(`raced-${run}`, urlOf("/health")),
+      clientRequestId: randomUUID(),
+    });
+    const id = (created.body as { monitor: { id: string } }).monitor.id;
+    await signIn(page, owner);
+    await page.goto(`${overview()}/${id}`);
+    await page.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
+    const dialog = page.getByRole("dialog", { name: "ยืนยันการลบมอนิเตอร์" });
+    await expect(dialog).toBeVisible();
+    const other = await ownerSession.request(
+      "DELETE",
+      monitorPath(orgA, `/${id}`),
+    );
+    expect(other.status).toBeLessThan(300);
+    await dialog.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
+    await expect(page).toHaveURL(new RegExp(`${overview()}$`));
+    await expect(page.getByText("มอนิเตอร์นี้ถูกลบแล้ว")).toBeVisible();
+  });
+
+  test("a Detail left open shows not found after the monitor is deleted elsewhere (AC-50)", async ({
+    page,
+  }) => {
+    const created = await ownerSession.request("POST", monitorPath(orgA), {
+      ...basicConfig(`vanish-${run}`, urlOf("/health")),
+      clientRequestId: randomUUID(),
+    });
+    const id = (created.body as { monitor: { id: string } }).monitor.id;
+    await signIn(page, owner);
+    await page.goto(`${overview()}/${id}`);
+    await expect(
+      page.getByRole("heading", { name: `vanish-${run}` }),
+    ).toBeVisible();
+    await ownerSession.request("DELETE", monitorPath(orgA, `/${id}`));
+    await page.getByRole("button", { name: "หยุดชั่วคราว" }).click();
+    await expect(page.getByText("ไม่พบมอนิเตอร์นี้")).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+});
+
+test("AC-11 the Test limit shows the wait from the server and disables the button", async ({
+  page,
+}) => {
+  const org = await createOrganization(pool, `E2E Rate ${run}`);
+  const person = await createPerson(pool, "rate", org);
+  userIds.push(person.userId);
+  await addMember(pool, org, person.userId, "owner");
+  const session = await signInApi(person);
+  const config = basicConfig("rate", urlOf("/status/200"));
+  for (let i = 0; i < 10; i++) {
+    const reply = await session.request(
+      "POST",
+      monitorPath(org, "/test"),
+      config,
+    );
+    expect(reply.status).toBe(200);
+  }
+  await signIn(page, person);
+  await page.goto(`/organizations/${org}/monitors/new`);
+  await page.getByLabel("ชื่อมอนิเตอร์").fill("rate");
+  await page.getByLabel("URL", { exact: true }).fill(urlOf("/status/200"));
+  const before = target.hits.length;
+  await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "ทดสอบบ่อยเกินไป" }),
+  ).toBeVisible();
+  await expect(page.getByText(/ลองอีกครั้งใน \d+ วินาที/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
+  ).toHaveAttribute("aria-disabled", "true");
+  expect(target.hits.length).toBe(before);
+  await pool.query("delete from organization where id = $1", [org]);
+});
