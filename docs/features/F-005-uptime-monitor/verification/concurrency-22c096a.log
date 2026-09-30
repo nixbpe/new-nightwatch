@@ -1,0 +1,8 @@
+PASS AC-59 60 concurrent creates at limit 50 made exactly 50
+PASS AC-59 concurrent Edit with one version: one 200, one 409, 8 of 8 rounds
+PASS AC-59 no monitor has two open incidents
+PASS AC-38 result of a check in flight during pause is dropped
+PASS AC-38 result of a check in flight during edit is dropped
+PASS AC-38 result of a check in flight during delete is dropped
+checks: 6 failed: 0
+EXIT 0
