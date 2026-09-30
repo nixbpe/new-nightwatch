@@ -12,7 +12,12 @@ function facts(overrides: Partial<HealthFacts> = {}): HealthFacts {
     consecutiveFailures: 0,
     lastPassedConfigVersion: 1,
     hasOpenIncident: false,
-    latest: { outcome: "pass", configVersion: 1, ageSeconds: 10 },
+    latest: {
+      outcome: "pass",
+      configVersion: 1,
+      ageSeconds: 10,
+      predatesResume: false,
+    },
     ...overrides,
   };
 }
@@ -21,7 +26,8 @@ const latest = (
   outcome: "pass" | "fail" | "check_error",
   ageSeconds = 10,
   configVersion = 1,
-) => ({ outcome, configVersion, ageSeconds });
+  predatesResume = false,
+) => ({ outcome, configVersion, ageSeconds, predatesResume });
 
 describe("computeHealth, in the order of the seven steps", () => {
   it("1: a paused monitor is paused whatever its results say", () => {
@@ -69,6 +75,27 @@ describe("computeHealth, in the order of the seven steps", () => {
       healthReason: "stale",
       lastKnownDown: false,
     });
+  });
+
+  it("3: a fresh pass from before the last Resume is unknown until a newer result", () => {
+    expect(
+      computeHealth(facts({ latest: latest("pass", 10, 1, true) })),
+    ).toEqual({
+      health: "unknown",
+      healthReason: "stale",
+      lastKnownDown: false,
+    });
+    expect(
+      computeHealth(facts({ latest: latest("pass", 10, 1, false) })).health,
+    ).toBe("up");
+  });
+
+  it("3: a config awaiting its first result outranks the Resume rule", () => {
+    expect(
+      computeHealth(
+        facts({ checkConfigVersion: 2, latest: latest("pass", 10, 1, true) }),
+      ).healthReason,
+    ).toBe("awaiting_new_config");
   });
 
   it("3: stale with an open incident keeps lastKnownDown", () => {

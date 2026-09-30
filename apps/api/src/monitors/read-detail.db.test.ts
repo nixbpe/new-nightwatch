@@ -285,6 +285,52 @@ describe("health: the seven steps, in List and Detail", () => {
   });
 });
 
+describe("Resume (AC-19)", () => {
+  it("is unknown until a result newer than the Resume exists, even after a fresh pass", async () => {
+    const created = await ctx.call(
+      detail.users.owner,
+      "POST",
+      monitorsPath(detail.id),
+      {
+        ...validConfig({ name: "Resumed" }),
+        clientRequestId: crypto.randomUUID(),
+      },
+    );
+    expect(created.status).toBe(201);
+    const { id } = monitorWriteResponseSchema.parse(created.json).monitor;
+    await seedResults(ctx, detail.id, id, [20]);
+    expect((await detailOf(detail, id)).health).toBe("up");
+
+    const action = (name: "pause" | "resume") =>
+      ctx.call(
+        detail.users.owner,
+        "POST",
+        monitorsPath(detail.id, `/${id}/${name}`),
+      );
+    expect((await action("pause")).status).toBe(200);
+    expect((await detailOf(detail, id)).health).toBe("paused");
+    expect((await action("resume")).status).toBe(200);
+
+    // The pass is only seconds old, but it predates the Resume.
+    for (const view of [
+      await detailOf(detail, id),
+      await listItem(detail, id),
+    ]) {
+      expect(view).toMatchObject({
+        health: "unknown",
+        healthReason: "stale",
+        lastKnownDown: false,
+      });
+    }
+
+    await seedResults(ctx, detail.id, id, [0]);
+    expect(await detailOf(detail, id)).toMatchObject({
+      health: "up",
+      healthReason: null,
+    });
+  });
+});
+
 describe("SSL level in Detail", () => {
   const DAY = 86_400;
   it.each([

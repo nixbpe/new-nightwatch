@@ -106,6 +106,8 @@ type StateRow = {
   latestEvaluatedFromPrefix: boolean | null;
   /** `now() - checked_at` measured by the database. */
   latestAgeSeconds: number | null;
+  /** The newest `resumed` event is later than the newest result. */
+  latestPredatesResume: boolean;
 };
 
 // The host of a stored URL, for `q`. URLs are validated on save (no userinfo).
@@ -131,7 +133,8 @@ const STATE_QUERY = `
     r."tlsReason" as "latestTlsReason", r.assertions as "latestAssertions",
     r."urlMasked" as "latestUrlMasked", r."configVersion" as "latestConfigVersion",
     r."evaluatedFromPrefix" as "latestEvaluatedFromPrefix",
-    extract(epoch from (now() - r."checkedAt"))::float8 as "latestAgeSeconds"
+    extract(epoch from (now() - r."checkedAt"))::float8 as "latestAgeSeconds",
+    coalesce(resumed.at > r."checkedAt", false) as "latestPredatesResume"
   from monitors m
   left join lateral (
     select scheduled_for as "scheduledFor", checked_at as "checkedAt", outcome,
@@ -144,6 +147,10 @@ const STATE_QUERY = `
     order by scheduled_for desc
     limit 1
   ) r on true
+  left join lateral (
+    select max(occurred_at) as at from monitor_events
+    where monitor_id = m.id and tenant_id = m.tenant_id and kind = 'resumed'
+  ) resumed on true
   left join lateral (
     select started_at, start_reason from monitor_incidents
     where monitor_id = m.id and tenant_id = m.tenant_id and ended_at is null
@@ -187,6 +194,7 @@ export function healthOf(row: StateRow) {
             outcome: row.latestOutcome,
             configVersion: row.latestConfigVersion,
             ageSeconds: row.latestAgeSeconds,
+            predatesResume: row.latestPredatesResume,
           },
   });
   return {
