@@ -207,7 +207,7 @@ export async function runCheck(
   );
   const reason: CheckFailureReason | null = !statusOk
     ? "http_status"
-    : results.some((assertion) => assertion.status !== "pass")
+    : results.some((assertion) => assertion.status === "fail")
       ? "assertion_failed"
       : null;
   return {

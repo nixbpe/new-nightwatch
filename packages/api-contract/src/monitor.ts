@@ -824,6 +824,7 @@ export const ASSERTION_REASONS = [
   "text_not_found",
   "too_slow",
   "no_response",
+  "prefix_ended",
 ] as const;
 export const SSL_LEVELS = [
   "ok",

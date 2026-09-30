@@ -120,6 +120,62 @@ describe("expected status and outcome", () => {
     expect(result.outcome).toBe("pass");
   });
 
+  it("passes when a prefix-ended JSONPath is the only assertion short of pass", async () => {
+    const pad = "x".repeat(1.2 * 1024 * 1024);
+    const server = await serve(() => ({
+      headers: { "Content-Type": "application/json" },
+      body: `{"pad":"${pad}","status":"ok"}`,
+    }));
+    const result = await runCheck(
+      configFor("http", server.port, {
+        assertions: [
+          {
+            kind: "jsonPathEquals",
+            pathSegments: ["status"],
+            expectedValue: "ok",
+          },
+        ],
+      }),
+      {},
+      deps(),
+    );
+    expect(result).toMatchObject({
+      outcome: "pass",
+      failureReason: null,
+      evaluatedFromPrefix: true,
+    });
+    expect(first(result.assertions)).toMatchObject({
+      status: "not_evaluated",
+      reason: "prefix_ended",
+    });
+  });
+
+  it("still fails when another assertion fails beside a prefix-ended one", async () => {
+    const pad = "x".repeat(1.2 * 1024 * 1024);
+    const server = await serve(() => ({
+      headers: { "Content-Type": "application/json" },
+      body: `{"pad":"${pad}","status":"ok"}`,
+    }));
+    const result = await runCheck(
+      configFor("http", server.port, {
+        assertions: [
+          {
+            kind: "jsonPathEquals",
+            pathSegments: ["status"],
+            expectedValue: "ok",
+          },
+          { kind: "responseTimeBelow", ms: 0 },
+        ],
+      }),
+      {},
+      deps(),
+    );
+    expect(result).toMatchObject({
+      outcome: "fail",
+      failureReason: "assertion_failed",
+    });
+  });
+
   it("fails with assertion_failed when status is fine but an assertion fails", async () => {
     const server = await serve(() => ({ body: "hello" }));
     const result = await runCheck(

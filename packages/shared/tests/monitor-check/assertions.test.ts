@@ -257,6 +257,84 @@ describe("body assertions against real responses (AC-33)", () => {
     expect(assertion.reason).toBe("undecodable");
   });
 
+  describe("JSONPath on a body cut at 1 MiB", () => {
+    const pad = "x".repeat(1.2 * 1024 * 1024);
+    const status = (expectedValue: string): NormalizedAssertion =>
+      jsonPath(["status"], expectedValue);
+
+    it("passes when the value is inside the prefix and matches", async () => {
+      const { assertion, prefix } = await assertOnce(
+        { headers: JSON_HEADERS, body: `{"status":"ok","pad":"${pad}"}` },
+        status("ok"),
+      );
+      expect(assertion).toMatchObject({ status: "pass", reason: null });
+      expect(prefix).toBe(true);
+    });
+
+    it("fails with the real mismatch when the value is inside the prefix", async () => {
+      const { assertion, prefix } = await assertOnce(
+        { headers: JSON_HEADERS, body: `{"status":"bad","pad":"${pad}"}` },
+        status("ok"),
+      );
+      expect(assertion).toMatchObject({
+        status: "fail",
+        reason: "value_mismatch",
+        actual: '"bad"',
+      });
+      expect(prefix).toBe(true);
+    });
+
+    it("is not evaluated, not not_json, when the path lies beyond the cut", async () => {
+      const { assertion, prefix } = await assertOnce(
+        { headers: JSON_HEADERS, body: `{"pad":"${pad}","status":"ok"}` },
+        status("ok"),
+      );
+      expect(assertion).toMatchObject({
+        status: "not_evaluated",
+        reason: "prefix_ended",
+      });
+      expect(prefix).toBe(true);
+    });
+
+    it("is not evaluated when the cut falls inside the matched string", async () => {
+      const { assertion } = await assertOnce(
+        { headers: JSON_HEADERS, body: `{"pad":"a","status":"${pad}"}` },
+        status("ok"),
+      );
+      expect(assertion).toMatchObject({
+        status: "not_evaluated",
+        reason: "prefix_ended",
+      });
+    });
+
+    it("still reports not_json for a truncated body that does not start like JSON", async () => {
+      const { assertion } = await assertOnce(
+        { body: `<html>${pad}</html>` },
+        status("ok"),
+      );
+      expect(assertion).toMatchObject({ status: "fail", reason: "not_json" });
+    });
+
+    it("is not evaluated when a later duplicate key could still supply the path", async () => {
+      const { assertion } = await assertOnce(
+        { headers: JSON_HEADERS, body: `{"a":{"b":1},"pad":"${pad}"}` },
+        jsonPath(["a", "c"], 1),
+      );
+      expect(assertion).toMatchObject({
+        status: "not_evaluated",
+        reason: "prefix_ended",
+      });
+    });
+  });
+
+  it("still reports not_json for a small body that is not JSON", async () => {
+    const { assertion } = await assertOnce(
+      { body: "not json at all" },
+      jsonPath(["a"], 1),
+    );
+    expect(assertion).toMatchObject({ status: "fail", reason: "not_json" });
+  });
+
   it("does not flag a body within 1 MiB", async () => {
     const { prefix } = await assertOnce(
       { body: "small" },

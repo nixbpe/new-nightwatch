@@ -51,6 +51,8 @@ function decodeBody(response: EvaluatedResponse): Decoded {
   }
 }
 
+const JSON_START = /^\s*[[{"\-0-9tfn]/;
+
 function isJson(text: string): boolean {
   try {
     JSON.parse(text);
@@ -134,11 +136,23 @@ export function evaluateAssertions(
         : outcome("fail", "text_not_found");
     }
 
-    valid ??= isJson(body.text);
+    // A truncated body is a prefix, so only its start can say whether it is JSON.
+    const truncated = response.bodyTruncated;
+    valid ??= truncated ? JSON_START.test(body.text) : isJson(body.text);
     if (!valid) return outcome("fail", "not_json");
     ends ??= indexContainers(body.text);
-    const { spans } = findSpans(body.text, assertion.pathSegments, ends);
-    if (spans.length === 0) return outcome("fail", "path_not_found");
+    const { spans, incomplete } = findSpans(
+      body.text,
+      assertion.pathSegments,
+      ends,
+      truncated,
+    );
+    if (spans.length === 0) {
+      // The prefix ended before the path could be decided: not an endpoint failure.
+      return incomplete
+        ? outcome("not_evaluated", "prefix_ended")
+        : outcome("fail", "path_not_found");
+    }
     if (spans.length > 1) return outcome("fail", "multiple_matches");
     const [start, end] = spans[0] ?? [0, 0];
     const foundType = jsonTypeAt(body.text, start);

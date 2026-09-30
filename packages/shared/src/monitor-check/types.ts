@@ -97,6 +97,7 @@ export const ASSERTION_REASONS = [
   "text_not_found",
   "too_slow",
   "no_response",
+  "prefix_ended",
 ] as const;
 export type AssertionReason = (typeof ASSERTION_REASONS)[number];
 

@@ -50,6 +50,7 @@ const ASSERTION_REASON_LABELS: Record<
   text_not_found: "ไม่พบข้อความ",
   too_slow: "ช้ากว่าที่กำหนด",
   no_response: "ไม่มี response",
+  prefix_ended: "ประเมินไม่ได้: เนื้อหาถูกตัดก่อนถึงค่านี้",
 };
 
 export function assertionReasonLabel(

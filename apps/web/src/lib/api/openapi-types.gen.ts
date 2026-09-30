@@ -1626,7 +1626,7 @@ export interface paths {
                                     /** @enum {string} */
                                     status: "pass" | "fail" | "not_evaluated";
                                     /** @enum {string|null} */
-                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | null;
+                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | "prefix_ended" | null;
                                 }[];
                                 url: string;
                                 evaluatedFromPrefix: boolean;
@@ -1908,7 +1908,7 @@ export interface paths {
                                     /** @enum {string} */
                                     status: "pass" | "fail" | "not_evaluated";
                                     /** @enum {string|null} */
-                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | null;
+                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | "prefix_ended" | null;
                                 }[];
                                 url: string;
                                 evaluatedFromPrefix: boolean;
@@ -2688,7 +2688,7 @@ export interface paths {
                                         /** @enum {string} */
                                         status: "pass" | "fail" | "not_evaluated";
                                         /** @enum {string|null} */
-                                        reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | null;
+                                        reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | "prefix_ended" | null;
                                     }[];
                                     url: string;
                                     configVersion: number;
@@ -3819,7 +3819,7 @@ export interface paths {
                                     /** @enum {string} */
                                     status: "pass" | "fail" | "not_evaluated";
                                     /** @enum {string|null} */
-                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | null;
+                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | "prefix_ended" | null;
                                 }[];
                                 url: string;
                                 configVersion: number;
