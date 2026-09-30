@@ -121,17 +121,17 @@ describe("Edit opens with the saved configuration", () => {
     expect(await screen.findByDisplayValue("Payments API")).toBeInTheDocument();
   });
 
-  it.each(["not-a-uuid", "99999999-9999-4999-8999-999999999999"])(
-    "shows the same not-found text for the id %s",
-    async (id) => {
-      detailMock.mockRejectedValue(
-        new ApiError("MONITOR_NOT_FOUND", "nf", 404),
-      );
-      renderForm(editPath(A, id));
-      expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
-      expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
-    },
-  );
+  it.each([
+    ["a missing id", "99999999-9999-4999-8999-999999999999"],
+    ["a malformed id", "not-a-uuid"],
+    ["an id of another Organization", "22222222-aaaa-4aaa-8aaa-222222222222"],
+  ])("shows the same not-found text for %s", async (_label, id) => {
+    // The API answers the three the same way (AC-48), so the page cannot tell them apart.
+    detailMock.mockRejectedValue(new ApiError("MONITOR_NOT_FOUND", "nf", 404));
+    renderForm(editPath(A, id));
+    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
+    expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  });
 
   it("keeps the nav leaf active on /new and /edit", () => {
     const leaf = { path: "/organizations/:organizationId/monitors" };

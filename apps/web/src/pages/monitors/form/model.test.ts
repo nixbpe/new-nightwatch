@@ -124,6 +124,21 @@ describe("server errors", () => {
     expect(serverFieldErrors(undefined)).toBeNull();
   });
 
+  it("treats every error of a secret header row as unplaced, its name included", () => {
+    const values = valid({
+      headers: [
+        { ...emptyHeader(), name: "X-Key", secret: true },
+        header("X-Team"),
+      ],
+    });
+    const { placed, unplaced } = placeErrors(
+      { "headers.0.name": "duplicate", "headers.1.name": "plain row" },
+      values,
+    );
+    expect(placed).toEqual({ "headers.1.name": "plain row" });
+    expect(unplaced).toEqual(["header ลับ X-Key (แถวที่ 1): duplicate"]);
+  });
+
   it("puts errors without a control in the summary, including a secret header's value", () => {
     const values = valid({
       headers: [{ ...emptyHeader(), name: "X-Key", secret: true }],
@@ -140,6 +155,7 @@ describe("server errors", () => {
     );
     expect(Object.keys(placed)).toEqual(["url"]);
     expect(unplaced).toHaveLength(4);
+    expect(unplaced).toContain("header ลับ X-Key (แถวที่ 1): secret row");
   });
 });
 

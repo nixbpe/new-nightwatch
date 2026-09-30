@@ -396,6 +396,26 @@ const FIELD_MESSAGES: Record<
     invalid_format: "กรอกจำนวนเต็มมิลลิวินาที",
     out_of_range: "ต้องอยู่ระหว่าง 1 ms ถึงเวลารอสูงสุด (timeout)",
   },
+  auth: {
+    required: "ต้องตั้งค่าการยืนยันตัวตนให้ครบ ตั้งค่าในหน้านี้ยังไม่ได้",
+  },
+  "auth.headerName": {
+    required: "กรอกชื่อ header ของ API key",
+    invalid_format: "ชื่อ header ไม่ถูกต้อง",
+    blocked_header: "ชื่อ header นี้ระบบตั้งเอง ตั้งเองไม่ได้",
+  },
+  "secrets.#": { required: "ไม่พบค่าลับที่เก็บไว้ของรายการนี้" },
+  "secrets.#.slot": {
+    invalid_format: "ค่าลับนี้ไม่ตรงกับการตั้งค่าปัจจุบัน",
+    duplicate: "ค่าลับนี้ถูกระบุซ้ำ",
+    required: "ค่าลับนี้ยังจำเป็นต้องใช้ ลบไม่ได้",
+  },
+  "secrets.#.value": {
+    required: "ยังไม่ได้กรอกค่าลับ",
+    too_long: "ค่าลับยาวได้ไม่เกิน 4 KiB",
+    crlf: "ค่าลับห้ามมีการขึ้นบรรทัดใหม่",
+    invalid_format: "ค่าลับมีอักขระที่ใช้ไม่ได้",
+  },
   assertions: {
     too_many: `เพิ่มเงื่อนไขได้ไม่เกิน ${String(MONITOR_MAX_ASSERTIONS)} ข้อ`,
   },
@@ -446,9 +466,29 @@ export const ADVANCED_ONLY_PATH =
 const PLACEABLE_PATH =
   /^(name|url|intervalSeconds|timeoutSeconds|method|expectedStatus|body\.content|headers|queryParams|assertions|headers\.\d+\.(name|value)|queryParams\.\d+\.(name|value)|assertions\.\d+\.(kind|path|expected|text|ms))$/;
 
+/** What a message with no control of its own is about, so the summary points at it. */
+function unplacedMessage(
+  path: string,
+  message: string,
+  values: FormValues,
+): string {
+  if (path === "request") return "ค่าที่กรอกไม่ถูกต้อง ตรวจสอบและลองอีกครั้ง";
+  const row = /^headers\.(\d+)(?:\.|$)/.exec(path);
+  if (row?.[1] !== undefined) {
+    const index = Number(row[1]);
+    const name = values.headers[index]?.name ?? "";
+    return `header ลับ ${name} (แถวที่ ${String(index + 1)}): ${message}`;
+  }
+  if (path === "auth" || path.startsWith("auth.")) {
+    return `การยืนยันตัวตน: ${message}`;
+  }
+  if (path.startsWith("secrets")) return `ค่าลับ: ${message}`;
+  return message;
+}
+
 /**
  * Splits errors into those that have a control to sit beside and the rest
- * (the summary above the buttons). A secret header has no value control here.
+ * (listed above the buttons). A secret header has no editable control here.
  */
 export function placeErrors(
   errors: FieldErrors,
@@ -457,12 +497,11 @@ export function placeErrors(
   const placed: FieldErrors = {};
   const unplaced: string[] = [];
   for (const [path, message] of Object.entries(errors)) {
-    const secretValue = /^headers\.(\d+)\.value$/.exec(path);
+    const row = /^headers\.(\d+)(?:\.|$)/.exec(path);
     const secretRow =
-      secretValue?.[1] !== undefined &&
-      values.headers[Number(secretValue[1])]?.secret === true;
+      row?.[1] !== undefined && values.headers[Number(row[1])]?.secret === true;
     if (PLACEABLE_PATH.test(path) && !secretRow) placed[path] = message;
-    else unplaced.push(message);
+    else unplaced.push(unplacedMessage(path, message, values));
   }
   return { placed, unplaced };
 }

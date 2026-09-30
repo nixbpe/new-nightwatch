@@ -55,6 +55,7 @@ export function BasicSection({
         </span>
         <SegmentedControl
           label="ตรวจทุก"
+          disabled={disabled}
           value={String(values.intervalSeconds)}
           options={INTERVAL_OPTIONS}
           onChange={(value) => {

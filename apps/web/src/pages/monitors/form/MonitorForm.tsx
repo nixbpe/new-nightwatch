@@ -62,6 +62,9 @@ const ORIGIN_BLOCK_NOTE =
 
 type Mode = "basic" | "advanced";
 
+// Nothing was created after these, so a fresh request id is safe once the user changes a value.
+const DEFINITIVE_REFUSALS: ReadonlySet<number> = new Set([400, 403, 409, 422]);
+
 // Errors of a Test that describe the form, its permission or its monitor; anything else is the service's.
 const FORM_ERROR_CODES: ReadonlySet<string> = new Set([
   "MONITOR_INVALID",
@@ -76,7 +79,7 @@ export function MonitorForm({
   organization,
   monitorId,
   record,
-  roleLost,
+  roleLost: roleLostByRole,
   onReload,
 }: {
   organization: { id: string; name: string; role: string };
@@ -104,8 +107,20 @@ export function MonitorForm({
   const [mode, setMode] = useState<Mode>(
     advancedCount(initial.values) > 0 ? "advanced" : "basic",
   );
-  // One id per form session, kept across retries of the same submission.
-  const [clientRequestId] = useState(() => crypto.randomUUID());
+  // One id per form session, kept across retries of the same submission. After
+  // a refusal that created nothing (400, 403, 409, 422) the next change starts
+  // a new submission; a network error or 5xx may have created it, so it keeps the id.
+  const [clientRequestId, setClientRequestId] = useState(() =>
+    crypto.randomUUID(),
+  );
+  const refused = useRef(false);
+  // The Organization the form opened in, which the route names: it can differ from the server-active one.
+  const [openedIn] = useState(serverActiveOrgId);
+  const [membershipDenied, setMembershipDenied] = useState(false);
+  // A refusal of the membership keeps actions off until a refresh proves it is back.
+  const roleLost = roleLostByRole || membershipDenied;
+  const lockMessage =
+    membershipDenied && !roleLostByRole ? DENIED_MESSAGE : ROLE_CHANGED;
 
   const [showErrors, setShowErrors] = useState(false);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
@@ -122,6 +137,12 @@ export function MonitorForm({
   const latestOrg = useRef(serverActiveOrgId);
   latestOrg.current = serverActiveOrgId;
   const mounted = useRef(true);
+  /** The page is gone or the user switched Organization since the form opened. */
+  const leftOrganization = () =>
+    !mounted.current ||
+    (latestOrg.current !== null &&
+      openedIn !== null &&
+      latestOrg.current !== openedIn);
 
   useEffect(() => {
     // StrictMode runs the cleanup once before the real mount, so the flag is set again here.
@@ -142,7 +163,7 @@ export function MonitorForm({
 
   const originBlocked = secretOriginChanged(base, values);
   const blockedReason = roleLost
-    ? ROLE_CHANGED
+    ? lockMessage
     : originBlocked
       ? SECRET_ORIGIN_MESSAGE
       : null;
@@ -162,10 +183,18 @@ export function MonitorForm({
   }, [focusTarget]);
 
   function change(patch: Partial<FormValues>, clearPrefix: string) {
+    if (refused.current) {
+      refused.current = false;
+      setClientRequestId(crypto.randomUUID());
+    }
     setValues((current) => ({ ...current, ...patch }));
     setServerErrors((current) => {
+      // A new timeout also settles a threshold error that was measured against the old one.
       const kept = Object.entries(current).filter(
-        ([path]) => path !== clearPrefix && !path.startsWith(`${clearPrefix}.`),
+        ([path]) =>
+          path !== clearPrefix &&
+          !path.startsWith(`${clearPrefix}.`) &&
+          !("timeoutSeconds" in patch && /^assertions\.\d+\.ms$/.test(path)),
       );
       return kept.length === Object.keys(current).length
         ? current
@@ -220,7 +249,10 @@ export function MonitorForm({
         return true;
       case "MEMBERSHIP_DENIED":
         setFormError(DENIED_MESSAGE);
-        refreshContext();
+        setMembershipDenied(true);
+        void refreshMembershipContext().then((refreshed) => {
+          if (refreshed !== null && mounted.current) setMembershipDenied(false);
+        });
         return true;
       case "MONITOR_VERSION_CONFLICT":
         setConflict(true);
@@ -276,6 +308,8 @@ export function MonitorForm({
         queryKey: monitorQueryKeys.all(organizationId),
         refetchType: "none",
       });
+      // A late save after a switch must not write this Organization's detail into the cache.
+      if (leftOrganization()) return;
       if (editing) {
         // Detail must not paint the pre-edit health for a frame: it starts from a fresh read.
         await queryClient
@@ -291,12 +325,7 @@ export function MonitorForm({
           });
       }
       // A save that lands after the Organization was switched must not pull the user back.
-      if (
-        !mounted.current ||
-        (latestOrg.current !== null && latestOrg.current !== organizationId)
-      ) {
-        return;
-      }
+      if (leftOrganization()) return;
       void navigate(
         `/organizations/${organizationId}/monitors/${saved.monitor.id}`,
         {
@@ -306,6 +335,8 @@ export function MonitorForm({
         },
       );
     } catch (error) {
+      refused.current =
+        error instanceof ApiError && DEFINITIVE_REFUSALS.has(error.status);
       handleError(error, "บันทึกไม่สำเร็จ ลองอีกครั้ง");
     } finally {
       saveInFlight.current = false;
@@ -441,7 +472,7 @@ export function MonitorForm({
           saving={saving}
           onPendingChange={setTesting}
         />
-        {roleLost ? <Alert tone="error">{ROLE_CHANGED}</Alert> : null}
+        {roleLost ? <Alert tone="error">{lockMessage}</Alert> : null}
         {conflict ? (
           <div className="flex flex-col gap-2">
             <Alert tone="warning">{CONFLICT_MESSAGE}</Alert>
@@ -464,9 +495,11 @@ export function MonitorForm({
         {formError === null || roleLost ? null : (
           <Alert tone="error">{formError}</Alert>
         )}
-        {unplaced.length === 0 ? null : (
-          <Alert tone="error">ค่าที่กรอกไม่ถูกต้อง ตรวจสอบและลองอีกครั้ง</Alert>
-        )}
+        {unplaced.map((message) => (
+          <Alert key={message} tone="error">
+            {message}
+          </Alert>
+        ))}
         {originBlocked && !roleLost ? (
           <p className="text-sm text-foreground-secondary">
             {ORIGIN_BLOCK_NOTE}

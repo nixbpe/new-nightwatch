@@ -25,6 +25,7 @@ export function TextControl({
   error,
   className,
   hint,
+  disabled,
   ...props
 }: {
   path: string;
@@ -33,6 +34,8 @@ export function TextControl({
   error: string | undefined;
   className?: string;
   hint?: ReactNode;
+  /** Read-only, not natively disabled: a disabled field would drop the focus its user is typing in. */
+  disabled?: boolean;
 } & Omit<ComponentProps<"input">, "id" | "className">) {
   const hintId = `${fieldId(path)}-hint`;
   const describedBy = [
@@ -50,6 +53,8 @@ export function TextControl({
           aria-invalid={error === undefined ? undefined : true}
           aria-describedby={describedBy === "" ? undefined : describedBy}
           autoComplete="off"
+          readOnly={disabled === true}
+          aria-readonly={disabled === true ? true : undefined}
           {...props}
         />
       </Field>
@@ -69,6 +74,8 @@ export function SelectControl({
   error,
   className,
   children,
+  disabled,
+  onChange,
   ...props
 }: {
   path: string;
@@ -76,6 +83,7 @@ export function SelectControl({
   ariaLabel?: string;
   error: string | undefined;
   className?: string;
+  disabled?: boolean;
 } & Omit<ComponentProps<"select">, "id" | "className">) {
   return (
     <Field
@@ -89,6 +97,10 @@ export function SelectControl({
         aria-label={ariaLabel}
         aria-invalid={error === undefined ? undefined : true}
         aria-describedby={error === undefined ? undefined : errorId(path)}
+        aria-disabled={disabled === true ? true : undefined}
+        onChange={(event) => {
+          if (disabled !== true) onChange?.(event);
+        }}
         className={cn(textInputClass, controlInvalid)}
         {...props}
       >
@@ -103,12 +115,14 @@ export function TextareaControl({
   label,
   error,
   className,
+  disabled,
   ...props
 }: {
   path: string;
   label: ReactNode;
   error: string | undefined;
   className?: string;
+  disabled?: boolean;
 } & Omit<ComponentProps<"textarea">, "id" | "className">) {
   return (
     <Field
@@ -127,6 +141,8 @@ export function TextareaControl({
           "h-auto min-h-32 py-2 font-mono text-sm",
         )}
         spellCheck={false}
+        readOnly={disabled === true}
+        aria-readonly={disabled === true ? true : undefined}
         {...props}
       />
     </Field>
@@ -159,9 +175,11 @@ export function RowShell({
             type="button"
             variant="ghost"
             size="sm"
-            disabled={disabled}
+            aria-disabled={disabled}
             aria-label={removeLabel}
-            onClick={onRemove}
+            onClick={() => {
+              if (!disabled) onRemove();
+            }}
           >
             ลบ
           </Button>
@@ -192,9 +210,11 @@ export function AddRowButton({
         type="button"
         variant="secondary"
         size="sm"
-        disabled={disabled}
+        aria-disabled={disabled}
         aria-describedby={limitMessage === null ? undefined : `${id}-limit`}
-        onClick={onAdd}
+        onClick={() => {
+          if (!disabled) onAdd();
+        }}
       >
         {label}
       </Button>
