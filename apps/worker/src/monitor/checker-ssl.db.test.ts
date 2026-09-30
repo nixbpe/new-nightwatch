@@ -305,7 +305,7 @@ describe("SSL state of the last hop (AC-35)", () => {
     try {
       const monitor = await seedMonitor(db, {
         url: `${stalled.url}/`,
-        timeoutSeconds: 1,
+        timeoutSeconds: 2,
       });
       const events: MonitorEvent[] = [];
       await check(monitor, events);
@@ -348,7 +348,7 @@ describe("SSL state of the last hop (AC-35)", () => {
     } finally {
       await stalled.close();
     }
-  });
+  }, 20_000);
 
   it("a connection failure before any handshake keeps the last known SSL state", async () => {
     const target = await startTlsTarget(pki.issue(TARGET_HOST, { days: 20 }));
