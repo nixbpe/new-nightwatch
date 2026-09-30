@@ -144,8 +144,9 @@ type Span = { from: number; to: number };
 
 /**
  * A pause counts for an empty hour only when it covers the whole hour. An
- * ongoing pause ends at the read time, so `slack` lets it reach an hour that
- * has been clipped to the window's end.
+ * ongoing pause ends at the read time, so `slack` (given only for the current
+ * hour, clipped to the window's end) lets it reach the end of that hour. A past
+ * hour needs a pause that covers all of it.
  */
 function coveredBy(
   at: number,
@@ -233,12 +234,12 @@ export function buildSeries(props: ResponseTimeChartProps): SeriesEntry[] {
       at = Math.max(at, created);
       end = Math.max(end, at);
     }
-    // The current hour runs past the read time.
-    if (win !== undefined && end > at)
-      end = Math.min(end, Math.max(at, win.to));
+    // The current hour runs past the read time; only that clipped hour gets slack for an ongoing pause.
+    const clipped = win !== undefined && end > at && end > win.to;
+    if (clipped) end = Math.max(at, win.to);
     let kind: SeriesKind = "value";
     if (bucket.checks === 0) {
-      kind = coveredBy(at, end, pauses, slack) ? "pause" : "gap";
+      kind = coveredBy(at, end, pauses, clipped ? slack : 0) ? "pause" : "gap";
     } else if (bucket.checkError === true) {
       kind = "check-error";
     } else if (bucket.avgMs === null) {

@@ -483,6 +483,60 @@ describe("7 d and 30 d as the API shapes them", () => {
   });
 });
 
+describe("pause slack applies to the clipped current hour only", () => {
+  const window = { from: T("08:00"), to: T("10:30") };
+  const kinds = (
+    pause: { from: string; to: string },
+    bucket: { at: string; endAt: string },
+  ) =>
+    buildSeries({
+      range: "7d",
+      buckets: [{ ...bucket, avgMs: null, maxMs: null, checks: 0 }],
+      pauses: [pause],
+      configChanges: [],
+      window,
+      intervalSeconds: 900,
+    }).map((entry) => entry.kind);
+
+  it("does not call a past hour a pause when the pause covered only part of it", () => {
+    // The monitor ran 29 minutes of this hour (interval 15 min, so slack would be 30 min).
+    expect(
+      kinds(
+        { from: T("09:00"), to: T("09:31") },
+        { at: T("09:00"), endAt: T("10:00") },
+      ),
+    ).toEqual(["gap"]);
+  });
+
+  it("calls a past hour a pause when a pause covers all of it", () => {
+    expect(
+      kinds(
+        { from: T("08:30"), to: T("10:00") },
+        { at: T("09:00"), endAt: T("10:00") },
+      ),
+    ).toEqual(["pause"]);
+  });
+
+  it("still gives slack to the current hour clipped at the read time", () => {
+    // The hour 10:00-11:00 is clipped to 10:30; the ongoing pause ends at the read time.
+    expect(
+      kinds(
+        { from: T("09:00"), to: T("10:29") },
+        { at: T("10:00"), endAt: T("11:00") },
+      ),
+    ).toEqual(["pause"]);
+  });
+
+  it("does not give that slack to the current hour when the pause ended long before", () => {
+    expect(
+      kinds(
+        { from: T("09:00"), to: T("09:50") },
+        { at: T("10:00"), endAt: T("11:00") },
+      ),
+    ).toEqual(["gap"]);
+  });
+});
+
 describe("24 h window clipped to creation", () => {
   const window = { from: T("00:00"), to: T("12:00") };
   const base = {
