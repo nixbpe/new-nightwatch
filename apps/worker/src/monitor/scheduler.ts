@@ -1,6 +1,7 @@
 import {
   claimDueMonitorChecks,
   purgeExpiredMonitorData,
+  withTenantContextRaw,
   type Database,
   type MonitorCheckClaim,
 } from "@nightwatch/db";
@@ -107,12 +108,37 @@ export class MonitorScheduler {
       const claims = await claimDueMonitorChecks(this.database, {
         limit: MONITOR_CLAIM_BATCH_SIZE,
       });
-      for (const claim of claims) {
-        // Redis is unavailable: stop claiming. The rest of this batch
-        // keeps its lease and is claimed again once the lease expires.
-        if (!(await this.#enqueue(claim))) return;
+      for (const [index, claim] of claims.entries()) {
+        if (await this.#enqueue(claim)) continue;
+        // Redis is unavailable: stop claiming and hand the unqueued claims
+        // back. The claim already moved next_check_at a full interval ahead,
+        // so waiting for the lease to expire would lose these slots.
+        for (const unqueued of claims.slice(index)) {
+          await this.#release(unqueued);
+        }
+        return;
       }
       if (claims.length < MONITOR_CLAIM_BATCH_SIZE) return;
+    }
+  }
+
+  /** Restores the due slot under the claim's own token; a newer claim wins. */
+  async #release(claim: MonitorCheckClaim): Promise<void> {
+    try {
+      await withTenantContextRaw(this.database, claim.tenantId, (client) =>
+        client.query(
+          `update monitor_schedule
+           set claim_token = null, claimed_until = null, next_check_at = $3
+           where monitor_id = $1 and claim_token = $2`,
+          [claim.monitorId, claim.claimToken, claim.scheduledFor],
+        ),
+      );
+    } catch {
+      // The lease expires on its own; the slot is then lost, not duplicated.
+      this.logger.error(
+        { monitorId: claim.monitorId, tenantId: claim.tenantId },
+        "monitor claim release failed",
+      );
     }
   }
 

@@ -167,13 +167,17 @@ async function jobs(queue: Queue<MonitorCheckJob>) {
 
 type QueryFn = (text: string, values?: unknown[]) => Promise<unknown>;
 /** Runtime database whose queries are counted and can be failed by SQL text. */
-function spyDatabase(hooks: { failWhen?: (text: string) => boolean } = {}): {
+function spyDatabase(
+  hooks: { failWhen?: (text: string) => boolean; failConnect?: boolean } = {},
+): {
   database: Database;
   count: (fragment: string) => number;
 } {
   const seen: string[] = [];
   const sql = new Proxy(runtime.sql, {
     get(target, property, receiver): unknown {
+      if (property === "connect" && hooks.failConnect)
+        return () => Promise.reject(new Error("injected connect failure"));
       if (property !== "query") return Reflect.get(target, property, receiver);
       const query = target.query.bind(target) as QueryFn;
       return (text: string, values?: unknown[]) => {
@@ -372,7 +376,7 @@ describe("monitor scheduler", () => {
     expect(await jobs(queue)).toHaveLength(1);
   });
 
-  it("ends the round at the first enqueue failure; unqueued claims recover after the lease (F-01)", async () => {
+  it("ends the round at the first enqueue failure and hands the unqueued claims back (F-01)", async () => {
     const fixture = await seed("now()", 11);
     const deadQueue = newQueue(
       `redis://127.0.0.1:${String(await closedPort())}`,
@@ -394,31 +398,83 @@ describe("monitor scheduler", () => {
 
     expect(adds).toBe(1);
     expect(Date.now() - started).toBeLessThan(2_000);
-    const claimed = await schedules(fixture);
-    expect(claimed.filter((row) => row.claim_token !== null)).toHaveLength(10);
+    const released = await schedules(fixture);
+    expect(released.every((row) => row.claim_token === null)).toBe(true);
 
-    await withTenantContextRaw(runtime, fixture.tenantId, (client) =>
-      client.query(
-        `update monitor_schedule set claimed_until = now() - interval '1 second',
-           next_check_at = now() - interval '1 second' where monitor_id = any($1::uuid[])`,
-        [fixture.monitorIds],
-      ),
-    );
     const live = newQueue();
     await scheduler(live).round();
     expect(await jobs(live)).toHaveLength(11);
   }, 30_000);
 
-  it("re-claims after Redis was down during enqueue once the lease expires (AC-37)", async () => {
+  it("keeps the original slot of claims that were not enqueued (P2)", async () => {
+    const fixture = await seed("now() - interval '3 minutes'", 3);
+    // Distinct due times so the claim order and the slots are known.
+    await withTenantContextRaw(runtime, fixture.tenantId, async (client) => {
+      for (const [index, id] of fixture.monitorIds.entries()) {
+        await client.query(
+          `update monitor_schedule set next_check_at = now() - make_interval(mins => $2)
+           where monitor_id = $1`,
+          [id, 3 - index],
+        );
+      }
+    });
+    const slots = new Map(
+      (await schedules(fixture)).map((row) => [
+        row.monitor_id,
+        row.next_check_at?.getTime(),
+      ]),
+    );
+    const live = newQueue();
+    let adds = 0;
+    const failSecond = {
+      add: (...args: Parameters<typeof live.add>) => {
+        adds += 1;
+        if (adds === 2) return Promise.reject(new Error("injected"));
+        return live.add(...args);
+      },
+      waitUntilReady: () => live.waitUntilReady(),
+      close: () => live.close(),
+    };
+    await new MonitorScheduler(runtime, failSecond, silent).round();
+
+    const afterFailure = await schedules(fixture);
+    const claimedIds = afterFailure
+      .filter((row) => row.claim_token !== null)
+      .map((row) => row.monitor_id);
+    expect(claimedIds).toHaveLength(1);
+    for (const row of afterFailure.filter((r) => r.claim_token === null)) {
+      expect(row.next_check_at?.getTime()).toBe(slots.get(row.monitor_id));
+    }
+    const first = await jobs(live);
+    expect(first).toHaveLength(1);
+
+    await scheduler(live).round();
+    const all = await jobs(live);
+    expect(all).toHaveLength(3);
+    expect(new Set(all.map((job) => job.data.monitorId)).size).toBe(3);
+    const firstJob = all.find((job) => job.id === first[0]?.id);
+    expect(firstJob).toBeDefined();
+    for (const job of all) {
+      expect(new Date(job.data.scheduledFor).getTime()).toBe(
+        slots.get(job.data.monitorId),
+      );
+    }
+  });
+
+  it("re-claims once the lease expires when the claim could not be released (AC-37)", async () => {
     const fixture = await seed("now()", 1);
     const deadQueue = newQueue(
       `redis://127.0.0.1:${String(await closedPort())}`,
     );
     unreachable.add(deadQueue);
     const live = newQueue();
-    await new MonitorScheduler(runtime, deadQueue, silent, {
-      enqueueTimeoutMs: 300,
-    }).round();
+    // The release also fails, so only lease expiry can recover the claim.
+    await new MonitorScheduler(
+      spyDatabase({ failConnect: true }).database,
+      deadQueue,
+      silent,
+      { enqueueTimeoutMs: 300 },
+    ).round();
 
     const [claimed] = await schedules(fixture);
     expect(claimed?.claim_token).not.toBeNull();
