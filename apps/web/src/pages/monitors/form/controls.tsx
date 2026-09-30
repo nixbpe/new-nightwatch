@@ -1,9 +1,10 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
 
 import { Field, Input, textInputClass } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { cn } from "@/lib/utils";
 import { errorId, fieldId, type FieldErrors, type FormValues } from "./model";
+import type { SecretAccess } from "./secrets";
 
 /** What each form section gets: the values, the errors placed beside its fields and how to change them. */
 export type SectionProps = {
@@ -14,6 +15,8 @@ export type SectionProps = {
   /** Asks the form to focus an element once the change has rendered. */
   focusAfterRender: (id: string) => void;
   disabled: boolean;
+  /** Secret values are read and written here, never through `values`. */
+  secrets: SecretAccess;
 };
 
 const controlInvalid = "aria-invalid:border-danger";
@@ -56,6 +59,75 @@ export function TextControl({
           readOnly={disabled === true}
           aria-readonly={disabled === true ? true : undefined}
           {...props}
+        />
+      </Field>
+      {hint === undefined ? null : (
+        <p id={hintId} className="mt-1 text-xs text-foreground-secondary">
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A write-only secret field. It is uncontrolled: a controlled input would copy
+ * the value into the DOM `value` attribute. The text is kept in the secret
+ * store and put back through the `value` property when the field mounts or is cleared.
+ */
+export function SecretControl({
+  path,
+  slot,
+  label,
+  ariaLabel,
+  error,
+  hint,
+  disabled,
+  secrets,
+  onType,
+}: {
+  path: string;
+  slot: string;
+  label: ReactNode;
+  ariaLabel?: string;
+  error: string | undefined;
+  hint?: ReactNode;
+  disabled: boolean;
+  secrets: SecretAccess;
+  /** Called with the slot's path after each keystroke, to clear an error beside it. */
+  onType: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const { get, set, version } = secrets;
+  useEffect(() => {
+    const input = ref.current;
+    if (input !== null && input.value !== get(slot)) input.value = get(slot);
+  }, [get, slot, version]);
+  const hintId = `${fieldId(path)}-hint`;
+  const describedBy = [
+    error === undefined ? null : errorId(path),
+    hint === undefined ? null : hintId,
+  ]
+    .filter((id) => id !== null)
+    .join(" ");
+  return (
+    <div>
+      <Field label={label} error={error} errorId={errorId(path)}>
+        <Input
+          ref={ref}
+          id={fieldId(path)}
+          type="password"
+          autoComplete="new-password"
+          aria-label={ariaLabel}
+          aria-invalid={error === undefined ? undefined : true}
+          aria-describedby={describedBy === "" ? undefined : describedBy}
+          readOnly={disabled}
+          aria-readonly={disabled ? true : undefined}
+          spellCheck={false}
+          onChange={(event) => {
+            set(slot, event.target.value);
+            onType();
+          }}
         />
       </Field>
       {hint === undefined ? null : (

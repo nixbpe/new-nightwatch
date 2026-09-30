@@ -18,8 +18,12 @@ import {
   emptyHeader,
   emptyQueryParam,
   fieldId,
+  type EditBase,
+  type HeaderRow,
   type MonitorMethod,
 } from "./model";
+import { headerSlot } from "./secrets";
+import { SecretSlot } from "./SecretSlot";
 
 // AC-47: query parameters and the body are readable by every reader of the monitor.
 const VISIBLE_WARNING =
@@ -36,7 +40,10 @@ export function RequestSection({
   onChange,
   focusAfterRender,
   disabled,
-}: SectionProps) {
+  secrets,
+  base,
+}: SectionProps & { base: EditBase | null }) {
+  const stored = new Set(base?.secretSlots ?? []);
   // Set when Add is pressed at the row limit; cleared when a row is removed.
   const [limit, setLimit] = useState<Rows | null>(null);
 
@@ -54,18 +61,55 @@ export function RequestSection({
   }
 
   function removeRow(kind: Rows, index: number) {
+    const removed = kind === "headers" ? values.headers[index] : undefined;
+    const slot = removed?.id === undefined ? null : headerSlot(removed.id);
+    if (slot !== null) secrets.drop([slot]);
     const rows = values[kind].filter((_, position) => position !== index);
-    onChange({ [kind]: rows }, kind);
+    onChange(
+      {
+        [kind]: rows,
+        ...(slot === null
+          ? {}
+          : { replacing: values.replacing.filter((item) => item !== slot) }),
+      },
+      kind,
+    );
     setLimit(null);
     // The row that moved into this position, else the Add button.
-    const next = rows[index];
-    const focusesRow = next !== undefined && !("secret" in next && next.secret);
     focusAfterRender(
-      focusesRow
+      rows[index] !== undefined
         ? fieldId(`${kind}.${String(index)}.name`)
         : kind === "headers"
           ? ADD_HEADER_ID
           : ADD_QUERY_ID,
+    );
+  }
+
+  function toggleSecret(header: HeaderRow, secret: boolean) {
+    const slot = header.id === undefined ? null : headerSlot(header.id);
+    // Either way the field starts empty: a typed value never moves between a visible and a secret field.
+    if (slot !== null) secrets.drop([slot]);
+    const index = values.headers.findIndex((item) => item.key === header.key);
+    onChange(
+      {
+        headers: values.headers.map((item) =>
+          item.key === header.key
+            ? {
+                ...item,
+                secret,
+                value: "",
+                ...(secret && item.id === undefined
+                  ? { id: crypto.randomUUID() }
+                  : {}),
+              }
+            : item,
+        ),
+        replacing:
+          slot === null
+            ? values.replacing
+            : values.replacing.filter((item) => item !== slot),
+      },
+      `headers.${String(index)}`,
     );
   }
 
@@ -103,23 +147,6 @@ export function RequestSection({
         {values.headers.map((header, index) => {
           const row = String(index + 1);
           const path = `headers.${String(index)}`;
-          if (header.secret) {
-            return (
-              <RowShell
-                key={header.key}
-                legend={`Header แถวที่ ${row}`}
-                removeLabel=""
-                disabled={disabled}
-              >
-                <p className="text-sm">
-                  <span className="font-mono text-[13px]">{header.name}</span>{" "}
-                  <span className="text-foreground-secondary">
-                    ตั้งค่าแล้ว (ค่าลับ)
-                  </span>
-                </p>
-              </RowShell>
-            );
-          }
           return (
             <RowShell
               key={header.key}
@@ -151,27 +178,83 @@ export function RequestSection({
                   );
                 }}
               />
-              <TextControl
-                path={`${path}.value`}
-                label="ค่า"
-                ariaLabel={`ค่า header แถวที่ ${row}`}
-                value={header.value}
-                error={errors[`${path}.value`]}
-                disabled={disabled}
-                spellCheck={false}
-                onChange={(event) => {
-                  onChange(
-                    {
-                      headers: values.headers.map((item) =>
-                        item.key === header.key
-                          ? { ...item, value: event.target.value }
-                          : item,
-                      ),
-                    },
-                    `${path}.value`,
-                  );
-                }}
-              />
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={header.secret}
+                  aria-label={`ค่าลับ header แถวที่ ${row}`}
+                  aria-disabled={disabled}
+                  className="h-4 w-4 accent-primary"
+                  onChange={(event) => {
+                    if (!disabled) toggleSecret(header, event.target.checked);
+                  }}
+                />
+                ค่าลับ
+              </label>
+              {header.secret && header.id !== undefined ? (
+                <SecretSlot
+                  slot={headerSlot(header.id)}
+                  path={`${path}.value`}
+                  label={`ค่า header แถวที่ ${row}`}
+                  stored={stored.has(headerSlot(header.id))}
+                  replacing={values.replacing.includes(headerSlot(header.id))}
+                  error={errors[`${path}.value`]}
+                  disabled={disabled}
+                  secrets={secrets}
+                  onReplace={() => {
+                    if (header.id === undefined) return;
+                    onChange(
+                      {
+                        replacing: [...values.replacing, headerSlot(header.id)],
+                      },
+                      `${path}.value`,
+                    );
+                    focusAfterRender(fieldId(`${path}.value`));
+                  }}
+                  onCancel={() => {
+                    if (header.id === undefined) return;
+                    secrets.drop([headerSlot(header.id)]);
+                    onChange(
+                      {
+                        replacing: values.replacing.filter(
+                          (item) => item !== headerSlot(header.id ?? ""),
+                        ),
+                      },
+                      `${path}.value`,
+                    );
+                  }}
+                  onType={() => {
+                    onChange({}, `${path}.value`);
+                  }}
+                />
+              ) : (
+                <TextControl
+                  path={`${path}.value`}
+                  label="ค่า"
+                  ariaLabel={`ค่า header แถวที่ ${row}`}
+                  value={header.value}
+                  error={errors[`${path}.value`]}
+                  disabled={disabled}
+                  spellCheck={false}
+                  onChange={(event) => {
+                    onChange(
+                      {
+                        headers: values.headers.map((item) =>
+                          item.key === header.key
+                            ? { ...item, value: event.target.value }
+                            : item,
+                        ),
+                      },
+                      `${path}.value`,
+                    );
+                  }}
+                />
+              )}
+              {header.id !== undefined && stored.has(headerSlot(header.id)) ? (
+                <p role="status" className="text-sm text-caution">
+                  {header.secret ? null : "ค่าลับเดิมจะถูกลบ"}
+                </p>
+              ) : null}
             </RowShell>
           );
         })}

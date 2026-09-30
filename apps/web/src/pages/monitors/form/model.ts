@@ -18,6 +18,15 @@ import {
   type MonitorInvalidReason,
   type MonitorRecord,
 } from "@nightwatch/api-contract";
+import {
+  createEntries,
+  editEntries,
+  keptSlots,
+  placeSecretPath,
+  secretFingerprint,
+  secretIssues,
+  type PlannedEntry,
+} from "./secrets";
 import type {
   MonitorCreateBody,
   MonitorEditBody,
@@ -62,8 +71,9 @@ export type FormValues = {
   bodyContent: string;
   expectedStatus: string;
   assertions: AssertionRow[];
-  /** Kept as loaded on Edit; choosing an auth type belongs to the secrets section. */
   auth: MonitorAuth;
+  /** Stored secret slots whose replacement field is open on Edit; the typed values live in the secret store. */
+  replacing: string[];
 };
 
 /** What Edit pins when it opens: the version to send and the secret slots to keep. */
@@ -103,6 +113,7 @@ export function defaultValues(): FormValues {
     expectedStatus: MONITOR_DEFAULT_EXPECTED_STATUS,
     assertions: [],
     auth: { type: "none" },
+    replacing: [],
   };
 }
 
@@ -137,6 +148,7 @@ export function valuesFromRecord(record: MonitorRecord): FormValues {
           : { ms: String(assertion.ms) }),
     })),
     auth: record.auth,
+    replacing: [],
   };
 }
 
@@ -161,9 +173,8 @@ export function secretOriginChanged(
   base: EditBase | null,
   values: FormValues,
 ): boolean {
-  if (base === null || base.secretSlots.length === 0 || base.origin === null) {
-    return false;
-  }
+  if (base === null || base.origin === null) return false;
+  if (keptSlots(values, base).length === 0) return false;
   const next = originOf(values.url);
   return next !== null && next !== base.origin;
 }
@@ -226,46 +237,55 @@ export function configInput(values: FormValues): MonitorConfigInput {
   };
 }
 
-function keepEntries(base: EditBase) {
-  return base.secretSlots.map((slot) => ({
-    slot,
-    action: "keep" as const,
-  }));
-}
-
 export function createPayload(
   values: FormValues,
   clientRequestId: string,
+  entries: PlannedEntry[],
 ): MonitorCreateBody {
   return {
     ...configInput(values),
     clientRequestId,
-    secrets: [],
+    secrets: createEntries(entries),
   };
 }
 
 export function editPayload(
   values: FormValues,
   base: EditBase,
+  entries: PlannedEntry[],
 ): MonitorEditBody {
   return {
     ...configInput(values),
     expectedVersion: base.version,
-    secrets: keepEntries(base),
+    secrets: editEntries(entries),
   };
 }
 
-export function testCreatePayload(values: FormValues): MonitorTestCreateBody {
-  return { ...configInput(values), secrets: [] };
+export function testCreatePayload(
+  values: FormValues,
+  entries: PlannedEntry[],
+): MonitorTestCreateBody {
+  return { ...configInput(values), secrets: createEntries(entries) };
 }
 
 export function testEditPayload(
   values: FormValues,
-  base: EditBase,
+  entries: PlannedEntry[],
 ): MonitorTestEditBody {
+  return { ...configInput(values), secrets: editEntries(entries) };
+}
+
+/** The Test panel's copy of what was sent: the configuration and a value-free stamp of the secrets. */
+export type TestSnapshot = MonitorConfigInput & { secretStamp: string };
+
+export function testSnapshot(
+  values: FormValues,
+  entries: PlannedEntry[],
+  revision: (slot: string) => number,
+): TestSnapshot {
   return {
     ...configInput(values),
-    secrets: keepEntries(base),
+    secretStamp: secretFingerprint(entries, revision),
   };
 }
 
@@ -396,9 +416,7 @@ const FIELD_MESSAGES: Record<
     invalid_format: "กรอกจำนวนเต็มมิลลิวินาที",
     out_of_range: "ต้องอยู่ระหว่าง 1 ms ถึงเวลารอสูงสุด (timeout)",
   },
-  auth: {
-    required: "ต้องตั้งค่าการยืนยันตัวตนให้ครบ ตั้งค่าในหน้านี้ยังไม่ได้",
-  },
+  auth: { required: "กรอกค่าลับของการยืนยันตัวตนให้ครบ" },
   "auth.headerName": {
     required: "กรอกชื่อ header ของ API key",
     invalid_format: "ชื่อ header ไม่ถูกต้อง",
@@ -431,40 +449,65 @@ export function fieldMessage(
 
 function issuesToErrors(
   reasons: { field: string; reason: MonitorInvalidReason }[],
+  /** The array of secret entries the request carried, to place `secrets.N` at its slot's input. */
+  sent: readonly { slot: string; path: string }[] = [],
 ): FieldErrors {
   const errors: FieldErrors = {};
   for (const { field, reason } of reasons) {
-    errors[field] ??= fieldMessage(field, reason);
+    errors[placeSecretPath(field, sent)] ??= fieldMessage(field, reason);
   }
   return errors;
 }
 
+/** What the secret checks read: the stored slots and the values typed so far. */
+export type SecretContext = {
+  base: EditBase | null;
+  get: (slot: string) => string;
+};
+
 /** Client validation with the contract schema: same paths and reasons the server reports. */
-export function validateValues(values: FormValues): FieldErrors {
-  const parsed = monitorConfigSchema.safeParse(configInput(values));
-  if (parsed.success) return {};
-  return issuesToErrors(
-    parsed.error.issues.map((issue) => ({
-      field: issue.path.join("."),
-      reason: monitorIssueReason(issue),
-    })),
-  );
+export function validateValues(
+  values: FormValues,
+  secrets: SecretContext,
+): FieldErrors {
+  const config = configInput(values);
+  const errors: FieldErrors = {};
+  const parsed = monitorConfigSchema.safeParse(config);
+  if (!parsed.success) {
+    Object.assign(
+      errors,
+      issuesToErrors(
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join("."),
+          reason: monitorIssueReason(issue),
+        })),
+      ),
+    );
+  }
+  for (const issue of secretIssues(values, secrets.base, secrets.get, config)) {
+    errors[issue.path] ??=
+      issue.message ?? fieldMessage(issue.entryPath, issue.reason);
+  }
+  return errors;
 }
 
 /** `MONITOR_INVALID` details of an API error, placed like client errors. */
-export function serverFieldErrors(details: unknown): FieldErrors | null {
+export function serverFieldErrors(
+  details: unknown,
+  sent?: readonly { slot: string; path: string }[],
+): FieldErrors | null {
   const parsed =
     monitorInvalidErrorResponseSchema.shape.error.shape.details.safeParse(
       details,
     );
-  return parsed.success ? issuesToErrors(parsed.data.fields) : null;
+  return parsed.success ? issuesToErrors(parsed.data.fields, sent) : null;
 }
 
 export const ADVANCED_ONLY_PATH =
   /^(timeoutSeconds|method|expectedStatus|body|auth|headers|queryParams|assertions)(\.|$)/;
 
 const PLACEABLE_PATH =
-  /^(name|url|intervalSeconds|timeoutSeconds|method|expectedStatus|body\.content|headers|queryParams|assertions|headers\.\d+\.(name|value)|queryParams\.\d+\.(name|value)|assertions\.\d+\.(kind|path|expected|text|ms))$/;
+  /^(name|url|intervalSeconds|timeoutSeconds|method|expectedStatus|body\.content|headers|queryParams|assertions|auth|auth\.(headerName|token|username|password|apiKey)|headers\.\d+\.(name|value)|queryParams\.\d+\.(name|value)|assertions\.\d+\.(kind|path|expected|text|ms))$/;
 
 /** What a message with no control of its own is about, so the summary points at it. */
 function unplacedMessage(
@@ -477,7 +520,7 @@ function unplacedMessage(
   if (row?.[1] !== undefined) {
     const index = Number(row[1]);
     const name = values.headers[index]?.name ?? "";
-    return `header ลับ ${name} (แถวที่ ${String(index + 1)}): ${message}`;
+    return `header ${name} (แถวที่ ${String(index + 1)}): ${message}`;
   }
   if (path === "auth" || path.startsWith("auth.")) {
     return `การยืนยันตัวตน: ${message}`;
@@ -486,10 +529,7 @@ function unplacedMessage(
   return message;
 }
 
-/**
- * Splits errors into those that have a control to sit beside and the rest
- * (listed above the buttons). A secret header has no editable control here.
- */
+/** Splits errors into those that have a control to sit beside and the rest (listed above the buttons). */
 export function placeErrors(
   errors: FieldErrors,
   values: FormValues,
@@ -497,10 +537,7 @@ export function placeErrors(
   const placed: FieldErrors = {};
   const unplaced: string[] = [];
   for (const [path, message] of Object.entries(errors)) {
-    const row = /^headers\.(\d+)(?:\.|$)/.exec(path);
-    const secretRow =
-      row?.[1] !== undefined && values.headers[Number(row[1])]?.secret === true;
-    if (PLACEABLE_PATH.test(path) && !secretRow) placed[path] = message;
+    if (PLACEABLE_PATH.test(path)) placed[path] = message;
     else unplaced.push(unplacedMessage(path, message, values));
   }
   return { placed, unplaced };

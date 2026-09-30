@@ -5,10 +5,6 @@ import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Card, CardHeader } from "../../../components/ui/card";
 import { ApiError } from "../../../lib/api/client";
-import type {
-  MonitorTestCreateBody,
-  MonitorTestEditBody,
-} from "../../../lib/api/monitors";
 import {
   AssertionTable,
   assertionRowFromResult,
@@ -17,9 +13,9 @@ import {
 import { EVALUATED_FROM_PREFIX_TEXT, tlsFailureText } from "../detail/labels";
 import { formatNumber } from "../format";
 import { SslLabel } from "../SslLabel";
-import { URL_BLOCKED_MESSAGE } from "./model";
+import { URL_BLOCKED_MESSAGE, type TestSnapshot } from "./model";
 
-type TestPayload = MonitorTestCreateBody | MonitorTestEditBody;
+type TestPayload = TestSnapshot;
 
 const IDLE_TEXT =
   "ยังไม่ได้ทดสอบ ผลการทดสอบไม่ถูกบันทึกและไม่ส่งผลต่อมอนิเตอร์";
@@ -118,10 +114,11 @@ export function TestPanel({
   saving,
   onPendingChange,
 }: {
+  /** What a result is compared with to tell it is stale; it holds no secret value. */
   payload: TestPayload;
   /** Shows field errors and returns false when the form cannot be sent. */
   validate: () => boolean;
-  /** Sends the configuration `payload` describes. */
+  /** Sends the configuration `payload` describes, with the secret values built at that moment. */
   send: () => Promise<{ result: MonitorTestResult }>;
   /** Errors that belong to the form (invalid field, denied, not found); true when handled. */
   onFormError: (error: unknown) => boolean;

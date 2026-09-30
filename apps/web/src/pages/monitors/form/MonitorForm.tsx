@@ -33,6 +33,11 @@ import { RequestSection } from "./RequestSection";
 import { TestPanel } from "./TestPanel";
 import { SecretsSection } from "./SecretsSection";
 import {
+  planEntries,
+  useClearSecretsOnUnmount,
+  useSecretStore,
+} from "./secrets";
+import {
   ADVANCED_ONLY_PATH,
   advancedCount,
   createPayload,
@@ -45,6 +50,7 @@ import {
   serverFieldErrors,
   testCreatePayload,
   testEditPayload,
+  testSnapshot,
   URL_BLOCKED_MESSAGE,
   validateValues,
   valuesFromRecord,
@@ -58,7 +64,7 @@ const DENIED_MESSAGE = "คุณไม่มีสิทธิ์สร้า�
 const CONFLICT_MESSAGE =
   "มอนิเตอร์นี้ถูกแก้โดยผู้อื่น โหลดใหม่เพื่อดูค่าล่าสุด";
 const ORIGIN_BLOCK_NOTE =
-  "การแก้ค่าลับจะทำได้ในส่วนค่าลับ (ยังไม่เปิดใช้) จึงยังบันทึกหรือทดสอบไม่ได้";
+  "บันทึกหรือทดสอบไม่ได้จนกว่าจะกดแทนที่และกรอกค่าลับใหม่ หรือลบค่าลับเดิม (เลิกใช้การยืนยันตัวตน หรือลบ header ลับ)";
 
 type Mode = "basic" | "advanced";
 
@@ -104,6 +110,11 @@ export function MonitorForm({
   const base: EditBase | null = initial.base;
   const editing = base !== null && monitorId !== undefined;
   const [values, setValues] = useState<FormValues>(initial.values);
+  // Typed secret values live in this store only, and are gone with the form (AC-25).
+  const secretStore = useSecretStore();
+  useClearSecretsOnUnmount(secretStore);
+  const secretContext = { base, get: secretStore.get };
+  const entriesNow = () => planEntries(values, base, secretStore.get);
   const [mode, setMode] = useState<Mode>(
     advancedCount(initial.values) > 0 ? "advanced" : "basic",
   );
@@ -155,8 +166,10 @@ export function MonitorForm({
 
   // Validation reruns on every render, so a fixed field loses its error at once.
   const clientErrors = useMemo(
-    () => (showErrors ? validateValues(values) : {}),
-    [showErrors, values],
+    () =>
+      showErrors ? validateValues(values, { base, get: secretStore.get }) : {},
+    // `get` changes with the store version, so a keystroke in a secret field revalidates.
+    [showErrors, values, base, secretStore.get],
   );
   const allErrors = { ...clientErrors, ...serverErrors };
   const { placed, unplaced } = placeErrors(allErrors, values);
@@ -223,7 +236,7 @@ export function MonitorForm({
     }
     switch (error.code) {
       case "MONITOR_INVALID": {
-        const fields = serverFieldErrors(error.details);
+        const fields = serverFieldErrors(error.details, entriesNow());
         if (fields === null || Object.keys(fields).length === 0) {
           setFormError("ค่าที่กรอกไม่ถูกต้อง ตรวจสอบและลองอีกครั้ง");
           return true;
@@ -275,7 +288,7 @@ export function MonitorForm({
   }
 
   function validateForTest(): boolean {
-    const errors = validateValues(values);
+    const errors = validateValues(values, secretContext);
     if (Object.keys(errors).length === 0) return true;
     showFirstInvalid(errors);
     return false;
@@ -284,7 +297,7 @@ export function MonitorForm({
   async function save(event: SyntheticEvent) {
     event.preventDefault();
     if (saveInFlight.current || testing || controlsOff || originBlocked) return;
-    const errors = validateValues(values);
+    const errors = validateValues(values, secretContext);
     if (Object.keys(errors).length > 0) {
       showFirstInvalid(errors);
       return;
@@ -298,12 +311,14 @@ export function MonitorForm({
         ? await updateMonitor(
             organizationId,
             monitorId,
-            editPayload(values, base),
+            editPayload(values, base, entriesNow()),
           )
         : await createMonitor(
             organizationId,
-            createPayload(values, clientRequestId),
+            createPayload(values, clientRequestId, entriesNow()),
           );
+      // Saved: no typed value stays in memory, whatever happens to the page next.
+      secretStore.clear();
       await queryClient.invalidateQueries({
         queryKey: monitorQueryKeys.all(organizationId),
         refetchType: "none",
@@ -395,6 +410,7 @@ export function MonitorForm({
     onChange: change,
     focusAfterRender: setFocusTarget,
     disabled: controlsOff,
+    secrets: secretStore,
   };
   return (
     <Page width="form">
@@ -445,25 +461,24 @@ export function MonitorForm({
         />
         {mode === "advanced" ? (
           <>
-            <RequestSection {...sectionProps} />
-            <SecretsSection auth={values.auth} editing={editing} />
+            <RequestSection {...sectionProps} base={base} />
+            <SecretsSection {...sectionProps} base={base} />
             <AssertionsSection {...sectionProps} />
           </>
         ) : null}
         <TestPanel
-          payload={
-            base === null
-              ? testCreatePayload(values)
-              : testEditPayload(values, base)
-          }
+          payload={testSnapshot(values, entriesNow(), secretStore.revision)}
           validate={validateForTest}
           send={() =>
             base === null || monitorId === undefined
-              ? testMonitorDraft(organizationId, testCreatePayload(values))
+              ? testMonitorDraft(
+                  organizationId,
+                  testCreatePayload(values, entriesNow()),
+                )
               : testMonitorEdit(
                   organizationId,
                   monitorId,
-                  testEditPayload(values, base),
+                  testEditPayload(values, entriesNow()),
                 )
           }
           onFormError={handleTestError}

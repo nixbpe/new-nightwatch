@@ -158,7 +158,7 @@ describe("refusals with no control of their own", () => {
       ],
     });
 
-  it("lists what failed for a secret header, the auth and a secret entry", async () => {
+  it("places refusals of the secret fields beside their inputs, by the slot each entry named", async () => {
     detailMock.mockResolvedValue({ monitor: secretDetail() });
     updateMock.mockRejectedValue(
       new ApiError("MONITOR_INVALID", "invalid", 400, {
@@ -173,16 +173,17 @@ describe("refusals with no control of their own", () => {
     renderForm(editPath());
     await screen.findByDisplayValue("Payments API");
     await user.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
+    expect(await screen.findByText("ชื่อ header ซ้ำกับแถวอื่น")).toBeVisible();
+    expect(screen.getByLabelText("ชื่อ header แถวที่ 1")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(screen.getByText("กรอกค่าลับของการยืนยันตัวตนให้ครบ")).toBeVisible();
     expect(
-      await screen.findByText(
-        "header ลับ X-Key (แถวที่ 1): ชื่อ header ซ้ำกับแถวอื่น",
-      ),
-    ).toBeVisible();
+      screen.getByRole("button", { name: "แทนที่Token" }),
+    ).toHaveAccessibleDescription("กรอกค่าลับของการยืนยันตัวตนให้ครบ");
     expect(
-      screen.getByText(/^การยืนยันตัวตน: ต้องตั้งค่าการยืนยันตัวตนให้ครบ/),
-    ).toBeVisible();
-    expect(
-      screen.getByText("ค่าลับ: ค่าลับนี้ไม่ตรงกับการตั้งค่าปัจจุบัน"),
+      screen.getByText("ค่าลับนี้ไม่ตรงกับการตั้งค่าปัจจุบัน"),
     ).toBeVisible();
   });
 });

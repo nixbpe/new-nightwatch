@@ -140,7 +140,7 @@ describe("Edit opens with the saved configuration", () => {
   });
 });
 
-describe("Edit secrets pass through", () => {
+describe("Edit keeps stored secrets", () => {
   const withSecrets = () =>
     detail({
       auth: { type: "bearer" },
@@ -154,21 +154,25 @@ describe("Edit secrets pass through", () => {
       ],
     });
 
-  it("shows auth and secret headers as set, without a value or a way to remove them", async () => {
+  it("shows auth and secret headers as set, with a replace button and no value or password field", async () => {
     detailMock.mockResolvedValue({ monitor: withSecrets() });
     renderForm(editPath());
     await screen.findByDisplayValue("Payments API");
     const auth = screen.getByRole("region", { name: "การยืนยันตัวตน" });
-    expect(within(auth).getByText(/Bearer token/)).toBeInTheDocument();
+    expect(within(auth).getByLabelText("ชนิด")).toHaveValue("bearer");
     expect(within(auth).getByText("ตั้งค่าแล้ว")).toBeInTheDocument();
-    expect(screen.getByText("ตั้งค่าแล้ว (ค่าลับ)")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /ลบ header แถวที่ 1/ }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "ลบ header แถวที่ 2" }),
+      within(auth).getByRole("button", { name: "แทนที่Token" }),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/ค่า header แถวที่ 1/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "แทนที่ค่า header แถวที่ 1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "ลบ header แถวที่ 1" }),
+    ).toBeInTheDocument();
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(screen.getByLabelText("ค่าลับ header แถวที่ 1")).toBeChecked();
+    expect(screen.getByLabelText("ค่าลับ header แถวที่ 2")).not.toBeChecked();
   });
 
   it("saves with the same auth, the secret header and a keep for every slot", async () => {
@@ -198,16 +202,6 @@ describe("Edit secrets pass through", () => {
         ],
       }),
     );
-  });
-
-  it("never offers a secret toggle or an auth type on Create", async () => {
-    const user = userEvent.setup();
-    renderForm(newPath());
-    await screen.findByLabelText("ชื่อมอนิเตอร์");
-    await user.click(screen.getByRole("radio", { name: "ขั้นสูง" }));
-    await user.click(screen.getByRole("button", { name: "เพิ่ม header" }));
-    expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.queryByRole("region", { name: "การยืนยันตัวตน" })).toBeNull();
   });
 });
 
