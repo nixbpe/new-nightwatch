@@ -106,7 +106,12 @@ type StateRow = {
   latestEvaluatedFromPrefix: boolean | null;
   /** `now() - checked_at` measured by the database. */
   latestAgeSeconds: number | null;
-  /** The newest `resumed` event is later than the newest result. */
+  /**
+   * The newest `resumed` event is later than the slot of the newest result.
+   * Both are database times (Resume sets next_check_at to the event time), so a
+   * Worker clock that runs behind cannot make the first result after a Resume
+   * look older than it.
+   */
   latestPredatesResume: boolean;
 };
 
@@ -134,7 +139,7 @@ const STATE_QUERY = `
     r."urlMasked" as "latestUrlMasked", r."configVersion" as "latestConfigVersion",
     r."evaluatedFromPrefix" as "latestEvaluatedFromPrefix",
     extract(epoch from (now() - r."checkedAt"))::float8 as "latestAgeSeconds",
-    coalesce(resumed.at > r."checkedAt", false) as "latestPredatesResume"
+    coalesce(resumed.at > r."scheduledFor", false) as "latestPredatesResume"
   from monitors m
   left join lateral (
     select scheduled_for as "scheduledFor", checked_at as "checkedAt", outcome,

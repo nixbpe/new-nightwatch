@@ -331,6 +331,61 @@ describe("Resume (AC-19)", () => {
   });
 });
 
+describe("Resume compares database times (AC-19)", () => {
+  async function resumedMonitor() {
+    const created = await ctx.call(
+      detail.users.owner,
+      "POST",
+      monitorsPath(detail.id),
+      {
+        ...validConfig({ name: "Resumed clocks" }),
+        clientRequestId: crypto.randomUUID(),
+      },
+    );
+    const { id } = monitorWriteResponseSchema.parse(created.json).monitor;
+    for (const name of ["pause", "resume"]) {
+      const response = await ctx.call(
+        detail.users.owner,
+        "POST",
+        monitorsPath(detail.id, `/${id}/${name}`),
+      );
+      expect(response.status).toBe(200);
+    }
+    return id;
+  }
+
+  const insertAt = (id: string, scheduledOffset: string, checkedAgo: number) =>
+    ctx.owner.sql.query(
+      `insert into monitor_check_results
+         (monitor_id, tenant_id, scheduled_for, checked_at, outcome,
+          http_status, response_time_ms, url_masked, check_config_version,
+          interval_seconds)
+       select $1, $2, e.occurred_at + $3::interval,
+         now() - make_interval(secs => $4::float8), 'pass', 200, 100,
+         'https://fixture.example/', 1, 300
+       from monitor_events e
+       where e.monitor_id = $1 and e.kind = 'resumed'
+       order by e.occurred_at desc limit 1`,
+      [id, detail.id, scheduledOffset, checkedAgo],
+    );
+
+  it("the first slot after Resume counts even when the Worker clock ran behind", async () => {
+    const id = await resumedMonitor();
+    // Scheduled exactly at the Resume, checked_at 30 s in the past.
+    await insertAt(id, "0 seconds", 30);
+    expect((await detailOf(detail, id)).health).toBe("up");
+  });
+
+  it("a slot scheduled before the Resume stays unknown", async () => {
+    const id = await resumedMonitor();
+    await insertAt(id, "-1 milliseconds", 0);
+    expect(await detailOf(detail, id)).toMatchObject({
+      health: "unknown",
+      healthReason: "stale",
+    });
+  });
+});
+
 describe("SSL level in Detail", () => {
   const DAY = 86_400;
   it.each([
