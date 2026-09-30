@@ -1,6 +1,7 @@
 import type { MonitorRecord } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
+import { Fragment, StrictMode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 
 import { OrgSwitcher } from "../../components/shell/OrgSwitcher";
@@ -63,20 +64,23 @@ function Routing() {
   );
 }
 
-export function renderForm(path: string, client?: QueryClient) {
+export function renderForm(path: string, client?: QueryClient, strict = false) {
+  const Wrapper = strict ? StrictMode : Fragment;
   const queryClient =
     client ??
     new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
     queryClient,
     ...render(
-      <QueryClientProvider client={queryClient}>
-        <TenantProvider>
-          <MemoryRouter initialEntries={[path]}>
-            <Routing />
-          </MemoryRouter>
-        </TenantProvider>
-      </QueryClientProvider>,
+      <Wrapper>
+        <QueryClientProvider client={queryClient}>
+          <TenantProvider>
+            <MemoryRouter initialEntries={[path]}>
+              <Routing />
+            </MemoryRouter>
+          </TenantProvider>
+        </QueryClientProvider>
+      </Wrapper>,
     ),
   };
 }

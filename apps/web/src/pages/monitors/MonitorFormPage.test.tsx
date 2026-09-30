@@ -249,6 +249,23 @@ describe("Create validation and save", () => {
   });
 });
 
+describe("StrictMode", () => {
+  it("still opens Detail after a save, as the dev build runs the effects twice", async () => {
+    createMock.mockResolvedValue(written());
+    fetchDetailMock.mockResolvedValue({ monitor: detail() });
+    const user = userEvent.setup();
+    renderForm(newPath(), undefined, true);
+    await screen.findByLabelText("ชื่อมอนิเตอร์");
+    await fillBasic(user);
+    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        `/organizations/${A}/monitors/${MONITOR_ID}`,
+      );
+    });
+  });
+});
+
 describe("Access", () => {
   it.each(["viewer", "auditor"] as const)(
     "shows denied to a %s who opens the form directly",

@@ -49,14 +49,19 @@ export function BasicSection({
           onChange({ url: event.target.value }, "url");
         }}
       />
-      <SegmentedControl
-        label="ตรวจทุก"
-        value={String(values.intervalSeconds)}
-        options={INTERVAL_OPTIONS}
-        onChange={(value) => {
-          onChange({ intervalSeconds: Number(value) }, "intervalSeconds");
-        }}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <span aria-hidden="true" className="text-sm font-medium">
+          ตรวจทุก
+        </span>
+        <SegmentedControl
+          label="ตรวจทุก"
+          value={String(values.intervalSeconds)}
+          options={INTERVAL_OPTIONS}
+          onChange={(value) => {
+            onChange({ intervalSeconds: Number(value) }, "intervalSeconds");
+          }}
+        />
+      </div>
       {errors.intervalSeconds === undefined ? null : (
         <p role="alert" className="text-sm text-danger">
           {errors.intervalSeconds}

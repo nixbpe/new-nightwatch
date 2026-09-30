@@ -124,6 +124,8 @@ export function MonitorForm({
   const mounted = useRef(true);
 
   useEffect(() => {
+    // StrictMode runs the cleanup once before the real mount, so the flag is set again here.
+    mounted.current = true;
     headingRef.current?.focus();
     return () => {
       mounted.current = false;
@@ -374,15 +376,20 @@ export function MonitorForm({
         }}
         className="flex flex-col gap-6"
       >
-        <SegmentedControl
-          label="โหมด"
-          value={mode}
-          options={[
-            { value: "basic", label: "พื้นฐาน" },
-            { value: "advanced", label: "ขั้นสูง" },
-          ]}
-          onChange={setMode}
-        />
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="text-sm font-medium">
+            โหมด
+          </span>
+          <SegmentedControl
+            label="โหมด"
+            value={mode}
+            options={[
+              { value: "basic", label: "พื้นฐาน" },
+              { value: "advanced", label: "ขั้นสูง" },
+            ]}
+            onChange={setMode}
+          />
+        </div>
         {mode === "basic" && advancedInUse > 0 ? (
           <div className="flex flex-wrap items-center gap-3">
             <Alert tone="info" role="status">
