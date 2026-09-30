@@ -41,7 +41,7 @@ export type MonitorMethod = MonitorRecord["method"];
 export type MonitorAuth = MonitorRecord["auth"];
 export type AssertionKind = MonitorRecord["assertions"][number]["kind"];
 
-/** `key` identifies a row in the UI only; `id` is the payload id and is passed through untouched. */
+/** `key` identifies a row in the UI only; `id` is the payload id: kept from the stored header, or minted by the form when a row becomes secret. */
 export type HeaderRow = {
   key: string;
   id?: string;
@@ -209,7 +209,7 @@ export function configInput(values: FormValues): MonitorConfigInput {
     headers: values.headers.map((header) => ({
       ...(header.id === undefined ? {} : { id: header.id }),
       name: header.name,
-      // A secret header never carries a value from here: its slot is kept server-side.
+      // A secret header never carries a value here: it travels as a `secrets` entry.
       ...(header.secret ? {} : { value: header.value }),
       secret: header.secret,
     })),

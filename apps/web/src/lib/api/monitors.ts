@@ -274,7 +274,7 @@ export function testMonitorDraft(
   );
 }
 
-/** Test in the Edit form: the complete configuration, with `keep` for every stored secret. */
+/** Test in the Edit form: the complete configuration; `keep` uses the stored secret, `replace` a value for this test only. */
 export function testMonitorEdit(
   organizationId: string,
   monitorId: string,
