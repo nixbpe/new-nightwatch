@@ -118,6 +118,7 @@ export function TestPanel({
   send,
   onFormError,
   blockedReason,
+  nativeDisabled,
   saving,
   onPendingChange,
 }: {
@@ -129,6 +130,8 @@ export function TestPanel({
   /** Errors that belong to the form (invalid field, denied, not found); true when handled. */
   onFormError: (error: unknown) => boolean;
   blockedReason: string | null;
+  /** Off with the `disabled` attribute; a lost role keeps focus with `aria-disabled` instead. */
+  nativeDisabled: boolean;
   saving: boolean;
   onPendingChange: (pending: boolean) => void;
 }) {
@@ -212,7 +215,7 @@ export function TestPanel({
           type="button"
           variant="secondary"
           aria-disabled={held}
-          disabled={blockedReason !== null}
+          disabled={nativeDisabled}
           aria-describedby={
             waiting
               ? "monitor-form-test-wait"

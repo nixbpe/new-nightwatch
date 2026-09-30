@@ -306,8 +306,11 @@ describe("Access", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }),
-      ).toBeDisabled();
+      ).toHaveAttribute("aria-disabled", "true");
     });
+    expect(
+      screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }),
+    ).toHaveFocus();
     expect(createMock).toHaveBeenCalledTimes(1);
   });
 

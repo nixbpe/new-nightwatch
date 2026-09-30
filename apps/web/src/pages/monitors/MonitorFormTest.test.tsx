@@ -426,6 +426,10 @@ describe("Test service errors", () => {
       (await screen.findAllByText("สิทธิ์ของคุณเปลี่ยนแล้ว")).length,
     ).toBeGreaterThan(0);
     expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("Payments API");
+    await waitFor(() => {
+      expect(testButton()).toHaveAttribute("aria-disabled", "true");
+    });
+    expect(testButton()).toHaveFocus();
   });
 });
 

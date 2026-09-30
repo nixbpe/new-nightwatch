@@ -22,7 +22,6 @@ import {
   deferred,
   detail,
   editPath,
-  MONITOR_ID,
   newPath,
   record,
   renderForm,
@@ -264,8 +263,9 @@ describe("Edit save", () => {
       "Payments API mine",
     );
     await waitFor(() => {
-      expect(saveEdit()).toBeDisabled();
+      expect(saveEdit()).toHaveAttribute("aria-disabled", "true");
     });
+    expect(saveEdit()).toHaveFocus();
     expect(updateMock).toHaveBeenCalledTimes(1);
   });
 
@@ -298,7 +298,6 @@ describe("Edit save", () => {
         ),
       ).toBeInTheDocument();
       expect(detailMock).not.toHaveBeenCalled();
-      expect(MONITOR_ID).toBeTruthy();
     },
   );
 });

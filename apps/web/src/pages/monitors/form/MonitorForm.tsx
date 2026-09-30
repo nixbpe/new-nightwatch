@@ -437,6 +437,7 @@ export function MonitorForm({
           }
           onFormError={handleTestError}
           blockedReason={blockedReason}
+          nativeDisabled={originBlocked && !roleLost}
           saving={saving}
           onPendingChange={setTesting}
         />
@@ -477,9 +478,9 @@ export function MonitorForm({
           </Button>
           <Button
             type="submit"
-            aria-disabled={saving || testing}
-            disabled={roleLost || originBlocked}
-            className={saving || testing ? "opacity-60" : undefined}
+            aria-disabled={saving || testing || roleLost}
+            disabled={originBlocked && !roleLost}
+            className={saving || testing || roleLost ? "opacity-60" : undefined}
           >
             {saving
               ? "กำลังบันทึก…"
