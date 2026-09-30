@@ -17,7 +17,7 @@ import { createServer } from "node:http";
  * `hits` records every request so a test can prove that a denied operation
  * sent nothing out. Header values stay in memory and are never printed.
  *
- * @typedef {{ at: number, method: string, path: string, headers: Record<string, string | string[] | undefined> }} TargetHit
+ * @typedef {{ at: number, method: string, path: string, search: string, headers: Record<string, string | string[] | undefined> }} TargetHit
  */
 
 /**
@@ -38,6 +38,7 @@ export async function startMonitorTarget(options = {}) {
       at: Date.now(),
       method: request.method ?? "GET",
       path: url.pathname,
+      search: url.search,
       headers: { ...request.headers },
     });
     request.resume();

@@ -153,19 +153,21 @@ test.describe("role x screen table (AC-02, AC-03)", () => {
     await page.goto(overview());
     // The denied state must be on screen before the absence checks mean anything.
     await expect(
-      page.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+      page.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
     ).toBeVisible();
     await expect(page.getByText(monitorName)).toHaveCount(0);
     await expect(page.getByText(host)).toHaveCount(0);
     await page.goto(detail());
     await expect(
-      page.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+      page.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
     ).toBeVisible();
     await expect(page.getByText(monitorName)).toHaveCount(0);
     await expect(page.getByText(host)).toHaveCount(0);
     await page.goto(`${overview()}/new`);
     await expect(
-      page.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+      page
+        .getByText("คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้")
+        .first(),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
@@ -255,7 +257,7 @@ test.describe("two sessions change the role (AC-49)", () => {
     expect(removal.status).toBeLessThan(300);
     await view.reload();
     await expect(
-      view.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+      view.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
     ).toBeVisible();
     await expect(view.getByText(monitorName)).toHaveCount(0);
     await expect(view.getByText(host)).toHaveCount(0);
@@ -287,12 +289,14 @@ test.describe("two sessions change the role (AC-49)", () => {
     if (await saveEdit.isEnabled()) await saveEdit.click();
     await expect(
       form
-        .getByText(/สิทธิ์ของคุณเปลี่ยนแล้ว|ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้/)
+        .getByText(
+          /สิทธิ์ของคุณเปลี่ยนแล้ว|คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้/,
+        )
         .first(),
     ).toBeVisible();
     await view.reload();
     await expect(
-      view.getByText(/ไม่มีสิทธิ์|ไม่พบมอนิเตอร์นี้|ไม่ใช่สมาชิก/).first(),
+      view.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
     ).toBeVisible();
     await expect(view.getByText(monitorName)).toHaveCount(0);
     await expect(view.getByText(host)).toHaveCount(0);

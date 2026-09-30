@@ -103,13 +103,18 @@ test("owner tests a config before saving, sees pass and a failing target, then s
   await signIn(page, owner);
   await page.goto(`/organizations/${orgA}/monitors/new`);
   await page.getByLabel("ชื่อมอนิเตอร์").fill(crudName);
-  await page.getByLabel("URL", { exact: true }).fill(urlOf(target, "/health"));
+  await page
+    .getByLabel("URL", { exact: true })
+    .fill(urlOf(target, "/health?probe=1"));
 
-  const hitsBefore = target.hitsFor("/health").length;
+  // Scheduled checks of other monitors also hit /health, so only the probe query counts.
+  const probeHits = () =>
+    target.hits.filter((h) => h.search === "?probe=1").length;
+  const hitsBefore = probeHits();
   await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
   await expect(page.getByText("การทดสอบผ่าน")).toBeVisible();
   await expect(page.getByText("รหัสสถานะ 200")).toBeVisible();
-  expect(target.hitsFor("/health").length).toBe(hitsBefore + 1);
+  expect(probeHits()).toBe(hitsBefore + 1);
 
   target.setMode("down");
   await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();

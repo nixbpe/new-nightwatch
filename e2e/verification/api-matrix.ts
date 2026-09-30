@@ -33,6 +33,10 @@ import {
 } from "../support/monitor-fixtures";
 
 const API_LOG = process.env.API_LOG!;
+// Fail at the start, not in the middle of the secrets scenario.
+if (!process.env.REDIS_CONTAINER) {
+  throw new Error("REDIS_CONTAINER must name the Redis container to inspect");
+}
 const EVIDENCE_OUT = process.env.EVIDENCE_OUT!;
 const RESPONSES_OUT = process.env.RESPONSES_OUT!;
 const run = randomUUID().slice(0, 8);
