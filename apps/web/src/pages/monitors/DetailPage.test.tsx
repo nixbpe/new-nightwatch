@@ -337,7 +337,7 @@ describe("Detail SSL card", () => {
   });
 
   it.each([
-    ["self_signed", "self-signed"],
+    ["self_signed", "ใบรับรองลงนามเอง"],
     ["hostname_mismatch", "ชื่อไม่ตรง"],
     ["untrusted", "ไม่น่าเชื่อถือ"],
   ])(
@@ -483,6 +483,62 @@ describe("Detail assertions", () => {
     );
     expect(
       screen.getByText("สาเหตุ ใบรับรองไม่ถูกต้อง: หมดอายุ"),
+    ).toBeInTheDocument();
+  });
+
+  it("words a TLS handshake failure as a failed secure connection, not an invalid certificate", async () => {
+    showDetail(
+      detail({
+        health: "down",
+        lastResult: {
+          ...baseResult,
+          outcome: "fail",
+          httpStatus: null,
+          responseTimeMs: null,
+          failureReason: "tls_invalid",
+          tlsReason: "handshake_failed",
+        },
+      }),
+    );
+    renderDetail();
+    expect(
+      await screen.findByText("สาเหตุ เชื่อมต่อแบบปลอดภัยไม่สำเร็จ"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the actual type of a type mismatch and the prefix label", async () => {
+    showDetail(
+      detail({
+        assertions: [{ kind: "jsonPathEquals", path: "$.id", expected: "1" }],
+        lastResult: {
+          ...baseResult,
+          outcome: "fail",
+          failureReason: "assertion_failed",
+          evaluatedFromPrefix: true,
+          configVersion: 1,
+          assertions: [
+            {
+              kind: "jsonPathEquals",
+              expected: "1",
+              actual: '"1"',
+              actualType: "string",
+              actualTruncated: false,
+              status: "fail",
+              reason: "type_mismatch",
+            },
+          ],
+        },
+      }),
+    );
+    renderDetail();
+    const table = await screen.findByRole("table", {
+      name: "ผลการตรวจล่าสุดต่อเงื่อนไข",
+    });
+    expect(
+      within(table).getByText(/ชนิดข้อมูลไม่ตรง \(ค่าจริงเป็น string\)/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("ประเมินจากส่วนต้นของ response"),
     ).toBeInTheDocument();
   });
 });

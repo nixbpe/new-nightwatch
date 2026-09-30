@@ -39,7 +39,7 @@ export function assertionRowFromResult(
     actual: item.actual === null ? null : unit(item.actual),
     truncated: item.actualTruncated,
     status: item.status,
-    reason: assertionReasonLabel(item.reason),
+    reason: assertionReasonLabel(item.reason, item.actualType),
   };
 }
 

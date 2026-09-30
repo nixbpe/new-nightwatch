@@ -14,7 +14,7 @@ import {
   assertionRowFromResult,
   type AssertionRow,
 } from "../detail/AssertionTable";
-import { tlsReasonLabel } from "../detail/labels";
+import { EVALUATED_FROM_PREFIX_TEXT, tlsFailureText } from "../detail/labels";
 import { formatNumber } from "../format";
 import { SslLabel } from "../SslLabel";
 import { URL_BLOCKED_MESSAGE } from "./model";
@@ -38,12 +38,8 @@ function failureText(result: MonitorTestResult, timeoutSeconds: number) {
       return "ปลายทางปฏิเสธการเชื่อมต่อ";
     case "connect_failed":
       return "เชื่อมต่อปลายทางไม่สำเร็จ";
-    case "tls_invalid": {
-      const reason = tlsReasonLabel(result.tlsReason);
-      return reason === null
-        ? "เชื่อมต่อแบบปลอดภัยไม่สำเร็จ"
-        : `ใบรับรองไม่ถูกต้อง: ${reason}`;
-    }
+    case "tls_invalid":
+      return tlsFailureText(result.tlsReason);
     case "blocked_address":
       return URL_BLOCKED_MESSAGE;
     case "redirect_blocked":
@@ -314,7 +310,7 @@ function ResultDetails({
       </p>
       {result.evaluatedFromPrefix ? (
         <p className="text-xs text-foreground-secondary">
-          ประเมินจากเนื้อหาส่วนต้นที่อ่านได้เท่านั้น
+          {EVALUATED_FROM_PREFIX_TEXT}
         </p>
       ) : null}
       <AssertionTable caption="ผลการทดสอบต่อเงื่อนไข" rows={rows} />

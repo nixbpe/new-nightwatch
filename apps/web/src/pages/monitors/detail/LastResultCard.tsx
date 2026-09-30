@@ -13,17 +13,18 @@ import {
   assertionRowFromResult,
   type AssertionRow,
 } from "./AssertionTable";
-import { OUTCOME_LABELS, tlsReasonLabel } from "./labels";
+import {
+  EVALUATED_FROM_PREFIX_TEXT,
+  OUTCOME_LABELS,
+  tlsFailureText,
+} from "./labels";
 
 export function failureText(
   result: NonNullable<Monitor["lastResult"]>,
 ): string | null {
   if (result.failureReason === null) return null;
   if (result.failureReason === "tls_invalid") {
-    const reason = tlsReasonLabel(result.tlsReason);
-    return reason === null
-      ? "ใบรับรองไม่ถูกต้อง"
-      : `ใบรับรองไม่ถูกต้อง: ${reason}`;
+    return tlsFailureText(result.tlsReason);
   }
   return incidentReasonLabel(result.failureReason);
 }
@@ -88,7 +89,7 @@ export function LastResultCard({ monitor }: { monitor: Monitor }) {
             </p>
             {result.evaluatedFromPrefix ? (
               <p className="text-xs text-foreground-secondary">
-                ประเมินจากเนื้อหาส่วนต้นที่อ่านได้เท่านั้น
+                {EVALUATED_FROM_PREFIX_TEXT}
               </p>
             ) : null}
             <AssertionTable

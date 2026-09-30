@@ -17,7 +17,7 @@ const TLS_REASON_LABELS: Record<string, string> = {
   expired: "หมดอายุ",
   hostname_mismatch: "ชื่อไม่ตรง",
   untrusted: "ไม่น่าเชื่อถือ",
-  self_signed: "self-signed",
+  self_signed: "ใบรับรองลงนามเอง",
   handshake_failed: "เชื่อมต่อแบบปลอดภัยไม่สำเร็จ",
 };
 
@@ -25,6 +25,16 @@ const TLS_REASON_LABELS: Record<string, string> = {
 export function tlsReasonLabel(reason: string | null): string | null {
   return reason === null ? null : (TLS_REASON_LABELS[reason] ?? null);
 }
+
+/** The cause line of a `tls_invalid` result: a handshake failure is not an invalid certificate. */
+export function tlsFailureText(reason: string | null): string {
+  if (reason === "handshake_failed") return "เชื่อมต่อแบบปลอดภัยไม่สำเร็จ";
+  const label = tlsReasonLabel(reason);
+  return label === null ? "ใบรับรองไม่ถูกต้อง" : `ใบรับรองไม่ถูกต้อง: ${label}`;
+}
+
+/** A truncated body was evaluated from its start (AC-33). */
+export const EVALUATED_FROM_PREFIX_TEXT = "ประเมินจากส่วนต้นของ response";
 
 const ASSERTION_REASON_LABELS: Record<
   NonNullable<CheckAssertionResult["reason"]>,
@@ -44,8 +54,13 @@ const ASSERTION_REASON_LABELS: Record<
 
 export function assertionReasonLabel(
   reason: CheckAssertionResult["reason"],
+  actualType: string | null = null,
 ): string | null {
-  return reason === null ? null : ASSERTION_REASON_LABELS[reason];
+  if (reason === null) return null;
+  // A wrong type is only useful with the type that came back (AC-33).
+  return reason === "type_mismatch" && actualType !== null
+    ? `${ASSERTION_REASON_LABELS[reason]} (ค่าจริงเป็น ${actualType})`
+    : ASSERTION_REASON_LABELS[reason];
 }
 
 export const ASSERTION_STATUS_LABELS: Record<

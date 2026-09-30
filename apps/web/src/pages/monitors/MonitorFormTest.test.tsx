@@ -286,7 +286,9 @@ describe("Test panel states", () => {
   it.each([
     ["hostname_mismatch", "ไม่ผ่าน: ใบรับรองไม่ถูกต้อง: ชื่อไม่ตรง"],
     ["expired", "ไม่ผ่าน: ใบรับรองไม่ถูกต้อง: หมดอายุ"],
-    [null, "ไม่ผ่าน: เชื่อมต่อแบบปลอดภัยไม่สำเร็จ"],
+    ["self_signed", "ไม่ผ่าน: ใบรับรองไม่ถูกต้อง: ใบรับรองลงนามเอง"],
+    ["handshake_failed", "ไม่ผ่าน: เชื่อมต่อแบบปลอดภัยไม่สำเร็จ"],
+    [null, "ไม่ผ่าน: ใบรับรองไม่ถูกต้อง"],
   ] as const)("words a TLS failure (%s)", async (tlsReason, text) => {
     draftMock.mockResolvedValue(
       result({
@@ -340,6 +342,40 @@ describe("Test panel states", () => {
     expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
       "กรอก URL",
     );
+  });
+});
+
+describe("Test result wording", () => {
+  it("shows the type that came back for a type mismatch and the AC-33 prefix label", async () => {
+    draftMock.mockResolvedValue(
+      result({
+        outcome: "fail",
+        failureReason: "assertion_failed",
+        evaluatedFromPrefix: true,
+        assertions: [
+          {
+            kind: "jsonPathEquals",
+            expected: "1",
+            actual: '"1"',
+            actualType: "string",
+            actualTruncated: false,
+            status: "fail",
+            reason: "type_mismatch",
+          },
+        ],
+      }),
+    );
+    const user = await openCreate();
+    await user.click(testButton());
+    const table = await screen.findByRole("table", {
+      name: "ผลการทดสอบต่อเงื่อนไข",
+    });
+    expect(
+      within(table).getByText(/ชนิดข้อมูลไม่ตรง \(ค่าจริงเป็น string\)/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("ประเมินจากส่วนต้นของ response"),
+    ).toBeInTheDocument();
   });
 });
 
@@ -533,7 +569,10 @@ describe("Edit test", () => {
       target: { value: "https://api.acme.example/other" },
     });
     expect(testButton()).not.toBeDisabled();
+    editTestMock.mockResolvedValue(result());
     await user.click(testButton());
+    expect(editTestMock).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("การทดสอบผ่าน")).toBeInTheDocument();
   });
 
   it("shows the origin wording beside the URL on a 422 from the server", async () => {
