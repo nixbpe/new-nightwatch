@@ -72,12 +72,43 @@ function midpoint(entry: SeriesEntry): number {
  * different fills so colour is never the only cue.
  */
 export function ResponseTimeChart(props: ResponseTimeChartProps) {
-  const { range } = props;
+  const {
+    range,
+    buckets,
+    pauses,
+    configChanges,
+    intervalSeconds,
+    createdAt,
+    window: dataWindow,
+  } = props;
+  const windowFrom = dataWindow?.from;
+  const windowTo = dataWindow?.to;
+  // Every input of the series is a dependency: a new dataAsOf, interval or creation time changes
+  // gaps and clipping even when the response arrays keep their reference (structural sharing).
   const series = useMemo(
-    () => buildSeries(props),
-    // The props object is new on every render; its parts change only on a refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props.range, props.buckets, props.pauses, props.configChanges],
+    () =>
+      buildSeries({
+        range,
+        buckets,
+        pauses,
+        configChanges,
+        intervalSeconds,
+        createdAt,
+        window:
+          windowFrom === undefined || windowTo === undefined
+            ? undefined
+            : { from: windowFrom, to: windowTo },
+      }),
+    [
+      range,
+      buckets,
+      pauses,
+      configChanges,
+      intervalSeconds,
+      createdAt,
+      windowFrom,
+      windowTo,
+    ],
   );
   const { ref, width } = useWidth<HTMLDivElement>();
   const patternId = `gap-${useId().replace(/:/g, "")}`;

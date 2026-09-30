@@ -578,6 +578,60 @@ describe("ResponseTimeChart drawing", () => {
   );
 });
 
+describe("ResponseTimeChart memo inputs", () => {
+  // The same arrays, as structural sharing gives them when only dataAsOf moves.
+  const shared = props24h({
+    buckets: [point("10:00", 100), point("11:55", 100)],
+    pauses: [],
+  });
+  const gapCount = (container: HTMLElement) =>
+    container.querySelectorAll('[data-chart-part="gap"]').length;
+  const base = {
+    ...shared,
+    window: { from: T("00:00"), to: T("12:00") },
+    intervalSeconds: 300,
+  };
+
+  it("redraws the gaps when only the window moves", () => {
+    const { container, rerender } = render(<ResponseTimeChart {...base} />);
+    // 10:00 to now is fresh, but 00:00 to 10:00 is a leading gap.
+    expect(gapCount(container)).toBe(1);
+    rerender(
+      <ResponseTimeChart
+        {...base}
+        window={{ from: T("09:58"), to: T("12:00") }}
+      />,
+    );
+    expect(gapCount(container)).toBe(0);
+  });
+
+  it("redraws the gaps when only the interval changes", () => {
+    const { container, rerender } = render(
+      <ResponseTimeChart
+        {...base}
+        window={{ from: T("09:40"), to: T("12:00") }}
+      />,
+    );
+    // A 20 minute lead is over 2 x 300 s.
+    expect(gapCount(container)).toBe(1);
+    rerender(
+      <ResponseTimeChart
+        {...base}
+        window={{ from: T("09:40"), to: T("12:00") }}
+        intervalSeconds={900}
+      />,
+    );
+    expect(gapCount(container)).toBe(0);
+  });
+
+  it("redraws the clipping when only createdAt changes", () => {
+    const { container, rerender } = render(<ResponseTimeChart {...base} />);
+    expect(gapCount(container)).toBe(1);
+    rerender(<ResponseTimeChart {...base} createdAt={T("09:59")} />);
+    expect(gapCount(container)).toBe(0);
+  });
+});
+
 describe("ResponseTimeChart keyboard", () => {
   it("names the region with unit, range and source and takes focus by Tab", async () => {
     render(<ResponseTimeChart {...props24h()} />);
