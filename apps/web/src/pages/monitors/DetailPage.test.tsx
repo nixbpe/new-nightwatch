@@ -822,7 +822,9 @@ describe("Detail structure", () => {
       );
       expect(within(card).getByText("region=eu")).toBeInTheDocument();
       expect(within(card).getByText("Body (json)")).toBeInTheDocument();
-      expect(within(card).getByText('{"ping":true}')).toBeInTheDocument();
+      expect(
+        within(card).getByRole("group", { name: "เนื้อหา body" }),
+      ).toHaveTextContent('{"ping":true}');
       expect(
         within(card).getByText("JSONPath เท่ากับ $.status = ok"),
       ).toBeInTheDocument();
@@ -951,6 +953,71 @@ describe("Detail response-time chart", () => {
     ).toBeInTheDocument();
     expect(
       await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("says 'หยุดชั่วคราวตลอดช่วง' for a 7 d window paused from before its start until now", async () => {
+    const asOf = Date.parse(DATA_AS_OF);
+    const hour = 3_600_000;
+    const start = Math.ceil((asOf - 7 * 24 * hour) / hour) * hour;
+    showDetail(
+      detail({ status: "paused", health: "paused", intervalSeconds: 900 }),
+    );
+    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+      Promise.resolve(
+        range === "24h"
+          ? noResponseTimes
+          : {
+              range,
+              unit: "ms",
+              buckets: Array.from(
+                { length: Math.ceil((asOf - start) / hour) },
+                (_, index) => ({
+                  hourStart: new Date(start + index * hour).toISOString(),
+                  avgMs: null,
+                  maxMs: null,
+                  checks: 0,
+                  responseChecks: 0,
+                }),
+              ),
+              pauses: [
+                {
+                  from: new Date(start - 2 * hour).toISOString(),
+                  to: new Date(asOf + 2000).toISOString(),
+                },
+              ],
+              configChanges: [],
+            },
+      ),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("radio", { name: "7 วัน" });
+    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    expect(
+      await screen.findByText("หยุดชั่วคราวตลอดช่วง ไม่มีการตรวจ"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^ไม่มีผลใน 7 วัน/)).toBeNull();
+  });
+
+  it("shows a monitor created 2 h ago without a gap before its creation", async () => {
+    showDetail(detail({ createdAt: inWindow(24 * 60 - 120) }));
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: [
+        { at: inWindow(24 * 60 - 110), responseTimeMs: 100, outcome: "pass" },
+        { at: inWindow(24 * 60 - 5), responseTimeMs: 110, outcome: "pass" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    await user.click(
+      await screen.findByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" }),
+    );
+    const rows = within(chartTable()).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    expect(
+      screen.getByText("ไม่มีช่วงไม่มีข้อมูล", { exact: false }),
     ).toBeInTheDocument();
   });
 

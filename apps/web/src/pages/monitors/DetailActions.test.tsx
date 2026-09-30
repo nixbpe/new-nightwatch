@@ -23,6 +23,7 @@ import {
 } from "../../lib/api/monitors";
 import {
   A,
+  B,
   context,
   detail,
   MONITOR_ID,
@@ -381,6 +382,46 @@ describe("Delete", () => {
         monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
       )?.summary,
     ).toMatchObject({ up: 1, total: 1 });
+  });
+
+  it("prunes the deleted monitor's recent events and leaves another Organization's cache alone", async () => {
+    fetchDetailMock.mockResolvedValue({ monitor: detail() });
+    deleteMock.mockResolvedValue(undefined);
+    vi.mocked(fetchMonitorList).mockReturnValue(new Promise(() => undefined));
+    vi.mocked(fetchMonitorRecentEvents).mockReturnValue(
+      new Promise(() => undefined),
+    );
+    const event = (monitorId: string, monitorName: string) => ({
+      kind: "incident_opened" as const,
+      monitorId,
+      monitorName,
+      at: "2026-09-30T07:00:00.000Z",
+      reason: "timeout",
+    });
+    const mine = {
+      events: [event(MONITOR_ID, "Payments API"), event(OTHER_ID, "Docs")],
+    };
+    const theirs = {
+      events: [event(MONITOR_ID, "Same id in another Organization")],
+    };
+    const user = userEvent.setup();
+    const { queryClient } = renderDetail();
+    queryClient.setQueryData(monitorQueryKeys.recentEvents(A), mine);
+    queryClient.setQueryData(monitorQueryKeys.recentEvents(B), theirs);
+    const { dialog } = await openDialog(user);
+    await user.click(
+      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+    );
+    await screen.findByText("ลบมอนิเตอร์แล้ว");
+
+    expect(
+      queryClient
+        .getQueryData<typeof mine>(monitorQueryKeys.recentEvents(A))
+        ?.events.map((item) => item.monitorName),
+    ).toEqual(["Docs"]);
+    expect(queryClient.getQueryData(monitorQueryKeys.recentEvents(B))).toBe(
+      theirs,
+    );
   });
 
   it("does not show the notice again after a reload of the Overview state", async () => {

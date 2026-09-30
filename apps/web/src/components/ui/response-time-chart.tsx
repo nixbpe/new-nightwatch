@@ -13,6 +13,7 @@ import {
 import { TIME_ZONE, formatNumber } from "../../pages/monitors/format";
 import {
   buildSeries,
+  chartWindow,
   HOURLY_CHECK_ERROR_NOTE,
   describeEntry,
   RANGE_LABELS,
@@ -92,8 +93,9 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
   const left = MARGIN.left;
   const right = width - MARGIN.right;
   const bottom = HEIGHT - MARGIN.bottom;
-  let from = props.window ? Date.parse(props.window.from) : (first?.at ?? 0);
-  let to = props.window ? Date.parse(props.window.to) : (last?.end ?? 1);
+  const window = chartWindow(props);
+  let from = window?.from ?? first?.at ?? 0;
+  let to = window?.to ?? last?.end ?? 1;
   for (const pause of props.pauses) {
     from = Math.min(from, Date.parse(pause.from));
     to = Math.max(to, Date.parse(pause.to));
@@ -177,6 +179,8 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
     if (nearest !== undefined) setSelectedKey(nearest.key);
   }
 
+  // A young monitor gives a short span even under a 7 d label; date ticks would all read the same day.
+  const clockTicks = range === "24h" || to - from < 2 * 24 * 3_600_000;
   const xTicks = x.ticks(width < 480 ? 4 : 6);
   const yTicks = y.ticks(4);
   const label = `กราฟเส้นเวลาตอบสนอง หน่วย ms ช่วง ${RANGE_LABELS[range]} แหล่ง ผลการตรวจของ NightWatch เวลาตามเขตเวลา ${TIME_ZONE} ใช้ลูกศรซ้ายขวา Home และ End เพื่อดูค่าแต่ละจุด`;
@@ -253,9 +257,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
               textAnchor="middle"
               className="fill-foreground-secondary text-[11px]"
             >
-              {range === "24h"
-                ? clockFormat.format(tick)
-                : dayFormat.format(tick)}
+              {clockTicks ? clockFormat.format(tick) : dayFormat.format(tick)}
             </text>
           ))}
           <text

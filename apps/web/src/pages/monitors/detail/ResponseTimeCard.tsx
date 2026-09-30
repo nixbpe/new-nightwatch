@@ -55,12 +55,14 @@ export function ResponseTimeCard({
   lastCheckAt,
   dataAsOf,
   intervalSeconds,
+  createdAt,
 }: {
   organizationId: string;
   monitorId: string;
   lastCheckAt: string | null;
   dataAsOf: string;
   intervalSeconds: number;
+  createdAt: string;
 }) {
   const [range, setRange] = useState<ChartRange>("24h");
   const [tableOpen, setTableOpen] = useState(false);
@@ -73,8 +75,8 @@ export function ResponseTimeCard({
     () =>
       query.data === undefined
         ? undefined
-        : toChartProps(query.data, { dataAsOf, intervalSeconds }),
-    [query.data, dataAsOf, intervalSeconds],
+        : toChartProps(query.data, { dataAsOf, intervalSeconds, createdAt }),
+    [query.data, dataAsOf, intervalSeconds, createdAt],
   );
   const series = useMemo(
     () => (chartProps === undefined ? [] : buildSeries(chartProps)),

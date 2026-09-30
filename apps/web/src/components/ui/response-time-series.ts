@@ -38,6 +38,8 @@ export type ResponseTimeChartProps = {
   window?: ChartInterval;
   /** With `window`, a 24 h stretch without results longer than twice this is drawn as no data. */
   intervalSeconds?: number;
+  /** Time before the monitor existed is not "no data": the window and buckets start here at the earliest. */
+  createdAt?: string;
 };
 
 const HOUR_MS = 3_600_000;
@@ -50,15 +52,19 @@ const RANGE_MS: Record<ChartRange, number> = {
 /** Maps the API's two shapes (24 h points and gaps, 7 d and 30 d hourly buckets) to chart props. */
 export function toChartProps(
   response: MonitorResponseTimesResponse,
-  context: { dataAsOf: string; intervalSeconds: number },
+  context: { dataAsOf: string; intervalSeconds: number; createdAt?: string },
 ): ResponseTimeChartProps {
   const { range, pauses, configChanges } = response;
   const end = Date.parse(context.dataAsOf);
+  // The hourly reads start at the next whole hour after now minus the range; a 24 h read starts exactly there.
+  const start = end - RANGE_MS[range];
   const window = {
-    from: new Date(end - RANGE_MS[range]).toISOString(),
+    from: new Date(
+      range === "24h" ? start : Math.ceil(start / HOUR_MS) * HOUR_MS,
+    ).toISOString(),
     to: context.dataAsOf,
   };
-  const { intervalSeconds } = context;
+  const { intervalSeconds, createdAt } = context;
   if (response.range === "24h") {
     const points: ChartBucket[] = response.points.map((point) => ({
       at: point.at,
@@ -85,6 +91,7 @@ export function toChartProps(
       configChanges,
       window,
       intervalSeconds,
+      createdAt,
     };
   }
   return {
@@ -101,6 +108,18 @@ export function toChartProps(
     configChanges,
     window,
     intervalSeconds,
+    createdAt,
+  };
+}
+
+/** The window the chart spans: the range, but never earlier than the monitor's creation. */
+export function chartWindow(props: ResponseTimeChartProps): Span | undefined {
+  if (props.window === undefined) return undefined;
+  const created =
+    props.createdAt === undefined ? -Infinity : Date.parse(props.createdAt);
+  return {
+    from: Math.max(Date.parse(props.window.from), created),
+    to: Date.parse(props.window.to),
   };
 }
 
@@ -123,9 +142,18 @@ export type SeriesEntry = {
 
 type Span = { from: number; to: number };
 
-/** A pause counts for an empty hour only when it covers the whole hour. */
-function coveredBy(at: number, end: number, spans: readonly Span[]): boolean {
-  return spans.some((span) => span.from <= at && span.to >= end);
+/**
+ * A pause counts for an empty hour only when it covers the whole hour. An
+ * ongoing pause ends at the read time, so `slack` lets it reach an hour that
+ * has been clipped to the window's end.
+ */
+function coveredBy(
+  at: number,
+  end: number,
+  spans: readonly Span[],
+  slack: number,
+): boolean {
+  return spans.some((span) => span.from <= at && span.to + slack >= end);
 }
 
 /** The parts of `span` that no blocker covers. */
@@ -192,37 +220,49 @@ export function buildSeries(props: ResponseTimeChartProps): SeriesEntry[] {
     from: Date.parse(pause.from),
     to: Date.parse(pause.to),
   }));
-  const entries: SeriesEntry[] = props.buckets.map((bucket) => {
-    const at = Date.parse(bucket.at);
-    const end = bucket.endAt === null ? at : Date.parse(bucket.endAt);
+  const win = chartWindow(props);
+  const created =
+    props.createdAt === undefined ? undefined : Date.parse(props.createdAt);
+  const slack = (props.intervalSeconds ?? 30) * 2 * 1000;
+  const entries: SeriesEntry[] = props.buckets.flatMap((bucket) => {
+    let at = Date.parse(bucket.at);
+    let end = bucket.endAt === null ? at : Date.parse(bucket.endAt);
+    // Before the monitor existed there is nothing to draw or count; the first hour counts from creation.
+    if (created !== undefined) {
+      if (end <= created && (end > at || at < created)) return [];
+      at = Math.max(at, created);
+      end = Math.max(end, at);
+    }
+    // The current hour runs past the read time.
+    if (win !== undefined && end > at)
+      end = Math.min(end, Math.max(at, win.to));
     let kind: SeriesKind = "value";
     if (bucket.checks === 0) {
-      kind = coveredBy(at, end, pauses) ? "pause" : "gap";
+      kind = coveredBy(at, end, pauses, slack) ? "pause" : "gap";
     } else if (bucket.checkError === true) {
       kind = "check-error";
     } else if (bucket.avgMs === null) {
       kind = "no-response";
     }
-    return {
-      key: `${kind}:${String(at)}`,
-      kind,
-      at,
-      end,
-      avgMs: bucket.avgMs,
-      maxMs: bucket.maxMs,
-      checks: bucket.checks,
-      responseChecks: bucket.responseChecks ?? null,
-      changes: [],
-    };
+    return [
+      {
+        key: `${kind}:${String(at)}`,
+        kind,
+        at,
+        end,
+        avgMs: bucket.avgMs,
+        maxMs: bucket.maxMs,
+        checks: bucket.checks,
+        responseChecks: bucket.responseChecks ?? null,
+        changes: [],
+      },
+    ];
   });
   if (props.range === "24h") {
     // Hourly buckets already stand for the pauses they cover; a 24 h series has none.
     for (const pause of pauses) entries.push(spanEntry("pause", pause));
-    if (props.window !== undefined && props.intervalSeconds !== undefined) {
-      const window: Span = {
-        from: Date.parse(props.window.from),
-        to: Date.parse(props.window.to),
-      };
+    if (win !== undefined && props.intervalSeconds !== undefined) {
+      const window = win;
       const minimum = props.intervalSeconds * 2 * 1000;
       const blockers = entries
         .filter((entry) => entry.kind === "gap" || entry.kind === "pause")
@@ -266,16 +306,16 @@ export function buildSeries(props: ResponseTimeChartProps): SeriesEntry[] {
  * (under twice the interval) does not count as uncovered.
  */
 export function pausedThroughout(props: ResponseTimeChartProps): boolean {
-  if (props.window === undefined) return false;
+  const window = chartWindow(props);
+  if (window === undefined) return false;
   const pauses = props.pauses.map((pause) => ({
     from: Date.parse(pause.from),
     to: Date.parse(pause.to),
   }));
   const tolerance = (props.intervalSeconds ?? 30) * 2 * 1000;
-  return subtract(
-    { from: Date.parse(props.window.from), to: Date.parse(props.window.to) },
-    pauses,
-  ).every((piece) => piece.to - piece.from <= tolerance);
+  return subtract(window, pauses).every(
+    (piece) => piece.to - piece.from <= tolerance,
+  );
 }
 
 export function hasChecks(series: readonly SeriesEntry[]): boolean {

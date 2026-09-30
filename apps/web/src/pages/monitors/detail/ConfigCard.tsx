@@ -108,8 +108,9 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
             </dt>
             <dd>
               <pre
-                tabIndex={0}
-                className="max-h-40 overflow-auto rounded-md border border-foreground/10 p-2 font-mono text-[13px] whitespace-pre-wrap break-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                role="group"
+                aria-label="เนื้อหา body"
+                className="rounded-md border border-foreground/10 p-2 font-mono text-[13px] whitespace-pre-wrap break-all"
               >
                 {monitor.body.content}
               </pre>

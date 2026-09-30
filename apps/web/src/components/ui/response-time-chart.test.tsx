@@ -6,6 +6,7 @@ import { formatTime } from "../../pages/monitors/format";
 import { ResponseTimeChart } from "./response-time-chart";
 import {
   buildSeries,
+  chartWindow,
   describeEntry,
   pausedThroughout,
   summarize,
@@ -392,6 +393,134 @@ describe("24 h window", () => {
         pauses: [{ from: T("02:00"), to: window.to }],
       }),
     ).toBe(false);
+  });
+});
+
+describe("7 d and 30 d as the API shapes them", () => {
+  const HOUR = 3_600_000;
+  const dataAsOf = "2026-09-30T07:32:05.000Z";
+  const asOf = Date.parse(dataAsOf);
+  // The hourly read starts at the next whole hour after now minus 7 d and runs to the current hour.
+  const start = Math.ceil((asOf - 7 * 24 * HOUR) / HOUR) * HOUR;
+  const hours = Array.from(
+    { length: Math.ceil((asOf - start) / HOUR) },
+    (_, index) => start + index * HOUR,
+  );
+  const response = (
+    overrides: Partial<{ pauses: { from: string; to: string }[] }> = {},
+  ) => ({
+    range: "7d" as const,
+    unit: "ms" as const,
+    buckets: hours.map((hour) => ({
+      hourStart: new Date(hour).toISOString(),
+      avgMs: null,
+      maxMs: null,
+      checks: 0,
+      responseChecks: 0,
+    })),
+    pauses: [],
+    configChanges: [],
+    ...overrides,
+  });
+  const context = { dataAsOf, intervalSeconds: 900 };
+
+  it("reads a monitor paused for the whole window as one pause, with the current hour inside it", () => {
+    // The pause started before the window and is still going: it ends at the read time.
+    const props = toChartProps(
+      response({
+        pauses: [
+          {
+            from: new Date(start - 5 * HOUR).toISOString(),
+            to: new Date(asOf + 3000).toISOString(),
+          },
+        ],
+      }),
+      context,
+    );
+    expect(pausedThroughout(props)).toBe(true);
+    const series = buildSeries(props);
+    expect(series.map((entry) => entry.kind)).toEqual(["pause"]);
+    expect(series[0]?.end).toBe(asOf);
+    expect(summarize(series)).toMatchObject({ gapCount: 0, pauseCount: 1 });
+  });
+
+  it("measures the window from the API's rounded start, not from now minus the range", () => {
+    const props = toChartProps(response(), context);
+    expect(props.window?.from).toBe(new Date(start).toISOString());
+    expect(Date.parse(props.window?.from ?? "")).toBeGreaterThan(
+      asOf - 7 * 24 * HOUR,
+    );
+  });
+
+  it("does not call a partly paused window paused throughout", () => {
+    const props = toChartProps(
+      response({
+        pauses: [
+          {
+            from: new Date(asOf - 3 * HOUR).toISOString(),
+            to: new Date(asOf).toISOString(),
+          },
+        ],
+      }),
+      context,
+    );
+    expect(pausedThroughout(props)).toBe(false);
+  });
+
+  it("starts at creation: earlier hours are not drawn or counted as no data", () => {
+    const createdAt = new Date(asOf - 2.5 * HOUR).toISOString();
+    const props = toChartProps(response(), { ...context, createdAt });
+    const series = buildSeries(props);
+    // Three hours touch the monitor's life; the first counts from creation, the last ends at now.
+    expect(series.map((entry) => entry.kind)).toEqual(["gap"]);
+    expect(series[0]?.at).toBe(Date.parse(createdAt));
+    expect(series[0]?.end).toBe(asOf);
+    expect(chartWindow(props)?.from).toBe(Date.parse(createdAt));
+    const full = buildSeries(toChartProps(response(), context));
+    expect(summarize(full).gapMinutes).toBeGreaterThan(
+      summarize(series).gapMinutes * 50,
+    );
+  });
+});
+
+describe("24 h window clipped to creation", () => {
+  const window = { from: T("00:00"), to: T("12:00") };
+  const base = {
+    range: "24h",
+    pauses: [],
+    configChanges: [],
+    window,
+    intervalSeconds: 300,
+  } satisfies Partial<ResponseTimeChartProps>;
+
+  it("shows a monitor created 2 h ago as a 2 h span with no pre-creation gap", () => {
+    const props = {
+      ...base,
+      createdAt: T("10:00"),
+      buckets: [point("10:05", 100), point("11:55", 100)],
+    };
+    expect(buildSeries(props).map((entry) => entry.kind)).toEqual([
+      "value",
+      "value",
+    ]);
+    expect(chartWindow(props)).toEqual({
+      from: Date.parse(T("10:00")),
+      to: Date.parse(window.to),
+    });
+    // Without a creation time the same results leave a long leading gap.
+    expect(
+      buildSeries({ ...props, createdAt: undefined }).map((e) => e.kind),
+    ).toEqual(["gap", "value", "value"]);
+  });
+
+  it("still draws a real gap after creation", () => {
+    expect(
+      buildSeries({
+        ...base,
+        createdAt: T("10:00"),
+        buckets: [point("11:00", 100), point("11:55", 100)],
+      }).map((entry) => entry.kind),
+    ).toEqual(["gap", "value", "value"]);
   });
 });
 

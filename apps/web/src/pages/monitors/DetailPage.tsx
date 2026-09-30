@@ -450,6 +450,7 @@ function DetailForMonitor({
         lastCheckAt={monitor.lastCheckAt}
         dataAsOf={monitor.dataAsOf}
         intervalSeconds={monitor.intervalSeconds}
+        createdAt={monitor.createdAt}
       />
       <SslCard ssl={monitor.ssl} />
       <IncidentsCard organizationId={organizationId} monitorId={monitorId} />
