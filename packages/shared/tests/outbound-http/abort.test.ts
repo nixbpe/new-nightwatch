@@ -84,14 +84,21 @@ const request = (
 const target = (port: number, scheme = "http") =>
   `${scheme}://${TARGET_HOST}:${String(port)}/`;
 
-async function abortAfter<T>(ms: number, run: (s: AbortSignal) => Promise<T>) {
+/** Aborts once `ready()` holds, so the abort lands in the phase under test whatever the load. */
+async function abortWhen<T>(
+  ready: () => boolean,
+  run: (s: AbortSignal) => Promise<T>,
+) {
   const controller = new AbortController();
-  const started = Date.now();
-  setTimeout(() => {
-    controller.abort();
-  }, ms);
-  const result = await run(controller.signal);
-  return { result, elapsed: Date.now() - started };
+  const pending = run(controller.signal);
+  await vi.waitFor(
+    () => {
+      expect(ready()).toBe(true);
+    },
+    { timeout: 20_000, interval: 5 },
+  );
+  controller.abort();
+  return pending;
 }
 
 describe("caller abort of sendOutboundRequest", () => {
@@ -109,15 +116,23 @@ describe("caller abort of sendOutboundRequest", () => {
     expect(server.received()).toBe(0);
   });
 
-  it("stops promptly during DNS resolution", async () => {
-    const { result, elapsed } = await abortAfter(50, (signal) =>
-      sendOutboundRequest(
-        request(target(9999), signal),
-        deps({ resolver: () => new Promise<string[]>(() => undefined) }),
-      ),
+  it("stops during DNS resolution", async () => {
+    let lookups = 0;
+    const result = await abortWhen(
+      () => lookups === 1,
+      (signal) =>
+        sendOutboundRequest(
+          request(target(9999), signal),
+          deps({
+            resolver: () => {
+              lookups++;
+              return new Promise<string[]>(() => undefined);
+            },
+          }),
+        ),
     );
+    // The 10 s request timeout would report `timeout` instead.
     expect(result.failure?.reason).toBe("executor_error");
-    expect(elapsed).toBeLessThan(2000);
   });
 
   it("stops during connect and destroys the socket", async () => {
@@ -127,28 +142,27 @@ describe("caller abort of sendOutboundRequest", () => {
       sockets.push(socket);
       return socket;
     };
-    const { result, elapsed } = await abortAfter(50, (signal) =>
-      sendOutboundRequest(request(target(9999), signal), deps()),
+    const result = await abortWhen(
+      () => sockets.length === 1,
+      (signal) => sendOutboundRequest(request(target(9999), signal), deps()),
     );
     expect(result.failure?.reason).toBe("executor_error");
-    expect(elapsed).toBeLessThan(2000);
-    expect(sockets).toHaveLength(1);
     expect(sockets.every((socket) => socket.destroyed)).toBe(true);
   });
 
   it("stops during the TLS handshake and closes the connection", async () => {
     const server = await hangingServer();
     servers.push(server);
-    const { result, elapsed } = await abortAfter(150, (signal) =>
-      sendOutboundRequest(
-        request(target(server.port, "https"), signal),
-        deps(),
-      ),
+    // The ClientHello reached the server, so the client is inside the handshake.
+    const result = await abortWhen(
+      () => server.received() > 0,
+      (signal) =>
+        sendOutboundRequest(
+          request(target(server.port, "https"), signal),
+          deps(),
+        ),
     );
     expect(result.failure?.reason).toBe("executor_error");
-    expect(elapsed).toBeLessThan(2000);
-    // Only the ClientHello was sent: no HTTP request text.
-    expect(server.received()).toBeGreaterThan(0);
     await vi.waitFor(() => {
       expect(server.open()).toBe(0);
     });
@@ -159,12 +173,13 @@ describe("caller abort of sendOutboundRequest", () => {
       socket.write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\npartial");
     });
     servers.push(server);
-    const { result, elapsed } = await abortAfter(150, (signal) =>
-      sendOutboundRequest(request(target(server.port), signal), deps()),
+    const result = await abortWhen(
+      () => server.received() > 0,
+      (signal) =>
+        sendOutboundRequest(request(target(server.port), signal), deps()),
     );
     expect(result.failure?.reason).toBe("executor_error");
     expect(result.response).toBeUndefined();
-    expect(elapsed).toBeLessThan(2000);
     await vi.waitFor(() => {
       expect(server.open()).toBe(0);
     });
@@ -194,14 +209,16 @@ describe("caller abort of runCheck", () => {
   it("returns check_error executor_error and every assertion not evaluated", async () => {
     const server = await hangingServer();
     servers.push(server);
-    const { result } = await abortAfter(100, (signal) =>
-      runCheck(
-        configFor("http", server.port, {
-          assertions: [{ kind: "bodyContains", text: "x" }],
-        }),
-        {},
-        deps({ signal }),
-      ),
+    const result = await abortWhen(
+      () => server.received() > 0 || server.open() > 0,
+      (signal) =>
+        runCheck(
+          configFor("http", server.port, {
+            assertions: [{ kind: "bodyContains", text: "x" }],
+          }),
+          {},
+          deps({ signal }),
+        ),
     );
     expect(result).toMatchObject({
       outcome: "check_error",

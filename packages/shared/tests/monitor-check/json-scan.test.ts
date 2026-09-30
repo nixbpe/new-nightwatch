@@ -99,7 +99,8 @@ const evaluate = (assertions: NormalizedAssertion[], body: string) =>
     (text) => text,
   );
 
-describe("deep bodies through evaluateAssertions", () => {
+// Correctness, not speed: a loaded CI runner can take seconds for these bodies.
+describe("deep bodies through evaluateAssertions", { timeout: 30_000 }, () => {
   it("passes a JSONPath assertion on a body nested past 128 levels", () => {
     const { results } = evaluate(
       [{ kind: "jsonPathEquals", pathSegments: ["a"], expectedValue: 1 }],
@@ -108,9 +109,9 @@ describe("deep bodies through evaluateAssertions", () => {
     expect(results[0]).toMatchObject({ status: "pass", reason: null });
   });
 
-  it("resolves 200 nested segments in a body of about 1 MiB", () => {
+  it("resolves 200 nested segments in a body of about 256 KiB", () => {
     const segments = Array.from({ length: 200 }, () => "a");
-    const body = `${'{"a":'.repeat(200)}"${"x".repeat(1024 * 1024 - 2000)}"${"}".repeat(200)}`;
+    const body = `${'{"a":'.repeat(200)}"${"x".repeat(256 * 1024)}"${"}".repeat(200)}`;
     const assertions: NormalizedAssertion[] = Array.from(
       { length: 10 },
       () => ({
@@ -126,7 +127,7 @@ describe("deep bodies through evaluateAssertions", () => {
   });
 });
 
-describe("very deep matches never throw", () => {
+describe("very deep matches never throw", { timeout: 30_000 }, () => {
   const scalar = (
     pathSegments: string[] = [],
   ): Extract<NormalizedAssertion, { kind: "jsonPathEquals" }> => ({

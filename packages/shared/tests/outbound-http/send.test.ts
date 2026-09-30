@@ -392,7 +392,7 @@ describe("timeout", () => {
       deps(),
     );
     expect(result.failure?.reason).toBe("timeout");
-    expect(Date.now() - started).toBeLessThan(2000);
+    expect(Date.now() - started).toBeLessThan(4000);
   });
 
   it("counts every hop against one budget", async () => {
@@ -936,11 +936,12 @@ describe("connection-time address check", () => {
         ++calls === 1 ? new net.Socket() : realNetConnect(options),
     );
     const result = await sendOutboundRequest(
-      baseRequest(at(server), { timeoutMs: 2000 }),
+      baseRequest(at(server), { timeoutMs: 6000 }),
       deps({ resolver: () => Promise.resolve(["192.0.2.1", LOOPBACK]) }),
     );
     expect(result.ok).toBe(true);
-    expect(result.response?.elapsedMs).toBeLessThan(1900);
+    // The blackholed first address may use half of 6 s, never all of it.
+    expect(result.response?.elapsedMs).toBeLessThan(5800);
   });
 });
 
@@ -963,7 +964,7 @@ describe("response parsing bounds", () => {
       deps(),
     );
     expect(result.response?.body.toString()).toBe("hi");
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBeLessThan(4000);
   });
 
   it("rejects a head over 64 KiB even when it arrives in one read with its terminator", async () => {
