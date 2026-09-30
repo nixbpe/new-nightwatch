@@ -277,6 +277,12 @@ test.describe("two sessions change the role (AC-49)", () => {
     ).toBeVisible();
     await form.goto(`${overview()}/${monitorId}/edit`);
     await expect(form.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(monitorName);
+    await form.getByLabel("ชื่อมอนิเตอร์").fill(`${monitorName}-removed`);
+    const stored = () =>
+      pool.query("select name, version from monitors where id = $1", [
+        monitorId,
+      ]);
+    const before = (await stored()).rows[0];
 
     const removal = await ownerSession.request(
       "DELETE",
@@ -294,6 +300,8 @@ test.describe("two sessions change the role (AC-49)", () => {
         )
         .first(),
     ).toBeVisible();
+    // The refused save changed nothing.
+    expect((await stored()).rows[0]).toEqual(before);
     await view.reload();
     await expect(
       view.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
