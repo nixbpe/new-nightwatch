@@ -192,6 +192,16 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   `db:migrate`. Job `build` gets none of these. `MONITOR_EGRESS_CANARY_URLS` is
   unset in CI because runners may lack internet; tests are intended to inject
   the canary (not yet exercised).
+- e2e (`e2e/tests/monitors.spec.ts`): `playwright.config.ts` starts the Worker
+  with all four roles and forwards the four monitor variables above to the Worker
+  and API. The spec needs `OUTBOUND_TEST_ALLOWED_HOSTS` to name a hostname that
+  resolves to 127.0.0.1; it starts its own target server on 127.0.0.1 (from
+  `e2e/support/monitor-target.mjs`) and reaches it through that hostname. CI
+  provides `target.nw-test.internal`. Locally, when that name does not resolve
+  and `/etc/hosts` is not editable, use `OUTBOUND_TEST_ALLOWED_HOSTS=127.0.0.1.nip.io`
+  (public wildcard DNS, needs internet). The credential keys stay unset outside
+  production (development key). The down and recovered flow waits for real
+  schedule rounds (1 minute interval), so the spec takes about 5 minutes.
 - `turbo.json` `globalPassThroughEnv` forwards the four monitor variables to
   turbo-run tasks without putting key values in the cache hash.
 - Bun runtime: `test` and `test:coverage` run vitest on Node. Job `test` also
