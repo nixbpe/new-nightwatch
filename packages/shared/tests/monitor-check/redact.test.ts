@@ -133,6 +133,61 @@ describe("createRedactor work bound for a displayed value", () => {
     expect(shown.truncated).toBe(true);
   });
 
+  it("scans a contiguous 1 MiB run once, with no rescans per occurrence", () => {
+    const text = "a".repeat(1 << 20);
+    // 100 needle forms, all absent except the one that fills the text.
+    const redact = createRedactor([
+      "a",
+      ...Array.from({ length: 33 }, (_v, i) => `zz${String(i)}\\"/`),
+    ]);
+    const indexOf = vi.spyOn(String.prototype, "indexOf");
+    let shown;
+    let searches;
+    try {
+      shown = shownOf(redact, text);
+      searches = indexOf.mock.calls.length;
+    } finally {
+      indexOf.mockRestore();
+    }
+    expect(shown).toEqual({ text: "•••", truncated: false });
+    expect(searches).toBeLessThan((1 << 20) + 200);
+  });
+
+  it("stops at the first match that fills the prefix, however long its run", () => {
+    const text = `${"z".repeat(500)}${"a".repeat(1 << 20)}`;
+    const indexOf = vi.spyOn(String.prototype, "indexOf");
+    let shown;
+    let searches;
+    try {
+      shown = shownOf(createRedactor(["a"]), text);
+      searches = indexOf.mock.calls.length;
+    } finally {
+      indexOf.mockRestore();
+    }
+    expect(shown.text).toBe("z".repeat(200));
+    expect(searches).toBeLessThan(10);
+  });
+
+  it("matches the unbounded redactor on random texts from a small alphabet", () => {
+    let seed = 12345;
+    const random = (n: number) => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return seed % n;
+    };
+    const alphabet = ["a", "b", "c", "ab", "bc", "\\u{1F600}", '"', "x"];
+    const secretSets = [["a"], ["ab", "bc"], ["abc", "b"], ['a"b', "x"], ["c"]];
+    for (let round = 0; round < 3000; round++) {
+      const redact = createRedactor(
+        secretSets[random(secretSets.length)] ?? [],
+      );
+      let text = "";
+      const pieces = random(400);
+      for (let i = 0; i < pieces; i++)
+        text += alphabet[random(alphabet.length)] ?? "";
+      expect(shownOf(redact, text), text).toEqual(truncateActual(redact(text)));
+    }
+  });
+
   it("returns exactly what the unbounded redactor would show", () => {
     const secrets = ["ab", "bcd", 'q"x'];
     const redact = createRedactor(secrets);

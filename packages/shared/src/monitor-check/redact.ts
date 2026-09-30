@@ -2,10 +2,12 @@ const MASK = "•••";
 export const ACTUAL_MAX_CHARS = 200;
 
 /**
- * `maxChars` bounds the work for a value that is shown cut to that many code
- * points: the result is a prefix of the full output holding at least
- * `maxChars + 1` code points when the full output is longer, so the caller's
- * cut lands on exactly the text an unbounded call would show.
+ * `maxChars` bounds the output, not the scan: the result is a prefix of the
+ * full output holding at least `maxChars + 1` code points when the full
+ * output is longer, so the caller's cut lands on exactly the text an unbounded
+ * call would show. Text before the first match that would fill the prefix is
+ * never scanned for later matches; one contiguous run of matches is scanned to
+ * its end because the text after it is part of the shown output.
  */
 export type Redactor = (text: string, maxChars?: number) => string;
 
@@ -34,30 +36,59 @@ export function createRedactor(
   return (text, maxChars) => {
     // Code units are at least code points, so this many units hold maxChars + 1 points.
     const cap = maxChars === undefined ? Infinity : 2 * (maxChars + 1);
+    // Next occurrence per needle; a min-heap of the needles that still have one.
     const next = needles.map((needle) => text.indexOf(needle));
+    const heap = next.flatMap((at, i) => (at === -1 ? [] : [i]));
+    const before = (a: number, b: number) =>
+      (next[a] as number) < (next[b] as number);
+    const siftDown = (from: number) => {
+      for (let i = from; ;) {
+        let low = i;
+        for (const child of [2 * i + 1, 2 * i + 2]) {
+          if (
+            child < heap.length &&
+            before(heap[child] as number, heap[low] as number)
+          ) {
+            low = child;
+          }
+        }
+        if (low === i) return;
+        [heap[i], heap[low]] = [heap[low] as number, heap[i] as number];
+        i = low;
+      }
+    };
+    for (let i = heap.length >> 1; i >= 0; i--) siftDown(i);
+
     let out = "";
     let cursor = 0;
-    for (;;) {
-      let first = -1;
-      for (let i = 0; i < needles.length; i++) {
-        const at = next[i] as number;
-        if (at !== -1 && (first === -1 || at < (next[first] as number))) {
-          first = i;
-        }
+    while (heap.length > 0) {
+      const start = next[heap[0] as number] as number;
+      // From here the output starts with out + text[cursor, start) + MASK
+      // whatever the end of this group is, and that already fills the prefix.
+      const gap = start - cursor;
+      if (out.length + gap + MASK.length >= cap) {
+        return gap >= cap
+          ? out + text.slice(cursor, cursor + cap)
+          : out + text.slice(cursor, start) + MASK;
       }
-      if (first === -1) break;
-      const start = next[first] as number;
       let end = start;
-      for (let i = 0; i < needles.length;) {
+      while (heap.length > 0 && (next[heap[0] as number] as number) <= end) {
+        const i = heap[0] as number;
+        const needle = needles[i] as string;
         const at = next[i] as number;
-        if (at !== -1 && at <= end) {
-          const needle = needles[i] as string;
-          end = Math.max(end, at + needle.length);
-          next[i] = text.indexOf(needle, at + 1);
-          i = 0;
+        end = Math.max(end, at + needle.length);
+        // Occurrences that start before end - length + 1 end inside this group.
+        const again = text.indexOf(
+          needle,
+          Math.max(at + 1, end - needle.length + 1),
+        );
+        if (again === -1) {
+          heap[0] = heap[heap.length - 1] as number;
+          heap.pop();
         } else {
-          i++;
+          next[i] = again;
         }
+        siftDown(0);
       }
       out += text.slice(cursor, start) + MASK;
       cursor = end;
