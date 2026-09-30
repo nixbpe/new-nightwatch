@@ -305,6 +305,7 @@ function ResultDetails({
             {result.ssl.issuer === null
               ? null
               : ` (ผู้ออก ${result.ssl.issuer})`}
+            {result.ssl.host === null ? null : ` โฮสต์ ${result.ssl.host}`}
           </span>
         )}
       </p>

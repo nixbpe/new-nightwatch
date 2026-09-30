@@ -174,7 +174,7 @@ describe("Test panel states", () => {
     expect(screen.getByText("รหัสสถานะ 200")).toBeInTheDocument();
     expect(screen.getByText("เวลาตอบสนอง 182 ms")).toBeInTheDocument();
     expect(screen.getByText(/SSL:/)).toHaveTextContent(
-      "เหลือ 128 วัน (ผู้ออก Example CA)",
+      "เหลือ 128 วัน (ผู้ออก Example CA) โฮสต์ api.acme.example",
     );
     const table = screen.getByRole("table", { name: "ผลการทดสอบต่อเงื่อนไข" });
     expect(within(table).getAllByText("ผ่าน")).toHaveLength(2);
