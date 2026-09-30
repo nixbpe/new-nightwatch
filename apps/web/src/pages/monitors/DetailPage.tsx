@@ -111,7 +111,7 @@ function DetailForMonitor({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { notice: flashNotice, heading } = useFlashNotice();
-  const switchedOrganization = useLeaveOnOrganizationSwitch();
+  const switchedOrganization = useLeaveOnOrganizationSwitch(organizationId);
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
   );

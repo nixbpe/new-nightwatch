@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
-import { fetchMeContext } from "../../lib/api/me";
+import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import {
   createMonitor,
   fetchMonitorChecks,
@@ -49,6 +49,17 @@ const createMock = vi.mocked(createMonitor);
 const updateMock = vi.mocked(updateMonitor);
 const detailMock = vi.mocked(fetchMonitorDetail);
 const meMock = vi.mocked(fetchMeContext);
+const C = "33333333-3333-4333-8333-333333333333";
+function threeOrgs(active: string) {
+  return {
+    ...context("owner", [
+      { id: A, name: "Acme", slug: "acme", role: "owner" },
+      { id: B, name: "Beta", slug: "beta", role: "owner" },
+      { id: C, name: "Gamma", slug: "gamma", role: "owner" },
+    ]),
+    lastActiveTenantId: active,
+  };
+}
 const SECRET_ID = "0f6a4b7e-1c2d-4e3f-8a9b-0c1d2e3f4a5b";
 
 beforeEach(() => {
@@ -118,7 +129,79 @@ describe("a route Organization that is not the server-active one", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps an Edit form's values when the user picks the Organization the URL names", async () => {
+    detailMock.mockResolvedValue({
+      monitor: detail({
+        auth: { type: "bearer" },
+        headers: [{ id: SECRET_ID, name: "X-Key", secret: true }],
+        secretSlots: [{ slot: "auth.token", configured: true }],
+      }),
+    });
+    vi.mocked(updateActiveOrganization).mockResolvedValue({
+      ...context(),
+      lastActiveTenantId: A,
+    });
+    const user = userEvent.setup();
+    renderForm(editPath());
+    const name = await screen.findByDisplayValue("Payments API");
+    await user.type(name, " typed");
+    await user.click(screen.getByRole("button", { name: /Beta/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Acme/ }));
+    await waitFor(() => {
+      expect(updateActiveOrganization).toHaveBeenCalledTimes(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${A}/monitors/${MONITOR_ID}/edit`,
+    );
+    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+      "Payments API typed",
+    );
+    // The stored secret is still shown as set.
+    expect(screen.getAllByText(/ตั้งค่าแล้ว/).length).toBeGreaterThan(0);
+  });
+
+  it("does not bounce a Detail page off its own Organization", async () => {
+    vi.mocked(updateActiveOrganization).mockResolvedValue({
+      ...context(),
+      lastActiveTenantId: A,
+    });
+    const user = userEvent.setup();
+    renderForm(`/organizations/${A}/monitors/${MONITOR_ID}`);
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    await user.click(screen.getByRole("button", { name: /Beta/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Acme/ }));
+    await waitFor(() => {
+      expect(updateActiveOrganization).toHaveBeenCalledTimes(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${A}/monitors/${MONITOR_ID}`,
+    );
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Payments API" }),
+    ).toBeInTheDocument();
+  });
+
+  it("still leaves for another Organization than the one the URL names", async () => {
+    meMock.mockResolvedValue(threeOrgs(B));
+    vi.mocked(updateActiveOrganization).mockResolvedValue(threeOrgs(C));
+    const user = userEvent.setup();
+    renderForm(newPath());
+    await user.type(await screen.findByLabelText("ชื่อมอนิเตอร์"), "typed");
+    await user.click(screen.getByRole("button", { name: /Beta/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Gamma/ }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        `/organizations/${C}/monitors`,
+      );
+    });
+    expect(screen.queryByDisplayValue("typed")).toBeNull();
+  });
+
   it("does not read Organization A's detail after the user switched away before the save landed", async () => {
+    meMock.mockResolvedValue(threeOrgs(B));
+    vi.mocked(updateActiveOrganization).mockResolvedValue(threeOrgs(C));
     const pending = deferred<{ monitor: ReturnType<typeof record> }>();
     updateMock.mockReturnValue(pending.promise);
     const user = userEvent.setup();
@@ -126,10 +209,10 @@ describe("a route Organization that is not the server-active one", () => {
     await screen.findByDisplayValue("Payments API");
     await user.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
     await user.click(screen.getByRole("button", { name: /Beta/ }));
-    await user.click(screen.getByRole("menuitemradio", { name: /Acme/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Gamma/ }));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${A}/monitors`,
+        `/organizations/${C}/monitors`,
       );
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -138,7 +221,7 @@ describe("a route Organization that is not the server-active one", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(detailMock.mock.calls).toHaveLength(readsBefore);
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors`,
+      `/organizations/${C}/monitors`,
     );
     expect(screen.getByTestId("location")).not.toHaveTextContent(MONITOR_ID);
   });

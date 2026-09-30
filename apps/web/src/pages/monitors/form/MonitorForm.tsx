@@ -27,6 +27,7 @@ import {
 import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import type { MonitorFlashState } from "../flash";
+import { hasLeftOrganization } from "../useLeaveOnOrganizationSwitch";
 import { AssertionsSection } from "./AssertionsSection";
 import { BasicSection } from "./BasicSection";
 import { RequestSection } from "./RequestSection";
@@ -151,9 +152,7 @@ export function MonitorForm({
   /** The page is gone or the user switched Organization since the form opened. */
   const leftOrganization = () =>
     !mounted.current ||
-    (latestOrg.current !== null &&
-      openedIn !== null &&
-      latestOrg.current !== openedIn);
+    hasLeftOrganization(openedIn, latestOrg.current, organizationId);
 
   useEffect(() => {
     // StrictMode runs the cleanup once before the real mount, so the flag is set again here.

@@ -45,7 +45,7 @@ function MonitorFormForOrganization({
   monitorId: string | undefined;
 }) {
   const { me, mePending, meError, refreshMembershipContext } = useTenant();
-  const switched = useLeaveOnOrganizationSwitch();
+  const switched = useLeaveOnOrganizationSwitch(organizationId);
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
   );
