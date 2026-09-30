@@ -163,7 +163,7 @@ export function RowShell({
             aria-label={removeLabel}
             onClick={onRemove}
           >
-            ลบแถว
+            ลบ
           </Button>
         </div>
       )}

@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type SyntheticEvent,
-  type ReactNode,
 } from "react";
 import { Link, useNavigate } from "react-router";
 
@@ -26,7 +25,10 @@ import {
 import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import type { MonitorFlashState } from "../flash";
+import { AssertionsSection } from "./AssertionsSection";
 import { BasicSection } from "./BasicSection";
+import { RequestSection } from "./RequestSection";
+import { SecretsSection } from "./SecretsSection";
 import {
   ADVANCED_ONLY_PATH,
   advancedCount,
@@ -318,11 +320,13 @@ export function MonitorForm({
   }
 
   const advancedInUse = advancedCount(values);
-  let sections: ReactNode = null;
-  if (mode === "advanced") {
-    sections = null;
-  }
-
+  const sectionProps = {
+    values,
+    errors: placed,
+    onChange: change,
+    focusAfterRender: setFocusTarget,
+    disabled: controlsOff,
+  };
   return (
     <Page width="form">
       {heading}
@@ -361,15 +365,17 @@ export function MonitorForm({
           </div>
         ) : null}
         <BasicSection
-          values={values}
-          errors={placed}
-          onChange={change}
-          focusAfterRender={setFocusTarget}
-          disabled={controlsOff}
+          {...sectionProps}
           advanced={mode === "advanced"}
           urlNote={originBlocked ? SECRET_ORIGIN_MESSAGE : null}
         />
-        {sections}
+        {mode === "advanced" ? (
+          <>
+            <RequestSection {...sectionProps} />
+            <SecretsSection auth={values.auth} editing={editing} />
+            <AssertionsSection {...sectionProps} />
+          </>
+        ) : null}
         {roleLost ? <Alert tone="error">{ROLE_CHANGED}</Alert> : null}
         {conflict ? (
           <div className="flex flex-col gap-2">
