@@ -21,6 +21,7 @@ import {
   cancelInvitation,
   createInvitation,
   fetchPendingInvitations,
+  resendInvitation,
 } from "../lib/api/invitations";
 import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
 import { fetchOrganizationMembers } from "../lib/api/members";
@@ -36,6 +37,7 @@ vi.mock("../lib/api/invitations", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createInvitation: vi.fn(),
   cancelInvitation: vi.fn(),
+  resendInvitation: vi.fn(),
   fetchPendingInvitations: vi.fn(async (organizationId: string) =>
     (await import("../test/pendingInvitations")).emptyPendingInvitationList(
       organizationId,
@@ -647,5 +649,113 @@ it.each([
     );
     expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
     expect(cancelInvitation).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each([
+  [
+    "succeeds",
+    () =>
+      Promise.resolve({
+        resent: true as const,
+        emailDispatch: "accepted" as const,
+        sentAt: "2026-10-01T08:00:00.000Z",
+        expiresAt: "2026-10-03T08:00:00.000Z",
+        resendAvailableAt: "2026-10-01T08:05:00.000Z",
+      }),
+  ],
+  [
+    "is denied",
+    () => Promise.reject(new ApiError("PERMISSION_DENIED", "denied", 403)),
+  ],
+])(
+  "keeps B untouched by a late A resend that %s after a confirmed switch",
+  async (_label, outcome) => {
+    const row = (id: string, email: string) => ({
+      organizationId: id,
+      invitations: [
+        {
+          publicId: "00000000-0000-4000-8000-000000000001",
+          email,
+          role: "viewer" as const,
+          sentAt: "2026-09-30T08:00:00.000Z",
+          expiresAt: "2026-10-02T08:00:00.000Z",
+          expired: false,
+          resendAvailableAt: "2026-09-30T08:05:00.000Z",
+          manageable: true,
+        },
+      ],
+      activeCount: 1,
+      activeLimit: 100 as const,
+      page: { limit: 50, offset: 0, total: 1 },
+    });
+    vi.mocked(fetchPendingInvitations).mockImplementation((id) =>
+      Promise.resolve(
+        id === A
+          ? row(A, "a-only@example.test")
+          : row(B, "b-only@example.test"),
+      ),
+    );
+    const lateResend = Promise.withResolvers<undefined>();
+    vi.mocked(resendInvitation).mockImplementation(async () => {
+      await lateResend.promise;
+      return outcome();
+    });
+    vi.mocked(fetchMeContext).mockResolvedValue(context);
+    vi.mocked(updateActiveOrganization).mockResolvedValue({
+      ...context,
+      lastActiveTenantId: B,
+    });
+    vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
+      Promise.resolve({ ...aList, organizationId: id }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider>
+          <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+            <TenantView />
+          </MemoryRouter>
+        </TenantProvider>
+      </QueryClientProvider>,
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: "ส่งคำเชิญซ้ำถึง a-only@example.test",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "ยืนยันการส่งคำเชิญซ้ำ" }),
+    );
+    expect(resendInvitation).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "confirm B" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
+    );
+    await user.click(screen.getByRole("button", { name: "navigate B" }));
+    expect(await screen.findByText("b-only@example.test")).toBeInTheDocument();
+    const listCalls = vi.mocked(fetchPendingInvitations).mock.calls.length;
+    const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
+
+    await act(async () => {
+      lateResend.resolve(undefined);
+      await lateResend.promise;
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("b-only@example.test")).toBeInTheDocument();
+    expect(screen.queryByText(/ส่งคำเชิญซ้ำ|ไม่สำเร็จ/)).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(vi.mocked(fetchPendingInvitations).mock.calls).toHaveLength(
+      listCalls,
+    );
+    expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
+    expect(resendInvitation).toHaveBeenCalledTimes(1);
   },
 );

@@ -14,7 +14,10 @@ import {
 } from "../../lib/api/invitations";
 import { useOrganizationScope } from "./useOrganizationScope";
 
-export type InvitationNotice = { tone: "success" | "error"; text: string };
+export type InvitationNotice = {
+  tone: "success" | "warning" | "error";
+  text: string;
+};
 
 export type InvitationCancelConfirmation = {
   invitation: PendingInvitation;
