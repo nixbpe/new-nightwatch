@@ -41,6 +41,7 @@ export function PendingInvitationsSection({
   const data =
     list.data?.organizationId === organizationId ? list.data : undefined;
   const settled = !list.isFetching && !list.isError && data !== undefined;
+  const failed = !list.isFetching && list.isError;
   const lastPageOffset =
     data === undefined
       ? 0
@@ -55,11 +56,11 @@ export function PendingInvitationsSection({
     if (pastEnd) setOffset(lastPageOffset);
   }, [pastEnd, lastPageOffset]);
   useEffect(() => {
-    if (settled && !pastEnd && focusHeadingWhenSettled.current) {
+    if (((settled && !pastEnd) || failed) && focusHeadingWhenSettled.current) {
       focusHeadingWhenSettled.current = false;
       headingRef.current?.focus();
     }
-  }, [settled, pastEnd]);
+  }, [settled, pastEnd, failed]);
 
   if (!scopeCurrent) return null;
 
@@ -70,7 +71,7 @@ export function PendingInvitationsSection({
 
   const showData = settled && !pastEnd;
   let body;
-  if (!showData && !list.isFetching && list.isError) {
+  if (!showData && failed) {
     body = (
       <>
         <Alert tone="error">โหลดคำเชิญไม่สำเร็จ</Alert>
@@ -82,6 +83,17 @@ export function PendingInvitationsSection({
           >
             ลองอีกครั้ง
           </Button>
+          {offset > 0 ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                changePage(Math.max(0, offset - LIMIT));
+              }}
+            >
+              หน้าก่อนหน้า
+            </Button>
+          ) : null}
         </div>
       </>
     );
@@ -110,9 +122,7 @@ export function PendingInvitationsSection({
               key: "role",
               header: "บทบาท",
               width: "160px",
-              cell: (item) => (
-                <StatusPill>{ROLE_LABELS[item.role] ?? item.role}</StatusPill>
-              ),
+              cell: (item) => <StatusPill>{ROLE_LABELS[item.role]}</StatusPill>,
             },
             {
               key: "sentAt",
@@ -176,7 +186,7 @@ export function PendingInvitationsSection({
           คำเชิญที่หมดอายุไม่นับในโควตา
         </p>
       </div>
-      {showData || list.isError ? null : (
+      {showData || failed ? null : (
         <p role="status" className="text-sm text-foreground-secondary">
           กำลังโหลดคำเชิญ
         </p>

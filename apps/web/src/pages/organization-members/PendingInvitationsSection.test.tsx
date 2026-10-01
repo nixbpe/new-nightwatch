@@ -273,6 +273,53 @@ describe("PendingInvitationsSection", () => {
     expect(screen.queryByText("โหลดคำเชิญไม่สำเร็จ")).toBeNull();
   });
 
+  it("focuses the heading and offers the previous page when the next page fails", async () => {
+    serve(51);
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText("row-1@example.test");
+
+    fetchList.mockRejectedValueOnce(
+      new ApiError("INTERNAL_ERROR", "boom", 500),
+    );
+    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+
+    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
+    ).toHaveFocus();
+    expect(screen.queryByText("row-1@example.test")).toBeNull();
+    await user.tab();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "หน้าก่อนหน้า" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("row-1@example.test")).toBeVisible();
+    expect(screen.queryByText("โหลดคำเชิญไม่สำเร็จ")).toBeNull();
+  });
+
+  it("announces loading while a retry runs after a failed refresh", async () => {
+    serve(2);
+    const user = userEvent.setup();
+    const { queryClient } = renderSection();
+    await screen.findByText("row-1@example.test");
+
+    fetchList.mockRejectedValueOnce(
+      new ApiError("INTERNAL_ERROR", "boom", 500),
+    );
+    await queryClient.invalidateQueries({
+      queryKey: ["tenant", "invitations", A],
+    });
+    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
+
+    fetchList.mockReturnValueOnce(new Promise(() => undefined));
+    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "กำลังโหลดคำเชิญ",
+    );
+    expect(screen.queryByText("โหลดคำเชิญไม่สำเร็จ")).toBeNull();
+  });
+
   it("announces loading and shows no rows while the first request is pending", async () => {
     fetchList.mockReturnValue(new Promise(() => undefined));
     renderSection();
