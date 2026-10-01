@@ -1458,7 +1458,57 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated pending organization invitations */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            organizationId: string;
+                            invitations: {
+                                /** Format: uuid */
+                                publicId: string;
+                                email: string;
+                                /** @enum {string} */
+                                role: "owner" | "admin" | "viewer" | "auditor";
+                                /** Format: date-time */
+                                sentAt: string;
+                                /** Format: date-time */
+                                expiresAt: string | null;
+                                expired: boolean;
+                                /** Format: date-time */
+                                resendAvailableAt: string;
+                                manageable: boolean;
+                            }[];
+                            activeCount: number;
+                            /** @enum {number} */
+                            activeLimit: 100;
+                            page: {
+                                limit: number;
+                                offset: number;
+                                total: number;
+                            };
+                        };
+                    };
+                };
+            };
+        };
         put?: never;
         post: {
             parameters: {

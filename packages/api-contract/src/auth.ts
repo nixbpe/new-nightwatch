@@ -70,6 +70,40 @@ export const organizationMemberRoleUpdateResponseSchema = z.object({
   }),
 });
 
+export const pendingInvitationListQuerySchema =
+  organizationMemberListQuerySchema;
+
+export const pendingInvitationSchema = z.object({
+  publicId: z.uuid(),
+  email: z.string(),
+  role: organizationRoleSchema,
+  sentAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime().nullable(),
+  expired: z.boolean(),
+  resendAvailableAt: z.iso.datetime(),
+  manageable: z.boolean(),
+});
+
+export const pendingInvitationListResponseSchema = z.object({
+  organizationId: z.uuid(),
+  invitations: z.array(pendingInvitationSchema).max(50),
+  activeCount: z.number().int().min(0),
+  activeLimit: z.literal(100),
+  page: z.object({
+    limit: z.number().int().min(1).max(50),
+    offset: z.number().int().min(0),
+    total: z.number().int().min(0),
+  }),
+});
+
+export type PendingInvitationListQuery = z.infer<
+  typeof pendingInvitationListQuerySchema
+>;
+export type PendingInvitation = z.infer<typeof pendingInvitationSchema>;
+export type PendingInvitationListResponse = z.infer<
+  typeof pendingInvitationListResponseSchema
+>;
+
 export type OrganizationMemberRoleUpdateResponse = z.infer<
   typeof organizationMemberRoleUpdateResponseSchema
 >;

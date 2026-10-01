@@ -4,6 +4,8 @@ import {
   organizationMemberRoleUpdateResponseSchema,
   organizationMemberListQuerySchema,
   organizationMemberListResponseSchema,
+  pendingInvitationListQuerySchema,
+  pendingInvitationListResponseSchema,
 } from "@nightwatch/api-contract";
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { MiddlewareHandler } from "hono";
@@ -18,7 +20,10 @@ import { requireVerifiedSession } from "../me/service";
 import { auditMonitorMutation } from "../monitors/audit";
 import { notificationRouteDeclarations } from "../notifications/contract";
 import { invalidInputHook } from "../notifications/invalid-input";
-import { createOrganizationInvitation } from "./invitations";
+import {
+  createOrganizationInvitation,
+  listPendingInvitations,
+} from "./invitations";
 import {
   leaveOrganization,
   listOrganizationMembers,
@@ -214,6 +219,24 @@ const invitationCreateRoute = createRoute({
   },
 });
 
+const invitationListRoute = createRoute({
+  method: "get",
+  path: "/api/organizations/{organizationId}/invitations",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid() }),
+    query: pendingInvitationListQuerySchema,
+  },
+  responses: {
+    200: {
+      description: "Paginated pending organization invitations",
+      content: {
+        "application/json": { schema: pendingInvitationListResponseSchema },
+      },
+    },
+  },
+});
+
 export function registerOrganizationInvitationRoutes(
   app: OpenAPIHono,
   deps: {
@@ -224,6 +247,24 @@ export function registerOrganizationInvitationRoutes(
     mailer: Mailer;
   },
 ): void {
+  app.openapi(invitationListRoute, async (c) => {
+    const { organizationId } = c.req.valid("param");
+    const { limit, offset } = c.req.valid("query");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    const body = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.invitation.list",
+      () =>
+        listPendingInvitations(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          limit,
+          offset,
+        }),
+    );
+    return c.json(body, 200);
+  });
   app.openapi(invitationCreateRoute, async (c) => {
     const { organizationId } = c.req.valid("param");
     const { email, role } = c.req.valid("json");
