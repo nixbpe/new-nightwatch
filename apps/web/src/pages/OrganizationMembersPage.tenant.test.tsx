@@ -29,6 +29,11 @@ import { OrganizationMembersPage } from "./OrganizationMembersPage";
 vi.mock("../lib/api/invitations", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createInvitation: vi.fn(),
+  fetchPendingInvitations: vi.fn(async (organizationId: string) =>
+    (await import("../test/pendingInvitations")).emptyPendingInvitationList(
+      organizationId,
+    ),
+  ),
 }));
 vi.mock("../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),

@@ -2,9 +2,10 @@ import type {
   InvitationCreateResponse,
   MeContextResponse,
   OrganizationMemberListResponse,
+  PendingInvitationListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -17,7 +18,10 @@ import {
   fetchOrganizationMembers,
   memberListQueryKey,
 } from "../lib/api/members";
-import { createInvitation } from "../lib/api/invitations";
+import {
+  createInvitation,
+  fetchPendingInvitations,
+} from "../lib/api/invitations";
 import {
   claimContextPublication,
   createContextPublicationClaim,
@@ -100,6 +104,11 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
 vi.mock("../lib/api/invitations", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createInvitation: vi.fn(),
+  fetchPendingInvitations: vi.fn(async (organizationId: string) =>
+    (await import("../test/pendingInvitations")).emptyPendingInvitationList(
+      organizationId,
+    ),
+  ),
 }));
 
 function renderPage() {
@@ -1561,4 +1570,73 @@ describe("OrganizationMembersPage", () => {
       0,
     );
   });
+});
+
+describe("OrganizationMembersPage pending invitations", () => {
+  function asRole(role: TenantOrganization["role"]) {
+    const org = { ...organizationA, role };
+    tenant = { ...tenant, me: { organizations: [org] }, activeOrg: org };
+  }
+  const pending = (emails: string[]): PendingInvitationListResponse => ({
+    organizationId,
+    invitations: emails.map((email, index) => ({
+      publicId: `00000000-0000-4000-8000-00000000000${String(index)}`,
+      email,
+      role: "viewer",
+      sentAt: "2026-09-30T08:00:00.000Z",
+      expiresAt: "2026-10-02T08:00:00.000Z",
+      expired: false,
+      resendAvailableAt: "2026-09-30T08:05:00.000Z",
+      manageable: true,
+    })),
+    activeCount: emails.length,
+    activeLimit: 100,
+    page: { limit: 50, offset: 0, total: emails.length },
+  });
+
+  it.each(["viewer", "auditor"] as const)(
+    "hides the section and requests no invitations for %s",
+    async (role) => {
+      asRole(role);
+      renderPage();
+
+      expect(
+        await screen.findByText("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/คำเชิญที่รอตอบรับ/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/จาก 100/)).not.toBeInTheDocument();
+      expect(fetchPendingInvitations).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["owner", "admin"] as const)(
+    "places the section after the invite card and before the member table for %s",
+    async (role) => {
+      asRole(role);
+      vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+      vi.mocked(fetchPendingInvitations).mockResolvedValue(
+        pending(["wait@example.test"]),
+      );
+      renderPage();
+
+      const invite = await screen.findByRole("heading", {
+        name: /เชิญสมาชิกเข้าสู่/,
+      });
+      const section = await screen.findByRole("heading", {
+        name: /คำเชิญที่รอตอบรับ/,
+      });
+      const members = await screen.findByRole("region", {
+        name: "ตารางสมาชิก",
+      });
+      expect(
+        invite.compareDocumentPosition(section) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        section.compareDocumentPosition(members) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(await screen.findByText("wait@example.test")).toBeInTheDocument();
+    },
+  );
 });

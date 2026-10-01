@@ -22,6 +22,7 @@ import {
 } from "../lib/api/members";
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
+import { PendingInvitationsSection } from "./organization-members/PendingInvitationsSection";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import {
   MemberRevokeButton,
@@ -499,6 +500,7 @@ function OrganizationMembersPageForOrganization({
         organizationName={organization.name}
         actorRole={organization.role === "owner" ? "owner" : "admin"}
       />
+      <PendingInvitationsSection organizationId={organizationId} />
       {roleChange.pendingText !== null ? (
         <Notice tone="pending">{roleChange.pendingText}</Notice>
       ) : null}
