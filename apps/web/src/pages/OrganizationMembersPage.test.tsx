@@ -169,6 +169,17 @@ const invitationOutcomes: [
   ],
 ];
 
+// The invitation section keeps an empty status region mounted, so member and
+// notice assertions address the one status region that carries text.
+const textStatuses = () =>
+  screen.queryAllByRole("status").filter((node) => node.textContent !== "");
+const getStatus = () => {
+  const found = textStatuses();
+  expect(found).toHaveLength(1);
+  return found[0] as HTMLElement;
+};
+const findStatus = () => waitFor(getStatus);
+
 describe("OrganizationMembersPage", () => {
   it.each(invitationOutcomes)(
     "keeps the A invitation mounted across refetch and pagination: %s",
@@ -195,9 +206,7 @@ describe("OrganizationMembersPage", () => {
           exact: true,
         });
       });
-      expect(await screen.findByRole("status")).toHaveTextContent(
-        "กำลังโหลดสมาชิก",
-      );
+      expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
       expect(screen.queryByText("Ada")).not.toBeInTheDocument();
       expect(email).toBeInTheDocument();
       expect(email).toHaveValue("new@example.com");
@@ -207,9 +216,7 @@ describe("OrganizationMembersPage", () => {
       refreshedPage.resolve(response);
       expect(await screen.findByText("Ada")).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-      expect(await screen.findByRole("status")).toHaveTextContent(
-        "กำลังโหลดสมาชิก",
-      );
+      expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
       expect(screen.queryByText("Ada")).not.toBeInTheDocument();
       expect(email).toBeInTheDocument();
       nextPage.resolve({
@@ -230,7 +237,7 @@ describe("OrganizationMembersPage", () => {
           post.resolve(outcome);
           await post.promise;
         });
-        expect(screen.getByRole("status")).toHaveTextContent(message);
+        expect(getStatus()).toHaveTextContent(message);
         expect(email).toHaveValue("");
       }
       expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
@@ -297,9 +304,7 @@ describe("OrganizationMembersPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดสมาชิก",
-    );
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
     expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
@@ -330,9 +335,7 @@ describe("OrganizationMembersPage", () => {
       });
     });
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดสมาชิก",
-    );
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
     expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
@@ -370,9 +373,7 @@ describe("OrganizationMembersPage", () => {
     });
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดสมาชิก",
-    );
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     const heading = screen.getByRole("heading", { name: "สมาชิก" });
     expect(heading).toHaveFocus();
     expect(heading).toHaveAttribute("tabindex", "-1");
@@ -440,9 +441,7 @@ describe("OrganizationMembersPage", () => {
     await screen.findByText("Ada");
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดสมาชิก",
-    );
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("แสดง 0–50 จาก 49")).toBeNull();
     expect(
       await screen.findByText("Repaired first member"),

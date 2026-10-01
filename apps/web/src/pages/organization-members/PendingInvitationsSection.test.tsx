@@ -16,10 +16,14 @@ vi.mock("../../lib/api/invitations", async (importOriginal) => ({
   fetchPendingInvitations: vi.fn(),
 }));
 const fetchList = vi.mocked(fetchPendingInvitations);
+const refreshMembershipContext = vi.fn(() => Promise.resolve(null));
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
 
-afterEach(() => fetchList.mockReset());
+afterEach(() => {
+  fetchList.mockReset();
+  refreshMembershipContext.mockClear();
+});
 
 function publicId(n: number): string {
   return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -85,7 +89,12 @@ function renderSection(organizationId = A) {
   });
   const ui = (id: string) => (
     <QueryClientProvider client={queryClient}>
-      <PendingInvitationsSection key={id} organizationId={id} />
+      <PendingInvitationsSection
+        key={id}
+        organizationId={id}
+        organizationName="Acme"
+        refreshMembershipContext={refreshMembershipContext}
+      />
     </QueryClientProvider>
   );
   const view = render(ui(organizationId));
@@ -295,6 +304,26 @@ describe("PendingInvitationsSection", () => {
     await user.keyboard("{Enter}");
     expect(await screen.findByText("row-1@example.test")).toBeVisible();
     expect(screen.queryByText("โหลดคำเชิญไม่สำเร็จ")).toBeNull();
+  });
+
+  it("focuses the heading when a retry succeeds after a failed page change", async () => {
+    serve(51);
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText("row-1@example.test");
+
+    fetchList.mockRejectedValueOnce(
+      new ApiError("INTERNAL_ERROR", "boom", 500),
+    );
+    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+
+    expect(await screen.findByText("row-51@example.test")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
+    ).toHaveFocus();
   });
 
   it("announces loading while a retry runs after a failed refresh", async () => {

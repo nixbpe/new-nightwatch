@@ -430,11 +430,15 @@ it.each(["success", "LAST_OWNER"] as const)(
     expect(screen.getByRole("row", { name: /Bea/ })).toBeInTheDocument();
     // B is owned by the actor, so B's own control is live and idle.
     expect(revokeButton("Bea")).toBeEnabled();
-    // Only the harness's own location output may carry a status role.
+    // Only the harness's own location output may carry status text; the invitation
+    // section's region stays mounted and empty.
     expect(
       screen
         .queryAllByRole("status")
-        .filter((element) => !element.hasAttribute("data-testid")),
+        .filter(
+          (element) =>
+            !element.hasAttribute("data-testid") && element.textContent !== "",
+        ),
     ).toEqual([]);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();

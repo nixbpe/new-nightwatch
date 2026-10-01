@@ -500,7 +500,11 @@ function OrganizationMembersPageForOrganization({
         organizationName={organization.name}
         actorRole={organization.role === "owner" ? "owner" : "admin"}
       />
-      <PendingInvitationsSection organizationId={organizationId} />
+      <PendingInvitationsSection
+        organizationId={organizationId}
+        organizationName={organization.name}
+        refreshMembershipContext={refreshAfterAuthorizationDenied}
+      />
       {roleChange.pendingText !== null ? (
         <Notice tone="pending">{roleChange.pendingText}</Notice>
       ) : null}

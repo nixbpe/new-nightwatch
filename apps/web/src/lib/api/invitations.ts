@@ -1,5 +1,6 @@
 import {
   invitationAcceptResponseSchema,
+  invitationCancelResponseSchema,
   invitationCreateInputSchema,
   invitationCreateResponseSchema,
   invitationResponseSchema,
@@ -74,5 +75,16 @@ export function fetchPendingInvitations(
     "/api/organizations/{organizationId}/invitations",
     pendingInvitationListResponseSchema,
     { params: { organizationId }, query: { limit, offset } },
+  );
+}
+
+export function cancelInvitation(
+  organizationId: string,
+  publicId: string,
+): Promise<{ canceled: true }> {
+  return request(
+    "/api/organizations/{organizationId}/invitations/{publicId}",
+    invitationCancelResponseSchema,
+    { method: "DELETE", params: { organizationId, publicId } },
   );
 }
