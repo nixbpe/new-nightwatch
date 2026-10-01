@@ -45,9 +45,7 @@ function normalizeNativeAuthPath(rawPath: string): string {
     .toLowerCase()
     .replace(/\/{2,}/g, "/")
     .replace(/\/+$/, "");
-  return path.startsWith(NATIVE_AUTH_BASE_PATH)
-    ? path.slice(NATIVE_AUTH_BASE_PATH.length)
-    : path;
+  return path.slice(NATIVE_AUTH_BASE_PATH.length);
 }
 
 // Must be installed before Better Auth's native organization routes.

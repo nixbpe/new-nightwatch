@@ -1716,6 +1716,12 @@ describe("native Better Auth organization routes (hotfix)", () => {
     expect(denials).toHaveLength(requests);
     for (const entry of denials) {
       expect(entry).toMatchObject({ code: "PERMISSION_DENIED" });
+      const baseFields = ["level", "time", "name", "msg", "pid", "hostname"];
+      expect(
+        Object.keys(entry)
+          .filter((key) => !baseFields.includes(key))
+          .sort(),
+      ).toEqual(["action", "actorUserId", "code"]);
       expect(String(entry.action)).toMatch(
         /^legacy:\/api\/auth\/organization\//,
       );
@@ -1727,6 +1733,8 @@ describe("native Better Auth organization routes (hotfix)", () => {
       nativeOrganizationId,
       ...Object.values(emails),
       password,
+      "session_token",
+      "cookie",
     ]) {
       expect(serialized).not.toContain(sensitive);
     }

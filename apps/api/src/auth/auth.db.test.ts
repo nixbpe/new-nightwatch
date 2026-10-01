@@ -2055,9 +2055,16 @@ describe("native organization membership mutation guard", () => {
           },
         ),
       );
-      expect({ endpoint, status: response.status }).toEqual({
+      // Native get-invitation and reject-invitation also answer 403 on their
+      // own, so only the hook's body proves the path is in the blocked set.
+      expect({
+        endpoint,
+        status: response.status,
+        body: await response.json(),
+      }).toMatchObject({
         endpoint,
         status: 403,
+        body: { message: "ใช้เส้นทางจัดการสมาชิกใหม่" },
       });
     }
     const state = await database.sql.query<{ status: string; orgs: number }>(
