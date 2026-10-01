@@ -233,7 +233,7 @@ export function PendingInvitationsSection({
           คำเชิญที่หมดอายุไม่นับในโควตา
         </p>
       </div>
-      <div role="status" className="flex flex-col gap-1 text-sm">
+      <div role="status" className="flex flex-col gap-1 text-sm empty:sr-only">
         {showData || failed ? null : (
           <p className="text-foreground-secondary">กำลังโหลดคำเชิญ</p>
         )}
