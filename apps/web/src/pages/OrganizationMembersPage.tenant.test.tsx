@@ -2,6 +2,7 @@ import type {
   InvitationCreateResponse,
   MeContextResponse,
   OrganizationMemberListResponse,
+  PendingInvitationListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -15,7 +16,10 @@ import {
 } from "react-router";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { createInvitation } from "../lib/api/invitations";
+import {
+  createInvitation,
+  fetchPendingInvitations,
+} from "../lib/api/invitations";
 import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
 import { fetchOrganizationMembers } from "../lib/api/members";
 import {
@@ -409,4 +413,74 @@ it("retires an A invitation on real tenant publication while navigation still ho
     "b-draft@example.test",
   );
   expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+});
+
+it("keeps B pending invitations untouched by a late A list response after a confirmed switch", async () => {
+  const invitationFor = (id: string, email: string) => ({
+    organizationId: id,
+    invitations: [
+      {
+        publicId: "00000000-0000-4000-8000-000000000001",
+        email,
+        role: "viewer" as const,
+        sentAt: "2026-09-30T08:00:00.000Z",
+        expiresAt: "2026-10-02T08:00:00.000Z",
+        expired: false,
+        resendAvailableAt: "2026-09-30T08:05:00.000Z",
+        manageable: true,
+      },
+    ],
+    activeCount: id === A ? 9 : 1,
+    activeLimit: 100 as const,
+    page: { limit: 50, offset: 0, total: 1 },
+  });
+  const lateA = Promise.withResolvers<PendingInvitationListResponse>();
+  vi.mocked(fetchPendingInvitations).mockImplementation((id) =>
+    id === A
+      ? lateA.promise
+      : Promise.resolve(invitationFor(B, "b-only@example.test")),
+  );
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(updateActiveOrganization).mockResolvedValue({
+    ...context,
+    lastActiveTenantId: B,
+  });
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
+    Promise.resolve({ ...aList, organizationId: id }),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("Ada")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(fetchPendingInvitations).toHaveBeenCalledWith(A, 50, 0);
+  });
+
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
+  );
+  await user.click(screen.getByRole("button", { name: "navigate B" }));
+  expect(await screen.findByText("b-only@example.test")).toBeInTheDocument();
+
+  await act(async () => {
+    lateA.resolve(invitationFor(A, "a-only@example.test"));
+    await lateA.promise;
+  });
+
+  expect(screen.getByText("b-only@example.test")).toBeInTheDocument();
+  expect(screen.queryByText("a-only@example.test")).toBeNull();
+  expect(
+    screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
+  ).toHaveTextContent("(1 จาก 100)");
 });
