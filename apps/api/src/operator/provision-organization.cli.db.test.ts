@@ -72,7 +72,11 @@ async function closedPort(): Promise<number> {
   const probe = createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
   const port = (probe.address() as { port: number }).port;
-  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  await new Promise<void>((resolve) =>
+    probe.close(() => {
+      resolve();
+    }),
+  );
   return port;
 }
 
@@ -126,10 +130,16 @@ async function cli(
   );
   let stdout = "";
   let stderr = "";
-  child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-  child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+  child.stdout.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
   const code = await new Promise<number>((resolve) =>
-    child.on("close", (exitCode) => resolve(exitCode ?? -1)),
+    child.on("close", (exitCode) => {
+      resolve(exitCode ?? -1);
+    }),
   );
   return { code, stdout, stderr };
 }
@@ -223,7 +233,11 @@ afterAll(async () => {
     }
   } finally {
     await database.close();
-    await new Promise<void>((resolve) => smtp.close(() => resolve()));
+    await new Promise<void>((resolve) =>
+      smtp.close(() => {
+        resolve();
+      }),
+    );
   }
 }, 30_000);
 
@@ -270,16 +284,16 @@ describe("bun run provision:organization against an existing organization", () =
   ])(
     "at %s prints the quota message, exits 1 and sends nothing",
     async (_l, withExpired) => {
-      const aSlug = slug(`quota-${withExpired}`);
+      const aSlug = slug(`quota-${String(withExpired)}`);
       const org = await seedOrg(aSlug);
       await seedLive(org, 100);
       if (withExpired) {
-        await seedInvitation(org, address(`quota-${withExpired}`), {
+        await seedInvitation(org, address(`quota-${String(withExpired)}`), {
           expiresIn: "-1 hour",
         });
       }
       const before = await invitationRows(org);
-      const result = await cli(aSlug, address(`quota-${withExpired}`));
+      const result = await cli(aSlug, address(`quota-${String(withExpired)}`));
 
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("provision-organization: failed");

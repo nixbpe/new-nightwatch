@@ -386,9 +386,9 @@ describe("provisioning an existing organization", () => {
     ["100 live rows", 100, false],
     ["100 live rows plus an expired row", 100, true],
   ])("refuses at %s and changes nothing", async (_label, live, withExpired) => {
-    const fixture = await newOrg(`c100-${withExpired}`);
+    const fixture = await newOrg(`c100-${String(withExpired)}`);
     await seedLive(fixture.org, live);
-    const address = `new-${run}-c100-${withExpired}@example.test`;
+    const address = `new-${run}-c100-${String(withExpired)}@example.test`;
     if (withExpired) await seed(fixture.org, address, { expiresIn: "-1 hour" });
     const before = await owner.sql.query(
       "select id, status, updated_at from invitation where organization_id = $1 order by id",
