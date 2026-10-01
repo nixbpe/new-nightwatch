@@ -18,3 +18,23 @@ paths = [
   '''test-results/''',
   '''playwright-report/''',
 ]
+
+# F-005 monitor tests (commit 8e1ec42): hand-written UUID fixtures for a
+# secret's id, flagged as generic-api-key. Rule-level allowlist, because a
+# global allowlist with `paths` skips whole files. Scoped to the 3 test files
+# AND the exact fixture lines, so any other value in them is still reported.
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "UUID SECRET_ID fixtures in F-005 monitor tests."
+condition = "AND"
+paths = [
+  '''apps/web/src/pages/monitors/MonitorFormEdit\.test\.tsx$''',
+  '''apps/web/src/pages/monitors/MonitorFormRepair\.test\.tsx$''',
+  '''apps/api/src/monitors/write-lifecycle\.db\.test\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''^\s*const SECRET_ID = "(?:0f6a4b7e-1c2d-4e3f-8a9b-0c1d2e3f4a5b|5b0c1a3e-6f0a-4a57-9c4e-8d1b2a3c4d5e)";\s*$''',
+]
