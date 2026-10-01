@@ -24,10 +24,9 @@ const orgCreate = crypto.randomUUID();
 const absentOrg = crypto.randomUUID();
 const allOrgs = [orgA, orgB, orgEmpty, orgPage, orgCreate];
 const actorIds = Object.fromEntries(
-  ["owner", "admin", "viewer", "auditor", "other", "both"].map((role) => [
-    role,
-    crypto.randomUUID(),
-  ]),
+  ["owner", "admin", "viewer", "auditor", "other", "both", "bOnly"].map(
+    (role) => [role, crypto.randomUUID()],
+  ),
 ) as Record<string, string>;
 const env: Env = { PORT: 4000, LOG_LEVEL: "silent", NODE_ENV: "test" };
 const authEnv: AuthEnv = {
@@ -199,7 +198,7 @@ beforeAll(async () => {
        values ($1, $2, $3, true, now(), now())`,
       [id, role, email(role)],
     );
-    if (role === "other") continue;
+    if (role === "other" || role === "bOnly") continue;
     for (const org of [orgA, orgEmpty]) {
       await owner.sql.query(
         "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, $4)",
@@ -222,6 +221,10 @@ beforeAll(async () => {
   await owner.sql.query(
     "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'admin')",
     [crypto.randomUUID(), orgB, actorIds.both],
+  );
+  await owner.sql.query(
+    "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'admin')",
+    [crypto.randomUUID(), orgB, actorIds.bOnly],
   );
 }, 120_000);
 
@@ -247,6 +250,12 @@ describe("first-party pending invitation list", () => {
     }
     const bodyB = await listOk("both", orgB);
     expect(bodyB.invitations.map((row) => row.publicId)).toEqual([b.publicId]);
+    const onlyB = await listOk("bOnly", orgB);
+    expect(onlyB.invitations.map((row) => row.publicId)).toEqual([b.publicId]);
+    expect(await list("bOnly", orgA)).toMatchObject({
+      status: 403,
+      body: { error: { code: "MEMBERSHIP_DENIED" } },
+    });
     for (const actor of ["viewer", "auditor"]) {
       expect(await list(actor, orgA)).toMatchObject({
         status: 403,

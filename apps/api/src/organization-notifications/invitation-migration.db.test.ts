@@ -20,37 +20,32 @@ afterAll(async () => {
 });
 
 describe("migration 0018 invitation management", () => {
-  it("backfills sent_at from created_at and gives every existing invitation its own public_id", async () => {
+  it("backfills sent_at from created_at, gives each invitation its own public_id and defaults new rows", async () => {
     const sql = await readFile(
       `${migrationsDir}/0018_invitation_management.sql`,
       "utf8",
     );
-    const run = crypto.randomUUID();
     const client = await owner.sql.connect();
     try {
-      // Rolled back below: the shared test database keeps its migrated shape.
+      // A temp table shadows public.invitation for unqualified names, so the
+      // real 0018 file runs on a pre-0018 copy without locking the shared table.
       await client.query("begin");
       await client.query(
-        "alter table invitation drop column public_id, drop column sent_at",
+        `create temp table invitation (
+           id text primary key, organization_id uuid not null, email text not null,
+           role text not null, status text not null default 'pending',
+           inviter_id text not null, expires_at timestamptz,
+           created_at timestamptz not null default now(),
+           updated_at timestamptz not null default now())`,
       );
       await client.query(
-        "insert into organization (id, name, slug) values ($1, 'Legacy', $2)",
-        [run, `legacy-${run}`],
-      );
-      await client.query(
-        `insert into "user" (id, name, email, email_verified, created_at, updated_at)
-         values ($1, 'inviter', $2, true, now(), now())`,
-        [run, `legacy-${run}@example.test`],
-      );
-      await client.query(
-        `insert into invitation (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
-         select 'legacy-' || n || '-${run}', $1, 'r' || n || '@example.test', 'viewer',
-                'pending', $2, null, timestamptz '2026-01-01 00:00:00+00' + n * interval '1 day'
+        `insert into invitation (id, organization_id, email, role, inviter_id, created_at)
+         select 'legacy-' || n, gen_random_uuid(), 'r' || n || '@example.test', 'viewer', 'u',
+                timestamptz '2026-01-01 00:00:00+00' + n * interval '1 day'
          from generate_series(1, 3) n`,
-        [run, run],
       );
       await client.query(sql);
-      const result = await client.query<{
+      const backfilled = await client.query<{
         sentAtMatchesCreatedAt: boolean;
         distinctPublicIds: number;
         total: number;
@@ -58,29 +53,45 @@ describe("migration 0018 invitation management", () => {
         `select bool_and(sent_at = created_at) as "sentAtMatchesCreatedAt",
                 count(distinct public_id)::int as "distinctPublicIds",
                 count(*)::int as total
-         from invitation where organization_id = $1`,
-        [run],
+         from invitation`,
       );
-      expect(result.rows[0]).toEqual({
+      expect(backfilled.rows[0]).toEqual({
         sentAtMatchesCreatedAt: true,
         distinctPublicIds: 3,
         total: 3,
       });
-      const duplicate = await client
-        .query("savepoint dup")
-        .then(() =>
-          client.query(
-            `update invitation set public_id = (
-               select public_id from invitation where organization_id = $1 limit 1
-             ) where organization_id = $1`,
-            [run],
-          ),
-        )
-        .then(
-          () => "accepted",
-          () => "rejected",
-        );
-      expect(duplicate).toBe("rejected");
+
+      await client.query(
+        `insert into invitation (id, organization_id, email, role, inviter_id)
+         values ('fresh', gen_random_uuid(), 'fresh@example.test', 'viewer', 'u')`,
+      );
+      const fresh = await client.query<{
+        publicId: string | null;
+        sentAt: Date | null;
+      }>(
+        `select public_id as "publicId", sent_at as "sentAt"
+         from invitation where id = 'fresh'`,
+      );
+      expect(fresh.rows[0]?.publicId).toEqual(expect.any(String));
+      expect(fresh.rows[0]?.sentAt).toBeInstanceOf(Date);
+
+      await client.query("savepoint null_sent_at");
+      await expect(
+        client.query(
+          `insert into invitation (id, organization_id, email, role, inviter_id, sent_at)
+           values ('null-sent', gen_random_uuid(), 'n@example.test', 'viewer', 'u', null)`,
+        ),
+      ).rejects.toThrow(/sent_at/);
+      await client.query("rollback to savepoint null_sent_at");
+
+      await client.query("savepoint duplicate_public_id");
+      await expect(
+        client.query(
+          `update invitation set public_id = (select public_id from invitation where id = 'legacy-1')
+           where id = 'legacy-2'`,
+        ),
+      ).rejects.toThrow(/invitation_public_id_key/);
+      await client.query("rollback to savepoint duplicate_public_id");
     } finally {
       await client.query("rollback");
       client.release();
