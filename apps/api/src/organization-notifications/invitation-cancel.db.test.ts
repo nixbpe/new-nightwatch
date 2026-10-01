@@ -496,13 +496,11 @@ describe("DELETE /api/organizations/:organizationId/invitations/:publicId", () =
       expect(denial).toMatchObject({
         action: "organization.invitation.cancel",
       });
-      const { level, time, pid, hostname, name, msg, ...fields } = denial;
-      void [level, time, pid, hostname, name, msg];
-      expect(Object.keys(fields).sort()).toEqual([
-        "action",
-        "actorUserId",
-        "code",
-      ]);
+      const pinoBase = ["level", "time", "pid", "hostname", "name", "msg"];
+      const fields = Object.keys(denial).filter(
+        (key) => !pinoBase.includes(key),
+      );
+      expect(fields.sort()).toEqual(["action", "actorUserId", "code"]);
     }
     expect(denials.map((entry) => entry.code)).toEqual([
       "PERMISSION_DENIED",
