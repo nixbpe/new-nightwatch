@@ -26,12 +26,18 @@ const LIMIT = 50;
  */
 export function PendingInvitationsSection({
   organizationId,
+  createdSignal,
 }: {
   organizationId: string;
+  // Bumped by the page after an invitation is created; the new row leads page 1.
+  createdSignal: number;
 }) {
   const { scopeCurrent } = useOrganizationScope(organizationId);
   const { preferences } = usePreferences();
   const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    if (createdSignal > 0) setOffset(0);
+  }, [createdSignal]);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusHeadingWhenSettled = useRef(false);
   const list = useQuery({

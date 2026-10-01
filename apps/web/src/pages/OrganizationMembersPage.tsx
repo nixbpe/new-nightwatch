@@ -74,6 +74,7 @@ function OrganizationMembersPageForOrganization({
     "idle" | "refreshing" | "failed" | "list-failed"
   >("idle");
   const membershipRecoveryOperation = useRef(0);
+  const [invitationCreations, setInvitationCreations] = useState(0);
   const [offset, setOffset] = useState(0);
   const memberPageHeadingRef = useRef<HTMLHeadingElement>(null);
   const organization = me?.organizations.find(
@@ -499,8 +500,14 @@ function OrganizationMembersPageForOrganization({
         organizationId={organizationId}
         organizationName={organization.name}
         actorRole={organization.role === "owner" ? "owner" : "admin"}
+        onCreated={() => {
+          setInvitationCreations((count) => count + 1);
+        }}
       />
-      <PendingInvitationsSection organizationId={organizationId} />
+      <PendingInvitationsSection
+        organizationId={organizationId}
+        createdSignal={invitationCreations}
+      />
       {roleChange.pendingText !== null ? (
         <Notice tone="pending">{roleChange.pendingText}</Notice>
       ) : null}

@@ -49,6 +49,7 @@ describe("InvitationPanel", () => {
         organizationId={A}
         organizationName="Acme"
         actorRole="owner"
+        onCreated={vi.fn()}
       />,
     );
     expect(screen.getByRole("option", { name: "เจ้าของ" })).toBeInTheDocument();
@@ -57,6 +58,7 @@ describe("InvitationPanel", () => {
         organizationId={A}
         organizationName="Acme"
         actorRole="admin"
+        onCreated={vi.fn()}
       />,
     );
     expect(screen.queryByRole("option", { name: "เจ้าของ" })).toBeNull();
@@ -76,6 +78,45 @@ describe("InvitationPanel", () => {
     expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
   });
 
+  it.each(["accepted", "failed"] as const)(
+    "announces a created invitation once when the email is %s",
+    async (emailDispatch) => {
+      create.mockResolvedValue({ created: true, emailDispatch });
+      const onCreated = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <InvitationPanel
+          organizationId={A}
+          organizationName="Acme"
+          actorRole="owner"
+          onCreated={onCreated}
+        />,
+      );
+      await draft(user);
+      await screen.findByRole("status");
+      expect(onCreated).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("does not announce a creation that the server rejected", async () => {
+    create.mockRejectedValue(
+      new ApiError("INVITATION_LIMIT_REACHED", "full", 409),
+    );
+    const onCreated = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <InvitationPanel
+        organizationId={A}
+        organizationName="Acme"
+        actorRole="owner"
+        onCreated={onCreated}
+      />,
+    );
+    await draft(user);
+    await screen.findByRole("alert");
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
   it("focuses invalid email with inline error and sends nothing", async () => {
     const user = userEvent.setup();
     render(
@@ -83,6 +124,7 @@ describe("InvitationPanel", () => {
         organizationId={A}
         organizationName="Acme"
         actorRole="admin"
+        onCreated={vi.fn()}
       />,
     );
     await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
@@ -102,6 +144,7 @@ describe("InvitationPanel", () => {
         organizationId={A}
         organizationName="Acme"
         actorRole="owner"
+        onCreated={vi.fn()}
       />,
     );
     await draft(user);
@@ -129,6 +172,7 @@ describe("InvitationPanel", () => {
         organizationId={A}
         organizationName="Acme"
         actorRole="owner"
+        onCreated={vi.fn()}
       />,
     );
     await draft(user);
@@ -150,6 +194,7 @@ describe("InvitationPanel", () => {
         organizationId={A}
         organizationName="Acme"
         actorRole="owner"
+        onCreated={vi.fn()}
       />,
     );
     await draft(user);
@@ -159,6 +204,7 @@ describe("InvitationPanel", () => {
         organizationId={B}
         organizationName="Beta"
         actorRole="owner"
+        onCreated={vi.fn()}
       />,
     );
     expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
