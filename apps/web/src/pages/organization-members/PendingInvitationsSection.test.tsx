@@ -87,13 +87,14 @@ function renderSection(organizationId = A) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
   });
-  const ui = (id: string) => (
+  const ui = (id: string, createdSignal = 0) => (
     <QueryClientProvider client={queryClient}>
       <PendingInvitationsSection
         key={id}
         organizationId={id}
         organizationName="Acme"
         refreshMembershipContext={refreshMembershipContext}
+        createdSignal={createdSignal}
       />
     </QueryClientProvider>
   );
@@ -104,10 +105,27 @@ function renderSection(organizationId = A) {
     switchTo: (id: string) => {
       view.rerender(ui(id));
     },
+    announceCreated: () => {
+      view.rerender(ui(organizationId, 1));
+    },
   };
 }
 
 describe("PendingInvitationsSection", () => {
+  it("returns to page 1 when the page announces a created invitation", async () => {
+    serve(120);
+    const user = userEvent.setup();
+    const { announceCreated } = renderSection();
+    await screen.findByText("row-1@example.test");
+    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+    await screen.findByText("row-51@example.test");
+
+    announceCreated();
+
+    await screen.findByText("row-1@example.test");
+    expect(screen.queryByText("row-51@example.test")).toBeNull();
+  });
+
   it("shows rows, n of 100, the total and an expired label that is text", async () => {
     fetchList.mockResolvedValue(
       listOf(

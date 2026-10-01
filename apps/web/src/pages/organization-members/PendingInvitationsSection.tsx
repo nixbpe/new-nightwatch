@@ -67,14 +67,20 @@ export function PendingInvitationsSection({
   organizationId,
   organizationName,
   refreshMembershipContext,
+  createdSignal,
 }: {
   organizationId: string;
   organizationName: string;
   refreshMembershipContext: () => Promise<unknown>;
+  // Bumped by the page after an invitation is created; the new row leads page 1.
+  createdSignal: number;
 }) {
   const { scopeCurrent } = useOrganizationScope(organizationId);
   const { preferences } = usePreferences();
   const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    if (createdSignal > 0) setOffset(0);
+  }, [createdSignal]);
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Keyed by publicId so the DOM never carries an identifier.
   const controls = useRef({
