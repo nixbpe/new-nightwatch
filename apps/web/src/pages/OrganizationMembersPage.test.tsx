@@ -1639,4 +1639,39 @@ describe("OrganizationMembersPage pending invitations", () => {
       expect(await screen.findByText("wait@example.test")).toBeInTheDocument();
     },
   );
+
+  it.each([
+    ["SMTP accepted", { created: true, emailDispatch: "accepted" }],
+    ["SMTP failed", { created: true, emailDispatch: "failed" }],
+  ] as [string, InvitationCreateResponse][])(
+    "refreshes the list after a created invitation, newest first: %s",
+    async (_scenario, outcome) => {
+      vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+      vi.mocked(fetchPendingInvitations)
+        .mockResolvedValueOnce(pending(["old@example.test"]))
+        .mockResolvedValueOnce(
+          pending(["new@example.com", "old@example.test"]),
+        );
+      vi.mocked(createInvitation).mockResolvedValue(outcome);
+      const user = userEvent.setup();
+      renderPage();
+      expect(await screen.findByText("old@example.test")).toBeInTheDocument();
+
+      await user.type(
+        screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+        "new@example.com",
+      );
+      await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+
+      await waitFor(() => {
+        expect(fetchPendingInvitations).toHaveBeenCalledTimes(2);
+      });
+      const table = await screen.findByRole("region", {
+        name: "ตารางคำเชิญที่รอตอบรับ",
+      });
+      expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
+        "new@example.com",
+      );
+    },
+  );
 });

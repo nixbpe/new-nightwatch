@@ -12,7 +12,10 @@ import {
 import { Alert, Field, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { ApiError } from "../../lib/api/client";
-import { createInvitation } from "../../lib/api/invitations";
+import {
+  createInvitation,
+  pendingInvitationListQueryPrefix,
+} from "../../lib/api/invitations";
 import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import {
   getContextPublicationSnapshot,
@@ -108,6 +111,9 @@ export function InvitationPanel({
     try {
       const result = await createInvitation(organizationId, parsed.data);
       if (!isCurrentScope()) return;
+      void queryClient.invalidateQueries({
+        queryKey: pendingInvitationListQueryPrefix(organizationId),
+      });
       setEmail("");
       setNotice(
         result.emailDispatch === "accepted"
