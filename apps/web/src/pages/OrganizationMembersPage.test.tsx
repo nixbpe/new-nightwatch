@@ -1674,4 +1674,42 @@ describe("OrganizationMembersPage pending invitations", () => {
       );
     },
   );
+
+  it("drops an accepted invitation from the list and shows the recipient as a member", async () => {
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockResolvedValue({
+        ...response,
+        members: [
+          ...response.members,
+          {
+            id: "member-2",
+            userId: "user-2",
+            name: "Recipient",
+            email: "wait@example.test",
+            role: "viewer",
+          },
+        ],
+      });
+    vi.mocked(fetchPendingInvitations)
+      .mockResolvedValueOnce(pending(["wait@example.test"]))
+      .mockResolvedValue(pending([]));
+    const { queryClient } = renderPage();
+    expect(await screen.findByText("wait@example.test")).toBeInTheDocument();
+    expect(screen.queryByText("Recipient")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["tenant"] });
+    });
+
+    expect(
+      await screen.findByText("ไม่มีคำเชิญที่รอตอบรับ"),
+    ).toBeInTheDocument();
+    const members = await screen.findByRole("region", { name: "ตารางสมาชิก" });
+    expect(within(members).getByText("Recipient")).toBeInTheDocument();
+    expect(within(members).getByText("wait@example.test")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "ตารางคำเชิญที่รอตอบรับ" }),
+    ).not.toBeInTheDocument();
+  });
 });

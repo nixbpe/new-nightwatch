@@ -484,3 +484,67 @@ it("keeps B pending invitations untouched by a late A list response after a conf
     screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
   ).toHaveTextContent("(1 จาก 100)");
 });
+
+it("starts the B invitation list at offset 0 after paging A", async () => {
+  const row = (email: string) => ({
+    publicId: "00000000-0000-4000-8000-000000000001",
+    email,
+    role: "viewer" as const,
+    sentAt: "2026-09-30T08:00:00.000Z",
+    expiresAt: "2026-10-02T08:00:00.000Z",
+    expired: false,
+    resendAvailableAt: "2026-09-30T08:05:00.000Z",
+    manageable: true,
+  });
+  vi.mocked(fetchPendingInvitations).mockImplementation((id, limit, offset) =>
+    Promise.resolve({
+      organizationId: id,
+      invitations: [
+        row(
+          id === B
+            ? "b-first@example.test"
+            : offset === 0
+              ? "a-first@example.test"
+              : "a-second@example.test",
+        ),
+      ],
+      activeCount: 1,
+      activeLimit: 100,
+      page: { limit, offset, total: id === A ? 51 : 1 },
+    }),
+  );
+  vi.mocked(fetchMeContext).mockResolvedValue(context);
+  vi.mocked(updateActiveOrganization).mockResolvedValue({
+    ...context,
+    lastActiveTenantId: B,
+  });
+  vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
+    Promise.resolve({ ...aList, organizationId: id }),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TenantProvider>
+        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+          <TenantView />
+        </MemoryRouter>
+      </TenantProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("a-first@example.test");
+  await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+  expect(await screen.findByText("a-second@example.test")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
+  );
+  await user.click(screen.getByRole("button", { name: "navigate B" }));
+
+  expect(await screen.findByText("b-first@example.test")).toBeInTheDocument();
+  expect(fetchPendingInvitations).toHaveBeenLastCalledWith(B, 50, 0);
+  expect(screen.queryByText("a-second@example.test")).toBeNull();
+});
