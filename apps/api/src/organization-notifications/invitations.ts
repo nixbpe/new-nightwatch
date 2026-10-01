@@ -214,7 +214,7 @@ export async function cancelPendingInvitation(
   });
 }
 
-export type RotatedInvitation = {
+type RotatedInvitation = {
   sentAt: Date;
   expiresAt: Date;
   resendAvailableAt: Date;
@@ -222,8 +222,9 @@ export type RotatedInvitation = {
 
 // Replaces the bearer id of a pending row and restarts its 48 hour lifetime and
 // cooldown from one clock reading, so the old link dies with the commit. The
-// caller must hold the organization/advisory/member lock prefix and the
-// invitation row FOR UPDATE.
+// caller must hold the organization row FOR UPDATE, then the
+// notification-membership advisory lock, then the invitation row FOR UPDATE.
+// Resend also holds the actor's member row; operator provisioning does not.
 export async function rotateInvitationId(
   client: TenantClient,
   input: { publicId: string; organizationId: string; newId: string },

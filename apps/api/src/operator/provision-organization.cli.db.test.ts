@@ -56,7 +56,10 @@ function startSmtp(): Promise<void> {
           data = "";
           // Replies only after the check: a send inside the CLI's transaction
           // would see its own uncommitted row and a fresh session would not.
-          void recordSend(message).then(() => socket.write("250 queued\r\n"));
+          void recordSend(message).then(
+            () => socket.write("250 queued\r\n"),
+            () => socket.write("451 capture check failed\r\n"),
+          );
           return;
         }
         const eol = buffer.indexOf("\r\n");

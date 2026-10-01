@@ -15,7 +15,6 @@ export {
   organizationRoleSchema,
   pendingInvitationListQuerySchema,
   pendingInvitationListResponseSchema,
-  pendingInvitationSchema,
   type ActiveOrganizationInput,
   type InvitationAcceptResponse,
   type InvitationCreateInput,
@@ -30,7 +29,6 @@ export {
   type OrganizationMemberRoleUpdateResponse,
   type OrganizationRole,
   type PendingInvitation,
-  type PendingInvitationListQuery,
   type PendingInvitationListResponse,
 } from "./auth";
 export { errorResponseSchema, type ErrorResponse } from "./error";
