@@ -103,6 +103,7 @@ function renderSection() {
         organizationId={A}
         organizationName="Acme"
         refreshMembershipContext={refreshMembershipContext}
+        createdSignal={0}
       />
     </QueryClientProvider>,
   );
@@ -339,6 +340,43 @@ describe("invitation resend", () => {
     expect(
       screen.queryByText(/ส่งซ้ำได้อีกครั้งเมื่อ/, { selector: "span" }),
     ).toBeNull();
+  });
+
+  it("enables every cooling row at its own deadline, not only the earliest", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date("2026-10-01T08:00:00.000Z"));
+    const deadlines = ["2026-10-01T08:01:00.000Z", "2026-10-01T08:03:00.000Z"];
+    fetchList.mockImplementation((organizationId, limit, offset) =>
+      Promise.resolve({
+        organizationId,
+        invitations: deadlines.map((resendAvailableAt, index) =>
+          invitation(index + 1, { resendAvailableAt }),
+        ),
+        activeCount: 2,
+        activeLimit: 100,
+        page: { limit, offset, total: 2 },
+      }),
+    );
+    renderSection();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(resendButton(1)).not.toHaveAttribute("aria-disabled");
+    expect(resendButton(2)).toHaveAttribute("aria-disabled", "true");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(119_000);
+    });
+    expect(resendButton(2)).toHaveAttribute("aria-disabled", "true");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(resendButton(2)).not.toHaveAttribute("aria-disabled");
   });
 
   it.each([

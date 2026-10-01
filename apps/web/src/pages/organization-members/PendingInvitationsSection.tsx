@@ -34,6 +34,8 @@ type FocusRequest = { kind: ControlKind; target: string };
 // Browser clock that ticks again when the next cooldown on the page ends.
 function useNow(deadlines: readonly string[]) {
   const [now, setNow] = useState(() => Date.now());
+  // Bumped by each timer so the effect re-arms for the next deadline.
+  const [tick, setTick] = useState(0);
   const key = deadlines.join(",");
   useEffect(() => {
     const current = Date.now();
@@ -46,13 +48,14 @@ function useNow(deadlines: readonly string[]) {
     const timer = setTimeout(
       () => {
         setNow(Date.now());
+        setTick((value) => value + 1);
       },
       Math.min(...upcoming) - current,
     );
     return () => {
       clearTimeout(timer);
     };
-  }, [key]);
+  }, [key, tick]);
   return now;
 }
 
