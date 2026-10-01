@@ -125,6 +125,86 @@ export async function createOrganizationInvitation(
   );
 }
 
+export async function cancelPendingInvitation(
+  database: Database,
+  input: { organizationId: string; actorUserId: string; publicId: string },
+): Promise<void> {
+  await assertMemberBeforeTenantContext(
+    database,
+    input.organizationId,
+    input.actorUserId,
+  );
+  await withTenantContextRaw(database, input.organizationId, async (client) => {
+    const organization = await client.query(
+      "select id from organization where id = $1 for update",
+      [input.organizationId],
+    );
+    if (organization.rows.length === 0) {
+      throw new AppError(
+        403,
+        "MEMBERSHIP_DENIED",
+        "คุณไม่ใช่สมาชิกขององค์กรนี้",
+      );
+    }
+    await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+      `notification-membership:${input.organizationId}`,
+    ]);
+    const actor = await client.query<{ role: string }>(
+      "select role from member where organization_id = $1 and user_id = $2 for update",
+      [input.organizationId, input.actorUserId],
+    );
+    const storedRole = actor.rows[0]?.role;
+    if (storedRole === undefined) {
+      throw new AppError(
+        403,
+        "MEMBERSHIP_DENIED",
+        "คุณไม่ใช่สมาชิกขององค์กรนี้",
+      );
+    }
+    const actorRole = normalizeOrganizationRole(storedRole);
+    if (actorRole === null) throw new Error("member has no recognized role");
+    // Viewer and auditor are rejected before the lookup so they cannot probe
+    // which publicId exists.
+    if (actorRole !== "owner" && actorRole !== "admin") {
+      throw new AppError(
+        403,
+        "PERMISSION_DENIED",
+        "คุณไม่มีสิทธิ์ยกเลิกคำเชิญ",
+      );
+    }
+    const invitation = await client.query<{ role: string }>(
+      `select role from invitation
+       where public_id = $1 and organization_id = $2 and status = 'pending'
+       for update`,
+      [input.publicId, input.organizationId],
+    );
+    const storedInvitationRole = invitation.rows[0]?.role;
+    if (storedInvitationRole === undefined) {
+      throw new AppError(
+        404,
+        "INVITATION_NOT_FOUND",
+        "ไม่พบคำเชิญ หรือคำเชิญหมดอายุแล้ว",
+      );
+    }
+    const invitationRole = normalizeOrganizationRole(storedInvitationRole);
+    if (invitationRole === null) {
+      throw new Error("invitation has no recognized role");
+    }
+    if (actorRole === "admin" && invitationRole === "owner") {
+      throw new AppError(
+        403,
+        "PERMISSION_DENIED",
+        "เฉพาะเจ้าของจัดการคำเชิญของเจ้าของได้",
+      );
+    }
+    await client.query(
+      `update invitation set status = 'canceled', updated_at = clock_timestamp()
+       where public_id = $1 and organization_id = $2`,
+      [input.publicId, input.organizationId],
+    );
+  });
+}
+
 const RESEND_COOLDOWN_SECONDS = 300;
 
 type PendingInvitationListRow = {

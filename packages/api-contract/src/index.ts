@@ -1,6 +1,7 @@
 export {
   activeOrganizationInputSchema,
   invitationAcceptResponseSchema,
+  invitationCancelResponseSchema,
   invitationCreateInputSchema,
   invitationCreateResponseSchema,
   invitationResponseSchema,

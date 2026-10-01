@@ -1,4 +1,5 @@
 import {
+  invitationCancelResponseSchema,
   invitationCreateInputSchema,
   invitationCreateResponseSchema,
   organizationMemberRoleUpdateResponseSchema,
@@ -21,6 +22,7 @@ import { auditMonitorMutation } from "../monitors/audit";
 import { notificationRouteDeclarations } from "../notifications/contract";
 import { invalidInputHook } from "../notifications/invalid-input";
 import {
+  cancelPendingInvitation,
   createOrganizationInvitation,
   listPendingInvitations,
 } from "./invitations";
@@ -237,6 +239,23 @@ const invitationListRoute = createRoute({
   },
 });
 
+const invitationCancelRoute = createRoute({
+  method: "delete",
+  path: "/api/organizations/{organizationId}/invitations/{publicId}",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid(), publicId: z.uuid() }),
+  },
+  responses: {
+    200: {
+      description: "Invitation canceled",
+      content: {
+        "application/json": { schema: invitationCancelResponseSchema },
+      },
+    },
+  },
+});
+
 export function registerOrganizationInvitationRoutes(
   app: OpenAPIHono,
   deps: {
@@ -264,6 +283,22 @@ export function registerOrganizationInvitationRoutes(
         }),
     );
     return c.json(body, 200);
+  });
+  app.openapi(invitationCancelRoute, async (c) => {
+    const { organizationId, publicId } = c.req.valid("param");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.invitation.cancel",
+      () =>
+        cancelPendingInvitation(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          publicId,
+        }),
+    );
+    return c.json({ canceled: true as const }, 200);
   });
   app.openapi(invitationCreateRoute, async (c) => {
     const { organizationId } = c.req.valid("param");

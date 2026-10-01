@@ -96,6 +96,10 @@ export const pendingInvitationListResponseSchema = z.object({
   }),
 });
 
+export const invitationCancelResponseSchema = z.object({
+  canceled: z.literal(true),
+});
+
 export type PendingInvitationListQuery = z.infer<
   typeof pendingInvitationListQuerySchema
 >;
