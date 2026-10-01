@@ -196,6 +196,10 @@ const openHolders: (() => Promise<void>)[] = [];
 async function holdOrganizationLock(org: string) {
   const holder = new Client({ connectionString: ownerUrl });
   await holder.connect();
+  const pid = (
+    await holder.query<{ pid: number }>("select pg_backend_pid() as pid")
+  ).rows[0]?.pid;
+  if (pid === undefined) throw new Error("no backend pid");
   await holder.query("begin");
   await holder.query("select id from organization where id = $1 for update", [
     org,
@@ -208,23 +212,28 @@ async function holdOrganizationLock(org: string) {
     await holder.end();
   };
   openHolders.push(() => release("rollback"));
-  return { holder, release };
+  return { holder, pid, release };
 }
-// Waits until `count` requests wait for the organization row lock. A second
-// waiter queues behind the first waiter's tuple lock, not the holder's
-// transaction, so the wait is counted by lock wait rather than by blocker.
-async function waitUntilQueued(count: number) {
+// Waits until `count` backends are blocked, directly or through an earlier
+// waiter, by this holder's transaction. A second waiter queues behind the first
+// waiter's tuple lock, so the chain is followed from the holder; sessions of
+// other tests are never part of it.
+async function waitUntilQueued(holderPid: number, count: number) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     const waiting = await owner.sql.query<{ waiting: number }>(
-      `select count(*)::int as waiting from pg_stat_activity
-       where wait_event_type = 'Lock' and datname = current_database()
-         and query like '%from organization where id = $1 for update%'`,
+      `with recursive chain(pid) as (
+         select pid from pg_stat_activity where $1::int = any(pg_blocking_pids(pid))
+         union
+         select a.pid from pg_stat_activity a
+         join chain c on c.pid = any(pg_blocking_pids(a.pid))
+       ) select count(*)::int as waiting from chain`,
+      [holderPid],
     );
     if ((waiting.rows[0]?.waiting ?? 0) >= count) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  throw new Error("requests never queued on the organization lock");
+  throw new Error("requests never queued behind the holder's lock");
 }
 
 beforeAll(async () => {
@@ -487,9 +496,13 @@ describe("DELETE /api/organizations/:organizationId/invitations/:publicId", () =
       expect(denial).toMatchObject({
         action: "organization.invitation.cancel",
       });
-      expect(Object.keys(denial).sort()).toEqual(
-        expect.arrayContaining(["action", "actorUserId", "code"]),
-      );
+      const { level, time, pid, hostname, name, msg, ...fields } = denial;
+      void [level, time, pid, hostname, name, msg];
+      expect(Object.keys(fields).sort()).toEqual([
+        "action",
+        "actorUserId",
+        "code",
+      ]);
     }
     expect(denials.map((entry) => entry.code)).toEqual([
       "PERMISSION_DENIED",
@@ -507,9 +520,9 @@ describe("cancel races on the organization lock", () => {
     const row = await seed(orgA, email("invitee2"));
     const lock = await holdOrganizationLock(orgA);
     const accepting = accept("invitee2", row.id);
-    await waitUntilQueued(1);
+    await waitUntilQueued(lock.pid, 1);
     const canceling = cancel("ownerA", orgA, row.publicId);
-    await waitUntilQueued(2);
+    await waitUntilQueued(lock.pid, 2);
     await lock.release();
     expect((await accepting).status).toBe(200);
     expect(await canceling).toMatchObject({
@@ -524,9 +537,9 @@ describe("cancel races on the organization lock", () => {
     const row = await seed(orgA, email("invitee3"));
     const lock = await holdOrganizationLock(orgA);
     const canceling = cancel("ownerA", orgA, row.publicId);
-    await waitUntilQueued(1);
+    await waitUntilQueued(lock.pid, 1);
     const accepting = accept("invitee3", row.id);
-    await waitUntilQueued(2);
+    await waitUntilQueued(lock.pid, 2);
     await lock.release();
     expect(await canceling).toEqual({ status: 200, body: { canceled: true } });
     expect(await accepting).toMatchObject({
@@ -541,9 +554,9 @@ describe("cancel races on the organization lock", () => {
     const row = await seed(orgA, email("double-cancel"));
     const lock = await holdOrganizationLock(orgA);
     const first = cancel("ownerA", orgA, row.publicId);
-    await waitUntilQueued(1);
+    await waitUntilQueued(lock.pid, 1);
     const second = cancel("adminA", orgA, row.publicId);
-    await waitUntilQueued(2);
+    await waitUntilQueued(lock.pid, 2);
     await lock.release();
     expect(await first).toEqual({ status: 200, body: { canceled: true } });
     expect(await second).toMatchObject({
@@ -557,7 +570,7 @@ describe("cancel races on the organization lock", () => {
     const row = await seed(orgA, email("demoted"));
     const lock = await holdOrganizationLock(orgA);
     const canceling = cancel("adminA", orgA, row.publicId);
-    await waitUntilQueued(1);
+    await waitUntilQueued(lock.pid, 1);
     await lock.holder.query(
       "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
       [orgA, actorIds.adminA],
@@ -581,7 +594,7 @@ describe("cancel races on the organization lock", () => {
     const row = await seed(orgA, email("revoked"));
     const lock = await holdOrganizationLock(orgA);
     const canceling = cancel("adminA", orgA, row.publicId);
-    await waitUntilQueued(1);
+    await waitUntilQueued(lock.pid, 1);
     await lock.holder.query(
       "delete from member where organization_id = $1 and user_id = $2",
       [orgA, actorIds.adminA],

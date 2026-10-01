@@ -97,6 +97,9 @@ const sectionStatus = () =>
   screen
     .getAllByRole("status")
     .find((node) => node.closest("section") !== null) as HTMLElement;
+const textStatusCount = () =>
+  screen.getAllByRole("status").filter((node) => node.textContent !== "")
+    .length;
 const regionText = () => sectionStatus().textContent;
 
 async function openAndConfirm(
@@ -166,7 +169,8 @@ describe("invitation cancel", () => {
         name: "กำลังยกเลิกคำเชิญ…",
       }),
     ).toBeDisabled();
-    expect(regionText()).toContain("กำลังยกเลิกคำเชิญ…");
+    // One announcement while the dialog is open: the dialog's own region.
+    expect(textStatusCount()).toBe(1);
     expect(cancelButton(1)).toBeDisabled();
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBeVisible();
@@ -182,7 +186,9 @@ describe("invitation cancel", () => {
     });
     expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(regionText()).toContain("กำลังยกเลิกคำเชิญ…");
+    expect(textStatusCount()).toBe(1);
 
     refreshed.resolve({
       organizationId: A,
@@ -203,21 +209,43 @@ describe("invitation cancel", () => {
     expect(cancelRequest).toHaveBeenCalledWith(A, publicId(2));
   });
 
-  it("does not report success when the refreshed list still holds the row", async () => {
+  it("shows no success or notice when the DELETE succeeds and the refetch fails, and focuses the heading", async () => {
     serve(range(2));
     cancelRequest.mockResolvedValue({ canceled: true });
     const user = userEvent.setup();
     renderSection();
     await screen.findByText(emailOf(1));
 
-    await openAndConfirm(user, 1);
+    await user.click(cancelButton(1));
+    fetchList.mockRejectedValueOnce(
+      new ApiError("INTERNAL_ERROR", "boom", 500),
+    );
+    await user.click(confirmButton());
 
-    expect(
-      await screen.findByText(
-        "ยังพบคำเชิญในรายการล่าสุด ไม่สามารถยืนยันการยกเลิกได้",
-      ),
-    ).toBeVisible();
+    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
+    expect(screen.getByRole("button", { name: "ลองอีกครั้ง" })).toBeVisible();
     expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
+    expect(screen.queryByText(/ไม่สำเร็จ โหลดรายการล่าสุด/)).toBeNull();
+    await waitFor(() => {
+      expect(heading()).toHaveFocus();
+    });
+  });
+
+  it("traps Tab inside the dialog between กลับ and the confirm button", async () => {
+    serve(range(2));
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText(emailOf(1));
+
+    await user.click(cancelButton(1));
+    const back = screen.getByRole("button", { name: "กลับ" });
+    expect(back).toHaveFocus();
+    await user.tab();
+    expect(confirmButton()).toHaveFocus();
+    await user.tab();
+    expect(back).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(confirmButton()).toHaveFocus();
   });
 
   it("keeps the open page and pulls row 51 up when a first-page row of 51 is canceled", async () => {

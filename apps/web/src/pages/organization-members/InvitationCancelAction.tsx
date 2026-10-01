@@ -27,8 +27,8 @@ export type InvitationFocusTarget = string;
 /**
  * Cancel flow for one Organization's pending list: confirmation, pending guard,
  * list refetch and stale-scope guard (`useOrganizationScope`). Success is shown
- * only when the DELETE succeeded and the refetched list no longer holds the
- * row. "กลับ" and Escape send no request. A server denial refreshes the
+ * only when the DELETE succeeded and the list refetch succeeded. "กลับ" and
+ * Escape send no request. A server denial refreshes the
  * membership context. Resend reuses this shape: `request` opens the
  * confirmation, `confirm` submits once, `cancel` closes without a request.
  */
@@ -90,11 +90,6 @@ export function useInvitationCancel({
     // A refetch, not the DELETE response, decides what the notice says.
     const refreshed = await refetchList();
     if (!isCurrentScope()) return;
-    const gone =
-      !refreshed.isError &&
-      refreshed.data?.invitations.every(
-        (item) => item.publicId !== invitation.publicId,
-      ) === true;
     if (refreshed.isError) {
       // The section shows its own list error with a retry.
       setNotice(null);
@@ -103,12 +98,8 @@ export function useInvitationCancel({
         tone: "error",
         text: "ยกเลิกคำเชิญไม่สำเร็จ โหลดรายการล่าสุดแล้ว",
       });
-    } else if (!gone) {
-      setNotice({
-        tone: "error",
-        text: "ยังพบคำเชิญในรายการล่าสุด ไม่สามารถยืนยันการยกเลิกได้",
-      });
     } else {
+      // After a 200 the row is canceled and every reader filters on pending.
       setNotice({
         tone: "success",
         text: `ยกเลิกคำเชิญถึง ${invitation.email} แล้ว`,

@@ -237,7 +237,7 @@ export function PendingInvitationsSection({
         {showData || failed ? null : (
           <p className="text-foreground-secondary">กำลังโหลดคำเชิญ</p>
         )}
-        {cancel.pendingText === null ? null : (
+        {cancel.pendingText === null || cancel.confirmation !== null ? null : (
           <p className="text-foreground-secondary">{cancel.pendingText}</p>
         )}
         {cancel.notice === null ? null : (
