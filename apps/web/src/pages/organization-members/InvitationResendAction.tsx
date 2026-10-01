@@ -193,6 +193,7 @@ export function InvitationResendButton({
         // aria-disabled keeps the cooling button focusable so its reason is read.
         disabled={pending}
         aria-disabled={cooling ? "true" : undefined}
+        className="aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
         aria-describedby={cooling ? cooldownId : undefined}
         aria-label={`ส่งคำเชิญซ้ำถึง ${invitation.email}`}
         onClick={(event) => {
