@@ -293,6 +293,20 @@ describe("invitation resend", () => {
     expect(resendButton(2)).not.toHaveAttribute("aria-disabled");
   });
 
+  it("opens no dialog on Enter or Space while the button is cooling", async () => {
+    serve(range(2), new Set([1]));
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText(emailOf(1));
+
+    resendButton(1).focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(resendRequest).not.toHaveBeenCalled();
+  });
+
   it("keeps the button cooling at second 299 and enables it at second 300 on the browser clock", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     vi.setSystemTime(new Date("2026-10-01T08:00:00.000Z"));
@@ -515,6 +529,73 @@ describe("invitation resend", () => {
     expect(confirmButton()).toHaveFocus();
     await user.tab();
     expect(back).toHaveFocus();
+  });
+
+  async function cancelThenResend(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(
+      screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(3)}` }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "ยืนยันการยกเลิกคำเชิญ",
+      }),
+    );
+    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`);
+    await openAndConfirm(user, 1);
+    await screen.findByText("ส่งคำเชิญซ้ำแล้ว");
+  }
+
+  it("keeps the resend notice when a cancel dialog is opened and dismissed with กลับ or Escape", async () => {
+    serve(range(4));
+    cancelRequest.mockResolvedValue({ canceled: true });
+    resendRequest.mockResolvedValue(resent());
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText(emailOf(1));
+    await cancelThenResend(user);
+
+    for (const dismiss of ["back", "escape"]) {
+      await user.click(
+        screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(2)}` }),
+      );
+      if (dismiss === "back")
+        await user.click(screen.getByRole("button", { name: "กลับ" }));
+      else await user.keyboard("{Escape}");
+      expect(sectionStatus()).toHaveTextContent("ส่งคำเชิญซ้ำแล้ว");
+      expect(sectionStatus()).not.toHaveTextContent("ยกเลิกคำเชิญถึง");
+    }
+  });
+
+  it("keeps the cancel notice when a resend dialog is opened and dismissed with กลับ or Escape", async () => {
+    serve(range(4));
+    cancelRequest.mockResolvedValue({ canceled: true });
+    resendRequest.mockResolvedValue(resent());
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText(emailOf(1));
+    // Resend first, then cancel, so the cancel notice is the current one.
+    await openAndConfirm(user, 1);
+    await screen.findByText("ส่งคำเชิญซ้ำแล้ว");
+    await user.click(
+      screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(3)}` }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "ยืนยันการยกเลิกคำเชิญ",
+      }),
+    );
+    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`);
+
+    for (const dismiss of ["back", "escape"]) {
+      await user.click(resendButton(2));
+      if (dismiss === "back")
+        await user.click(screen.getByRole("button", { name: "กลับ" }));
+      else await user.keyboard("{Escape}");
+      expect(sectionStatus()).toHaveTextContent(
+        `ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`,
+      );
+      expect(sectionStatus()).not.toHaveTextContent("ส่งคำเชิญซ้ำแล้ว");
+    }
   });
 
   it("replaces an earlier cancel notice with the resend notice and blocks cancel buttons while it runs", async () => {

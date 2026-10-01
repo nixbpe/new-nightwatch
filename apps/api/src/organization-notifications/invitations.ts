@@ -215,13 +215,15 @@ export async function cancelPendingInvitation(
 }
 
 export type RotatedInvitation = {
-  sentAt: string;
-  expiresAt: string;
-  resendAvailableAt: string;
+  sentAt: Date;
+  expiresAt: Date;
+  resendAvailableAt: Date;
 };
 
 // Replaces the bearer id of a pending row and restarts its 48 hour lifetime and
-// cooldown from one clock reading, so the old link dies with the commit.
+// cooldown from one clock reading, so the old link dies with the commit. The
+// caller must hold the organization/advisory/member lock prefix and the
+// invitation row FOR UPDATE.
 export async function rotateInvitationId(
   client: TenantClient,
   input: { publicId: string; organizationId: string; newId: string },
@@ -231,7 +233,7 @@ export async function rotateInvitationId(
      update invitation set id = $3, sent_at = t, expires_at = t + interval '48 hours',
        updated_at = t
      from rotation_time
-     where public_id = $1 and organization_id = $2
+     where public_id = $1 and organization_id = $2 and status = 'pending'
      returning invitation.sent_at as "sentAt", invitation.expires_at as "expiresAt",
        invitation.sent_at + make_interval(secs => $4::int) as "resendAvailableAt"`,
     [
@@ -277,7 +279,7 @@ export async function resendPendingInvitation(
         role: string;
         expired: boolean;
         cooling: boolean;
-        resendAvailableAt: string;
+        resendAvailableAt: Date;
       }>(
         `select email, role,
            (expires_at is null or expires_at <= clock_timestamp()) as expired,
@@ -310,7 +312,7 @@ export async function resendPendingInvitation(
           429,
           "INVITATION_RESEND_COOLDOWN",
           "ส่งคำเชิญซ้ำได้อีกครั้งภายหลัง",
-          { resendAvailableAt: new Date(row.resendAvailableAt).toISOString() },
+          { resendAvailableAt: row.resendAvailableAt.toISOString() },
         );
       }
       const member = await client.query(
@@ -367,9 +369,9 @@ export async function resendPendingInvitation(
         email: row.email,
         role,
         organizationName,
-        sentAt: new Date(rotated.sentAt).toISOString(),
-        expiresAt: new Date(rotated.expiresAt).toISOString(),
-        resendAvailableAt: new Date(rotated.resendAvailableAt).toISOString(),
+        sentAt: rotated.sentAt.toISOString(),
+        expiresAt: rotated.expiresAt.toISOString(),
+        resendAvailableAt: rotated.resendAvailableAt.toISOString(),
       };
     },
   );

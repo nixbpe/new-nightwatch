@@ -710,11 +710,20 @@ describe("resend cooldown", () => {
     });
     const current = await rowOf(row.publicId);
     expect(current.id).not.toBe(row.id);
+    const joined = logs.join("\n");
+    expect(joined).toContain("organization.invitation.resend.send");
+    expect(joined).toContain("SMTP_FAILED");
+    for (const secret of [
+      email("cooldown-failed"),
+      row.id,
+      current.id,
+      row.publicId,
+      orgA,
+    ]) {
+      expect(joined).not.toContain(secret);
+    }
     expect(await previewStatus(row.id)).toBe(404);
     expect(await previewStatus(current.id)).toBe(200);
-    expect(logs.join("\n")).toContain("organization.invitation.resend.send");
-    expect(logs.join("\n")).toContain("SMTP_FAILED");
-    expect(logs.join("\n")).not.toContain(email("cooldown-failed"));
     expect(attempts).toBe(1);
     smtpFails = false;
     expect((await resend("ownerA", orgA, row.publicId)).status).toBe(429);

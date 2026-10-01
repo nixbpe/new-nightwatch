@@ -267,7 +267,6 @@ export function PendingInvitationsSection({
                       register("resend", publicId, control);
                     }}
                     onResend={(invitation, opener) => {
-                      setLastAction("resend");
                       resend.request(invitation, opener);
                     }}
                   />
@@ -278,7 +277,6 @@ export function PendingInvitationsSection({
                       register("cancel", publicId, control);
                     }}
                     onCancel={(invitation, opener) => {
-                      setLastAction("cancel");
                       cancel.request(invitation, opener);
                     }}
                   />
@@ -371,7 +369,10 @@ export function PendingInvitationsSection({
           opener={cancel.confirmation.opener}
           fallbackFocus={headingRef}
           onCancel={cancel.cancel}
-          onConfirm={cancel.confirm}
+          onConfirm={() => {
+            setLastAction("cancel");
+            cancel.confirm();
+          }}
         />
       )}
       {resend.confirmation === null ? null : (
@@ -396,7 +397,10 @@ export function PendingInvitationsSection({
           opener={resend.confirmation.opener}
           fallbackFocus={headingRef}
           onCancel={resend.cancel}
-          onConfirm={resend.confirm}
+          onConfirm={() => {
+            setLastAction("resend");
+            resend.confirm();
+          }}
         />
       )}
     </Card>
