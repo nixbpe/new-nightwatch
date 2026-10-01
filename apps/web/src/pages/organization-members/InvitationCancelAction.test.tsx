@@ -313,8 +313,8 @@ describe("invitation cancel", () => {
     expect(
       await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(51)} แล้ว`),
     ).toBeVisible();
+    expect(await screen.findByText(emailOf(1))).toBeVisible();
     expect(fetchList.mock.calls.map((call) => call[2])).toEqual([0, 50, 50, 0]);
-    expect(screen.getByText(emailOf(1))).toBeVisible();
     await waitFor(() => {
       expect(heading()).toHaveFocus();
     });
