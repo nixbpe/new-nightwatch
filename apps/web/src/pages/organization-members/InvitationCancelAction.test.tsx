@@ -78,6 +78,7 @@ function renderSection() {
         organizationId={A}
         organizationName="Acme"
         refreshMembershipContext={refreshMembershipContext}
+        createdSignal={0}
       />
     </QueryClientProvider>,
   );
