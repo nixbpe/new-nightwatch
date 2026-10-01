@@ -111,6 +111,22 @@ async function listOk(actor: string, org: string, query = "") {
     result.body,
   ) satisfies PendingInvitationListResponse;
 }
+async function create(
+  actor: string,
+  org: string,
+  address: string,
+  role = "viewer",
+) {
+  const response = await app.request(`/api/organizations/${org}/invitations`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-actor": actor },
+    body: JSON.stringify({ email: address, role }),
+  });
+  return {
+    status: response.status,
+    body: (await response.json()) as Record<string, unknown>,
+  };
+}
 // expiresIn / sentAgo are SQL interval literals relative to clock_timestamp().
 async function seed(
   org: string,
@@ -144,6 +160,18 @@ async function seed(
     ],
   );
   return { id, publicId: result.rows[0]?.publicId ?? "" };
+}
+async function statusesOf(org: string, address: string) {
+  return (
+    await owner.sql.query<{ status: string }>(
+      "select status from invitation where organization_id = $1 and lower(email) = lower($2) order by created_at",
+      [org, address],
+    )
+  ).rows.map((row) => row.status);
+}
+async function previewStatus(invitationId: string) {
+  return (await app.request(`/api/onboarding/invitations/${invitationId}`))
+    .status;
 }
 
 beforeAll(async () => {
@@ -403,6 +431,131 @@ describe("first-party pending invitation list", () => {
     expect(beyond.invitations).toEqual([]);
     expect(beyond.page.total).toBe(51);
     expect(beyond.activeCount).toBe(47);
+  });
+});
+
+describe("invitation create with management columns", () => {
+  it("writes sent_at = created_at, lists the new row first and sets resendAvailableAt to sent_at + 300 s", async () => {
+    await seed(orgCreate, email("older"), { sentAgo: "1 hour" });
+    const address = email("fresh");
+    expect((await create("owner", orgCreate, address)).status).toBe(201);
+    const stored = await owner.sql.query<{ sentAt: Date; createdAt: Date }>(
+      `select sent_at as "sentAt", created_at as "createdAt" from invitation
+       where organization_id = $1 and email = $2`,
+      [orgCreate, address],
+    );
+    expect(stored.rows[0]?.sentAt.getTime()).toBe(
+      stored.rows[0]?.createdAt.getTime(),
+    );
+    const body = await listOk("owner", orgCreate);
+    const top = body.invitations[0];
+    expect(top?.email).toBe(address);
+    expect(Date.parse(top?.sentAt ?? "")).toBe(
+      stored.rows[0]?.sentAt.getTime(),
+    );
+    expect(
+      Date.parse(top?.resendAvailableAt ?? "") - Date.parse(top?.sentAt ?? ""),
+    ).toBe(300_000);
+    expect(top?.expired).toBe(false);
+  });
+
+  it("cancels every expired pending row of the same email, including legacy and case variants, and kills their links", async () => {
+    const address = email("recycle");
+    const expiredA = await seed(orgCreate, address, {
+      expiresIn: "-1 hour",
+      sentAgo: "3 hours",
+    });
+    const expiredNull = await seed(orgCreate, address.toUpperCase(), {
+      expiresIn: null,
+      sentAgo: "2 hours",
+    });
+    await seed(orgCreate, email("recycle-other"), {
+      expiresIn: "-1 hour",
+    });
+    await seed(orgA, address, { expiresIn: "-1 hour" });
+    await seed(orgCreate, address, {
+      status: "accepted",
+      expiresIn: "-1 hour",
+    });
+    expect((await create("owner", orgCreate, address)).status).toBe(201);
+    expect(await statusesOf(orgCreate, address)).toEqual([
+      "canceled",
+      "canceled",
+      "accepted",
+      "pending",
+    ]);
+    expect(await previewStatus(expiredA.id)).toBe(404);
+    expect(await previewStatus(expiredNull.id)).toBe(404);
+    expect(await statusesOf(orgCreate, email("recycle-other"))).toEqual([
+      "pending",
+    ]);
+    expect(await statusesOf(orgA, address)).toEqual(["pending"]);
+    const live = await owner.sql.query<{ count: number }>(
+      `select count(*)::int as count from invitation
+       where organization_id = $1 and lower(email) = lower($2) and status = 'pending'`,
+      [orgCreate, address],
+    );
+    expect(live.rows[0]?.count).toBe(1);
+  });
+
+  it("leaves expired rows pending when create is rejected with 409 or 403", async () => {
+    const duplicate = email("reject-dup");
+    const member = email("viewer");
+    const denied = email("reject-denied");
+    await seed(orgCreate, duplicate, {
+      expiresIn: "-1 hour",
+      sentAgo: "2 hours",
+    });
+    await seed(orgCreate, duplicate, { sentAgo: "1 hour" });
+    await seed(orgCreate, member, { expiresIn: "-1 hour" });
+    await seed(orgCreate, denied, { expiresIn: "-1 hour" });
+    expect(await create("owner", orgCreate, duplicate)).toMatchObject({
+      status: 409,
+      body: { error: { code: "INVITATION_ALREADY_PENDING" } },
+    });
+    expect(await create("owner", orgCreate, member)).toMatchObject({
+      status: 409,
+      body: { error: { code: "USER_ALREADY_MEMBER" } },
+    });
+    expect(await create("viewer", orgCreate, denied)).toMatchObject({
+      status: 403,
+      body: { error: { code: "PERMISSION_DENIED" } },
+    });
+    expect(await create("other", orgCreate, denied)).toMatchObject({
+      status: 403,
+      body: { error: { code: "MEMBERSHIP_DENIED" } },
+    });
+    expect(await statusesOf(orgCreate, duplicate)).toEqual([
+      "pending",
+      "pending",
+    ]);
+    expect(await statusesOf(orgCreate, member)).toEqual(["pending"]);
+    expect(await statusesOf(orgCreate, denied)).toEqual(["pending"]);
+  });
+
+  it("leaves expired rows pending when the quota of 100 live rows rejects create", async () => {
+    const address = email("reject-cap");
+    await seed(orgCreate, address, { expiresIn: "-1 hour" });
+    const live = await owner.sql.query<{ count: number }>(
+      "select count(*)::int as count from invitation where organization_id = $1 and status = 'pending' and expires_at > clock_timestamp()",
+      [orgCreate],
+    );
+    await owner.sql.query(
+      `insert into invitation (id, organization_id, email, role, status, inviter_id, expires_at)
+       select gen_random_uuid()::text, $1, 'cap-' || n || $2, 'viewer', 'pending', $3, now() + interval '1 day'
+       from generate_series(1, $4::int) n`,
+      [
+        orgCreate,
+        `-${run}@example.test`,
+        actorIds.owner,
+        100 - (live.rows[0]?.count ?? 0),
+      ],
+    );
+    expect(await create("owner", orgCreate, address)).toMatchObject({
+      status: 409,
+      body: { error: { code: "INVITATION_LIMIT_REACHED" } },
+    });
+    expect(await statusesOf(orgCreate, address)).toEqual(["pending"]);
   });
 });
 

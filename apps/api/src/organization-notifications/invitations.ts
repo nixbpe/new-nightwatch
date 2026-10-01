@@ -103,12 +103,20 @@ export async function createOrganizationInvitation(
           "คำเชิญที่ยังใช้งานได้ครบ 100 รายการแล้ว",
         );
       }
+      // Runs only after every check above passed, so a rejected create
+      // leaves expired rows pending.
+      await client.query(
+        `update invitation set status = 'canceled', updated_at = clock_timestamp()
+       where organization_id = $1 and lower(email) = $2 and status = 'pending'
+         and (expires_at is null or expires_at <= clock_timestamp())`,
+        [input.organizationId, input.email],
+      );
       const id = crypto.randomUUID();
       await client.query(
         `with creation_time as materialized (select clock_timestamp() as created_at)
        insert into invitation
-       (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
-       select $1, $2, $3, $4, 'pending', $5, created_at + interval '48 hours', created_at
+       (id, organization_id, email, role, status, inviter_id, expires_at, created_at, sent_at)
+       select $1, $2, $3, $4, 'pending', $5, created_at + interval '48 hours', created_at, created_at
        from creation_time`,
         [id, input.organizationId, input.email, input.role, input.actorUserId],
       );
