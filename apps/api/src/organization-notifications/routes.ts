@@ -11,7 +11,7 @@ import type { Database } from "@nightwatch/db";
 import { AppError, type AuthEnv, type Logger } from "@nightwatch/shared";
 import { z } from "zod";
 
-import type { Auth } from "../auth";
+import { BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS, type Auth } from "../auth";
 import { buildInvitationEmail } from "../auth/emails";
 import type { Mailer } from "../auth/mailer";
 import { requireVerifiedSession } from "../me/service";
@@ -30,6 +30,26 @@ import {
   updateOrganizationNotificationSettings,
 } from "./service";
 
+const NATIVE_AUTH_BASE_PATH = "/api/auth";
+
+// Folds case, percent-encoding, repeated and trailing slashes so a variant
+// spelling cannot dodge the blocked set; the method is deliberately ignored.
+function normalizeNativeAuthPath(rawPath: string): string {
+  let path = rawPath;
+  try {
+    path = decodeURIComponent(rawPath);
+  } catch {
+    // Malformed encoding stays as written and matches nothing.
+  }
+  path = path
+    .toLowerCase()
+    .replace(/\/{2,}/g, "/")
+    .replace(/\/+$/, "");
+  return path.startsWith(NATIVE_AUTH_BASE_PATH)
+    ? path.slice(NATIVE_AUTH_BASE_PATH.length)
+    : path;
+}
+
 // Must be installed before Better Auth's native organization routes.
 export type NativeOrganizationMutationGuard = MiddlewareHandler;
 
@@ -38,21 +58,13 @@ export function createNativeOrganizationMutationGuard(deps: {
   logger: Logger;
 }): NativeOrganizationMutationGuard {
   return async (c, next) => {
-    if (
-      c.req.method === "POST" &&
-      [
-        "/api/auth/organization/update-member-role",
-        "/api/auth/organization/remove-member",
-        "/api/auth/organization/leave",
-        "/api/auth/organization/invite-member",
-        "/api/auth/organization/accept-invitation",
-      ].includes(c.req.path)
-    ) {
+    const nativePath = normalizeNativeAuthPath(c.req.path);
+    if (BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS.has(nativePath)) {
       const session = await deps.auth.getSession(c.req.raw.headers);
       deps.logger.warn(
         {
           actorUserId: session?.user.id ?? null,
-          action: `legacy:${c.req.path}`,
+          action: `legacy:${NATIVE_AUTH_BASE_PATH}${nativePath}`,
           code: "PERMISSION_DENIED",
         },
         "organization access denied",

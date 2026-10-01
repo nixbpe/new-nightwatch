@@ -35,13 +35,24 @@ import {
 import { withMemberRaceTranslation } from "./member-race";
 import { organizationRoles } from "./permissions";
 
-const BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS: Record<string, true> = {
-  "/organization/update-member-role": true,
-  "/organization/remove-member": true,
-  "/organization/leave": true,
-  "/organization/invite-member": true,
-  "/organization/accept-invitation": true,
-};
+// Better Auth endpoint paths (relative to basePath) closed in both guard layers.
+export const BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS: ReadonlySet<string> =
+  new Set([
+    "/organization/update-member-role",
+    "/organization/remove-member",
+    "/organization/leave",
+    "/organization/invite-member",
+    "/organization/accept-invitation",
+    "/organization/list-invitations",
+    "/organization/get-full-organization",
+    "/organization/cancel-invitation",
+    "/organization/get-invitation",
+    "/organization/reject-invitation",
+    "/organization/list-user-invitations",
+    "/organization/list-members",
+    "/organization/get-active-member-role",
+    "/organization/delete",
+  ]);
 
 // Forwards only a same-origin invitationId, never the raw callbackURL, so the
 // verification email cannot become an open redirect.
@@ -231,7 +242,7 @@ export function createAuth(deps: AuthDeps) {
     plugins,
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        if (BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS[ctx.path]) {
+        if (BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS.has(ctx.path)) {
           throw new APIError("FORBIDDEN", {
             message: "ใช้เส้นทางจัดการสมาชิกใหม่",
           });
