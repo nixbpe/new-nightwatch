@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import {
+  cancelInvitation,
   fetchPendingInvitations,
   resendInvitation,
 } from "../../lib/api/invitations";
@@ -20,7 +21,9 @@ vi.mock("../../lib/api/invitations", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchPendingInvitations: vi.fn(),
   resendInvitation: vi.fn(),
+  cancelInvitation: vi.fn(),
 }));
+const cancelRequest = vi.mocked(cancelInvitation);
 const fetchList = vi.mocked(fetchPendingInvitations);
 const resendRequest = vi.mocked(resendInvitation);
 const refreshMembershipContext = vi.fn(() => Promise.resolve(null));
@@ -30,6 +33,7 @@ afterEach(() => {
   vi.useRealTimers();
   fetchList.mockReset();
   resendRequest.mockReset();
+  cancelRequest.mockReset();
   refreshMembershipContext.mockClear();
 });
 
@@ -106,7 +110,7 @@ function renderSection() {
 }
 
 const resendButton = (n: number) =>
-  screen.getByRole("button", { name: `ส่งคำเชิญซ้ำถึง ${emailOf(n)}` });
+  screen.getByRole("button", { name: `ส่งซ้ำคำเชิญถึง ${emailOf(n)}` });
 const confirmButton = () =>
   within(screen.getByRole("dialog")).getByRole("button", {
     name: "ยืนยันการส่งคำเชิญซ้ำ",
@@ -493,7 +497,7 @@ describe("invitation resend", () => {
     ).toBeVisible();
     expect(
       within(rows[1] as HTMLElement).getByRole("button", {
-        name: `ส่งคำเชิญซ้ำถึง ${emailOf(2)}`,
+        name: `ส่งซ้ำคำเชิญถึง ${emailOf(2)}`,
       }),
     ).toBeVisible();
   });
@@ -513,16 +517,29 @@ describe("invitation resend", () => {
     expect(back).toHaveFocus();
   });
 
-  it("clears an earlier cancel notice when a resend starts", async () => {
-    serve(range(2));
+  it("replaces an earlier cancel notice with the resend notice and blocks cancel buttons while it runs", async () => {
+    serve(range(3));
+    cancelRequest.mockResolvedValue({ canceled: true });
     resendRequest.mockResolvedValue(resent());
     const user = userEvent.setup();
     renderSection();
     await screen.findByText(emailOf(1));
 
+    await user.click(
+      screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(3)}` }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "ยืนยันการยกเลิกคำเชิญ",
+      }),
+    );
+    expect(
+      await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`),
+    ).toBeVisible();
+
     await openAndConfirm(user, 1);
 
     expect(await screen.findByText("ส่งคำเชิญซ้ำแล้ว")).toBeVisible();
-    expect(sectionStatus()).not.toHaveTextContent("ยกเลิก");
+    expect(sectionStatus()).not.toHaveTextContent("ยกเลิกคำเชิญถึง");
   });
 });

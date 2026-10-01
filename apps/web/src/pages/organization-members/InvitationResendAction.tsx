@@ -195,7 +195,7 @@ export function InvitationResendButton({
         aria-disabled={cooling ? "true" : undefined}
         className="aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
         aria-describedby={cooling ? cooldownId : undefined}
-        aria-label={`ส่งคำเชิญซ้ำถึง ${invitation.email}`}
+        aria-label={`ส่งซ้ำคำเชิญถึง ${invitation.email}`}
         onClick={(event) => {
           if (cooling) return;
           onResend(invitation, event.currentTarget);

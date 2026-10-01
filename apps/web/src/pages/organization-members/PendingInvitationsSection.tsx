@@ -380,7 +380,7 @@ export function PendingInvitationsSection({
           description={
             <>
               <p>
-                ส่งคำเชิญซ้ำถึง {resend.confirmation.invitation.email} (
+                ส่งซ้ำคำเชิญถึง {resend.confirmation.invitation.email} (
                 {ROLE_LABELS[resend.confirmation.invitation.role]}) ขององค์กร{" "}
                 {organizationName}
               </p>

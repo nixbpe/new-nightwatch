@@ -55,12 +55,22 @@ const authEnv: AuthEnv = {
 const mail: OutboundMail[] = [];
 let attempts = 0;
 let smtpFails = false;
+// Whether the id in each sent link was already visible to another session, so
+// a mail sent inside the transaction would show up as false.
+const linkCommittedAtSend: boolean[] = [];
 const mailer: Mailer = {
-  send: (message) => {
+  send: async (message) => {
     attempts += 1;
-    if (smtpFails) return Promise.reject(new Error("smtp down"));
+    const linkId = /accept-invitation\/([0-9a-f-]+)/.exec(message.text)?.[1];
+    if (linkId !== undefined) {
+      const visible = await owner.sql.query(
+        "select 1 from invitation where id = $1",
+        [linkId],
+      );
+      linkCommittedAtSend.push(visible.rows.length === 1);
+    }
+    if (smtpFails) throw new Error("smtp down");
     mail.push(message);
-    return Promise.resolve();
   },
   verify: () => Promise.resolve(),
 };
@@ -327,6 +337,7 @@ beforeEach(() => {
   mail.length = 0;
   attempts = 0;
   smtpFails = false;
+  linkCommittedAtSend.length = 0;
 });
 
 // A failed assertion must not leave a lock held for the next test.
@@ -435,6 +446,8 @@ describe("POST /api/organizations/:organizationId/invitations/:publicId/resend",
     }
     // Per organization: owner sends 4, admin sends 3.
     expect(sent).toBe(14);
+    expect(linkCommittedAtSend).toHaveLength(14);
+    expect(linkCommittedAtSend.every(Boolean)).toBe(true);
   });
 
   it("gives admin 404 for an absent publicId and 403 for an owner invitation and sends nothing", async () => {
@@ -797,6 +810,7 @@ describe("resend races on the organization lock", () => {
       body: { error: { code: "INVITATION_RESEND_COOLDOWN" } },
     });
     expect(attempts).toBe(1);
+    expect(linkCommittedAtSend).toEqual([true]);
     expect(await rowCount(orgA, email("double-resend"))).toBe(1);
   });
 
@@ -927,7 +941,14 @@ describe("resend races on the organization lock", () => {
   describe("expired resend against create for the same email", () => {
     it("create first wins: the expired row is canceled, resend gets 404 and only the create mail is sent", async () => {
       const address = email("same-create-first");
-      const row = await seed(orgA, address, { expiresIn: "-1 hour" });
+      // Stored with a different case than the lowercase create body.
+      const row = await seed(
+        orgA,
+        address.replace("same", "Same").replace("@example", "@Example"),
+        {
+          expiresIn: "-1 hour",
+        },
+      );
       const { first, second } = await raceInOrder(
         orgA,
         () => createWith("ownerA", orgA, address),
@@ -949,7 +970,13 @@ describe("resend races on the organization lock", () => {
 
     it("resend first wins: create gets INVITATION_ALREADY_PENDING and cancels no row", async () => {
       const address = email("same-resend-first");
-      const row = await seed(orgA, address, { expiresIn: "-1 hour" });
+      const row = await seed(
+        orgA,
+        address.replace("same", "Same").replace("@example", "@Example"),
+        {
+          expiresIn: "-1 hour",
+        },
+      );
       const { first, second } = await raceInOrder(
         orgA,
         () => resend("ownerA", orgA, row.publicId),

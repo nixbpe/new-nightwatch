@@ -724,7 +724,7 @@ it.each([
     );
     await user.click(
       await screen.findByRole("button", {
-        name: "ส่งคำเชิญซ้ำถึง a-only@example.test",
+        name: "ส่งซ้ำคำเชิญถึง a-only@example.test",
       }),
     );
     await user.click(
