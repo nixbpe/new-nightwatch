@@ -100,6 +100,18 @@ export const invitationCancelResponseSchema = z.object({
   canceled: z.literal(true),
 });
 
+export const invitationResendResponseSchema = z.object({
+  resent: z.literal(true),
+  emailDispatch: z.enum(["accepted", "failed"]),
+  sentAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  resendAvailableAt: z.iso.datetime(),
+});
+
+export type InvitationResendResponse = z.infer<
+  typeof invitationResendResponseSchema
+>;
+
 export type PendingInvitationListQuery = z.infer<
   typeof pendingInvitationListQuerySchema
 >;
