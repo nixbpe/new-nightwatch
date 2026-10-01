@@ -156,6 +156,7 @@ export const invitation = pgTable(
   "invitation",
   {
     id: text("id").primaryKey(),
+    publicId: uuid("public_id").notNull().defaultRandom(),
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
@@ -167,12 +168,14 @@ export const invitation = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { mode: "date" }),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    sentAt: timestamp("sent_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
     // Plain lookup index only: an organization legitimately holds many
     // invitations over time (INT-DB-1); uniqueness is NOT enforced here.
     index("invitation_organization_idx").on(table.organizationId),
+    uniqueIndex("invitation_public_id_key").on(table.publicId),
   ],
 );
 
