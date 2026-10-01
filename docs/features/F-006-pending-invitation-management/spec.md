@@ -14,11 +14,11 @@ Owner: Technical Lead Spec นี้เป็น source of truth ของ imple
 | -------------------- | ----- |
 | Feature              | `F-006`, `acceptanceVersion` `F-006-AC-1` (`docs/features/F-006-pending-invitation-management/feature.md`) |
 | Epic                 | `E-002`, `docs/epics/E-002-organization-member-governance.md` |
-| Status               | Draft |
-| Approved by user     | Not yet (การอนุมัติ freeze `F-006-AC-1`) |
-| Start authorization  | None ผู้ใช้เลือกค่าแล้ว มีผลเมื่ออนุมัติ Spec (ดู Open decisions) |
-| `COMMIT_MODE`        | none ผู้ใช้เลือก `owned-slice` มีผลเมื่ออนุมัติ Spec |
-| `STOP_AT`            | ยังไม่มีผล ผู้ใช้เลือก `merge-ready` มีผลเมื่ออนุมัติ Spec |
+| Status               | Approved |
+| Approved by user     | 2026-10-01 (freeze `F-006-AC-1`) |
+| Start authorization  | ทั้ง `F-006` (hotfix → 01a → 01b → 02 → 03 → 04) |
+| `COMMIT_MODE`        | owned-slice |
+| `STOP_AT`            | merge-ready |
 
 ศัพท์ที่ใช้ใน Spec นี้:
 - `public_id` (`publicId` ใน API): UUID ที่ไม่ใช่ความลับ ใช้อ้างแถวคำเชิญใน list/resend/cancel ใช้ตอบรับคำเชิญไม่ได้
@@ -502,12 +502,13 @@ Technical Lead เพิ่มแถวเหล่านี้ใน Acceptance
 | Hotfix timing | hotfix native route 9 path เริ่มพร้อม `F-006` ไม่เริ่มก่อน | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | ค่าการเริ่มงาน | Start authorization ทั้ง `F-006` (hotfix → 01a → 01b → 02 → 03 → 04), `COMMIT_MODE: owned-slice`, `STOP_AT: merge-ready` มีผลเมื่อผู้ใช้อนุมัติ Spec | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | `acceptanceVersion` | คง `F-006-AC-1` ยังไม่ freeze | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
+| อนุมัติ Spec | อนุมัติ Spec ไม่มีข้อแก้ freeze `F-006-AC-1` ค่าการเริ่มงานที่เลือกไว้มีผล | 2026-10-01 | ผู้ใช้ |
 
 ## Open decisions
 
 | Decision | Options | ข้อแนะนำ | Owner |
 | -------- | ------- | -------- | ----- |
-| อนุมัติ Spec | อนุมัติ หรือขอแก้ | อนุมัติเมื่อไม่มีข้อแก้ เมื่ออนุมัติ: freeze `F-006-AC-1` และค่าการเริ่มงานที่ผู้ใช้เลือกแล้ว (Start authorization ทั้ง `F-006` รวม NODE-F006-04, `COMMIT_MODE: owned-slice`, `STOP_AT: merge-ready`) มีผล | ผู้ใช้ |
+| None | | | |
 
 ## Revisions
 
@@ -524,3 +525,4 @@ Review round 1-4 ทำโดย Technical Lead จากการอ่าน s
 | 2026-10-01 | ผู้ใช้ยืนยันถ้อยคำ `OD-T4` แบบสั้นและ pagination behavior | Not yet | `F-006-AC-1` (draft) |
 | 2026-10-01 | ลบรายละเอียด review round 1-4, ย่อ handoff notes และ Decision record, ปรับภาษาให้อ่านง่าย ไม่เปลี่ยน contract, AC หรือ Task | Not yet | `F-006-AC-1` (draft) |
 | 2026-10-01 | รวม operator provisioning (`F-006-S04`, `AC-16`–`AC-18`): เพิ่ม contract Operator provisioning, แถว race ของ provisioning 8 แถว, NODE-F006-04, AC trace ของ `AC-16`–`AC-18`; แก้ `AC-13`, Risks, Data และเวลาเริ่ม hotfix; บันทึกคำตอบผู้ใช้ 8 ข้อใน Decision record | Not yet | `F-006-AC-1` (draft) |
+| 2026-10-01 | ผู้ใช้อนุมัติ Spec: `Status` Approved, freeze `F-006-AC-1`, Start authorization ทั้ง `F-006`, `COMMIT_MODE: owned-slice` และ `STOP_AT: merge-ready` มีผล | 2026-10-01 | `F-006-AC-1` (frozen) |
