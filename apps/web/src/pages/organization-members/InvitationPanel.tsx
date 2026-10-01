@@ -33,10 +33,12 @@ export function InvitationPanel({
   organizationId,
   organizationName,
   actorRole,
+  onCreated,
 }: {
   organizationId: string;
   organizationName: string;
   actorRole: "owner" | "admin";
+  onCreated: () => void;
 }) {
   const queryClient = useQueryClient();
   const initialPublicationVersion = useRef(
@@ -114,6 +116,7 @@ export function InvitationPanel({
       void queryClient.invalidateQueries({
         queryKey: pendingInvitationListQueryPrefix(organizationId),
       });
+      onCreated();
       setEmail("");
       setNotice(
         result.emailDispatch === "accepted"

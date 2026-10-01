@@ -240,7 +240,11 @@ describe("OrganizationMembersPage", () => {
           post.resolve(outcome);
           await post.promise;
         });
-        expect(getStatus()).toHaveTextContent(message);
+        // The pending list reloads page 1 after a create; its own loading
+        // status leaves once that fetch settles, leaving the panel's notice.
+        await waitFor(() => {
+          expect(getStatus()).toHaveTextContent(message);
+        });
         expect(email).toHaveValue("");
       }
       expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
@@ -1747,6 +1751,44 @@ describe("OrganizationMembersPage pending invitations", () => {
       );
     },
   );
+
+  it("shows the new invitation on page 1 after a create made from page 2", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    const rows = (offset: number): PendingInvitationListResponse => {
+      const emails =
+        offset === 0
+          ? ["new@example.com", "old-1@example.test"]
+          : ["old-51@example.test"];
+      return { ...pending(emails), page: { limit: 50, offset, total: 51 } };
+    };
+    vi.mocked(fetchPendingInvitations).mockImplementation(
+      (_organizationId, _limit, offset) =>
+        Promise.resolve(offset === 0 ? rows(0) : rows(50)),
+    );
+    vi.mocked(createInvitation).mockResolvedValue({
+      created: true,
+      emailDispatch: "accepted",
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("old-1@example.test");
+    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+    await screen.findByText("old-51@example.test");
+
+    await user.type(
+      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      "new@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+
+    expect(await screen.findByText("new@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("old-51@example.test")).toBeNull();
+    expect(fetchPendingInvitations).toHaveBeenLastCalledWith(
+      organizationId,
+      50,
+      0,
+    );
+  });
 
   it("drops an accepted invitation from the list and shows the recipient as a member", async () => {
     vi.mocked(fetchOrganizationMembers)
