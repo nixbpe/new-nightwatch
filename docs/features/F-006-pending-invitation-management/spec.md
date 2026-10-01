@@ -503,6 +503,7 @@ Technical Lead เพิ่มแถวเหล่านี้ใน Acceptance
 | ค่าการเริ่มงาน | Start authorization ทั้ง `F-006` (hotfix → 01a → 01b → 02 → 03 → 04), `COMMIT_MODE: owned-slice`, `STOP_AT: merge-ready` มีผลเมื่อผู้ใช้อนุมัติ Spec | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | `acceptanceVersion` | คง `F-006-AC-1` ยังไม่ freeze | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | อนุมัติ Spec | อนุมัติ Spec ไม่มีข้อแก้ freeze `F-006-AC-1` ค่าการเริ่มงานที่เลือกไว้มีผล | 2026-10-01 | ผู้ใช้ |
+| Stacked PRs | เริ่ม NODE-F006-01a ถึง 04 ในรอบเดียวเป็น stacked PR ต่อจาก hotfix (PR #50) `READY` ที่เขียนว่า "<node ก่อนหน้า> merged" หมายถึง PR ของ node ก่อนหน้า merge-ready และ node นี้ต่อจาก head ของ PR นั้น Integrated verification รันที่ head ของ NODE-F006-04 ลำดับ merge คือจากล่างขึ้นบน | 2026-10-01 | ผู้ใช้ |
 
 ## Open decisions
 
@@ -526,3 +527,4 @@ Review round 1-4 ทำโดย Technical Lead จากการอ่าน s
 | 2026-10-01 | ลบรายละเอียด review round 1-4, ย่อ handoff notes และ Decision record, ปรับภาษาให้อ่านง่าย ไม่เปลี่ยน contract, AC หรือ Task | Not yet | `F-006-AC-1` (draft) |
 | 2026-10-01 | รวม operator provisioning (`F-006-S04`, `AC-16`–`AC-18`): เพิ่ม contract Operator provisioning, แถว race ของ provisioning 8 แถว, NODE-F006-04, AC trace ของ `AC-16`–`AC-18`; แก้ `AC-13`, Risks, Data และเวลาเริ่ม hotfix; บันทึกคำตอบผู้ใช้ 8 ข้อใน Decision record | Not yet | `F-006-AC-1` (draft) |
 | 2026-10-01 | ผู้ใช้อนุมัติ Spec: `Status` Approved, freeze `F-006-AC-1`, Start authorization ทั้ง `F-006`, `COMMIT_MODE: owned-slice` และ `STOP_AT: merge-ready` มีผล | 2026-10-01 | `F-006-AC-1` (frozen) |
+| 2026-10-01 | ผู้ใช้สั่งเริ่ม NODE-F006-01a ถึง 04 เป็น stacked PR ต่อจาก hotfix: ตีความ `READY` และเวลารัน Integrated verification ตาม Decision record "Stacked PRs" ไม่เปลี่ยน contract, AC หรือ Task | 2026-10-01 | `F-006-AC-1` (frozen) |
