@@ -21,8 +21,20 @@ const slugs: string[] = [];
 const userIds: string[] = [];
 
 const received: string[] = [];
+// Whether the invitation id in each received link was already committed, as
+// seen from a session other than the CLI's, when the mail was accepted.
+const committedAtSend: boolean[] = [];
 let smtp: Server;
 let smtpPort = 0;
+
+async function recordSend(message: string): Promise<void> {
+  const id = /accept-invitation\/([0-9a-f-]{36})/.exec(decoded(message))?.[1];
+  const visible = id
+    ? await database.sql.query("select 1 from invitation where id = $1", [id])
+    : { rows: [] };
+  committedAtSend.push(visible.rows.length === 1);
+  received.push(message);
+}
 
 // Minimal SMTP: enough of the protocol for nodemailer verify() and sendMail().
 function startSmtp(): Promise<void> {
@@ -40,10 +52,12 @@ function startSmtp(): Promise<void> {
           data += buffer.slice(0, end);
           buffer = buffer.slice(end + 5);
           inData = false;
-          received.push(data);
+          const message = data;
           data = "";
-          socket.write("250 queued\r\n");
-          continue;
+          // Replies only after the check: a send inside the CLI's transaction
+          // would see its own uncommitted row and a fresh session would not.
+          void recordSend(message).then(() => socket.write("250 queued\r\n"));
+          return;
         }
         const eol = buffer.indexOf("\r\n");
         if (eol === -1) return;
@@ -116,6 +130,9 @@ async function cli(
     ],
     {
       cwd: apiDir,
+      // A hung child must not keep its database connection open.
+      timeout: 60_000,
+      killSignal: "SIGKILL",
       env: {
         ...process.env,
         DATABASE_URL: ownerUrl,
@@ -220,6 +237,7 @@ beforeAll(async () => {
 }, 120_000);
 beforeEach(() => {
   received.length = 0;
+  committedAtSend.length = 0;
 });
 afterAll(async () => {
   try {
@@ -255,6 +273,7 @@ describe("bun run provision:organization against an existing organization", () =
     expect(rows).toHaveLength(1);
     expect(received).toHaveLength(1);
     expect(linkIds()).toEqual([rows[0]?.id]);
+    expect(committedAtSend).toEqual([true]);
     leaksNoIdentifier(result.stdout + result.stderr, [rows[0]?.id ?? ""]);
   });
 
@@ -273,6 +292,7 @@ describe("bun run provision:organization against an existing organization", () =
     expect(received).toHaveLength(1);
     const [mailed] = linkIds();
     expect(mailed).toBe(rows[0]?.id);
+    expect(committedAtSend).toEqual([true]);
     expect(await linkStatus(oldId)).toBe(404);
     expect(await linkStatus(mailed ?? "")).toBe(200);
     leaksNoIdentifier(result.stdout + result.stderr, [oldId, mailed ?? ""]);
@@ -316,6 +336,10 @@ describe("bun run provision:organization against an existing organization", () =
     expect(result.stderr).toContain("non-owner role");
     expect(received).toHaveLength(0);
     expect(await invitationRows(org)).toEqual(before);
+    leaksNoIdentifier(
+      result.stdout + result.stderr,
+      before.map((row) => row.id),
+    );
   });
 
   it("when SMTP fails keeps the committed row, tells the operator to re-run and exits 1", async () => {
@@ -336,6 +360,7 @@ describe("bun run provision:organization against an existing organization", () =
     const rerun = await cli(aSlug, address("smtpfail"));
     expect(rerun.code).toBe(0);
     expect(rerun.stdout).toContain("Re-sent the pending owner invitation");
+    expect(committedAtSend).toEqual([true]);
     expect(received).toHaveLength(1);
   });
 
