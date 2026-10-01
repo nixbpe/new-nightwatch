@@ -2,6 +2,7 @@ import type {
   InvitationCreateResponse,
   MeContextResponse,
   OrganizationMemberListResponse,
+  PendingInvitation,
   PendingInvitationListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -19,6 +20,7 @@ import {
   memberListQueryKey,
 } from "../lib/api/members";
 import {
+  cancelInvitation,
   createInvitation,
   fetchPendingInvitations,
 } from "../lib/api/invitations";
@@ -104,6 +106,7 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
 vi.mock("../lib/api/invitations", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createInvitation: vi.fn(),
+  cancelInvitation: vi.fn(),
   fetchPendingInvitations: vi.fn(async (organizationId: string) =>
     (await import("../test/pendingInvitations")).emptyPendingInvitationList(
       organizationId,
@@ -1607,6 +1610,77 @@ describe("OrganizationMembersPage pending invitations", () => {
       expect(fetchPendingInvitations).not.toHaveBeenCalled();
     },
   );
+
+  it("shows owner-only text and no cancel button on an owner row for an admin", async () => {
+    asRole("admin");
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    const base = pending(["peer@example.test", "boss@example.test"]);
+    vi.mocked(fetchPendingInvitations).mockResolvedValue({
+      ...base,
+      invitations: [
+        { ...(base.invitations[0] as PendingInvitation) },
+        {
+          ...(base.invitations[1] as PendingInvitation),
+          role: "owner",
+          manageable: false,
+        },
+      ],
+    });
+    renderPage();
+
+    const ownerRow = (await screen.findByText("boss@example.test")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(within(ownerRow).getByText("เฉพาะเจ้าของจัดการได้")).toBeVisible();
+    expect(within(ownerRow).queryByRole("button")).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "ยกเลิกคำเชิญถึง peer@example.test",
+      }),
+    ).toBeVisible();
+  });
+
+  it("drops the section when a cancel and the list refresh are denied after the actor was demoted", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    vi.mocked(fetchPendingInvitations)
+      .mockResolvedValueOnce(pending(["gone@example.test"]))
+      .mockRejectedValue(new ApiError("PERMISSION_DENIED", "demoted", 403));
+    vi.mocked(cancelInvitation).mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "demoted", 403),
+    );
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => {
+        tenant = {
+          ...tenant,
+          me: { organizations: [{ ...organizationA, role: "viewer" }] },
+        };
+        return Promise.resolve({
+          organizations: tenant.me?.organizations ?? [],
+          lastActiveTenantId: organizationId,
+        });
+      }),
+    };
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "ยกเลิกคำเชิญถึง gone@example.test",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "ยืนยันการยกเลิกคำเชิญ" }),
+    );
+
+    await waitFor(() => {
+      expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/คำเชิญที่รอตอบรับ/)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
+    expect(cancelInvitation).toHaveBeenCalledOnce();
+  });
 
   it.each(["owner", "admin"] as const)(
     "places the section after the invite card and before the member table for %s",

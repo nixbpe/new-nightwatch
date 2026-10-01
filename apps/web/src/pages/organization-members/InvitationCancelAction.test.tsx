@@ -246,6 +246,26 @@ describe("invitation cancel", () => {
     });
   });
 
+  it("focuses the row pulled up from the next page when the last row of page one is canceled", async () => {
+    const ids = range(51);
+    serve(ids);
+    cancelRequest.mockImplementation(() => {
+      ids.delete(50);
+      return Promise.resolve({ canceled: true });
+    });
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText(emailOf(1));
+
+    await openAndConfirm(user, 50);
+
+    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(50)} แล้ว`);
+    expect(screen.getByText(emailOf(51))).toBeVisible();
+    await waitFor(() => {
+      expect(cancelButton(51)).toHaveFocus();
+    });
+  });
+
   it("loads the last page that has rows after the only row of the last page is canceled", async () => {
     const ids = range(51);
     serve(ids);
@@ -474,6 +494,27 @@ describe("invitation cancel", () => {
       ).toBe(true);
       expect(cancelRequest).toHaveBeenCalledTimes(1);
       expect(fetchList).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(["PERMISSION_DENIED", "MEMBERSHIP_DENIED"])(
+    "refreshes the membership context once on %s even when the list refetch is denied too",
+    async (code) => {
+      serve(range(2));
+      cancelRequest.mockRejectedValue(new ApiError(code, "denied", 403));
+      const user = userEvent.setup();
+      renderSection();
+      await screen.findByText(emailOf(1));
+      fetchList.mockRejectedValue(new ApiError(code, "denied", 403));
+
+      await openAndConfirm(user, 1);
+
+      expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
+      await waitFor(() => {
+        expect(refreshMembershipContext).toHaveBeenCalledTimes(1);
+      });
+      expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
+      expect(cancelRequest).toHaveBeenCalledTimes(1);
     },
   );
 

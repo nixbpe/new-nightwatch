@@ -115,9 +115,15 @@ export function useInvitationCancel({
       });
     }
     requestFocus(
-      failure === null ? neighbourOf(rows, invitation) : invitation.publicId,
+      failure === null
+        ? neighbourOf(
+            refreshed.data?.invitations ?? [],
+            rows.findIndex((row) => row.publicId === invitation.publicId),
+          )
+        : invitation.publicId,
     );
-    if (!refreshed.isError && deniedCode) {
+    // A denied list cannot recover on its own, so refresh whatever the refetch said.
+    if (deniedCode) {
       await refreshMembershipContext();
       if (!isCurrentScope()) return;
     }
@@ -146,16 +152,18 @@ export function useInvitationCancel({
   };
 }
 
-// Only manageable rows own a cancel button, so the next one that does gets
-// focus, then the previous one, then the section heading.
+// Picks from the refreshed page, where the row after the removed one (a row
+// from the next page when it was last) now sits at the removed index. Only
+// manageable rows own a button, so the first one at or after that index gets
+// focus, then the nearest one before it, then the section heading.
 function neighbourOf(
-  rows: readonly PendingInvitation[],
-  removed: PendingInvitation,
+  refreshedRows: readonly PendingInvitation[],
+  removedIndex: number,
 ): InvitationFocusTarget {
-  const index = rows.findIndex((row) => row.publicId === removed.publicId);
-  const after = rows.slice(index + 1).find((row) => row.manageable);
-  const before = rows
-    .slice(0, Math.max(index, 0))
+  const index = Math.max(removedIndex, 0);
+  const after = refreshedRows.slice(index).find((row) => row.manageable);
+  const before = refreshedRows
+    .slice(0, index)
     .reverse()
     .find((row) => row.manageable);
   return (after ?? before)?.publicId ?? "heading";
