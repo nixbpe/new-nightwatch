@@ -190,6 +190,7 @@ const staleMemberPage: OrganizationMemberListResponse = {
     },
   ],
   page: { limit: 50, offset: 0, total: 51 },
+  memberLimit: 1000,
 };
 
 function renderPage() {

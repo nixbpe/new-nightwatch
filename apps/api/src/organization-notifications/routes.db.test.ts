@@ -401,6 +401,7 @@ describe("organization member HTTP mutations", () => {
       ]),
     );
     expect(listBody.page).toEqual({ limit: 50, offset: 0, total: 3 });
+    expect(listBody.memberLimit).toBe(1000);
     const beyondSafeInteger = await ownerClient(
       "GET",
       `/api/organizations/${organizationId}/members?limit=50&offset=9007199254740991`,

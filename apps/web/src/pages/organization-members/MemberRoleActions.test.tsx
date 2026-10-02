@@ -87,6 +87,7 @@ function listFor(
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
   }
   return {
@@ -115,6 +116,7 @@ function listFor(
       },
     ],
     page: { limit: 50, offset: 0, total },
+    memberLimit: 1000,
   };
 }
 

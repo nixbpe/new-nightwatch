@@ -1,4 +1,5 @@
 export {
+  ORGANIZATION_MEMBER_LIMIT,
   activeOrganizationInputSchema,
   invitationAcceptResponseSchema,
   invitationCancelResponseSchema,

@@ -12,7 +12,6 @@ import { useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { MOCKUP_NOTICE } from "../components/ui/mockup-frame";
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { ApiError } from "../lib/api/client";
 import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
@@ -45,6 +44,7 @@ const response: OrganizationMemberListResponse = {
     },
   ],
   page: { limit: 50, offset: 0, total: 51 },
+  memberLimit: 1000,
 };
 
 const firstMember = response.members[0];
@@ -184,8 +184,11 @@ const getStatus = () => {
 };
 const findStatus = () => waitFor(getStatus);
 
-const totalCountText = (n: number) => (_content: string, el: Element | null) =>
-  el?.tagName === "SPAN" && el.textContent === `สมาชิกทั้งหมด ${String(n)} คน`;
+const totalCountText =
+  (total: string, limit = "1,000") =>
+  (_content: string, el: Element | null) =>
+    el?.tagName === "SPAN" &&
+    el.textContent === `สมาชิกทั้งหมด ${total} / ${limit} คน`;
 
 describe("OrganizationMembersPage", () => {
   it.each(invitationOutcomes)(
@@ -230,6 +233,7 @@ describe("OrganizationMembersPage", () => {
         ...response,
         members: [{ ...firstMember, id: "member-51", name: "Zoe" }],
         page: { limit: 50, offset: 50, total: 51 },
+        memberLimit: 1000,
       });
       expect(await screen.findByText("Zoe")).toBeInTheDocument();
       if (outcome instanceof Error) {
@@ -267,6 +271,7 @@ describe("OrganizationMembersPage", () => {
         },
       ],
       page: { limit: 50, offset: 50, total: 51 },
+      memberLimit: 1000,
     };
     vi.mocked(fetchOrganizationMembers)
       .mockResolvedValueOnce(response)
@@ -274,7 +279,7 @@ describe("OrganizationMembersPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByText(totalCountText(51))).toBeInTheDocument();
+    expect(await screen.findByText(totalCountText("51"))).toBeInTheDocument();
     expect(screen.getByText("Ada")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(await screen.findByText("Zoe")).toBeInTheDocument();
@@ -285,19 +290,14 @@ describe("OrganizationMembersPage", () => {
     vi.mocked(fetchOrganizationMembers).mockResolvedValueOnce(response);
     renderPage();
 
-    const count = await screen.findByText(totalCountText(51));
+    const count = await screen.findByText(totalCountText("51"));
     expect(within(count).getByText("51")).toHaveClass("font-mono");
+    expect(within(count).getByText("1,000")).toHaveClass("font-mono");
 
-    const group = screen.getByRole("group", {
-      name: "ตัวอย่าง: เพดานจำนวนสมาชิก",
-    });
-    expect(within(group).getByText(MOCKUP_NOTICE)).toBeInTheDocument();
     expect(
-      within(group)
-        .getByRole("link")
-        .getAttribute("href")
-        ?.endsWith("/issues/66"),
-    ).toBe(true);
+      screen.queryByRole("group", { name: "ตัวอย่าง: เพดานจำนวนสมาชิก" }),
+    ).toBeNull();
+    expect(screen.queryByText("เพดานสมาชิกต่อองค์กร")).toBeNull();
 
     expect(screen.getAllByText("คุณ")).toHaveLength(1);
     expect(
@@ -306,6 +306,17 @@ describe("OrganizationMembersPage", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: /รายชื่อสมาชิก/ }),
     ).toBeInTheDocument();
+  });
+  it("shows the member limit from the response with thousands separators", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValueOnce({
+      ...response,
+      page: { limit: 50, offset: 0, total: 1234 },
+      memberLimit: 2500,
+    });
+    renderPage();
+
+    const count = await screen.findByText(totalCountText("1,234", "2,500"));
+    expect(within(count).getByText("2,500")).toHaveClass("font-mono");
   });
   it("hides stale first-page member data while revisiting it refetches", async () => {
     const secondPage: OrganizationMemberListResponse = {
@@ -319,6 +330,7 @@ describe("OrganizationMembersPage", () => {
         },
       ],
       page: { limit: 50, offset: 50, total: 51 },
+      memberLimit: 1000,
     };
     const freshFirstPage =
       Promise.withResolvers<OrganizationMemberListResponse>();
@@ -344,7 +356,7 @@ describe("OrganizationMembersPage", () => {
     expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
     expect(screen.queryByText("แสดง 1–1 จาก 51")).not.toBeInTheDocument();
 
     freshFirstPage.resolve({
@@ -353,7 +365,7 @@ describe("OrganizationMembersPage", () => {
     });
 
     expect(await screen.findByText("Fresh Ada")).toBeInTheDocument();
-    expect(screen.getByText(totalCountText(51))).toBeInTheDocument();
+    expect(screen.getByText(totalCountText("51"))).toBeInTheDocument();
     expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
   });
 
@@ -375,7 +387,7 @@ describe("OrganizationMembersPage", () => {
     expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
     expect(screen.queryByText("แสดง 1–1 จาก 51")).not.toBeInTheDocument();
 
     freshPage.resolve({
@@ -462,11 +474,13 @@ describe("OrganizationMembersPage", () => {
       organizationId,
       members: [],
       page: { limit: 50, offset: 50, total: 49 },
+      memberLimit: 1000,
     };
     const repairedFirstPage: OrganizationMemberListResponse = {
       ...response,
       members: [{ ...firstMember, name: "Repaired first member" }],
       page: { limit: 50, offset: 0, total: 49 },
+      memberLimit: 1000,
     };
     vi.mocked(fetchOrganizationMembers)
       .mockResolvedValueOnce(response)
@@ -498,6 +512,7 @@ describe("OrganizationMembersPage", () => {
       organizationId,
       members: [],
       page: { limit: 50, offset: 0, total: 0 },
+      memberLimit: 1000,
     });
     renderPage();
 
@@ -699,6 +714,7 @@ describe("OrganizationMembersPage", () => {
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
     vi.mocked(fetchOrganizationMembers)
       .mockResolvedValueOnce(aFirstPage)
@@ -781,6 +797,7 @@ describe("OrganizationMembersPage", () => {
       ...response,
       members: [{ ...firstMember, name: "A-late" }],
       page: { limit: 50, offset: 50, total: 51 },
+      memberLimit: 1000,
     });
     await Promise.resolve();
     await act(async () => {
@@ -901,6 +918,7 @@ describe("OrganizationMembersPage", () => {
       ...response,
       members: [{ ...firstMember, name: "A-second" }],
       page: { limit: 50, offset: 50, total: 51 },
+      memberLimit: 1000,
     };
     vi.mocked(fetchOrganizationMembers)
       .mockResolvedValueOnce({
@@ -984,6 +1002,7 @@ describe("OrganizationMembersPage", () => {
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
     tenant = {
       ...tenant,
@@ -1039,7 +1058,7 @@ describe("OrganizationMembersPage", () => {
       `/organizations/${organizationId}/members`,
     );
     expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
 
@@ -1189,7 +1208,7 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("workspace")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
     expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1400,6 +1419,7 @@ describe("OrganizationMembersPage", () => {
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
     tenant = {
       ...tenant,
@@ -1523,7 +1543,7 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("workspace")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
     expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });
@@ -1545,6 +1565,7 @@ describe("OrganizationMembersPage", () => {
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
     tenant = {
       ...tenant,

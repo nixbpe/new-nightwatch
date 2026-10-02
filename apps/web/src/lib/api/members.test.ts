@@ -18,6 +18,7 @@ const response = {
     },
   ],
   page: { limit: 50, offset: 0, total: 1 },
+  memberLimit: 1000,
 };
 
 describe("organization members API", () => {

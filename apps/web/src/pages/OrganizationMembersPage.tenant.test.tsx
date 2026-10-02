@@ -82,6 +82,7 @@ const aList: OrganizationMemberListResponse = {
     },
   ],
   page: { limit: 50, offset: 0, total: 1 },
+  memberLimit: 1000,
 };
 
 function RepublishSameOrganization({
@@ -227,6 +228,7 @@ it("keeps a bookmarked B invitation draft through confirmed A to B publication a
               },
             ],
             page: { limit: 50, offset: 0, total: 1 },
+            memberLimit: 1000,
           },
     ),
   );
@@ -347,6 +349,7 @@ it("retires an A invitation on real tenant publication while navigation still ho
             organizationId: B,
             members: [],
             page: { limit: 50, offset: 0, total: 0 },
+            memberLimit: 1000,
           },
     ),
   );
