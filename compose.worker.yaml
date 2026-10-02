@@ -6,7 +6,7 @@
 #   export NW_SLOT=<slot> NW_DB_PORT=<5400+slot> NW_MAIL_SMTP_PORT=<7400+slot> \
 #     NW_MAIL_UI_PORT=<7500+slot> NW_REDIS_PORT=<6380+slot>
 #   docker compose -f compose.yaml -f compose.worker.yaml up -d --build \
-#     monitor-scheduler monitor-checker
+#     monitor-scheduler monitor-checker audit-exporter
 #
 # <slot> is printed by `bun scripts/db.mjs env` (project nw-dev-<slot>). A wrong
 # NW_SLOT starts a new, empty project instead of joining the running one.
@@ -53,3 +53,12 @@ services:
     environment:
       <<: *worker-env
       WORKER_ROLES: monitor-checker
+
+  # Needs migration 0020 and `bun run db:partitions` applied first; the
+  # scheduler and consumer roles must also run for the stale sweep and
+  # notifications. REDIS_URL is required by the process for every role.
+  audit-exporter:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLES: audit-exporter
