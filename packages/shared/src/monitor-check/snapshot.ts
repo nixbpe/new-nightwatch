@@ -129,19 +129,67 @@ function foldedVariants(form: string): string[] {
  * only where a needle matched, so `out === folded` means no secret was found and
  * the text is shown with its original case.
  */
-function textRedactor(secretValues: readonly string[]): Redactor {
-  const redact = createRedactor(
-    [],
-    secretForms(secretValues).flatMap(foldedVariants),
+function textRedactor(
+  secretValues: readonly string[],
+): Redactor & { longestNeedle: number } {
+  const needles = secretForms(secretValues).flatMap(foldedVariants);
+  const redact = createRedactor([], needles);
+  // `createRedactor` also adds the JSON-escaped and URL-encoded form of each needle.
+  const longestNeedle = Math.max(
+    0,
+    ...needles.flatMap((needle) => [
+      needle.length,
+      JSON.stringify(needle).length - 2,
+      encodeURIComponentOrSelf(needle).length,
+    ]),
   );
   const wrapped = (text: string, maxChars?: number): string => {
     const folded = foldHex(text);
     const out = redact(folded, maxChars);
-    return out === folded ? text : out;
+    // Without a match `out` is the folded text, whole or (past the cap) its prefix;
+    // `foldHex` keeps the length, so the original prefix of that length is shown.
+    return out === folded.slice(0, out.length)
+      ? text.slice(0, out.length)
+      : out;
   };
-  return Object.defineProperty(wrapped, "cutShort", {
-    get: () => redact.cutShort,
-  });
+  return Object.defineProperty(
+    Object.assign(wrapped, { cutShort: false, longestNeedle }),
+    "cutShort",
+    { get: () => redact.cutShort },
+  );
+}
+
+function encodeURIComponentOrSelf(text: string): string {
+  try {
+    return encodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Scanning a 1 MiB body costs one pass per needle, so only a prefix is scanned.
+ * A secret that straddles the end of the prefix would show its head, so the output
+ * of the last `longestNeedle` input characters (at most 3 output characters each,
+ * the mask) is dropped. The caller learns that the input was cut.
+ */
+function redactPrefix(
+  redact: Redactor & { longestNeedle: number },
+  text: string,
+  maxChars: number,
+): { redact: Redactor; inputCut: boolean } {
+  const scanned = 2 * (maxChars + 1) + 4 * redact.longestNeedle;
+  if (text.length <= scanned) return { redact, inputCut: false };
+  const wrapped = (_: string, max?: number): string => {
+    const out = redact(text.slice(0, scanned), max);
+    return out.slice(0, Math.max(0, out.length - 3 * redact.longestNeedle));
+  };
+  return {
+    redact: Object.defineProperty(wrapped, "cutShort", {
+      get: () => redact.cutShort,
+    }),
+    inputCut: true,
+  };
 }
 
 /**
@@ -186,7 +234,7 @@ function mediaType(contentType: string | undefined): string {
 
 function bodyOf(
   response: OutboundResponse,
-  redact: Redactor,
+  textRedact: Redactor & { longestNeedle: number },
 ): NonNullable<ResponseSnapshot["body"]> {
   if (response.body.length === 0) return { kind: "omitted", reason: "no_body" };
   // Chosen from the raw content-type, before any redaction.
@@ -197,11 +245,16 @@ function bodyOf(
   const decoded = decodeBody(response);
   if (!decoded.ok) return { kind: "omitted", reason: "undecodable" };
   // Redact the whole text first so a secret cut by the limit is never shown in part.
+  const { redact, inputCut } = redactPrefix(
+    textRedact,
+    decoded.text,
+    MAX_BODY_BYTES,
+  );
   const cut = shown(redact, decoded.text, MAX_BODY_BYTES, cutBytes);
   return {
     kind: "text",
     text: cut.text,
-    truncated: cut.cut || response.bodyTruncated,
+    truncated: cut.cut || inputCut || response.bodyTruncated,
     totalBytesRead: response.body.length,
   };
 }

@@ -898,3 +898,49 @@ describe("fold depends on the characters around a secret", () => {
     expect(result.responseSnapshot?.url).not.toContain("deadbeef");
   });
 });
+
+describe("body scan limits", () => {
+  const own = { headers: [secretHeader("h1", "X-Own")] };
+  const secret = "SECRETVALUE";
+  const textBody = (body: string) =>
+    response({ headers: [["Content-Type", "text/plain"]], body });
+
+  it("keeps the original percent-encoding case when a secret matches only past the output cap", async () => {
+    const body = `%c3${"a".repeat(32_780)}${secret}`;
+    const snapshot = await check(textBody(body), own, { "header.h1": secret });
+    if (snapshot.body?.kind !== "text") throw new Error("expected text");
+    expect(snapshot.body.text.startsWith("%c3a")).toBe(true);
+    expect(snapshot.body.truncated).toBe(true);
+  });
+
+  it("never shows part of a secret that straddles the end of the scanned prefix", async () => {
+    // Long secrets shrink to a 3 character mask, so the output stays under 16 KiB
+    // and the end of the scanned prefix would be shown.
+    const long = `SECRET${"v".repeat(94)}`;
+    const scanned = 2 * (16 * 1024 + 1) + 4 * long.length;
+    const unit = `${long}-`;
+    const padding = (scanned - 4) % unit.length;
+    const snapshot = await check(
+      textBody(`${"a".repeat(padding)}${unit.repeat(1000)}`),
+      { headers: [secretHeader("h1", "X-Own")] },
+      { "header.h1": long },
+    );
+    if (snapshot.body?.kind !== "text") throw new Error("expected text");
+    expect(snapshot.body.text).toContain("•••");
+    expect(snapshot.body.text).not.toContain("SEC");
+    expect(snapshot.body.truncated).toBe(true);
+  });
+
+  it("still shows a full 16 KiB of a large body that holds no secret", async () => {
+    const snapshot = await check(textBody("b".repeat(1024 * 1024)), own, {
+      "header.h1": secret,
+    });
+    expect(snapshot.body).toMatchObject({
+      kind: "text",
+      truncated: true,
+      totalBytesRead: 1024 * 1024,
+    });
+    if (snapshot.body?.kind !== "text") throw new Error("expected text");
+    expect(snapshot.body.text).toBe("b".repeat(16 * 1024));
+  });
+});
