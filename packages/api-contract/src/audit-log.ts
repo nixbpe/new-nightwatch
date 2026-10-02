@@ -131,10 +131,19 @@ export const auditTargetSchema = z.discriminatedUnion("type", [
 export type AuditTarget = z.infer<typeof auditTargetSchema>;
 
 // `masked` renders as "•••", `secret_set` as "ตั้งค่าแล้ว", `changed` as "เปลี่ยนแล้ว".
+//
+// null is a value of the schemas below, but OpenAPI 3.0 cannot say "one of
+// these, or null" the way the generator expects: `nullable` on a union becomes
+// an empty `{nullable}` member, which the generated client types as `unknown`
+// and which swallows the whole union. `meta` states the schema directly:
+// the same members, with `nullable: true` beside them.
 export const auditValueSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("value"),
-    value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+    value: z.union([z.string(), z.number(), z.boolean(), z.null()]).meta({
+      anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+      nullable: true,
+    }),
   }),
   z.object({ kind: z.literal("masked") }),
   z.object({ kind: z.literal("secret_set") }),
@@ -142,11 +151,22 @@ export const auditValueSchema = z.discriminatedUnion("kind", [
 ]);
 export type AuditValue = z.infer<typeof auditValueSchema>;
 
+const auditNullableValueSchema = auditValueSchema.nullable().meta({
+  oneOf: auditValueSchema.options.map((member) => {
+    const schema: Record<string, unknown> = {
+      ...z.toJSONSchema(member, { target: "openapi-3.0" }),
+    };
+    delete schema.$schema;
+    return schema;
+  }),
+  nullable: true,
+});
+
 export const auditChangeSchema = z.object({
   field: z.enum(AUDIT_CHANGE_FIELDS),
   key: z.string().optional(),
-  before: auditValueSchema.nullable(),
-  after: auditValueSchema.nullable(),
+  before: auditNullableValueSchema,
+  after: auditNullableValueSchema,
 });
 export type AuditChange = z.infer<typeof auditChangeSchema>;
 

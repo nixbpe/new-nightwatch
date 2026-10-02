@@ -4663,10 +4663,10 @@ export interface paths {
                                     /** @enum {string} */
                                     field: "role" | "monitorAlertsEnabled" | "settingsChangedEnabled" | "name" | "url" | "method" | "intervalSeconds" | "timeoutSeconds" | "header" | "queryParam" | "body" | "authType" | "apiKeyHeaderName" | "expectedStatus" | "assertions" | "secret";
                                     key?: string;
-                                    before: {
+                                    before: ({
                                         /** @enum {string} */
                                         kind: "value";
-                                        value: string | number | boolean | unknown;
+                                        value: (string | number | boolean) | null;
                                     } | {
                                         /** @enum {string} */
                                         kind: "masked";
@@ -4676,11 +4676,11 @@ export interface paths {
                                     } | {
                                         /** @enum {string} */
                                         kind: "changed";
-                                    } | unknown;
-                                    after: {
+                                    }) | null;
+                                    after: ({
                                         /** @enum {string} */
                                         kind: "value";
-                                        value: string | number | boolean | unknown;
+                                        value: (string | number | boolean) | null;
                                     } | {
                                         /** @enum {string} */
                                         kind: "masked";
@@ -4690,7 +4690,7 @@ export interface paths {
                                     } | {
                                         /** @enum {string} */
                                         kind: "changed";
-                                    } | unknown;
+                                    }) | null;
                                 }[];
                                 exportScope?: {
                                     /** @enum {string} */
