@@ -113,9 +113,11 @@ describe("provisionOrganization against real PostgreSQL", () => {
       provision(args),
     ]);
 
-    // One transaction created, the other re-sent the same invitation.
+    // One transaction created, the other re-sent with a rotated id.
     expect([first.resent, second.resent].filter(Boolean)).toHaveLength(1);
-    expect(first.invitationId).toBe(second.invitationId);
+    const resentOutcome = first.resent ? first : second;
+    const createdOutcome = first.resent ? second : first;
+    expect(resentOutcome.invitationId).not.toBe(createdOutcome.invitationId);
     expect(first.alreadyMember).toBe(false);
     expect(second.alreadyMember).toBe(false);
 
@@ -129,6 +131,8 @@ describe("provisionOrganization against real PostgreSQL", () => {
     expect(live[0]?.status).toBe("pending");
     expect(live[0]?.inviter_id).toBe(INTERNAL_PROVISIONING_USER_ID);
     expect(Date.parse(live[0]?.expires_at ?? "")).toBeGreaterThan(Date.now());
+    // Only the id of the transaction that committed last is live.
+    expect(live[0]?.id).toBe(resentOutcome.invitationId);
 
     // Concurrent retries while it is live re-send it, never add another.
     const [retryA, retryB] = await Promise.all([
@@ -137,9 +141,12 @@ describe("provisionOrganization against real PostgreSQL", () => {
     ]);
     expect(retryA.resent).toBe(true);
     expect(retryB.resent).toBe(true);
-    expect(retryA.invitationId).toBe(first.invitationId);
-    expect(retryB.invitationId).toBe(first.invitationId);
-    expect(await liveInvitations(org.id, args.ownerEmail)).toHaveLength(1);
+    expect(retryA.invitationId).not.toBe(retryB.invitationId);
+    const afterRetries = await liveInvitations(org.id, args.ownerEmail);
+    expect(afterRetries).toHaveLength(1);
+    expect([retryA.invitationId, retryB.invitationId]).toContain(
+      afterRetries[0]?.id,
+    );
   });
 
   it("rejects an owner retry for a live viewer invitation without changing it", async () => {
@@ -205,7 +212,7 @@ describe("provisionOrganization against real PostgreSQL", () => {
     const created = await provision(args);
     expect(created.resent).toBe(false);
 
-    // An expired row stays 'pending' by design and must not block a new one.
+    // An expired row stays 'pending' until a new owner row cancels it (OD-T2).
     await database.sql.query(
       "update invitation set expires_at = now() - interval '1 hour' where id = $1",
       [created.invitationId],
@@ -221,6 +228,11 @@ describe("provisionOrganization against real PostgreSQL", () => {
     const live = await liveInvitations(org.id, args.ownerEmail);
     expect(live).toHaveLength(1);
     expect(live[0]?.id).toBe(again.invitationId);
+    const expired = await database.sql.query<{ status: string }>(
+      "select status from invitation where id = $1",
+      [created.invitationId],
+    );
+    expect(expired.rows[0]?.status).toBe("canceled");
   });
 
   it("no-ops when the owner is already a member and issues no invitation", async () => {

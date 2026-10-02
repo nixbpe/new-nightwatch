@@ -29,6 +29,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "ยกเลิก",
   confirmVariant = "default",
   pendingLabel,
   pending,
@@ -40,6 +41,8 @@ export function ConfirmDialog({
   title: string;
   description: ReactNode;
   confirmLabel: string;
+  /** Override when "ยกเลิก" would read as the action being confirmed. */
+  cancelLabel?: string;
   /** Use "destructive" for irreversible actions such as revoking access. */
   confirmVariant?: "default" | "destructive";
   pendingLabel: string;
@@ -144,7 +147,7 @@ export function ConfirmDialog({
             disabled={pending}
             onClick={onCancel}
           >
-            ยกเลิก
+            {cancelLabel}
           </Button>
           <Button
             type="button"
