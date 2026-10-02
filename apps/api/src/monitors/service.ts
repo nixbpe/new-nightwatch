@@ -19,6 +19,7 @@ import {
 } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
+import { diffConfig } from "./config-changes";
 import {
   assertMemberPermissionBeforeTenantContext,
   assertMonitorPermission,
@@ -541,9 +542,17 @@ export async function editMonitor(
       }
 
       await client.query(
-        `insert into monitor_events (monitor_id, tenant_id, kind, url_masked)
-       values ($1, $2, 'config_changed', $3)`,
-        [monitorId, input.organizationId, urlMarker(previous, maskedUrl)],
+        `insert into monitor_events
+         (monitor_id, tenant_id, kind, url_masked, actor_kind, actor_user_id,
+          changes)
+       values ($1, $2, 'config_changed', $3, 'user', $4, $5::jsonb)`,
+        [
+          monitorId,
+          input.organizationId,
+          urlMarker(previous, maskedUrl),
+          input.actorUserId,
+          JSON.stringify(diffConfig(previous, next, plan, stored)),
+        ],
       );
       const written = await storeSecrets(
         client,
@@ -629,12 +638,14 @@ async function changeMonitorStatus(
         );
       }
       await client.query(
-        `insert into monitor_events (monitor_id, tenant_id, kind)
-       values ($1, $2, $3)`,
+        `insert into monitor_events
+         (monitor_id, tenant_id, kind, actor_kind, actor_user_id)
+       values ($1, $2, $3, 'user', $4)`,
         [
           monitorId,
           input.organizationId,
           target === "paused" ? "paused" : "resumed",
+          input.actorUserId,
         ],
       );
       return { monitor: await loadRecord(client, saved), changed: true };
