@@ -364,6 +364,13 @@ describe("invitation events", () => {
     await expect(
       resendPendingInvitation(database, {
         organizationId,
+        actorUserId: viewerPerson.userId,
+        publicId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    await expect(
+      resendPendingInvitation(database, {
+        organizationId,
         actorUserId: ownerPerson.userId,
         publicId: crypto.randomUUID(),
       }),
