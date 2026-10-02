@@ -1,4 +1,10 @@
-import type { Client } from "pg";
+import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Client } from "pg";
+
+import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 
 function partitionName(month: Date): string {
   const year = month.getUTCFullYear();
@@ -44,4 +50,68 @@ export async function dropAuditPartition(
     throw new Error(`refusing to drop ${name}: not an audit partition`);
   }
   await owner.query(`drop table if exists public.${name}`);
+}
+
+/**
+ * A migrated database of its own on the shared cluster, for tests that create
+ * or drop `audit_events` partitions (those lock the parent table). `close`
+ * drops it. Roles are cluster-global, so `create role` is made idempotent in
+ * the migration copy (architecture DB-13).
+ */
+export async function openIsolatedAuditDatabase(): Promise<{
+  database: Database;
+  owner: Client;
+  close: () => Promise<void>;
+}> {
+  const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
+  const name = `audit_db_${crypto.randomUUID().replaceAll("-", "")}`;
+  const ownerTarget = new URL(ownerUrl);
+  ownerTarget.pathname = `/${name}`;
+  const runtimeTarget = new URL(runtimeUrl);
+  runtimeTarget.pathname = `/${name}`;
+  const admin = new Client({ connectionString: ownerUrl });
+  const source = new URL("../../../../packages/db/migrations", import.meta.url)
+    .pathname;
+  const copy = await mkdtemp(join(tmpdir(), "nightwatch-audit-migrations-"));
+  await admin.connect();
+  await admin.query(`create database ${name}`);
+  await admin.query(
+    `grant connect, temporary on database ${name} to nightwatch`,
+  );
+  for (const file of await readdir(source)) {
+    const sql = (await readFile(join(source, file), "utf8")).replace(
+      /create role (\w+)([^;]*);/g,
+      (_match, role: string, options: string) =>
+        `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
+    );
+    await writeFile(join(copy, file), sql);
+  }
+  await runMigrations({
+    url: ownerTarget.toString(),
+    migrationsDir: copy,
+    log: () => undefined,
+  });
+  const owner = new Client({ connectionString: ownerTarget.toString() });
+  await owner.connect();
+  const database = createDatabase(runtimeTarget.toString());
+  return {
+    database,
+    owner,
+    close: async () => {
+      await database.close();
+      await owner.end();
+      try {
+        await admin.query(`drop database if exists ${name}`);
+      } catch {
+        await admin.query(
+          `select pg_terminate_backend(pid) from pg_stat_activity
+           where datname = $1 and pid <> pg_backend_pid()`,
+          [name],
+        );
+        await admin.query(`drop database if exists ${name}`);
+      }
+      await admin.end();
+      await rm(copy, { recursive: true, force: true });
+    },
+  };
 }
