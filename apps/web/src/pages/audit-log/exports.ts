@@ -22,10 +22,14 @@ export const MY_EXPORTS_ID = "my-exports";
 
 export const IN_PROGRESS_REASON =
   "สร้างไฟล์ส่งออกได้ครั้งละ 1 คำขอ รอให้ไฟล์ปัจจุบันเสร็จก่อน คำขอที่ยังไม่เสร็จภายใน 60 นาทีจะถือว่าล้มเหลว";
-export const LOADING_REASON = "กำลังโหลดรายการ";
+export const LOADING_REASON = "กำลังโหลดรายการ…";
 export const RANGE_INVALID_REASON =
   "ช่วงวันที่ไม่ถูกต้อง แก้ไขช่วงวันที่ก่อนส่งออก";
-export const LIST_FAILED_REASON = "โหลดรายการไม่สำเร็จ";
+export const LIST_FAILED_REASON =
+  "โหลดรายการไม่สำเร็จ ส่งออกได้เมื่อโหลดรายการสำเร็จ";
+/** Announced by the page's permanent live region when a request is accepted (C6-02). */
+export const REQUESTED_ANNOUNCEMENT =
+  "กำลังสร้างไฟล์ เราจะแจ้งใน การแจ้งเตือน เมื่อพร้อมดาวน์โหลด";
 export const EMPTY_REASON = "ไม่มีรายการให้ส่งออกตามตัวกรองนี้";
 export const REQUEST_FAILED_IN_DIALOG =
   "ส่งคำขอส่งออกไม่สำเร็จ ตัวเลือกของคุณยังอยู่ ลองใหม่อีกครั้ง";

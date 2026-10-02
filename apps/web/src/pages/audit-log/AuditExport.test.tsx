@@ -161,7 +161,7 @@ describe("export button (AC-05, AC-16, M-2, N-2)", () => {
     });
     const button = await exportButton();
     expect(button).toHaveAttribute("aria-disabled", "true");
-    const reason = screen.getByText("กำลังโหลดรายการ", { selector: "p" });
+    const reason = screen.getByText("กำลังโหลดรายการ…", { selector: "p" });
     expect(button).toHaveAttribute("aria-describedby", reason.id);
   });
 
@@ -430,6 +430,12 @@ describe("after the request is accepted (M-1, M-5, N-1)", () => {
     const user = userEvent.setup();
     const view = open();
     const dialog = await openDialog(user);
+    // C6-02: the page's live region is there before the request, empty.
+    const region = document.querySelector(
+      '[data-slot="export-announcement"]',
+    ) as HTMLElement;
+    expect(region).toHaveAttribute("role", "status");
+    expect(region).toBeEmptyDOMElement();
     const refetch = Promise.withResolvers<AuditExportListResponse>();
     exportsMock.mockReturnValue(refetch.promise);
     createMock.mockResolvedValue({ export: makeRecord() });
@@ -446,10 +452,15 @@ describe("after the request is accepted (M-1, M-5, N-1)", () => {
     expect(
       screen.getByRole("heading", { name: "ไฟล์ส่งออกของฉัน" }),
     ).toBeInTheDocument();
+    expect(region).toHaveTextContent(
+      "กำลังสร้างไฟล์ เราจะแจ้งใน การแจ้งเตือน เมื่อพร้อมดาวน์โหลด",
+    );
     const notice = screen
-      .getByText(/กำลังสร้างไฟล์ เราจะแจ้งใน/)
-      .closest("p") as HTMLElement;
-    expect(notice).toHaveAttribute("role", "status");
+      .getAllByText(/กำลังสร้างไฟล์ เราจะแจ้งใน/)
+      .find((element) => !region.contains(element))
+      ?.closest("p") as HTMLElement;
+    // The visible notice is not a second live region, so nothing is announced twice.
+    expect(notice).not.toHaveAttribute("role");
     expect(
       within(notice).getByRole("link", { name: "การแจ้งเตือน" }),
     ).toHaveAttribute("href", "/notifications");
@@ -463,6 +474,7 @@ describe("after the request is accepted (M-1, M-5, N-1)", () => {
     expect(notice).not.toContainElement(close);
     await user.click(close);
     expect(screen.queryByText(/กำลังสร้างไฟล์ เราจะแจ้งใน/)).toBeNull();
+    expect(region).toBeEmptyDOMElement();
     expect(button).toHaveFocus();
     refetch.resolve(
       exportList(

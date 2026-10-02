@@ -35,6 +35,12 @@ describe("ActionNotice", () => {
     expect(screen.getByRole("status")).toHaveTextContent("กำลังสร้างไฟล์");
   });
 
+  it("carries no live region when the page announces the message itself", () => {
+    render(<ActionNotice live={false}>กำลังสร้างไฟล์</ActionNotice>);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText("กำลังสร้างไฟล์")).toBeInTheDocument();
+  });
+
   it("takes focus from code only when focusable", () => {
     const ref = createRef<HTMLDivElement>();
     const { rerender } = render(

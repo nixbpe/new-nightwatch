@@ -14,6 +14,7 @@ function ActionNotice({
   actions,
   onClose,
   focusable = false,
+  live = true,
   ref,
   className,
 }: {
@@ -23,6 +24,8 @@ function ActionNotice({
   onClose?: () => void;
   /** Lets code move focus here (`tabindex="-1"` on the container). */
   focusable?: boolean;
+  /** `false` when the page announces the message through its own live region. */
+  live?: boolean;
   ref?: Ref<HTMLDivElement>;
   className?: string;
 }) {
@@ -41,14 +44,14 @@ function ActionNotice({
       )}
     >
       <p
-        role="status"
+        role={live ? "status" : undefined}
         className="inline-flex items-center gap-1.5 text-foreground-secondary"
       >
         <span
           aria-hidden="true"
           className="h-1.5 w-1.5 animate-pulse rounded-full bg-current"
         />
-        {announced ? <span>{children}</span> : null}
+        {announced || !live ? <span>{children}</span> : null}
       </p>
       {actions}
       {onClose === undefined ? null : (

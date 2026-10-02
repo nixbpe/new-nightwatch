@@ -48,6 +48,7 @@ import {
   IN_PROGRESS_REASON,
   MY_EXPORTS_ID,
   PERMISSION_CHANGED,
+  REQUESTED_ANNOUNCEMENT,
 } from "./exports";
 import { MyExportsSection } from "./MyExportsSection";
 import { RecordingScopeNote } from "./RecordingScopeNote";
@@ -497,6 +498,9 @@ function AuditLogForOrganization({
           </>
         }
       />
+      <p role="status" data-slot="export-announcement" className="sr-only">
+        {exp.canExport && exp.requestedNotice ? REQUESTED_ANNOUNCEMENT : ""}
+      </p>
       {exp.canExport && exportReason !== null ? (
         <p id={exportReasonId} className="text-sm text-foreground-secondary">
           {exportReason}
@@ -504,6 +508,7 @@ function AuditLogForOrganization({
       ) : null}
       {exp.canExport && exp.requestedNotice ? (
         <ActionNotice
+          live={false}
           onClose={() => {
             exp.dismissRequestedNotice();
             exportButton.current?.focus();
