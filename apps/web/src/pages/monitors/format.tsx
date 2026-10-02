@@ -69,11 +69,12 @@ const percentFormat = new Intl.NumberFormat("en-US", {
 
 /**
  * Uptime and coverage percentages always show 2 decimals, so 41 reads 41.00
- * beside 40.77. Rounds down so a window with any failed check never reads
- * 100.00 (CMP-01: data never looks healthier than it is).
+ * beside 40.77. The API already rounds to 2 decimals and keeps a window with
+ * a failed check below 100 (apps/api/src/monitors/uptime.ts), so the value is
+ * formatted as sent; re-rounding here would shift values such as 1.15.
  */
 export function formatPercent(value: number): string {
-  return percentFormat.format(Math.floor(value * 100) / 100);
+  return percentFormat.format(value);
 }
 
 const THAI = /[\u0e00-\u0e7f]/;
