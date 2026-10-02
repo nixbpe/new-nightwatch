@@ -187,6 +187,20 @@ describe("requestFile", () => {
     expect(request.credentials).toBe("include");
   });
 
+  it("keeps the UTF-8 BOM of a CSV byte for byte (Excel needs it)", async () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0x74, 0x69, 0x6d, 0x65]);
+    stubFetch(
+      new Response(bytes, {
+        status: 200,
+        headers: { "content-type": "text/csv; charset=utf-8" },
+      }),
+    );
+    const file = await requestFile(path, { params });
+    const received = new Uint8Array(await file.blob.arrayBuffer());
+    expect(Array.from(received)).toEqual(Array.from(bytes));
+    expect(file.blob.type).toContain("text/csv");
+  });
+
   it("prefers the UTF-8 filename and has none without the header", async () => {
     stubFetch(
       new Response("{}", {

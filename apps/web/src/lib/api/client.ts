@@ -252,7 +252,7 @@ function filenameOf(disposition: string | null): string | null {
   return /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null;
 }
 
-/** A file body as a Blob plus the name from `Content-Disposition`; errors use the JSON envelope like `request`. */
+/** A file body as the untouched Blob plus the name from `Content-Disposition`; errors use the JSON envelope like `request`. */
 export async function requestFile<P extends FilePaths>(
   path: P,
   options: {
@@ -264,7 +264,7 @@ export async function requestFile<P extends FilePaths>(
     url: string,
     init: {
       params: { path: Record<string, string> };
-      parseAs: "text";
+      parseAs: "blob";
       signal?: AbortSignal;
     },
   ) => Promise<ClientOutcome>;
@@ -272,7 +272,7 @@ export async function requestFile<P extends FilePaths>(
   try {
     outcome = await call(path, {
       params: { path: options.params },
-      parseAs: "text",
+      parseAs: "blob",
       signal: options.signal,
     });
   } catch {
@@ -291,10 +291,10 @@ export async function requestFile<P extends FilePaths>(
       response.status,
     );
   }
+  // The Blob goes through untouched: reading the body as text would drop a UTF-8 BOM, and
+  // Excel needs it to open the CSV as UTF-8.
   return {
-    blob: new Blob([typeof data === "string" ? data : ""], {
-      type: response.headers.get("Content-Type") ?? "application/octet-stream",
-    }),
+    blob: data instanceof Blob ? data : new Blob([]),
     filename: filenameOf(response.headers.get("Content-Disposition")),
   };
 }

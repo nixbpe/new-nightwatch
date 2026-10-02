@@ -1,12 +1,14 @@
-import type { ReactNode, Ref } from "react";
+import { useEffect, useState, type ReactNode, type Ref } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
 // A page-level notice with actions. `Notice` is a bare `<p role="status">` used by other
-// pages, so this is its own component: only the text sits in the live region; the links and
-// the close button stay outside it so a screen reader announces the message alone. Neutral
-// (pending) tone only: an export request is not a success yet.
+// pages, so this is its own component. Only the message sits in the live region; links that
+// are part of the sentence may be inside it (m-1), separate actions and the close button stay
+// outside so a screen reader announces the message alone. The region mounts empty and gets
+// its text one commit later, because a region that arrives with its text is often not
+// announced. Neutral (pending) tone only: an export request is not a success yet.
 function ActionNotice({
   children,
   actions,
@@ -24,6 +26,10 @@ function ActionNotice({
   ref?: Ref<HTMLDivElement>;
   className?: string;
 }) {
+  const [announced, setAnnounced] = useState(false);
+  useEffect(() => {
+    setAnnounced(true);
+  }, []);
   return (
     <div
       ref={ref}
@@ -42,7 +48,7 @@ function ActionNotice({
           aria-hidden="true"
           className="h-1.5 w-1.5 animate-pulse rounded-full bg-current"
         />
-        <span>{children}</span>
+        {announced ? <span>{children}</span> : null}
       </p>
       {actions}
       {onClose === undefined ? null : (

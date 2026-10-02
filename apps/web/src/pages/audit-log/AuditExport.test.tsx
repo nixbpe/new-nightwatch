@@ -151,6 +151,30 @@ describe("export button (AC-05, AC-16, M-2, N-2)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("explains why ส่งออก is unavailable while the list loads", async () => {
+    setTenant("owner");
+    listMock.mockReturnValue(new Promise(() => undefined));
+    exportsMock.mockResolvedValue(exportList([]));
+    renderRoute(<AuditLogPage />, {
+      path: PATH,
+      entry: `/organizations/${ORG_A}/audit-log`,
+    });
+    const button = await exportButton();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    const reason = screen.getByText("กำลังโหลดรายการ", { selector: "p" });
+    expect(button).toHaveAttribute("aria-describedby", reason.id);
+  });
+
+  it("explains why ส่งออก is unavailable for an invalid custom range", async () => {
+    open({ search: "?range=custom&from=2026-10-02&to=2026-10-01" });
+    const button = await exportButton();
+    const reason = screen.getByText(
+      /ช่วงวันที่ไม่ถูกต้อง แก้ไขช่วงวันที่ก่อนส่งออก/,
+    );
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAttribute("aria-describedby", reason.id);
+  });
+
   it("shows กำลังสร้างไฟล์… and shares one reason with every ขอใหม่ while a request runs", async () => {
     open({
       inProgress: true,

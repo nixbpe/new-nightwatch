@@ -42,6 +42,9 @@ import { ExportDialog } from "./ExportDialog";
 import {
   adjustFilterSearch,
   EMPTY_REASON,
+  LIST_FAILED_REASON,
+  LOADING_REASON,
+  RANGE_INVALID_REASON,
   IN_PROGRESS_REASON,
   MY_EXPORTS_ID,
   PERMISSION_CHANGED,
@@ -329,13 +332,19 @@ function AuditLogForOrganization({
   // M-4: the export asks for exactly what the list shows: absolute from/to and the list's asOf.
   const exportFrom = (retainedFrom: string) => listParams.from ?? retainedFrom;
   const exportTo = (asOf: string) => listParams.to ?? asOf;
+  // N-2: one reason element explains every state in which ส่งออก cannot be used.
   const exportReason = exp.inProgress
     ? IN_PROGRESS_REASON
-    : data !== undefined && data.page.total === 0
-      ? EMPTY_REASON
-      : null;
-  const exportBlocked =
-    data === undefined || pastEnd || exp.inProgress || data.page.total === 0;
+    : rangeError !== undefined
+      ? RANGE_INVALID_REASON
+      : loading || pastEnd
+        ? LOADING_REASON
+        : data === undefined
+          ? LIST_FAILED_REASON
+          : data.page.total === 0
+            ? EMPTY_REASON
+            : null;
+  const exportBlocked = exportReason !== null;
 
   let body;
   if (rangeError !== undefined) {

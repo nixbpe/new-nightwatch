@@ -243,8 +243,7 @@ export function MyExportsSection({
                       </div>
                       {tooLarge ? (
                         <p className="mt-1 text-xs text-foreground-secondary">
-                          ช่วงวันในตัวกรองครอบช่วงของแถวนี้
-                          อาจกว้างกว่าไฟล์ที่ขอ
+                          ตัวกรองใช้ช่วงเต็มวัน จึงอาจกว้างกว่าช่วงของไฟล์นี้
                         </p>
                       ) : null}
                       {state.message === undefined ? null : (
