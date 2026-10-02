@@ -286,7 +286,7 @@ describe("OrganizationMembersPage", () => {
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
   });
-  it("renders the redesigned page structure: mockup group, actor marker, headings and mono counts", async () => {
+  it("renders the redesigned page structure: actor marker, headings and mono counts", async () => {
     vi.mocked(fetchOrganizationMembers).mockResolvedValueOnce(response);
     renderPage();
 
@@ -411,6 +411,7 @@ describe("OrganizationMembersPage", () => {
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
 
     expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
+    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ลองอีกครั้ง" })).toBeEnabled();
     const previous = screen.getByRole("button", { name: "ก่อนหน้า" });
     expect(previous).toBeEnabled();
@@ -482,10 +483,12 @@ describe("OrganizationMembersPage", () => {
       page: { limit: 50, offset: 0, total: 49 },
       memberLimit: 1000,
     };
+    const repairedFirstPageResult =
+      Promise.withResolvers<OrganizationMemberListResponse>();
     vi.mocked(fetchOrganizationMembers)
       .mockResolvedValueOnce(response)
       .mockResolvedValueOnce(invalidSecondPage)
-      .mockResolvedValueOnce(repairedFirstPage);
+      .mockImplementationOnce(() => repairedFirstPageResult.promise);
     const user = userEvent.setup();
     renderPage();
 
@@ -494,6 +497,8 @@ describe("OrganizationMembersPage", () => {
 
     expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("แสดง 0–50 จาก 49")).toBeNull();
+    expect(screen.queryByText(totalCountText("49"))).not.toBeInTheDocument();
+    repairedFirstPageResult.resolve(repairedFirstPage);
     expect(
       await screen.findByText("Repaired first member"),
     ).toBeInTheDocument();
