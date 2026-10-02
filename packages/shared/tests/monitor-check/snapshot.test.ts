@@ -689,3 +689,95 @@ describe("header names are lowercased by the executor", () => {
     );
   });
 });
+
+describe("percent-encoding case echoed by the target", () => {
+  const secret = "café-ลับ";
+  const upper = encodeURIComponent(secret);
+  const lower = upper.replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase());
+  const mixed = upper.replace(/%[0-9A-F]{2}/g, (m, i: number) =>
+    i % 2 === 0 ? m.toLowerCase() : m,
+  );
+  const own = { headers: [secretHeader("h1", "X-Own")] };
+
+  it.each([
+    ["lowercase", lower],
+    ["mixed case", mixed],
+  ])(
+    "masks a %s encoding in a value, body, reason phrase and name",
+    async (_, echoed) => {
+      expect(echoed).not.toBe(upper);
+      const snapshot = await check(
+        response({
+          line: `HTTP/1.1 200 r-${echoed}`,
+          headers: [
+            ["Content-Type", "text/plain"],
+            ["X-Echo", `v=${echoed}`],
+            [`X-${echoed}`, "n"],
+          ],
+          body: `b=${echoed}`,
+        }),
+        own,
+        { "header.h1": secret },
+      );
+      expect(snapshot.statusLine?.reasonPhrase).toBe("r-•••");
+      expect(snapshot.headers.find((h) => h.name === "x-echo")?.value).toBe(
+        "v=•••",
+      );
+      expect(snapshot.headers.map((h) => h.name)).toContain("x-•••");
+      expect(snapshot.body).toMatchObject({ text: "b=•••" });
+      expect(JSON.stringify(snapshot).toLowerCase()).not.toContain("%c3%a9");
+    },
+  );
+
+  it.each([
+    ["lowercase", lower],
+    ["mixed case", mixed],
+  ])("masks a %s encoding in a redirect URL", async (_, echoed) => {
+    let requests = 0;
+    const server = await startRawServer({
+      onRequest: ({ socket }) => {
+        requests++;
+        socket.end(
+          requests === 1
+            ? response({
+                line: "HTTP/1.1 302 Found",
+                headers: [["Location", `/cb/${echoed}`]],
+              })
+            : response({}),
+        );
+      },
+    });
+    servers.push(server);
+    for (const overrides of [
+      {},
+      { queryParams: [{ name: "q", value: "v" }] },
+    ]) {
+      requests = 0;
+      const result = await runCheck(
+        configFor("http", server.port, { ...own, ...overrides }),
+        { "header.h1": secret },
+        deps(),
+      );
+      expect(result.responseSnapshot?.url).toContain("/cb/•••");
+      expect(result.responseSnapshot?.url.toLowerCase()).not.toContain("%c3");
+    }
+  });
+
+  it("keeps the case of a percent-encoding that holds no secret", async () => {
+    const snapshot = await check(
+      response({
+        headers: [
+          ["Content-Type", "text/plain"],
+          ["X-Echo", "a%c3%a9"],
+        ],
+        body: "%c3%a9",
+      }),
+      own,
+      { "header.h1": secret },
+    );
+    expect(snapshot.headers.find((h) => h.name === "x-echo")?.value).toBe(
+      "a%c3%a9",
+    );
+    expect(snapshot.body).toMatchObject({ text: "%c3%a9" });
+  });
+});
