@@ -781,3 +781,74 @@ describe("percent-encoding case echoed by the target", () => {
     expect(snapshot.body).toMatchObject({ text: "%c3%a9" });
   });
 });
+
+describe("secrets that hold percent escapes", () => {
+  const own = { headers: [secretHeader("h1", "X-Own")] };
+
+  async function redirectUrl(echoed: string, secret: string) {
+    let requests = 0;
+    const server = await startRawServer({
+      onRequest: ({ socket }) => {
+        requests++;
+        socket.end(
+          requests === 1
+            ? response({
+                line: "HTTP/1.1 302 Found",
+                headers: [["Location", `/cb/${echoed}`]],
+              })
+            : response({}),
+        );
+      },
+    });
+    servers.push(server);
+    const result = await runCheck(
+      configFor("http", server.port, own),
+      { "header.h1": secret },
+      deps(),
+    );
+    return result.responseSnapshot?.url;
+  }
+
+  it.each(["a%2fb%2fc", "a%2Fb%2Fc", "a%2Fb%2fc", "a%2fb%2Fc"])(
+    "masks a secret holding percent escapes echoed as %s in a body and a redirect URL",
+    async (echoed) => {
+      const snapshot = await check(
+        response({
+          headers: [["Content-Type", "text/plain"]],
+          body: `x=${echoed}`,
+        }),
+        own,
+        { "header.h1": "a%2fb%2fc" },
+      );
+      expect(snapshot.body).toMatchObject({ text: "x=•••" });
+      expect(await redirectUrl(echoed, "a%2fb%2fc")).toContain("/cb/•••");
+    },
+  );
+
+  it.each(["%c3%83%c2%a9", "%C3%83%c2%A9"])(
+    "masks a secret echoed as the percent-encoded latin1 form %s",
+    async (echoed) => {
+      const snapshot = await check(
+        response({
+          headers: [["Content-Type", "text/plain"]],
+          body: `x=${echoed}`,
+        }),
+        own,
+        { "header.h1": "é" },
+      );
+      expect(snapshot.body).toMatchObject({ text: "x=•••" });
+    },
+  );
+
+  it("merges overlapping matches of two secrets into one mask", async () => {
+    const snapshot = await check(
+      response({
+        headers: [["Content-Type", "text/plain"]],
+        body: "x=%c3%a9",
+      }),
+      { headers: [secretHeader("h1", "X-A"), secretHeader("h2", "X-B")] },
+      { "header.h1": "%c3", "header.h2": "é" },
+    );
+    expect(snapshot.body).toMatchObject({ text: "x=•••" });
+  });
+});

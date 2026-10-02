@@ -85,30 +85,37 @@ function shown(
   return { text: cut.text, cut: cut.cut || dropped };
 }
 
-/**
- * RFC 3986 treats `%c3%a9` and `%C3%A9` as equal, but needles hold one case. After
- * the plain pass, a second pass matches a copy with the hex digits folded to the
- * needles' case. The folded copy is shown only when it found a secret, so text
- * without one keeps its original percent-encoding case.
- */
-const gaveUp = (redact: Redactor): boolean => redact.cutShort === true;
+/** Every form a target can echo: raw, latin1 (header decode), JSON-escaped and URL-encoded. */
+function secretForms(secretValues: readonly string[]): string[] {
+  return [...secretValues, ...needleForms(secretValues)].flatMap((value) => {
+    let encoded: string[] = [];
+    try {
+      encoded = [encodeURIComponent(value)];
+    } catch {
+      // A lone surrogate has no URL-encoded form; the other forms still apply.
+    }
+    return [value, JSON.stringify(value).slice(1, -1), ...encoded];
+  });
+}
 
-function withHexFolding(redact: Redactor, hex: "upper" | "lower"): Redactor {
-  const fold = (text: string) =>
-    text.replace(/%[0-9a-f]{2}/gi, (escape) =>
-      hex === "upper" ? escape.toUpperCase() : escape.toLowerCase(),
-    );
-  let cutShort = false;
+const foldHex = (text: string): string =>
+  text.replace(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
+
+/**
+ * RFC 3986 treats `%c3%a9` and `%C3%A9` as equal, but needles hold one case. One
+ * scan runs on the text with its hex digits folded to upper case against needles
+ * folded the same way, so overlapping matches still merge. The folded text is
+ * shown only when it held a secret; text without one keeps its original case.
+ */
+function textRedactor(secretValues: readonly string[]): Redactor {
+  const redact = createRedactor([], secretForms(secretValues).map(foldHex));
   const wrapped = (text: string, maxChars?: number): string => {
-    const first = redact(text, maxChars);
-    const firstCut = gaveUp(redact);
-    const folded = fold(first);
-    const second = redact(folded, maxChars);
-    cutShort = firstCut || gaveUp(redact);
-    return second === folded ? first : second;
+    const folded = foldHex(text);
+    const out = redact(folded, maxChars);
+    return out === folded ? text : out;
   };
   return Object.defineProperty(wrapped, "cutShort", {
-    get: () => cutShort,
+    get: () => redact.cutShort,
   });
 }
 
@@ -117,23 +124,9 @@ function withHexFolding(redact: Redactor, hex: "upper" | "lower"): Redactor {
  * as `x-tok123`; names are matched with lowercased needles of every secret form.
  */
 function nameRedactor(secretValues: readonly string[]): Redactor {
-  const forms = [...secretValues, ...needleForms(secretValues)].flatMap(
-    (value) => {
-      let encoded: string[] = [];
-      try {
-        encoded = [encodeURIComponent(value)];
-      } catch {
-        // A lone surrogate has no URL-encoded form; the other forms still apply.
-      }
-      return [value, JSON.stringify(value).slice(1, -1), ...encoded];
-    },
-  );
-  return withHexFolding(
-    createRedactor(
-      [],
-      forms.map((form) => form.toLowerCase()),
-    ),
-    "lower",
+  return createRedactor(
+    [],
+    secretForms(secretValues).map((form) => form.toLowerCase()),
   );
 }
 
@@ -210,10 +203,7 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
   };
   // Query values and the request body are not needles: a short non-secret needle
   // would blank ordinary text, and those requests keep no target text at all.
-  const redact = withHexFolding(
-    createRedactor(input.secretValues, needleForms(input.secretValues)),
-    "upper",
-  );
+  const redact = textRedactor(input.secretValues);
   // finalUrl comes from the target's Location header, so it is target text too.
   const url = redact(response.finalUrl);
   if (input.requestValues) {
