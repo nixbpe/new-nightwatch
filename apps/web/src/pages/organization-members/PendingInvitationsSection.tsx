@@ -66,7 +66,7 @@ export function PendingInvitationsSection({
       focusHeadingWhenSettled.current = false;
       headingRef.current?.focus();
     }
-  }, [settled, pastEnd, failed]);
+  }, [settled, pastEnd, failed, offset]);
 
   if (!scopeCurrent) return null;
 
