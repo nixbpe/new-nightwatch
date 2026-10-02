@@ -160,7 +160,7 @@ export function PendingInvitationsSection({
         ? undefined
         : controls.current[request.kind].get(request.target);
     (control ?? headingRef.current)?.focus();
-  }, [settled, pastEnd, failed, busy]);
+  }, [settled, pastEnd, failed, busy, offset]);
 
   if (!scopeCurrent) return null;
 
