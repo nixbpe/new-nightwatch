@@ -13,7 +13,9 @@ import {
   deleteMonitor,
   fetchMonitorChecks,
   fetchMonitorDetail,
+  fetchMonitorEvents,
   fetchMonitorIncidents,
+  fetchMonitorLastResponse,
   fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
@@ -42,6 +44,8 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMonitorDetail: vi.fn(),
+  fetchMonitorEvents: vi.fn(),
+  fetchMonitorLastResponse: vi.fn(),
   fetchMonitorChecks: vi.fn(),
   fetchMonitorIncidents: vi.fn(),
   fetchMonitorList: vi.fn(),
@@ -72,6 +76,11 @@ beforeEach(() => {
   fetchMeContextMock.mockResolvedValue(context());
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
+  vi.mocked(fetchMonitorEvents).mockResolvedValue({
+    events: [],
+    page: { limit: 20, offset: 0, total: 0 },
+  });
+  vi.mocked(fetchMonitorLastResponse).mockResolvedValue({ response: null });
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
   vi.mocked(fetchMonitorList).mockResolvedValue(emptyList);

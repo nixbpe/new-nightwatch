@@ -20,6 +20,7 @@ import {
   incidentReasonLabel,
   Time,
 } from "./format";
+import { HttpStatus } from "./HttpStatus";
 import { sslDaysText } from "./SslLabel";
 
 const SSL_EVENT_TITLES = {
@@ -72,6 +73,7 @@ function EventRow({
             {event.reason === null
               ? null
               : ` สาเหตุ ${incidentReasonLabel(event.reason)}`}
+            <HttpStatus status={event.httpStatus} />
           </>
         ) : null}
         {event.kind === "incident_closed" ? (
@@ -81,6 +83,7 @@ function EventRow({
             {event.reason === null
               ? null
               : ` (${incidentReasonLabel(event.reason)})`}
+            <HttpStatus status={event.httpStatus} />
           </>
         ) : null}
         {event.kind === "ssl_level" ? (

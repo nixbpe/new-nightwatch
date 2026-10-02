@@ -1,9 +1,21 @@
 import {
+  CHECK_FAILURE_REASONS,
+  LAST_RESPONSE_BODY_OMITTED_REASONS,
+  MONITOR_EVENTS_WINDOW_DAYS,
   MONITOR_LIMIT_PER_ORGANIZATION,
   MONITOR_RESPONSE_POINTS_MAX,
+  TLS_REASONS,
+  lastResponseSchema,
+  monitorConfigChangeSchema,
   type CheckResultView,
+  type LastResponse,
   type MonitorChecksResponse,
   type MonitorDetailResponse,
+  type MonitorEvent,
+  type MonitorEventActor,
+  type MonitorEventsResponse,
+  type MonitorLastResponseResponse,
+  type OrganizationRole,
   type MonitorHistoryQuery,
   type MonitorIncidentsResponse,
   type MonitorHealthName,
@@ -16,12 +28,16 @@ import {
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
+import { z } from "zod";
+
+import { normalizeOrganizationRole } from "../me/service";
 
 import { computeHealth, computeSsl } from "./health";
 import {
   assertMemberPermissionBeforeTenantContext,
   assertMonitorPermission,
   membershipDenied,
+  type MonitorPermission,
 } from "./permissions";
 import { MONITOR_COLUMNS, toRecord, type MonitorRow } from "./record";
 import {
@@ -61,12 +77,13 @@ export function parseMonitorId(raw: string): string {
 export async function readInTenant<T>(
   database: Database,
   identity: ReadIdentity,
-  work: (client: PoolClient, now: Date) => Promise<T>,
+  work: (client: PoolClient, now: Date, role: OrganizationRole) => Promise<T>,
+  permission: MonitorPermission = "read",
 ): Promise<T> {
   await assertMemberPermissionBeforeTenantContext(database, {
     organizationId: identity.organizationId,
     userId: identity.actorUserId,
-    permission: "read",
+    permission,
   });
   return withTenantContextRaw(
     database,
@@ -81,12 +98,16 @@ export async function readInTenant<T>(
         "select role from member where organization_id = $1 and user_id = $2",
         [identity.organizationId, identity.actorUserId],
       );
-      assertMonitorPermission(member.rows[0]?.role, "read");
+      const rawRole = member.rows[0]?.role;
+      assertMonitorPermission(rawRole, permission);
+      // The permission check passed, so the role is one of the known four.
+      const role = normalizeOrganizationRole(rawRole ?? "");
+      if (role === null) membershipDenied();
 
       const clock = await client.query<{ now: Date }>("select now() as now");
       const now = clock.rows[0]?.now;
       if (!now) throw new Error("database returned no time");
-      return work(client, now);
+      return work(client, now, role);
     },
   );
 }
@@ -505,6 +526,7 @@ type IncidentEventRow = {
   at: Date;
   reason: string;
   durationSeconds: number | null;
+  httpStatus: number | null;
 };
 
 export async function listRecentEvents(
@@ -520,10 +542,11 @@ export async function listRecentEvents(
     const incidents = await client.query<IncidentEventRow>(
       `(select 'incident_opened' as kind, m.id as "monitorId",
           m.name as "monitorName", i.started_at as at,
-          i.start_reason as reason, null::int as "durationSeconds"
+          i.start_reason as reason, null::int as "durationSeconds",
+          i.start_http_status as "httpStatus"
         from monitors m
         cross join lateral (
-          select started_at, start_reason from monitor_incidents
+          select started_at, start_reason, start_http_status from monitor_incidents
           where monitor_id = m.id and tenant_id = m.tenant_id and started_at >= $2
           order by started_at desc limit $3
         ) i
@@ -531,10 +554,11 @@ export async function listRecentEvents(
         order by i.started_at desc limit $3)
        union all
        (select 'incident_closed', m.id, m.name, i.ended_at, i.end_reason,
-          floor(extract(epoch from (i.ended_at - i.started_at)))::int
+          floor(extract(epoch from (i.ended_at - i.started_at)))::int,
+          i.end_http_status
         from monitors m
         cross join lateral (
-          select started_at, ended_at, end_reason from monitor_incidents
+          select started_at, ended_at, end_reason, end_http_status from monitor_incidents
           where monitor_id = m.id and tenant_id = m.tenant_id and ended_at >= $2
           order by ended_at desc limit $3
         ) i
@@ -602,6 +626,7 @@ export async function listRecentEvents(
         ...(row.durationSeconds === null
           ? {}
           : { durationSeconds: row.durationSeconds }),
+        ...(row.httpStatus === null ? {} : { httpStatus: row.httpStatus }),
       })),
       ...sslEvents,
     ];
@@ -1001,4 +1026,317 @@ export async function getResponseTimes(
     }
     return { range, buckets, ...common };
   });
+}
+
+// ---- Event feed (#58) ------------------------------------------------------
+
+type FeedRow = {
+  kind: MonitorEvent["kind"];
+  id: string;
+  at: Date;
+  incidentId: string | null;
+  reason: string | null;
+  endReason: "recovered" | "paused_by_user" | null;
+  durationSeconds: number | null;
+  httpStatus: number | null;
+  responseTimeMs: number | null;
+  failureReason: string | null;
+  tlsReason: string | null;
+  actorKind: "unrecorded" | "user" | null;
+  actorUserId: string | null;
+  changes: unknown;
+};
+
+// Three sources: closed incidents (rank 0), monitor_events (1), opened
+// incidents (rank 2). Rank orders rows with an equal `at` the same way on
+// every page. `collate "C"` keeps the id tiebreak independent of the locale.
+const FEED_SOURCES = `
+  select 0 as rank, 'incident:' || i.id || ':closed' as id,
+    'incident_closed' as kind, i.ended_at as at, i.id as incident_id,
+    null::text as reason, i.end_reason as end_reason,
+    greatest(0, floor(extract(epoch from (i.ended_at - i.started_at)))::int)
+      as duration_seconds,
+    i.end_http_status as http_status, i.end_response_time_ms as response_time_ms,
+    null::text as failure_reason, null::text as tls_reason,
+    null::text as actor_kind, null::text as actor_user_id, null::jsonb as changes
+  from monitor_incidents i
+  where i.monitor_id = $1 and i.tenant_id = $2 and i.ended_at >= $3
+  union all
+  select 1, 'event:' || e.id, e.kind, e.occurred_at, null::uuid,
+    null::text, null::text, null::int, e.http_status, e.response_time_ms,
+    e.failure_reason, e.tls_reason, e.actor_kind, e.actor_user_id, e.changes
+  from monitor_events e
+  where e.monitor_id = $1 and e.tenant_id = $2 and e.occurred_at >= $3
+  union all
+  select 2, 'incident:' || i.id || ':opened', 'incident_opened', i.started_at,
+    i.id, i.start_reason, null::text, null::int, i.start_http_status,
+    null::int, null::text, null::text, null::text, null::text, null::jsonb
+  from monitor_incidents i
+  where i.monitor_id = $1 and i.tenant_id = $2 and i.started_at >= $3`;
+
+const CHECK_FAILURE_REASON = z.enum(CHECK_FAILURE_REASONS);
+const TLS_REASON = z.enum(TLS_REASONS);
+const configChanges = z.array(monitorConfigChangeSchema);
+
+function canReadActorNames(role: OrganizationRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+// The database does not tie `check_failed` to a reason, so a null or unknown
+// value is shown as no reason.
+function checkFailedEvent(row: FeedRow): MonitorEvent {
+  return {
+    kind: "check_failed",
+    id: row.id,
+    at: row.at.toISOString(),
+    failureReason:
+      CHECK_FAILURE_REASON.safeParse(row.failureReason).data ?? null,
+    tlsReason: TLS_REASON.safeParse(row.tlsReason).data ?? null,
+    httpStatus: row.httpStatus,
+    responseTimeMs: row.responseTimeMs,
+  };
+}
+
+function eventOf(
+  row: FeedRow,
+  actorOf: (row: FeedRow) => MonitorEventActor,
+): MonitorEvent | null {
+  const base = { id: row.id, at: row.at.toISOString() };
+  switch (row.kind) {
+    case "check_failed":
+      return checkFailedEvent(row);
+    case "incident_opened":
+      if (row.incidentId === null) return null;
+      return {
+        ...base,
+        kind: "incident_opened",
+        incidentId: row.incidentId,
+        reason: row.reason ?? "",
+        httpStatus: row.httpStatus,
+      };
+    case "incident_closed":
+      if (row.incidentId === null || row.endReason === null) return null;
+      return {
+        ...base,
+        kind: "incident_closed",
+        incidentId: row.incidentId,
+        endReason: row.endReason,
+        durationSeconds: row.durationSeconds ?? 0,
+        httpStatus: row.httpStatus,
+        responseTimeMs: row.responseTimeMs,
+      };
+    case "paused":
+    case "resumed":
+      return { ...base, kind: row.kind, actor: actorOf(row) };
+    case "config_changed":
+      return {
+        ...base,
+        kind: "config_changed",
+        actor: actorOf(row),
+        changes: configChanges.safeParse(row.changes ?? []).data ?? [],
+      };
+  }
+}
+
+/**
+ * Names are read only for an owner or admin reader, and only for users who are
+ * still members of this Organization, so no account outside it is exposed.
+ */
+async function actorResolver(
+  client: PoolClient,
+  organizationId: string,
+  role: OrganizationRole,
+  rows: FeedRow[],
+): Promise<(row: FeedRow) => MonitorEventActor> {
+  const userIds = [
+    ...new Set(
+      rows.flatMap((row) =>
+        row.actorUserId === null ? [] : [row.actorUserId],
+      ),
+    ),
+  ];
+  const members = new Map<string, string | null>();
+  if (userIds.length > 0) {
+    // A viewer or auditor only needs to know who is still a member, so the
+    // user table is not read for them.
+    const names = canReadActorNames(role);
+    const found = await client.query<{ userId: string; name: string | null }>(
+      names
+        ? `select m.user_id as "userId", u.name
+           from member m join "user" u on u.id = m.user_id
+           where m.organization_id = $1 and m.user_id = any($2::text[])`
+        : `select m.user_id as "userId", null::text as name
+           from member m
+           where m.organization_id = $1 and m.user_id = any($2::text[])`,
+      [organizationId, userIds],
+    );
+    for (const member of found.rows) members.set(member.userId, member.name);
+  }
+  return (row) => {
+    if (row.actorKind !== "user") return { kind: "unrecorded" };
+    if (row.actorUserId === null) return { kind: "deleted" };
+    const name = members.get(row.actorUserId);
+    if (name === undefined) return { kind: "former_member" };
+    return name === null
+      ? { kind: "member_hidden" }
+      : { kind: "member", userId: row.actorUserId, displayName: name };
+  };
+}
+
+export async function listEvents(
+  database: Database,
+  identity: ReadIdentity,
+  rawMonitorId: string,
+  query: MonitorHistoryQuery,
+): Promise<MonitorEventsResponse> {
+  return readInTenant(database, identity, async (client, now, role) => {
+    const monitorId = await assertMonitorInTenant(
+      client,
+      identity.organizationId,
+      rawMonitorId,
+    );
+    const since = new Date(now.getTime() - MONITOR_EVENTS_WINDOW_DAYS * DAY_MS);
+    const params = [monitorId, identity.organizationId, since];
+    const page = await client.query<FeedRow>(
+      `select kind, id, at, incident_id as "incidentId", reason,
+         end_reason as "endReason", duration_seconds as "durationSeconds",
+         http_status as "httpStatus", response_time_ms as "responseTimeMs",
+         failure_reason as "failureReason", tls_reason as "tlsReason",
+         actor_kind as "actorKind", actor_user_id as "actorUserId", changes
+       from (${FEED_SOURCES}) feed
+       order by at desc, rank, id collate "C" desc
+       offset $4 limit $5`,
+      [...params, query.offset, query.limit],
+    );
+    const total = await client.query<{ total: number }>(
+      `select count(*)::int as total from (${FEED_SOURCES}) feed`,
+      params,
+    );
+    const actorOf = await actorResolver(
+      client,
+      identity.organizationId,
+      role,
+      page.rows,
+    );
+    return {
+      events: page.rows.flatMap((row) => {
+        const event = eventOf(row, actorOf);
+        return event === null ? [] : [event];
+      }),
+      page: {
+        limit: query.limit,
+        offset: query.offset,
+        total: total.rows[0]?.total ?? 0,
+      },
+    };
+  });
+}
+
+// ---- Last response (#58) ---------------------------------------------------
+
+type LastResponseRow = {
+  scheduledFor: Date;
+  checkedAt: Date;
+  configVersion: number;
+  outcome: "pass" | "fail" | "check_error";
+  failureReason: string | null;
+  url: string;
+  detailOmitted: string | null;
+  httpVersion: string | null;
+  httpStatus: number | null;
+  reasonPhrase: string | null;
+  headers: unknown;
+  headersTruncated: boolean;
+  bodyKind: string | null;
+  bodyText: string | null;
+  bodyTruncated: boolean | null;
+  bodyBytesRead: number | null;
+  bodyOmittedReason: string | null;
+};
+
+const HTTP_VERSION = z.enum(["HTTP/1.0", "HTTP/1.1"]);
+const BODY_OMITTED_REASON = z.enum(LAST_RESPONSE_BODY_OMITTED_REASONS);
+const snapshotHeaders = lastResponseSchema.shape.headers;
+
+// The database only guarantees that a `request_values` row holds no target
+// text, so every other column is read defensively.
+function lastResponseOf(row: LastResponseRow): LastResponse {
+  const version = HTTP_VERSION.safeParse(row.httpVersion);
+  const requestValues = row.detailOmitted === "request_values";
+  const statusLine =
+    version.success && row.httpStatus !== null
+      ? {
+          httpVersion: version.data,
+          status: row.httpStatus,
+          reasonPhrase: requestValues ? null : row.reasonPhrase,
+        }
+      : null;
+  const reason = BODY_OMITTED_REASON.safeParse(row.bodyOmittedReason);
+  let body: LastResponse["body"] = null;
+  if (statusLine !== null) {
+    if (requestValues) {
+      body = { kind: "omitted", reason: "request_values" };
+    } else if (row.bodyKind === "text" && row.bodyText !== null) {
+      body = {
+        kind: "text",
+        text: row.bodyText,
+        truncated: row.bodyTruncated ?? false,
+        totalBytesRead: row.bodyBytesRead ?? 0,
+      };
+    } else if (row.bodyKind === "omitted" && reason.success) {
+      body = { kind: "omitted", reason: reason.data };
+    }
+  }
+  return {
+    checkedAt: row.checkedAt.toISOString(),
+    scheduledFor: row.scheduledFor.toISOString(),
+    configVersion: row.configVersion,
+    outcome: row.outcome,
+    failureReason:
+      CHECK_FAILURE_REASON.safeParse(row.failureReason).data ?? null,
+    url: row.url,
+    detailOmitted: requestValues ? "request_values" : null,
+    statusLine,
+    headers:
+      requestValues || statusLine === null
+        ? []
+        : (snapshotHeaders.safeParse(row.headers).data ?? []),
+    headersTruncated: requestValues ? false : row.headersTruncated,
+    body,
+  };
+}
+
+export async function getLastResponse(
+  database: Database,
+  identity: ReadIdentity,
+  rawMonitorId: string,
+): Promise<MonitorLastResponseResponse> {
+  return readInTenant(
+    database,
+    identity,
+    async (client) => {
+      const monitorId = await assertMonitorInTenant(
+        client,
+        identity.organizationId,
+        rawMonitorId,
+      );
+      const found = await client.query<LastResponseRow>(
+        `select scheduled_for as "scheduledFor", checked_at as "checkedAt",
+           config_version as "configVersion", outcome,
+           failure_reason as "failureReason", url_masked as url,
+           detail_omitted as "detailOmitted", http_version as "httpVersion",
+           http_status as "httpStatus", reason_phrase as "reasonPhrase",
+           headers, headers_truncated as "headersTruncated",
+           body_kind as "bodyKind", body_text as "bodyText",
+           body_truncated as "bodyTruncated", body_bytes_read as "bodyBytesRead",
+           body_omitted_reason as "bodyOmittedReason"
+         from monitor_last_responses
+         where monitor_id = $1 and tenant_id = $2`,
+        [monitorId, identity.organizationId],
+      );
+      const row = found.rows[0];
+      return { response: row ? lastResponseOf(row) : null };
+    },
+    "readResponse",
+  );
 }

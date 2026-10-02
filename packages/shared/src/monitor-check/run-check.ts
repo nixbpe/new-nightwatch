@@ -7,6 +7,7 @@ import {
 import { evaluateAssertions } from "./assertions";
 import { buildCheckUrl } from "./check-url";
 import { createRedactor } from "./redact";
+import { buildResponseSnapshot } from "./snapshot";
 import {
   outcomeForFailure,
   type CheckDeps,
@@ -138,6 +139,10 @@ export async function runCheck(
   // Masked query values are all a URL can carry; it has no secret slot, so no cut and no redaction.
   const url = maskUrl(built.ok ? built.url : config.url);
 
+  // A failed build sent nothing, so there is nothing to omit.
+  const requestValues =
+    built.ok && (built.body !== undefined || new URL(built.url).search !== "");
+
   const failed = (
     reason: CheckFailureReason,
     extra: Partial<CheckResult> = {},
@@ -152,6 +157,13 @@ export async function runCheck(
     url,
     evaluatedFromPrefix: false,
     tls: null,
+    responseSnapshot: buildResponseSnapshot({
+      url,
+      response: null,
+      secretValues: [],
+      secretHeaderNames: [],
+      requestValues,
+    }),
     ...extra,
   });
 
@@ -221,5 +233,12 @@ export async function runCheck(
     url,
     evaluatedFromPrefix,
     tls,
+    responseSnapshot: buildResponseSnapshot({
+      url,
+      response,
+      secretValues: built.secretValues,
+      secretHeaderNames: built.secretHeaderNames,
+      requestValues,
+    }),
   };
 }

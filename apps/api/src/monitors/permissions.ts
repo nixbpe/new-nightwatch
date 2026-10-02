@@ -4,7 +4,7 @@ import { AppError } from "@nightwatch/shared";
 
 import { normalizeOrganizationRole } from "../me/service";
 
-export type MonitorPermission = "read" | "write";
+export type MonitorPermission = "read" | "write" | "readResponse";
 
 export const MONITOR_PERMISSION_ROLES: Record<
   MonitorPermission,
@@ -12,6 +12,14 @@ export const MONITOR_PERMISSION_ROLES: Record<
 > = {
   read: ["owner", "admin", "viewer", "auditor"],
   write: ["owner", "admin"],
+  // Headers and body come from the target and may hold personal data (OD-58-04).
+  readResponse: ["owner", "admin"],
+};
+
+const DENIED_MESSAGES: Record<MonitorPermission, string> = {
+  read: "คุณไม่มีสิทธิ์จัดการมอนิเตอร์ขององค์กรนี้",
+  write: "คุณไม่มีสิทธิ์จัดการมอนิเตอร์ขององค์กรนี้",
+  readResponse: "คุณไม่มีสิทธิ์ดูการตอบกลับของมอนิเตอร์นี้",
 };
 
 export function monitorRoleAllows(
@@ -34,11 +42,7 @@ export function assertMonitorPermission(
 ): void {
   if (rawRole === undefined) membershipDenied();
   if (!monitorRoleAllows(rawRole, permission)) {
-    throw new AppError(
-      403,
-      "PERMISSION_DENIED",
-      "คุณไม่มีสิทธิ์จัดการมอนิเตอร์ขององค์กรนี้",
-    );
+    throw new AppError(403, "PERMISSION_DENIED", DENIED_MESSAGES[permission]);
   }
 }
 

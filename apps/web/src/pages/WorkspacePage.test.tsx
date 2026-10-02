@@ -450,14 +450,14 @@ describe("WorkspacePage overview content", () => {
 
     await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" });
     const samples = screen.getAllByRole("group", { name: /^ตัวอย่าง: / });
-    expect(samples).toHaveLength(4);
+    expect(samples).toHaveLength(3);
     const issues = samples.map((sample) =>
       within(sample)
         .getByRole("link", { name: /ดู issue #/ })
         .getAttribute("href"),
     );
     expect(issues.map((href) => /(\d+)$/.exec(href ?? "")?.[1])).toEqual(
-      expect.arrayContaining(["56", "58", "59", "63"]),
+      expect.arrayContaining(["56", "59", "63"]),
     );
     expect(screen.queryByText(/\d{1,2} ต\.ค\. \d{4}/)).toBeNull();
     for (const sample of samples) {
@@ -654,6 +654,7 @@ describe("WorkspacePage overview details", () => {
           monitorId: MONITOR_A,
           monitorName: "api-payments",
           reason: "dns_not_found",
+          httpStatus: 503,
         },
       ],
     });
@@ -676,6 +677,9 @@ describe("WorkspacePage overview details", () => {
     expect(
       await within(events).findByRole("link", { name: "api-payments" }),
     ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/${MONITOR_A}`);
+    expect(events).toHaveTextContent(
+      "เริ่มล่ม สาเหตุ ไม่พบชื่อโดเมน · HTTP 503",
+    );
     expect(screen.getAllByText("ไม่มีข้อมูล").length).toBeGreaterThan(0);
 
     await queryClient.refetchQueries({ queryKey: monitorQueryKeys.all(ORG_A) });
