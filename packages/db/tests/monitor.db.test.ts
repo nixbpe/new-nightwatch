@@ -1199,7 +1199,7 @@ describe("purge of monitor_last_responses", () => {
   it("purges last responses in the first run even when other tables expire past the limit", async () => {
     await drain();
     const owning = await seedLastResponse(0);
-    // Five expired events exhaust the shared budget of limit 2.
+    // Five expired events outnumber the limit of 2.
     for (let i = 0; i < 5; i += 1) {
       await owner.query(
         `insert into monitor_events (monitor_id, tenant_id, kind, occurred_at)
@@ -1210,14 +1210,14 @@ describe("purge of monitor_last_responses", () => {
     const lastA = await seedLastResponse(31);
     const lastB = await seedLastResponse(31);
     const deleted = await purgeExpiredMonitorData(database, { limit: 2 });
-    // 2 events from the shared budget plus both last responses.
-    expect(deleted).toBe(4);
+    // Last responses go first and spend the shared budget of 2.
+    expect(deleted).toBe(2);
     expect(await ownerCount("monitor_last_responses", [lastA, lastB])).toBe(0);
     const events = await owner.query<{ n: string }>(
       "select count(*) as n from monitor_events where monitor_id = $1",
       [owning],
     );
-    expect(Number(events.rows[0]?.n)).toBe(3);
+    expect(Number(events.rows[0]?.n)).toBe(5);
   });
 
   it("deletes at most p_limit last responses per run", async () => {
