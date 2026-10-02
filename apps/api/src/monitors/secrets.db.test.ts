@@ -1048,6 +1048,11 @@ describe("Audit events for secrets (F-005 AC-61, F-007)", () => {
         after: { kind: "secret_set" },
       },
     ]);
+    expect(
+      JSON.stringify(
+        await auditChanges(monitor.id, "organization.monitor.update"),
+      ),
+    ).not.toContain(HEADER_ID);
   });
 
   it("writes one update event with the new auth slot when the auth type changes", async () => {

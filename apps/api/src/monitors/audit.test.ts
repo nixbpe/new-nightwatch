@@ -378,6 +378,36 @@ describe("monitorAuditChanges for a renamed secret header", () => {
   });
 });
 
+describe("monitorAuditChanges secret header keys", () => {
+  it("keys a secret header write by its name at write time, never the slot id", () => {
+    const changes = monitorAuditChanges(
+      {
+        ...base,
+        headers: [{ id: HEADER_ID, name: "X-Old", secret: true }],
+      },
+      {
+        ...base,
+        headers: [{ id: HEADER_ID, name: "X-New", secret: true }],
+      },
+      {
+        written: [`header.${HEADER_ID}`],
+        stored: new Set([`header.${HEADER_ID}`]),
+        deleted: [],
+      },
+    );
+    expect(changes).toEqual([
+      { field: "header", before: value("X-Old"), after: value("X-New") },
+      {
+        field: "secret",
+        key: "X-New",
+        before: { kind: "secret_set" },
+        after: { kind: "changed" },
+      },
+    ]);
+    expect(JSON.stringify(changes)).not.toContain(HEADER_ID);
+  });
+});
+
 describe("monitorAuditChanges for a url that differs only in query values", () => {
   it("keeps the masked url before and says changed after", () => {
     const changes = changesOf(
