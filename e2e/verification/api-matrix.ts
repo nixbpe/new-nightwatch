@@ -1101,8 +1101,9 @@ async function secrets() {
   ).rows as { text: string; action: string }[];
   const dump = JSON.stringify(mutation);
   check(
-    "AC-61 audit events of the secret scenario carry no secret value",
-    mutation.length > 0 && !KNOWN_SECRETS.some((s) => dump.includes(s)),
+    "AC-61 audit events of the secret scenario carry no secret, query or body value",
+    mutation.length > 0 &&
+      ![...KNOWN_SECRETS, ...HIDDEN_VALUES].some((s) => dump.includes(s)),
     mutation.length,
   );
   evidence.auditActions = mutation.map((l) => l.action);

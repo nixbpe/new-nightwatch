@@ -68,12 +68,70 @@ function maskedUrl(url: string): string {
   return maskUrl(built.ok ? built.url.href : url);
 }
 
-function nonSecretHeaders(config: AuditConfig): Map<string, string> {
-  return new Map(
-    config.headers.flatMap((header) =>
-      header.secret ? [] : [[header.name, header.value ?? ""] as const],
-    ),
-  );
+// Entries keyed by name; a name that repeats in either list is keyed
+// `name#ordinal` in both, so no duplicate is lost in the comparison.
+function keyedEntries<T>(
+  lists: [T[], T[]],
+  nameOf: (item: T) => string,
+): [Map<string, T>, Map<string, T>] {
+  const repeated = new Set<string>();
+  for (const list of lists) {
+    const seen = new Set<string>();
+    for (const item of list) {
+      const name = nameOf(item);
+      if (seen.has(name)) repeated.add(name);
+      seen.add(name);
+    }
+  }
+  const keyed = (list: T[]): Map<string, T> => {
+    const ordinals = new Map<string, number>();
+    return new Map(
+      list.map((item) => {
+        const name = nameOf(item);
+        const ordinal = ordinals.get(name) ?? 0;
+        ordinals.set(name, ordinal + 1);
+        return [repeated.has(name) ? `${name}#${String(ordinal)}` : name, item];
+      }),
+    );
+  };
+  return [keyed(lists[0]), keyed(lists[1])];
+}
+
+// Entries both lists share, compared in order: a reorder or a changed count
+// of equal entries leaves no per-item diff, so the list is reported as
+// changed (no values). Adds and removals are reported by their own changes.
+function orderChange(
+  field: string,
+  before: unknown[],
+  after: unknown[],
+): AuditChange[] {
+  const encode = (items: unknown[]) =>
+    items.map((item) => JSON.stringify(item));
+  const left = encode(before);
+  const right = encode(after);
+  const shared = (items: string[], other: string[]) =>
+    items.filter((item) => other.includes(item));
+  return JSON.stringify(shared(left, right)) ===
+    JSON.stringify(shared(right, left))
+    ? []
+    : [{ field, before: null, after: { kind: "changed" } }];
+}
+
+// Masking hides query values, so a value-only edit looks identical once masked:
+// the after side then says "changed" instead of repeating the same text.
+function urlChange(before: string, after: string): AuditChange[] {
+  if (before === after) return [];
+  const maskedBefore = maskedUrl(before);
+  const maskedAfter = maskedUrl(after);
+  return maskedBefore === maskedAfter
+    ? [
+        {
+          field: "url",
+          before: value(maskedBefore),
+          after: { kind: "changed" },
+        },
+      ]
+    : scalarChange("url", maskedBefore, maskedAfter);
 }
 
 function assertionText(assertion: StoredAssertion): string {
@@ -115,9 +173,7 @@ export function monitorAuditChanges(
 ): AuditChange[] {
   const changes: AuditChange[] = [
     ...scalarChange("name", previous.name, next.name),
-    ...(previous.url === next.url
-      ? []
-      : scalarChange("url", maskedUrl(previous.url), maskedUrl(next.url))),
+    ...urlChange(previous.url, next.url),
     ...scalarChange("method", previous.method, next.method),
     ...scalarChange(
       "intervalSeconds",
@@ -142,35 +198,91 @@ export function monitorAuditChanges(
     ),
   ];
 
-  const before = nonSecretHeaders(previous);
-  const after = nonSecretHeaders(next);
-  for (const name of new Set([...before.keys(), ...after.keys()])) {
-    const from = before.get(name);
-    const to = after.get(name);
-    if (from === to) continue;
-    changes.push({
+  const headerChanges: AuditChange[] = [];
+  const [headersBefore, headersAfter] = keyedEntries(
+    [
+      previous.headers.filter((header) => !header.secret),
+      next.headers.filter((header) => !header.secret),
+    ],
+    (header) => header.name,
+  );
+  for (const key of new Set([
+    ...headersBefore.keys(),
+    ...headersAfter.keys(),
+  ])) {
+    const from = headersBefore.get(key)?.value ?? undefined;
+    const to = headersAfter.get(key)?.value ?? undefined;
+    const existed = [headersBefore.has(key), headersAfter.has(key)] as const;
+    if (existed[0] && existed[1] && from === to) continue;
+    headerChanges.push({
       field: "header",
-      key: name,
-      before: from === undefined ? null : value(from),
-      after: to === undefined ? null : value(to),
+      key,
+      before: existed[0] ? value(from ?? "") : null,
+      after: existed[1] ? value(to ?? "") : null,
     });
   }
-
-  const queryBefore = new Map(
-    previous.queryParams.map((p) => [p.name, p.value]),
+  // A secret header keeps its slot id when renamed: names only, no value.
+  for (const header of next.headers) {
+    const old = previous.headers.find(
+      (candidate) =>
+        header.secret &&
+        candidate.secret &&
+        header.id !== undefined &&
+        candidate.id?.toLowerCase() === header.id.toLowerCase(),
+    );
+    if (old && old.name !== header.name) {
+      headerChanges.push({
+        field: "header",
+        before: value(old.name),
+        after: value(header.name),
+      });
+    }
+  }
+  changes.push(
+    ...(headerChanges.length > 0
+      ? headerChanges
+      : orderChange(
+          "header",
+          previous.headers.map((h) => [
+            h.name,
+            h.secret,
+            h.secret ? null : h.value,
+          ]),
+          next.headers.map((h) => [
+            h.name,
+            h.secret,
+            h.secret ? null : h.value,
+          ]),
+        )),
   );
-  const queryAfter = new Map(next.queryParams.map((p) => [p.name, p.value]));
-  for (const name of new Set([...queryBefore.keys(), ...queryAfter.keys()])) {
-    const from = queryBefore.get(name);
-    const to = queryAfter.get(name);
-    if (from === to) continue;
-    changes.push({
+
+  const [queryBefore, queryAfter] = keyedEntries(
+    [previous.queryParams, next.queryParams],
+    (param) => param.name,
+  );
+  const queryChanges: AuditChange[] = [];
+  for (const key of new Set([...queryBefore.keys(), ...queryAfter.keys()])) {
+    const from = queryBefore.get(key);
+    const to = queryAfter.get(key);
+    if (from !== undefined && to !== undefined && from.value === to.value) {
+      continue;
+    }
+    queryChanges.push({
       field: "queryParam",
-      key: name,
+      key,
       before: from === undefined ? null : { kind: "masked" },
       after: to === undefined ? null : { kind: "masked" },
     });
   }
+  changes.push(
+    ...(queryChanges.length > 0
+      ? queryChanges
+      : orderChange(
+          "queryParam",
+          previous.queryParams.map((p) => [p.name, p.value]),
+          next.queryParams.map((p) => [p.name, p.value]),
+        )),
+  );
 
   if (
     previous.bodyType !== next.bodyType ||
@@ -179,18 +291,32 @@ export function monitorAuditChanges(
     changes.push({ field: "body", before: null, after: { kind: "changed" } });
   }
 
-  const assertionsBefore = new Set(previous.assertions.map(assertionText));
-  const assertionsAfter = new Set(next.assertions.map(assertionText));
-  for (const text of assertionsBefore) {
-    if (!assertionsAfter.has(text)) {
-      changes.push({ field: "assertions", before: value(text), after: null });
+  const assertionsBefore = previous.assertions.map(assertionText);
+  const assertionsAfter = next.assertions.map(assertionText);
+  const assertionChanges: AuditChange[] = [];
+  for (const text of new Set(assertionsBefore)) {
+    if (!assertionsAfter.includes(text)) {
+      assertionChanges.push({
+        field: "assertions",
+        before: value(text),
+        after: null,
+      });
     }
   }
-  for (const text of assertionsAfter) {
-    if (!assertionsBefore.has(text)) {
-      changes.push({ field: "assertions", before: null, after: value(text) });
+  for (const text of new Set(assertionsAfter)) {
+    if (!assertionsBefore.includes(text)) {
+      assertionChanges.push({
+        field: "assertions",
+        before: null,
+        after: value(text),
+      });
     }
   }
+  changes.push(
+    ...(assertionChanges.length > 0
+      ? assertionChanges
+      : orderChange("assertions", assertionsBefore, assertionsAfter)),
+  );
 
   return [...changes, ...secretChanges(previous, next, secrets)];
 }

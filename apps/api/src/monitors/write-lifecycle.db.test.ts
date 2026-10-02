@@ -152,9 +152,11 @@ const mutationLines = async (monitorId: string) =>
       organizationId: string;
       monitorId: string;
       changes: unknown[];
+      requestId: string | null;
     }>(
       `select actor_user_id as "actorUserId", actor_role as "actorRole", action,
-              tenant_id as "organizationId", target_id as "monitorId", changes
+              tenant_id as "organizationId", target_id as "monitorId", changes,
+              request_id as "requestId"
        from audit_events where target_type = 'monitor' and target_id = $1
        order by occurred_at, id`,
       [monitorId],
@@ -1134,6 +1136,35 @@ describe("audit and logs", () => {
       code: "PERMISSION_DENIED",
     });
     expect(JSON.stringify(denial)).not.toContain(monitor.id);
+  });
+
+  it("stores each response x-request-id as the event request_id for create, edit, pause, resume and delete", async () => {
+    const { response: createResponse } = await create();
+    expect(createResponse.status).toBe(201);
+    const monitor = monitorWriteResponseSchema.parse(
+      createResponse.json,
+    ).monitor;
+    const path = monitorsPath(org.id, `/${monitor.id}`);
+    const responses = {
+      "organization.monitor.create": createResponse,
+      "organization.monitor.update": await edit(
+        monitor,
+        configOf({ ...monitor, name: "traced" }),
+      ),
+      "organization.monitor.pause": await action(monitor, "pause"),
+      "organization.monitor.resume": await action(monitor, "resume"),
+      "organization.monitor.delete": await ctx.call(owner(), "DELETE", path),
+    };
+    const events = await mutationLines(monitor.id);
+    expect(events.map((event) => event.action)).toEqual(Object.keys(responses));
+    for (const event of events) {
+      const requestId =
+        responses[event.action as keyof typeof responses].headers.get(
+          "x-request-id",
+        );
+      expect(requestId).toBeTruthy();
+      expect(event.requestId).toBe(requestId);
+    }
   });
 
   it("logs request paths as templates without organization or monitor ids", async () => {

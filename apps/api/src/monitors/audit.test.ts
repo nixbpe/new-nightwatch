@@ -291,6 +291,110 @@ describe("monitorAuditChanges", () => {
   });
 });
 
+describe("monitorAuditChanges when entries move without a per-item diff", () => {
+  const changed = (field: string) => [
+    { field, before: null, after: { kind: "changed" } },
+  ];
+
+  it("reports reordered headers, query parameters and assertions as changed", () => {
+    const a = { name: "A", value: "1", secret: false };
+    const b = { name: "B", value: "2", secret: false };
+    expect(
+      changesOf({ headers: [b, a] }, { ...base, headers: [a, b] }),
+    ).toEqual(changed("header"));
+    const qa = { name: "a", value: QUERY_VALUE };
+    const qb = { name: "b", value: QUERY_VALUE_2 };
+    const reorderedQuery = changesOf(
+      { queryParams: [qb, qa] },
+      { ...base, queryParams: [qa, qb] },
+    );
+    expect(reorderedQuery).toEqual(changed("queryParam"));
+    expect(JSON.stringify(reorderedQuery)).not.toContain(QUERY_VALUE);
+    const x = { kind: "bodyContains" as const, text: "x" };
+    const y = { kind: "responseTimeBelow" as const, ms: 5 };
+    expect(
+      changesOf({ assertions: [y, x] }, { ...base, assertions: [x, y] }),
+    ).toEqual(changed("assertions"));
+  });
+
+  it("reports a changed count of identical assertions", () => {
+    const x = { kind: "bodyContains" as const, text: "x" };
+    expect(
+      changesOf({ assertions: [x] }, { ...base, assertions: [x, x] }),
+    ).toEqual(changed("assertions"));
+  });
+});
+
+describe("monitorAuditChanges with repeated names", () => {
+  it("keys repeated query and header names by name#ordinal so no change is lost", () => {
+    const changes = changesOf(
+      {
+        queryParams: [
+          { name: "t", value: "1" },
+          { name: "t", value: QUERY_VALUE_2 },
+        ],
+        headers: [
+          { name: "X", value: "1", secret: false },
+          { name: "X", value: "3", secret: false },
+        ],
+      },
+      {
+        ...base,
+        queryParams: [
+          { name: "t", value: "1" },
+          { name: "t", value: QUERY_VALUE },
+        ],
+        headers: [
+          { name: "X", value: "1", secret: false },
+          { name: "X", value: "2", secret: false },
+        ],
+      },
+    );
+    expect(changes).toEqual([
+      { field: "header", key: "X#1", before: value("2"), after: value("3") },
+      {
+        field: "queryParam",
+        key: "t#1",
+        before: { kind: "masked" },
+        after: { kind: "masked" },
+      },
+    ]);
+    expect(JSON.stringify(changes)).not.toContain(QUERY_VALUE);
+  });
+});
+
+describe("monitorAuditChanges for a renamed secret header", () => {
+  it("shows the old and new names only, never a value", () => {
+    const changes = changesOf(
+      { headers: [{ id: HEADER_ID, name: "X-New", secret: true }] },
+      {
+        ...base,
+        headers: [{ id: HEADER_ID, name: "X-Old", secret: true }],
+      },
+    );
+    expect(changes).toEqual([
+      { field: "header", before: value("X-Old"), after: value("X-New") },
+    ]);
+  });
+});
+
+describe("monitorAuditChanges for a url that differs only in query values", () => {
+  it("keeps the masked url before and says changed after", () => {
+    const changes = changesOf(
+      { url: `https://example.test/health?token=${QUERY_VALUE_2}` },
+      { ...base, url: `https://example.test/health?token=${QUERY_VALUE}` },
+    );
+    expect(changes).toEqual([
+      {
+        field: "url",
+        before: value("https://example.test/health?token=•••"),
+        after: { kind: "changed" },
+      },
+    ]);
+    expect(JSON.stringify(changes)).not.toContain(QUERY_VALUE);
+  });
+});
+
 describe("editAuditAction", () => {
   const written = (stored: string[]) => ({
     written: ["auth.token"],
