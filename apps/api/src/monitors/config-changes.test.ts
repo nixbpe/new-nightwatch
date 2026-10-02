@@ -104,7 +104,8 @@ describe("diffConfig", () => {
         },
       ),
     ).toEqual([
-      { field: "headers.X-Old", kind: "value", before: "a", after: "b" },
+      { field: "headers.x-old", kind: "value", before: "a", after: null },
+      { field: "headers.X-Old", kind: "value", before: null, after: "b" },
       { field: "headers.X-Added", kind: "value", before: null, after: "n" },
       { field: "headers.X-Gone", kind: "value", before: "g", after: null },
     ]);
@@ -184,6 +185,79 @@ describe("diffConfig", () => {
     expect(plain).toEqual([
       { field: "headers.X-B", kind: "value", before: null, after: "v" },
       { field: "headers.X-A", kind: "value", before: "v", after: null },
+    ]);
+  });
+
+  it("names both headers when secrecy and case of the name change together", () => {
+    const toPlain = diff(
+      { headers: [{ name: "x-a", value: "pv", secret: false }] },
+      { writes: [], keeps: [], deletes: ["header.h1"] },
+      ["header.h1"],
+      { ...base, headers: [{ id: "h1", name: "X-A", secret: true }] },
+    );
+    expect(toPlain).toContainEqual({
+      field: "headers.X-A",
+      kind: "secret",
+      action: "deleted",
+    });
+    expect(toPlain).toContainEqual({ field: "headers.x-a", kind: "changed" });
+    expect(JSON.stringify(toPlain)).not.toContain("pv");
+
+    const toSecret = diff(
+      { headers: [{ id: "h1", name: "x-a", secret: true }] },
+      { writes: [{ slot: "header.h1", value: "sv" }], keeps: [], deletes: [] },
+      [],
+      { ...base, headers: [{ name: "X-A", value: "pb", secret: false }] },
+    );
+    expect(toSecret).toContainEqual({
+      field: "headers.X-A",
+      kind: "secret",
+      action: "set",
+    });
+    expect(toSecret).toContainEqual({ field: "headers.x-a", kind: "changed" });
+    expect(JSON.stringify(toSecret)).not.toMatch(/pb|sv/);
+  });
+
+  it("keeps the old secret name in the feed when it is replaced by a differently named plain header", () => {
+    const changes = diff(
+      { headers: [{ name: "X-New", value: "pv", secret: false }] },
+      { writes: [], keeps: [], deletes: ["header.h1"] },
+      ["header.h1"],
+      { ...base, headers: [{ id: "h1", name: "X-Old", secret: true }] },
+    );
+    expect(changes).toContainEqual({
+      field: "headers.X-Old",
+      kind: "secret",
+      action: "deleted",
+    });
+    expect(changes).toContainEqual({
+      field: "headers.X-New",
+      kind: "value",
+      before: null,
+      after: "pv",
+    });
+  });
+
+  it("reports a case-only header rename for secret and plain headers", () => {
+    const secret = diff(
+      { headers: [{ id: "h1", name: "x-a", secret: true }] },
+      noSecrets,
+      ["header.h1"],
+      { ...base, headers: [{ id: "h1", name: "X-A", secret: true }] },
+    );
+    expect(secret).toEqual([
+      { field: "headers.X-A", kind: "changed" },
+      { field: "headers.x-a", kind: "changed" },
+    ]);
+    const plain = diff(
+      { headers: [{ name: "x-a", value: "v", secret: false }] },
+      noSecrets,
+      [],
+      { ...base, headers: [{ name: "X-A", value: "v", secret: false }] },
+    );
+    expect(plain).toEqual([
+      { field: "headers.X-A", kind: "value", before: "v", after: null },
+      { field: "headers.x-a", kind: "value", before: null, after: "v" },
     ]);
   });
 

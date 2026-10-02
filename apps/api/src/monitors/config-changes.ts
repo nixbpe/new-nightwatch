@@ -70,8 +70,10 @@ function pairHeaders(
   ];
 }
 
+// Exact: a case-only rename still makes the stored config differ, so it must
+// show in the feed.
 const renamed = (old: StoredHeader, current: StoredHeader): boolean =>
-  old.name.toLowerCase() !== current.name.toLowerCase();
+  old.name !== current.name;
 
 function headerChanges(
   previous: StoredHeader[],
@@ -92,11 +94,14 @@ function headerChanges(
         }
         continue;
       }
-      changes.push({
-        field,
-        kind: "secret",
-        action: current?.secret === true ? "set" : "deleted",
-      });
+      const action = current?.secret === true ? "set" : "deleted";
+      if (old && current && renamed(old, current)) {
+        // The old name would otherwise vanish from the feed.
+        changes.push({ field: oldField ?? field, kind: "secret", action });
+        changes.push({ field, kind: "changed" });
+        continue;
+      }
+      changes.push({ field, kind: "secret", action });
       continue;
     }
     if (old && current && renamed(old, current)) {
