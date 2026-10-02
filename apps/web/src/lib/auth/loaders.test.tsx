@@ -21,6 +21,7 @@ import {
   fetchMonitorDetail,
   fetchMonitorList,
   monitorQueryKeys,
+  OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import {
   fetchNotifications,
@@ -386,6 +387,79 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     expect(
       await screen.findByText("protected-area", undefined, { timeout: 3000 }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("workspaceLoader overview prefetch", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const otherId = "22222222-2222-4222-8222-222222222222";
+  const overviewList: MonitorListResponse = {
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    monitors: [],
+    page: { limit: 50, offset: 0, total: 0 },
+    dataAsOf: "2026-09-30T07:32:05.000Z",
+  };
+  const orgs = [
+    { id: otherId, name: "Other", slug: "other", role: "viewer" as const },
+    { id: organizationId, name: "Acme", slug: "acme", role: "owner" as const },
+  ];
+
+  afterEach(() => {
+    sessionState.data = null;
+    resetQueryClientRegistry();
+    fetchMeContextMock.mockReset();
+    fetchMonitorListMock.mockReset();
+  });
+
+  it("stages the active organization's overview list under the page's own key", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: orgs,
+      lastActiveTenantId: organizationId,
+    });
+    fetchMonitorListMock.mockResolvedValue(overviewList);
+    renderAt([protectedWorkspace], "/workspace");
+
+    expect(await screen.findByText("protected-area")).toBeInTheDocument();
+    expect(fetchMonitorListMock).toHaveBeenCalledWith(
+      organizationId,
+      OVERVIEW_LIST_PARAMS,
+    );
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        monitorQueryKeys.list(organizationId, OVERVIEW_LIST_PARAMS),
+      ),
+    ).toEqual(overviewList);
+  });
+
+  it("falls back to the first membership and still renders when the prefetch fails", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: orgs,
+      lastActiveTenantId: null,
+    });
+    fetchMonitorListMock.mockRejectedValue(new Error("boom"));
+    renderAt([protectedWorkspace], "/workspace");
+
+    // The identity client retries a failed query once (1 s) before the loader settles.
+    expect(
+      await screen.findByText("protected-area", {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    expect(fetchMonitorListMock).toHaveBeenCalledWith(
+      otherId,
+      OVERVIEW_LIST_PARAMS,
+    );
+  });
+
+  it("requests no list without a membership", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    renderAt([protectedWorkspace], "/workspace");
+
+    expect(await screen.findByText("protected-area")).toBeInTheDocument();
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
 });
 

@@ -1,4 +1,3 @@
-import { MONITOR_LIMIT_PER_ORGANIZATION } from "@nightwatch/api-contract";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
@@ -13,6 +12,7 @@ import {
   fetchMonitorList,
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
+  OVERVIEW_LIST_PARAMS,
 } from "../lib/api/monitors";
 import { authClient } from "../lib/auth-client";
 import { ROLE_LABELS } from "../lib/roles";
@@ -24,9 +24,6 @@ import { IssuesSection } from "./workspace/IssuesSection";
 import { StatStrip } from "./workspace/StatStrip";
 import { isDenied } from "./workspace/rows";
 import { UptimeSection } from "./workspace/UptimeSection";
-
-// One request returns every monitor of the organization (the per-organization cap fits one page).
-const OVERVIEW_LIST = { limit: MONITOR_LIMIT_PER_ORGANIZATION, offset: 0 };
 
 export function WorkspacePage() {
   const { me, mePending, meError, retryMe, activeOrg } = useTenant();
@@ -99,8 +96,8 @@ function OrganizationOverview({
 }) {
   const { refreshMembershipContext } = useTenant();
   const list = useQuery({
-    queryKey: monitorQueryKeys.list(organization.id, OVERVIEW_LIST),
-    queryFn: () => fetchMonitorList(organization.id, OVERVIEW_LIST),
+    queryKey: monitorQueryKeys.list(organization.id, OVERVIEW_LIST_PARAMS),
+    queryFn: () => fetchMonitorList(organization.id, OVERVIEW_LIST_PARAMS),
     refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
   });
   const denied = isDenied(list.error);
@@ -256,7 +253,7 @@ function OrganizationOverview({
             <IssuesSection
               organizationId={organization.id}
               monitors={data.monitors}
-              now={list.dataUpdatedAt}
+              now={Date.parse(data.dataAsOf)}
             />
             <EventsSection organizationId={organization.id} />
           </div>

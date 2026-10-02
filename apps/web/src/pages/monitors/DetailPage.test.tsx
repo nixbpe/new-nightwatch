@@ -126,6 +126,26 @@ describe("Detail health and special states", () => {
     expect(screen.getByText(/HTTP 503/)).toBeInTheDocument();
   });
 
+  it("hides the notifications link when the route organization is not the server-active one", async () => {
+    // /notifications shows the server-active (A) inbox; a bookmarked monitor of B must not link to it.
+    showDetail(
+      detail({
+        health: "down",
+        consecutiveFailures: 3,
+        openIncident: {
+          startedAt: "2026-09-30T07:20:00.000Z",
+          reason: "http_status",
+        },
+      }),
+    );
+    renderDetail(B);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Payments API" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^สาเหตุ /)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "ดูการแจ้งเตือน" })).toBeNull();
+  });
+
   it("shows one failure as a warning beside an unchanged health", async () => {
     showDetail(detail({ consecutiveFailures: 1 }));
     renderDetail();

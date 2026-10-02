@@ -463,7 +463,7 @@ function DetailForMonitor({
         </Alert>
       ) : null}
       <StateAlerts monitor={monitor} />
-      <DownBanner monitor={monitor} />
+      <DownBanner monitor={monitor} organizationId={organizationId} />
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-8">
           <ResponseTimeCard

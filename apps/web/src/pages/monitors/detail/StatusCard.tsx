@@ -15,6 +15,7 @@ import {
   Time,
   TIME_ZONE,
 } from "../format";
+import { useTenant } from "../../../lib/tenant/TenantProvider";
 import { DOWN_AFTER_FAILURES } from "./labels";
 import { UptimeStripMockup } from "./MonitorDetailMockups";
 
@@ -85,7 +86,14 @@ function UptimeWindow({
 }
 
 /** COL-06: Danger border and 10 % / 6 % fill, an icon and the written state. No live region: the duration changes every poll. */
-export function DownBanner({ monitor }: { monitor: Monitor }) {
+export function DownBanner({
+  monitor,
+  organizationId,
+}: {
+  monitor: Monitor;
+  organizationId: string;
+}) {
+  const { serverActiveOrgId } = useTenant();
   const { openIncident } = monitor;
   if (monitor.health !== "down" || openIncident === null) return null;
   return (
@@ -113,12 +121,15 @@ export function DownBanner({ monitor }: { monitor: Monitor }) {
           <span className="font-mono">{monitor.expectedStatus}</span>)
         </p>
       </div>
-      <Link
-        to="/notifications"
-        className="inline-flex min-h-6 items-center text-xs whitespace-nowrap text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        ดูการแจ้งเตือน
-      </Link>
+      {/* /notifications shows the server-active organization's inbox; any other organization's banner must not link to it. */}
+      {organizationId === serverActiveOrgId ? (
+        <Link
+          to="/notifications"
+          className="inline-flex min-h-6 items-center text-xs whitespace-nowrap text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          ดูการแจ้งเตือน
+        </Link>
+      ) : null}
     </div>
   );
 }

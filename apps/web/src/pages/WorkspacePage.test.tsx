@@ -481,6 +481,25 @@ describe("WorkspacePage overview content", () => {
     ).toBeInTheDocument();
   });
 
+  it("measures the outage against the server's dataAsOf, not the client clock", async () => {
+    // Incident starts 04:00Z and dataAsOf is 05:00Z; a client clock a day ahead must not show "1 วัน".
+    vi.useFakeTimers({
+      toFake: ["Date"],
+      now: new Date("2026-10-03T05:00:00Z"),
+    });
+    try {
+      fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+      renderPage();
+      const issues = (
+        await screen.findByRole("heading", { name: "ต้องดูตอนนี้" })
+      ).closest("section") as HTMLElement;
+      expect(within(issues).getByText("1 ชั่วโมง")).toBeInTheDocument();
+      expect(within(issues).queryByText("1 วัน")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("an organization without monitors shows the first-run state", async () => {
     fetchMonitorListMock.mockResolvedValue({
       ...monitorList(0),

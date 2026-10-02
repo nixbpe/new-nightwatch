@@ -1,5 +1,6 @@
 import {
   MONITOR_HISTORY_DEFAULT_LIMIT,
+  MONITOR_LIMIT_PER_ORGANIZATION,
   MONITOR_LIST_DEFAULT_LIMIT,
   MONITOR_RECENT_EVENTS_DEFAULT,
   monitorChecksResponseSchema,
@@ -42,6 +43,13 @@ export type MonitorRecentEventsResponse = z.infer<
 >;
 
 export const MONITOR_LIST_PAGE_SIZE = MONITOR_LIST_DEFAULT_LIMIT;
+
+// Overview list: one request returns every monitor of the organization (the per-organization cap fits one page).
+// The Overview page and the workspace loader share it so both use the same query key.
+export const OVERVIEW_LIST_PARAMS = {
+  limit: MONITOR_LIMIT_PER_ORGANIZATION,
+  offset: 0,
+};
 export const MONITOR_HISTORY_PAGE_SIZE = MONITOR_HISTORY_DEFAULT_LIMIT;
 export const MONITOR_RECENT_EVENTS_LIMIT = MONITOR_RECENT_EVENTS_DEFAULT;
 // The Overview and its recent-events card refetch on this interval without announcing it.
