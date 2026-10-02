@@ -15,3 +15,7 @@ b4656808f704c426f4e813576cfb719bd0332dbd:apps/web/src/pages/monitors/MonitorForm
 # fixture as write-lifecycle.db.test.ts, reused in the issue #58 event feed
 # test (commit af6a01a). History is not rewritten; suppress only this fingerprint.
 af6a01a4e26f3e28c5466c36d1310dab748170d7:apps/api/src/monitors/write-event-feed.db.test.ts:generic-api-key:30
+
+# The same UUID slot-id fixture in the squash merge of PR #69 (71b2532).
+# Suppress only the merge commit's fingerprint; the original stays above.
+71b2532e011227f5051d66ae2d6e0ed8498efb25:apps/api/src/monitors/write-event-feed.db.test.ts:generic-api-key:30
