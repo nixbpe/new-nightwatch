@@ -917,7 +917,7 @@ describe("body scan limits", () => {
     // Long secrets shrink to a 3 character mask, so the output stays under 16 KiB
     // and the end of the scanned prefix would be shown.
     const long = `SECRET${"v".repeat(94)}`;
-    const scanned = 2 * (16 * 1024 + 1) + 4 * long.length;
+    const scanned = 2 * (16 * 1024 + 1) + 4 * 3 * long.length;
     const unit = `${long}-`;
     const padding = (scanned - 4) % unit.length;
     const snapshot = await check(
@@ -1007,5 +1007,80 @@ describe("URL encodings other than encodeURIComponent", () => {
       deps(),
     );
     expect(result.responseSnapshot?.url).toContain("/cb/•••");
+  });
+});
+
+describe("secrets echoed in any URL encoding", () => {
+  const own = { headers: [secretHeader("h1", "X-Own")] };
+  // A head is decoded as latin1, so a UTF-8 echo reaches the executor as its latin1 form.
+  const wire = (text: string) => Buffer.from(text, "utf8").toString("latin1");
+
+  const cases: [string, string][] = [
+    ["p@ss word", "p@ss word"],
+    ["x/é", "x/é"],
+    ["a/b c", "a/b%20c"],
+    ["a~* b", "a%7E%2A+b"],
+    ["a b/c~d", "a%20b/c%7Ed"],
+    ["a b/c~d", "a+b%2Fc~d"],
+  ];
+
+  it.each(cases)("masks secret %s echoed as %s", async (secret, echoed) => {
+    const snapshot = await check(
+      response({
+        line: `HTTP/1.1 200 r-${wire(echoed)}`,
+        headers: [
+          ["Content-Type", "text/plain"],
+          ["X-Echo", `v=${wire(echoed)}`],
+        ],
+        body: `b=${echoed}`,
+      }),
+      own,
+      { "header.h1": secret },
+    );
+    expect(snapshot.body).toMatchObject({ text: "b=•••" });
+    expect(snapshot.headers.find((h) => h.name === "x-echo")?.value).toBe(
+      "v=•••",
+    );
+    expect(snapshot.statusLine?.reasonPhrase).toBe("r-•••");
+
+    let requests = 0;
+    const server = await startRawServer({
+      onRequest: ({ socket }) => {
+        requests++;
+        socket.end(
+          requests === 1
+            ? response({
+                line: "HTTP/1.1 302 Found",
+                headers: [["Location", `/cb/${wire(echoed)}`]],
+              })
+            : response({}),
+        );
+      },
+    });
+    servers.push(server);
+    const result = await runCheck(
+      configFor("http", server.port, own),
+      { "header.h1": secret },
+      deps(),
+    );
+    expect(result.responseSnapshot?.url).toContain("/cb/•••");
+  });
+
+  it("keeps text that holds no secret unchanged", async () => {
+    const snapshot = await check(
+      response({
+        headers: [
+          ["Content-Type", "text/plain"],
+          ["X-Echo", "a%7Eb+c%2fd"],
+        ],
+        body: "a%7Eb+c%2fd",
+      }),
+      own,
+      { "header.h1": "zzz" },
+    );
+    expect(snapshot.body).toMatchObject({ text: "a%7Eb+c%2fd" });
+    expect(snapshot.headers.find((h) => h.name === "x-echo")?.value).toBe(
+      "a%7Eb+c%2fd",
+    );
   });
 });

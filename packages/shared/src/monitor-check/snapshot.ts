@@ -1,6 +1,6 @@
 import type { OutboundResponse } from "../outbound-http";
 import { decodeBody } from "./assertions";
-import { createRedactor, type Redactor } from "./redact";
+import { createSecretMasker, type SecretMasker } from "./mask-secrets";
 import type { ResponseSnapshot, SnapshotHeader } from "./types";
 
 const MAX_HEADERS = 50;
@@ -60,178 +60,56 @@ function cutBytes(text: string, max: number): { text: string; cut: boolean } {
   return { text: kept, cut: true };
 }
 
-/** Header values arrive decoded as latin1, so a UTF-8 secret is echoed in its latin1 form. */
-function needleForms(secretValues: readonly string[]): string[] {
-  return secretValues
-    .map((value) => Buffer.from(value, "utf8").toString("latin1"))
-    .filter((form, i) => form !== secretValues[i]);
-}
-
 type Shown = { text: string; cut: boolean };
 
 /**
- * Redacts, then replaces NUL (Postgres text and jsonb reject it), then cuts.
- * `cut` also covers a redactor that gave up scanning (`cutShort`), which drops text.
+ * Masks, then replaces NUL (Postgres text and jsonb reject it), then cuts.
+ * `cut` also covers a masker that ran out of budget (`cutShort`), which drops text.
  */
 function shown(
-  redact: Redactor,
+  mask: SecretMasker,
   text: string,
   max: number,
   cutter: (text: string, max: number) => Shown,
 ): Shown {
-  const redacted = redact(text, max);
-  const dropped = redact.cutShort === true;
-  const cut = cutter(redacted.replaceAll("\u0000", "\uFFFD"), max);
+  const masked = mask(text);
+  const dropped = mask.cutShort;
+  const cut = cutter(masked.replaceAll("\u0000", "\uFFFD"), max);
   return { text: cut.text, cut: cut.cut || dropped };
 }
 
 /**
- * URL encodings a standard encoder can produce for one value: `encodeURIComponent`,
- * RFC 3986 strict (also encodes `!'()*`), `application/x-www-form-urlencoded`
- * (space as `+`, encodes `!'()~`), and `+` for space in the other two.
+ * Scanning a 1 MiB body costs a pass per needle and view, so only a prefix is
+ * scanned. A secret that straddles the end of the prefix would show its head, so
+ * the output of the last `maxSpan` input characters (at most 3 output characters
+ * each, the mask) is dropped. The caller learns that the input was cut.
  */
-function urlEncodings(value: string): string[] {
-  try {
-    const component = encodeURIComponent(value);
-    const strict = component.replace(
-      /[!'()*]/g,
-      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
-    );
-    const form = new URLSearchParams([["", value]]).toString().slice(1);
-    return [
-      component,
-      strict,
-      form,
-      component.replaceAll("%20", "+"),
-      strict.replaceAll("%20", "+"),
-    ];
-  } catch {
-    // A lone surrogate has no URL-encoded form; the other forms still apply.
-    return [];
-  }
-}
-
-/** Every form a target can echo: raw, latin1 (header decode), JSON-escaped and URL-encoded. */
-function secretForms(secretValues: readonly string[]): string[] {
-  const forms = [...secretValues, ...needleForms(secretValues)].flatMap(
-    (value) => [
-      value,
-      JSON.stringify(value).slice(1, -1),
-      ...urlEncodings(value),
-    ],
-  );
-  return [...new Set(forms)];
-}
-
-const foldHex = (text: string): string =>
-  text.replace(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
-
-/**
- * Folding a text reads at most two characters outside a needle: a `%` (or `%` and
- * a hex digit) before it can make its first one or two characters escape digits,
- * and one hex digit after it can complete an escape that starts two characters
- * before its end. A needle is therefore folded in each of these contexts and the
- * context is cut off again, so the single scan matches whatever surrounds it.
- */
-const BEFORE = ["", "%", "%0"];
-const AFTER = ["", "0"];
-
-function foldedVariants(form: string): string[] {
-  const variants = new Set<string>();
-  for (const before of BEFORE) {
-    for (const after of AFTER) {
-      const folded = foldHex(`${before}${form}${after}`);
-      variants.add(folded.slice(before.length, folded.length - after.length));
-    }
-  }
-  return [...variants];
-}
-
-/**
- * RFC 3986 treats `%c3%a9` and `%C3%A9` as equal, but needles hold one case. One
- * scan runs on the text with its hex digits folded to upper case against the
- * folded needles, so overlapping matches still merge. A redactor changes the text
- * only where a needle matched, so `out === folded` means no secret was found and
- * the text is shown with its original case.
- */
-function textRedactor(
-  secretValues: readonly string[],
-): Redactor & { longestNeedle: number } {
-  const needles = secretForms(secretValues).flatMap(foldedVariants);
-  const redact = createRedactor([], needles);
-  // `createRedactor` also adds the JSON-escaped and URL-encoded form of each needle.
-  const longestNeedle = Math.max(
-    0,
-    ...needles.flatMap((needle) => [
-      needle.length,
-      JSON.stringify(needle).length - 2,
-      encodeURIComponentOrSelf(needle).length,
-    ]),
-  );
-  const wrapped = (text: string, maxChars?: number): string => {
-    const folded = foldHex(text);
-    const out = redact(folded, maxChars);
-    // Without a match `out` is the folded text, whole or (past the cap) its prefix;
-    // `foldHex` keeps the length, so the original prefix of that length is shown.
-    return out === folded.slice(0, out.length)
-      ? text.slice(0, out.length)
-      : out;
-  };
-  return Object.defineProperty(
-    Object.assign(wrapped, { cutShort: false, longestNeedle }),
-    "cutShort",
-    { get: () => redact.cutShort },
-  );
-}
-
-function encodeURIComponentOrSelf(text: string): string {
-  try {
-    return encodeURIComponent(text);
-  } catch {
-    return text;
-  }
-}
-
-/**
- * Scanning a 1 MiB body costs one pass per needle, so only a prefix is scanned.
- * A secret that straddles the end of the prefix would show its head, so the output
- * of the last `longestNeedle` input characters (at most 3 output characters each,
- * the mask) is dropped. The caller learns that the input was cut.
- */
-function redactPrefix(
-  redact: Redactor & { longestNeedle: number },
+function maskPrefix(
+  mask: SecretMasker,
   text: string,
   maxChars: number,
-): { redact: Redactor; inputCut: boolean } {
-  const scanned = 2 * (maxChars + 1) + 4 * redact.longestNeedle;
-  if (text.length <= scanned) return { redact, inputCut: false };
-  const wrapped = (_: string, max?: number): string => {
-    const out = redact(text.slice(0, scanned), max);
-    return out.slice(0, Math.max(0, out.length - 3 * redact.longestNeedle));
+): { mask: SecretMasker; inputCut: boolean } {
+  const scanned = 2 * (maxChars + 1) + 4 * mask.maxSpan;
+  if (text.length <= scanned) return { mask, inputCut: false };
+  const wrapped = (): string => {
+    const out = mask(text.slice(0, scanned));
+    return out.slice(0, Math.max(0, out.length - 3 * mask.maxSpan));
   };
   return {
-    redact: Object.defineProperty(wrapped, "cutShort", {
-      get: () => redact.cutShort,
-    }),
+    mask: Object.defineProperties(
+      Object.assign(wrapped, { cutShort: false, maxSpan: mask.maxSpan }),
+      {
+        cutShort: { get: () => mask.cutShort },
+      },
+    ),
     inputCut: true,
   };
 }
 
-/**
- * `http1.ts` lowercases header names, so a secret echoed as `X-Tok123` is stored
- * as `x-tok123`; names are matched with lowercased needles of every secret form.
- */
-function nameRedactor(secretValues: readonly string[]): Redactor {
-  return createRedactor(
-    [],
-    secretForms(secretValues).map((form) => form.toLowerCase()),
-  );
-}
-
 function headersOf(
   response: OutboundResponse,
-  redact: Redactor,
-  redactName: Redactor,
+  redact: SecretMasker,
+  redactName: SecretMasker,
   maskedNames: ReadonlySet<string>,
 ): { headers: SnapshotHeader[]; truncated: boolean } {
   const entries = Object.entries(response.headers);
@@ -259,7 +137,7 @@ function mediaType(contentType: string | undefined): string {
 
 function bodyOf(
   response: OutboundResponse,
-  textRedact: Redactor & { longestNeedle: number },
+  textRedact: SecretMasker,
 ): NonNullable<ResponseSnapshot["body"]> {
   if (response.body.length === 0) return { kind: "omitted", reason: "no_body" };
   // Chosen from the raw content-type, before any redaction.
@@ -270,7 +148,7 @@ function bodyOf(
   const decoded = decodeBody(response);
   if (!decoded.ok) return { kind: "omitted", reason: "undecodable" };
   // Redact the whole text first so a secret cut by the limit is never shown in part.
-  const { redact, inputCut } = redactPrefix(
+  const { mask: redact, inputCut } = maskPrefix(
     textRedact,
     decoded.text,
     MAX_BODY_BYTES,
@@ -306,7 +184,7 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
   };
   // Query values and the request body are not needles: a short non-secret needle
   // would blank ordinary text, and those requests keep no target text at all.
-  const redact = textRedactor(input.secretValues);
+  const redact = createSecretMasker(input.secretValues);
   // finalUrl comes from the target's Location header, so it is target text too.
   const url = redact(response.finalUrl);
   if (input.requestValues) {
@@ -331,7 +209,7 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
   const { headers, truncated } = headersOf(
     response,
     redact,
-    nameRedactor(input.secretValues),
+    createSecretMasker(input.secretValues, { lowercase: true }),
     maskedNames,
   );
   return {
