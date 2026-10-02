@@ -21,6 +21,7 @@ import {
   Time,
   TIME_ZONE,
 } from "../monitors/format";
+import { HttpStatus } from "../monitors/HttpStatus";
 import { sslDaysText } from "../monitors/SslLabel";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { isDenied } from "./rows";
@@ -45,6 +46,7 @@ function EventText({ event }: { event: MonitorRecentEvent }) {
         {event.reason === null
           ? null
           : ` สาเหตุ ${incidentReasonLabel(event.reason)}`}
+        <HttpStatus status={event.httpStatus} />
       </>
     );
   }
@@ -55,6 +57,7 @@ function EventText({ event }: { event: MonitorRecentEvent }) {
         {event.reason === null
           ? null
           : ` (${incidentReasonLabel(event.reason)})`}
+        <HttpStatus status={event.httpStatus} />
       </>
     );
   }
@@ -240,27 +243,6 @@ function EventsMockups() {
               </>
             }
           />
-        </ol>
-      </MockupFrame>
-      <MockupFrame label="บรรทัดที่มาของเหตุการณ์มอนิเตอร์" issue={58}>
-        <ol>
-          <SampleRow
-            text="ล่ม"
-            source={
-              <>
-                มอนิเตอร์ · <Latin>DNS</Latin>
-              </>
-            }
-          />
-          <SampleRow
-            text="ล่ม"
-            source={
-              <>
-                มอนิเตอร์ · <Latin>HTTP 503</Latin>
-              </>
-            }
-          />
-          <SampleRow text="SSL ใกล้หมดอายุ" source="มอนิเตอร์ · ใบรับรอง" />
         </ol>
       </MockupFrame>
     </div>
