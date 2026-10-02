@@ -28,8 +28,9 @@ import { ChecksHistoryCard } from "./detail/ChecksHistoryCard";
 import { ConfigCard } from "./detail/ConfigCard";
 import { IncidentsCard } from "./detail/IncidentsCard";
 import { IntervalText } from "./detail/IntervalText";
-import { LastResponseMockup } from "./detail/MonitorDetailMockups";
+import { LastResponseCard } from "./detail/LastResponseCard";
 import { LastResultCard } from "./detail/LastResultCard";
+import { MonitorEventsCard } from "./detail/MonitorEventsCard";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { SslCard } from "./detail/SslCard";
 import { DownBanner, StatusCard, statusLine } from "./detail/StatusCard";
@@ -477,13 +478,19 @@ function DetailForMonitor({
           />
           <StatusCard monitor={monitor} code="02" />
           <LastResultCard monitor={monitor} code="03" />
-          <IncidentsCard
+          <MonitorEventsCard
             code="04"
+            organizationId={organizationId}
+            monitorId={monitorId}
+            headers={monitor.headers}
+          />
+          <IncidentsCard
+            code="05"
             organizationId={organizationId}
             monitorId={monitorId}
           />
           <ChecksHistoryCard
-            code="05"
+            code="06"
             organizationId={organizationId}
             monitorId={monitorId}
           />
@@ -491,7 +498,11 @@ function DetailForMonitor({
         <aside className="flex min-w-0 flex-col gap-6">
           <ConfigCard monitor={monitor} />
           <SslCard ssl={monitor.ssl} />
-          <LastResponseMockup />
+          <LastResponseCard
+            canRead={canWrite}
+            organizationId={organizationId}
+            monitorId={monitorId}
+          />
         </aside>
       </div>
       {deleteDialog === null ? null : (

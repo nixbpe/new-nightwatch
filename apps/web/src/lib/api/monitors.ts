@@ -5,7 +5,9 @@ import {
   MONITOR_RECENT_EVENTS_DEFAULT,
   monitorChecksResponseSchema,
   monitorDetailResponseSchema,
+  monitorEventsResponseSchema,
   monitorIncidentsResponseSchema,
+  monitorLastResponseResponseSchema,
   monitorListResponseSchema,
   monitorRecentEventsResponseSchema,
   monitorResponseTimesResponseSchema,
@@ -13,8 +15,10 @@ import {
   monitorWriteResponseSchema,
   type MonitorChecksResponse,
   type MonitorDetailResponse,
+  type MonitorEventsResponse,
   type MonitorHealthName,
   type MonitorIncidentsResponse,
+  type MonitorLastResponseResponse,
   type MonitorListResponse,
   type MonitorResponseTimesResponse,
   type MonitorTestResponse,
@@ -120,6 +124,27 @@ export const monitorQueryKeys = {
       monitorId,
       page,
     ] as const,
+  events: (
+    organizationId: string,
+    monitorId: string,
+    page: { limit: number; offset: number },
+  ) =>
+    [
+      ...TENANT_QUERY_PREFIX,
+      "monitors",
+      organizationId,
+      "events",
+      monitorId,
+      page,
+    ] as const,
+  lastResponse: (organizationId: string, monitorId: string) =>
+    [
+      ...TENANT_QUERY_PREFIX,
+      "monitors",
+      organizationId,
+      "last-response",
+      monitorId,
+    ] as const,
   responseTimes: (
     organizationId: string,
     monitorId: string,
@@ -200,6 +225,31 @@ export function fetchMonitorIncidents(
     monitorIncidentsResponseSchema,
     { params: { organizationId, monitorId }, query: page },
   );
+}
+
+export function fetchMonitorEvents(
+  organizationId: string,
+  monitorId: string,
+  page: { limit: number; offset: number },
+): Promise<MonitorEventsResponse> {
+  // The generated type widens nullable unions to `unknown`; parsing again narrows it to the contract.
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}/events",
+    monitorEventsResponseSchema,
+    { params: { organizationId, monitorId }, query: page },
+  ).then((response) => monitorEventsResponseSchema.parse(response));
+}
+
+/** Owner and admin only: the caller must not request it for another role. */
+export function fetchMonitorLastResponse(
+  organizationId: string,
+  monitorId: string,
+): Promise<MonitorLastResponseResponse> {
+  return request(
+    "/api/organizations/{organizationId}/monitors/{monitorId}/last-response",
+    monitorLastResponseResponseSchema,
+    { params: { organizationId, monitorId } },
+  ).then((response) => monitorLastResponseResponseSchema.parse(response));
 }
 
 export function fetchMonitorResponseTimes(
