@@ -20,6 +20,8 @@ import {
   processMaterialization,
   type MaterializeJobData,
 } from "./materialize";
+import { AuditExporter } from "./audit/exporter";
+import { startAuditMaintenance } from "./audit/maintenance";
 import { assertMonitorCheckJob, processMonitorCheck } from "./monitor/checker";
 import { createEgressCanary } from "./monitor/egress-canary";
 import {
@@ -35,6 +37,7 @@ const WORKER_ROLES = [
   "scheduler",
   "monitor-scheduler",
   "monitor-checker",
+  "audit-exporter",
 ] as const;
 type WorkerRole = (typeof WORKER_ROLES)[number];
 
@@ -86,6 +89,15 @@ const monitorSchedule = monitorQueue
       logger,
     )
   : null;
+// The audit exporter claims from PostgreSQL; it uses no queue (the process
+// still requires REDIS_URL for every role).
+const auditExporter = roles.has("audit-exporter")
+  ? new AuditExporter(database, logger)
+  : null;
+auditExporter?.start();
+const stopAuditMaintenance = roles.has("audit-exporter")
+  ? startAuditMaintenance(database, logger)
+  : null;
 let stopping = false;
 async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (stopping) return;
@@ -100,6 +112,11 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   await monitorSchedule?.stop();
   if (monitorSchedule) logger.info({}, "monitor scheduler stopped");
   stopSchedule?.();
+  stopAuditMaintenance?.();
+  // Stops claiming and abandons the export in flight: its lease runs out and
+  // another claim redoes it.
+  await auditExporter?.stop();
+  if (auditExporter) logger.info({}, "audit exporter stopped");
   // Closes run together so the slowest one, not their sum, bounds shutdown.
   const elapsed = Date.now() - shutdownStarted;
   const abort = monitorChecker
@@ -130,10 +147,15 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 // Handlers are registered before this line, so a signal sent once the ready
 // line is visible always runs the graceful shutdown.
 // e2e and the quality README wait for the in-app line; keep it for those roles.
-logger.info(
-  { roles: [...roles] },
-  worker || queue ? "in-app materialize worker ready" : "monitor worker ready",
-);
+if (auditExporter) logger.info({ roles: [...roles] }, "audit exporter ready");
+if (worker || queue || monitorEnv) {
+  logger.info(
+    { roles: [...roles] },
+    worker || queue
+      ? "in-app materialize worker ready"
+      : "monitor worker ready",
+  );
+}
 
 function requireEnvironment(name: "DATABASE_URL" | "REDIS_URL"): string {
   const value = process.env[name];

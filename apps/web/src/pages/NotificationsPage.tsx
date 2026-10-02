@@ -11,6 +11,8 @@ import {
   BellIcon,
   CheckIcon,
   ChevronLeftIcon,
+  DownloadIcon,
+  HistoryIcon,
   KeyIcon,
   LockIcon,
   MonitorIcon,
@@ -62,6 +64,10 @@ function itemTitle(item: NotificationItem) {
         return `ใบรับรอง SSL ของ ${item.subject.monitorName} ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)`;
       case "MONITOR_SSL_EXPIRED":
         return `ใบรับรอง SSL ของ ${item.subject.monitorName} หมดอายุแล้ว`;
+      case "AUDIT_EXPORT_READY":
+        return "ไฟล์ส่งออกบันทึกกิจกรรมพร้อมดาวน์โหลด";
+      case "AUDIT_EXPORT_FAILED":
+        return "สร้างไฟล์ส่งออกไม่สำเร็จ";
     }
   }
   if (item.eventType === "PASSWORD_CHANGED") return "มีการเปลี่ยนรหัสผ่าน";
@@ -72,9 +78,9 @@ function itemTitle(item: NotificationItem) {
 // Scope and category, rendered as two parts rather than one dotted string.
 function itemContext(item: NotificationItem): [string, string] {
   if (item.scope !== "organization") return ["บัญชีของคุณ", "ความปลอดภัย"];
-  return item.category === "monitor"
-    ? ["องค์กร", "มอนิเตอร์"]
-    : ["องค์กร", "การตั้งค่าการแจ้งเตือน"];
+  if (item.category === "monitor") return ["องค์กร", "มอนิเตอร์"];
+  if (item.category === "audit-log") return ["องค์กร", "บันทึกกิจกรรม"];
+  return ["องค์กร", "การตั้งค่าการแจ้งเตือน"];
 }
 function ItemIcon({ item, size }: { item: NotificationItem; size: number }) {
   if (item.scope === "organization") {
@@ -85,6 +91,10 @@ function ItemIcon({ item, size }: { item: NotificationItem; size: number }) {
         return <MonitorIcon size={size} />;
       case "MONITOR_RECOVERED":
         return <CheckIcon size={size} />;
+      case "AUDIT_EXPORT_READY":
+        return <DownloadIcon size={size} />;
+      case "AUDIT_EXPORT_FAILED":
+        return <HistoryIcon size={size} />;
       default:
         return <LockIcon size={size} />;
     }
@@ -111,6 +121,10 @@ function downReason(reason: string) {
 /** Monitor items link to the Detail page; a deleted monitor is reported there. */
 function monitorPath(item: MonitorNotificationItem) {
   return `/organizations/${item.organizationId}/monitors/${item.subject.monitorId}`;
+}
+/** Export results link to the section where the requester's files are listed. */
+function auditExportPath(organizationId: string) {
+  return `/organizations/${organizationId}/audit-log#my-exports`;
 }
 function MonitorFacts({
   item,
@@ -306,6 +320,16 @@ function NotificationList({
               >
                 เปิดมอนิเตอร์
                 <span className="sr-only"> {item.subject.monitorName}</span>
+              </Link>
+            ) : null}
+            {item.scope === "organization" && item.category === "audit-log" ? (
+              <Link
+                to={auditExportPath(item.organizationId)}
+                onClick={onNavigate}
+                data-popover-item={popoverItems ? "" : undefined}
+                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                เปิดบันทึกกิจกรรม
               </Link>
             ) : null}
           </li>
@@ -564,6 +588,20 @@ function NotificationsPageForOrganization({
                 <dt className="text-foreground-secondary">รายละเอียด</dt>
                 <dd>
                   <MonitorFacts item={detail} preferences={preferences} />
+                </dd>
+              </>
+            ) : null}
+            {detail.scope === "organization" &&
+            detail.category === "audit-log" ? (
+              <>
+                <dt className="text-foreground-secondary">บันทึกกิจกรรม</dt>
+                <dd className="mb-3 sm:mb-0">
+                  <Link
+                    to={auditExportPath(detail.organizationId)}
+                    className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    เปิดบันทึกกิจกรรม
+                  </Link>
                 </dd>
               </>
             ) : null}

@@ -401,3 +401,8 @@ export const auditExportNotReadyErrorResponseSchema = auditErrorSchema(
 export const auditExportExpiredErrorResponseSchema = auditErrorSchema(
   "AUDIT_EXPORT_EXPIRED",
 );
+
+/** The note on the page, in the export dialog and in every file (feature.md, step 3). */
+export function auditScopeNote(recordingStartedOn: string): string {
+  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
+}

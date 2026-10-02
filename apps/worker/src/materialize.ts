@@ -114,23 +114,29 @@ export function createMaterializationDependencies(
           `insert into notification_inbox_items
           (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
            event_type, occurred_at, actor_user_id, actor_display_name,
-           subject_monitor_id, subject_monitor_name, monitor_reason, ssl_not_after)
+           subject_monitor_id, subject_monitor_name, monitor_reason, ssl_not_after,
+           subject_audit_export_id)
          select gen_random_uuid()::text,
                 intent.id, intent.origin, recipient.recipient_user_id, intent.scope_kind,
                 intent.tenant_id, intent.event_type, intent.occurred_at,
                 intent.actor_user_id, intent.actor_display_name,
                 intent.subject_monitor_id, intent.subject_monitor_name,
-                intent.monitor_reason, intent.ssl_not_after
+                intent.monitor_reason, intent.ssl_not_after,
+                intent.subject_audit_export_id
          from notification_intents as intent
          join notification_intent_recipients as recipient
            on recipient.intent_id = intent.id
          join member as current_member
            on current_member.organization_id = intent.tenant_id
           and current_member.user_id = recipient.recipient_user_id
-          and exists (
-            select 1
-            from unnest(string_to_array(current_member.role, ',')) as role_token(value)
-            where btrim(role_token.value) in ('owner', 'admin')
+          and (
+            -- An export result goes to its requester while they are a member (P-07).
+            intent.event_type in ('AUDIT_EXPORT_READY', 'AUDIT_EXPORT_FAILED')
+            or exists (
+              select 1
+              from unnest(string_to_array(current_member.role, ',')) as role_token(value)
+              where btrim(role_token.value) in ('owner', 'admin')
+            )
           )
          where intent.id = $1
            and intent.scope_kind = 'tenant'

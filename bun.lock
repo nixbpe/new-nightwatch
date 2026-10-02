@@ -91,6 +91,7 @@
       "name": "@nightwatch/worker",
       "version": "0.0.1",
       "dependencies": {
+        "@nightwatch/api-contract": "workspace:*",
         "@nightwatch/db": "workspace:*",
         "@nightwatch/shared": "workspace:*",
         "bullmq": "^5.71.1",
