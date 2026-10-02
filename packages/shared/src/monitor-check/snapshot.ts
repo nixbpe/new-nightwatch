@@ -85,15 +85,38 @@ function shown(
   return { text: cut.text, cut: cut.cut || dropped };
 }
 
+/**
+ * `http1.ts` lowercases header names, so a secret echoed as `X-Tok123` is stored
+ * as `x-tok123`; names are matched with lowercased needles of every secret form.
+ */
+function nameRedactor(secretValues: readonly string[]): Redactor {
+  const forms = [...secretValues, ...needleForms(secretValues)].flatMap(
+    (value) => {
+      let encoded: string[] = [];
+      try {
+        encoded = [encodeURIComponent(value)];
+      } catch {
+        // A lone surrogate has no URL-encoded form; the other forms still apply.
+      }
+      return [value, JSON.stringify(value).slice(1, -1), ...encoded];
+    },
+  );
+  return createRedactor(
+    [],
+    forms.map((form) => form.toLowerCase()),
+  );
+}
+
 function headersOf(
   response: OutboundResponse,
   redact: Redactor,
+  redactName: Redactor,
   maskedNames: ReadonlySet<string>,
 ): { headers: SnapshotHeader[]; truncated: boolean } {
   const entries = Object.entries(response.headers);
   let truncated = entries.length > MAX_HEADERS;
   const headers = entries.slice(0, MAX_HEADERS).map(([rawName, rawValue]) => {
-    const name = shown(redact, rawName, MAX_HEADER_NAME_CHARS, cutChars);
+    const name = shown(redactName, rawName, MAX_HEADER_NAME_CHARS, cutChars);
     if (maskedNames.has(rawName.toLowerCase())) {
       truncated ||= name.cut;
       return { name: name.text, value: MASK, redacted: true };
@@ -182,7 +205,12 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
     ...ALWAYS_MASKED_HEADERS,
     ...input.secretHeaderNames.map((name) => name.toLowerCase()),
   ]);
-  const { headers, truncated } = headersOf(response, redact, maskedNames);
+  const { headers, truncated } = headersOf(
+    response,
+    redact,
+    nameRedactor(input.secretValues),
+    maskedNames,
+  );
   return {
     ...base,
     url,

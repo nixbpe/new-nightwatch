@@ -654,3 +654,38 @@ describe("more caps and redaction", () => {
     });
   });
 });
+
+describe("header names are lowercased by the executor", () => {
+  it.each(["Tok123", "caf\u00e9-\u0e25\u0e31\u0e1a", "A/B c"])(
+    "masks secret %s echoed in a header name",
+    async (secret) => {
+      const echoed = Buffer.from(secret, "utf8").toString("latin1");
+      const snapshot = await check(
+        response({
+          headers: [
+            [`X-${echoed}`, "v"],
+            [`X-${encodeURIComponent(secret).replaceAll("%", "")}`, "w"],
+          ],
+        }),
+        { headers: [secretHeader("h1", "X-Own")] },
+        { "header.h1": secret },
+      );
+      const names = snapshot.headers.map((h) => h.name);
+      expect(names).toContain("x-\u2022\u2022\u2022");
+      for (const name of names) {
+        expect(name.toLowerCase()).not.toContain(echoed.toLowerCase());
+      }
+    },
+  );
+
+  it("masks an uppercase-hex URL-encoded secret in a header name", async () => {
+    const snapshot = await check(
+      response({ headers: [["X-a%2Fb", "v"]] }),
+      { headers: [secretHeader("h1", "X-Own")] },
+      { "header.h1": "a/b" },
+    );
+    expect(snapshot.headers.map((h) => h.name)).toContain(
+      "x-\u2022\u2022\u2022",
+    );
+  });
+});
