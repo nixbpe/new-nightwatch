@@ -321,7 +321,7 @@ test("P58-10: a 16 KiB body on one unbroken line does not scroll the page at 375
   expect(focused).toBe(true);
 });
 
-test("P58-05: nothing secret reaches the stored response, API replies, tables or captured logs", async ({
+test("P58-05: nothing secret reaches the stored response, API replies and tables (logs are scanned by scan-logs.ts after the run)", async ({
   page,
 }) => {
   test.setTimeout(3 * ROUND_MS);
