@@ -33,7 +33,6 @@ export function AuthEyebrow({ children }: { children: string }) {
   );
 }
 
-// Drop-in for the old AuthPageShell: same title/subtitle/children, restyled.
 export function AuthPageFrame({
   eyebrow,
   title,

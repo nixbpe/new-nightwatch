@@ -278,16 +278,6 @@ export function InboxIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-export function LayersIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg {...iconProps(size)}>
-      <path d="m12 2 9 5-9 5-9-5 9-5Z" />
-      <path d="m3 12 9 5 9-5" />
-      <path d="m3 17 9 5 9-5" />
-    </svg>
-  );
-}
-
 export function LockIcon({ size = 18 }: { size?: number }) {
   return (
     <svg {...iconProps(size)}>

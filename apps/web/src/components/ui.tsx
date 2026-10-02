@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
 
-import { BrandMark } from "./shell/BrandMark";
 import { Button } from "./ui/button";
-import { Card } from "./ui/card";
 import { Label } from "./ui/label";
 
 export { Input } from "./ui/input";
@@ -12,29 +10,6 @@ export const textInputClass =
   "h-10 w-full rounded-md border border-control-border bg-surface px-3 text-base font-normal text-foreground " +
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +
   "disabled:cursor-not-allowed disabled:opacity-60";
-
-export function AuthPageShell({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-}) {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
-      <BrandMark withName />
-      <Card className="w-full max-w-md p-6 sm:p-8">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {subtitle === undefined ? null : (
-          <p className="mt-2 text-sm text-foreground-secondary">{subtitle}</p>
-        )}
-        <div className="mt-6">{children}</div>
-      </Card>
-    </main>
-  );
-}
 
 export function Field({
   label,

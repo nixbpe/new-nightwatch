@@ -1,7 +1,6 @@
 import {
   markAllReadRequestSchema,
   markAllReadResponseSchema,
-  markReadResponseSchema,
   notificationCountResponseSchema,
   notificationDetailSchema,
   notificationListResponseSchema,
@@ -78,12 +77,6 @@ export function openNotification(id: string) {
     method: "POST",
     params: { id },
   }).then((result) => notificationDetailSchema.parse(result));
-}
-export function markNotificationRead(id: string) {
-  return request("/api/notifications/{id}/read", markReadResponseSchema, {
-    method: "PATCH",
-    params: { id },
-  }).then((result) => markReadResponseSchema.parse(result));
 }
 export function markAllNotificationsRead(
   expectedOrganizationId: string | null,
