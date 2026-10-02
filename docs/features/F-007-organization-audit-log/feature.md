@@ -109,6 +109,29 @@ Label ไทย (`P-04`, Product Owner ตัดสิน 2026-10-03 Technical L
 | เป้าหมาย | เป้าหมาย | มอนิเตอร์: ชื่อมอนิเตอร์; สมาชิก: ชื่อที่แสดงของสมาชิก; คำเชิญ: "คำเชิญ role `<role>`" พร้อม `publicId` ไม่แสดงอีเมล; การส่งออก (`organization.audit-log.export`): "ไฟล์ส่งออก CSV" หรือ "ไฟล์ส่งออก JSON" เป็นข้อความ ไม่มีลิงก์; เป้าหมายที่ถูกลบแล้ว: "ถูกลบแล้ว" ไม่มีลิงก์ ลิงก์เป้าหมายมีชื่อที่ระบุชื่อเป้าหมาย เช่น "เปิดมอนิเตอร์ api-prod" สำหรับ `auditor` เป้าหมายที่เป็นสมาชิกแสดงเป็นข้อความ ไม่มีลิงก์ เพราะ `auditor` เปิดหน้าสมาชิกไม่ได้ |
 | การเปลี่ยนแปลง | การเปลี่ยนแปลง | ดู `AC-14` |
 
+### label ของ field ใน การเปลี่ยนแปลง
+
+Product Owner ตัดสิน 2026-10-03 ตาม TYP-04 และ label เดิมของฟอร์มและหน้ารายละเอียดมอนิเตอร์ (`apps/web/src/pages/monitors/form/BasicSection.tsx`, `form/RequestSection.tsx`, `form/AssertionsSection.tsx`, `form/SecretsSection.tsx`, `detail/ConfigCard.tsx`) และหน้าตั้งค่าการแจ้งเตือน (`apps/web/src/pages/OrganizationNotificationSettingsPage.tsx`) field ที่มี key แสดงเป็น "<label> <key>" เช่น "Header X-Trace" โดย key เป็น monospace ไม่เปลี่ยน AC
+
+| Field | Label |
+| ----- | ----- |
+| `role` | บทบาท |
+| `monitorAlertsEnabled` | แจ้งเตือนมอนิเตอร์ |
+| `settingsChangedEnabled` | แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน |
+| `name` | ชื่อมอนิเตอร์ |
+| `url` | URL |
+| `method` | เมธอด |
+| `intervalSeconds` | รอบตรวจ (วินาที) |
+| `timeoutSeconds` | หมดเวลารอ (วินาที) |
+| `header` | Header |
+| `queryParam` | Query parameter |
+| `body` | Body |
+| `authType` | การยืนยันตัวตน |
+| `apiKeyHeaderName` | ชื่อ header ของ API key |
+| `expectedStatus` | รหัสสถานะที่ถือว่าปกติ |
+| `assertions` | เงื่อนไขตรวจสอบ |
+| `secret` | ค่าลับ |
+
 ## UI flow
 
 ร่างร่วมกับ agent:`ux-designer` เมื่อ 2026-10-02 ก่อนคำตัดสิน `OD-02` ถึง `OD-15` Product Owner ปรับตามคำตัดสินแล้ว UX Designer review flow การส่งออกและมุมมองของ `auditor` เมื่อ 2026-10-03 (ผลส่งผ่าน coordinator) Product Owner ปิด finding `B-1`, `B-2`, `M-1`–`M-10`, `a-1`, `a-2` และ `m-5` ในหัวข้อนี้ ยังไม่ตรวจ runtime
