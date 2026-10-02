@@ -102,13 +102,38 @@ const foldHex = (text: string): string =>
   text.replace(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
 
 /**
+ * Folding a text reads at most two characters outside a needle: a `%` (or `%` and
+ * a hex digit) before it can make its first one or two characters escape digits,
+ * and one hex digit after it can complete an escape that starts two characters
+ * before its end. A needle is therefore folded in each of these contexts and the
+ * context is cut off again, so the single scan matches whatever surrounds it.
+ */
+const BEFORE = ["", "%", "%0"];
+const AFTER = ["", "0"];
+
+function foldedVariants(form: string): string[] {
+  const variants = new Set<string>();
+  for (const before of BEFORE) {
+    for (const after of AFTER) {
+      const folded = foldHex(`${before}${form}${after}`);
+      variants.add(folded.slice(before.length, folded.length - after.length));
+    }
+  }
+  return [...variants];
+}
+
+/**
  * RFC 3986 treats `%c3%a9` and `%C3%A9` as equal, but needles hold one case. One
- * scan runs on the text with its hex digits folded to upper case against needles
- * folded the same way, so overlapping matches still merge. The folded text is
- * shown only when it held a secret; text without one keeps its original case.
+ * scan runs on the text with its hex digits folded to upper case against the
+ * folded needles, so overlapping matches still merge. A redactor changes the text
+ * only where a needle matched, so `out === folded` means no secret was found and
+ * the text is shown with its original case.
  */
 function textRedactor(secretValues: readonly string[]): Redactor {
-  const redact = createRedactor([], secretForms(secretValues).map(foldHex));
+  const redact = createRedactor(
+    [],
+    secretForms(secretValues).flatMap(foldedVariants),
+  );
   const wrapped = (text: string, maxChars?: number): string => {
     const folded = foldHex(text);
     const out = redact(folded, maxChars);

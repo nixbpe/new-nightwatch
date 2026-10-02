@@ -852,3 +852,49 @@ describe("secrets that hold percent escapes", () => {
     expect(snapshot.body).toMatchObject({ text: "x=•••" });
   });
 });
+
+describe("fold depends on the characters around a secret", () => {
+  const own = { headers: [secretHeader("h1", "X-Own")] };
+  const body = (text: string) =>
+    response({ headers: [["Content-Type", "text/plain"]], body: text });
+
+  it.each([
+    ["deadbeef1234", "x%deadbeef1234"],
+    ["deadbeef", "x%0deadbeef"],
+    ["deadbeef", "x%0deadbeef end"],
+    ["ab%c", "ab%cd"],
+    ["ab%c", "ab%cdz"],
+    ["ab%c1", "ab%c1"],
+    ["a%b", "a%bc"],
+  ])("masks secret %s inside %s", async (secret, text) => {
+    const snapshot = await check(body(text), own, { "header.h1": secret });
+    if (snapshot.body?.kind !== "text") throw new Error("expected text");
+    expect(snapshot.body.text).toContain("•••");
+    expect(snapshot.body.text.toLowerCase()).not.toContain(secret);
+  });
+
+  it("masks such a secret in a redirect URL", async () => {
+    let requests = 0;
+    const server = await startRawServer({
+      onRequest: ({ socket }) => {
+        requests++;
+        socket.end(
+          requests === 1
+            ? response({
+                line: "HTTP/1.1 302 Found",
+                headers: [["Location", "/cb/x%deadbeef1234"]],
+              })
+            : response({}),
+        );
+      },
+    });
+    servers.push(server);
+    const result = await runCheck(
+      configFor("http", server.port, own),
+      { "header.h1": "deadbeef1234" },
+      deps(),
+    );
+    expect(result.responseSnapshot?.url).toContain("/cb/x%•••");
+    expect(result.responseSnapshot?.url).not.toContain("deadbeef");
+  });
+});
