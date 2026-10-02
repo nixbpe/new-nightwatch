@@ -3,12 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchMeContext } from "../../lib/api/me";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
   fetchMonitorDetail,
   fetchMonitorList,
 } from "../../lib/api/monitors";
 import {
+  A,
   context,
   detail,
   newPath,
@@ -21,6 +23,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
 }));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
+}));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createMonitor: vi.fn(),
@@ -31,6 +37,12 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
 const createMock = vi.mocked(createMonitor);
 
 beforeEach(() => {
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: false,
+  });
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchMonitorList).mockResolvedValue({
     summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
