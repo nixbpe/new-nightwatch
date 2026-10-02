@@ -232,12 +232,11 @@ export function fetchMonitorEvents(
   monitorId: string,
   page: { limit: number; offset: number },
 ): Promise<MonitorEventsResponse> {
-  // The generated type widens nullable unions to `unknown`; parsing again narrows it to the contract.
   return request(
     "/api/organizations/{organizationId}/monitors/{monitorId}/events",
     monitorEventsResponseSchema,
     { params: { organizationId, monitorId }, query: page },
-  ).then((response) => monitorEventsResponseSchema.parse(response));
+  );
 }
 
 /** Owner and admin only: the caller must not request it for another role. */
@@ -249,7 +248,7 @@ export function fetchMonitorLastResponse(
     "/api/organizations/{organizationId}/monitors/{monitorId}/last-response",
     monitorLastResponseResponseSchema,
     { params: { organizationId, monitorId } },
-  ).then((response) => monitorLastResponseResponseSchema.parse(response));
+  );
 }
 
 export function fetchMonitorResponseTimes(
