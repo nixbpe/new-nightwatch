@@ -60,6 +60,7 @@ const emails = {
   roleOwner: `role-owner-${run}@example.test`,
   roleAdmin: `role-admin-${run}@example.test`,
   roleViewer: `role-viewer-${run}@example.test`,
+  auditOwner: `audit-owner-${run}@example.test`,
   revokeOwner: `revoke-owner-${run}@example.test`,
   revokeAdmin: `revoke-admin-${run}@example.test`,
   revokeTarget: `revoke-target-${run}@example.test`,
@@ -120,7 +121,7 @@ type Client = (
   method: "DELETE" | "GET" | "PATCH" | "POST",
   path: string,
   body?: Record<string, unknown>,
-  options?: { invitationId?: string },
+  options?: { invitationId?: string; responseHeaders?: Headers[] },
 ) => Promise<ApiResponse>;
 
 function client(): Client {
@@ -144,6 +145,7 @@ function client(): Client {
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
+    options?.responseHeaders?.push(response.headers);
     for (const setCookie of response.headers.getSetCookie()) {
       const [pair] = setCookie.split(";");
       if (!pair) continue;
@@ -1621,6 +1623,134 @@ describe("organization member self-leave HTTP contract", () => {
         )
       ).rows,
     ).toHaveLength(1);
+  }, 180_000);
+});
+
+describe("audit events over HTTP", () => {
+  const eventsFor = async (requestId: string | null) =>
+    (
+      await owner.sql.query<{ action: string; actor_user_id: string }>(
+        `select action, actor_user_id from audit_events
+         where tenant_id = $1 and request_id = $2`,
+        [roleOrganizationId, requestId],
+      )
+    ).rows;
+
+  async function requestIdOf(
+    call: (options: { responseHeaders: Headers[] }) => Promise<ApiResponse>,
+  ): Promise<{ response: ApiResponse; requestId: string | null }> {
+    const responseHeaders: Headers[] = [];
+    const response = await call({ responseHeaders });
+    return {
+      response,
+      requestId: responseHeaders[0]?.get("x-request-id") ?? null,
+    };
+  }
+
+  it("records the response x-request-id on member, invitation and settings events, and hides the cause when the event insert fails", async () => {
+    const ownerClient = await admit("auditOwner");
+    const ownerId = userIds.get("auditOwner");
+    if (!ownerId) throw new Error("audit owner missing");
+    const targetMemberId = crypto.randomUUID();
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $3, $4, 'owner', now(), now()),
+              ($2, $3, $5, 'viewer', now(), now())`,
+      [
+        crypto.randomUUID(),
+        targetMemberId,
+        roleOrganizationId,
+        ownerId,
+        inviterId,
+      ],
+    );
+
+    const member = await requestIdOf((options) =>
+      ownerClient(
+        "PATCH",
+        `/api/organizations/${roleOrganizationId}/members/${targetMemberId}/role`,
+        { role: "auditor" },
+        options,
+      ),
+    );
+    expect(member.response.status).toBe(200);
+    expect(member.requestId).toBeTruthy();
+    expect(await eventsFor(member.requestId)).toEqual([
+      { action: "organization.member.role.update", actor_user_id: ownerId },
+    ]);
+
+    const invitation = await requestIdOf((options) =>
+      ownerClient(
+        "POST",
+        `/api/organizations/${roleOrganizationId}/invitations`,
+        { email: `audit-invitee-${run}@example.test`, role: "viewer" },
+        options,
+      ),
+    );
+    expect(invitation.response.status).toBe(201);
+    expect(await eventsFor(invitation.requestId)).toEqual([
+      { action: "organization.invitation.create", actor_user_id: ownerId },
+    ]);
+
+    const settingsPath = `/api/organizations/${roleOrganizationId}/notification-settings`;
+    const current = (await ownerClient("GET", settingsPath)).json as {
+      version: number;
+    };
+    const settings = await requestIdOf((options) =>
+      ownerClient(
+        "PATCH",
+        settingsPath,
+        { monitorAlertsEnabled: false, expectedVersion: current.version },
+        options,
+      ),
+    );
+    expect(settings.response.status).toBe(200);
+    expect(await eventsFor(settings.requestId)).toEqual([
+      {
+        action: "organization.notification-settings.monitor-alerts.update",
+        actor_user_id: ownerId,
+      },
+    ]);
+
+    // AC-21 over HTTP: a failing event insert is a generic 500 with no cause.
+    const fn = `audit_events_http_fail_${run.replaceAll("-", "")}`;
+    await owner.sql.query(
+      `create function ${fn}() returns trigger language plpgsql as $$
+       begin
+         if new.tenant_id = '${roleOrganizationId}'::uuid then
+           raise exception 'audit insert blocked by test';
+         end if;
+         return new;
+       end $$`,
+    );
+    await owner.sql.query(
+      `create trigger ${fn} before insert on audit_events
+       for each row execute function ${fn}()`,
+    );
+    try {
+      const after = (await ownerClient("GET", settingsPath)).json as {
+        version: number;
+      };
+      const failed = await ownerClient("PATCH", settingsPath, {
+        monitorAlertsEnabled: true,
+        expectedVersion: after.version,
+      });
+      expect(failed.status).toBe(500);
+      expect(failed.json).toEqual({
+        error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+      });
+      const text = JSON.stringify(failed.json);
+      expect(text).not.toContain("audit insert blocked");
+      expect(text).not.toContain("audit_events");
+      expect(text).not.toMatch(/\bat \S+\.ts/);
+      expect(
+        ((await ownerClient("GET", settingsPath)).json as { version: number })
+          .version,
+      ).toBe(after.version);
+    } finally {
+      await owner.sql.query(`drop trigger ${fn} on audit_events`);
+      await owner.sql.query(`drop function ${fn}()`);
+    }
   }, 180_000);
 });
 

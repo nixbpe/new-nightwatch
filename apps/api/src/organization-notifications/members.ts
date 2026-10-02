@@ -303,8 +303,9 @@ export async function updateOrganizationMemberRole(
         input.role === "owner",
       );
       const previousRole = actorRoleOf(target);
-      // Same role after normalizing: nothing changes, so no write and no event.
-      if (previousRole === input.role) return toMemberResponse(target);
+      // Stored value already equals the request: nothing changes, so no write
+      // and no event. A composite such as "viewer,auditor" is rewritten.
+      if (target.role === input.role) return toMemberResponse(target);
       const updated = await client.query<MemberRow>(
         `update member set role = $3, updated_at = now()
        where organization_id = $1 and id = $2

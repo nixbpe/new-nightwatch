@@ -156,36 +156,51 @@ describe("member events", () => {
     expect(JSON.stringify(event)).not.toContain("Name role-target");
   });
 
-  it("role update to the current role writes no event, no update and the same response", async () => {
+  it("role update to the exact stored role writes no event, no update and the same response", async () => {
     const target = await addMember("role-same", "viewer");
-    const composite = await addMember("role-composite", "viewer,auditor");
     const before = await owner.query<{ updated_at: Date }>(
-      "select updated_at from member where id = any($1::text[]) order by id",
-      [[target.memberId, composite.memberId]],
+      "select updated_at from member where id = $1",
+      [target.memberId],
     );
     const eventsBefore = await eventCount();
-    const sameRole = await updateOrganizationMemberRole(database, {
+    const result = await updateOrganizationMemberRole(database, {
       organizationId,
       actorUserId: ownerPerson.userId,
       memberId: target.memberId,
       role: "viewer",
     });
-    // Stored "viewer,auditor" normalizes to viewer, so viewer is the same role.
-    const compositeResult = await updateOrganizationMemberRole(database, {
-      organizationId,
-      actorUserId: ownerPerson.userId,
-      memberId: composite.memberId,
-      role: "viewer",
-    });
-    expect(sameRole).toMatchObject({ userId: target.userId, role: "viewer" });
-    expect(compositeResult).toMatchObject({ role: "viewer" });
+    expect(result).toMatchObject({ userId: target.userId, role: "viewer" });
     expect(await eventCount()).toBe(eventsBefore);
     const after = await owner.query<{ updated_at: Date }>(
-      "select updated_at from member where id = any($1::text[]) order by id",
-      [[target.memberId, composite.memberId]],
+      "select updated_at from member where id = $1",
+      [target.memberId],
     );
     expect(after.rows).toEqual(before.rows);
-    expect(await memberRole(composite.memberId)).toBe("viewer,auditor");
+  });
+
+  it("role update on a composite stored role rewrites it and writes an event with the normalized role as before", async () => {
+    const composite = await addMember("role-composite", "viewer,auditor");
+    const [event, ...rest] = await written(() =>
+      updateOrganizationMemberRole(database, {
+        organizationId,
+        actorUserId: ownerPerson.userId,
+        memberId: composite.memberId,
+        role: "viewer",
+      }),
+    );
+    expect(rest).toHaveLength(0);
+    expect(event).toMatchObject({
+      action: "organization.member.role.update",
+      target_id: composite.userId,
+      changes: [
+        {
+          field: "role",
+          before: roleValue("viewer"),
+          after: roleValue("viewer"),
+        },
+      ],
+    });
+    expect(await memberRole(composite.memberId)).toBe("viewer");
   });
 
   it("revoke writes one event that outlives the removed member", async () => {
@@ -228,7 +243,6 @@ describe("member events", () => {
 
   it("denied role update, revoke and leave write no event", async () => {
     const target = await addMember("denied-target", "viewer");
-    const lastOwner = await addMember("denied-owner-check", "viewer");
     const before = await eventCount();
     await expect(
       updateOrganizationMemberRole(database, {
@@ -253,7 +267,6 @@ describe("member events", () => {
     ).rejects.toMatchObject({ code: "MEMBERSHIP_DENIED" });
     expect(await eventCount()).toBe(before);
     expect(await memberRole(target.memberId)).toBe("viewer");
-    expect(await memberRole(lastOwner.memberId)).toBe("viewer");
   });
 });
 
