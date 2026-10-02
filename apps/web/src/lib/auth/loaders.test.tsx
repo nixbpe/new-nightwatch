@@ -14,6 +14,12 @@ import {
 } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  auditLogQueryKeys,
+  fetchAuditActors,
+  fetchAuditEvent,
+  fetchAuditEvents,
+} from "../api/audit-log";
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
@@ -38,6 +44,8 @@ import {
 import { detail } from "../../pages/monitors/detail-test-support";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
+  auditLogEventLoader,
+  auditLogLoader,
   monitorCreateLoader,
   monitorDetailLoader,
   monitorEditLoader,
@@ -105,6 +113,15 @@ vi.mock("../api/monitors", async (importOriginal) => {
     ...original,
     fetchMonitorList: vi.fn(),
     fetchMonitorDetail: vi.fn(),
+  };
+});
+vi.mock("../api/audit-log", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return {
+    ...original,
+    fetchAuditEvents: vi.fn(),
+    fetchAuditEvent: vi.fn(),
+    fetchAuditActors: vi.fn(),
   };
 });
 vi.mock("../api/members", async (importOriginal) => {
@@ -460,6 +477,94 @@ describe("workspaceLoader overview prefetch", () => {
 
     expect(await screen.findByText("protected-area")).toBeInTheDocument();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("audit log loaders", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const listRoute: RouteObject = {
+    path: "/organizations/:organizationId/audit-log",
+    loader: auditLogLoader,
+    element: <div>audit-area</div>,
+  };
+  const eventRoute: RouteObject = {
+    path: "/organizations/:organizationId/audit-log/:eventId",
+    loader: auditLogEventLoader,
+    element: <div>audit-event-area</div>,
+  };
+  afterEach(() => {
+    sessionState.data = null;
+    sessionStorage.clear();
+    resetQueryClientRegistry();
+    vi.mocked(fetchAuditEvents).mockReset();
+    vi.mocked(fetchAuditEvent).mockReset();
+    vi.mocked(fetchAuditActors).mockReset();
+    fetchMeContextMock.mockReset();
+  });
+  const as = (role: "owner" | "admin" | "auditor" | "viewer") =>
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: [{ id: organizationId, name: "Acme", slug: "acme", role }],
+      lastActiveTenantId: organizationId,
+    });
+
+  it.each(["owner", "admin", "auditor"] as const)(
+    "prefetches the list and the actors once for a %s",
+    async (role) => {
+      sessionState.data = { user: VERIFIED };
+      as(role);
+      vi.mocked(fetchAuditEvents).mockResolvedValue({
+        organizationId,
+        asOf: "2026-10-03T07:02:11.000Z",
+        retainedFrom: "2025-10-03T07:02:11.000Z",
+        recordingStartedAt: "2025-06-01T00:00:00.000Z",
+        events: [],
+        page: { limit: 50, offset: 0, total: 0 },
+      });
+      vi.mocked(fetchAuditActors).mockResolvedValue({ actors: [] });
+      renderAt([listRoute], `/organizations/${organizationId}/audit-log`);
+
+      expect(await screen.findByText("audit-area")).toBeInTheDocument();
+      expect(fetchAuditEvents).toHaveBeenCalledTimes(1);
+      expect(fetchAuditActors).toHaveBeenCalledTimes(1);
+      const [, params] = vi.mocked(fetchAuditEvents).mock.calls[0] ?? [];
+      expect(
+        peekStagedQueryClient()?.client.getQueryData(
+          auditLogQueryKeys.events(organizationId, params ?? { offset: 0 }),
+        ),
+      ).toBeDefined();
+      // The 7-day default is cut to the minute so the page asks for the same key.
+      expect(new Date(params?.from ?? "").getUTCSeconds()).toBe(0);
+    },
+  );
+
+  it.each(["viewer"] as const)("requests nothing for a %s", async (role) => {
+    sessionState.data = { user: VERIFIED };
+    as(role);
+    renderAt(
+      [listRoute, eventRoute],
+      `/organizations/${organizationId}/audit-log`,
+    );
+    expect(await screen.findByText("audit-area")).toBeInTheDocument();
+    expect(fetchAuditEvents).not.toHaveBeenCalled();
+    expect(fetchAuditActors).not.toHaveBeenCalled();
+  });
+
+  it("requests nothing for an Organization the user does not belong to", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    renderAt([eventRoute], `/organizations/${organizationId}/audit-log/evt-1`);
+    expect(await screen.findByText("audit-event-area")).toBeInTheDocument();
+    expect(fetchAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("prefetches the event for an auditor", async () => {
+    sessionState.data = { user: VERIFIED };
+    as("auditor");
+    vi.mocked(fetchAuditEvent).mockRejectedValue(new Error("not prefetched"));
+    renderAt([eventRoute], `/organizations/${organizationId}/audit-log/evt-1`);
+    expect(await screen.findByText("audit-event-area")).toBeInTheDocument();
+    expect(fetchAuditEvent).toHaveBeenCalledWith(organizationId, "evt-1");
   });
 });
 

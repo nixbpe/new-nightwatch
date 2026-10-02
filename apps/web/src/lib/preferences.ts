@@ -138,3 +138,88 @@ export function formatDateTime(date: Date, preferences: Preferences): string {
     }).format(date);
   }
 }
+
+type AuditParts = Record<
+  "year" | "month" | "day" | "hour" | "minute" | "second",
+  string
+>;
+
+// Audit times are Gregorian, Latin digits and 24-hour whatever the display preferences say (F-007).
+function auditParts(date: Date, timeZone: string): AuditParts {
+  const make = (zone: string) =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      calendar: "gregory",
+      numberingSystem: "latn",
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = make(timeZone);
+  } catch {
+    formatter = make(defaultPreferences().timeZone);
+  }
+  const parts: Record<string, string> = {};
+  for (const part of formatter.formatToParts(date)) {
+    parts[part.type] = part.value;
+  }
+  return parts as AuditParts;
+}
+
+/** `YYYY-MM-DD HH:mm:ss` in the preference time zone. */
+export function formatAuditTimestamp(
+  date: Date,
+  preferences: Preferences,
+): string {
+  return `${formatAuditDate(date, preferences)} ${formatAuditTime(date, preferences)}`;
+}
+
+/** `YYYY-MM-DD` in the preference time zone. */
+export function formatAuditDate(date: Date, preferences: Preferences): string {
+  const p = auditParts(date, preferences.timeZone);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+/** `HH:mm:ss` in the preference time zone. */
+export function formatAuditTime(date: Date, preferences: Preferences): string {
+  const p = auditParts(date, preferences.timeZone);
+  return `${p.hour}:${p.minute}:${p.second}`;
+}
+
+/** The instant a wall-clock day boundary (`YYYY-MM-DD`, start or end of day) falls on in `timeZone`. */
+export function zonedDayBoundary(
+  day: string,
+  timeZone: string,
+  boundary: "start" | "end",
+): Date {
+  const [year, month, date] = day.split("-").map(Number) as [
+    number,
+    number,
+    number,
+  ];
+  const wall =
+    boundary === "start"
+      ? Date.UTC(year, month - 1, date, 0, 0, 0, 0)
+      : Date.UTC(year, month - 1, date, 23, 59, 59, 999);
+  const offsetAt = (instant: number) => {
+    const p = auditParts(new Date(instant), timeZone);
+    const asUtc = Date.UTC(
+      Number(p.year),
+      Number(p.month) - 1,
+      Number(p.day),
+      Number(p.hour),
+      Number(p.minute),
+      Number(p.second),
+    );
+    return asUtc - Math.floor(instant / 1000) * 1000;
+  };
+  // Two passes settle the offset when the day boundary sits next to a DST change.
+  const first = wall - offsetAt(wall);
+  return new Date(wall - offsetAt(first));
+}

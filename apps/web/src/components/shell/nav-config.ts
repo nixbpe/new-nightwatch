@@ -68,6 +68,12 @@ export const NAV_ITEMS: NavItem[] = [
         path: "/organizations/:organizationId/notification-settings",
         roles: ["owner", "admin"],
       },
+      {
+        label: "บันทึกกิจกรรม",
+        icon: "history",
+        path: "/organizations/:organizationId/audit-log",
+        roles: ["owner", "admin", "auditor"],
+      },
     ],
   },
 ];

@@ -3,11 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   defaultPreferences,
+  formatAuditDate,
+  formatAuditTime,
+  formatAuditTimestamp,
   formatDateTime,
   PREFERENCES_KEY,
   readPreferences,
   usePreferences,
   writePreferences,
+  zonedDayBoundary,
   type Preferences,
 } from "./preferences";
 
@@ -121,5 +125,57 @@ describe("formatDateTime", () => {
     const expected = formatDateTime(instant, defaultPreferences());
 
     expect(invalid).toBe(expected);
+  });
+});
+
+describe("audit timestamps", () => {
+  const prefs = (timeZone: string): Preferences => ({
+    ...STORED,
+    timeZone,
+    hourCycle: "h12",
+  });
+  const instant = new Date("2026-10-02T07:01:55.000Z");
+
+  it("renders Gregorian year, seconds and 24-hour time in the preference zone", () => {
+    expect(formatAuditTimestamp(instant, prefs("Asia/Bangkok"))).toBe(
+      "2026-10-02 14:01:55",
+    );
+    expect(formatAuditTimestamp(instant, prefs("America/New_York"))).toBe(
+      "2026-10-02 03:01:55",
+    );
+    expect(formatAuditDate(instant, prefs("Pacific/Auckland"))).toBe(
+      "2026-10-02",
+    );
+    expect(formatAuditTime(instant, prefs("Asia/Kolkata"))).toBe("12:31:55");
+  });
+
+  it("shows midnight as 00 and moves the date with the zone", () => {
+    const midnight = new Date("2026-10-01T17:00:00.000Z");
+    expect(formatAuditTimestamp(midnight, prefs("Asia/Bangkok"))).toBe(
+      "2026-10-02 00:00:00",
+    );
+    expect(formatAuditDate(midnight, prefs("UTC"))).toBe("2026-10-01");
+  });
+
+  it("falls back to the default zone for an unknown one", () => {
+    expect(formatAuditDate(instant, prefs("Not/AZone"))).toMatch(
+      /^\d{4}-\d{2}-\d{2}$/,
+    );
+  });
+
+  it("maps a calendar day to its boundaries in the zone", () => {
+    expect(
+      zonedDayBoundary("2026-10-02", "Asia/Bangkok", "start").toISOString(),
+    ).toBe("2026-10-01T17:00:00.000Z");
+    expect(
+      zonedDayBoundary("2026-10-02", "Asia/Bangkok", "end").toISOString(),
+    ).toBe("2026-10-02T16:59:59.999Z");
+    // DST starts 2026-03-08 in New York: the day is 23 hours long.
+    expect(
+      zonedDayBoundary("2026-03-08", "America/New_York", "start").toISOString(),
+    ).toBe("2026-03-08T05:00:00.000Z");
+    expect(
+      zonedDayBoundary("2026-03-08", "America/New_York", "end").toISOString(),
+    ).toBe("2026-03-09T03:59:59.999Z");
   });
 });

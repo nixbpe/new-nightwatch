@@ -6,6 +6,12 @@ import {
   type LoaderFunctionArgs,
 } from "react-router";
 
+import {
+  fetchAuditActors,
+  fetchAuditEvent,
+  fetchAuditEvents,
+  auditLogQueryKeys,
+} from "../api/audit-log";
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import {
@@ -17,6 +23,12 @@ import {
 } from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import { authClient } from "../auth-client";
+import {
+  floorToMinute,
+  parseAuditFilters,
+  toListParams,
+} from "../../pages/audit-log/filters";
+import { readPreferences } from "../preferences";
 import {
   fetchNotifications,
   fetchOrganizationNotificationSettings,
@@ -249,6 +261,87 @@ export async function monitorDetailLoader({
       queryKey: monitorQueryKeys.detail(organizationId, monitorId),
       queryFn: () => fetchMonitorDetail(organizationId, monitorId),
       staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
+}
+
+// WEB-04: prefetch only for an Organization the user belongs to with a role that may read the log;
+// anything else renders the page's own denied state and must not trigger a request.
+async function resolveAuditReader(
+  request: Request,
+  organizationId: string | undefined,
+): Promise<Response | { userId: string; organizationId: string } | null> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  if (organizationId === undefined) {
+    return null;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  const role = context?.organizations.find(
+    (organization) => organization.id === organizationId,
+  )?.role;
+  return role === "owner" || role === "admin" || role === "auditor"
+    ? { userId: sessionOrRedirect.user.id, organizationId }
+    : null;
+}
+
+export async function auditLogLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const reader = await resolveAuditReader(request, params.organizationId);
+  if (reader === null || reader instanceof Response) {
+    return reader;
+  }
+  const filters = parseAuditFilters(new URL(request.url).searchParams);
+  const listParams = toListParams(filters, {
+    now: floorToMinute(new Date()),
+    timeZone: readPreferences().timeZone,
+  });
+  const queryClient = resolveQueryClientForIdentity(reader.userId);
+  await Promise.all([
+    queryClient
+      .query({
+        queryKey: auditLogQueryKeys.events(reader.organizationId, listParams),
+        queryFn: () => fetchAuditEvents(reader.organizationId, listParams),
+        staleTime: "static",
+        retry: false,
+      })
+      .catch(() => undefined),
+    queryClient
+      .query({
+        queryKey: auditLogQueryKeys.actors(reader.organizationId),
+        queryFn: () => fetchAuditActors(reader.organizationId),
+        staleTime: "static",
+        retry: false,
+      })
+      .catch(() => undefined),
+  ]);
+  return null;
+}
+
+// A missing or foreign event is left to the page, which shows the uniform "not found" state.
+export async function auditLogEventLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const reader = await resolveAuditReader(request, params.organizationId);
+  const eventId = params.eventId;
+  if (reader === null || reader instanceof Response) {
+    return reader;
+  }
+  if (eventId === undefined) {
+    return null;
+  }
+  await resolveQueryClientForIdentity(reader.userId)
+    .query({
+      queryKey: auditLogQueryKeys.event(reader.organizationId, eventId),
+      queryFn: () => fetchAuditEvent(reader.organizationId, eventId),
+      staleTime: "static",
+      retry: false,
     })
     .catch(() => undefined);
   return null;

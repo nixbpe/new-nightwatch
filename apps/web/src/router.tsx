@@ -14,6 +14,8 @@ import { BrandMark } from "./components/shell/BrandMark";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import {
+  auditLogEventLoader,
+  auditLogLoader,
   monitorCreateLoader,
   monitorDetailLoader,
   monitorEditLoader,
@@ -36,6 +38,8 @@ import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { AuditEventPage } from "./pages/audit-log/AuditEventPage";
+import { AuditLogPage } from "./pages/audit-log/AuditLogPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
@@ -175,6 +179,16 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/members",
             loader: organizationMembersLoader,
             element: <OrganizationMembersPage />,
+          },
+          {
+            path: "/organizations/:organizationId/audit-log",
+            loader: auditLogLoader,
+            element: <AuditLogPage />,
+          },
+          {
+            path: "/organizations/:organizationId/audit-log/:eventId",
+            loader: auditLogEventLoader,
+            element: <AuditEventPage />,
           },
           // The layout loader gates the session and prefetches me/context for every tab.
           {
