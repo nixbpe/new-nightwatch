@@ -249,6 +249,8 @@ export const notificationIntents = pgTable(
     actorDisplayName: text("actor_display_name"),
     // No FK: a monitor notification outlives its monitor (AC-19).
     subjectMonitorId: uuid("subject_monitor_id"),
+    // No FK: the export row is deleted after 7 days, the notification after 30.
+    subjectAuditExportId: uuid("subject_audit_export_id"),
     subjectMonitorName: text("subject_monitor_name"),
     monitorReason: text("monitor_reason"),
     sslNotAfter: timestamp("ssl_not_after", {
@@ -330,6 +332,8 @@ export const notificationInboxItems = pgTable(
     actorDisplayName: text("actor_display_name"),
     // No FK: a monitor notification outlives its monitor (AC-19).
     subjectMonitorId: uuid("subject_monitor_id"),
+    // No FK: the export row is deleted after 7 days, the notification after 30.
+    subjectAuditExportId: uuid("subject_audit_export_id"),
     subjectMonitorName: text("subject_monitor_name"),
     monitorReason: text("monitor_reason"),
     sslNotAfter: timestamp("ssl_not_after", {
@@ -712,6 +716,96 @@ export const auditEvents = pgTable(
   ],
 );
 
+export const auditExports = pgTable(
+  "audit_exports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    requestedBy: text("requested_by").notNull(),
+    format: text("format").notNull(),
+    filters: jsonb("filters").notNull(),
+    timeZone: text("time_zone").notNull(),
+    snapshotAt: timestamp("snapshot_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    failureCode: text("failure_code"),
+    rowCount: integer("row_count"),
+    byteSize: integer("byte_size"),
+    content: bytea("content"),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    fileExpiresAt: timestamp("file_expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    contentPurgedAt: timestamp("content_purged_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+  },
+  (table) => [
+    unique("audit_exports_id_scope_key").on(
+      table.id,
+      table.tenantId,
+      table.requestedBy,
+    ),
+    index("audit_exports_list_idx").on(
+      table.tenantId,
+      table.requestedBy,
+      table.createdAt.desc(),
+    ),
+    index("audit_exports_purge_idx")
+      .on(table.fileExpiresAt)
+      .where(
+        sql`${table.contentPurgedAt} is null and ${table.fileExpiresAt} is not null`,
+      ),
+  ],
+);
+
+// Claim ledger: routing data only, so the claim role never reads the export.
+export const auditExportJobs = pgTable(
+  "audit_export_jobs",
+  {
+    exportId: uuid("export_id").primaryKey(),
+    tenantId: uuid("tenant_id").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    state: text("state").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    claimToken: uuid("claim_token"),
+    claimedUntil: timestamp("claimed_until", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    createdAt: timestamp("created_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "audit_export_jobs_export_fkey",
+      columns: [table.exportId, table.tenantId, table.requestedBy],
+      foreignColumns: [
+        auditExports.id,
+        auditExports.tenantId,
+        auditExports.requestedBy,
+      ],
+    }).onDelete("cascade"),
+    uniqueIndex("audit_export_jobs_one_in_flight")
+      .on(table.tenantId, table.requestedBy)
+      .where(sql`${table.state} in ('queued', 'running')`),
+    index("audit_export_jobs_claim_idx").on(table.state, table.claimedUntil),
+  ],
+);
+
 export const schema = {
   user,
   session,
@@ -735,4 +829,6 @@ export const schema = {
   monitorIncidents,
   monitorEvents,
   auditEvents,
+  auditExports,
+  auditExportJobs,
 };

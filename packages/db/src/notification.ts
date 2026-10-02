@@ -301,6 +301,61 @@ export async function insertMonitorNotificationIntent(
   return true;
 }
 
+/**
+ * Writes the one notification an audit export raises, on the caller's open
+ * tenant transaction (so it commits or rolls back with the state change that
+ * caused it). The only recipient is the requester, and only while they are
+ * still a member: a requester who lost owner/admin still hears that the file
+ * failed (P-07), one who left the Organization does not. The origin is unique
+ * per export and outcome, so a repeated call writes nothing and returns false.
+ */
+export async function insertAuditExportNotificationIntent(
+  client: { query: PoolClient["query"] },
+  input: {
+    tenantId: string;
+    exportId: string;
+    requesterUserId: string;
+    outcome: "ready" | "failed";
+  },
+): Promise<boolean> {
+  assertNonEmpty(input.tenantId, "tenantId");
+  assertNonEmpty(input.requesterUserId, "requesterUserId");
+  const stillMember = await client.query(
+    "select 1 from member where organization_id = $1 and user_id = $2",
+    [input.tenantId, input.requesterUserId],
+  );
+  if (stillMember.rowCount === 0) return false;
+  const intentId = crypto.randomUUID();
+  const origin = `audit-export:${input.exportId}:${input.outcome}`;
+  const inserted = await client.query(
+    `insert into notification_intents
+       (id, scope_kind, tenant_id, origin, event_type, occurred_at,
+        subject_audit_export_id)
+     values ($1, 'tenant', $2, $3, $4, now(), $5)
+     on conflict (origin) do nothing
+     returning id`,
+    [
+      intentId,
+      input.tenantId,
+      origin,
+      input.outcome === "ready" ? "AUDIT_EXPORT_READY" : "AUDIT_EXPORT_FAILED",
+      input.exportId,
+    ],
+  );
+  if (inserted.rowCount === 0) return false;
+  await client.query(
+    `insert into notification_intent_recipients
+       (intent_id, origin, recipient_user_id, scope_kind, tenant_id)
+     values ($1, $2, $3, 'tenant', $4)`,
+    [intentId, origin, input.requesterUserId, input.tenantId],
+  );
+  await client.query("select create_notification_dispatch($1, $2)", [
+    crypto.randomUUID(),
+    intentId,
+  ]);
+  return true;
+}
+
 /** Claims at most 100 ledger rows without granting account-domain discovery. */
 export async function claimNotificationDispatches(
   database: Database,

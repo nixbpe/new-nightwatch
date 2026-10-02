@@ -7,7 +7,11 @@ export {
   type Database,
 } from "./client";
 export { schema } from "./schema";
-export { withTenantContext, withTenantContextRaw } from "./tenant-context";
+export {
+  withTenantContext,
+  withTenantContextRaw,
+  withTenantUserContextRaw,
+} from "./tenant-context";
 export {
   claimNotificationDispatches,
   completeNotificationDispatch,
@@ -15,6 +19,7 @@ export {
   createNotificationDispatch,
   initializeAccountMfaState,
   insertAccountNotificationIntent,
+  insertAuditExportNotificationIntent,
   insertMonitorNotificationIntent,
   markNotificationDispatchEnqueued,
   recordAccountMfaTransition,
@@ -31,7 +36,15 @@ export {
   type NotificationDispatchFailureReason,
   type NotificationTransaction,
 } from "./notification";
-export { ensureAuditEventPartitions } from "./audit";
+export {
+  claimAuditExport,
+  ensureAuditEventPartitions,
+  failStaleAuditExports,
+  findStaleAuditExports,
+  purgeAuditExports,
+  purgeExpiredAuditEvents,
+  type AuditExportClaim,
+} from "./audit";
 export {
   claimDueMonitorChecks,
   ensureMonitorPartitions,
