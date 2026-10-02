@@ -32,7 +32,11 @@ const UUID_PATTERN =
 // highest-priority valid token wins, so "viewer,auditor" is a viewer. The
 // result is checked again in TypeScript before any row is returned, and the
 // data CTEs return nothing unless the SQL role may read.
-const GATE_CTES = `
+type ReadRole = "owner" | "admin" | "auditor";
+
+function gateCtes(readRoles: readonly ReadRole[]): string {
+  const allowedList = readRoles.map((role) => `'${role}'`).join(", ");
+  return `
   me as (
     select role from member where organization_id = $1 and user_id = $2
   ),
@@ -51,7 +55,7 @@ const GATE_CTES = `
            (select role from me) as "rawRole"
   ),
   allowed as (
-    select (member and role in ('owner', 'admin', 'auditor')) as ok,
+    select (member and role in (${allowedList})) as ok,
            member, "rawRole"
     from gate
   ),
@@ -62,21 +66,25 @@ const GATE_CTES = `
            now() as db_now
     from organization o where o.id = $1
   )`;
+}
+
+const GATE_CTES = gateCtes(["owner", "admin", "auditor"]);
+const EXPORT_GATE_CTES = gateCtes(["owner", "admin"]);
 
 type Gate = { member: boolean; ok: boolean; rawRole: string | null };
 
-function assertAllowed(row: Gate): void {
+function assertAllowed(
+  row: Gate,
+  readRoles: readonly ReadRole[] = ["owner", "admin", "auditor"],
+  deniedMessage = "คุณไม่มีสิทธิ์ดูบันทึกกิจกรรม",
+): void {
   if (!row.member || row.rawRole === null) {
     throw new AppError(403, "MEMBERSHIP_DENIED", "คุณไม่ใช่สมาชิกขององค์กรนี้");
   }
   const role = normalizeOrganizationRole(row.rawRole);
   if (role === null) throw new Error("member has no recognized role");
-  if (!row.ok || (role !== "owner" && role !== "admin" && role !== "auditor")) {
-    throw new AppError(
-      403,
-      "PERMISSION_DENIED",
-      "คุณไม่มีสิทธิ์ดูบันทึกกิจกรรม",
-    );
+  if (!row.ok || !(readRoles as readonly string[]).includes(role)) {
+    throw new AppError(403, "PERMISSION_DENIED", deniedMessage);
   }
 }
 
@@ -187,47 +195,19 @@ function actionCodesMatching(q: string): string[] {
   );
 }
 
-type ListRow = Gate & {
-  asOf: string | null;
-  retainedFrom: string | null;
-  recordingStartedAt: string | null;
-  total: number;
-  events: EventRow[];
-};
-
-export async function listAuditEvents(
-  database: Database,
-  identity: AuditReadIdentity,
-  query: AuditLogListQuery,
-): Promise<AuditLogListResponse> {
-  const q = query.q;
-  const params = [
-    identity.organizationId,
-    identity.actorUserId,
-    query.from ?? null,
-    query.to ?? null,
-    query.categories ?? null,
-    query.actorUserId ?? null,
-    q === undefined ? null : `%${escapeLike(q)}%`,
-    query.asOf ?? null,
-    q === undefined ? null : actionCodesMatching(q),
-    q !== undefined && UUID_PATTERN.test(q) ? q.toLowerCase() : null,
-    query.limit,
-    query.offset,
-  ];
-  return withTenantContextRaw(
-    database,
-    identity.organizationId,
-    async (client) => {
-      const result = await client.query<ListRow>(
-        `with ${GATE_CTES},
+// The events a filter selects, shared by the list and the export count so a
+// file contains exactly the rows the page shows. Parameters: $1 organization,
+// $3 from, $4 to, $5 categories, $6 actor, $7 search pattern, $8 asOf, $9
+// matching action codes, $10 search text as a UUID.
+function filteredEventCtes(columns: string): string {
+  return `
          win as (
            select b.retained_from, b.started,
                   least(coalesce($8::timestamptz, b.db_now), b.db_now) as as_of
            from bounds b
          ),
          scoped as (
-           select ${EVENT_COLUMNS}
+           select ${columns}
            from audit_events e
            ${EVENT_JOINS}
            cross join win w
@@ -246,7 +226,56 @@ export async function listAuditEvents(
                or ($10::uuid is not null
                    and (e.id = $10::uuid
                         or (e.target_type = 'invitation' and e.target_id = $10::uuid::text))))
-         ),
+         )`;
+}
+
+function filterParameters(
+  identity: AuditReadIdentity,
+  query: Pick<
+    AuditLogListQuery,
+    "from" | "to" | "categories" | "actorUserId" | "q" | "asOf"
+  >,
+): unknown[] {
+  const q = query.q;
+  return [
+    identity.organizationId,
+    identity.actorUserId,
+    query.from ?? null,
+    query.to ?? null,
+    query.categories ?? null,
+    query.actorUserId ?? null,
+    q === undefined ? null : `%${escapeLike(q)}%`,
+    query.asOf ?? null,
+    q === undefined ? null : actionCodesMatching(q),
+    q !== undefined && UUID_PATTERN.test(q) ? q.toLowerCase() : null,
+  ];
+}
+
+type ListRow = Gate & {
+  asOf: string | null;
+  retainedFrom: string | null;
+  recordingStartedAt: string | null;
+  total: number;
+  events: EventRow[];
+};
+
+export async function listAuditEvents(
+  database: Database,
+  identity: AuditReadIdentity,
+  query: AuditLogListQuery,
+): Promise<AuditLogListResponse> {
+  const params = [
+    ...filterParameters(identity, query),
+    query.limit,
+    query.offset,
+  ];
+  return withTenantContextRaw(
+    database,
+    identity.organizationId,
+    async (client) => {
+      const result = await client.query<ListRow>(
+        `with ${GATE_CTES},
+         ${filteredEventCtes(EVENT_COLUMNS)},
          page as (
            select * from scoped order by "occurredAt" desc, id desc
            limit $11 offset $12
@@ -385,6 +414,45 @@ export async function listAuditActors(
       if (!row) throw new Error("audit actors query returned no row");
       assertAllowed(row);
       return { actors: row.actors };
+    },
+  );
+}
+
+type CountRow = Gate & { total: number };
+
+/**
+ * How many events an export with these filters would hold. Only owner and
+ * admin get a number: membership, role and the count run in one statement, so
+ * an auditor or viewer learns nothing about the size (B-01).
+ */
+export async function countAuditEventsForExport(
+  database: Database,
+  identity: AuditReadIdentity,
+  query: Pick<
+    AuditLogListQuery,
+    "from" | "to" | "categories" | "actorUserId" | "q" | "asOf"
+  >,
+): Promise<number> {
+  return withTenantContextRaw(
+    database,
+    identity.organizationId,
+    async (client) => {
+      const result = await client.query<CountRow>(
+        `with ${EXPORT_GATE_CTES},
+         ${filteredEventCtes("e.id")}
+         select a.member, a.ok, a."rawRole",
+                (select count(*)::int from scoped) as total
+         from allowed a`,
+        filterParameters(identity, query),
+      );
+      const row = result.rows[0];
+      if (!row) throw new Error("audit export count query returned no row");
+      assertAllowed(
+        row,
+        ["owner", "admin"],
+        "คุณไม่มีสิทธิ์ส่งออกบันทึกกิจกรรม",
+      );
+      return row.total;
     },
   );
 }

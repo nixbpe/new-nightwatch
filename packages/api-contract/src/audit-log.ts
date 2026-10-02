@@ -276,3 +276,128 @@ export const auditValidationErrorResponseSchema =
 export const auditEventNotFoundErrorResponseSchema = auditErrorSchema(
   "AUDIT_EVENT_NOT_FOUND",
 );
+
+// ---- Export ----------------------------------------------------------------
+
+export const AUDIT_EXPORT_MAX_EVENTS = 50_000;
+export const AUDIT_EXPORT_MAX_BYTES = 25 * 1024 * 1024;
+export const AUDIT_EXPORT_FILE_TTL_HOURS = 24;
+export const AUDIT_EXPORT_LIST_MAX = 20;
+
+export const AUDIT_EXPORT_FAILURE_CODES = [
+  "EXPORT_TOO_LARGE",
+  "EXPORT_FAILED",
+  "REQUESTER_NOT_AUTHORIZED",
+] as const;
+export type AuditExportFailureCode =
+  (typeof AUDIT_EXPORT_FAILURE_CODES)[number];
+
+const auditExportTimeZoneSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine(
+    (timeZone) => {
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "Invalid IANA time zone." },
+  );
+
+const auditSearchTextSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(AUDIT_SEARCH_MAX_LENGTH)
+  // eslint-disable-next-line no-control-regex -- the point is to reject them
+  .refine((value) => !/[\u0000-\u001f\u007f]/.test(value));
+
+const auditExportFiltersInputSchema = z.object({
+  from: isoDateTime,
+  to: isoDateTime,
+  categories: z
+    .array(auditCategorySchema)
+    .max(AUDIT_CATEGORIES.length)
+    .optional(),
+  actorUserId: z.string().min(1).max(128).optional(),
+  q: auditSearchTextSchema.optional(),
+});
+
+export const auditExportRequestSchema = z
+  .object({
+    format: z.enum(["csv", "json"]),
+    timeZone: auditExportTimeZoneSchema,
+    filters: auditExportFiltersInputSchema,
+    asOf: isoDateTime,
+  })
+  .refine(
+    (body) => Date.parse(body.filters.from) <= Date.parse(body.filters.to),
+    { message: "from is after to" },
+  );
+export type AuditExportRequest = z.output<typeof auditExportRequestSchema>;
+
+export const auditExportParamsSchema = auditLogOrganizationParamsSchema.extend({
+  exportId: z.string().min(1).max(256),
+});
+
+/** The requester's own filters, `q` included, so a retry can reuse them. */
+export const auditExportRecordSchema = z.object({
+  id: z.uuid(),
+  format: z.enum(["csv", "json"]),
+  status: z.enum(["generating", "ready", "failed", "expired"]),
+  filters: z.object({
+    from: z.iso.datetime({ offset: true }),
+    to: z.iso.datetime({ offset: true }),
+    categories: z.array(auditCategorySchema),
+    actorUserId: z.string().nullable(),
+    q: z.string().nullable(),
+  }),
+  timeZone: z.string(),
+  requestedAt: z.iso.datetime({ offset: true }),
+  completedAt: z.iso.datetime({ offset: true }).nullable(),
+  expiresAt: z.iso.datetime({ offset: true }).nullable(),
+  rowCount: z.number().int().nullable(),
+  failureCode: z.enum(AUDIT_EXPORT_FAILURE_CODES).nullable(),
+});
+export type AuditExportRecord = z.infer<typeof auditExportRecordSchema>;
+
+export const auditExportCreateResponseSchema = z.object({
+  export: auditExportRecordSchema,
+});
+export type AuditExportCreateResponse = z.infer<
+  typeof auditExportCreateResponseSchema
+>;
+
+export const auditExportListResponseSchema = z.object({
+  exports: z.array(auditExportRecordSchema),
+  inProgress: z.boolean(),
+});
+export type AuditExportListResponse = z.infer<
+  typeof auditExportListResponseSchema
+>;
+
+export const auditExportEmptyErrorResponseSchema =
+  auditErrorSchema("AUDIT_EXPORT_EMPTY");
+export const auditExportTooLargeErrorResponseSchema = z.object({
+  error: z.object({
+    code: z.literal("AUDIT_EXPORT_TOO_LARGE"),
+    message: z.string().min(1),
+    details: z.object({ limit: z.number().int(), total: z.number().int() }),
+  }),
+});
+export const auditExportInProgressErrorResponseSchema = auditErrorSchema(
+  "AUDIT_EXPORT_IN_PROGRESS",
+);
+export const auditExportNotFoundErrorResponseSchema = auditErrorSchema(
+  "AUDIT_EXPORT_NOT_FOUND",
+);
+export const auditExportNotReadyErrorResponseSchema = auditErrorSchema(
+  "AUDIT_EXPORT_NOT_READY",
+);
+export const auditExportExpiredErrorResponseSchema = auditErrorSchema(
+  "AUDIT_EXPORT_EXPIRED",
+);

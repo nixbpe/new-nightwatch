@@ -28,7 +28,10 @@ export type TestOrganization = {
 
 export type ApiResponse = {
   status: number;
+  /** Parsed body of a JSON response; null for any other content type. */
   json: unknown;
+  /** The raw body, for file downloads. */
+  text: string;
   headers: Headers;
 };
 
@@ -248,7 +251,11 @@ export async function openMonitorTestContext(options?: {
     const text = await response.text();
     return {
       status: response.status,
-      json: text ? (JSON.parse(text) as unknown) : null,
+      json:
+        text && (response.headers.get("content-type") ?? "").includes("json")
+          ? (JSON.parse(text) as unknown)
+          : null,
+      text,
       headers: response.headers,
     };
   }

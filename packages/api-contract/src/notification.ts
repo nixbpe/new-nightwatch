@@ -11,6 +11,8 @@ export const notificationEventTypeSchema = z.enum([
   "MONITOR_SSL_CAUTION",
   "MONITOR_SSL_DANGER",
   "MONITOR_SSL_EXPIRED",
+  "AUDIT_EXPORT_READY",
+  "AUDIT_EXPORT_FAILED",
 ]);
 
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>;
@@ -83,8 +85,17 @@ const monitorSslNotificationItemSchema = z.object({
   sslNotAfter: isoDateTimeSchema,
 });
 
+/** The export is deleted after 7 days, so the item names no export; it links to the list. */
+const auditExportNotificationItemSchema = z.object({
+  ...organizationItemBase,
+  eventType: z.enum(["AUDIT_EXPORT_READY", "AUDIT_EXPORT_FAILED"]),
+  actor: z.null(),
+  category: z.literal("audit-log"),
+});
+
 const organizationNotificationItemSchema = z.discriminatedUnion("eventType", [
   settingsChangedNotificationItemSchema,
+  auditExportNotificationItemSchema,
   monitorDownNotificationItemSchema,
   monitorRecoveredNotificationItemSchema,
   monitorSslNotificationItemSchema,
