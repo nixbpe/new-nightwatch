@@ -1196,31 +1196,39 @@ describe("purge of monitor_last_responses", () => {
     expect(await ownerCount("monitor_last_responses", [recent])).toBe(1);
   });
 
-  it("spends the remaining limit on last responses after incidents", async () => {
+  it("purges last responses in the first run even when other tables expire past the limit", async () => {
     await drain();
-    const expiredIncidents = await seedLastResponse(0);
-    for (let i = 0; i < 2; i += 1) {
+    const owning = await seedLastResponse(0);
+    // Five expired events exhaust the shared budget of limit 2.
+    for (let i = 0; i < 5; i += 1) {
       await owner.query(
-        `insert into monitor_incidents
-           (monitor_id, tenant_id, started_at, ended_at, end_reason, start_reason)
-         values ($1, $2, now() - interval '40 days', now() - interval '31 days',
-                 'recovered', 'timeout')`,
-        [expiredIncidents, tenantA],
+        `insert into monitor_events (monitor_id, tenant_id, kind, occurred_at)
+         values ($1, $2, 'config_changed', now() - interval '40 days')`,
+        [owning, tenantA],
       );
     }
     const lastA = await seedLastResponse(31);
     const lastB = await seedLastResponse(31);
-    const deleted = await purgeExpiredMonitorData(database, { limit: 3 });
-    expect(deleted).toBe(3);
-    const left =
-      (await ownerCount("monitor_last_responses", [lastA])) +
-      (await ownerCount("monitor_last_responses", [lastB]));
-    expect(left).toBe(1);
-    const incidents = await owner.query<{ n: string }>(
-      "select count(*) as n from monitor_incidents where monitor_id = $1",
-      [expiredIncidents],
+    const deleted = await purgeExpiredMonitorData(database, { limit: 2 });
+    // 2 events from the shared budget plus both last responses.
+    expect(deleted).toBe(4);
+    expect(await ownerCount("monitor_last_responses", [lastA, lastB])).toBe(0);
+    const events = await owner.query<{ n: string }>(
+      "select count(*) as n from monitor_events where monitor_id = $1",
+      [owning],
     );
-    expect(Number(incidents.rows[0]?.n)).toBe(0);
+    expect(Number(events.rows[0]?.n)).toBe(3);
+  });
+
+  it("deletes at most p_limit last responses per run", async () => {
+    await drain();
+    const ids = [
+      await seedLastResponse(31),
+      await seedLastResponse(31),
+      await seedLastResponse(31),
+    ];
+    expect(await purgeExpiredMonitorData(database, { limit: 2 })).toBe(2);
+    expect(await ownerCount("monitor_last_responses", ids)).toBe(1);
   });
 });
 

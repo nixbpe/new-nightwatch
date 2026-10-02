@@ -139,9 +139,10 @@ create policy monitor_last_responses_retention_delete on monitor_last_responses
   using (scheduled_for < now() - interval '30 days');
 grant select, delete on monitor_last_responses to nightwatch_monitor_retention_owner;
 
--- 0016 body plus monitor_last_responses as the last purge step. CREATE OR
--- REPLACE keeps the owner, search_path and EXECUTE grants set in 0016.
--- Deletes at most p_limit expired rows in total and returns how many.
+-- 0016 body plus monitor_last_responses. CREATE OR REPLACE keeps the owner,
+-- search_path and EXECUTE grants set in 0016.
+-- Deletes at most p_limit expired rows per table group (the first four tables
+-- share p_limit; monitor_last_responses has its own) and returns how many.
 create or replace function purge_expired_monitor_data(p_limit integer)
 returns integer
 language plpgsql
@@ -219,20 +220,22 @@ begin
     v_total := v_total + v_deleted;
   end if;
 
-  if v_left > 0 then
-    with expired as (
-      select l.monitor_id
-      from monitor_last_responses as l
-      where l.scheduled_for < now() - interval '30 days'
-      order by l.scheduled_for
-      limit v_left
-    )
-    delete from monitor_last_responses as l
-    using expired
-    where l.monitor_id = expired.monitor_id;
-    get diagnostics v_deleted = row_count;
-    v_total := v_total + v_deleted;
-  end if;
+  -- Own budget: results, hourly rows and events can expire faster than
+  -- p_limit per run, and sharing v_left would starve this step indefinitely
+  -- (a paused monitor's headers and body would outlive 30 days). The rows are
+  -- bounded (one per monitor), so the total can reach 2 * p_limit.
+  with expired as (
+    select l.monitor_id
+    from monitor_last_responses as l
+    where l.scheduled_for < now() - interval '30 days'
+    order by l.scheduled_for
+    limit p_limit
+  )
+  delete from monitor_last_responses as l
+  using expired
+  where l.monitor_id = expired.monitor_id;
+  get diagnostics v_deleted = row_count;
+  v_total := v_total + v_deleted;
 
   return v_total;
 end;
