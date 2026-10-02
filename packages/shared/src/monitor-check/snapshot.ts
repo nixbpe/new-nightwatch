@@ -85,17 +85,42 @@ function shown(
   return { text: cut.text, cut: cut.cut || dropped };
 }
 
+/**
+ * URL encodings a standard encoder can produce for one value: `encodeURIComponent`,
+ * RFC 3986 strict (also encodes `!'()*`), `application/x-www-form-urlencoded`
+ * (space as `+`, encodes `!'()~`), and `+` for space in the other two.
+ */
+function urlEncodings(value: string): string[] {
+  try {
+    const component = encodeURIComponent(value);
+    const strict = component.replace(
+      /[!'()*]/g,
+      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+    const form = new URLSearchParams([["", value]]).toString().slice(1);
+    return [
+      component,
+      strict,
+      form,
+      component.replaceAll("%20", "+"),
+      strict.replaceAll("%20", "+"),
+    ];
+  } catch {
+    // A lone surrogate has no URL-encoded form; the other forms still apply.
+    return [];
+  }
+}
+
 /** Every form a target can echo: raw, latin1 (header decode), JSON-escaped and URL-encoded. */
 function secretForms(secretValues: readonly string[]): string[] {
-  return [...secretValues, ...needleForms(secretValues)].flatMap((value) => {
-    let encoded: string[] = [];
-    try {
-      encoded = [encodeURIComponent(value)];
-    } catch {
-      // A lone surrogate has no URL-encoded form; the other forms still apply.
-    }
-    return [value, JSON.stringify(value).slice(1, -1), ...encoded];
-  });
+  const forms = [...secretValues, ...needleForms(secretValues)].flatMap(
+    (value) => [
+      value,
+      JSON.stringify(value).slice(1, -1),
+      ...urlEncodings(value),
+    ],
+  );
+  return [...new Set(forms)];
 }
 
 const foldHex = (text: string): string =>

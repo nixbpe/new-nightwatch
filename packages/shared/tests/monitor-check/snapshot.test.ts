@@ -944,3 +944,68 @@ describe("body scan limits", () => {
     expect(snapshot.body.text).toBe("b".repeat(16 * 1024));
   });
 });
+
+describe("URL encodings other than encodeURIComponent", () => {
+  const own = { headers: [secretHeader("h1", "X-Own")] };
+  const form = (value: string) =>
+    new URLSearchParams([["", value]]).toString().slice(1);
+  const strict = (value: string) =>
+    encodeURIComponent(value).replace(
+      /[!'()*]/g,
+      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+  const lowerHex = (text: string) =>
+    text.replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase());
+
+  const cases: [string, string][] = [
+    ["tok 123", "tok+123"],
+    ["tok 123", form("tok 123")],
+    ["a!b'c(d)e*f~g", form("a!b'c(d)e*f~g")],
+    ["a!b'c(d)e*f~g", strict("a!b'c(d)e*f~g")],
+    ["a!b'c(d)e*f~g", encodeURIComponent("a!b'c(d)e*f~g")],
+    ["a b!c", strict("a b!c").replaceAll("%20", "+")],
+    ["café ลับ", form("café ลับ")],
+    ["café ลับ", lowerHex(form("café ลับ"))],
+    ["café ลับ", lowerHex(strict("café ลับ").replaceAll("%20", "+"))],
+  ];
+
+  it.each(cases)("masks secret %s echoed as %s", async (secret, echoed) => {
+    const snapshot = await check(
+      response({
+        headers: [
+          ["Content-Type", "text/plain"],
+          ["X-Echo", `v=${echoed}`],
+        ],
+        body: `b=${echoed}`,
+      }),
+      own,
+      { "header.h1": secret },
+    );
+    expect(snapshot.body).toMatchObject({ text: "b=•••" });
+    expect(snapshot.headers.find((h) => h.name === "x-echo")?.value).toBe(
+      "v=•••",
+    );
+
+    let requests = 0;
+    const server = await startRawServer({
+      onRequest: ({ socket }) => {
+        requests++;
+        socket.end(
+          requests === 1
+            ? response({
+                line: "HTTP/1.1 302 Found",
+                headers: [["Location", `/cb/${echoed}`]],
+              })
+            : response({}),
+        );
+      },
+    });
+    servers.push(server);
+    const result = await runCheck(
+      configFor("http", server.port, own),
+      { "header.h1": secret },
+      deps(),
+    );
+    expect(result.responseSnapshot?.url).toContain("/cb/•••");
+  });
+});
