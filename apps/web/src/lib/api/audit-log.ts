@@ -1,10 +1,15 @@
 import {
   AUDIT_CATEGORIES,
   AUDIT_SEARCH_MAX_LENGTH,
+  auditExportCreateResponseSchema,
+  auditExportListResponseSchema,
   auditLogActorsResponseSchema,
   auditLogEventResponseSchema,
   auditLogListResponseSchema,
   type AuditCategory,
+  type AuditExportCreateResponse,
+  type AuditExportListResponse,
+  type AuditExportRequest,
   type AuditLogActorsResponse,
   type AuditLogEventResponse,
   type AuditLogListResponse,
@@ -12,7 +17,7 @@ import {
 
 import { zonedDayBoundary } from "../preferences";
 import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
-import { request } from "./client";
+import { request, requestFile, type DownloadedFile } from "./client";
 
 export const AUDIT_LOG_PAGE_SIZE = 50;
 
@@ -57,6 +62,8 @@ export const auditLogQueryKeys = {
     ] as const,
   actors: (organizationId: string) =>
     [...TENANT_QUERY_PREFIX, "audit-log", "actors", organizationId] as const,
+  exports: (organizationId: string) =>
+    [...TENANT_QUERY_PREFIX, "audit-log", "exports", organizationId] as const,
 };
 
 /** True for any audit-log cache entry of this Organization (lists, details, actors, exports). */
@@ -116,6 +123,38 @@ export function fetchAuditActors(
     "/api/organizations/{organizationId}/audit-log/actors",
     auditLogActorsResponseSchema,
     { params: { organizationId } },
+  );
+}
+
+export function fetchAuditExports(
+  organizationId: string,
+): Promise<AuditExportListResponse> {
+  return request(
+    "/api/organizations/{organizationId}/audit-log/exports",
+    auditExportListResponseSchema,
+    { params: { organizationId } },
+  ).then((response) => auditExportListResponseSchema.parse(response));
+}
+
+export function createAuditExport(
+  organizationId: string,
+  body: AuditExportRequest,
+  signal: AbortSignal,
+): Promise<AuditExportCreateResponse> {
+  return request(
+    "/api/organizations/{organizationId}/audit-log/exports",
+    auditExportCreateResponseSchema,
+    { method: "POST", params: { organizationId }, body, signal },
+  ).then((response) => auditExportCreateResponseSchema.parse(response));
+}
+
+export function downloadAuditExport(
+  organizationId: string,
+  exportId: string,
+): Promise<DownloadedFile> {
+  return requestFile(
+    "/api/organizations/{organizationId}/audit-log/exports/{exportId}/download",
+    { params: { organizationId, exportId } },
   );
 }
 
