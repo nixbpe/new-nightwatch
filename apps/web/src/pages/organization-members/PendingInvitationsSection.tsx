@@ -93,7 +93,7 @@ export function PendingInvitationsSection({
     const control =
       target === "heading" ? undefined : cancelControls.current.get(target);
     (control ?? headingRef.current)?.focus();
-  }, [settled, pastEnd, failed, cancel.pending]);
+  }, [settled, pastEnd, failed, cancel.pending, offset]);
 
   if (!scopeCurrent) return null;
 
