@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router";
 
 import {
   fetchNotifications,
-  fetchUnreadCount,
   markAllNotificationsRead,
   notificationQueryKey,
   openNotification,
@@ -12,6 +11,7 @@ import { useTenant } from "../../lib/tenant/TenantProvider";
 import { NotificationRows } from "../../pages/NotificationsPage";
 import { BellIcon, SlidersIcon } from "./icons";
 import { Skeleton } from "./Skeleton";
+import { useUnreadCount } from "./useNavCounts";
 import { usePopover } from "./usePopover";
 
 export function NotificationsPopover() {
@@ -24,10 +24,7 @@ export function NotificationsPopover() {
     queryFn: () => fetchNotifications(serverActiveOrgId),
     enabled: popover.open,
   });
-  const count = useQuery({
-    queryKey: [...notificationQueryKey(serverActiveOrgId), "count"],
-    queryFn: () => fetchUnreadCount(serverActiveOrgId),
-  });
+  const count = useUnreadCount();
   const all = useMutation({
     mutationFn: markAllNotificationsRead,
     onSuccess: async () => {
@@ -69,13 +66,14 @@ export function NotificationsPopover() {
           all.reset();
           popover.toggle();
         }}
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-control-border text-foreground-secondary hover:surface-hover hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <BellIcon size={18} />
         {unreadCount ? (
           <span
             aria-label={`${String(unreadCount)} รายการยังไม่อ่าน`}
-            className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-xs leading-none text-on-primary"
+            // A Text-filled counter: the count is a fact, not a status colour.
+            className="absolute -top-[7px] -right-[7px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-foreground px-[5px] font-mono text-[11px] leading-none font-semibold text-background"
           >
             {unreadCount}
           </span>

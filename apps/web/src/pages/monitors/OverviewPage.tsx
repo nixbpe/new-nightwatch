@@ -1,3 +1,4 @@
+import { isDenied } from "../workspace/rows";
 import type {
   MonitorHealthName,
   MonitorListResponse,
@@ -7,16 +8,18 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 
 import { EmptyState } from "../../components/shell/EmptyState";
-import { ActivityIcon } from "../../components/shell/icons";
+import { ActivityIcon, SearchIcon } from "../../components/shell/icons";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { Skeleton } from "../../components/shell/Skeleton";
-import { Alert, Input, textInputClass } from "../../components/ui";
+import { Alert, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Notice } from "../../components/ui/notice";
 import { DataTablePagination } from "../../components/ui/data-table";
+import { HairlineGrid } from "../../components/ui/hairline-grid";
+import { STAT_TILE_CLASS, StatTile } from "../../components/ui/stat-tile";
 import { Label } from "../../components/ui/label";
-import { ApiError } from "../../lib/api/client";
+import { SegmentedControl } from "../../components/ui/segmented-control";
 import {
   fetchMonitorList,
   MONITOR_LIST_PAGE_SIZE,
@@ -24,21 +27,48 @@ import {
   monitorQueryKeys,
 } from "../../lib/api/monitors";
 import { ROLE_LABELS } from "../../lib/roles";
+import { cn } from "../../lib/utils";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { useFlashNotice } from "./flash";
 import { formatTimeWithSeconds, Time, TIME_ZONE } from "./format";
 import { HEALTH_LABELS } from "./HealthPill";
+import { CardEnrichmentMockup, SortMockup } from "./list/MonitorListMockups";
+import { MonitorCards } from "./list/MonitorCards";
 import { MonitorTable } from "./MonitorTable";
 import { RecentEventsCard } from "./RecentEventsCard";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SUMMARY_ORDER = ["up", "down", "unknown", "paused"] as const;
+// Same dots as the Workspace tiles; "unknown" is hollow so it differs from "paused" without a status colour.
+const SUMMARY_DOT: Record<(typeof SUMMARY_ORDER)[number], string> = {
+  up: "bg-primary",
+  down: "bg-danger",
+  unknown: "border border-foreground-secondary",
+  paused: "bg-foreground-secondary",
+};
+const VIEW_STORAGE_KEY = "nightwatch:monitors-view";
+const VIEW_OPTIONS = [
+  { value: "cards", label: "การ์ด" },
+  { value: "table", label: "ตาราง" },
+] as const;
+type ViewMode = (typeof VIEW_OPTIONS)[number]["value"];
 
-function isDenied(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.code === "MEMBERSHIP_DENIED" || error.code === "PERMISSION_DENIED")
-  );
+// Per-viewer convenience only; storage can be blocked, so every access is guarded.
+function readView(): ViewMode {
+  try {
+    return window.localStorage.getItem(VIEW_STORAGE_KEY) === "cards"
+      ? "cards"
+      : "table";
+  } catch {
+    return "table";
+  }
+}
+function writeView(view: ViewMode) {
+  try {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+  } catch {
+    // Not persisted; the choice still applies for this visit.
+  }
 }
 
 export function OverviewPage() {
@@ -59,21 +89,18 @@ function SummaryStrip({
   summary: MonitorListResponse["summary"];
 }) {
   return (
-    <dl className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <HairlineGrid as="dl" className="grid-cols-2 lg:grid-cols-4">
       {SUMMARY_ORDER.map((health) => (
-        <div
-          key={health}
-          className="rounded-md border border-foreground/10 bg-surface p-4"
-        >
-          <dt className="text-sm text-foreground-secondary">
-            {HEALTH_LABELS[health]}
-          </dt>
-          <dd className="mt-1 text-2xl font-semibold text-heading tabular-nums">
-            {summary[health]}
-          </dd>
+        <div key={health} className={STAT_TILE_CLASS}>
+          <StatTile
+            term
+            dot={SUMMARY_DOT[health]}
+            label={HEALTH_LABELS[health]}
+            value={summary[health]}
+          />
         </div>
       ))}
-    </dl>
+    </HairlineGrid>
   );
 }
 
@@ -113,11 +140,13 @@ function OverviewForOrganization({
   const [searchText, setSearchText] = useState("");
   const [announcement, setAnnouncement] = useState({ text: "", count: 0 });
   const [refreshing, setRefreshing] = useState(false);
+  const [view, setView] = useState<ViewMode>(readView);
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
   >("idle");
   // Set by a filter change the user made; the announcement waits for that filter's own data.
   const pendingAnnouncement = useRef(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const listParams = {
     limit: MONITOR_LIST_PAGE_SIZE,
@@ -184,6 +213,7 @@ function OverviewForOrganization({
   const header = (actions?: ReactNode, status?: ReactNode) => (
     <>
       <PageHeader
+        eyebrow="// monitors registry"
         scope={
           organization === undefined
             ? undefined
@@ -266,6 +296,17 @@ function OverviewForOrganization({
     );
   }
   const status = canWrite ? undefined : <span>สิทธิ์ของคุณ: ดูอย่างเดียว</span>;
+  const viewToggle = (
+    <SegmentedControl
+      label="รูปแบบการแสดงผล"
+      value={view}
+      options={VIEW_OPTIONS}
+      onChange={(next) => {
+        setView(next);
+        writeView(next);
+      }}
+    />
+  );
 
   const clearFilters = () => {
     pendingAnnouncement.current = true;
@@ -283,47 +324,99 @@ function OverviewForOrganization({
     }
   };
   const filtered = q !== "" || health !== undefined;
-  const filterControls = (
-    <div className="flex flex-wrap items-end gap-4">
-      <Label className="flex min-w-[240px] flex-1 flex-col gap-2 text-sm">
-        ค้นหาชื่อหรือ URL
-        <Input
-          type="search"
-          value={searchText}
-          maxLength={200}
-          onChange={(event) => {
-            setSearchText(event.target.value);
-          }}
-        />
-      </Label>
+  const statusChips: {
+    value: MonitorHealthName | undefined;
+    label: string;
+    count?: number;
+  }[] = [
+    { value: undefined, label: "ทั้งหมด", count: data?.summary.total },
+    ...SUMMARY_ORDER.map((value) => ({
+      value,
+      label: HEALTH_LABELS[value],
+      count: data?.summary[value],
+    })),
+  ];
+  const filterControls = (showClear: boolean, trailing?: ReactNode) => (
+    <div className="flex flex-col gap-3">
       <Label className="flex flex-col gap-2 text-sm">
-        สถานะ
-        <select
-          className={textInputClass}
-          value={health ?? ""}
-          onChange={(event) => {
-            pendingAnnouncement.current = true;
-            setOffset(0);
-            setHealth(
-              event.target.value === ""
-                ? undefined
-                : (event.target.value as MonitorHealthName),
-            );
-          }}
-        >
-          <option value="">ทั้งหมด</option>
-          {SUMMARY_ORDER.map((value) => (
-            <option key={value} value={value}>
-              {HEALTH_LABELS[value]}
-            </option>
-          ))}
-        </select>
+        <span className="sr-only">ค้นหาชื่อหรือ URL</span>
+        <span className="relative">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-foreground-secondary"
+          >
+            <SearchIcon size={18} />
+          </span>
+          <Input
+            type="search"
+            ref={searchRef}
+            value={searchText}
+            maxLength={200}
+            className="pl-10"
+            placeholder="ค้นหาชื่อหรือ URL"
+            onChange={(event) => {
+              setSearchText(event.target.value);
+            }}
+          />
+        </span>
       </Label>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="text-xs text-foreground-secondary">สถานะ</span>
+        <div
+          role="group"
+          aria-label="สถานะ"
+          className="flex flex-1 flex-wrap gap-2"
+        >
+          {statusChips.map((chip) => {
+            const pressed = chip.value === health;
+            return (
+              <button
+                key={chip.value ?? "all"}
+                type="button"
+                aria-pressed={pressed}
+                onClick={() => {
+                  pendingAnnouncement.current = true;
+                  setOffset(0);
+                  setHealth(chip.value);
+                }}
+                className={cn(
+                  "inline-flex h-8 items-center gap-2 rounded-md border px-3 text-[13px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  pressed
+                    ? "border-primary bg-primary-tint text-primary"
+                    : "border-control-border bg-surface text-foreground hover:surface-hover",
+                )}
+              >
+                {chip.label}
+                {chip.count === undefined ? null : (
+                  <span aria-hidden="true" className="font-mono text-xs">
+                    {chip.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {showClear && filtered ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              clearFilters();
+              // The button unmounts once the filter is clear; keep focus on a stable control.
+              searchRef.current?.focus();
+            }}
+          >
+            ล้างตัวกรอง
+          </Button>
+        ) : null}
+      </div>
       {data === undefined ? null : (
-        <p className="pb-2.5 text-sm text-foreground-secondary tabular-nums">
+        <p className="text-xs text-foreground-secondary tabular-nums">
           พบ {data.page.total} จาก {data.summary.total}
         </p>
       )}
+      {trailing}
     </div>
   );
 
@@ -333,7 +426,7 @@ function OverviewForOrganization({
         {header(actions, status)}
         {list.isError ? (
           <>
-            {filterControls}
+            {filterControls(false)}
             <PageState
               kind="error"
               message="โหลดมอนิเตอร์ไม่สำเร็จ"
@@ -393,31 +486,40 @@ function OverviewForOrganization({
 
   return (
     <Page>
-      {header(actions, status)}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-foreground-secondary">
-        <span>
-          มอนิเตอร์ทั้งหมด{" "}
-          <span className="font-mono text-foreground">
-            {data.summary.total}
+      {header(
+        <>
+          {actions}
+          <Button
+            type="button"
+            variant="secondary"
+            aria-disabled={refreshing}
+            className={refreshing ? "opacity-60" : undefined}
+            onClick={() => {
+              if (!refreshing) void refresh();
+            }}
+          >
+            {refreshing ? "กำลังรีเฟรช…" : "รีเฟรช"}
+          </Button>
+          {viewToggle}
+        </>,
+        <>
+          {status}
+          <span>
+            มอนิเตอร์ทั้งหมด{" "}
+            <span className="font-mono">{data.summary.total}</span>
           </span>
-        </span>
-        <span>
-          ข้อมูล ณ <Time iso={data.dataAsOf} format={formatTimeWithSeconds} /> (
-          {TIME_ZONE})
-        </span>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          aria-disabled={refreshing}
-          className={refreshing ? "opacity-60" : undefined}
-          onClick={() => {
-            if (!refreshing) void refresh();
-          }}
-        >
-          {refreshing ? "กำลังรีเฟรช…" : "รีเฟรช"}
-        </Button>
-      </div>
+          <span>
+            ล่ม <span className="font-mono">{data.summary.down}</span>
+          </span>
+          <span>
+            ข้อมูล ณ{" "}
+            <span className="font-mono">
+              <Time iso={data.dataAsOf} format={formatTimeWithSeconds} />
+            </span>{" "}
+            ({TIME_ZONE})
+          </span>
+        </>,
+      )}
       {list.isError ? (
         <Alert tone="warning">
           อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ{" "}
@@ -425,7 +527,7 @@ function OverviewForOrganization({
         </Alert>
       ) : null}
       <SummaryStrip summary={data.summary} />
-      {filterControls}
+      {filterControls(!(page.total === 0 && filtered), <SortMockup />)}
       <p role="status" aria-label="ผลการกรอง" className="sr-only">
         <span key={announcement.count}>{announcement.text}</span>
       </p>
@@ -441,10 +543,17 @@ function OverviewForOrganization({
         />
       ) : (
         <div aria-busy={list.isPlaceholderData}>
-          <MonitorTable
-            organizationId={organizationId}
-            monitors={data.monitors}
-          />
+          {view === "cards" ? (
+            <MonitorCards
+              organizationId={organizationId}
+              monitors={data.monitors}
+            />
+          ) : (
+            <MonitorTable
+              organizationId={organizationId}
+              monitors={data.monitors}
+            />
+          )}
         </div>
       )}
       {page.total === 0 ? null : (
@@ -467,6 +576,7 @@ function OverviewForOrganization({
           }}
         />
       )}
+      {view === "cards" ? <CardEnrichmentMockup /> : null}
       <RecentEventsCard organizationId={organizationId} />
     </Page>
   );

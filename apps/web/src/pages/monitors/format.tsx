@@ -47,11 +47,27 @@ export function formatTimeOrDate(iso: string, now: Date = new Date()): string {
     : dateTimeFormat.format(at);
 }
 
+/** Seconds for today; date and time otherwise, so a previous day never reads as today. */
+export function formatTimeWithSecondsOrDate(
+  iso: string,
+  now: Date = new Date(),
+): string {
+  const at = new Date(iso);
+  return at.toDateString() === now.toDateString()
+    ? timeWithSecondsFormat.format(at)
+    : dateTimeFormat.format(at);
+}
+
 export function formatNumber(value: number): string {
   return numberFormat.format(value);
 }
 
-/** A `<time>` element; the column header or status line names the timezone. */
+const THAI = /[\u0e00-\u0e7f]/;
+
+/**
+ * A `<time>` element; the column header or status line names the timezone.
+ * A date carries a Thai month, so it reads in sans even inside a mono wrapper (TYP-04).
+ */
 export function Time({
   iso,
   format = formatTime,
@@ -59,7 +75,12 @@ export function Time({
   iso: string;
   format?: (iso: string) => string;
 }) {
-  return <time dateTime={iso}>{format(iso)}</time>;
+  const text = format(iso);
+  return (
+    <time dateTime={iso} className={THAI.test(text) ? "font-sans" : undefined}>
+      {text}
+    </time>
+  );
 }
 
 export function formatDuration(seconds: number): string {

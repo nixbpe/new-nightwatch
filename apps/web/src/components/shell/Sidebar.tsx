@@ -9,9 +9,11 @@ import {
   isNavGroup,
   NAV_ITEMS,
   resolveNavPath,
+  type NavCountSource,
   type NavLeaf,
 } from "./nav-config";
 import { OrgSwitcher } from "./OrgSwitcher";
+import { useMonitorTotal, useUnreadCount } from "./useNavCounts";
 
 export function Sidebar({
   collapsed,
@@ -24,6 +26,16 @@ export function Sidebar({
   const { activeOrg } = useTenant();
   const organizationId = activeOrg?.id ?? null;
   const role = activeOrg?.role ?? null;
+  const unread = useUnreadCount();
+  const monitorTotal = useMonitorTotal(organizationId);
+  // Unknown or failed counts render nothing, never a guessed number (CMP-01).
+  const counts: Record<NavCountSource, number | undefined> = {
+    monitors: monitorTotal,
+    unread:
+      unread.isError || unread.data?.unreadCount === 0
+        ? undefined
+        : unread.data?.unreadCount,
+  };
 
   const visibleRows = (leaves: NavLeaf[]) =>
     leaves.flatMap((leaf) => {
@@ -36,7 +48,7 @@ export function Sidebar({
       <OrgSwitcher collapsed={collapsed} />
       <nav
         aria-label="เมนูหลัก"
-        className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2"
+        className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-4"
       >
         {NAV_ITEMS.map((item) => {
           const rows = visibleRows(isNavGroup(item) ? item.children : [item]);
@@ -49,6 +61,7 @@ export function Sidebar({
               leaf={leaf}
               href={href}
               collapsed={collapsed}
+              count={leaf.count === undefined ? undefined : counts[leaf.count]}
               // Matched on the resolved href, so an org leaf is current only for the org it links to.
               active={isLeafActive({ path: href }, pathname)}
               onNavigate={onNavigate}
@@ -58,7 +71,7 @@ export function Sidebar({
             return navRows;
           }
           return (
-            <div key={item.label} className="flex flex-col gap-1">
+            <div key={item.label} className="flex flex-col gap-0.5">
               {collapsed ? (
                 <div
                   role="separator"
@@ -66,7 +79,7 @@ export function Sidebar({
                   className="my-2 h-px bg-foreground/10"
                 />
               ) : (
-                <p className="mt-6 mb-2 px-3 text-xs font-medium text-foreground-secondary">
+                <p className="mt-4 mb-1.5 px-2.5 text-xs font-medium text-foreground-secondary">
                   {item.label}
                 </p>
               )}
@@ -84,12 +97,14 @@ function NavRow({
   leaf,
   href,
   collapsed,
+  count,
   active,
   onNavigate,
 }: {
   leaf: NavLeaf;
   href: string;
   collapsed: boolean;
+  count?: number;
   active: boolean;
   onNavigate?: () => void;
 }) {
@@ -103,8 +118,8 @@ function NavRow({
         onClick={onNavigate}
         className={`relative mx-auto flex h-9 w-9 items-center justify-center rounded-md transition-colors duration-100 ${
           active
-            ? "bg-primary/12 text-primary before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-primary"
-            : "text-foreground-secondary hover:bg-foreground/5 hover:text-foreground"
+            ? "bg-primary-tint text-primary before:absolute before:inset-y-1.5 before:-left-2 before:w-[3px] before:bg-primary"
+            : "text-foreground-secondary hover:surface-hover hover:text-foreground"
         }`}
       >
         <Icon />
@@ -115,16 +130,27 @@ function NavRow({
     <NavLink
       to={href}
       onClick={onNavigate}
-      className={`relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors duration-100 ${
+      // The 3 px bar sits on the sidebar edge (-8 px past the row's 8 px inset).
+      className={`relative flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-100 ${
         active
-          ? "bg-primary/12 font-medium text-primary before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-primary"
-          : "text-foreground-secondary hover:bg-foreground/5 hover:text-foreground"
+          ? "bg-primary-tint font-medium text-primary before:absolute before:inset-y-1.5 before:-left-2 before:w-[3px] before:bg-primary"
+          : "text-foreground-secondary hover:surface-hover hover:text-foreground"
       }`}
     >
       <span className={active ? "text-primary" : ""}>
-        <Icon />
+        <Icon size={16} />
       </span>
-      <span>{leaf.label}</span>
+      <span className="min-w-0 flex-1 truncate">{leaf.label}</span>
+      {count === undefined ? null : (
+        // aria-hidden keeps the link's accessible name equal to its label.
+        <span
+          aria-hidden="true"
+          data-slot="nav-count"
+          className="font-mono text-xs font-medium text-foreground-secondary tabular-nums"
+        >
+          {count}
+        </span>
+      )}
     </NavLink>
   );
 }

@@ -120,7 +120,9 @@ describe("Create validation and save", () => {
     const url = screen.getByLabelText("URL");
     expect(name).toHaveAttribute("aria-invalid", "true");
     expect(name).toHaveAccessibleDescription("กรอกชื่อมอนิเตอร์");
-    expect(url).toHaveAccessibleDescription("กรอก URL");
+    expect(url).toHaveAccessibleDescription(
+      expect.stringContaining("กรอก URL"),
+    );
     expect(name).toHaveFocus();
     expect(createMock).not.toHaveBeenCalled();
   });

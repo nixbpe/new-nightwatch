@@ -12,6 +12,7 @@ import {
 
 import { TIME_ZONE, formatNumber } from "../../pages/monitors/format";
 import {
+  axisTicks,
   buildSeries,
   chartWindow,
   HOURLY_CHECK_ERROR_NOTE,
@@ -26,16 +27,6 @@ const MARGIN = { top: 20, right: 16, bottom: 36, left: 56 };
 const DEFAULT_WIDTH = 640;
 const MIN_WIDTH = 280;
 const HALF_HOUR_MS = 1_800_000;
-
-const dayFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  day: "numeric",
-  month: "short",
-});
-const clockFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
 
 function useWidth<Element extends HTMLElement>() {
   const ref = useRef<Element>(null);
@@ -125,6 +116,10 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
   const right = width - MARGIN.right;
   const bottom = HEIGHT - MARGIN.bottom;
   const window = chartWindow(props);
+  const windowClamped =
+    window !== undefined &&
+    dataWindow !== undefined &&
+    window.from > Date.parse(dataWindow.from);
   let from = window?.from ?? first?.at ?? 0;
   let to = window?.to ?? last?.end ?? 1;
   for (const pause of props.pauses) {
@@ -212,7 +207,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
 
   // A young monitor gives a short span even under a 7 d label; date ticks would all read the same day.
   const clockTicks = range === "24h" || to - from < 2 * 24 * 3_600_000;
-  const xTicks = x.ticks(width < 480 ? 4 : 6);
+  const xTicks = axisTicks(x.ticks(width < 480 ? 4 : 6), to - from, clockTicks);
   const yTicks = y.ticks(4);
   const label = `กราฟเส้นเวลาตอบสนอง หน่วย ms ช่วง ${RANGE_LABELS[range]} แหล่ง ผลการตรวจของ NightWatch เวลาตามเขตเวลา ${TIME_ZONE} ใช้ลูกศรซ้ายขวา Home และ End เพื่อดูค่าแต่ละจุด`;
 
@@ -282,13 +277,13 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
           </text>
           {xTicks.map((tick) => (
             <text
-              key={tick.getTime()}
-              x={x(tick)}
+              key={tick.at.getTime()}
+              x={x(tick.at)}
               y={bottom + 16}
               textAnchor="middle"
               className="fill-foreground-secondary text-xs"
             >
-              {clockTicks ? clockFormat.format(tick) : dayFormat.format(tick)}
+              {tick.label}
             </text>
           ))}
           <text
@@ -490,6 +485,11 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
           <span>○ ตรวจไม่ได้ (ปัญหาฝั่งระบบ)</span>
         ) : null}
       </p>
+      {windowClamped ? (
+        <p className="text-xs text-foreground-secondary">
+          ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์
+        </p>
+      ) : null}
       {range === "24h" ? null : (
         <p className="text-xs text-foreground-secondary">
           {HOURLY_CHECK_ERROR_NOTE}

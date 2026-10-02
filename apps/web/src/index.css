@@ -13,6 +13,9 @@
  * Default follows prefers-color-scheme; an explicit choice (the account
  * menu's theme toggle, src/lib/theme.ts) sets data-theme on <html> and
  * overrides it — same token values either way, no new colors introduced.
+ * After the ten roles each block adds the derived values the doc defines:
+ * On danger (COL-05), Primary tint (Tokens), Danger tint (COL-06), the
+ * modal scrim and shadow (LAY-07).
  *
  * shadcn/ui CSS variables are mapped onto the same NightWatch tokens
  * (components.json cssVariables: true) — one source of truth for both
@@ -30,6 +33,12 @@
   --danger: #be123c;
   --caution: #8a5a00;
   --control-border: #7b8490;
+  --on-danger: #ffffff;
+  --primary-tint: color-mix(in srgb, var(--primary) 8%, transparent);
+  --danger-tint: color-mix(in srgb, var(--danger) 6%, transparent);
+  --scrim: color-mix(in srgb, var(--foreground) 35%, transparent);
+  --modal-shadow: 0 24px 64px
+    color-mix(in srgb, var(--foreground) 16%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -45,6 +54,11 @@
     --danger: #fb7185;
     --caution: #f2be5c;
     --control-border: #5b6470;
+    --on-danger: #2a0a12;
+    --primary-tint: color-mix(in srgb, var(--primary) 12%, transparent);
+    --danger-tint: color-mix(in srgb, var(--danger) 10%, transparent);
+    --scrim: color-mix(in srgb, var(--background) 60%, transparent);
+    --modal-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
   }
 }
 
@@ -63,6 +77,12 @@
   --danger: #be123c;
   --caution: #8a5a00;
   --control-border: #7b8490;
+  --on-danger: #ffffff;
+  --primary-tint: color-mix(in srgb, var(--primary) 8%, transparent);
+  --danger-tint: color-mix(in srgb, var(--danger) 6%, transparent);
+  --scrim: color-mix(in srgb, var(--foreground) 35%, transparent);
+  --modal-shadow: 0 24px 64px
+    color-mix(in srgb, var(--foreground) 16%, transparent);
 }
 
 :root[data-theme="dark"] {
@@ -77,6 +97,11 @@
   --danger: #fb7185;
   --caution: #f2be5c;
   --control-border: #5b6470;
+  --on-danger: #2a0a12;
+  --primary-tint: color-mix(in srgb, var(--primary) 12%, transparent);
+  --danger-tint: color-mix(in srgb, var(--danger) 10%, transparent);
+  --scrim: color-mix(in srgb, var(--background) 60%, transparent);
+  --modal-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
@@ -90,6 +115,11 @@
   --color-danger: var(--danger);
   --color-caution: var(--caution);
   --color-control-border: var(--control-border);
+  --color-on-danger: var(--on-danger);
+  --color-primary-tint: var(--primary-tint);
+  --color-danger-tint: var(--danger-tint);
+  --color-scrim: var(--scrim);
+  --shadow-modal: var(--modal-shadow);
   /* shadcn/ui semantic roles -> NightWatch tokens */
   --color-card: var(--surface);
   --color-card-foreground: var(--foreground);
@@ -138,7 +168,7 @@ body {
   }
 }
 
-/* Three inset levels over Canvas/Surface (docs/design-system.md, Layout):
+/* Three inset levels over Canvas/Surface (docs/design-system.md, Tokens):
    depth comes from stepped neutrals, never a shadow. The divider stays at
    Text 10% (COL-04); these tint fills only. */
 @utility surface-inset {

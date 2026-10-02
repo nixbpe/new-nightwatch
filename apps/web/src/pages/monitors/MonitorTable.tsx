@@ -19,10 +19,10 @@ import { SslLabel } from "./SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
 
-const NO_DATA = "ไม่มีข้อมูล";
+export const NO_DATA = "ไม่มีข้อมูล";
 
 // The line under the pill says why a state holds; "ล้มเหลว N ครั้ง" is a warning beside a health that has not changed.
-function StatusDetail({ row }: { row: Row }) {
+export function StatusDetail({ row }: { row: Row }) {
   const lines: ReactNode[] = [];
   if (row.health === "down" && row.openIncident !== null) {
     lines.push(
@@ -69,11 +69,11 @@ function StatusDetail({ row }: { row: Row }) {
   );
 }
 
-function Uptime({ window }: { window: Row["uptime"]["h24"] }) {
+export function Uptime({ window }: { window: Row["uptime"]["h24"] }) {
   if (window.percent === null) return <span>{NO_DATA}</span>;
   return (
     <span className="flex flex-col">
-      <span>{formatNumber(window.percent)}%</span>
+      <span className="font-mono">{formatNumber(window.percent)}%</span>
       {window.coveragePercent < 100 ? (
         <span className="text-xs text-foreground-secondary">
           ครอบคลุม {formatNumber(window.coveragePercent)}%
@@ -117,7 +117,11 @@ export function MonitorTable({
       key: "url",
       header: "URL",
       mono: true,
-      cell: (row) => <span className="break-all">{row.url}</span>,
+      cell: (row) => (
+        <span title={row.url} className="block max-w-[320px] truncate">
+          {row.url}
+        </span>
+      ),
     },
     {
       key: "h24",
@@ -137,7 +141,7 @@ export function MonitorTable({
         row.lastResponseTimeMs === null ? (
           <span>{NO_DATA}</span>
         ) : (
-          <span className="tabular-nums">
+          <span className="font-mono tabular-nums">
             {formatNumber(row.lastResponseTimeMs)} ms
           </span>
         ),

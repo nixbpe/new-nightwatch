@@ -2,14 +2,8 @@ import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { Link, useSearchParams } from "react-router";
 
-import { BrandMark } from "../components/shell/BrandMark";
-import {
-  EyeIcon,
-  EyeOffIcon,
-  LayersIcon,
-  LockIcon,
-  SearchIcon,
-} from "../components/shell/icons";
+import { AuthEyebrow, AuthHeader } from "../components/shell/AuthFrame";
+import { EyeIcon, EyeOffIcon } from "../components/shell/icons";
 import {
   Alert,
   Field,
@@ -18,6 +12,7 @@ import {
   SubmitButton,
 } from "../components/ui";
 import { Label } from "../components/ui/label";
+import { MockupFrame } from "../components/ui/mockup-frame";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { normalizeReturnTo, rememberReturnTo } from "../lib/auth/continuation";
 
@@ -62,17 +57,18 @@ export function LoginPage() {
   });
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[560px_minmax(0,1fr)]">
-      <BrandPanel />
-      <div className="flex flex-col">
-        <div className="px-4 pt-4 sm:px-8 sm:pt-8 lg:hidden">
-          <BrandMark size={28} withName />
-        </div>
-        <main className="flex flex-1 items-start justify-center px-4 pt-10 pb-8 sm:px-8 lg:items-center lg:py-8">
-          <div className="flex w-full max-w-[360px] flex-col gap-6">
+    <div className="flex min-h-screen flex-col">
+      <AuthHeader />
+      <div className="grid flex-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <BrandPanel />
+        <main className="flex items-start justify-center px-4 pt-10 pb-8 sm:px-8 lg:items-center lg:py-12">
+          <div className="flex w-full max-w-[400px] flex-col gap-6">
             <div>
-              <h1 className="text-2xl font-semibold">เข้าสู่ระบบ</h1>
-              <p className="mt-2 text-sm text-foreground-secondary">
+              <AuthEyebrow>// sign in</AuthEyebrow>
+              <h1 className="mt-2 text-[28px] leading-9 font-semibold text-heading">
+                เข้าสู่ระบบ
+              </h1>
+              <p className="mt-1 text-sm text-foreground-secondary">
                 ใช้อีเมลและรหัสผ่านที่ได้รับการเชิญเท่านั้น
               </p>
             </div>
@@ -82,7 +78,7 @@ export function LoginPage() {
                 event.stopPropagation();
                 void form.handleSubmit();
               }}
-              className="flex flex-col gap-4"
+              className="flex flex-col gap-5"
               noValidate
             >
               {error === null ? null : (
@@ -121,6 +117,8 @@ export function LoginPage() {
                       type="email"
                       name="email"
                       autoComplete="email"
+                      placeholder="name@company.com"
+                      className="font-mono"
                       value={field.state.value}
                       onChange={(event) => {
                         field.handleChange(event.target.value);
@@ -156,9 +154,15 @@ export function LoginPage() {
                 {(field) => (
                   // Not <Field>: a wrapping <label> would also label the show/hide button.
                   <div className="flex flex-col gap-1">
-                    <Label htmlFor="login-password" className="mb-2 block">
-                      รหัสผ่าน
-                    </Label>
+                    <div className="mb-2 flex items-baseline justify-between gap-3">
+                      <Label htmlFor="login-password">รหัสผ่าน</Label>
+                      <Link
+                        to="/forgot-password"
+                        className="text-[13px] text-primary underline underline-offset-4"
+                      >
+                        ลืมรหัสผ่าน
+                      </Link>
+                    </div>
                     <div className="relative flex items-center">
                       <Input
                         id="login-password"
@@ -199,11 +203,6 @@ export function LoginPage() {
                   </div>
                 )}
               </form.Field>
-              <div className="flex items-center justify-between text-sm">
-                <Link to="/forgot-password" className="text-primary underline">
-                  ลืมรหัสผ่าน
-                </Link>
-              </div>
               <form.Subscribe
                 selector={(state) => state.isSubmitting}
                 children={(isSubmitting) => (
@@ -211,14 +210,30 @@ export function LoginPage() {
                     pending={isSubmitting}
                     pendingLabel="กำลังเข้าสู่ระบบ…"
                   >
-                    เข้าสู่ระบบ
+                    เข้าสู่ระบบ <span aria-hidden="true">→</span>
                   </SubmitButton>
                 )}
               />
-              <p className="text-center text-sm text-foreground-secondary">
-                ยังไม่มีคำเชิญ? ติดต่อผู้ดูแลองค์กรของคุณ
-              </p>
             </form>
+            <p className="text-xs text-foreground-secondary">
+              ยังไม่มีคำเชิญ? ติดต่อผู้ดูแลองค์กรของคุณ
+            </p>
+            <MockupFrame label="จดจำอุปกรณ์นี้" issue={65}>
+              <label className="flex items-center gap-3 text-[13px] text-foreground-secondary">
+                <input
+                  type="checkbox"
+                  disabled
+                  className="size-4 rounded border-control-border accent-[var(--primary)]"
+                />
+                จดจำอุปกรณ์นี้ <span className="font-mono">30</span> วัน
+              </label>
+            </MockupFrame>
+            <MockupFrame label="ลิงก์ช่วยเหลือ" issue={67}>
+              <div className="flex gap-6 text-[13px] text-foreground-secondary">
+                <span>เอกสาร</span>
+                <span>ติดต่อผู้ดูแล</span>
+              </div>
+            </MockupFrame>
           </div>
         </main>
       </div>
@@ -228,51 +243,69 @@ export function LoginPage() {
 
 const BULLETS = [
   {
-    icon: LayersIcon,
     label: "มองเห็นความเสี่ยงข้ามโปรเจกต์",
     desc: "เทียบลำดับความสำคัญของทุกโปรเจกต์ในลูกค้าองค์กรเดียวกัน",
   },
   {
-    icon: SearchIcon,
     label: "หลักฐานและเหตุผลที่ตรวจสอบได้",
     desc: "ทุกลำดับความเสี่ยงมาพร้อมเหตุผล หลักฐาน และข้อมูลที่ยังขาดอยู่",
   },
   {
-    icon: LockIcon,
     label: "แยกข้อมูลแต่ละลูกค้าอย่างเคร่งครัด",
     desc: "ขอบเขตองค์กรไม่ปะปนกัน แม้ผู้ให้บริการจะดูแลหลายลูกค้า",
   },
 ] as const;
 
-// Fixed dark panel, deliberately independent of the light/dark theme tokens.
+// Follows the theme tokens. The radar is decoration only: it sits in the corner and the text blocks are
+// opaque Surface above it, so no ring line runs through a glyph.
 function BrandPanel() {
   return (
-    <aside className="hidden flex-col justify-between overflow-hidden bg-[#05060a] p-14 text-[#f3f4f6] lg:flex">
-      <div className="flex flex-col gap-6">
-        <BrandMark size={36} withName />
-        <h2 className="max-w-[440px] text-[28px] leading-9 font-semibold">
+    <aside className="relative hidden flex-col justify-between gap-12 overflow-hidden border-r border-foreground/10 bg-surface px-16 py-[72px] lg:flex">
+      <div className="relative z-10 flex flex-col gap-5 bg-surface">
+        <h2 className="max-w-[560px] text-[40px] leading-[1.4] font-semibold text-heading">
           จัดลำดับความเสี่ยงที่ควรแก้ไขก่อน ครอบคลุมทุกโปรเจกต์ของลูกค้า
         </h2>
-        <p className="max-w-[380px] text-sm text-white/70">
+        <p className="max-w-[480px] text-base text-foreground-secondary">
           แพลตฟอร์มความปลอดภัยคลาวด์สำหรับผู้ให้บริการที่ดูแล AWS
           ให้ลูกค้าหลายราย
         </p>
       </div>
-      <div className="flex flex-col gap-5">
-        {BULLETS.map((bullet) => (
-          <div key={bullet.label} className="flex gap-3">
-            <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[4px] bg-white/8 text-white">
-              <bullet.icon size={16} />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-56 -bottom-56 size-[560px]"
+      >
+        {[560, 420, 280].map((size) => (
+          <span
+            key={size}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-foreground/10"
+            style={{ width: size, height: size }}
+          />
+        ))}
+        <span className="absolute top-1/2 left-1/2 size-[140px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary" />
+        <span className="absolute top-1/2 left-1/2 h-px w-[280px] origin-left -rotate-[38deg] bg-primary" />
+        <span className="absolute top-[calc(50%-150px)] left-[calc(50%+140px)] size-2 rounded-full bg-primary" />
+        <span className="absolute top-[calc(50%-60px)] left-[calc(50%-90px)] size-1.5 rounded-full bg-foreground/10" />
+      </div>
+      <ul className="relative z-10 flex max-w-[520px] flex-col gap-5 bg-surface">
+        {BULLETS.map((bullet, index) => (
+          <li key={bullet.label} className="flex gap-4">
+            <span
+              aria-hidden="true"
+              className="pt-0.5 font-mono text-xs text-foreground-secondary"
+            >
+              {String(index + 1).padStart(2, "0")}
             </span>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium text-white">
+              <span className="text-sm font-medium text-heading">
                 {bullet.label}
               </span>
-              <span className="text-[13px] text-white/64">{bullet.desc}</span>
+              <span className="text-[13px] text-foreground-secondary">
+                {bullet.desc}
+              </span>
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </aside>
   );
 }

@@ -5,12 +5,12 @@ import { useState } from "react";
 import { Skeleton } from "../../../components/shell/Skeleton";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
-import { Card, CardHeader } from "../../../components/ui/card";
 import {
   DataTable,
   DataTablePagination,
   type DataTableColumn,
 } from "../../../components/ui/data-table";
+import { SectionHeader } from "../../../components/ui/section-header";
 import { StatusPill } from "../../../components/ui/status-pill";
 import {
   fetchMonitorIncidents,
@@ -25,6 +25,7 @@ import {
   Time,
   TIME_ZONE,
 } from "../format";
+import { EventFeedMockup } from "./MonitorDetailMockups";
 
 type Incident = MonitorIncidentsResponse["incidents"][number];
 
@@ -41,7 +42,7 @@ const columns: DataTableColumn<Incident>[] = [
       row.endedAt === null ? (
         <span className="flex flex-wrap items-center gap-2">
           ยังไม่สิ้นสุด
-          <StatusPill tone="danger" dot>
+          <StatusPill tone="danger" neutralLabel>
             กำลังเกิดอยู่
           </StatusPill>
         </span>
@@ -79,7 +80,9 @@ const columns: DataTableColumn<Incident>[] = [
 export function IncidentsCard({
   organizationId,
   monitorId,
+  code,
 }: {
+  code?: string;
   organizationId: string;
   monitorId: string;
 }) {
@@ -93,13 +96,14 @@ export function IncidentsCard({
   });
   const data = incidents.data;
   return (
-    <Card as="section" aria-labelledby="detail-incidents">
-      <CardHeader
+    <section aria-labelledby="detail-incidents" className="flex flex-col gap-4">
+      <SectionHeader
         id="detail-incidents"
+        code={code}
         title="เหตุการณ์"
-        className="border-b border-foreground/10 p-4"
+        meta={<>เวลาแสดงตามเขตเวลา {TIME_ZONE}</>}
       />
-      <div className="flex flex-col gap-3 p-4">
+      <div className="flex flex-col gap-3">
         {data === undefined && incidents.isError ? (
           <>
             <Alert tone="error">โหลดเหตุการณ์ไม่สำเร็จ</Alert>
@@ -164,6 +168,7 @@ export function IncidentsCard({
           <Alert tone="warning">อัปเดตเหตุการณ์ไม่สำเร็จ</Alert>
         ) : null}
       </div>
-    </Card>
+      <EventFeedMockup />
+    </section>
   );
 }

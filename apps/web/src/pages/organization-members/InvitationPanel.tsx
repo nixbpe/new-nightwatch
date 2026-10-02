@@ -27,7 +27,6 @@ import {
   ROLE_LABELS,
   type InvitableRole,
 } from "../../lib/roles";
-import { Card, CardHeader } from "../../components/ui/card";
 
 export function InvitationPanel({
   organizationId,
@@ -148,16 +147,23 @@ export function InvitationPanel({
 
   if (!currentScope) return null;
   return (
-    <Card as="section" aria-labelledby="invite-card-title" padding="md">
-      <CardHeader
-        id="invite-card-title"
-        title={<>เชิญสมาชิกเข้าสู่ {organizationName}</>}
-      />
+    <section
+      aria-labelledby="invite-card-title"
+      className="rounded-md border border-foreground/10 bg-surface text-foreground"
+    >
+      <div className="border-b border-foreground/10 px-5 py-3.5">
+        <h2
+          id="invite-card-title"
+          className="text-base font-semibold text-heading"
+        >
+          เชิญสมาชิกเข้าสู่ {organizationName}
+        </h2>
+      </div>
       {notice && (
         <div
           ref={noticeRef}
           tabIndex={-1}
-          className="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+          className="mx-5 mt-5 outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           {notice.tone === "error" ? (
             <Alert tone="error">{notice.text}</Alert>
@@ -176,7 +182,7 @@ export function InvitationPanel({
           event.preventDefault();
           void submit();
         }}
-        className="flex flex-col gap-3"
+        className="flex flex-col gap-3 p-5"
         noValidate
       >
         {/* Bottom-aligned so the button meets the fields whatever the label height; the error sits under the row. */}
@@ -186,6 +192,8 @@ export function InvitationPanel({
               ref={emailRef}
               type="email"
               name="invite-email"
+              className="font-mono"
+              placeholder="name@company.com"
               autoComplete="off"
               value={email}
               onChange={(event) => {
@@ -233,6 +241,6 @@ export function InvitationPanel({
           คำเชิญมีอายุจำกัดและใช้ได้กับอีเมลที่ระบุเท่านั้น
         </p>
       </form>
-    </Card>
+    </section>
   );
 }

@@ -36,6 +36,7 @@ export function SettingsLayout() {
                   tag: "บัญชีของฉัน",
                 }
         }
+        eyebrow="// account settings"
         title="การตั้งค่าส่วนตัว"
         description={
           activeOrg === null
@@ -48,7 +49,7 @@ export function SettingsLayout() {
         <nav
           role="tablist"
           aria-label="หมวดการตั้งค่า"
-          className="-mb-px flex flex-wrap gap-x-6"
+          className="-mb-px flex flex-wrap gap-x-2"
         >
           {SETTINGS_TABS.map((tab) => {
             const Icon = NAV_ICONS[tab.icon];
@@ -60,7 +61,7 @@ export function SettingsLayout() {
                 to={tab.path}
                 role="tab"
                 aria-selected={active}
-                className={`inline-flex h-10 items-center gap-2 border-b-2 px-1 text-sm whitespace-nowrap transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                className={`inline-flex h-11 items-center gap-2 border-b-2 px-3 text-sm whitespace-nowrap transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   active
                     ? "border-primary font-medium text-foreground"
                     : "border-transparent text-foreground-secondary hover:text-foreground"

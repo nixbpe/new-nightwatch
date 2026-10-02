@@ -5,7 +5,9 @@ import {
 } from "@nightwatch/api-contract";
 import { useState } from "react";
 
-import { Card, CardHeader } from "../../../components/ui/card";
+import { Card } from "../../../components/ui/card";
+import { SectionHeader } from "../../../components/ui/section-header";
+
 import {
   AddRowButton,
   RowShell,
@@ -117,7 +119,11 @@ export function RequestSection({
 
   return (
     <Card as="section" aria-labelledby="monitor-form-request" padding="md">
-      <CardHeader id="monitor-form-request" title="คำขอ (Request)" />
+      <SectionHeader
+        id="monitor-form-request"
+        code="02"
+        title="คำขอ (Request)"
+      />
       <SelectControl
         path="method"
         label="Method"

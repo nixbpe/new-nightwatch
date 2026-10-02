@@ -305,12 +305,33 @@ describe("SecurityPage recovery regeneration", () => {
     await screen.findByText("ปิดอยู่");
 
     const headings = screen.getAllByRole("heading", { level: 2 });
-    expect(headings.map((h) => h.textContent)).toEqual([
-      "ยืนยันสองขั้นตอน (MFA)",
-      "รหัสผ่าน",
-    ]);
+    expect(headings).toHaveLength(2);
+    expect(headings[0]).toHaveAccessibleName("ยืนยันสองขั้นตอน (MFA)");
+    expect(headings[1]).toHaveAccessibleName("รหัสผ่าน");
     expect(
       screen.getByRole("button", { name: "เปลี่ยนรหัสผ่าน" }),
     ).toBeInTheDocument();
+  });
+
+  it("renders the account security mockup as a static sample", async () => {
+    renderPage();
+    await screen.findByText("ปิดอยู่");
+
+    const frame = screen.getByRole("group", {
+      name: "ตัวอย่าง: ข้อมูลความปลอดภัยของบัญชี",
+    });
+    expect(
+      within(frame).getByText("ตัวอย่าง · ยังไม่เชื่อมข้อมูลจริง"),
+    ).toBeInTheDocument();
+    expect(within(frame).getByRole("link").getAttribute("href")).toMatch(
+      /issues\/64$/,
+    );
+    expect(within(frame).queryByRole("status")).toBeNull();
+    expect(frame.querySelector("[aria-live]")).toBeNull();
+    for (const name of ["ตั้งค่าใหม่", "สร้างรหัสใหม่"]) {
+      expect(within(frame).getByRole("button", { name })).toBeDisabled();
+    }
+    expect(within(frame).getByText(/แอปยืนยันตัวตน/)).toBeInTheDocument();
+    expect(within(frame).getByText("ความแข็งแรง: ดี")).toBeInTheDocument();
   });
 });

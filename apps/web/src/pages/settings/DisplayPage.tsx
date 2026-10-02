@@ -4,14 +4,10 @@ import { Alert, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { SegmentedControl } from "../../components/ui/segmented-control";
 import { Label } from "../../components/ui/label";
+import { SectionHeader } from "../../components/ui/section-header";
 import { usePreferences, type Preferences } from "../../lib/preferences";
 import { useTheme, type ThemePreference } from "../../lib/theme";
-import {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardSection,
-} from "../../components/ui/card";
+import { Card, CardFooter, CardSection } from "../../components/ui/card";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "light", label: "สว่าง" },
@@ -120,11 +116,12 @@ export function DisplayPage() {
   return (
     <Card className="divide-y divide-foreground/10">
       <CardSection aria-labelledby="theme-card-title">
-        <CardHeader
-          id="theme-card-title"
-          title="ธีม"
-          description="มีผลทันทีกับอุปกรณ์นี้ และจำไว้สำหรับครั้งถัดไป"
-        />
+        <div className="flex flex-col gap-2">
+          <SectionHeader id="theme-card-title" code="01" title="ธีม" />
+          <p className="text-sm text-foreground-secondary">
+            มีผลทันทีกับอุปกรณ์นี้ และจำไว้สำหรับครั้งถัดไป
+          </p>
+        </div>
         <SegmentedControl
           label="ธีม"
           value={theme}
@@ -136,11 +133,13 @@ export function DisplayPage() {
       </CardSection>
 
       <CardSection aria-labelledby="locale-card-title">
-        <CardHeader
-          id="locale-card-title"
-          title="ภาษาและเวลา"
-          description="ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป เก็บไว้ในเบราว์เซอร์นี้เท่านั้น"
-        />
+        <div className="flex flex-col gap-2">
+          <SectionHeader id="locale-card-title" code="02" title="ภาษาและเวลา" />
+          <p className="text-sm text-foreground-secondary">
+            ใช้กับข้อความ วันที่ และเวลาที่แสดงทั่วทั้งแอป
+            เก็บไว้ในเบราว์เซอร์นี้เท่านั้น
+          </p>
+        </div>
 
         {saved ? (
           <Alert tone="success">บันทึกแล้ว ใช้กับเบราว์เซอร์นี้</Alert>

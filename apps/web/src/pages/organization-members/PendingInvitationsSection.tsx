@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { DataTable, DataTablePagination } from "../../components/ui/data-table";
+import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
 import { Skeleton } from "../../components/shell/Skeleton";
 import {
@@ -217,17 +217,22 @@ export function PendingInvitationsSection({
     );
   } else if (!showData) {
     body = (
-      <div aria-busy="true" className="flex flex-col gap-2">
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-full" />
+      <div aria-busy="true" className="flex flex-col gap-px">
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-11 w-full" />
       </div>
     );
   } else if (data.page.total === 0) {
     body = (
-      <p className="text-sm text-foreground-secondary">
-        ไม่มีคำเชิญที่รอตอบรับ
-      </p>
+      <div className="flex flex-col items-center gap-1 rounded-md border border-foreground/10 bg-surface px-5 py-10 text-center">
+        <p className="text-sm font-medium text-foreground">
+          ไม่มีคำเชิญที่รอตอบรับ
+        </p>
+        <p className="text-[13px] text-foreground-secondary">
+          คำเชิญที่ส่งจากการ์ดด้านบนจะแสดงที่นี่จนกว่าผู้รับจะตอบรับ
+        </p>
+      </div>
     );
   } else {
     body = (
@@ -235,12 +240,26 @@ export function PendingInvitationsSection({
         <DataTable<PendingInvitation>
           ariaLabel="ตารางคำเชิญที่รอตอบรับ"
           columns={[
-            { key: "email", header: "อีเมล", cell: (item) => item.email },
+            {
+              key: "email",
+              header: "อีเมล",
+              mono: true,
+              cell: (item) =>
+                item.expired ? (
+                  <span className="text-foreground-secondary">
+                    {item.email}
+                  </span>
+                ) : (
+                  item.email
+                ),
+            },
             {
               key: "role",
               header: "บทบาท",
               width: "160px",
-              cell: (item) => <StatusPill>{ROLE_LABELS[item.role]}</StatusPill>,
+              cell: (item) => (
+                <StatusPill tone="neutral">{ROLE_LABELS[item.role]}</StatusPill>
+              ),
             },
             {
               key: "sentAt",
@@ -266,8 +285,9 @@ export function PendingInvitationsSection({
             {
               key: "actions",
               header: "การทำงาน",
+              align: "end",
               cell: (item) => (
-                <div className="flex flex-wrap items-start gap-2">
+                <div className="flex flex-wrap items-start justify-end gap-2">
                   <InvitationResendButton
                     invitation={item}
                     now={now}
@@ -314,24 +334,52 @@ export function PendingInvitationsSection({
     );
   }
 
+  const quotaPercent = showData
+    ? Math.min(100, (data.activeCount / data.activeLimit) * 100)
+    : 0;
   return (
-    <Card as="section" aria-labelledby="pending-invitations-title" padding="md">
-      <div className="flex flex-col gap-1">
-        <h2
-          id="pending-invitations-title"
-          ref={headingRef}
-          tabIndex={-1}
-          className="text-base font-semibold text-heading focus:outline-2 focus:outline-offset-2 focus:outline-primary"
-        >
-          คำเชิญที่รอตอบรับ
-          {showData
-            ? ` (${String(data.activeCount)} จาก ${String(data.activeLimit)})`
-            : null}
-        </h2>
-        <p className="text-sm text-foreground-secondary">
-          คำเชิญที่หมดอายุไม่นับในโควตา
-        </p>
-      </div>
+    <section
+      aria-labelledby="pending-invitations-title"
+      className="flex flex-col gap-4"
+    >
+      <SectionHeader
+        id="pending-invitations-title"
+        code="01"
+        headingRef={headingRef}
+        headingTabIndex={-1}
+        headingClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        title={
+          <>
+            คำเชิญที่รอตอบรับ
+            {showData ? (
+              <>
+                {" ("}
+                <span className="font-mono">{String(data.activeCount)}</span>
+                {" จาก "}
+                <span className="font-mono">{String(data.activeLimit)}</span>
+                {")"}
+              </>
+            ) : null}
+          </>
+        }
+        note="คำเชิญที่หมดอายุไม่นับในโควตา"
+        meta={
+          showData ? (
+            <div
+              aria-hidden="true"
+              className="flex items-center gap-2 text-xs text-foreground-secondary"
+            >
+              <span>โควตา</span>
+              <span className="block h-1 w-[120px] surface-active">
+                <span
+                  className="block h-full bg-primary"
+                  style={{ width: `${String(quotaPercent)}%` }}
+                />
+              </span>
+            </div>
+          ) : undefined
+        }
+      />
       <div role="status" className="flex flex-col gap-1 text-sm empty:sr-only">
         {showData || failed ? null : (
           <p className="text-foreground-secondary">กำลังโหลดคำเชิญ</p>
@@ -342,11 +390,12 @@ export function PendingInvitationsSection({
         {notice === null ? null : (
           <p
             className={
-              notice.tone === "success"
+              "rounded-md border border-foreground/10 bg-surface px-3.5 py-2.5 " +
+              (notice.tone === "success"
                 ? "text-primary"
                 : notice.tone === "warning"
                   ? "text-caution"
-                  : "text-danger"
+                  : "text-danger")
             }
           >
             {notice.text}
@@ -412,6 +461,6 @@ export function PendingInvitationsSection({
           }}
         />
       )}
-    </Card>
+    </section>
   );
 }

@@ -115,7 +115,12 @@ describe("Detail health and special states", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("ล่ม").length).toBeGreaterThan(0);
     expect(screen.getByText(/ตั้งแต่/)).toHaveTextContent("12 นาที");
-    expect(screen.getByText(/สาเหตุ .*คาดหวัง 200-299/)).toBeInTheDocument();
+    expect(screen.getByText(/^สาเหตุ /)).toHaveTextContent(/คาดหวัง 200-299/);
+    expect(
+      screen.getByRole("link", { name: "ดูการแจ้งเตือน" }),
+    ).toHaveAttribute("href", "/notifications");
+    // The duration changes every poll, so no assertive live region may hold it.
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(await screen.findByText("กำลังเกิดอยู่")).toBeInTheDocument();
     expect(screen.getByText("ยังไม่สิ้นสุด")).toBeInTheDocument();
     expect(screen.getByText(/HTTP 503/)).toBeInTheDocument();
@@ -791,18 +796,21 @@ describe("Detail structure", () => {
     renderDetail();
     await screen.findByRole("heading", { level: 1, name: "Payments API" });
     await screen.findByText("ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล");
-    const headings = screen
-      .getAllByRole("heading", { level: 2 })
-      .map((heading) => heading.textContent);
-    expect(headings).toEqual([
+    const names = [
+      "เวลาตอบสนอง",
       "สถานะปัจจุบัน",
       "ผลการตรวจล่าสุดและ Assertions",
-      "เวลาตอบสนอง",
-      "SSL",
       "เหตุการณ์",
       "ประวัติการตรวจ",
       "การตั้งค่า",
-    ]);
+      "SSL",
+    ];
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings).toHaveLength(names.length);
+    // The section code (01, 02) is aria-hidden, so the accessible name excludes it.
+    names.forEach((name, index) => {
+      expect(headings[index]).toHaveAccessibleName(name);
+    });
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
@@ -1252,5 +1260,148 @@ describe("Detail response-time chart", () => {
     expect(
       await screen.findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Detail redesign behaviours", () => {
+  it("keeps the date in the header when the last check was on a previous day", async () => {
+    showDetail(detail({ lastCheckAt: "2026-09-28T07:30:00.000Z" }));
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    const time = screen
+      .getAllByText(/ตรวจล่าสุด/)
+      .map((node) => node.querySelector("time"))
+      .find((node) => node !== null);
+    expect(must(time)).toHaveTextContent(
+      formatDateTime("2026-09-28T07:30:00.000Z"),
+    );
+  });
+
+  it("shows p50, p95, check count and failures for 24 h", async () => {
+    showDetail(detail());
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: [
+        {
+          at: "2026-09-30T07:00:00.000Z",
+          responseTimeMs: 100,
+          outcome: "pass",
+        },
+        {
+          at: "2026-09-30T07:05:00.000Z",
+          responseTimeMs: 300,
+          outcome: "pass",
+        },
+        {
+          at: "2026-09-30T07:10:00.000Z",
+          responseTimeMs: null,
+          outcome: "fail",
+        },
+      ],
+    });
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    const kpi = (label: string) =>
+      must(within(card).getByText(label).nextElementSibling);
+    await waitFor(() => {
+      expect(kpi("จำนวนการตรวจ")).toHaveTextContent("3");
+    });
+    expect(kpi("ล้มเหลว")).toHaveTextContent("1");
+    expect(kpi("p50")).toHaveTextContent("100 ms");
+    expect(kpi("p95")).toHaveTextContent("300 ms");
+  });
+
+  it("reads ยังไม่มีข้อมูล for p50 and p95 when no point has a response time", async () => {
+    showDetail(detail());
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: [
+        {
+          at: "2026-09-30T07:00:00.000Z",
+          responseTimeMs: null,
+          outcome: "fail",
+        },
+      ],
+    });
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    await waitFor(() => {
+      expect(
+        must(within(card).getByText("p50").nextElementSibling),
+      ).toHaveTextContent("ยังไม่มีข้อมูล");
+    });
+    expect(
+      must(within(card).getByText("p95").nextElementSibling),
+    ).toHaveTextContent("ยังไม่มีข้อมูล");
+  });
+
+  it("swaps the percentile KPIs for a labelled sample on 7 d", async () => {
+    showDetail(detail());
+    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+      Promise.resolve(
+        range === "24h"
+          ? noResponseTimes
+          : {
+              range,
+              unit: "ms",
+              buckets: [
+                {
+                  hourStart: "2026-09-30T06:00:00.000Z",
+                  avgMs: 100,
+                  maxMs: 150,
+                  checks: 12,
+                  responseChecks: 12,
+                },
+              ],
+              pauses: [],
+              configChanges: [],
+            },
+      ),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("radio", { name: "7 วัน" });
+    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    const sample = await within(card).findByRole("group", {
+      name: /^ตัวอย่าง: p50 p95/,
+    });
+    expect(sample).toHaveAttribute("data-slot", "mockup-frame");
+    expect(within(sample).getByRole("link", { name: /issue/ })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/\/issues\/57$/),
+    );
+    const liveKpis = Array.from(card.querySelectorAll("dt")).filter(
+      (dt) => dt.closest('[data-slot="mockup-frame"]') === null,
+    );
+    expect(liveKpis.map((dt) => dt.textContent)).toEqual(["จำนวนการตรวจ"]);
+    expect(within(card).getByText("จำนวนการตรวจ")).toBeInTheDocument();
+    expect(
+      within(card).getByText("จำนวนการตรวจ").nextElementSibling,
+    ).toHaveTextContent("12");
+  });
+
+  it("frames every sample region with its issue link", async () => {
+    showDetail(detail());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    const frames = Array.from(
+      document.querySelectorAll('[data-slot="mockup-frame"]'),
+    );
+    expect(frames.length).toBeGreaterThanOrEqual(3);
+    for (const frame of frames) {
+      expect(frame.textContent).not.toMatch(/HTTP\/\d/);
+      expect(frame).toHaveAccessibleName(/^ตัวอย่าง:/);
+      expect(within(frame as HTMLElement).getByRole("link")).toHaveAttribute(
+        "href",
+        expect.stringContaining("/issues/"),
+      );
+    }
   });
 });

@@ -1,6 +1,6 @@
 import type { Monitor } from "@nightwatch/api-contract";
 
-import { Card, CardHeader } from "../../../components/ui/card";
+import { SectionHeader } from "../../../components/ui/section-header";
 import {
   formatNumber,
   formatTimeOrDate,
@@ -50,20 +50,29 @@ function statusRow(
   };
 }
 
-export function LastResultCard({ monitor }: { monitor: Monitor }) {
+export function LastResultCard({
+  monitor,
+  code,
+}: {
+  monitor: Monitor;
+  code?: string;
+}) {
   const result = monitor.lastResult;
   const cause = result === null ? null : failureText(result);
   // Result and config line up by index only while they belong to the same config version.
   const sameConfig = result?.configVersion === monitor.version;
   return (
-    <Card as="section" aria-labelledby="detail-last-result">
-      <CardHeader
+    <section
+      aria-labelledby="detail-last-result"
+      className="flex flex-col gap-4"
+    >
+      <SectionHeader
         id="detail-last-result"
+        code={code}
         title="ผลการตรวจล่าสุดและ Assertions"
-        description={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}
-        className="border-b border-foreground/10 p-4"
+        meta={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}
       />
-      <div className="flex flex-col gap-3 p-4">
+      <div className="flex flex-col gap-3">
         {result === null ? (
           <p className="text-sm text-foreground-secondary">ยังไม่มีผลการตรวจ</p>
         ) : (
@@ -114,6 +123,6 @@ export function LastResultCard({ monitor }: { monitor: Monitor }) {
           </>
         )}
       </div>
-    </Card>
+    </section>
   );
 }

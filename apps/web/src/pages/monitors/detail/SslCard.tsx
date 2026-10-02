@@ -48,7 +48,7 @@ export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
           </p>
         ) : null}
         {hasCertificate ? (
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1">
+          <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 [&>dd]:text-right">
             {ssl.issuer === null ? null : (
               <>
                 <dt className="text-foreground-secondary">ผู้ออก</dt>
@@ -58,14 +58,14 @@ export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
             {ssl.host === null ? null : (
               <>
                 <dt className="text-foreground-secondary">โฮสต์</dt>
-                <dd className="font-mono text-[13px]">{ssl.host}</dd>
+                <dd className="font-mono break-all">{ssl.host}</dd>
               </>
             )}
             {ssl.notAfter === null ? null : (
               <>
                 <dt className="text-foreground-secondary">หมดอายุ</dt>
                 <dd>
-                  <time dateTime={ssl.notAfter}>
+                  <time dateTime={ssl.notAfter} className="font-mono">
                     {dateFormat.format(new Date(ssl.notAfter))}
                   </time>
                 </dd>

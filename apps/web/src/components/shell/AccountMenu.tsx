@@ -10,7 +10,7 @@ import {
   MonitorIcon,
   SlidersIcon,
 } from "./icons";
-import { initialsOf } from "./initials";
+import { initialsFontClass, initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
 import { StatusPill } from "../ui/status-pill";
@@ -48,7 +48,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
         aria-expanded={popover.open}
         aria-label={collapsed ? `บัญชี: ${name}` : "เมนูบัญชีผู้ใช้"}
         onClick={popover.toggle}
-        className={`flex h-12 w-full items-center gap-2.5 rounded-md hover:bg-foreground/5 ${
+        className={`flex h-12 w-full items-center gap-2.5 rounded-md hover:surface-hover ${
           collapsed ? "justify-center" : "px-2"
         }`}
       >
@@ -59,7 +59,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
               <span className="block truncate text-sm font-medium text-foreground">
                 {name}
               </span>
-              <span className="block truncate text-xs text-foreground-secondary">
+              <span className="block truncate font-mono text-[11px] text-foreground-secondary">
                 {email}
               </span>
             </span>
@@ -143,16 +143,17 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** Avatars are the one circular mark. */
+/** Avatars are the one circular mark: inset fill, strong edge, Text initials in mono. */
 function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
+  const initials = initialsOf(name);
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex flex-shrink-0 items-center justify-center rounded-full border border-primary/35 bg-primary/14 font-medium text-primary ${
-        size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs"
+      className={`surface-hover inline-flex flex-shrink-0 items-center justify-center rounded-full border border-foreground/20 font-semibold text-foreground ${initialsFontClass(initials)} ${
+        size === "lg" ? "h-10 w-10 text-[13px]" : "h-8 w-8 text-[11px]"
       }`}
     >
-      {initialsOf(name)}
+      {initials}
     </span>
   );
 }
@@ -174,7 +175,7 @@ function ThemeSegmentedControl({
     <div
       role="group"
       aria-label="ธีม"
-      className="flex gap-0.5 rounded-md border border-foreground/10 p-0.5"
+      className="flex gap-0.5 rounded-md border border-control-border p-0.5"
     >
       {THEME_OPTIONS.map((option) => {
         const active = option.value === theme;

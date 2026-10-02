@@ -5,6 +5,8 @@ import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 // Offset focus outline stays visible against the solid primary fill; 40px height matches <Input>.
+// `sm` is the 32 px small size for table row actions and filter chips (LAY-06);
+// `destructive` is the Danger-filled confirm inside a confirmation dialog (COL-05).
 // Filled variants go neutral when disabled instead of fading, so a disabled
 // primary never reads as a washed-out action; `wrap` lets long Thai labels
 // break onto two lines at narrow widths without an ancestor override.
@@ -20,7 +22,7 @@ const buttonVariants = cva(
         secondary:
           "border border-control-border bg-surface text-foreground hover:bg-background disabled:opacity-60",
         destructive:
-          "bg-danger text-white hover:bg-danger/90 disabled:bg-foreground/8 disabled:text-foreground-secondary disabled:hover:bg-foreground/8",
+          "bg-danger text-on-danger hover:bg-danger/90 disabled:bg-foreground/8 disabled:text-foreground-secondary disabled:hover:bg-foreground/8",
         outline:
           "border border-control-border bg-surface text-foreground hover:bg-background disabled:opacity-60",
         ghost:
@@ -29,7 +31,7 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-10 px-4",
-        sm: "h-8 px-3 text-xs",
+        sm: "h-8 px-3 text-[13px]",
         quiet: "h-8 px-3 text-[13px]",
         lg: "h-11 px-6",
         icon: "h-10 w-10",

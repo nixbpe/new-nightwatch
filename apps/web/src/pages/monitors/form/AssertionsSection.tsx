@@ -1,7 +1,9 @@
 import { MONITOR_MAX_ASSERTIONS } from "@nightwatch/api-contract";
 import { useState } from "react";
 
-import { Card, CardHeader } from "../../../components/ui/card";
+import { Card } from "../../../components/ui/card";
+import { SectionHeader } from "../../../components/ui/section-header";
+
 import { ASSERTION_KIND_LABELS } from "../detail/labels";
 import {
   AddRowButton,
@@ -46,8 +48,9 @@ export function AssertionsSection({
 
   return (
     <Card as="section" aria-labelledby="monitor-form-assertions" padding="md">
-      <CardHeader
+      <SectionHeader
         id="monitor-form-assertions"
+        code="04"
         title="เงื่อนไขตรวจสอบ (Assertions)"
       />
       <TextControl

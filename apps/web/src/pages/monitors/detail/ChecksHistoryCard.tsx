@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Skeleton } from "../../../components/shell/Skeleton";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
-import { Card, CardHeader } from "../../../components/ui/card";
+import { SectionHeader } from "../../../components/ui/section-header";
 import {
   DataTable,
   DataTablePagination,
@@ -134,7 +134,9 @@ const columns: DataTableColumn<Row>[] = [
 export function ChecksHistoryCard({
   organizationId,
   monitorId,
+  code,
 }: {
+  code?: string;
   organizationId: string;
   monitorId: string;
 }) {
@@ -148,14 +150,14 @@ export function ChecksHistoryCard({
   });
   const data = checks.data;
   return (
-    <Card as="section" aria-labelledby="detail-checks">
-      <CardHeader
+    <section aria-labelledby="detail-checks" className="flex flex-col gap-4">
+      <SectionHeader
         id="detail-checks"
+        code={code}
         title="ประวัติการตรวจ"
-        description={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}
-        className="border-b border-foreground/10 p-4"
+        meta={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}
       />
-      <div className="flex flex-col gap-3 p-4">
+      <div className="flex flex-col gap-3">
         {data === undefined && checks.isError ? (
           <>
             <Alert tone="error">โหลดประวัติการตรวจไม่สำเร็จ</Alert>
@@ -226,6 +228,6 @@ export function ChecksHistoryCard({
           <Alert tone="warning">อัปเดตประวัติการตรวจไม่สำเร็จ</Alert>
         ) : null}
       </div>
-    </Card>
+    </section>
   );
 }

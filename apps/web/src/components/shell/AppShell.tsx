@@ -23,8 +23,11 @@ const FOCUSABLE_DRAWER_SELECTOR = [
 ].join(",");
 
 // The header toggle overrides the breakpoint default only until the breakpoint changes, so no stale override remains.
-// Grain belongs to data-dense views only (overview, inbox, directory), never to forms.
-const DATA_DENSE_ROUTE = /^\/(workspace|notifications)(\/|$)|\/members$/;
+// `main` is the containing block of absolute descendants (sr-only text, visually hidden inputs); without it they
+// sit in the initial containing block at their scrolled position and make the document taller than h-dvh.
+// Grain belongs to data-dense views only (overview, monitor list, inbox), never to forms or detail pages.
+const DATA_DENSE_ROUTE =
+  /^\/(workspace|notifications)(\/|$)|^\/organizations\/[^/]+\/monitors\/?$/;
 
 export function AppShell() {
   const { pathname } = useLocation();
@@ -167,7 +170,7 @@ export function AppShell() {
           <main
             id="main-content"
             tabIndex={-1}
-            className={`flex-1 overflow-y-auto focus:outline-none ${
+            className={`relative flex-1 overflow-y-auto focus:outline-none ${
               DATA_DENSE_ROUTE.test(pathname) ? "canvas-grain" : ""
             }`}
           >
@@ -199,9 +202,9 @@ export function AppShell() {
             tabIndex={-1}
             aria-label="ปิดเมนูด้วยฉากหลัง"
             onClick={closeMobileMenu}
-            className="absolute inset-0 bg-foreground/40"
+            className="absolute inset-0 bg-scrim"
           />
-          <div className="absolute inset-y-0 left-0 w-64 bg-surface shadow-lg">
+          <div className="absolute inset-y-0 left-0 w-64 bg-surface shadow-modal">
             <button
               ref={mobileCloseButtonRef}
               type="button"

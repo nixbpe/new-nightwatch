@@ -9,7 +9,12 @@ export type NavLeaf = {
   roles?: readonly string[];
   /** Searchable in the command palette but never rendered as sidebar rows. */
   palette?: NavLeaf[];
+  /** Server count shown at the row's end (`aria-hidden`, hidden when unknown). */
+  count?: NavCountSource;
 };
+
+/** `monitors`: the active organization's monitor `summary.total`; `unread`: the inbox unread count. */
+export type NavCountSource = "monitors" | "unread";
 
 export type NavGroup = { label: string; children: NavLeaf[] };
 
@@ -26,8 +31,14 @@ export const NAV_ITEMS: NavItem[] = [
     label: "ตรวจสถานะบริการ",
     icon: "activity",
     path: "/organizations/:organizationId/monitors",
+    count: "monitors",
   },
-  { label: "การแจ้งเตือน", icon: "inbox", path: "/notifications" },
+  {
+    label: "การแจ้งเตือน",
+    icon: "inbox",
+    path: "/notifications",
+    count: "unread",
+  },
   {
     label: "การตั้งค่าส่วนตัว",
     icon: "sliders",
@@ -48,7 +59,7 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       {
         label: "สมาชิก",
-        icon: "user",
+        icon: "users",
         path: "/organizations/:organizationId/members",
       },
       {
@@ -91,7 +102,7 @@ export function canSeeLeaf(leaf: NavLeaf, role: string | null): boolean {
 
 export type NavContext = { organizationId: string | null; role: string | null };
 
-export type NavDestination = Omit<NavLeaf, "palette" | "roles"> & {
+export type NavDestination = Omit<NavLeaf, "palette" | "roles" | "count"> & {
   group?: string;
 };
 

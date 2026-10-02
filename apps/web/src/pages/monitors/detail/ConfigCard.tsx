@@ -1,7 +1,8 @@
 import type { Monitor } from "@nightwatch/api-contract";
 
 import { Card, CardHeader } from "../../../components/ui/card";
-import { ASSERTION_KIND_LABELS, authText, intervalText } from "./labels";
+import { IntervalText } from "./IntervalText";
+import { ASSERTION_KIND_LABELS, authText } from "./labels";
 
 const AUTH_SLOTS = {
   none: [],
@@ -43,15 +44,19 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
         title="การตั้งค่า"
         className="border-b border-foreground/10 p-4"
       />
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 p-4 text-sm">
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 p-4 text-sm [&>dd]:text-right [&>dd]:break-words">
         <dt className="text-foreground-secondary">Method</dt>
-        <dd className="font-mono text-[13px]">{monitor.method}</dd>
+        <dd className="font-mono text-sm">{monitor.method}</dd>
         <dt className="text-foreground-secondary">รอบตรวจ</dt>
-        <dd>{intervalText(monitor.intervalSeconds)}</dd>
+        <dd>
+          <IntervalText seconds={monitor.intervalSeconds} />
+        </dd>
         <dt className="text-foreground-secondary">หมดเวลา</dt>
-        <dd>{monitor.timeoutSeconds} วินาที</dd>
+        <dd>
+          <span className="font-mono">{monitor.timeoutSeconds}</span> วินาที
+        </dd>
         <dt className="text-foreground-secondary">รหัสสถานะที่ถือว่าปกติ</dt>
-        <dd className="font-mono text-[13px]">{monitor.expectedStatus}</dd>
+        <dd className="font-mono text-sm">{monitor.expectedStatus}</dd>
         <dt className="text-foreground-secondary">การยืนยันตัวตน</dt>
         <dd>
           {authText(monitor.auth)}
@@ -110,7 +115,7 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
               <pre
                 role="group"
                 aria-label="เนื้อหา body"
-                className="rounded-md border border-foreground/10 p-2 font-mono text-[13px] whitespace-pre-wrap break-all"
+                className="surface-inset rounded-md border border-foreground/10 p-2 text-left font-mono text-xs whitespace-pre-wrap break-all"
               >
                 {monitor.body.content}
               </pre>

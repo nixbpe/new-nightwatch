@@ -1,3 +1,4 @@
+import { isDenied } from "../workspace/rows";
 import type { Monitor, MonitorListResponse } from "@nightwatch/api-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
@@ -26,24 +27,24 @@ import { useTenant } from "../../lib/tenant/TenantProvider";
 import { ChecksHistoryCard } from "./detail/ChecksHistoryCard";
 import { ConfigCard } from "./detail/ConfigCard";
 import { IncidentsCard } from "./detail/IncidentsCard";
-import { intervalText } from "./detail/labels";
+import { IntervalText } from "./detail/IntervalText";
+import { LastResponseMockup } from "./detail/MonitorDetailMockups";
 import { LastResultCard } from "./detail/LastResultCard";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { SslCard } from "./detail/SslCard";
-import { StatusCard, statusLine } from "./detail/StatusCard";
+import { DownBanner, StatusCard, statusLine } from "./detail/StatusCard";
 import { useFlashNotice, type MonitorFlashState } from "./flash";
-import { formatTimeOrDate, formatTimeWithSeconds, Time } from "./format";
+import {
+  formatTimeOrDate,
+  formatTimeWithSeconds,
+  formatTimeWithSecondsOrDate,
+  Time,
+  TIME_ZONE,
+} from "./format";
 import { HealthPill } from "./HealthPill";
 import { useLeaveOnOrganizationSwitch } from "./useLeaveOnOrganizationSwitch";
 
 const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนแล้ว";
-
-function isDenied(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.code === "MEMBERSHIP_DENIED" || error.code === "PERMISSION_DENIED")
-  );
-}
 
 function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.code === "MONITOR_NOT_FOUND";
@@ -274,7 +275,7 @@ function DetailForMonitor({
     <>
       <Link
         to={overviewPath}
-        className="inline-flex items-center gap-1.5 self-start text-sm text-primary underline-offset-4 hover:underline"
+        className="inline-flex min-h-6 items-center gap-1.5 self-start text-xs text-foreground-secondary underline-offset-4 hover:text-foreground hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <ArrowLeftIcon size={14} />
         กลับไปรายการมอนิเตอร์
@@ -289,6 +290,7 @@ function DetailForMonitor({
                 tag: ROLE_LABELS[organization.role] ?? organization.role,
               }
         }
+        eyebrow="// monitor · http"
         title={title}
         status={status}
         actions={actions}
@@ -380,9 +382,6 @@ function DetailForMonitor({
   const busy = toggle.isPending;
   const actions = canWrite ? (
     <>
-      <Button asChild variant="secondary">
-        <Link to={`${overviewPath}/${monitorId}/edit`}>แก้ไข</Link>
-      </Button>
       <Button
         type="button"
         variant="secondary"
@@ -409,15 +408,37 @@ function DetailForMonitor({
       >
         ลบมอนิเตอร์
       </Button>
+      <Button asChild>
+        <Link to={`${overviewPath}/${monitorId}/edit`}>แก้ไข</Link>
+      </Button>
     </>
   ) : undefined;
   const line = statusLine(monitor);
+  const bannerShown =
+    monitor.health === "down" && monitor.openIncident !== null;
   const status = (
     <>
       <HealthPill health={monitor.health} />
-      {line === null ? null : <span>{line}</span>}
-      <span className="font-mono break-all">{monitor.url}</span>
-      <span>{intervalText(monitor.intervalSeconds)}</span>
+      {line === null || bannerShown ? null : <span>{line}</span>}
+      <span className="break-all">
+        <span className="font-mono">{monitor.method}</span>{" "}
+        <span className="font-mono">{monitor.url}</span>
+      </span>
+      <IntervalText seconds={monitor.intervalSeconds} />
+      {monitor.lastCheckAt === null ? (
+        <span>รอตรวจครั้งแรก</span>
+      ) : (
+        <span>
+          ตรวจล่าสุด{" "}
+          <span className="font-mono">
+            <Time
+              iso={monitor.lastCheckAt}
+              format={formatTimeWithSecondsOrDate}
+            />
+          </span>{" "}
+          ({TIME_ZONE})
+        </span>
+      )}
       {canWrite ? null : <span>สิทธิ์ของคุณ: ดูอย่างเดียว</span>}
     </>
   );
@@ -442,23 +463,37 @@ function DetailForMonitor({
         </Alert>
       ) : null}
       <StateAlerts monitor={monitor} />
-      <StatusCard monitor={monitor} />
-      <LastResultCard monitor={monitor} />
-      <ResponseTimeCard
-        organizationId={organizationId}
-        monitorId={monitorId}
-        lastCheckAt={monitor.lastCheckAt}
-        dataAsOf={monitor.dataAsOf}
-        intervalSeconds={monitor.intervalSeconds}
-        createdAt={monitor.createdAt}
-      />
-      <SslCard ssl={monitor.ssl} />
-      <IncidentsCard organizationId={organizationId} monitorId={monitorId} />
-      <ChecksHistoryCard
-        organizationId={organizationId}
-        monitorId={monitorId}
-      />
-      <ConfigCard monitor={monitor} />
+      <DownBanner monitor={monitor} />
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex min-w-0 flex-col gap-8">
+          <ResponseTimeCard
+            code="01"
+            organizationId={organizationId}
+            monitorId={monitorId}
+            lastCheckAt={monitor.lastCheckAt}
+            dataAsOf={monitor.dataAsOf}
+            intervalSeconds={monitor.intervalSeconds}
+            createdAt={monitor.createdAt}
+          />
+          <StatusCard monitor={monitor} code="02" />
+          <LastResultCard monitor={monitor} code="03" />
+          <IncidentsCard
+            code="04"
+            organizationId={organizationId}
+            monitorId={monitorId}
+          />
+          <ChecksHistoryCard
+            code="05"
+            organizationId={organizationId}
+            monitorId={monitorId}
+          />
+        </div>
+        <aside className="flex min-w-0 flex-col gap-6">
+          <ConfigCard monitor={monitor} />
+          <SslCard ssl={monitor.ssl} />
+          <LastResponseMockup />
+        </aside>
+      </div>
       {deleteDialog === null ? null : (
         <ConfirmDialog
           title="ยืนยันการลบมอนิเตอร์"

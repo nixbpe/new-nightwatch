@@ -4,7 +4,7 @@ import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { BrandMark } from "./BrandMark";
 import { CheckIcon, ChevronsUpDownIcon } from "./icons";
-import { initialsOf } from "./initials";
+import { initialsFontClass, initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
 
@@ -51,7 +51,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
       {collapsed ? null : (
         <>
           <span className="min-w-0 flex-1 text-start">
-            <span className="block truncate text-sm font-medium text-foreground">
+            <span className="block truncate text-sm font-semibold text-foreground">
               {activeOrg.name}
             </span>
             <span className="block truncate text-xs text-foreground-secondary">
@@ -82,7 +82,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
           aria-expanded={popover.open}
           aria-label={collapsed ? `องค์กร: ${activeOrg.name}` : undefined}
           onClick={popover.toggle}
-          className={`${blockClass} hover:bg-foreground/5`}
+          className={`${blockClass} hover:surface-hover`}
         >
           {content}
         </button>
@@ -160,14 +160,15 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** A system object, so the 4px corner rather than a circle. */
+/** A system object, so the 4px corner rather than a circle; solid Primary with On primary initials. */
 function OrgMark({ name }: { name: string }) {
+  const initials = initialsOf(name);
   return (
     <span
       aria-hidden="true"
-      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-primary/35 bg-primary/14 text-xs font-semibold text-primary"
+      className={`inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-on-primary ${initialsFontClass(initials)}`}
     >
-      {initialsOf(name)}
+      {initials}
     </span>
   );
 }

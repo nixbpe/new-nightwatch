@@ -29,6 +29,7 @@ import { useTenant } from "../../../lib/tenant/TenantProvider";
 import type { MonitorFlashState } from "../flash";
 import { useOrganizationSwitched } from "../useLeaveOnOrganizationSwitch";
 import { AssertionsSection } from "./AssertionsSection";
+import { AlertsSection } from "./AlertsSection";
 import { BasicSection } from "./BasicSection";
 import { RequestSection } from "./RequestSection";
 import { TestPanel } from "./TestPanel";
@@ -366,6 +367,12 @@ export function MonitorForm({
         {editing ? "กลับไปมอนิเตอร์" : "กลับไปรายการมอนิเตอร์"}
       </Link>
       <PageHeader
+        eyebrow={editing ? "// edit monitor" : "// new monitor"}
+        description={
+          editing
+            ? undefined
+            : "เพิ่มเว็บไซต์หรือ API เพื่อให้ NightWatch ตรวจสถานะเป็นระยะและแจ้งเมื่อล่มหรือ SSL ใกล้หมดอายุ"
+        }
         scope={{
           mark: organization.name,
           label: organization.name,
@@ -408,7 +415,7 @@ export function MonitorForm({
     secrets: secretStore,
   };
   return (
-    <Page width="form">
+    <Page>
       {heading}
       <form
         ref={formRef}
@@ -416,109 +423,117 @@ export function MonitorForm({
         onSubmit={(event) => {
           void save(event);
         }}
-        className="flex flex-col gap-6"
+        className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-10"
       >
-        <div className="flex items-center gap-3">
-          <span aria-hidden="true" className="text-sm font-medium">
-            โหมด
-          </span>
-          <SegmentedControl
-            label="โหมด"
-            value={mode}
-            options={[
-              { value: "basic", label: "พื้นฐาน" },
-              { value: "advanced", label: "ขั้นสูง" },
-            ]}
-            onChange={setMode}
+        <div className="flex min-w-0 flex-col gap-6 lg:col-start-1 lg:row-start-1">
+          <div className="flex items-center gap-3">
+            <span aria-hidden="true" className="text-sm font-medium">
+              โหมด
+            </span>
+            <SegmentedControl
+              label="โหมด"
+              value={mode}
+              options={[
+                { value: "basic", label: "พื้นฐาน" },
+                { value: "advanced", label: "ขั้นสูง" },
+              ]}
+              onChange={setMode}
+            />
+          </div>
+          {mode === "basic" && advancedInUse > 0 ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Alert tone="info" role="status">
+                มีการตั้งค่าขั้นสูง {advancedInUse} รายการที่ยังใช้งานอยู่
+              </Alert>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setMode("advanced");
+                }}
+              >
+                ดูในโหมดขั้นสูง
+              </Button>
+            </div>
+          ) : null}
+          <BasicSection
+            {...sectionProps}
+            advanced={mode === "advanced"}
+            urlNote={originBlocked ? SECRET_ORIGIN_MESSAGE : null}
           />
-        </div>
-        {mode === "basic" && advancedInUse > 0 ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <Alert tone="info" role="status">
-              มีการตั้งค่าขั้นสูง {advancedInUse} รายการที่ยังใช้งานอยู่
+          {mode === "advanced" ? (
+            <>
+              <RequestSection {...sectionProps} base={base} />
+              <SecretsSection {...sectionProps} base={base} />
+              <AssertionsSection {...sectionProps} />
+            </>
+          ) : null}
+          <AlertsSection
+            code={mode === "advanced" ? "05" : "02"}
+            organizationId={organizationId}
+          />
+          {roleLost ? <Alert tone="error">{lockMessage}</Alert> : null}
+          {conflict ? (
+            <div className="flex flex-col gap-2">
+              <Alert tone="warning">{CONFLICT_MESSAGE}</Alert>
+              {onReload === undefined ? null : (
+                <div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      void onReload();
+                    }}
+                  >
+                    โหลดค่าล่าสุด
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : null}
+          {formError === null || roleLost ? null : (
+            <Alert tone="error">{formError}</Alert>
+          )}
+          {unplaced.map((message) => (
+            <Alert key={message} tone="error">
+              {message}
             </Alert>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setMode("advanced");
-              }}
-            >
-              ดูในโหมดขั้นสูง
-            </Button>
-          </div>
-        ) : null}
-        <BasicSection
-          {...sectionProps}
-          advanced={mode === "advanced"}
-          urlNote={originBlocked ? SECRET_ORIGIN_MESSAGE : null}
-        />
-        {mode === "advanced" ? (
-          <>
-            <RequestSection {...sectionProps} base={base} />
-            <SecretsSection {...sectionProps} base={base} />
-            <AssertionsSection {...sectionProps} />
-          </>
-        ) : null}
-        <TestPanel
-          payload={testSnapshot(values, entriesNow())}
-          secretsChanged={secretStore.changed}
-          onRun={secretStore.markClean}
-          validate={validateForTest}
-          send={() =>
-            base === null || monitorId === undefined
-              ? testMonitorDraft(
-                  organizationId,
-                  testCreatePayload(values, entriesNow()),
-                )
-              : testMonitorEdit(
-                  organizationId,
-                  monitorId,
-                  testEditPayload(values, entriesNow()),
-                )
-          }
-          onFormError={handleTestError}
-          blockedReason={blockedReason}
-          nativeDisabled={originBlocked && !roleLost}
-          saving={saving}
-          onPendingChange={setTesting}
-        />
-        {roleLost ? <Alert tone="error">{lockMessage}</Alert> : null}
-        {conflict ? (
-          <div className="flex flex-col gap-2">
-            <Alert tone="warning">{CONFLICT_MESSAGE}</Alert>
-            {onReload === undefined ? null : (
-              <div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    void onReload();
-                  }}
-                >
-                  โหลดค่าล่าสุด
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : null}
-        {formError === null || roleLost ? null : (
-          <Alert tone="error">{formError}</Alert>
-        )}
-        {unplaced.map((message) => (
-          <Alert key={message} tone="error">
-            {message}
-          </Alert>
-        ))}
-        {originBlocked && !roleLost ? (
-          <p className="text-sm text-foreground-secondary">
-            {ORIGIN_BLOCK_NOTE}
-          </p>
-        ) : null}
-        <div className="flex items-center justify-end gap-2 border-t border-foreground/10 pt-4">
-          <Button asChild variant="secondary">
+          ))}
+          {originBlocked && !roleLost ? (
+            <p className="text-sm text-foreground-secondary">
+              {ORIGIN_BLOCK_NOTE}
+            </p>
+          ) : null}
+        </div>
+        <aside className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-6 lg:self-start">
+          <TestPanel
+            payload={testSnapshot(values, entriesNow())}
+            secretsChanged={secretStore.changed}
+            onRun={secretStore.markClean}
+            validate={validateForTest}
+            send={() =>
+              base === null || monitorId === undefined
+                ? testMonitorDraft(
+                    organizationId,
+                    testCreatePayload(values, entriesNow()),
+                  )
+                : testMonitorEdit(
+                    organizationId,
+                    monitorId,
+                    testEditPayload(values, entriesNow()),
+                  )
+            }
+            onFormError={handleTestError}
+            blockedReason={blockedReason}
+            nativeDisabled={originBlocked && !roleLost}
+            saving={saving}
+            onPendingChange={setTesting}
+          />
+        </aside>
+        <div className="flex min-w-0 items-center justify-end gap-2 border-t border-foreground/10 pt-4 lg:col-start-1 lg:row-start-2">
+          <Button asChild variant="ghost">
             <Link to={backPath}>ยกเลิก</Link>
           </Button>
           <Button

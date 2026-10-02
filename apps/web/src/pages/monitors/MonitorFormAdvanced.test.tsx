@@ -180,7 +180,9 @@ describe("Advanced validation beside the field", () => {
     await submitInvalid(user);
     const field = screen.getByLabelText("URL");
     expect(field).toHaveAttribute("aria-invalid", "true");
-    expect(field).toHaveAccessibleDescription(message);
+    expect(field).toHaveAccessibleDescription(
+      message instanceof RegExp ? message : expect.stringContaining(message),
+    );
     expect(field).toHaveFocus();
   });
 

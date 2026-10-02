@@ -4,13 +4,13 @@ import { useState } from "react";
 import { PostAuthRedirect } from "../components/PostAuthRedirect";
 import {
   Alert,
-  AuthPageShell,
   Field,
   FieldValidationError,
   FullPageLoading,
   Input,
   SubmitButton,
 } from "../components/ui";
+import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
 type ChallengeMode = "totp" | "recovery";
@@ -70,7 +70,8 @@ export function TwoFactorPage() {
   }
 
   return (
-    <AuthPageShell
+    <AuthPageFrame
+      eyebrow="// two-factor"
       title="ยืนยันตัวตนสองขั้นตอน"
       subtitle="เลือกวิธียืนยันและกรอกรหัสเพื่อเข้าสู่พื้นที่ทำงาน"
     >
@@ -189,6 +190,6 @@ export function TwoFactorPage() {
           )}
         />
       </form>
-    </AuthPageShell>
+    </AuthPageFrame>
   );
 }

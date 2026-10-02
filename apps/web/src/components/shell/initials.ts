@@ -13,3 +13,9 @@ export function initialsOf(name: string): string {
   }
   return Array.from(first).slice(0, 2).join("").toUpperCase();
 }
+
+// TYP-04: only Latin initials take the monospace; Thai initials stay in the sans-serif
+// because JetBrains Mono has no Thai glyphs.
+export function initialsFontClass(initials: string): string {
+  return /^[A-Za-z0-9]*$/.test(initials) ? "font-mono" : "font-sans";
+}

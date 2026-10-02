@@ -51,11 +51,11 @@ function EventRow({
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-foreground/10 px-4 py-3 text-sm last:border-b-0">
       {event.kind === "ssl_level" ? (
-        <StatusPill tone={sslTitle?.tone ?? "neutral"}>
+        <StatusPill tone={sslTitle?.tone ?? "neutral"} neutralLabel>
           {sslTitle?.text ?? "SSL"}
         </StatusPill>
       ) : (
-        <StatusPill tone="danger" dot>
+        <StatusPill tone="danger" neutralLabel>
           ล่ม
         </StatusPill>
       )}

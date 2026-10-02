@@ -7,7 +7,8 @@ import { Alert, Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
-import { Card, CardHeader, CardFooter } from "../../components/ui/card";
+import { Card, CardFooter } from "../../components/ui/card";
+import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
 
 const NAME_MAX = 100;
@@ -140,11 +141,16 @@ function ProfileForm({
 
   return (
     <Card as="section" aria-labelledby="profile-card-title" padding="md">
-      <CardHeader
-        id="profile-card-title"
-        title="ข้อมูลโปรไฟล์"
-        description="ชื่อที่แสดงให้สมาชิกองค์กรอื่นเห็นในกิจกรรมและคำเชิญ"
-      />
+      <div className="flex flex-col gap-2">
+        <SectionHeader
+          id="profile-card-title"
+          code="01"
+          title="ข้อมูลโปรไฟล์"
+        />
+        <p className="text-sm text-foreground-secondary">
+          ชื่อที่แสดงให้สมาชิกองค์กรอื่นเห็นในกิจกรรมและคำเชิญ
+        </p>
+      </div>
 
       {notice === null ? null : <Alert tone={notice.tone}>{notice.text}</Alert>}
 

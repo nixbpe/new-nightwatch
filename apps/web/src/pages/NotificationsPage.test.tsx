@@ -11,7 +11,7 @@ import {
   openNotification,
 } from "../lib/api/notifications";
 import { ApiError } from "../lib/api/client";
-import { NotificationsPage } from "./NotificationsPage";
+import { NotificationRows, NotificationsPage } from "./NotificationsPage";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -584,5 +584,156 @@ describe("NotificationsPage", () => {
     expect(
       await screen.findByText("โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"),
     ).toBeInTheDocument();
+  });
+
+  describe("day grouping", () => {
+    function item(id: string, occurredAt: string): NotificationItem {
+      return { ...notification, id, occurredAt };
+    }
+    function setZone(timeZone: string) {
+      window.localStorage.setItem(
+        "nightwatch-preferences",
+        JSON.stringify({
+          language: "th",
+          timeZone,
+          hourCycle: "h23",
+          weekStart: "monday",
+        }),
+      );
+    }
+    async function renderItems(items: NotificationItem[], now: string) {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(now));
+      fetchNotificationsMock.mockResolvedValue({
+        organizationId: ORG_A,
+        items,
+        nextCursor: null,
+        unreadCount: 1,
+      });
+      renderPage();
+      await screen.findAllByRole("heading", { level: 2 });
+    }
+    afterEach(() => {
+      vi.useRealTimers();
+      window.localStorage.clear();
+    });
+
+    it("labels today, yesterday and older days in the preferred time zone", async () => {
+      setZone("Asia/Bangkok");
+      await renderItems(
+        [
+          item(
+            "a0000000-0000-4000-8000-000000000001",
+            "2026-10-02T02:00:00.000Z",
+          ),
+          // 2026-10-01 23:30 Bangkok, just before local midnight
+          item(
+            "a0000000-0000-4000-8000-000000000002",
+            "2026-10-01T16:30:00.000Z",
+          ),
+          item(
+            "a0000000-0000-4000-8000-000000000003",
+            "2026-09-25T03:00:00.000Z",
+          ),
+        ],
+        "2026-10-02T05:00:00.000Z",
+      );
+
+      const headings = screen
+        .getAllByRole("heading", { level: 2 })
+        .map((h) => h.textContent);
+      expect(headings[0]).toBe("วันนี้");
+      expect(headings[1]).toBe("เมื่อวาน");
+      expect(headings[2]).toMatch(/25.*2569/);
+      const today = screen.getByRole("region", { name: "วันนี้" });
+      expect(within(today).getAllByRole("button")).toHaveLength(1);
+      // an older day shows its date once, not as title and meta
+      const older = screen.getAllByRole("region")[2];
+      expect(
+        within(older as HTMLElement).getAllByText(/^25.*2569$/),
+      ).toHaveLength(1);
+    });
+
+    it("splits items at local midnight, not UTC midnight", async () => {
+      setZone("America/Los_Angeles");
+      await renderItems(
+        [
+          // 2026-10-02 00:30 LA, today in LA
+          item(
+            "a0000000-0000-4000-8000-000000000001",
+            "2026-10-02T07:30:00.000Z",
+          ),
+          // 2026-10-01 23:30 LA, yesterday in LA though Oct 2 in UTC
+          item(
+            "a0000000-0000-4000-8000-000000000002",
+            "2026-10-02T06:30:00.000Z",
+          ),
+        ],
+        "2026-10-02T15:00:00.000Z",
+      );
+
+      expect(
+        within(screen.getByRole("region", { name: "วันนี้" })).getAllByRole(
+          "button",
+        ),
+      ).toHaveLength(1);
+      expect(
+        within(screen.getByRole("region", { name: "เมื่อวาน" })).getAllByRole(
+          "button",
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("labels yesterday by calendar date across a DST change", async () => {
+      setZone("America/New_York");
+      // DST ended 2026-11-01 (25-hour day); now is 2026-11-02 00:30 EST
+      await renderItems(
+        [
+          item(
+            "a0000000-0000-4000-8000-000000000001",
+            "2026-11-02T05:10:00.000Z",
+          ),
+          // 2026-11-01 00:30 EDT, the first hour of the 25-hour day
+          item(
+            "a0000000-0000-4000-8000-000000000002",
+            "2026-11-01T04:30:00.000Z",
+          ),
+        ],
+        "2026-11-02T05:30:00.000Z",
+      );
+
+      expect(
+        screen.getByRole("heading", { level: 2, name: "เมื่อวาน" }),
+      ).toBeInTheDocument();
+    });
+
+    it("shows the unread dot image and a mockup frame without a total count", async () => {
+      setZone("Asia/Bangkok");
+      await renderItems([notification], "2026-09-25T05:00:00.000Z");
+
+      expect(
+        screen.getByRole("img", { name: "ยังไม่อ่าน" }),
+      ).toBeInTheDocument();
+      const frame = screen.getByRole("group", {
+        name: /ตัวอย่าง: ตัวกรองและสรุปการแจ้งเตือน/,
+      });
+      const tablist = within(frame).getByRole("tablist", {
+        name: "ตัวกรองการแจ้งเตือน",
+      });
+      expect(within(tablist).getAllByRole("tab")).toHaveLength(2);
+      expect(frame.textContent).not.toMatch(/ทั้งหมด\s*14/);
+      expect(frame.textContent).not.toMatch(/ยังไม่อ่าน\s*3/);
+    });
+
+    it("renders no day headings when groupByDay is off", () => {
+      render(
+        <MemoryRouter>
+          <NotificationRows items={[notification]} onOpen={() => undefined} />
+        </MemoryRouter>,
+      );
+      expect(
+        screen.queryByRole("heading", { level: 2 }),
+      ).not.toBeInTheDocument();
+    });
   });
 });

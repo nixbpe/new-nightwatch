@@ -21,7 +21,9 @@ import { Page, PageHeader } from "../components/shell/Page";
 import { PageState } from "../components/shell/PageState";
 import { Alert } from "../components/ui";
 import { Button } from "../components/ui/button";
+import { MockupFrame } from "../components/ui/mockup-frame";
 import { Notice } from "../components/ui/notice";
+import { SectionHeader } from "../components/ui/section-header";
 import { ApiError } from "../lib/api/client";
 import {
   formatDateTime,
@@ -39,7 +41,6 @@ import {
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { Card } from "../components/ui/card";
 import { StatusPill } from "../components/ui/status-pill";
-import { IconTile } from "../components/ui/icon-tile";
 
 type MonitorNotificationItem = Extract<
   NotificationItem,
@@ -127,7 +128,7 @@ function MonitorFacts({
       {item.eventType === "MONITOR_SSL_EXPIRED"
         ? "ใบรับรองหมดอายุเมื่อ "
         : "ใบรับรองหมดอายุ "}
-      <time dateTime={item.sslNotAfter} className="font-mono">
+      <time dateTime={item.sslNotAfter}>
         {itemTime(item.sslNotAfter, preferences)}
       </time>
     </span>
@@ -181,79 +182,196 @@ function notificationIdFromNavigation(
   return notification.success ? notification.data.id : null;
 }
 
+const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>();
+const dayDateFormatters = new Map<string, Intl.DateTimeFormat>();
+function cachedFormatter(
+  cache: Map<string, Intl.DateTimeFormat>,
+  locale: string,
+  options: Intl.DateTimeFormatOptions,
+) {
+  const zone = options.timeZone ?? "";
+  let formatter = cache.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, options);
+    cache.set(zone, formatter);
+  }
+  return formatter;
+}
+function dayKey(value: string | Date, preferences: Preferences) {
+  return cachedFormatter(dayKeyFormatters, "en-CA", {
+    timeZone: preferences.timeZone,
+  }).format(typeof value === "string" ? new Date(value) : value);
+}
+function dayDate(value: string, preferences: Preferences) {
+  return cachedFormatter(dayDateFormatters, "th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: preferences.timeZone,
+  }).format(new Date(value));
+}
+/** Yesterday's key from the local calendar date, so 23/25-hour DST days stay correct. */
+function previousDayKey(key: string) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y ?? 0, (m ?? 1) - 1, (d ?? 1) - 1))
+    .toISOString()
+    .slice(0, 10);
+}
+function dayLabel(value: string, preferences: Preferences) {
+  const key = dayKey(value, preferences);
+  const today = dayKey(new Date(), preferences);
+  if (key === today) return "วันนี้";
+  if (key === previousDayKey(today)) return "เมื่อวาน";
+  return dayDate(value, preferences);
+}
+
+function NotificationList({
+  items,
+  onOpen,
+  onNavigate,
+  popoverItems,
+}: {
+  items: NotificationItem[];
+  onOpen: (id: string) => void;
+  onNavigate?: () => void;
+  popoverItems: boolean;
+}) {
+  const { preferences } = usePreferences();
+  return (
+    <ul className="divide-y divide-foreground/10">
+      {items.map((item) => {
+        const unread = item.readAt === null;
+        return (
+          <li key={item.id}>
+            <button
+              type="button"
+              onClick={() => {
+                onOpen(item.id);
+              }}
+              data-popover-item={popoverItems ? "" : undefined}
+              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-100 hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            >
+              {unread ? (
+                <span
+                  aria-label="ยังไม่อ่าน"
+                  role="img"
+                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary"
+                />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full border border-foreground/20"
+                />
+              )}
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="flex items-start gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 shrink-0 text-foreground-secondary"
+                  >
+                    <ItemIcon item={item} size={16} />
+                  </span>
+                  <span
+                    className={`text-sm ${unread ? "font-semibold text-heading" : ""}`}
+                  >
+                    {itemTitle(item)}
+                  </span>
+                </span>
+                <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-foreground-secondary">
+                  {itemContext(item).map((part) => (
+                    <span key={part}>{part}</span>
+                  ))}
+                  <time
+                    dateTime={item.occurredAt}
+                    title={itemTime(item.occurredAt, preferences)}
+                    className="text-xs text-foreground"
+                  >
+                    {relativeTime(item.occurredAt, preferences)}
+                  </time>
+                </span>
+                {item.scope === "organization" &&
+                item.category === "monitor" ? (
+                  <span className="text-xs text-foreground-secondary">
+                    <MonitorFacts item={item} preferences={preferences} />
+                  </span>
+                ) : null}
+              </span>
+            </button>
+            {item.scope === "organization" && item.category === "monitor" ? (
+              <Link
+                to={monitorPath(item)}
+                onClick={onNavigate}
+                data-popover-item={popoverItems ? "" : undefined}
+                className="mb-3 ml-9 inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                เปิดมอนิเตอร์
+                <span className="sr-only"> {item.subject.monitorName}</span>
+              </Link>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function NotificationRows({
   items,
   onOpen,
   onNavigate,
   popoverItems = false,
+  groupByDay = false,
 }: {
   items: NotificationItem[];
   onOpen: (id: string) => void;
   /** Called when a monitor link is followed (the popover closes itself). */
   onNavigate?: () => void;
   popoverItems?: boolean;
+  /** Day headers (user time zone) for the inbox page; the popover stays flat. */
+  groupByDay?: boolean;
 }) {
   const { preferences } = usePreferences();
+  if (!groupByDay) {
+    return (
+      <NotificationList
+        items={items}
+        onOpen={onOpen}
+        onNavigate={onNavigate}
+        popoverItems={popoverItems}
+      />
+    );
+  }
+  const groups: { key: string; first: string; items: NotificationItem[] }[] =
+    [];
+  for (const item of items) {
+    const key = dayKey(item.occurredAt, preferences);
+    const last = groups.at(-1);
+    if (last?.key === key) last.items.push(item);
+    else groups.push({ key, first: item.occurredAt, items: [item] });
+  }
   return (
-    <ul className="divide-y divide-foreground/10">
-      {items.map((item) => (
-        <li key={item.id}>
-          <button
-            type="button"
-            onClick={() => {
-              onOpen(item.id);
-            }}
-            data-popover-item={popoverItems ? "" : undefined}
-            className="relative flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-100 hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-          >
-            {item.readAt === null ? (
-              <span
-                aria-label="ยังไม่อ่าน"
-                className="absolute inset-y-3 left-0 w-0.5 rounded-full bg-foreground"
-              />
-            ) : null}
-            <IconTile size={32}>
-              <ItemIcon item={item} size={16} />
-            </IconTile>
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span
-                className={`text-sm ${item.readAt === null ? "font-medium" : ""}`}
-              >
-                {itemTitle(item)}
-              </span>
-              <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-foreground-secondary">
-                {itemContext(item).map((part) => (
-                  <span key={part}>{part}</span>
-                ))}
-                <time
-                  dateTime={item.occurredAt}
-                  title={itemTime(item.occurredAt, preferences)}
-                  className="font-mono text-xs text-foreground"
-                >
-                  {relativeTime(item.occurredAt, preferences)}
-                </time>
-              </span>
-              {item.scope === "organization" && item.category === "monitor" ? (
-                <span className="text-xs text-foreground-secondary">
-                  <MonitorFacts item={item} preferences={preferences} />
-                </span>
-              ) : null}
-            </span>
-          </button>
-          {item.scope === "organization" && item.category === "monitor" ? (
-            <Link
-              to={monitorPath(item)}
-              onClick={onNavigate}
-              data-popover-item={popoverItems ? "" : undefined}
-              className="mb-3 ml-[60px] inline-block text-xs text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              เปิดมอนิเตอร์
-              <span className="sr-only"> {item.subject.monitorName}</span>
-            </Link>
-          ) : null}
-        </li>
-      ))}
-    </ul>
+    <div>
+      {groups.map((group) => {
+        const title = dayLabel(group.first, preferences);
+        const date = dayDate(group.first, preferences);
+        return (
+          <section key={group.key} aria-labelledby={`inbox-day-${group.key}`}>
+            <SectionHeader
+              id={`inbox-day-${group.key}`}
+              title={title}
+              meta={title === date ? undefined : <span>{date}</span>}
+              className="px-4 pt-4"
+            />
+            <NotificationList
+              items={group.items}
+              onOpen={onOpen}
+              onNavigate={onNavigate}
+              popoverItems={popoverItems}
+            />
+          </section>
+        );
+      })}
+    </div>
   );
 }
 export function NotificationsPage() {
@@ -404,7 +522,7 @@ function NotificationsPageForOrganization({
             </dd>
             <dt className="text-foreground-secondary">เวลาที่เกิดเหตุการณ์</dt>
             <dd className="mb-3 sm:mb-0">
-              <time dateTime={detail.occurredAt} className="font-mono">
+              <time dateTime={detail.occurredAt}>
                 {itemTime(detail.occurredAt, preferences)}
               </time>
             </dd>
@@ -412,7 +530,7 @@ function NotificationsPageForOrganization({
               <>
                 <dt className="text-foreground-secondary">อ่านเมื่อ</dt>
                 <dd className="mb-3 sm:mb-0">
-                  <time dateTime={detail.readAt} className="font-mono">
+                  <time dateTime={detail.readAt}>
                     {itemTime(detail.readAt, preferences)}
                   </time>
                 </dd>
@@ -462,7 +580,7 @@ function NotificationsPageForOrganization({
   if (list.isPending)
     return (
       <Page>
-        <PageHeader scope={scope} title="การแจ้งเตือน" />
+        <PageHeader eyebrow="// inbox" scope={scope} title="การแจ้งเตือน" />
         <PageState
           kind="loading"
           label="กำลังโหลดการแจ้งเตือน…"
@@ -473,7 +591,7 @@ function NotificationsPageForOrganization({
   if (list.isError)
     return (
       <Page>
-        <PageHeader scope={scope} title="การแจ้งเตือน" />
+        <PageHeader eyebrow="// inbox" scope={scope} title="การแจ้งเตือน" />
         <PageState
           kind="error"
           message={problem(list.error)}
@@ -486,6 +604,7 @@ function NotificationsPageForOrganization({
   return (
     <Page>
       <PageHeader
+        eyebrow="// inbox"
         scope={scope}
         title="การแจ้งเตือน"
         status={
@@ -509,6 +628,7 @@ function NotificationsPageForOrganization({
               all.mutate(serverActiveOrgId);
             }}
           >
+            <CheckIcon size={16} />
             ทำเครื่องหมายว่าอ่านทั้งหมด
           </Button>
         }
@@ -521,6 +641,52 @@ function NotificationsPageForOrganization({
       {all.isSuccess && unreadCount === 0 ? (
         <Notice tone="success">ทำเครื่องหมายว่าอ่านแล้วทั้งหมด</Notice>
       ) : null}
+      <MockupFrame label="ตัวกรองและสรุปการแจ้งเตือน" issue={62}>
+        <div className="flex flex-col gap-3 text-sm text-foreground-secondary">
+          <div
+            role="tablist"
+            aria-label="ตัวกรองการแจ้งเตือน"
+            className="flex items-center gap-4 border-b border-foreground/10"
+          >
+            <span
+              role="tab"
+              aria-selected="true"
+              className="-mb-px inline-flex h-8 items-center gap-2 border-b-2 border-primary text-[13px] font-semibold text-foreground"
+            >
+              ทั้งหมด <span className="font-mono">00</span>
+            </span>
+            <span
+              role="tab"
+              aria-selected="false"
+              className="inline-flex h-8 items-center gap-2 text-[13px]"
+            >
+              ยังไม่อ่าน <span className="font-mono">00</span>
+            </span>
+          </div>
+          <p className="text-xs">
+            <span className="font-mono text-foreground">00</span> รายการใน{" "}
+            <span className="font-mono text-foreground">N</span> วัน
+          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {[
+              "ทั้งหมด",
+              "มอนิเตอร์",
+              "ความปลอดภัย",
+              "การตั้งค่าการแจ้งเตือน",
+            ].map((chip) => (
+              <span
+                key={chip}
+                className="inline-flex h-8 items-center rounded-md border border-foreground/20 px-3 text-[13px]"
+              >
+                {chip}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs">
+            องค์กรตัวอย่าง · <span className="font-mono">cdn.example.com</span>
+          </p>
+        </div>
+      </MockupFrame>
       <div>
         {items.length === 0 ? (
           <EmptyState
@@ -530,7 +696,7 @@ function NotificationsPageForOrganization({
           />
         ) : (
           <Card className="overflow-hidden">
-            <NotificationRows items={items} onOpen={requestOpen} />
+            <NotificationRows items={items} onOpen={requestOpen} groupByDay />
             {nextCursor === null ? null : (
               <div className="border-t border-foreground/10 p-2">
                 {nextPageError === null ? null : (

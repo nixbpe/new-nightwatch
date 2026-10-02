@@ -684,7 +684,9 @@ describe("Edit: origin change (AC-44)", () => {
     const user = await openEdit();
     changeUrl("https://other.example/health");
     expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-      "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      expect.stringContaining(
+        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      ),
     );
     expect(saveEdit()).toBeDisabled();
     expect(testButton()).toBeDisabled();
@@ -924,7 +926,9 @@ describe("Server refusals of secret entries", () => {
     await user.click(saveEdit());
     await waitFor(() => {
       expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+        expect.stringContaining(
+          "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+        ),
       );
     });
   });

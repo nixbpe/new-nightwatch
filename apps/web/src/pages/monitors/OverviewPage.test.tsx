@@ -188,6 +188,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.localStorage.removeItem("nightwatch:monitors-view");
   vi.useRealTimers();
   vi.resetAllMocks();
 });
@@ -197,6 +198,91 @@ function rowOf(name: string): HTMLElement {
   if (row === null) throw new Error(`no row for ${name}`);
   return row;
 }
+
+describe("Overview view toggle", () => {
+  it("shows the table by default, switches to cards and back", async () => {
+    const user = userEvent.setup();
+    window.localStorage.removeItem("nightwatch:monitors-view");
+    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "ตัวอย่าง: การเรียงลำดับรายการ" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "การ์ด" }));
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(window.localStorage.getItem("nightwatch:monitors-view")).toBe(
+      "cards",
+    );
+    expect(screen.getByText("ตอบสนอง")).toBeInTheDocument();
+    expect(screen.getByText(`(${TIME_ZONE})`)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Web" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", {
+        name: "ตัวอย่าง: เมธอด ช่วงเวลาตรวจ และกราฟ 24 แท่งบนการ์ด",
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "ตาราง" }));
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", {
+        name: "ตัวอย่าง: เมธอด ช่วงเวลาตรวจ และกราฟ 24 แท่งบนการ์ด",
+      }),
+    ).toBeNull();
+  });
+
+  it("names the status chip group and keeps counts out of the chip names", async () => {
+    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    const group = screen.getByRole("group", { name: "สถานะ" });
+    expect(
+      within(group).getByRole("button", { name: "ทั้งหมด" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no-data text without a time zone note and the full URL in cards", async () => {
+    const url = `https://example.com/${"a".repeat(120)}`;
+    window.localStorage.setItem("nightwatch:monitors-view", "cards");
+    fetchListMock.mockResolvedValue(
+      list([
+        item({
+          name: "Web",
+          url,
+          lastCheckAt: null,
+          lastResponseTimeMs: null,
+        }),
+      ]),
+    );
+    renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    expect(screen.getByText(url)).toHaveClass("break-all");
+    expect(screen.queryByText(`(${TIME_ZONE})`)).toBeNull();
+    expect(screen.getAllByText("ไม่มีข้อมูล").length).toBeGreaterThan(0);
+  });
+
+  it("restores the persisted cards view and falls back to the table when storage throws", async () => {
+    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    window.localStorage.setItem("nightwatch:monitors-view", "cards");
+    const first = renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    expect(screen.queryByRole("table")).toBeNull();
+    first.unmount();
+
+    const getItem = vi
+      .spyOn(window.localStorage, "getItem")
+      .mockImplementation(() => {
+        throw new Error("blocked");
+      });
+    renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    getItem.mockRestore();
+  });
+});
 
 describe("Overview states", () => {
   it("shows a loading state without data while the list is pending", async () => {
@@ -330,7 +416,7 @@ describe("Overview states", () => {
     renderPage();
     await screen.findByText("Web");
 
-    await user.selectOptions(screen.getByLabelText("สถานะ"), "down");
+    await user.click(screen.getByRole("button", { name: "ล่ม" }));
     expect(
       await screen.findByText("ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง"),
     ).toBeInTheDocument();
@@ -343,6 +429,20 @@ describe("Overview states", () => {
     expect(screen.getByRole("status", { name: "ผลการกรอง" })).toHaveTextContent(
       "พบ 2 จาก 2",
     );
+  });
+
+  it("moves focus to the search field when the inline clear button unmounts", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    renderPage();
+    await screen.findByText("Web");
+
+    await user.click(screen.getByRole("button", { name: "ล่ม" }));
+    const clear = await screen.findByRole("button", { name: "ล้างตัวกรอง" });
+    clear.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("button", { name: "ล้างตัวกรอง" })).toBeNull();
+    expect(screen.getByRole("searchbox")).toHaveFocus();
   });
 });
 
@@ -678,17 +778,23 @@ describe("Overview times, focus and filter failures", () => {
     renderPage();
     await screen.findByText("Web");
 
-    await user.selectOptions(screen.getByLabelText("สถานะ"), "down");
+    await user.click(screen.getByRole("button", { name: "ล่ม" }));
     expect(
       await screen.findByText("โหลดมอนิเตอร์ไม่สำเร็จ"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("สถานะ")).toHaveValue("down");
+    expect(screen.getByRole("button", { name: "ล่ม" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.getByLabelText("ค้นหาชื่อหรือ URL")).toBeInTheDocument();
     expect(screen.queryByText("ยังไม่มีมอนิเตอร์")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "ล้างตัวกรอง" }));
     expect(await screen.findByText("Web")).toBeInTheDocument();
-    expect(screen.getByLabelText("สถานะ")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "ทั้งหมด" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("shows the failure count on an unknown row whose first result in the new config failed", async () => {
@@ -727,7 +833,7 @@ describe("Overview times, focus and filter failures", () => {
     );
     renderPage();
     await screen.findByText("Web");
-    await user.selectOptions(screen.getByLabelText("สถานะ"), "down");
+    await user.click(screen.getByRole("button", { name: "ล่ม" }));
     await screen.findByText("ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง");
     expect(
       screen.queryByRole("navigation", { name: "หน้ามอนิเตอร์" }),
@@ -843,7 +949,7 @@ describe("Overview refetch and announcements", () => {
     const region = screen.getByRole("status", { name: "ผลการกรอง" });
     expect(region).toHaveTextContent("");
 
-    await user.selectOptions(screen.getByLabelText("สถานะ"), "down");
+    await user.click(screen.getByRole("button", { name: "ล่ม" }));
     await screen.findByText("Down1");
     await waitFor(() => {
       expect(region).toHaveTextContent(/^พบ \d+ จาก \d+$/);

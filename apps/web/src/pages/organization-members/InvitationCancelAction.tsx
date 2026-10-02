@@ -188,7 +188,7 @@ export function InvitationCancelButton({
         register(invitation.publicId, control);
       }}
       type="button"
-      variant="secondary"
+      variant="ghost"
       size="sm"
       disabled={pending}
       aria-label={`ยกเลิกคำเชิญถึง ${invitation.email}`}

@@ -65,6 +65,7 @@ function OrganizationNotificationSettingsForOrganization({
   );
   const header = (
     <PageHeader
+      eyebrow="// organization · notifications"
       scope={
         organization === undefined
           ? { label: "ตั้งค่าองค์กร" }

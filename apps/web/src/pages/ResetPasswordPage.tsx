@@ -4,12 +4,12 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 
 import {
   Alert,
-  AuthPageShell,
   Field,
   FieldValidationError,
   Input,
   SubmitButton,
 } from "../components/ui";
+import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
@@ -53,7 +53,7 @@ export function ResetPasswordPage() {
 
   if (token === null) {
     return (
-      <AuthPageShell title="ตั้งรหัสผ่านใหม่">
+      <AuthPageFrame eyebrow="// reset password" title="ตั้งรหัสผ่านใหม่">
         <div className="flex flex-col gap-4">
           <Alert tone="error">
             ลิงก์นี้ไม่ถูกต้องหรือไม่สมบูรณ์
@@ -63,12 +63,13 @@ export function ResetPasswordPage() {
             <Link to="/forgot-password">ขอลิงก์ใหม่</Link>
           </Button>
         </div>
-      </AuthPageShell>
+      </AuthPageFrame>
     );
   }
 
   return (
-    <AuthPageShell
+    <AuthPageFrame
+      eyebrow="// reset password"
       title="ตั้งรหัสผ่านใหม่"
       subtitle="เลือกรหัสผ่านใหม่ที่ปลอดภัยสำหรับบัญชีของคุณ"
     >
@@ -194,6 +195,6 @@ export function ResetPasswordPage() {
           )}
         />
       </form>
-    </AuthPageShell>
+    </AuthPageFrame>
   );
 }

@@ -43,7 +43,7 @@ export function ConfirmDialog({
   confirmLabel: string;
   /** Override when "ยกเลิก" would read as the action being confirmed. */
   cancelLabel?: string;
-  /** Use "destructive" for irreversible actions such as revoking access. */
+  /** "destructive" fills the confirm with Danger and On danger text (COL-05); the title and description still state the consequence. */
   confirmVariant?: "default" | "destructive";
   pendingLabel: string;
   pending: boolean;
@@ -115,7 +115,8 @@ export function ConfirmDialog({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4">
+    // Scrim and the single modal shadow come from LAY-07 tokens, so both themes stay calibrated.
+    <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
       <div
         ref={dialog}
         role="dialog"
@@ -124,9 +125,9 @@ export function ConfirmDialog({
         aria-describedby={descriptionId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-md border border-foreground/10 bg-surface p-4 text-foreground shadow-lg focus:outline-none sm:p-6"
+        className="overlay-enter max-h-[calc(100dvh-2rem)] w-full max-w-[480px] overflow-y-auto rounded-md border border-foreground/10 bg-surface p-4 text-foreground shadow-modal focus:outline-none sm:p-6"
       >
-        <h2 id={titleId} className="text-lg font-semibold">
+        <h2 id={titleId} className="text-lg font-semibold text-heading">
           {title}
         </h2>
         <div
