@@ -115,10 +115,7 @@ test.beforeAll(async () => {
       { status: 200 },
     ],
   });
-  await createMonitor(
-    "feed",
-    basicConfig(names.feed, urlOf("feed", "/probe")),
-  );
+  await createMonitor("feed", basicConfig(names.feed, urlOf("feed", "/probe")));
 
   await startTarget("panel");
   await createMonitor("panel", {
@@ -129,10 +126,7 @@ test.beforeAll(async () => {
   await startTarget("query");
   await createMonitor(
     "query",
-    basicConfig(
-      names.query,
-      urlOf("query", `/json?probe=${urlQueryValue}`),
-    ),
+    basicConfig(names.query, urlOf("query", `/json?probe=${urlQueryValue}`)),
   );
 
   await startTarget("long");
@@ -277,7 +271,9 @@ test("P58-04: a query in the URL keeps only version and status, with the reason 
   const panel = page.getByRole("region", { name: "การตอบกลับล่าสุด" });
   await expect(panel.getByText(/^HTTP\/1\.1 200$/)).toBeVisible();
   await expect(panel.getByText(REQUEST_VALUES_TEXT)).toBeVisible();
-  await expect(panel.getByText(urlOf("query", "/json?probe=•••"))).toBeVisible();
+  await expect(
+    panel.getByText(urlOf("query", "/json?probe=•••")),
+  ).toBeVisible();
   await expect(panel.getByRole("heading", { name: "Headers" })).toHaveCount(0);
   await expect(panel.getByLabel(BODY_LABEL)).toHaveCount(0);
   await shot(page, "p58-04-panel-request-values");
@@ -363,7 +359,13 @@ test("P58-05: nothing secret reaches the stored response, API replies, tables or
           await pool.query<{ n: number }>(
             `select count(*)::int as n from monitor_last_responses
               where monitor_id = any($1::uuid[]) and checked_at > now() - interval '5 minutes'`,
-            [[monitorIds.echoHeader, monitorIds.echoQuery, monitorIds.echoBody]],
+            [
+              [
+                monitorIds.echoHeader,
+                monitorIds.echoQuery,
+                monitorIds.echoBody,
+              ],
+            ],
           )
         ).rows[0]!.n,
       { timeout: 2 * ROUND_MS, intervals: [2_000] },
@@ -371,8 +373,7 @@ test("P58-05: nothing secret reaches the stored response, API replies, tables or
     .toBe(3);
 
   // Header secrets on a GET without query: stored, masked.
-  const header = (await lastResponseApi("echoHeader"))
-    .body as LastResponseBody;
+  const header = (await lastResponseApi("echoHeader")).body as LastResponseBody;
   expect(header.response?.detailOmitted).toBeNull();
   expect(header.response?.statusLine?.status).toBe(200);
   expect(header.response?.headers.some((h) => h.redacted)).toBe(true);
