@@ -1712,13 +1712,16 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
     kind: string;
     occurred_at: Date;
     failure_reason: string | null;
+    tls_reason: string | null;
     http_status: number | null;
+    response_time_ms: number | null;
   };
   const feedEvents = (monitor: SeededMonitor) =>
     rows<FeedEvent>(
       db,
       monitor,
-      `select kind, occurred_at, failure_reason, http_status
+      `select kind, occurred_at, failure_reason, tls_reason, http_status,
+              response_time_ms
        from monitor_events where monitor_id = $1 order by occurred_at, kind`,
       [monitor.monitorId],
     );
@@ -1767,8 +1770,10 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
       expect(events[0]).toMatchObject({
         kind: "check_failed",
         failure_reason: "http_status",
+        tls_reason: null,
         http_status: 503,
       });
+      expect(events[0]?.response_time_ms).not.toBeNull();
       expect(events[0]?.occurred_at.getTime()).toBe(checkedAt.getTime());
       expect((await countAll(monitor)).incidents).toBe(0);
     } finally {
@@ -1810,7 +1815,14 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
         end_reason: "recovered",
         end_http_status: 200,
       });
-      expect(incident?.end_response_time_ms).toBeGreaterThanOrEqual(0);
+      const [passing] = await rows<{ response_time_ms: number }>(
+        db,
+        monitor,
+        `select response_time_ms from monitor_check_results
+         where monitor_id = $1 order by scheduled_for desc limit 1`,
+        [monitor.monitorId],
+      );
+      expect(incident?.end_response_time_ms).toBe(passing?.response_time_ms);
     } finally {
       await target.close();
     }
@@ -1919,6 +1931,10 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
         config_version: number;
         outcome: string;
         scheduled_for: Date;
+        failure_reason: string | null;
+        headers_truncated: boolean;
+        url_masked: string;
+        checked_at: Date;
       }>(
         db,
         monitor,
@@ -1937,7 +1953,16 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
         detail_omitted: null,
         config_version: 1,
         outcome: "pass",
+        reason_phrase: "OK",
+        headers_truncated: false,
+        failure_reason: null,
       });
+      expect(stored[0]?.url_masked).toBe(
+        (await results(monitor))[1]?.url_masked,
+      );
+      expect(stored[0]?.checked_at.getTime()).toBeGreaterThan(
+        Date.now() - 60_000,
+      );
       expect(stored[0]?.headers).toContainEqual(
         expect.objectContaining({ name: "x-trace", value: "abc" }),
       );
@@ -2013,6 +2038,126 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
       );
       expect(stored).toEqual({ http_status: 200, outcome: "pass" });
       expect((await countAll(monitor)).results).toBe(2);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a discarded fail leaves the last response and the feed unchanged", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      target.setHandler((_request, response) => {
+        response.statusCode = 200;
+        response.end("body");
+      });
+      await check(monitor, 5);
+      const before = await rows<Record<string, unknown>>(
+        db,
+        monitor,
+        "select * from monitor_last_responses where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      // A fail is in flight when an Edit supersedes the claim.
+      const release = Promise.withResolvers<void>();
+      target.setHandler((_request, response) => {
+        void release.promise.then(() => {
+          response.statusCode = 503;
+          response.end("body");
+        });
+      });
+      const token = randomUUID();
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+        [monitor.monitorId, token],
+      );
+      const running = processMonitorCheck(
+        monitor.job({
+          claimToken: token,
+          scheduledFor: new Date(Date.now()).toISOString(),
+        }),
+        dependencies(),
+      );
+      const started = Date.now();
+      while (target.requests.length < 2 && Date.now() - started < 4_000) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await updateMonitor(
+        db,
+        monitor,
+        `update monitor_schedule set claim_token = null where monitor_id = $1`,
+        [monitor.monitorId],
+      );
+      release.resolve();
+      const outcome = await running;
+      expect(outcome).toBe("discarded");
+      expect(await feedEvents(monitor)).toEqual([]);
+      expect(
+        await rows<Record<string, unknown>>(
+          db,
+          monitor,
+          "select * from monitor_last_responses where monitor_id = $1",
+          [monitor.monitorId],
+        ),
+      ).toEqual(before);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a runCheck that rejects still overwrites the last response with a body-free check_error", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      target.setHandler((_request, response) => {
+        response.statusCode = 200;
+        response.end("from-the-target");
+      });
+      await check(monitor, 0);
+      const token = randomUUID();
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+        [monitor.monitorId, token],
+      );
+      // The first clock read is inside runCheck and rejects it; the fallback reads again.
+      let reads = 0;
+      const outcome = await processMonitorCheck(
+        monitor.job({
+          claimToken: token,
+          scheduledFor: new Date(Date.now() - 60_000).toISOString(),
+        }),
+        dependencies({
+          clock: () => {
+            if (reads++ === 0) throw new Error("clock failed");
+            return new Date();
+          },
+        }),
+      );
+      expect(outcome).toBe("recorded");
+      expect(reads).toBeGreaterThan(1);
+      const [stored] = await rows<Record<string, unknown>>(
+        db,
+        monitor,
+        "select * from monitor_last_responses where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(stored).toMatchObject({
+        outcome: "check_error",
+        failure_reason: "executor_error",
+        detail_omitted: null,
+        http_version: null,
+        http_status: null,
+        reason_phrase: null,
+        headers: [],
+        headers_truncated: false,
+        body_kind: null,
+        body_text: null,
+      });
+      expect(JSON.stringify(stored)).not.toContain("from-the-target");
     } finally {
       await target.close();
     }

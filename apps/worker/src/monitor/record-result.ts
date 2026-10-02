@@ -489,8 +489,9 @@ async function upsertRollup(
 }
 
 /**
- * One row per monitor, replaced only by a newer `scheduled_for`. A result
- * without a snapshot (runCheck rejected) leaves the previous row in place.
+ * One row per monitor, replaced only by a newer `scheduled_for`. The snapshot
+ * is optional in `CheckResult` only because Test never reads it; the checker
+ * always sets it, including for a rejected `runCheck`.
  */
 async function upsertLastResponse(
   client: TenantClient,
