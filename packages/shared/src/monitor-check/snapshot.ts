@@ -80,27 +80,23 @@ function shown(
 
 /**
  * Scanning a 1 MiB body costs a pass per needle and view, so only a prefix is
- * scanned. A secret that straddles the end of the prefix would show its head, so
- * the output of the last `maxSpan` input characters (at most 3 output characters
- * each, the mask) is dropped. The caller learns that the input was cut.
+ * scanned. An occurrence that straddles its end would show its head, so the
+ * output stops `maxSpan` characters before the end (the masker extends it over a
+ * match that starts before). The caller learns that the input was cut.
  */
 function maskPrefix(
   mask: SecretMasker,
   text: string,
   maxChars: number,
 ): { mask: SecretMasker; inputCut: boolean } {
-  const scanned = 2 * (maxChars + 1) + 4 * mask.maxSpan;
+  const scanned = 2 * maxChars + mask.maxSpan;
   if (text.length <= scanned) return { mask, inputCut: false };
-  const wrapped = (): string => {
-    const out = mask(text.slice(0, scanned));
-    return out.slice(0, Math.max(0, out.length - 3 * mask.maxSpan));
-  };
+  const wrapped = (): string => mask(text.slice(0, scanned), 2 * maxChars);
   return {
-    mask: Object.defineProperties(
+    mask: Object.defineProperty(
       Object.assign(wrapped, { cutShort: false, maxSpan: mask.maxSpan }),
-      {
-        cutShort: { get: () => mask.cutShort },
-      },
+      "cutShort",
+      { get: () => mask.cutShort },
     ),
     inputCut: true,
   };

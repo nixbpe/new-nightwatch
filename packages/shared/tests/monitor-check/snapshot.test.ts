@@ -917,7 +917,7 @@ describe("body scan limits", () => {
     // Long secrets shrink to a 3 character mask, so the output stays under 16 KiB
     // and the end of the scanned prefix would be shown.
     const long = `SECRET${"v".repeat(94)}`;
-    const scanned = 2 * (16 * 1024 + 1) + 4 * 3 * long.length;
+    const scanned = 2 * 16 * 1024 + 81 * long.length;
     const unit = `${long}-`;
     const padding = (scanned - 4) % unit.length;
     const snapshot = await check(
@@ -1081,6 +1081,111 @@ describe("secrets echoed in any URL encoding", () => {
     expect(snapshot.body).toMatchObject({ text: "a%7Eb+c%2fd" });
     expect(snapshot.headers.find((h) => h.name === "x-echo")?.value).toBe(
       "a%7Eb+c%2fd",
+    );
+  });
+});
+
+describe("JSON escapes and nested encodings", () => {
+  const own = { headers: [secretHeader("h1", "X-Own")] };
+  // A head is decoded as latin1, so a UTF-8 echo reaches the executor as its latin1 form.
+  const wire = (text: string) => Buffer.from(text, "utf8").toString("latin1");
+
+  // [secret, echoed, also check a redirect URL]
+  const cases: [string, string, boolean][] = [
+    // Python json.dumps (ensure_ascii), Thai and é
+    ["ลับ", "\\u0e25\\u0e31\\u0e1a", false],
+    ["café", "caf\\u00e9", false],
+    // surrogate pair
+    ["x😀y", "x\\ud83d\\ude00y", false],
+    // PHP json_encode
+    ["a/b", "a\\/b", false],
+    // Go json.Marshal
+    ["a&b<c>", "a\\u0026b\\u003cc\\u003e", false],
+    // JSON-escaped quote and backslash
+    ['q"r\\s', 'q\\"r\\\\s', false],
+    // percent encoded twice, partly encoded, UTF-8 next to raw non-ASCII
+    ["tok 123", "tok%2520123", true],
+    ["deadbeef", "%64e%61dbeef", true],
+    ["café ลับ", "caf%C3%A9 ลับ", false],
+    // JSON escapes that spell a percent escape, and a percent escape that spells JSON
+    ["a b", "a\\u0025\\u0032\\u0030b", false],
+    ["é", "%5Cu00e9", true],
+  ];
+
+  it.each(cases)(
+    "masks secret %j echoed as %j",
+    async (secret, echoed, inUrl) => {
+      const snapshot = await check(
+        response({
+          line: `HTTP/1.1 200 r-${wire(echoed)}`,
+          headers: [
+            ["Content-Type", "text/plain"],
+            ["X-Echo", `v=${wire(echoed)}`],
+          ],
+          body: `b=${echoed}`,
+        }),
+        own,
+        { "header.h1": secret },
+      );
+      expect(snapshot.body).toMatchObject({ text: "b=•••" });
+      expect(snapshot.headers.find((h) => h.name === "x-echo")?.value).toBe(
+        "v=•••",
+      );
+      expect(snapshot.statusLine?.reasonPhrase).toBe("r-•••");
+      if (!inUrl) return;
+
+      let requests = 0;
+      const server = await startRawServer({
+        onRequest: ({ socket }) => {
+          requests++;
+          socket.end(
+            requests === 1
+              ? response({
+                  line: "HTTP/1.1 302 Found",
+                  headers: [["Location", `/cb/${wire(echoed)}`]],
+                })
+              : response({}),
+          );
+        },
+      });
+      servers.push(server);
+      const result = await runCheck(
+        configFor("http", server.port, own),
+        { "header.h1": secret },
+        deps(),
+      );
+      expect(result.responseSnapshot?.url).toContain("/cb/•••");
+    },
+  );
+
+  it("masks a JSON-escaped secret in a header name", async () => {
+    const snapshot = await check(
+      response({ headers: [["X-caf\\u00e9", "v"]] }),
+      own,
+      { "header.h1": "café" },
+    );
+    expect(snapshot.headers.map((h) => h.name)).toContain("x-•••");
+  });
+
+  it("does not end the shown text on half of a surrogate pair", async () => {
+    // Masks shrink the output under 16 KiB, so the end of the safe range is shown;
+    // padding puts that end between the two halves of an emoji.
+    const long = `SECRET${"v".repeat(94)}`;
+    const unit = `😀${long}-`;
+    const safeEnd = 2 * 16 * 1024;
+    const padding = (safeEnd - 1) % unit.length;
+    const snapshot = await check(
+      response({
+        headers: [["Content-Type", "text/plain"]],
+        body: `${"a".repeat(padding)}${unit.repeat(1000)}`,
+      }),
+      own,
+      { "header.h1": long },
+    );
+    if (snapshot.body?.kind !== "text") throw new Error("expected text");
+    expect(snapshot.body.text).toContain("•••");
+    expect(snapshot.body.text).not.toMatch(
+      /[\ud800-\udbff](?![\udc00-\udfff])/,
     );
   });
 });
