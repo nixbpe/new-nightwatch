@@ -226,7 +226,6 @@ test("P58-04: GET without query shows status line, masked URL, headers and body,
   await expect(panel.getByLabel(BODY_LABEL)).toContainText('"count":3');
   await shot(page, "p58-04-panel-200");
 
-  // Admin may read the response too.
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
   await signIn(adminPage, admin);

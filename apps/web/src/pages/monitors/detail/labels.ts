@@ -193,7 +193,6 @@ export function configFieldLabel(
   return field;
 }
 
-/** Title of a feed row by event kind. */
 export const EVENT_KIND_LABELS = {
   check_failed: "ตรวจล้มเหลว",
   incident_opened: "เริ่มล่ม",

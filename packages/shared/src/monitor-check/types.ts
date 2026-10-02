@@ -133,7 +133,7 @@ export type SnapshotBody =
  * the fields the Worker adds). Raw header and body values never leave the executor.
  */
 export interface ResponseSnapshot {
-  /** Masked with `maskUrl()`. */
+  /** Masked with `maskUrl()`, then secret values echoed into it are masked. */
   url: string;
   /** `request_values`: the request carried a query or body, so only version and status are kept. */
   detailOmitted: "request_values" | null;

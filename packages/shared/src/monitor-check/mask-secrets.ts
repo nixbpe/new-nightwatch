@@ -1,13 +1,13 @@
 const MASK = "•••";
 
+/** Decoding layers undone in one view, in any order. */
+const LAYERS = 2;
+
 /**
  * Work one snapshot may spend across all its masking calls, in characters compared
  * by `indexOf` and characters decoded into views. Past it each further text is
  * masked whole (fail closed) and `cutShort` is set.
  */
-/** Decoding layers undone in one view, in any order. */
-const LAYERS = 2;
-
 export interface WorkBudget {
   scan: number;
   view: number;
@@ -270,7 +270,6 @@ export function createSecretMasker(
     return span;
   };
   const maxSpan = Math.max(0, ...needles.map(spanOf));
-  // `+` alone, `%XX` as latin1 or as UTF-8 (each also with `+`), and JSON escapes.
   const plusOnly: Atom = (view) => {
     const out = new ViewBuilder(view, lower);
     for (let i = 0; i < view.text.length; i++) {

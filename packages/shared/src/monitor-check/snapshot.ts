@@ -84,9 +84,9 @@ function shown(
 
 /**
  * Scanning a 1 MiB body costs a pass per needle and view, so only a prefix is
- * scanned. An occurrence that straddles its end would show its head, so the
- * output stops `maxSpan` characters before the end (the masker extends it over a
- * match that starts before). The caller learns that the input was cut.
+ * scanned. The prefix runs `maxSpan` past the shown range, so an occurrence that
+ * starts inside the range is matched whole; output stops at the range end
+ * (extended over such a match). The caller learns that the input was cut.
  */
 function maskPrefix(
   mask: SecretMasker,
@@ -147,7 +147,6 @@ function bodyOf(
   }
   const decoded = decodeBody(response);
   if (!decoded.ok) return { kind: "omitted", reason: "undecodable" };
-  // Redact the whole text first so a secret cut by the limit is never shown in part.
   const { mask: redact, inputCut } = maskPrefix(
     textRedact,
     decoded.text,
