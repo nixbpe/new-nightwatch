@@ -325,7 +325,7 @@ AC `P58-01` ถึง `P58-10` อยู่ใน Acceptance matrix ของ `d
 
 ยังเปิด: Q-03 ข้อความ empty state ของสอง card (UX Designer กับ Product Owner) ไม่ block contract NODE-58-05 ใช้ข้อความใน UI flow ของ `feature.md` จนกว่าจะได้ข้อความสุดท้าย
 
-ค้างหลัง spec นี้: `feature.md` ยังบันทึก `issue-58-AC-1` เป็น draft และ "Approved by user: Not yet" การ freeze (`status: frozen`) ต้องแก้ใน `feature.md` ซึ่งอยู่นอกขอบเขตการแก้ของรอบนี้
+`feature.md` freeze เป็น `issue-58-AC-1` แล้ว (2026-10-02)
 
 ## Revisions
 
