@@ -5,6 +5,7 @@ import type {
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 
+import { recordAuditEvent, roleChange } from "../audit/record";
 import { normalizeOrganizationRole } from "../me/service";
 import { assertMemberBeforeTenantContext } from "./service";
 
@@ -17,6 +18,7 @@ export async function createOrganizationInvitation(
     actorUserId: string;
     email: string;
     role: OrganizationRole;
+    requestId?: string;
   },
 ): Promise<{ id: string; email: string; organizationName: string }> {
   await assertMemberBeforeTenantContext(
@@ -114,14 +116,32 @@ export async function createOrganizationInvitation(
         [input.organizationId, input.email],
       );
       const id = crypto.randomUUID();
-      await client.query(
+      const created = await client.query<{ publicId: string }>(
         `with creation_time as materialized (select clock_timestamp() as created_at)
        insert into invitation
        (id, organization_id, email, role, status, inviter_id, expires_at, created_at, sent_at)
        select $1, $2, $3, $4, 'pending', $5, created_at + interval '48 hours', created_at, created_at
-       from creation_time`,
+       from creation_time
+       returning public_id as "publicId"`,
         [id, input.organizationId, input.email, input.role, input.actorUserId],
       );
+      const publicId = created.rows[0]?.publicId;
+      if (publicId === undefined) {
+        throw new Error("invitation insert returned no row");
+      }
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorRole: role,
+        action: "organization.invitation.create",
+        target: {
+          type: "invitation",
+          id: publicId,
+          attributes: { role: input.role },
+        },
+        changes: [roleChange(null, input.role)],
+        requestId: input.requestId,
+      });
       return { id, email: input.email, organizationName: name };
     },
   );
@@ -169,7 +189,12 @@ async function lockOrganizationAsInvitationManager(
 
 export async function cancelPendingInvitation(
   database: Database,
-  input: { organizationId: string; actorUserId: string; publicId: string },
+  input: {
+    organizationId: string;
+    actorUserId: string;
+    publicId: string;
+    requestId?: string;
+  },
 ): Promise<void> {
   await assertMemberBeforeTenantContext(
     database,
@@ -211,6 +236,19 @@ export async function cancelPendingInvitation(
        where public_id = $1 and organization_id = $2`,
       [input.publicId, input.organizationId],
     );
+    await recordAuditEvent(client, {
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      actorRole,
+      action: "organization.invitation.cancel",
+      target: {
+        type: "invitation",
+        id: input.publicId,
+        attributes: { role: invitationRole },
+      },
+      changes: [roleChange(invitationRole, null)],
+      requestId: input.requestId,
+    });
   });
 }
 
@@ -251,7 +289,12 @@ export async function rotateInvitationId(
 
 export async function resendPendingInvitation(
   database: Database,
-  input: { organizationId: string; actorUserId: string; publicId: string },
+  input: {
+    organizationId: string;
+    actorUserId: string;
+    publicId: string;
+    requestId?: string;
+  },
 ): Promise<{
   id: string;
   email: string;
@@ -364,6 +407,19 @@ export async function resendPendingInvitation(
         publicId: input.publicId,
         organizationId: input.organizationId,
         newId: id,
+      });
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorRole,
+        action: "organization.invitation.resend",
+        target: {
+          type: "invitation",
+          id: input.publicId,
+          attributes: { role },
+        },
+        changes: [],
+        requestId: input.requestId,
       });
       return {
         id,

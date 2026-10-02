@@ -125,6 +125,13 @@ export const organization = pgTable("organization", {
   logo: text("logo"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }),
+  // F-007: when audit events started being recorded for this Organization.
+  auditRecordingStartedAt: timestamp("audit_recording_started_at", {
+    mode: "date",
+    withTimezone: true,
+  })
+    .notNull()
+    .defaultNow(),
 });
 
 export const member = pgTable(
@@ -660,6 +667,51 @@ export const monitorEvents = pgTable(
   ],
 );
 
+// Partitioned by month on occurred_at in migration 0019 (drizzle models the
+// parent only). Append-only for the runtime role: select and insert.
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id").notNull().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    occurredAt: timestamp("occurred_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+    actorUserId: text("actor_user_id").notNull(),
+    actorRole: text("actor_role").notNull(),
+    category: text("category").notNull(),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    targetAttributes: jsonb("target_attributes")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    changes: jsonb("changes")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    requestId: text("request_id"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.id, table.occurredAt] }),
+    index("audit_events_tenant_time_idx").on(
+      table.tenantId,
+      table.occurredAt.desc(),
+      table.id.desc(),
+    ),
+    index("audit_events_tenant_actor_idx").on(
+      table.tenantId,
+      table.actorUserId,
+      table.occurredAt.desc(),
+    ),
+    index("audit_events_tenant_id_idx").on(table.tenantId, table.id),
+  ],
+);
+
 export const schema = {
   user,
   session,
@@ -682,4 +734,5 @@ export const schema = {
   monitorCheckHourly,
   monitorIncidents,
   monitorEvents,
+  auditEvents,
 };

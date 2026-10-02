@@ -31,6 +31,7 @@ export {
   type NotificationDispatchFailureReason,
   type NotificationTransaction,
 } from "./notification";
+export { ensureAuditEventPartitions } from "./audit";
 export {
   claimDueMonitorChecks,
   ensureMonitorPartitions,

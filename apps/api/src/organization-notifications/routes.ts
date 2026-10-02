@@ -12,14 +12,14 @@ import {
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { MiddlewareHandler } from "hono";
 import type { Database } from "@nightwatch/db";
-import { AppError, type AuthEnv, type Logger } from "@nightwatch/shared";
+import type { AuthEnv, Logger } from "@nightwatch/shared";
 import { z } from "zod";
 
 import { BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS, type Auth } from "../auth";
 import { buildInvitationEmail } from "../auth/emails";
 import type { Mailer } from "../auth/mailer";
+import { auditDenials } from "../audit/denials";
 import { requireVerifiedSession } from "../me/service";
-import { auditMonitorMutation } from "../monitors/audit";
 import { notificationRouteDeclarations } from "../notifications/contract";
 import { invalidInputHook } from "../notifications/invalid-input";
 import {
@@ -88,28 +88,6 @@ export function createNativeOrganizationMutationGuard(deps: {
     }
     await next();
   };
-}
-
-const DENIAL_CODES = new Set(["MEMBERSHIP_DENIED", "PERMISSION_DENIED"]);
-
-// Logs actor and action only, never the target organization or member data.
-async function auditDenials<T>(
-  logger: Logger,
-  actorUserId: string,
-  action: string,
-  work: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await work();
-  } catch (error) {
-    if (error instanceof AppError && DENIAL_CODES.has(error.code)) {
-      logger.warn(
-        { actorUserId, action, code: error.code },
-        "organization access denied",
-      );
-    }
-    throw error;
-  }
 }
 
 const memberParamsSchema = z.object({
@@ -315,6 +293,7 @@ export function registerOrganizationInvitationRoutes(
           organizationId,
           actorUserId: session.user.id,
           publicId,
+          requestId: c.get("requestId"),
         }),
     );
     return c.json({ canceled: true as const }, 200);
@@ -331,6 +310,7 @@ export function registerOrganizationInvitationRoutes(
           organizationId,
           actorUserId: session.user.id,
           publicId,
+          requestId: c.get("requestId"),
         }),
     );
     const timing = {
@@ -370,6 +350,7 @@ export function registerOrganizationInvitationRoutes(
           actorUserId: session.user.id,
           email,
           role,
+          requestId: c.get("requestId"),
         }),
     );
     const message = buildInvitationEmail(deps.authEnv, {
@@ -437,14 +418,7 @@ export function registerOrganizationNotificationSettingsRoutes(
             userId: session.user.id,
             actorDisplayName: session.user.name,
             update,
-            onMonitorAlertsChanged: () => {
-              auditMonitorMutation(deps.logger, {
-                actorUserId: session.user.id,
-                action:
-                  "organization.notification-settings.monitor-alerts.update",
-                organizationId,
-              });
-            },
+            requestId: c.get("requestId"),
           }),
       );
       return c.json(body, 200);
@@ -489,6 +463,7 @@ export function registerOrganizationMemberRoutes(
           actorUserId: session.user.id,
           memberId,
           role,
+          requestId: c.get("requestId"),
         }),
     );
     return c.json({ member }, 200);
@@ -505,6 +480,7 @@ export function registerOrganizationMemberRoutes(
         leaveOrganization(deps.database, {
           organizationId,
           actorUserId: session.user.id,
+          requestId: c.get("requestId"),
         }),
     );
     return c.json({ member }, 200);
@@ -522,6 +498,7 @@ export function registerOrganizationMemberRoutes(
           organizationId,
           actorUserId: session.user.id,
           memberId,
+          requestId: c.get("requestId"),
         }),
     );
     return c.json({ member }, 200);

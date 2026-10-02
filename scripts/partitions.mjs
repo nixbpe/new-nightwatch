@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Root `db:partitions` wrapper. Calls ensure_monitor_partitions() with
- * DATABASE_OWNER_URL only (the runtime role has no EXECUTE, DB-09). Run it
+ * Root `db:partitions` wrapper. Calls ensure_monitor_partitions() and
+ * ensure_audit_event_partitions() with DATABASE_OWNER_URL only (the runtime
+ * role has no EXECUTE, DB-09). Run it
  * after `db:migrate` in every environment and on a schedule (monthly is
  * enough) so partitions exist at least 3 months ahead.
  *
@@ -10,6 +11,10 @@
  * create or drop needs a lock on the partitioned parent (inferred), so the call
  * runs in one transaction with a lock_timeout: on timeout the transaction
  * rolls back (no partial state), the script exits 1 and a rerun is safe.
+ *
+ * audit_events (F-007) gets the same previous, current and next N month
+ * partitions; its partitions are dropped once their whole range is older than
+ * 366 days. A missing audit partition makes every audited mutation fail.
  *
  * Environment: same resolution as `db:migrate` (scripts/dev-env.mjs).
  *   PARTITION_MONTHS_AHEAD  optional, integer 0..12, default 3
@@ -51,6 +56,7 @@ try {
     // Numbers are validated integers above; SET does not accept parameters.
     await tx.unsafe(`set local lock_timeout = ${lockTimeoutMs}`);
     await tx`select ensure_monitor_partitions(${monthsAhead})`;
+    await tx`select ensure_audit_event_partitions(${monthsAhead})`;
   });
   console.log(`[partitions] ok: months ahead ${monthsAhead}`);
   try {
@@ -59,7 +65,7 @@ try {
       from pg_inherits i
       join pg_class c on c.oid = i.inhrelid
       join pg_class p on p.oid = i.inhparent
-      where p.relname in ('monitor_check_results', 'monitor_check_hourly')
+      where p.relname in ('monitor_check_results', 'monitor_check_hourly', 'audit_events')
       order by c.relname`;
     console.log(
       `[partitions] ${rows.length} partitions: ` +

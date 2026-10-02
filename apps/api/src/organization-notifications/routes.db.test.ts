@@ -1094,14 +1094,22 @@ describe("organization monitor alerts setting HTTP contract", () => {
         [memberIds[key], settingsOrganizationId, userIds.get(key), role],
       );
     }
-    const alertAudits = () =>
-      auditLines
-        .map((line) => JSON.parse(line) as Record<string, unknown>)
-        .filter(
-          (entry) =>
-            entry.action ===
-            "organization.notification-settings.monitor-alerts.update",
-        );
+    // The audit event is written in the mutation's transaction (F-007).
+    const alertAudits = async () =>
+      (
+        await owner.sql.query<{
+          actorUserId: string;
+          actorRole: string;
+          changes: unknown;
+        }>(
+          `select actor_user_id as "actorUserId", actor_role as "actorRole", changes
+           from audit_events
+           where tenant_id = $1
+             and action = 'organization.notification-settings.monitor-alerts.update'
+           order by occurred_at, id`,
+          [settingsOrganizationId],
+        )
+      ).rows;
     const changedIntents = async () =>
       (
         await owner.sql.query(
@@ -1128,7 +1136,7 @@ describe("organization monitor alerts setting HTTP contract", () => {
       settingsChangedEnabled: true,
       monitorAlertsEnabled: true,
     });
-    expect(alertAudits()).toHaveLength(0);
+    expect(await alertAudits()).toHaveLength(0);
 
     // At least one toggle is required.
     state = await current();
@@ -1152,12 +1160,19 @@ describe("organization monitor alerts setting HTTP contract", () => {
       version: state.version + 1,
     });
     expect(await changedIntents()).toBe((intentsBefore ?? 0) + 1);
-    expect(alertAudits()).toHaveLength(1);
-    expect(alertAudits()[0]).toMatchObject({
+    const alertEvents = await alertAudits();
+    expect(alertEvents).toHaveLength(1);
+    expect(alertEvents[0]).toMatchObject({
       actorUserId: ownerId,
-      organizationId: settingsOrganizationId,
+      actorRole: "owner",
+      changes: [
+        {
+          field: "monitorAlertsEnabled",
+          before: { kind: "value", value: true },
+          after: { kind: "value", value: false },
+        },
+      ],
     });
-    expect(alertAudits()[0]).not.toHaveProperty("monitorId");
 
     // Stale version: 409, no write, no audit.
     const conflict = await ownerClient("PATCH", settingsPath, {
@@ -1186,7 +1201,7 @@ describe("organization monitor alerts setting HTTP contract", () => {
     });
     expect(noop.status).toBe(200);
     expect(noop.json).toMatchObject({ version: state.version });
-    expect(alertAudits()).toHaveLength(1);
+    expect(await alertAudits()).toHaveLength(1);
 
     // Admin may edit it back; second audit line names the admin.
     const restored = await adminClient("PATCH", settingsPath, {
@@ -1195,9 +1210,11 @@ describe("organization monitor alerts setting HTTP contract", () => {
     });
     expect(restored.status).toBe(200);
     expect(restored.json).toMatchObject({ monitorAlertsEnabled: true });
-    expect(alertAudits()).toHaveLength(2);
-    expect(alertAudits()[1]).toMatchObject({
+    const afterRestore = await alertAudits();
+    expect(afterRestore).toHaveLength(2);
+    expect(afterRestore[1]).toMatchObject({
       actorUserId: userIds.get("settingsAdmin"),
+      actorRole: "admin",
     });
   }, 180_000);
 });

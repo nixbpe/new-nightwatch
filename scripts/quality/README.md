@@ -30,7 +30,7 @@ bun run db:logs    # follow container logs
 bun run db:psql    # owner psql shell (DDL/migrations only)
 bun run db:mail    # print the Mailpit web UI URL
 bun run db:migrate # schema migrations (owned by @nightwatch/db)
-bun run db:partitions # monitor result partitions (owner role), after db:migrate
+bun run db:partitions # monitor and audit_events partitions (owner role), after db:migrate
 bun run provision:organization -- \
   --name "Acme" --slug acme --owner-email admin@example.com
                    # first-org operator provisioning (invitation-only;
@@ -178,6 +178,12 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   because a create or drop needs a lock on the parent table (inferred); on timeout the transaction rolls back,
   the script prints the reason and exits 1. `PARTITION_MONTHS_AHEAD` (0..12,
   default 3) overrides the horizon.
+- The same call, in the same transaction, runs `ensure_audit_event_partitions(3)`
+  for `audit_events` (F-007): previous, current and next 3 monthly partitions,
+  dropping partitions whose whole range ended more than 366 days ago. There is
+  no DEFAULT partition, so if no partition covers the current month every
+  audited mutation (members, invitations, notification settings) fails with an
+  insert error. Run `db:partitions` on every deploy and at least monthly.
 - Env names (validated by `loadMonitorEnv()` in `packages/shared/src/env.ts`):
   `CREDENTIAL_ENCRYPTION_KEYS` (JSON map of key version to base64 32-byte key),
   `CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION`, `REDIS_URL`,
