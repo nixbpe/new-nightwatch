@@ -1,10 +1,15 @@
 import { QueryClient } from "@tanstack/react-query";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Route } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
-import { fetchAuditActors, fetchAuditEvents } from "../../lib/api/audit-log";
+import {
+  fetchAuditActors,
+  fetchAuditEvent,
+  fetchAuditEvents,
+} from "../../lib/api/audit-log";
 import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import {
   claimContextPublication,
@@ -12,8 +17,10 @@ import {
   publishContextPublication,
 } from "../../lib/queryClient";
 import { PREFERENCES_KEY } from "../../lib/preferences";
+import { AuditEventPage } from "./AuditEventPage";
 import { AuditLogPage } from "./AuditLogPage";
 import {
+  makeDetail,
   makeEvent,
   makeList,
   ORG_A,
@@ -31,6 +38,7 @@ vi.mock("../../lib/api/audit-log", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchAuditEvents: vi.fn(),
   fetchAuditActors: vi.fn(),
+  fetchAuditEvent: vi.fn(),
 }));
 
 const listMock = vi.mocked(fetchAuditEvents);
@@ -144,6 +152,22 @@ describe("AuditLogPage table (AC-02, AC-09, AC-17)", () => {
     expect(screen.getByText(/โหลดเมื่อ/)).toHaveTextContent(
       "โหลดเมื่อ 14:02:11",
     );
+  });
+
+  it("shows the later of 365 days back and the recording start as the retained date (AC-09)", async () => {
+    // Recording began 40 days before the load, so the log is retained from there, not from 365 days back.
+    listMock.mockResolvedValue(
+      makeList([makeEvent(0)], 1, {
+        retainedFrom: "2026-08-24T00:00:00.000Z",
+        recordingStartedAt: "2026-08-24T00:00:00.000Z",
+      }),
+    );
+    open();
+    await screen.findByRole("table");
+    expect(screen.getByText(/เก็บย้อนหลังถึง/)).toHaveTextContent(
+      "เก็บย้อนหลังถึง 2026-08-24",
+    );
+    expect(screen.getByText(/ตั้งแต่/)).toHaveTextContent("ตั้งแต่ 2026-08-24");
   });
 
   it("fetches once on a cold load and never shows 0 while the count is unknown", async () => {
@@ -311,14 +335,17 @@ describe("AuditLogPage custom range (AC-11)", () => {
     open();
     await screen.findByRole("table");
     await user.click(screen.getByRole("button", { name: "กำหนดเอง" }));
-    const calls = listMock.mock.calls.length;
+    // Choosing "custom" without dates is a valid, open range and asks once.
+    await waitFor(() => {
+      expect(listMock).toHaveBeenCalledTimes(2);
+    });
+    await screen.findByRole("table");
     await user.type(screen.getByLabelText("วันเริ่ม"), "2025-10-02");
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "วันที่เก็บย้อนหลังถึง (2025-10-03)",
     );
-    expect(listMock.mock.calls.length).toBe(
-      calls + 1 - 1 + (listMock.mock.calls.length - calls),
-    );
+    await act(() => Promise.resolve());
+    expect(listMock).toHaveBeenCalledTimes(2);
     const before = listMock.mock.calls.length;
     await user.clear(screen.getByLabelText("วันเริ่ม"));
     await user.type(screen.getByLabelText("วันเริ่ม"), "2025-10-04");
@@ -528,6 +555,62 @@ describe("AuditLogPage Organization scope (AC-07)", () => {
       queryClient,
     });
     expect(await screen.findByRole("table")).toBeInTheDocument();
+  });
+});
+
+describe("AuditLogPage return from detail (AC-18, spec API)", () => {
+  it("comes back to the same snapshot, page and row after opening an event", async () => {
+    const user = userEvent.setup();
+    const pageTwo = [makeEvent(60), makeEvent(61)];
+    listMock.mockImplementation((_org, params) =>
+      Promise.resolve(
+        params.offset === 0
+          ? makeList(
+              Array.from({ length: 50 }, (_, i) => makeEvent(i)),
+              52,
+            )
+          : makeList(pageTwo, 52, {}, params.offset),
+      ),
+    );
+    vi.mocked(fetchAuditEvent).mockResolvedValue({
+      organizationId: ORG_A,
+      event: makeDetail({ ...pageTwo[1], changes: [] }),
+    });
+    setTenant("owner");
+    renderRoute(<AuditLogPage />, {
+      path: PATH,
+      entry: `/organizations/${ORG_A}/audit-log`,
+      extraRoutes: (
+        <Route
+          path="/organizations/:organizationId/audit-log/:eventId"
+          element={<AuditEventPage />}
+        />
+      ),
+    });
+    await screen.findByRole("table");
+    const firstFrom = listMock.mock.calls[0]?.[1].from;
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    await screen.findByText(/หน้า 2 จาก 2/);
+    await user.click(within(rows()[1] as HTMLElement).getByRole("link"));
+    await screen.findByRole("heading", {
+      level: 1,
+      name: "หยุดมอนิเตอร์ชั่วคราว",
+    });
+    const callsBefore = listMock.mock.calls.length;
+    await user.click(screen.getByRole("link", { name: "กลับไปบันทึกกิจกรรม" }));
+
+    await screen.findByRole("table");
+    expect(location()).toBe(`/organizations/${ORG_A}/audit-log?page=2`);
+    const back = listMock.mock.calls.slice(callsBefore);
+    expect(back).toHaveLength(1);
+    expect(back[0]?.[1]).toMatchObject({
+      offset: 50,
+      asOf: "2026-10-03T07:02:11.000Z",
+      from: firstFrom,
+    });
+    await waitFor(() => {
+      expect(within(rows()[1] as HTMLElement).getByRole("link")).toHaveFocus();
+    });
   });
 });
 

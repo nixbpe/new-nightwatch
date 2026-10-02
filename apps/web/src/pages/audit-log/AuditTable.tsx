@@ -7,6 +7,16 @@ import { Link } from "react-router";
 import { formatAuditTimestamp, type Preferences } from "../../lib/preferences";
 import { actorText, targetText } from "./labels";
 
+/** What the list needs to come back to the same rows: the pinned `asOf` and the anchor of the relative range. */
+export type ListSnapshot = { asOf: string; now: string };
+
+/** The router state a row link carries to the detail page and the back link returns. */
+export type AuditListReturnState = {
+  search?: string;
+  eventId?: string;
+  snapshot?: ListSnapshot;
+};
+
 export function auditEventPath(organizationId: string, eventId: string) {
   return `/organizations/${organizationId}/audit-log/${eventId}`;
 }
@@ -17,6 +27,7 @@ export function AuditTable({
   events,
   preferences,
   search,
+  snapshot,
   registerLink,
 }: {
   organizationId: string;
@@ -24,6 +35,8 @@ export function AuditTable({
   preferences: Preferences;
   /** The list's query string, handed to the detail page so its back link restores it. */
   search: string;
+  /** The snapshot on screen; the detail page hands it back so the list returns to the same rows. */
+  snapshot: ListSnapshot;
   registerLink: (eventId: string, element: HTMLAnchorElement | null) => void;
 }) {
   const headerClass =
@@ -73,7 +86,7 @@ export function AuditTable({
                       registerLink(event.id, element);
                     }}
                     to={auditEventPath(organizationId, event.id)}
-                    state={{ search, eventId: event.id }}
+                    state={{ search, eventId: event.id, snapshot }}
                     aria-label={`${time} ${action}`}
                     className="rounded-[4px] text-primary underline-offset-4 hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >

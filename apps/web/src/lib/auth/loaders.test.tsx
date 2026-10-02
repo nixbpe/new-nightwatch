@@ -4,6 +4,7 @@ import type {
   MonitorListResponse,
   OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import {
   createMemoryRouter,
@@ -41,7 +42,9 @@ import {
   resetQueryClientRegistry,
   resolveQueryClientForIdentity,
 } from "../queryClient";
+import { AuditLogPage } from "../../pages/audit-log/AuditLogPage";
 import { detail } from "../../pages/monitors/detail-test-support";
+import { TenantProvider } from "../tenant/TenantProvider";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
   auditLogEventLoader,
@@ -537,6 +540,48 @@ describe("audit log loaders", () => {
       expect(new Date(params?.from ?? "").getUTCSeconds()).toBe(0);
     },
   );
+
+  it("asks for the list once when the loader and the page open the same link", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-03T07:02:11.500Z"));
+    try {
+      sessionState.data = { user: VERIFIED };
+      as("owner");
+      vi.mocked(fetchAuditEvents).mockResolvedValue({
+        organizationId,
+        asOf: "2026-10-03T07:02:11.000Z",
+        retainedFrom: "2025-10-03T07:02:11.000Z",
+        recordingStartedAt: "2025-06-01T00:00:00.000Z",
+        events: [],
+        page: { limit: 50, offset: 0, total: 0 },
+      });
+      vi.mocked(fetchAuditActors).mockResolvedValue({ actors: [] });
+      renderAt(
+        [
+          {
+            ...listRoute,
+            element: (
+              <QueryClientProvider
+                client={resolveQueryClientForIdentity(VERIFIED.id)}
+              >
+                <TenantProvider>
+                  <AuditLogPage />
+                </TenantProvider>
+              </QueryClientProvider>
+            ),
+          },
+        ],
+        `/organizations/${organizationId}/audit-log`,
+      );
+
+      expect(
+        await screen.findByText(/ยังไม่มีบันทึกกิจกรรมในช่วงที่เก็บไว้/),
+      ).toBeInTheDocument();
+      expect(fetchAuditEvents).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it.each(["viewer"] as const)("requests nothing for a %s", async (role) => {
     sessionState.data = { user: VERIFIED };

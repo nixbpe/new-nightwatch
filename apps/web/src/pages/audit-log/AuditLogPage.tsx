@@ -13,6 +13,11 @@ import {
   auditLogQueryKeys,
   fetchAuditActors,
   fetchAuditEvents,
+  floorToMinute,
+  parseAuditFilters,
+  serializeAuditFilters,
+  toListParams,
+  type AuditFilters,
 } from "../../lib/api/audit-log";
 import {
   formatAuditDate,
@@ -29,17 +34,8 @@ import {
 } from "./access";
 import { AuditDenied } from "./AuditDenied";
 import { AuditFilterBar } from "./AuditFilterBar";
-import { AuditTable } from "./AuditTable";
-import {
-  customRangeError,
-  filterIdentity,
-  floorToMinute,
-  hasActiveFilters,
-  parseAuditFilters,
-  serializeAuditFilters,
-  toListParams,
-  type AuditFilters,
-} from "./filters";
+import { AuditTable, type AuditListReturnState } from "./AuditTable";
+import { customRangeError, filterIdentity, hasActiveFilters } from "./filters";
 import { RecordingScopeNote } from "./RecordingScopeNote";
 
 const TITLE = "บันทึกกิจกรรมองค์กร";
@@ -84,12 +80,31 @@ function AuditLogForOrganization({
   // The relative range and the pinned snapshot belong to one filter set: a changed filter
   // starts over (no `asOf`, a new anchor); a page change keeps both (spec "Web").
   const identity = filterIdentity(filters);
-  const [view, setView] = useState<ListView>(() => ({
-    identity,
-    now: floorToMinute(new Date()),
-    asOf: undefined,
-    basePage: filters.page,
-  }));
+  // AC-18, spec "API": coming back from a detail page reuses the snapshot the user left, so
+  // the rows and the cached relative range are the same ones.
+  const returnState = location.state as AuditListReturnState | null;
+  const [view, setView] = useState<ListView>(() => {
+    const snapshot = returnState?.snapshot;
+    const sameFilters =
+      returnState?.search !== undefined &&
+      filterIdentity(
+        parseAuditFilters(new URLSearchParams(returnState.search)),
+      ) === identity;
+    return snapshot !== undefined && sameFilters
+      ? {
+          identity,
+          now: new Date(snapshot.now),
+          asOf: snapshot.asOf,
+          // Matches no page, so the pin applies to every page of this snapshot.
+          basePage: 0,
+        }
+      : {
+          identity,
+          now: floorToMinute(new Date()),
+          asOf: undefined,
+          basePage: filters.page,
+        };
+  });
   let currentView = view;
   if (view.identity !== identity) {
     currentView = {
@@ -186,7 +201,7 @@ function AuditLogForOrganization({
   };
 
   // AC-18: coming back from a detail page puts focus on that row's link, else on the table heading.
-  const returnedTo = (location.state as { eventId?: string } | null)?.eventId;
+  const returnedTo = returnState?.eventId;
   const restoredFocus = useRef(false);
   useEffect(() => {
     if (
@@ -324,6 +339,7 @@ function AuditLogForOrganization({
           search={
             searchParams.toString() === "" ? "" : `?${searchParams.toString()}`
           }
+          snapshot={{ asOf: data.asOf, now: currentView.now.toISOString() }}
           registerLink={registerLink}
         />
         <DataTablePagination

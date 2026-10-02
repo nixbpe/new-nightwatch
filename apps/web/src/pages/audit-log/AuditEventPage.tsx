@@ -32,6 +32,7 @@ import {
   useAuditDenial,
 } from "./access";
 import { AuditDenied } from "./AuditDenied";
+import type { AuditListReturnState } from "./AuditTable";
 import {
   auditValueText,
   changeFieldLabel,
@@ -97,11 +98,14 @@ function AuditEventForOrganization({
     titleRef.current?.focus();
   }, []);
 
-  const state = location.state as { search?: string; eventId?: string } | null;
+  const state = location.state as AuditListReturnState | null;
   const backTo = `/organizations/${organizationId}/audit-log${state?.search ?? ""}`;
   const back = (
     <Button asChild variant="secondary">
-      <Link to={backTo} state={{ eventId: state?.eventId }}>
+      <Link
+        to={backTo}
+        state={{ eventId, snapshot: state?.snapshot, search: state?.search }}
+      >
         กลับไปบันทึกกิจกรรม
       </Link>
     </Button>

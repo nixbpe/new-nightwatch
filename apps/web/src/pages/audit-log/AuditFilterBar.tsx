@@ -9,11 +9,11 @@ import { useState, type SyntheticEvent } from "react";
 
 import { Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import type { AuditFilters } from "../../lib/api/audit-log";
 import { cn } from "../../lib/utils";
 import {
   hasActiveFilters,
   RANGE_OPTIONS,
-  type AuditFilters,
   type CustomRangeError,
 } from "./filters";
 import { personName } from "./labels";
