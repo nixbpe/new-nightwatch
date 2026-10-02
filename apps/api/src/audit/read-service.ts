@@ -1,6 +1,4 @@
 import {
-  AUDIT_ACTION_LABELS,
-  AUDIT_ACTIONS,
   organizationRoleSchema,
   type AuditActorOption,
   type AuditCategory,
@@ -14,8 +12,15 @@ import {
   type AuditLogListResponse,
   type AuditTarget,
 } from "@nightwatch/api-contract";
-import { withTenantContextRaw, type Database } from "@nightwatch/db";
-import { AppError } from "@nightwatch/shared";
+import {
+  AUDIT_EVENT_COLUMNS,
+  AUDIT_EVENT_JOINS,
+  auditEventFilterParams,
+  auditEventFilterWhere,
+  withTenantContextRaw,
+  type Database,
+} from "@nightwatch/db";
+import { AppError, auditActionCodesMatching } from "@nightwatch/shared";
 
 import { normalizeOrganizationRole } from "../me/service";
 
@@ -106,27 +111,6 @@ type EventRow = {
   monitorExists: boolean;
 };
 
-// Names are read from the current member rows only (OD-10, OD-16): a former
-// member or a removed account yields no name. Email is never selected.
-const EVENT_JOINS = `
-  left join member am on am.organization_id = $1 and am.user_id = e.actor_user_id
-  left join "user" au on au.id = am.user_id
-  left join monitors mo on e.target_type = 'monitor'
-    and mo.tenant_id = $1 and mo.id::text = e.target_id
-  left join member tm on e.target_type = 'member'
-    and tm.organization_id = $1 and tm.user_id = e.target_id
-  left join "user" tu on tu.id = tm.user_id`;
-
-const EVENT_COLUMNS = `
-  e.id, e.occurred_at as "occurredAt", e.actor_user_id as "actorUserId",
-  e.actor_role as "actorRole", e.category, e.action,
-  e.target_type as "targetType", e.target_id as "targetId",
-  e.target_attributes as "targetAttributes",
-  au.name as "actorName", (am.user_id is not null) as "actorCurrent",
-  coalesce(mo.name, tu.name) as "targetName",
-  (tm.user_id is not null) as "targetCurrent",
-  (mo.id is not null) as "monitorExists"`;
-
 function actorOf(row: EventRow): AuditEventSummary["actor"] {
   const roleAtTime = organizationRoleSchema.parse(row.actorRole);
   return {
@@ -182,19 +166,6 @@ function summaryOf(row: EventRow): AuditEventSummary {
   };
 }
 
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
-}
-
-function actionCodesMatching(q: string): string[] {
-  const needle = q.toLowerCase();
-  return AUDIT_ACTIONS.filter(
-    (code) =>
-      code.toLowerCase().includes(needle) ||
-      AUDIT_ACTION_LABELS[code].toLowerCase().includes(needle),
-  );
-}
-
 // The events a filter selects, shared by the list and the export count so a
 // file contains exactly the rows the page shows. Parameters: $1 organization,
 // $3 from, $4 to, $5 categories, $6 actor, $7 search pattern, $8 asOf, $9
@@ -203,29 +174,20 @@ function filteredEventCtes(columns: string): string {
   return `
          win as (
            select b.retained_from, b.started,
-                  least(coalesce($8::timestamptz, b.db_now), b.db_now) as as_of
+                  least(coalesce($10::timestamptz, b.db_now), b.db_now) as as_of
            from bounds b
          ),
          scoped as (
            select ${columns}
            from audit_events e
-           ${EVENT_JOINS}
+           ${AUDIT_EVENT_JOINS}
            cross join win w
            cross join allowed a
            where a.ok and e.tenant_id = $1
-             and e.occurred_at >= greatest(
-               coalesce($3::timestamptz, '-infinity'::timestamptz), w.retained_from)
-             and e.occurred_at <= least(
-               coalesce($4::timestamptz, 'infinity'::timestamptz), w.as_of)
-             and ($5::text[] is null or e.category = any($5::text[]))
-             and ($6::text is null or e.actor_user_id = $6::text)
-             and ($7::text is null
-               or e.action = any($9::text[])
-               or au.name ilike $7::text
-               or coalesce(mo.name, tu.name) ilike $7::text
-               or ($10::uuid is not null
-                   and (e.id = $10::uuid
-                        or (e.target_type = 'invitation' and e.target_id = $10::uuid::text))))
+             and ${auditEventFilterWhere(3, {
+               retainedFrom: "w.retained_from",
+               asOf: "w.as_of",
+             })}
          )`;
 }
 
@@ -236,18 +198,14 @@ function filterParameters(
     "from" | "to" | "categories" | "actorUserId" | "q" | "asOf"
   >,
 ): unknown[] {
-  const q = query.q;
   return [
     identity.organizationId,
     identity.actorUserId,
-    query.from ?? null,
-    query.to ?? null,
-    query.categories ?? null,
-    query.actorUserId ?? null,
-    q === undefined ? null : `%${escapeLike(q)}%`,
+    ...auditEventFilterParams(
+      query,
+      query.q === undefined ? [] : auditActionCodesMatching(query.q),
+    ),
     query.asOf ?? null,
-    q === undefined ? null : actionCodesMatching(q),
-    q !== undefined && UUID_PATTERN.test(q) ? q.toLowerCase() : null,
   ];
 }
 
@@ -275,7 +233,7 @@ export async function listAuditEvents(
     async (client) => {
       const result = await client.query<ListRow>(
         `with ${GATE_CTES},
-         ${filteredEventCtes(EVENT_COLUMNS)},
+         ${filteredEventCtes(AUDIT_EVENT_COLUMNS)},
          page as (
            select * from scoped order by "occurredAt" desc, id desc
            limit $11 offset $12
@@ -346,9 +304,9 @@ export async function getAuditEvent(
       const result = await client.query<DetailRow>(
         `with ${GATE_CTES},
          found as (
-           select ${EVENT_COLUMNS}, e.changes
+           select ${AUDIT_EVENT_COLUMNS}, e.changes
            from audit_events e
-           ${EVENT_JOINS}
+           ${AUDIT_EVENT_JOINS}
            cross join bounds b
            cross join allowed a
            where a.ok and e.tenant_id = $1 and $3::text is not null

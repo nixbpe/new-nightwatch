@@ -15,7 +15,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@nightwatch/api-contract": "workspace:*",
     "@nightwatch/db": "workspace:*",
     "@nightwatch/shared": "workspace:*",
     "bullmq": "^5.71.1",

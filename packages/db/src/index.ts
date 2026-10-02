@@ -37,6 +37,17 @@ export {
   type NotificationTransaction,
 } from "./notification";
 export {
+  AUDIT_EVENT_COLUMNS,
+  AUDIT_EVENT_FILTER_PARAM_COUNT,
+  AUDIT_EVENT_JOINS,
+  auditEventFilterParams,
+  auditEventFilterWhere,
+  readAuditEventBatch,
+  type AuditEventBatchCursor,
+  type AuditEventBatchRow,
+  type AuditEventFilter,
+} from "./audit-events";
+export {
   claimAuditExport,
   ensureAuditEventPartitions,
   failStaleAuditExports,

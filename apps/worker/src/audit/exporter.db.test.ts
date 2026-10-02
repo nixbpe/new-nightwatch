@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { auditChangeSchema, type AuditChange } from "@nightwatch/api-contract";
 import {
   claimAuditExport,
   claimNotificationDispatches,
@@ -9,7 +8,7 @@ import {
   withTenantUserContextRaw,
   type Database,
 } from "@nightwatch/db";
-import { createLogger } from "@nightwatch/shared";
+import { createLogger, type AuditChange } from "@nightwatch/shared";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { NotificationDispatchScheduler, type DispatchQueue } from "../dispatch";
@@ -161,6 +160,19 @@ async function exportRow(id: string) {
   const row = rows[0];
   if (!row) throw new Error("export missing");
   return row;
+}
+
+/** Waits until some session of the test database is blocked on a lock. */
+async function waitUntilBlocked(): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const rows = await sql(
+      "select 1 from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()",
+    );
+    if (rows.length > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("no session ever waited on a lock");
 }
 
 async function intentsFor(id: string) {
@@ -406,9 +418,30 @@ describe("the file (AC-15, AC-24, AC-26)", () => {
         changes,
       },
     ]);
-    for (const change of parsed.events[0]?.changes as unknown[]) {
-      expect(auditChangeSchema.safeParse(change).success).toBe(true);
+  });
+
+  it("records only that a search was used, never its text, in the CSV preamble and the JSON meta", async () => {
+    await seedEvent();
+    const search = `${requester}@example.test`;
+    const csv = await seedRequest({ format: "csv", filters: { q: search } });
+    const json = await seedRequest({
+      format: "json",
+      user: colleague,
+      filters: { q: search },
+    });
+    await exporter().runOnce();
+    await exporter().runOnce();
+    const csvText = await contentOf(csv);
+    const jsonText = await contentOf(json);
+    for (const text of [csvText, jsonText]) {
+      expect(text).toContain("search=applied");
+      expect(text).not.toContain(search);
+      expect(text).not.toContain("@example.test");
     }
+    expect(parseCsv(csvText.slice(1))[2]?.[1]).toContain("search=applied");
+    expect(
+      (JSON.parse(jsonText) as { meta: { filters: string } }).meta.filters,
+    ).toContain("search=applied");
   });
 
   it("holds events inside 365 days only, up to the snapshot, and clamps from to the recording start", async () => {
@@ -742,6 +775,130 @@ describe("races (AC-25)", () => {
       { event_type: "AUDIT_EXPORT_READY", recipient_user_id: colleague },
     ]);
   });
+
+  it("fails with REQUESTER_NOT_AUTHORIZED when the requester is demoted while batches are read, and tells them", async () => {
+    for (let i = 0; i < 4; i += 1) await seedEvent();
+    const id = await seedRequest({ format: "json" });
+    let batches = 0;
+    const result = await exporter({
+      batchSize: 1,
+      onBatch: async () => {
+        batches += 1;
+        if (batches === 2) {
+          await sql("update member set role = 'viewer' where user_id = $1", [
+            requester,
+          ]);
+        }
+      },
+    }).runOnce();
+    expect(result).toBe(true);
+    expect(await exportRow(id)).toMatchObject({
+      state: "failed",
+      failure_code: "REQUESTER_NOT_AUTHORIZED",
+      content: null,
+    });
+    expect(await intentsFor(id)).toEqual([
+      { event_type: "AUDIT_EXPORT_FAILED", recipient_user_id: requester },
+    ]);
+    await sql("update member set role = 'admin' where user_id = $1", [
+      requester,
+    ]);
+  });
+
+  it(
+    "drops a result while a stale transition of the same request is still uncommitted, and keeps one failure notification",
+    { timeout: 30_000 },
+    async () => {
+      await seedEvent();
+      const id = await seedRequest({ age: "55 minutes" });
+      const claim = await claimAuditExport(runtime);
+      if (!claim) throw new Error("claim missing");
+      await sql(
+        "update audit_exports set created_at = now() - interval '61 minutes' where id = $1",
+        [id],
+      );
+      await sql(
+        "update audit_export_jobs set created_at = now() - interval '61 minutes' where export_id = $1",
+        [id],
+      );
+
+      const holder = await runtime.sql.connect();
+      try {
+        await holder.query("begin");
+        await holder.query("select set_config('app.tenant_id', $1, true)", [
+          org,
+        ]);
+        await holder.query("select set_config('app.user_id', $1, true)", [
+          requester,
+        ]);
+        expect(
+          await failStaleAuditExports(holder, {
+            tenantId: org,
+            requestedBy: requester,
+            exportId: id,
+          }),
+        ).toEqual([id]);
+        // The complete statement skips the row at once: its own deadline check
+        // is false for it, so there is nothing to wait for before the commit.
+        const pending = exporter().process({ ...claim, exhausted: false });
+        expect(await pending).toBe("discarded");
+        await holder.query("commit");
+      } finally {
+        await holder.query("rollback").catch(() => undefined);
+        holder.release();
+      }
+      expect(await exportRow(id)).toMatchObject({
+        state: "failed",
+        failure_code: "EXPORT_FAILED",
+        content: null,
+      });
+      expect(await intentsFor(id)).toEqual([
+        { event_type: "AUDIT_EXPORT_FAILED", recipient_user_id: requester },
+      ]);
+    },
+  );
+
+  it("keeps the ready result when a stale transition waits on the lock of the uncommitted complete, and raises one ready notification", async () => {
+    await seedEvent();
+    const id = await seedRequest();
+    const claim = await claimAuditExport(runtime);
+    if (!claim) throw new Error("claim missing");
+    // 3 seconds of life left: the complete passes the deadline check, then the
+    // deadline passes while it still holds the row.
+    await sql(
+      "update audit_exports set created_at = now() - interval '59 minutes 57 seconds' where id = $1",
+      [id],
+    );
+    await sql(
+      "update audit_export_jobs set created_at = now() - interval '59 minutes 57 seconds' where export_id = $1",
+      [id],
+    );
+    let stale: Promise<string[]> | undefined;
+    const result = await exporter({
+      onCompleting: async () => {
+        // The stale update matches the row, and so waits for its lock, only
+        // once the deadline has passed.
+        await new Promise((resolve) => setTimeout(resolve, 3_200));
+        stale = withTenantUserContextRaw(runtime, org, requester, (client) =>
+          failStaleAuditExports(client, {
+            tenantId: org,
+            requestedBy: requester,
+            exportId: id,
+          }),
+        );
+        await waitUntilBlocked();
+      },
+    }).process({ ...claim, exhausted: false });
+    expect(result).toBe("ready");
+    expect(await stale).toEqual([]);
+    expect(await exportRow(id)).toMatchObject({
+      state: "ready",
+      failure_code: null,
+    });
+    expect(await intentsFor(id)).toEqual([
+      { event_type: "AUDIT_EXPORT_READY", recipient_user_id: requester },
+    ]);
+  }, 30_000);
 
   it("writes nothing when shutdown stops a build, and the request is claimed and finished afterwards", async () => {
     for (let i = 0; i < 6; i += 1) await seedEvent();

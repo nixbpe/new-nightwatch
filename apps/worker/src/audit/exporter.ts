@@ -4,7 +4,7 @@ import {
   AUDIT_EXPORT_MAX_EVENTS,
   auditScopeNote,
   type AuditExportFailureCode,
-} from "@nightwatch/api-contract";
+} from "@nightwatch/shared";
 import {
   claimAuditExport,
   insertAuditExportNotificationIntent,
@@ -46,6 +46,8 @@ export type ExporterOptions = {
   now?: () => Date;
   /** Test seam: runs after every batch is read, before the next one. */
   onBatch?: () => void | Promise<void>;
+  /** Test seam: runs inside the complete transaction, after the ledger update and before commit. */
+  onCompleting?: () => void | Promise<void>;
 };
 
 class TimeLimitError extends Error {}
@@ -81,7 +83,8 @@ function filterSummary(request: ExportRequest): string {
   if (filters.actorUserId) {
     parts.push(`actor=${request.actorName ?? "ไม่ใช่สมาชิกแล้ว"}`);
   }
-  if (filters.q) parts.push(`search=${filters.q}`);
+  // Only that a search was used: the text may hold names or addresses.
+  if (filters.q) parts.push("search=applied");
   return parts.join("; ");
 }
 
@@ -94,6 +97,7 @@ export class AuditExporter {
   readonly #maxEvents: number;
   readonly #now: () => Date;
   readonly #onBatch: (() => void | Promise<void>) | undefined;
+  readonly #onCompleting: (() => void | Promise<void>) | undefined;
   #loop: Promise<void> | null = null;
 
   constructor(
@@ -108,6 +112,7 @@ export class AuditExporter {
     this.#maxEvents = options.maxEvents ?? AUDIT_EXPORT_MAX_EVENTS;
     this.#now = options.now ?? (() => new Date());
     this.#onBatch = options.onBatch;
+    this.#onCompleting = options.onCompleting;
   }
 
   /** Claims one request at a time until `stop()`; a claimed request starts the next round at once. */
@@ -290,7 +295,13 @@ export class AuditExporter {
     return writer.finish();
   }
 
-  /** Stores the file only while this claim is current and the request is inside its lifetime. */
+  /**
+   * Stores the file only while this claim is current, the request is inside
+   * its lifetime and the requester is still owner or admin. The Organization
+   * and the requester's membership are locked first, in the order every
+   * membership change uses, so a demotion either commits before this check or
+   * waits for it.
+   */
   async #complete(
     claim: AuditExportClaim,
     file: { content: Buffer; rowCount: number; byteSize: number },
@@ -301,6 +312,22 @@ export class AuditExporter {
       claim.tenantId,
       claim.requestedBy,
       async (client) => {
+        await client.query(
+          "select id from organization where id = $1 for share",
+          [claim.tenantId],
+        );
+        const member = await client.query<{ mayExport: boolean }>(
+          `select exists (
+             select 1 from unnest(string_to_array(role, ',')) as t
+             where btrim(t) in ('owner', 'admin')
+           ) as "mayExport"
+           from member
+           where organization_id = $1 and user_id = $2 for share`,
+          [claim.tenantId, claim.requestedBy],
+        );
+        if (member.rows[0]?.mayExport !== true) {
+          return this.#failIn(client, claim, "REQUESTER_NOT_AUTHORIZED");
+        }
         const marked = await client.query(
           `update audit_export_jobs set state = 'ready'
            where export_id = $1 and claim_token = $2 and state = 'running'
@@ -308,6 +335,7 @@ export class AuditExporter {
           [claim.exportId, claim.claimToken],
         );
         if (marked.rowCount !== 1) return "discarded";
+        await this.#onCompleting?.();
         await client.query(
           `update audit_exports
            set content = $2, row_count = $3, byte_size = $4,
@@ -342,26 +370,32 @@ export class AuditExporter {
       this.database,
       claim.tenantId,
       claim.requestedBy,
-      async (client) => {
-        const marked = await client.query(
-          `update audit_export_jobs set state = 'failed'
-           where export_id = $1 and claim_token = $2 and state = 'running'`,
-          [claim.exportId, claim.claimToken],
-        );
-        if (marked.rowCount !== 1) return "discarded";
-        await client.query(
-          `update audit_exports set failure_code = $2, completed_at = now()
-           where id = $1`,
-          [claim.exportId, code],
-        );
-        await insertAuditExportNotificationIntent(client, {
-          tenantId: claim.tenantId,
-          exportId: claim.exportId,
-          requesterUserId: claim.requestedBy,
-          outcome: "failed",
-        });
-        return "failed";
-      },
+      (client) => this.#failIn(client, claim, code),
     );
+  }
+
+  async #failIn(
+    client: TenantClient,
+    claim: AuditExportClaim,
+    code: AuditExportFailureCode,
+  ): Promise<ExportResult> {
+    const marked = await client.query(
+      `update audit_export_jobs set state = 'failed'
+       where export_id = $1 and claim_token = $2 and state = 'running'`,
+      [claim.exportId, claim.claimToken],
+    );
+    if (marked.rowCount !== 1) return "discarded";
+    await client.query(
+      `update audit_exports set failure_code = $2, completed_at = now()
+       where id = $1`,
+      [claim.exportId, code],
+    );
+    await insertAuditExportNotificationIntent(client, {
+      tenantId: claim.tenantId,
+      exportId: claim.exportId,
+      requesterUserId: claim.requestedBy,
+      outcome: "failed",
+    });
+    return "failed";
   }
 }

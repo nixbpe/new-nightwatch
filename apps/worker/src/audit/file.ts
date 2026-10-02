@@ -3,7 +3,7 @@ import {
   type AuditChange,
   type AuditCategory,
   type AuditValue,
-} from "@nightwatch/api-contract";
+} from "@nightwatch/shared";
 
 /** One event as it appears in a file: the fields of the detail page, no ids of people. */
 export type ExportEvent = {

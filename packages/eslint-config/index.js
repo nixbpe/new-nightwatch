@@ -6,6 +6,7 @@ import tseslint from "typescript-eslint";
 const workspaceImportAllowlists = {
   web: ["@nightwatch/api-contract"],
   api: ["@nightwatch/api-contract", "@nightwatch/shared", "@nightwatch/db"],
+  worker: ["@nightwatch/shared", "@nightwatch/db"],
   shared: [],
   db: [],
   "api-contract": [],
