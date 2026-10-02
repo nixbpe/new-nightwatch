@@ -245,6 +245,24 @@ describe("PendingInvitationsSection", () => {
     expect(screen.getByRole("button", { name: "หน้าก่อนหน้า" })).toBeEnabled();
   });
 
+  it("focuses the heading when the page changes to a page already in the cache", async () => {
+    serve(51, 40);
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText("row-1@example.test");
+    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+    await screen.findByText("row-51@example.test");
+    const callsBefore = fetchList.mock.calls.length;
+
+    await user.click(screen.getByRole("button", { name: "หน้าก่อนหน้า" }));
+
+    expect(await screen.findByText("row-1@example.test")).toBeVisible();
+    expect(fetchList).toHaveBeenCalledTimes(callsBefore);
+    expect(
+      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
+    ).toHaveFocus();
+  });
+
   it("loads the last page with rows when a refresh returns none past the end", async () => {
     serve(130);
     const user = userEvent.setup();
