@@ -455,11 +455,15 @@ it.each(["success", "LAST_OWNER"] as const)(
     expect(save("Bea")).toBeDisabled();
     await user.selectOptions(roleSelect("Bea"), "auditor");
     expect(save("Bea")).toBeEnabled();
-    // Only the harness's own location output may carry a status role.
+    // Only the harness's own location output may carry status text; the invitation
+    // section's region stays mounted and empty.
     expect(
       screen
         .queryAllByRole("status")
-        .filter((element) => !element.hasAttribute("data-testid")),
+        .filter(
+          (element) =>
+            !element.hasAttribute("data-testid") && element.textContent !== "",
+        ),
     ).toEqual([]);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -525,7 +529,10 @@ it("does not leave pagination disabled when a confirmed switch retires A while s
   expect(
     screen
       .queryAllByRole("status")
-      .filter((element) => !element.hasAttribute("data-testid")),
+      .filter(
+        (element) =>
+          !element.hasAttribute("data-testid") && element.textContent !== "",
+      ),
   ).toEqual([]);
 });
 

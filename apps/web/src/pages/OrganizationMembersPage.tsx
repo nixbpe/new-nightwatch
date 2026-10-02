@@ -506,6 +506,8 @@ function OrganizationMembersPageForOrganization({
       />
       <PendingInvitationsSection
         organizationId={organizationId}
+        organizationName={organization.name}
+        refreshMembershipContext={refreshAfterAuthorizationDenied}
         createdSignal={invitationCreations}
       />
       {roleChange.pendingText !== null ? (

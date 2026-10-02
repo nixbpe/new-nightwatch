@@ -1,12 +1,15 @@
 import {
   invitationAcceptResponseSchema,
+  invitationCancelResponseSchema,
   invitationCreateInputSchema,
   invitationCreateResponseSchema,
+  invitationResendResponseSchema,
   invitationResponseSchema,
   pendingInvitationListResponseSchema,
   type InvitationAcceptResponse,
   type InvitationCreateInput,
   type InvitationCreateResponse,
+  type InvitationResendResponse,
   type InvitationResponse,
   type PendingInvitationListResponse,
 } from "@nightwatch/api-contract";
@@ -74,5 +77,27 @@ export function fetchPendingInvitations(
     "/api/organizations/{organizationId}/invitations",
     pendingInvitationListResponseSchema,
     { params: { organizationId }, query: { limit, offset } },
+  );
+}
+
+export function cancelInvitation(
+  organizationId: string,
+  publicId: string,
+): Promise<{ canceled: true }> {
+  return request(
+    "/api/organizations/{organizationId}/invitations/{publicId}",
+    invitationCancelResponseSchema,
+    { method: "DELETE", params: { organizationId, publicId } },
+  );
+}
+
+export function resendInvitation(
+  organizationId: string,
+  publicId: string,
+): Promise<InvitationResendResponse> {
+  return request(
+    "/api/organizations/{organizationId}/invitations/{publicId}/resend",
+    invitationResendResponseSchema,
+    { method: "POST", params: { organizationId, publicId } },
   );
 }

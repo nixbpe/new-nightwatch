@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { buildInvitationEmail } from "../auth/emails";
 import { createMailer } from "../auth/mailer";
+import { rotateInvitationId } from "../organization-notifications/invitations";
 
 // The only path that creates organizations (never over HTTP); never log the
 // invitation URL. invitation.inviterId is a hard user FK, so a reserved
@@ -119,12 +120,19 @@ export async function provisionOrganization(
       ],
     );
 
+    // Same lock prefix as create, resend and cancel: organization row, then the
+    // membership advisory lock, then the invitation row. Every time check below
+    // uses clock_timestamp(), so a statement that waited for a lock judges
+    // expiry at the moment it holds it.
     const existing = await client.query<{ id: string; name: string }>(
-      `select id, name from organization where slug = $1`,
+      `select id, name from organization where slug = $1 for update`,
       [args.slug],
     );
     const organization = existing.rows[0];
     if (organization) {
+      await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
+        `notification-membership:${organization.id}`,
+      ]);
       const membership = await client.query(
         `select m.id
          from member m
@@ -141,35 +149,65 @@ export async function provisionOrganization(
           alreadyMember: true,
         };
       }
-      const pending = await client.query<{ id: string; role: string }>(
-        `select id, role from invitation
+      const pending = await client.query<{ publicId: string; role: string }>(
+        `select public_id as "publicId", role from invitation
          where organization_id = $1 and lower(email) = lower($2)
-           and status = 'pending' and expires_at > now()
+           and status = 'pending' and expires_at > clock_timestamp()
          order by created_at desc
-         limit 1`,
+         limit 1
+         for update`,
         [organization.id, args.ownerEmail],
       );
-      if (pending.rows[0]) {
-        if (pending.rows[0].role !== "owner") {
+      const live = pending.rows[0];
+      if (live) {
+        if (live.role !== "owner") {
           throw new Error(
             "A pending invitation exists with a non-owner role; owner provisioning cannot reuse it.",
           );
         }
+        // Re-send writes sent_at but skips the cooldown check (operator path).
+        const invitationId = crypto.randomUUID();
+        await rotateInvitationId(client, {
+          publicId: live.publicId,
+          organizationId: organization.id,
+          newId: invitationId,
+        });
         return {
           organizationName: organization.name,
           ownerEmail: args.ownerEmail,
-          invitationId: pending.rows[0].id,
+          invitationId,
           resent: true,
           alreadyMember: false,
         };
       }
+      const count = await client.query<{ count: number }>(
+        `select count(*)::int as count from invitation
+         where organization_id = $1 and status = 'pending'
+           and expires_at > clock_timestamp()`,
+        [organization.id],
+      );
+      if ((count.rows[0]?.count ?? 0) >= 100) {
+        throw new Error(
+          `Organization "${args.slug}" already has 100 pending invitations; no invitation was created.`,
+        );
+      }
+      // Provisioning stores the email as typed, unlike create's normalized one.
+      await client.query(
+        `update invitation set status = 'canceled', updated_at = clock_timestamp()
+         where organization_id = $1 and lower(email) = lower($2)
+           and status = 'pending'
+           and (expires_at is null or expires_at <= clock_timestamp())`,
+        [organization.id, args.ownerEmail],
+      );
       const invitationId = crypto.randomUUID();
       await client.query(
-        `insert into invitation
+        `with creation_time as materialized (select clock_timestamp() as created_at)
+         insert into invitation
            (id, organization_id, email, role, status, inviter_id, expires_at,
-            created_at, updated_at)
-         values ($1, $2, $3, 'owner', 'pending', $4, now() + $5::interval,
-                 now(), now())`,
+            created_at, updated_at, sent_at)
+         select $1, $2, $3, 'owner', 'pending', $4, created_at + $5::interval,
+                created_at, created_at, created_at
+         from creation_time`,
         [
           invitationId,
           organization.id,

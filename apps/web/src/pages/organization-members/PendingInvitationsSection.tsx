@@ -1,10 +1,11 @@
 import type { PendingInvitation } from "@nightwatch/api-contract";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { DataTable, DataTablePagination } from "../../components/ui/data-table";
 import { StatusPill } from "../../components/ui/status-pill";
 import { Skeleton } from "../../components/shell/Skeleton";
@@ -14,21 +15,66 @@ import {
 } from "../../lib/api/invitations";
 import { formatDateTime, usePreferences } from "../../lib/preferences";
 import { ROLE_LABELS } from "../../lib/roles";
+import {
+  InvitationCancelButton,
+  useInvitationCancel,
+} from "./InvitationCancelAction";
+import {
+  InvitationResendButton,
+  useInvitationResend,
+} from "./InvitationResendAction";
 import { useOrganizationScope } from "./useOrganizationScope";
 
 const LIMIT = 50;
 
+type ControlKind = "cancel" | "resend";
+// A row's `publicId` or "heading", and which of the row's buttons takes focus.
+type FocusRequest = { kind: ControlKind; target: string };
+
+// Browser clock that ticks again when the next cooldown on the page ends.
+function useNow(deadlines: readonly string[]) {
+  const [now, setNow] = useState(() => Date.now());
+  // Bumped by each timer so the effect re-arms for the next deadline.
+  const [tick, setTick] = useState(0);
+  const key = deadlines.join(",");
+  useEffect(() => {
+    const current = Date.now();
+    setNow(current);
+    const upcoming = key
+      .split(",")
+      .map((deadline) => Date.parse(deadline))
+      .filter((deadline) => deadline > current);
+    if (upcoming.length === 0) return;
+    const timer = setTimeout(
+      () => {
+        setNow(Date.now());
+        setTick((value) => value + 1);
+      },
+      Math.min(...upcoming) - current,
+    );
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [key, tick]);
+  return now;
+}
+
 /**
  * Pending invitations of one Organization, rendered only for owner/admin by
- * the page. The row cells and the "การทำงาน" column are the slot NODE-F006-02
- * and NODE-F006-03 fill with cancel and resend. `invitation.publicId` is the
- * row key only; the invitation id and link never reach this component.
+ * the page. The "การทำงาน" column holds resend and cancel, each with its own
+ * confirmation. `invitation.publicId` is the row key and the action target only; the invitation id and link never reach this
+ * component. One status region carries the loading text, the pending text of
+ * an action and its notice.
  */
 export function PendingInvitationsSection({
   organizationId,
+  organizationName,
+  refreshMembershipContext,
   createdSignal,
 }: {
   organizationId: string;
+  organizationName: string;
+  refreshMembershipContext: () => Promise<unknown>;
   // Bumped by the page after an invitation is created; the new row leads page 1.
   createdSignal: number;
 }) {
@@ -39,7 +85,14 @@ export function PendingInvitationsSection({
     if (createdSignal > 0) setOffset(0);
   }, [createdSignal]);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const focusHeadingWhenSettled = useRef(false);
+  // Keyed by publicId so the DOM never carries an identifier.
+  const controls = useRef({
+    cancel: new Map<string, HTMLElement>(),
+    resend: new Map<string, HTMLElement>(),
+  });
+  const pendingFocus = useRef<FocusRequest | null>(null);
+  const queryClient = useQueryClient();
+  const [lastAction, setLastAction] = useState<ControlKind>("cancel");
   const list = useQuery({
     queryKey: pendingInvitationListQueryKey(organizationId, LIMIT, offset),
     queryFn: () => fetchPendingInvitations(organizationId, LIMIT, offset),
@@ -61,21 +114,76 @@ export function PendingInvitationsSection({
   useEffect(() => {
     if (pastEnd) setOffset(lastPageOffset);
   }, [pastEnd, lastPageOffset]);
+  const cancel = useInvitationCancel({
+    organizationId,
+    rows: data?.invitations ?? [],
+    refetchList: list.refetch,
+    refreshMembershipContext,
+    requestFocus: (target) => {
+      pendingFocus.current = { kind: "cancel", target };
+    },
+  });
+  const resend = useInvitationResend({
+    organizationId,
+    refetchList: list.refetch,
+    // The resent row now leads page 1; the observer joins this fetch once the
+    // offset changes, so the page never shows data of the old offset.
+    loadFirstPage: async () => {
+      setOffset(0);
+      try {
+        const first = await queryClient.query({
+          queryKey: pendingInvitationListQueryKey(organizationId, LIMIT, 0),
+          queryFn: () => fetchPendingInvitations(organizationId, LIMIT, 0),
+          staleTime: 0,
+        });
+        return { data: first, isError: false };
+      } catch {
+        return { isError: true };
+      }
+    },
+    refreshMembershipContext,
+    requestFocus: (target) => {
+      pendingFocus.current = { kind: "resend", target };
+    },
+  });
+  const busy = cancel.pending || resend.pending;
+  const now = useNow(
+    data?.invitations.map((row) => row.resendAvailableAt) ?? [],
+  );
+  // Rows unmount while the list refetches, so focus is placed once it settles.
   useEffect(() => {
-    if (((settled && !pastEnd) || failed) && focusHeadingWhenSettled.current) {
-      focusHeadingWhenSettled.current = false;
-      headingRef.current?.focus();
-    }
-  }, [settled, pastEnd, failed, offset]);
+    const request = pendingFocus.current;
+    if (request === null || busy || !((settled && !pastEnd) || failed)) return;
+    pendingFocus.current = null;
+    const control =
+      request.target === "heading"
+        ? undefined
+        : controls.current[request.kind].get(request.target);
+    (control ?? headingRef.current)?.focus();
+  }, [settled, pastEnd, failed, busy, offset]);
 
   if (!scopeCurrent) return null;
 
   function changePage(next: number) {
-    focusHeadingWhenSettled.current = true;
+    if (busy) return;
+    pendingFocus.current = { kind: "cancel", target: "heading" };
     setOffset(next);
   }
 
+  function register(
+    kind: ControlKind,
+    publicId: string,
+    control: HTMLElement | null,
+  ) {
+    if (control === null) controls.current[kind].delete(publicId);
+    else controls.current[kind].set(publicId, control);
+  }
+
   const showData = settled && !pastEnd;
+  const pendingText = resend.pendingText ?? cancel.pendingText;
+  const dialogOpen =
+    cancel.confirmation !== null || resend.confirmation !== null;
+  const notice = lastAction === "resend" ? resend.notice : cancel.notice;
   let body;
   if (!showData && failed) {
     body = (
@@ -85,7 +193,11 @@ export function PendingInvitationsSection({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => void list.refetch()}
+            disabled={busy}
+            onClick={() => {
+              pendingFocus.current = { kind: "cancel", target: "heading" };
+              void list.refetch();
+            }}
           >
             ลองอีกครั้ง
           </Button>
@@ -151,7 +263,35 @@ export function PendingInvitationsSection({
                   </time>
                 ),
             },
-            { key: "actions", header: "การทำงาน", cell: () => null },
+            {
+              key: "actions",
+              header: "การทำงาน",
+              cell: (item) => (
+                <div className="flex flex-wrap items-start gap-2">
+                  <InvitationResendButton
+                    invitation={item}
+                    now={now}
+                    pending={busy}
+                    register={(publicId, control) => {
+                      register("resend", publicId, control);
+                    }}
+                    onResend={(invitation, opener) => {
+                      resend.request(invitation, opener);
+                    }}
+                  />
+                  <InvitationCancelButton
+                    invitation={item}
+                    pending={busy}
+                    register={(publicId, control) => {
+                      register("cancel", publicId, control);
+                    }}
+                    onCancel={(invitation, opener) => {
+                      cancel.request(invitation, opener);
+                    }}
+                  />
+                </div>
+              ),
+            },
           ]}
           rows={data.invitations}
           rowKey={(item) => item.publicId}
@@ -192,12 +332,86 @@ export function PendingInvitationsSection({
           คำเชิญที่หมดอายุไม่นับในโควตา
         </p>
       </div>
-      {showData || failed ? null : (
-        <p role="status" className="text-sm text-foreground-secondary">
-          กำลังโหลดคำเชิญ
-        </p>
-      )}
+      <div role="status" className="flex flex-col gap-1 text-sm empty:sr-only">
+        {showData || failed ? null : (
+          <p className="text-foreground-secondary">กำลังโหลดคำเชิญ</p>
+        )}
+        {pendingText === null || dialogOpen ? null : (
+          <p className="text-foreground-secondary">{pendingText}</p>
+        )}
+        {notice === null ? null : (
+          <p
+            className={
+              notice.tone === "success"
+                ? "text-primary"
+                : notice.tone === "warning"
+                  ? "text-caution"
+                  : "text-danger"
+            }
+          >
+            {notice.text}
+          </p>
+        )}
+      </div>
       {body}
+      {cancel.confirmation === null ? null : (
+        <ConfirmDialog
+          title="ยืนยันการยกเลิกคำเชิญ"
+          description={
+            <>
+              <p>
+                ยกเลิกคำเชิญถึง {cancel.confirmation.invitation.email} (
+                {ROLE_LABELS[cancel.confirmation.invitation.role]}) ขององค์กร{" "}
+                {organizationName}
+              </p>
+              <p className="mt-2">
+                ลิงก์เชิญเดิมจะใช้ไม่ได้
+                ผู้รับต้องได้รับคำเชิญใหม่จึงจะเข้าร่วมได้
+              </p>
+            </>
+          }
+          confirmLabel="ยืนยันการยกเลิกคำเชิญ"
+          cancelLabel="กลับ"
+          confirmVariant="destructive"
+          pendingLabel="กำลังยกเลิกคำเชิญ…"
+          pending={cancel.pending}
+          opener={cancel.confirmation.opener}
+          fallbackFocus={headingRef}
+          onCancel={cancel.cancel}
+          onConfirm={() => {
+            setLastAction("cancel");
+            cancel.confirm();
+          }}
+        />
+      )}
+      {resend.confirmation === null ? null : (
+        <ConfirmDialog
+          title="ยืนยันการส่งคำเชิญซ้ำ"
+          description={
+            <>
+              <p>
+                ส่งซ้ำคำเชิญถึง {resend.confirmation.invitation.email} (
+                {ROLE_LABELS[resend.confirmation.invitation.role]}) ขององค์กร{" "}
+                {organizationName}
+              </p>
+              <p className="mt-2">
+                ลิงก์เชิญเดิมจะใช้ไม่ได้ ระบบส่งลิงก์ใหม่ที่มีอายุ 48 ชั่วโมง
+              </p>
+            </>
+          }
+          confirmLabel="ยืนยันการส่งคำเชิญซ้ำ"
+          cancelLabel="กลับ"
+          pendingLabel="กำลังส่ง…"
+          pending={resend.pending}
+          opener={resend.confirmation.opener}
+          fallbackFocus={headingRef}
+          onCancel={resend.cancel}
+          onConfirm={() => {
+            setLastAction("resend");
+            resend.confirm();
+          }}
+        />
+      )}
     </Card>
   );
 }
