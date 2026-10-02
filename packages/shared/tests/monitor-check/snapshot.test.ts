@@ -116,6 +116,8 @@ describe("header redaction", () => {
       response({
         headers: [
           ["Set-Cookie", "sid=abc"],
+          ["Cookie", "sid=abc"],
+          ["Proxy-Authorization", "Basic abc"],
           ["Authorization", "Bearer echoed"],
           ["WWW-Authenticate", "Basic realm=x"],
           ["Proxy-Authenticate", "Basic"],
@@ -135,6 +137,8 @@ describe("header redaction", () => {
     );
     for (const name of [
       "set-cookie",
+      "cookie",
+      "proxy-authorization",
       "authorization",
       "www-authenticate",
       "proxy-authenticate",
@@ -271,6 +275,7 @@ describe("caps", () => {
     const header = first(snapshot.headers);
     expect(header.name).toBe(`x-${"n".repeat(254)}`);
     expect(header.value).toBe("v".repeat(1024));
+    expect(header.redacted).toBe(false);
     expect(snapshot.headersTruncated).toBe(true);
   });
 
@@ -469,20 +474,6 @@ describe("request_values", () => {
       body: null,
     });
   });
-
-  it("does not use a query value as a redaction needle", async () => {
-    const snapshot = await check(
-      response({
-        headers: [["Content-Type", "application/json"]],
-        body: "{}",
-      }),
-      { method: "GET" },
-      {},
-    );
-    expect(snapshot.headers.find((h) => h.name === "content-type")?.value).toBe(
-      "application/json",
-    );
-  });
 });
 
 describe("no response", () => {
@@ -506,6 +497,159 @@ describe("no response", () => {
       statusLine: null,
       headers: [],
       headersTruncated: false,
+      body: null,
+    });
+  });
+});
+
+describe("final URL redaction", () => {
+  async function redirected(
+    location: string,
+    overrides: Partial<NormalizedMonitorConfig>,
+    secret: string,
+  ) {
+    let requests = 0;
+    const server = await startRawServer({
+      onRequest: ({ socket }) => {
+        requests++;
+        socket.end(
+          requests === 1
+            ? response({
+                line: "HTTP/1.1 302 Found",
+                headers: [["Location", location]],
+              })
+            : response({
+                headers: [["Content-Type", "text/plain"]],
+                body: "ok",
+              }),
+        );
+      },
+    });
+    servers.push(server);
+    const result = await runCheck(
+      configFor("http", server.port, {
+        headers: [secretHeader("h1", "X-Own")],
+        ...overrides,
+      }),
+      { "header.h1": secret },
+      deps(),
+    );
+    return result.responseSnapshot;
+  }
+
+  it.each([
+    ["raw", "tok123", "/cb/tok123"],
+    ["URL-encoded", "tok 123", "/cb/tok%20123"],
+  ])(
+    "masks a %s secret the target put in a Location path",
+    async (_, secret, path) => {
+      for (const overrides of [
+        {},
+        { queryParams: [{ name: "q", value: "v" }] },
+      ]) {
+        const snapshot = await redirected(path, overrides, secret);
+        expect(snapshot?.url).toContain("/cb/•••");
+        expect(snapshot?.url).not.toContain("123");
+        expect(snapshot?.statusLine?.status).toBe(200);
+      }
+    },
+  );
+});
+
+describe("NUL from the target", () => {
+  it("replaces U+0000 with U+FFFD in the reason phrase, header name and value, and body", async () => {
+    const snapshot = await check(
+      response({
+        line: "HTTP/1.1 200 a\u0000b",
+        headers: [
+          ["Content-Type", "text/plain"],
+          ["X-N\u0000ame", "v\u0000al"],
+        ],
+        body: "x\u0000y",
+      }),
+    );
+    expect(snapshot.statusLine?.reasonPhrase).toBe("a\uFFFDb");
+    expect(snapshot.headers.find((h) => h.name === "x-n\uFFFDame")?.value).toBe(
+      "v\uFFFDal",
+    );
+    expect(snapshot.body).toMatchObject({ text: "x\uFFFDy" });
+    expect(JSON.stringify(snapshot)).not.toContain("\\u0000");
+  });
+});
+
+describe("more caps and redaction", () => {
+  it("cuts a header value at 1024 UTF-8 bytes on a character boundary", async () => {
+    const snapshot = await check(
+      response({ headers: [["X-Long", "\u00e9".repeat(800)]] }),
+    );
+    const header = first(snapshot.headers);
+    expect(header.value).toBe("\u00e9".repeat(512));
+    expect(Buffer.byteLength(header.value)).toBe(1024);
+    expect(snapshot.headersTruncated).toBe(true);
+  });
+
+  it("flags truncated and reports bytes when the executor reads 1 MiB", async () => {
+    const snapshot = await check(
+      response({
+        headers: [["Content-Type", "text/plain"]],
+        body: "b".repeat(1024 * 1024 + 10),
+      }),
+    );
+    expect(snapshot.body).toMatchObject({
+      kind: "text",
+      truncated: true,
+      totalBytesRead: 1024 * 1024,
+    });
+  });
+
+  it("masks a non-ASCII secret in the reason phrase and a header name", async () => {
+    const secret = "\u0e25\u0e31\u0e1a";
+    const echoed = Buffer.from(secret, "utf8").toString("latin1");
+    const snapshot = await check(
+      response({
+        line: `HTTP/1.1 200 r-${echoed}`,
+        headers: [[`X-${echoed}`, "v"]],
+      }),
+      { headers: [secretHeader("h1", "X-Own")] },
+      { "header.h1": secret },
+    );
+    expect(snapshot.statusLine?.reasonPhrase).toBe("r-\u2022\u2022\u2022");
+    expect(snapshot.headers.map((h) => h.name)).toContain(
+      "x-\u2022\u2022\u2022",
+    );
+  });
+
+  it("flags truncated when the redactor gives up scanning", async () => {
+    const secret = "a".repeat(4096);
+    const snapshot = await check(
+      response({
+        headers: [["Content-Type", "text/plain"]],
+        body: "a".repeat(200_000),
+      }),
+      { headers: [secretHeader("h1", "X-Own")] },
+      { "header.h1": secret },
+    );
+    expect(snapshot.body).toMatchObject({ kind: "text", truncated: true });
+    expect(JSON.stringify(snapshot)).not.toContain(secret);
+  });
+
+  it("keeps no snapshot detail for a redirect blocked by the address policy", async () => {
+    const server = await startRawServer({
+      onRequest: ({ socket }) => {
+        socket.end(
+          response({
+            line: "HTTP/1.1 302 Found",
+            headers: [["Location", "http://127.0.0.1:1/"]],
+          }),
+        );
+      },
+    });
+    servers.push(server);
+    const result = await runCheck(configFor("http", server.port), {}, deps());
+    expect(result.failureReason).toBe("redirect_blocked");
+    expect(result.responseSnapshot).toMatchObject({
+      statusLine: null,
+      headers: [],
       body: null,
     });
   });

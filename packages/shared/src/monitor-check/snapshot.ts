@@ -5,7 +5,7 @@ import type { ResponseSnapshot, SnapshotHeader } from "./types";
 
 const MAX_HEADERS = 50;
 const MAX_HEADER_NAME_CHARS = 256;
-const MAX_HEADER_VALUE_CHARS = 1024;
+const MAX_HEADER_VALUE_BYTES = 1024;
 const MAX_REASON_CHARS = 128;
 const MAX_BODY_BYTES = 16 * 1024;
 const MASK = "•••";
@@ -67,12 +67,22 @@ function needleForms(secretValues: readonly string[]): string[] {
     .filter((form, i) => form !== secretValues[i]);
 }
 
-function redactAndCut(
+type Shown = { text: string; cut: boolean };
+
+/**
+ * Redacts, then replaces NUL (Postgres text and jsonb reject it), then cuts.
+ * `cut` also covers a redactor that gave up scanning (`cutShort`), which drops text.
+ */
+function shown(
   redact: Redactor,
   text: string,
   max: number,
-): { text: string; cut: boolean } {
-  return cutChars(redact(text, max), max);
+  cutter: (text: string, max: number) => Shown,
+): Shown {
+  const redacted = redact(text, max);
+  const dropped = redact.cutShort === true;
+  const cut = cutter(redacted.replaceAll("\u0000", "\uFFFD"), max);
+  return { text: cut.text, cut: cut.cut || dropped };
 }
 
 function headersOf(
@@ -83,17 +93,17 @@ function headersOf(
   const entries = Object.entries(response.headers);
   let truncated = entries.length > MAX_HEADERS;
   const headers = entries.slice(0, MAX_HEADERS).map(([rawName, rawValue]) => {
-    const name = redactAndCut(redact, rawName, MAX_HEADER_NAME_CHARS);
+    const name = shown(redact, rawName, MAX_HEADER_NAME_CHARS, cutChars);
     if (maskedNames.has(rawName.toLowerCase())) {
       truncated ||= name.cut;
       return { name: name.text, value: MASK, redacted: true };
     }
-    const value = redactAndCut(redact, rawValue, MAX_HEADER_VALUE_CHARS);
+    const value = shown(redact, rawValue, MAX_HEADER_VALUE_BYTES, cutBytes);
     truncated ||= name.cut || value.cut;
     return {
       name: name.text,
       value: value.text,
-      redacted: name.text !== rawName || value.text.includes(MASK),
+      redacted: name.text.includes(MASK) || value.text.includes(MASK),
     };
   });
   return { headers, truncated };
@@ -116,7 +126,7 @@ function bodyOf(
   const decoded = decodeBody(response);
   if (!decoded.ok) return { kind: "omitted", reason: "undecodable" };
   // Redact the whole text first so a secret cut by the limit is never shown in part.
-  const cut = cutBytes(redact(decoded.text, MAX_BODY_BYTES), MAX_BODY_BYTES);
+  const cut = shown(redact, decoded.text, MAX_BODY_BYTES, cutBytes);
   return {
     kind: "text",
     text: cut.text,
@@ -145,10 +155,18 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
     status: response.status,
     reasonPhrase: null as string | null,
   };
+  // Query values and the request body are not needles: a short non-secret needle
+  // would blank ordinary text, and those requests keep no target text at all.
+  const redact = createRedactor(
+    input.secretValues,
+    needleForms(input.secretValues),
+  );
+  // finalUrl comes from the target's Location header, so it is target text too.
+  const url = redact(response.finalUrl);
   if (input.requestValues) {
     return {
       ...base,
-      url: response.finalUrl,
+      url,
       statusLine,
       headers: [],
       headersTruncated: false,
@@ -156,16 +174,10 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
     };
   }
 
-  // Query values and the request body are not needles: a short non-secret needle
-  // would blank ordinary text, and those requests keep no target text at all.
-  const redact = createRedactor(
-    input.secretValues,
-    needleForms(input.secretValues),
-  );
   const reason =
     response.reasonPhrase === null
       ? null
-      : redactAndCut(redact, response.reasonPhrase, MAX_REASON_CHARS).text;
+      : shown(redact, response.reasonPhrase, MAX_REASON_CHARS, cutChars).text;
   const maskedNames = new Set([
     ...ALWAYS_MASKED_HEADERS,
     ...input.secretHeaderNames.map((name) => name.toLowerCase()),
@@ -173,7 +185,7 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
   const { headers, truncated } = headersOf(response, redact, maskedNames);
   return {
     ...base,
-    url: response.finalUrl,
+    url,
     statusLine: { ...statusLine, reasonPhrase: reason === "" ? null : reason },
     headers,
     headersTruncated: truncated,

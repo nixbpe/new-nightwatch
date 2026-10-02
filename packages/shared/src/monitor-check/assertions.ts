@@ -20,7 +20,7 @@ export interface EvaluatedResponse {
   elapsedMs: number;
 }
 
-export type Decoded = { ok: true; text: string } | { ok: false };
+type Decoded = { ok: true; text: string } | { ok: false };
 
 function charsetOf(contentType: string | undefined): string {
   const match = /;\s*charset\s*=\s*"?([^";\s]+)"?/i.exec(contentType ?? "");
