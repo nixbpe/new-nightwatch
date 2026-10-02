@@ -39,6 +39,8 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
 }));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  // Short enough to observe polling, and its absence, inside a test.
+  MONITOR_REFETCH_INTERVAL_MS: 60,
   fetchMonitorDetail: vi.fn(),
   fetchMonitorEvents: vi.fn(),
   fetchMonitorLastResponse: vi.fn(),
@@ -438,7 +440,7 @@ describe("Last response panel", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows a non-text body and a missing body as words", async () => {
+  it("shows a non-text body as words and no truncated badge", async () => {
     lastResponseMock.mockResolvedValue({
       response: {
         ...fullResponse,
@@ -509,11 +511,123 @@ describe("Last response panel", () => {
     expect(within(section).queryByRole("table")).toBeNull();
   });
 
-  it("shows the empty text before any result, and an error with retry", async () => {
+  it("shows the empty text before any result", async () => {
     renderDetail();
     expect(
       await within(await lastResponseSection()).findByText("ยังไม่มีผลตรวจ"),
     ).toBeInTheDocument();
+  });
+
+  it("shows 'ไม่มีเนื้อหา' for a null body and 'ไม่มี headers' for an empty list (204)", async () => {
+    lastResponseMock.mockResolvedValue({
+      response: {
+        ...fullResponse,
+        statusLine: {
+          httpVersion: "HTTP/1.1",
+          status: 204,
+          reasonPhrase: "No Content",
+        },
+        headers: [],
+        headersTruncated: false,
+        body: null,
+      },
+    });
+    renderDetail();
+    const section = await lastResponseSection();
+    expect(
+      await within(section).findByText("HTTP/1.1 204 No Content"),
+    ).toBeInTheDocument();
+    expect(within(section).getByText("ไม่มี headers")).toBeInTheDocument();
+    expect(within(section).getByText("ไม่มีเนื้อหา")).toBeInTheDocument();
+    expect(within(section).queryByRole("table")).toBeNull();
+  });
+
+  it("shows 'ถอดรหัสเนื้อหาไม่ได้' for an undecodable body", async () => {
+    lastResponseMock.mockResolvedValue({
+      response: {
+        ...fullResponse,
+        headersTruncated: false,
+        body: { kind: "omitted", reason: "undecodable" },
+      },
+    });
+    renderDetail();
+    expect(
+      await within(await lastResponseSection()).findByText(
+        "ถอดรหัสเนื้อหาไม่ได้",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("makes the body keyboard-focusable with an accessible name", async () => {
+    lastResponseMock.mockResolvedValue({ response: fullResponse });
+    renderDetail();
+    const body = await within(await lastResponseSection()).findByRole(
+      "generic",
+      { name: "เนื้อหาของการตอบกลับล่าสุด" },
+    );
+    expect(body.tagName).toBe("PRE");
+    body.focus();
+    expect(body).toHaveFocus();
+  });
+
+  it("renders target text as text, never as markup", async () => {
+    const script = "<script>window.__pwned = 1</script>";
+    const img = '<img src=x onerror="window.__pwned = 2">';
+    lastResponseMock.mockResolvedValue({
+      response: {
+        ...fullResponse,
+        statusLine: {
+          httpVersion: "HTTP/1.1",
+          status: 200,
+          reasonPhrase: script,
+        },
+        headers: [{ name: "x-note", value: img, redacted: false }],
+        body: {
+          kind: "text",
+          text: `${script}${img}`,
+          truncated: false,
+          totalBytesRead: 80,
+        },
+      },
+    });
+    renderDetail();
+    const section = await lastResponseSection();
+    expect(
+      await within(section).findByText(`HTTP/1.1 200 ${script}`),
+    ).toBeInTheDocument();
+    expect(within(section).getByText(img)).toBeInTheDocument();
+    expect(within(section).getByText(`${script}${img}`).tagName).toBe("PRE");
+    expect(section.querySelector("script, img")).toBeNull();
+    expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+  });
+
+  it("drops the panel to the role note and stops polling when a refetch answers PERMISSION_DENIED", async () => {
+    lastResponseMock.mockResolvedValueOnce({ response: fullResponse });
+    const { queryClient } = renderDetail();
+    const section = await lastResponseSection();
+    expect(
+      await within(section).findByText("HTTP/1.1 200 OK"),
+    ).toBeInTheDocument();
+    lastResponseMock.mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "denied", 403),
+    );
+    await queryClient.refetchQueries({
+      queryKey: ["tenant", "monitors"],
+      type: "active",
+    });
+    expect(
+      await within(section).findByText(
+        "เฉพาะเจ้าของและผู้ดูแลเห็น headers และเนื้อหา",
+      ),
+    ).toBeInTheDocument();
+    expect(within(section).queryByRole("table")).toBeNull();
+    expect(section.querySelector("pre")).toBeNull();
+    expect(
+      within(section).queryByText("อัปเดตการตอบกลับล่าสุดไม่สำเร็จ"),
+    ).toBeNull();
+    const calls = lastResponseMock.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(lastResponseMock.mock.calls.length).toBe(calls);
   });
 
   it("shows an error with retry", async () => {

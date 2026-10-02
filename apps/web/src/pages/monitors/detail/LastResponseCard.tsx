@@ -146,7 +146,11 @@ function ResponseBody({ response }: { response: LastResponse }) {
           </div>
           {body?.kind === "text" ? (
             <div className="min-w-0">
-              <pre className="surface-inset max-h-96 overflow-auto rounded-md border border-foreground/10 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-foreground">
+              <pre
+                tabIndex={0}
+                aria-label="เนื้อหาของการตอบกลับล่าสุด"
+                className="surface-inset max-h-96 overflow-auto rounded-md border border-foreground/10 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-foreground"
+              >
                 {body.text}
               </pre>
             </div>
@@ -166,6 +170,10 @@ function ResponseBody({ response }: { response: LastResponse }) {
   );
 }
 
+function isDenied(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "PERMISSION_DENIED";
+}
+
 function LastResponsePanel({
   organizationId,
   monitorId,
@@ -178,19 +186,23 @@ function LastResponsePanel({
   const query = useQuery({
     queryKey: monitorQueryKeys.lastResponse(organizationId, monitorId),
     queryFn: () => fetchMonitorLastResponse(organizationId, monitorId),
-    refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
+    // A 403 means the role changed: stop polling and show only the role note.
+    refetchInterval: (current) =>
+      isDenied(current.state.error) ? false : MONITOR_REFETCH_INTERVAL_MS,
   });
   const data = query.data;
-  const denied =
-    query.error instanceof ApiError && query.error.code === "PERMISSION_DENIED";
-  return (
-    <Shell code={code} meta={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}>
-      {denied ? (
+  if (isDenied(query.error)) {
+    return (
+      <Shell code={code}>
         <p className="text-sm text-foreground-secondary">
           {READ_ROLE_ONLY_TEXT}
         </p>
-      ) : null}
-      {!denied && data === undefined && query.isError ? (
+      </Shell>
+    );
+  }
+  return (
+    <Shell code={code} meta={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}>
+      {data === undefined && query.isError ? (
         <>
           <Alert tone="error">โหลดการตอบกลับล่าสุดไม่สำเร็จ</Alert>
           <Button

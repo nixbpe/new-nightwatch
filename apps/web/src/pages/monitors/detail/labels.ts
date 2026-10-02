@@ -192,3 +192,14 @@ export function configFieldLabel(
   }
   return field;
 }
+
+/** Title of a feed row by event kind. */
+export const EVENT_KIND_LABELS = {
+  check_failed: "ตรวจล้มเหลว",
+  incident_opened: "เริ่มล่ม",
+  incident_closed_recovered: "กลับมาปกติ",
+  incident_closed_paused: "สิ้นสุดเหตุการณ์ล่ม",
+  paused: "หยุดชั่วคราว",
+  resumed: "เริ่มตรวจต่อ",
+  config_changed: "แก้ไขการตั้งค่า",
+} as const;

@@ -379,6 +379,9 @@ function DetailForMonitor({
 
   const canWrite =
     organization.role === "owner" || organization.role === "admin";
+  // OD-58-04: the last response is readable by owner and admin only.
+  const canReadResponse =
+    organization.role === "owner" || organization.role === "admin";
   const paused = monitor.status === "paused";
   const busy = toggle.isPending;
   const actions = canWrite ? (
@@ -499,7 +502,7 @@ function DetailForMonitor({
           <ConfigCard monitor={monitor} />
           <SslCard ssl={monitor.ssl} />
           <LastResponseCard
-            canRead={canWrite}
+            canRead={canReadResponse}
             organizationId={organizationId}
             monitorId={monitorId}
           />

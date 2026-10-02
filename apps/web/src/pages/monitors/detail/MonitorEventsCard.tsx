@@ -26,15 +26,20 @@ import {
 } from "../format";
 import {
   configFieldLabel,
+  EVENT_KIND_LABELS,
   eventActorText,
   failureCauseText,
   SECRET_ACTION_LABELS,
 } from "./labels";
 
-const mono = (text: string) => <span className="font-mono">{text}</span>;
+const THAI = /[\u0e00-\u0e7f]/;
 
-function valueText(value: string | number | null): string {
-  return value === null ? "ไม่มี" : String(value);
+// Latin tokens are mono, Thai wording is not (TYP-04).
+const mono = (text: string) =>
+  THAI.test(text) ? text : <span className="font-mono">{text}</span>;
+
+function valueNode(value: string | number | null) {
+  return value === null ? "ไม่มี" : mono(String(value));
 }
 
 function ChangeLine({
@@ -57,8 +62,7 @@ function ChangeLine({
   }
   return (
     <>
-      {label}: ก่อน {mono(valueText(change.before))} หลัง{" "}
-      {mono(valueText(change.after))}
+      {label}: ก่อน {valueNode(change.before)} หลัง {valueNode(change.after)}
     </>
   );
 }
@@ -75,7 +79,7 @@ function EventSummary({
       const cause = failureCauseText(event.failureReason, event.tlsReason);
       return (
         <>
-          <span className="font-medium">ตรวจล้มเหลว</span>
+          <span className="font-medium">{EVENT_KIND_LABELS.check_failed}</span>
           {cause === null ? null : <> · {cause}</>}
           {event.httpStatus === null ? null : (
             <> · {mono(`HTTP ${String(event.httpStatus)}`)}</>
@@ -90,7 +94,9 @@ function EventSummary({
       const cause = failureCauseText(event.reason);
       return (
         <>
-          <span className="font-medium">เริ่มล่ม</span>
+          <span className="font-medium">
+            {EVENT_KIND_LABELS.incident_opened}
+          </span>
           {cause === null ? null : <> · {cause}</>}
           {event.httpStatus === null ? null : (
             <> · {mono(`HTTP ${String(event.httpStatus)}`)}</>
@@ -101,7 +107,9 @@ function EventSummary({
     case "incident_closed":
       return event.endReason === "recovered" ? (
         <>
-          <span className="font-medium">กลับมาปกติ</span>
+          <span className="font-medium">
+            {EVENT_KIND_LABELS.incident_closed_recovered}
+          </span>
           {event.httpStatus === null ? null : (
             <> · {mono(`HTTP ${String(event.httpStatus)}`)}</>
           )}
@@ -112,20 +120,17 @@ function EventSummary({
         </>
       ) : (
         <>
-          <span className="font-medium">สิ้นสุดเหตุการณ์ล่ม</span> ·
-          หยุดชั่วคราวโดยผู้ใช้ · ล่ม {formatDuration(event.durationSeconds)}
+          <span className="font-medium">
+            {EVENT_KIND_LABELS.incident_closed_paused}
+          </span>{" "}
+          · หยุดชั่วคราวโดยผู้ใช้ · ล่ม {formatDuration(event.durationSeconds)}
         </>
       );
     case "paused":
     case "resumed":
     case "config_changed": {
       const actor = eventActorText(event.actor);
-      const title =
-        event.kind === "paused"
-          ? "หยุดชั่วคราว"
-          : event.kind === "resumed"
-            ? "เริ่มตรวจต่อ"
-            : "แก้ไขการตั้งค่า";
+      const title = EVENT_KIND_LABELS[event.kind];
       return (
         <>
           <span className="font-medium">{title}</span>
@@ -228,12 +233,12 @@ export function MonitorEventsCard({
                   <span className="w-40 shrink-0 font-mono text-xs text-foreground-secondary">
                     <Time iso={event.at} format={formatDateTime} />
                   </span>
-                  <span className="min-w-0 flex-1 break-words">
+                  <div className="min-w-0 flex-1 break-words">
                     <EventSummary
                       event={event}
                       headerNameById={headerNameById}
                     />
-                  </span>
+                  </div>
                 </li>
               ))}
             </ol>
