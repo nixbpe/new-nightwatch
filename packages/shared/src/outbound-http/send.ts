@@ -51,7 +51,9 @@ export interface OutboundTls {
 }
 
 export interface OutboundResponse {
+  httpVersion: "HTTP/1.0" | "HTTP/1.1";
   status: number;
+  reasonPhrase: string | null;
   headers: Record<string, string>;
   body: Buffer;
   bodyTruncated: boolean;
@@ -568,7 +570,9 @@ export async function sendOutboundRequest(
         return {
           ok: true,
           response: {
+            httpVersion: response.httpVersion,
             status: response.status,
+            reasonPhrase: response.reasonPhrase,
             headers: response.headers,
             body: response.body,
             bodyTruncated: response.bodyTruncated,

@@ -10,3 +10,8 @@ d9f133d8b80823e519cc2f7aee41b11c41729c9f:apps/worker/src/monitor/checker.db.test
 b4656808f704c426f4e813576cfb719bd0332dbd:apps/web/src/pages/monitors/MonitorFormRepair.test.tsx:generic-api-key:52
 97140c1b3e9a166ca81f6d20a281811258895640:apps/web/src/pages/monitors/MonitorFormEdit.test.tsx:generic-api-key:49
 82d4e15ec2de4c147b82b9789b9e00bef08e49eb:apps/api/src/monitors/write-lifecycle.db.test.ts:generic-api-key:32
+
+# Fingerprint-scoped false positive: SECRET_ID is the same random UUID slot-id
+# fixture as write-lifecycle.db.test.ts, reused in the issue #58 event feed
+# test (commit af6a01a). History is not rewritten; suppress only this fingerprint.
+af6a01a4e26f3e28c5466c36d1310dab748170d7:apps/api/src/monitors/write-event-feed.db.test.ts:generic-api-key:30

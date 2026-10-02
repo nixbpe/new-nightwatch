@@ -172,6 +172,31 @@ function attempt(
       monitorName: monitor.name,
       occurredAt: result.checkedAt,
     };
+    if (
+      result.outcome === "fail" &&
+      monitor.consecutive_failures === 0 &&
+      open === null
+    ) {
+      // First fail of a streak while nothing is open; later fails and the
+      // incident itself carry the story from here (Jobs, check_failed).
+      await client.query(
+        `insert into monitor_events
+           (monitor_id, tenant_id, kind, occurred_at, failure_reason,
+            tls_reason, http_status, response_time_ms)
+         values ($1, $2, 'check_failed', $3, $4, $5, $6, $7)`,
+        [
+          input.monitorId,
+          input.tenantId,
+          result.checkedAt,
+          result.failureReason,
+          result.tlsReason,
+          result.httpStatus,
+          result.responseTimeMs === null
+            ? null
+            : Math.round(result.responseTimeMs),
+        ],
+      );
+    }
     if (next.event === "open") {
       const created = await client.query<{ id: string }>(
         `insert into monitor_incidents
@@ -194,9 +219,18 @@ function attempt(
       });
     } else if (next.event === "close" && open) {
       await client.query(
-        `update monitor_incidents set ended_at = $2, end_reason = 'recovered'
+        `update monitor_incidents
+         set ended_at = $2, end_reason = 'recovered',
+             end_http_status = $3, end_response_time_ms = $4
          where id = $1`,
-        [open.id, result.checkedAt],
+        [
+          open.id,
+          result.checkedAt,
+          result.httpStatus,
+          result.responseTimeMs === null
+            ? null
+            : Math.round(result.responseTimeMs),
+        ],
       );
       await onEvent(client, {
         ...context,
@@ -206,6 +240,7 @@ function attempt(
         downNotified: open.down_notified,
       });
     }
+    await upsertLastResponse(client, input);
     if (ssl.update) {
       await client.query(
         // A readable certificate with another host or expiry is a new
@@ -449,6 +484,70 @@ async function upsertRollup(
       responseMs ?? 0,
       responseMs,
       responseMs === null ? 0 : 1,
+    ],
+  );
+}
+
+/**
+ * One row per monitor, replaced only by a newer `scheduled_for`. The snapshot
+ * is optional in `CheckResult` only because Test never reads it; the checker
+ * always sets it, including for a rejected `runCheck`.
+ */
+async function upsertLastResponse(
+  client: TenantClient,
+  input: RecordInput,
+): Promise<void> {
+  const { result } = input;
+  const snapshot = result.responseSnapshot;
+  if (!snapshot) return;
+  const { statusLine, body } = snapshot;
+  await client.query(
+    `insert into monitor_last_responses
+       (monitor_id, tenant_id, scheduled_for, checked_at, config_version,
+        outcome, failure_reason, url_masked, detail_omitted, http_version,
+        http_status, reason_phrase, headers, headers_truncated, body_kind,
+        body_text, body_truncated, body_bytes_read, body_omitted_reason)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb,
+             $14, $15, $16, $17, $18, $19)
+     on conflict (monitor_id) do update set
+       scheduled_for = excluded.scheduled_for,
+       checked_at = excluded.checked_at,
+       config_version = excluded.config_version,
+       outcome = excluded.outcome,
+       failure_reason = excluded.failure_reason,
+       url_masked = excluded.url_masked,
+       detail_omitted = excluded.detail_omitted,
+       http_version = excluded.http_version,
+       http_status = excluded.http_status,
+       reason_phrase = excluded.reason_phrase,
+       headers = excluded.headers,
+       headers_truncated = excluded.headers_truncated,
+       body_kind = excluded.body_kind,
+       body_text = excluded.body_text,
+       body_truncated = excluded.body_truncated,
+       body_bytes_read = excluded.body_bytes_read,
+       body_omitted_reason = excluded.body_omitted_reason
+     where monitor_last_responses.scheduled_for < excluded.scheduled_for`,
+    [
+      input.monitorId,
+      input.tenantId,
+      input.scheduledFor,
+      result.checkedAt,
+      input.checkConfigVersion,
+      result.outcome,
+      result.failureReason,
+      snapshot.url,
+      snapshot.detailOmitted,
+      statusLine?.httpVersion ?? null,
+      statusLine?.status ?? null,
+      statusLine?.reasonPhrase ?? null,
+      JSON.stringify(snapshot.headers),
+      snapshot.headersTruncated,
+      body?.kind ?? null,
+      body?.kind === "text" ? body.text : null,
+      body?.kind === "text" ? body.truncated : null,
+      body?.kind === "text" ? body.totalBytesRead : null,
+      body?.kind === "omitted" ? body.reason : null,
     ],
   );
 }

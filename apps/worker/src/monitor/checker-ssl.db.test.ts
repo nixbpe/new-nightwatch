@@ -139,6 +139,33 @@ describe("SSL state of the last hop (AC-35)", () => {
     }
   });
 
+  it("a first fail whose certificate enters caution still writes one check_failed (retry attempt)", async () => {
+    const target = await startTlsTarget(
+      pki.issue(TARGET_HOST, { days: 20 }),
+      (_request, response) => {
+        response.statusCode = 503;
+        response.end("down");
+      },
+    );
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      const events: MonitorEvent[] = [];
+      await check(monitor, events);
+      expect(sslEvents(events)).toEqual([
+        { level: "caution", host: TARGET_HOST },
+      ]);
+      const feed = await rows<{ kind: string }>(
+        db,
+        monitor,
+        "select kind from monitor_events where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(feed).toEqual([{ kind: "check_failed" }]);
+    } finally {
+      await target.close();
+    }
+  });
+
   it("a redirect to another host reports the certificate of that host", async () => {
     const final = await startTlsTarget(
       pki.issue(OTHER_HOST, { days: 5 }),

@@ -2,7 +2,11 @@ import type {
   CheckAssertionResult,
   CheckResultView,
   Monitor,
+  MonitorConfigChange,
+  MonitorEventActor,
 } from "@nightwatch/api-contract";
+
+import { incidentReasonLabel } from "../format";
 
 /** The API opens an incident after this many consecutive failures (feature.md, Health model). */
 export const DOWN_AFTER_FAILURES = 2;
@@ -115,3 +119,86 @@ export function authText(auth: Monitor["auth"]): string {
     ? `${AUTH_LABELS.apiKey} ${auth.headerName}`
     : AUTH_LABELS[auth.type];
 }
+
+/** Cause line of a failed check or an incident start; null when the reason is unknown. */
+export function failureCauseText(
+  reason: string | null,
+  tlsReason: string | null = null,
+): string | null {
+  if (reason === null) return null;
+  return reason === "tls_invalid"
+    ? tlsFailureText(tlsReason)
+    : incidentReasonLabel(reason);
+}
+
+/** Actor wording of a feed row; `unrecorded` (an event before #58) names nobody. */
+export function eventActorText(actor: MonitorEventActor): string | null {
+  switch (actor.kind) {
+    case "member":
+      return actor.displayName;
+    case "member_hidden":
+      return "สมาชิก";
+    case "former_member":
+      return "อดีตสมาชิก";
+    case "deleted":
+      return "ผู้ใช้ที่ถูกลบ";
+    case "unrecorded":
+      return null;
+  }
+}
+
+export const SECRET_ACTION_LABELS: Record<
+  Extract<MonitorConfigChange, { kind: "secret" }>["action"],
+  string
+> = {
+  set: "ตั้งค่าแล้ว",
+  replaced: "แทนที่ค่าใหม่",
+  deleted: "ลบค่าแล้ว",
+};
+
+const CONFIG_FIELD_LABELS: Record<string, string> = {
+  name: "ชื่อ",
+  method: "เมธอด",
+  url: "URL",
+  expectedStatus: "รหัสสถานะที่ยอมรับ",
+  intervalSeconds: "รอบการตรวจ (วินาที)",
+  timeoutSeconds: "เวลารอสูงสุด (วินาที)",
+  "auth.type": "ชนิดการยืนยันตัวตน",
+  "auth.headerName": "ชื่อ API key header",
+  "auth.token": "Bearer token",
+  "auth.username": "ชื่อผู้ใช้ Basic",
+  "auth.password": "รหัสผ่าน Basic",
+  "auth.apiKey": "ค่า API key",
+  body: "เนื้อหาคำขอ",
+  assertions: "Assertions",
+};
+
+/**
+ * Label of a changed field. `headers.<name>` and `queryParams.<name>` carry the
+ * name after the dot; `header.<id>` is a secret header slot, named from the
+ * current config when it still exists (a deleted header has no name left).
+ */
+export function configFieldLabel(
+  field: string,
+  headerNameById: ReadonlyMap<string, string> = new Map(),
+): string {
+  const known = CONFIG_FIELD_LABELS[field];
+  if (known !== undefined) return known;
+  if (field.startsWith("headers.")) return `Header ${field.slice(8)}`;
+  if (field.startsWith("queryParams.")) return `Query ${field.slice(12)}`;
+  if (field.startsWith("header.")) {
+    const name = headerNameById.get(field.slice(7));
+    return name === undefined ? "ค่า header ลับ" : `ค่า header ลับ ${name}`;
+  }
+  return field;
+}
+
+export const EVENT_KIND_LABELS = {
+  check_failed: "ตรวจล้มเหลว",
+  incident_opened: "เริ่มล่ม",
+  incident_closed_recovered: "กลับมาปกติ",
+  incident_closed_paused: "สิ้นสุดเหตุการณ์ล่ม",
+  paused: "หยุดชั่วคราว",
+  resumed: "เริ่มตรวจต่อ",
+  config_changed: "แก้ไขการตั้งค่า",
+} as const;

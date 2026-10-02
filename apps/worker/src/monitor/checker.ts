@@ -319,6 +319,14 @@ export async function processMonitorCheck(
       url: maskUrl(prepared.config.url),
       evaluatedFromPrefix: false,
       tls: null,
+      responseSnapshot: {
+        url: maskUrl(prepared.config.url),
+        detailOmitted: null,
+        statusLine: null,
+        headers: [],
+        headersTruncated: false,
+        body: null,
+      },
     }),
   );
   const abandon = abandonment(signal);

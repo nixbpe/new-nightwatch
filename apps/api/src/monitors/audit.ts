@@ -13,7 +13,7 @@ export const MONITOR_AUDIT_ACTIONS = [
 export type MonitorAuditAction = (typeof MONITOR_AUDIT_ACTIONS)[number];
 
 export type MonitorDenialAction =
-  `organization.monitor.${"list" | "read" | "create" | "update" | "pause" | "resume" | "delete" | "test"}`;
+  `organization.monitor.${"list" | "read" | "read-response" | "create" | "update" | "pause" | "resume" | "delete" | "test"}`;
 
 // AC-61: one info line per successful mutation, after commit. It carries
 // identifiers only (never URL, config, query, body or secrets). A logger
