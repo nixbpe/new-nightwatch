@@ -335,6 +335,18 @@ describe("AuditLogPage custom range (AC-11)", () => {
     expect(listMock).not.toHaveBeenCalled();
   });
 
+  it("does not refetch on รีเฟรช while the range is invalid, and points the button at the error", async () => {
+    const user = userEvent.setup();
+    open("?range=custom&from=2026-10-02&to=2026-10-01");
+    const error = await screen.findByRole("alert");
+    const refresh = screen.getByRole("button", { name: "รีเฟรช" });
+    expect(refresh).toHaveAttribute("aria-disabled", "true");
+    expect(refresh).toHaveAttribute("aria-describedby", error.id);
+    await user.click(refresh);
+    await act(() => Promise.resolve());
+    expect(listMock).not.toHaveBeenCalled();
+  });
+
   it("rejects a start older than the retained date from the latest response and recovers when fixed", async () => {
     const user = userEvent.setup();
     listMock.mockResolvedValue(makeList([makeEvent(0)]));

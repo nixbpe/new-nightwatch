@@ -220,6 +220,8 @@ function AuditLogForOrganization({
     tableHeadingRef.current?.focus();
   };
   const refresh = () => {
+    // AC-11: an invalid range sends no request, refresh included.
+    if (rangeError !== undefined) return;
     const next: ListView = {
       identity,
       now: new Date(),
@@ -454,7 +456,14 @@ function AuditLogForOrganization({
             <Button
               type="button"
               variant="secondary"
-              aria-disabled={loading ? true : undefined}
+              aria-disabled={
+                loading || rangeError !== undefined ? true : undefined
+              }
+              aria-describedby={
+                rangeError === undefined
+                  ? undefined
+                  : "audit-custom-range-error"
+              }
               onClick={() => {
                 if (!loading) refresh();
               }}
