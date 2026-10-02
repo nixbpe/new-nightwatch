@@ -45,7 +45,7 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
         className="border-b border-foreground/10 p-4"
       />
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 p-4 text-sm [&>dd]:text-right [&>dd]:break-words">
-        <dt className="text-foreground-secondary">Method</dt>
+        <dt className="text-foreground-secondary">เมธอด</dt>
         <dd className="font-mono text-sm">{monitor.method}</dd>
         <dt className="text-foreground-secondary">รอบตรวจ</dt>
         <dd>

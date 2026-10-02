@@ -126,7 +126,7 @@ export function RequestSection({
       />
       <SelectControl
         path="method"
-        label="Method"
+        label="เมธอด"
         value={values.method}
         error={errors.method}
         disabled={disabled}

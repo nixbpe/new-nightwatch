@@ -165,9 +165,18 @@ export function StatusCard({
         </p>
       ) : null}
       <HairlineGrid as="dl" className="grid-cols-1 sm:grid-cols-3">
-        <UptimeWindow label="Uptime 24 ชม." window={monitor.uptime.h24} />
-        <UptimeWindow label="Uptime 7 วัน" window={monitor.uptime.d7} />
-        <UptimeWindow label="Uptime 30 วัน" window={monitor.uptime.d30} />
+        <UptimeWindow
+          label="ความพร้อมใช้งาน 24 ชม."
+          window={monitor.uptime.h24}
+        />
+        <UptimeWindow
+          label="ความพร้อมใช้งาน 7 วัน"
+          window={monitor.uptime.d7}
+        />
+        <UptimeWindow
+          label="ความพร้อมใช้งาน 30 วัน"
+          window={monitor.uptime.d30}
+        />
       </HairlineGrid>
       <p className="text-xs text-foreground-secondary">
         คำนวณจากการตรวจที่มีผล ไม่รวมช่วงหยุดชั่วคราวและช่วงที่ตรวจไม่ได้

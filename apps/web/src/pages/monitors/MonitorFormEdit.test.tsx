@@ -88,7 +88,7 @@ describe("Edit opens with the saved configuration", () => {
     renderForm(editPath());
     await screen.findByDisplayValue("Payments API");
     expect(screen.getByRole("radio", { name: "ขั้นสูง" })).toBeChecked();
-    expect(screen.getByLabelText("Method")).toHaveValue("POST");
+    expect(screen.getByLabelText("เมธอด")).toHaveValue("POST");
     expect(screen.getByLabelText("หมดเวลารอ (วินาที)")).toHaveValue("5");
     expect(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ")).toHaveValue(
       "200-299,301",

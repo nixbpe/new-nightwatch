@@ -431,7 +431,7 @@ export function MfaCard({
                     children={(submitting) => (
                       <Button
                         type="submit"
-                        variant="destructive"
+                        variant="destructive-outline"
                         disabled={submitting}
                       >
                         {submitting

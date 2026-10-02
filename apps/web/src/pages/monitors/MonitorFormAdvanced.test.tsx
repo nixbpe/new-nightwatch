@@ -72,7 +72,7 @@ const setValue = (element: HTMLElement, value: string) => {
 describe("Advanced mode defaults and mode switch", () => {
   it("offers method, timeout and expected status with the defaults", async () => {
     await openAdvanced();
-    expect(screen.getByLabelText("Method")).toHaveValue("GET");
+    expect(screen.getByLabelText("เมธอด")).toHaveValue("GET");
     expect(screen.getByLabelText("หมดเวลารอ (วินาที)")).toHaveValue("10");
     expect(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ")).toHaveValue(
       "200-299",
@@ -82,7 +82,7 @@ describe("Advanced mode defaults and mode switch", () => {
   it("keeps advanced values when switching to basic and counts what is still in use", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    await user.selectOptions(screen.getByLabelText("Method"), "POST");
+    await user.selectOptions(screen.getByLabelText("เมธอด"), "POST");
     await user.click(screen.getByRole("button", { name: "เพิ่ม header" }));
     await user.type(screen.getByLabelText("ชื่อ header แถวที่ 1"), "X-Team");
     await user.type(screen.getByLabelText("ค่า header แถวที่ 1"), "core");
@@ -91,9 +91,9 @@ describe("Advanced mode defaults and mode switch", () => {
     expect(
       screen.getByText("มีการตั้งค่าขั้นสูง 3 รายการที่ยังใช้งานอยู่"),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Method")).toBeNull();
+    expect(screen.queryByLabelText("เมธอด")).toBeNull();
     await user.click(screen.getByRole("button", { name: "ดูในโหมดขั้นสูง" }));
-    expect(screen.getByLabelText("Method")).toHaveValue("POST");
+    expect(screen.getByLabelText("เมธอด")).toHaveValue("POST");
     expect(screen.getByLabelText("ชื่อ header แถวที่ 1")).toHaveValue("X-Team");
     // The values still apply while the mode is basic.
     await user.click(screen.getByRole("radio", { name: "พื้นฐาน" }));
@@ -119,7 +119,7 @@ describe("Advanced mode defaults and mode switch", () => {
     await fillBasic(user);
     setValue(screen.getByLabelText("หมดเวลารอ (วินาที)"), "5");
     setValue(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ"), "200-299,301");
-    await user.selectOptions(screen.getByLabelText("Method"), "POST");
+    await user.selectOptions(screen.getByLabelText("เมธอด"), "POST");
     await user.click(screen.getByRole("button", { name: "เพิ่ม query param" }));
     await user.type(screen.getByLabelText("ชื่อ query param แถวที่ 1"), "page");
     await user.type(screen.getByLabelText("ค่า query param แถวที่ 1"), "2");
@@ -231,7 +231,7 @@ describe("Advanced validation beside the field", () => {
       "Body ใหญ่ได้ไม่เกิน 64 KiB",
     );
     setValue(screen.getByLabelText("เนื้อหา"), "");
-    await user.selectOptions(screen.getByLabelText("Method"), "HEAD");
+    await user.selectOptions(screen.getByLabelText("เมธอด"), "HEAD");
     await user.click(screen.getByRole("button", { name: "เพิ่มเงื่อนไข" }));
     await user.selectOptions(
       screen.getByLabelText("ชนิดเงื่อนไขแถวที่ 1"),
@@ -370,9 +370,9 @@ describe("Permanent warnings and notes", () => {
   it("notes that GET and HEAD send no body", async () => {
     const user = await openAdvanced();
     expect(screen.getByText("method GET ไม่ส่ง body")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Method"), "POST");
+    await user.selectOptions(screen.getByLabelText("เมธอด"), "POST");
     expect(screen.queryByText(/ไม่ส่ง body/)).toBeNull();
-    await user.selectOptions(screen.getByLabelText("Method"), "HEAD");
+    await user.selectOptions(screen.getByLabelText("เมธอด"), "HEAD");
     expect(screen.getByText("method HEAD ไม่ส่ง body")).toBeInTheDocument();
   });
 });

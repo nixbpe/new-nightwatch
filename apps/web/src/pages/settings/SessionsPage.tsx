@@ -220,7 +220,7 @@ export function SessionsPage() {
                     <Button
                       ref={confirmRef}
                       type="button"
-                      variant="destructive"
+                      variant="destructive-outline"
                       size="sm"
                       disabled={busy === row.token}
                       onClick={() => {
@@ -291,7 +291,7 @@ export function SessionsPage() {
                 <Button
                   ref={confirmRef}
                   type="button"
-                  variant="destructive"
+                  variant="destructive-outline"
                   size="sm"
                   disabled={busy === OTHERS}
                   onClick={() => {
