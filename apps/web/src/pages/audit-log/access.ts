@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { isAuditLogQueryOf } from "../../lib/api/audit-log";
 import { ApiError } from "../../lib/api/client";
@@ -78,12 +78,17 @@ export function useAuditDenial(
     (error: unknown) => {
       if (!isAuditDenied(error) || !isCurrentScope()) return;
       setDeniedCode((current) => current ?? error.code);
-      queryClient.removeQueries({
-        predicate: (query) => isAuditLogQueryOf(query.queryKey, organizationId),
-      });
       void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
     },
-    [isCurrentScope, organizationId, queryClient],
+    [isCurrentScope, queryClient],
   );
+  // Removed after the render that disables the queries: removed while an observer is still
+  // enabled, a query is rebuilt and fetched again, and the rows would come back.
+  useEffect(() => {
+    if (deniedCode === null) return;
+    queryClient.removeQueries({
+      predicate: (query) => isAuditLogQueryOf(query.queryKey, organizationId),
+    });
+  }, [deniedCode, organizationId, queryClient]);
   return { deniedCode, report };
 }

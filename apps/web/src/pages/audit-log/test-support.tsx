@@ -1,5 +1,6 @@
 import type {
   AuditEventDetail,
+  AuditExportRecord,
   AuditEventSummary,
   AuditLogListResponse,
 } from "@nightwatch/api-contract";
@@ -126,10 +127,9 @@ export function renderRoute(
         <MemoryRouter
           initialEntries={[
             {
-              pathname: options.entry.split("?")[0] ?? "",
-              search: options.entry.includes("?")
-                ? `?${options.entry.split("?")[1] ?? ""}`
-                : "",
+              pathname: options.entry.split(/[?#]/)[0] ?? "",
+              search: /\?[^#]*/.exec(options.entry)?.[0] ?? "",
+              hash: /#.*/.exec(options.entry)?.[0] ?? "",
               state: options.state,
             },
           ]}
@@ -142,5 +142,29 @@ export function renderRoute(
         </MemoryRouter>
       </QueryClientProvider>,
     ),
+  };
+}
+
+export function makeRecord(
+  overrides: Partial<AuditExportRecord> = {},
+): AuditExportRecord {
+  return {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    format: "csv",
+    status: "generating",
+    filters: {
+      from: "2026-09-25T17:00:00.000Z",
+      to: "2026-10-03T07:02:00.000Z",
+      categories: ["member"],
+      actorUserId: null,
+      q: null,
+    },
+    timeZone: "Asia/Bangkok",
+    requestedAt: "2026-10-03T07:05:10.000Z",
+    completedAt: null,
+    expiresAt: null,
+    rowCount: null,
+    failureCode: null,
+    ...overrides,
   };
 }

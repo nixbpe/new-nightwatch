@@ -9,6 +9,7 @@ import {
   fetchAuditActors,
   fetchAuditEvent,
   fetchAuditEvents,
+  fetchAuditExports,
 } from "../../lib/api/audit-log";
 import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
 import {
@@ -38,6 +39,7 @@ vi.mock("../../lib/api/audit-log", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchAuditEvents: vi.fn(),
   fetchAuditActors: vi.fn(),
+  fetchAuditExports: vi.fn(),
   fetchAuditEvent: vi.fn(),
 }));
 
@@ -63,6 +65,10 @@ const location = () => screen.getByTestId("location").textContent;
 
 beforeEach(() => {
   setTimeZone("Asia/Bangkok");
+  vi.mocked(fetchAuditExports).mockResolvedValue({
+    exports: [],
+    inProgress: false,
+  });
   actorsMock.mockResolvedValue({
     actors: [
       { userId: "user-1", displayName: "สมชาย ก.", membership: "current" },

@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useParams, useSearchParams } from "react-router";
 
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
+import { ActionNotice } from "../../components/ui/action-notice";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { DataTablePagination } from "../../components/ui/data-table";
@@ -22,6 +23,7 @@ import {
 import {
   formatAuditDate,
   formatAuditTime,
+  formatAuditTimestamp,
   usePreferences,
 } from "../../lib/preferences";
 import { ROLE_LABELS } from "../../lib/roles";
@@ -33,10 +35,20 @@ import {
   useAuditDenial,
 } from "./access";
 import { AuditDenied } from "./AuditDenied";
-import { AuditFilterBar } from "./AuditFilterBar";
+import { AuditFilterBar, describeFilters } from "./AuditFilterBar";
 import { AuditTable, type AuditListReturnState } from "./AuditTable";
 import { customRangeError, filterIdentity } from "./filters";
+import { ExportDialog } from "./ExportDialog";
+import {
+  adjustFilterSearch,
+  EMPTY_REASON,
+  IN_PROGRESS_REASON,
+  MY_EXPORTS_ID,
+  PERMISSION_CHANGED,
+} from "./exports";
+import { MyExportsSection } from "./MyExportsSection";
 import { RecordingScopeNote } from "./RecordingScopeNote";
+import { useAuditExport } from "./useAuditExport";
 
 const TITLE = "บันทึกกิจกรรมองค์กร";
 const TITLE_FOCUS_CLASS =
@@ -152,6 +164,19 @@ function AuditLogForOrganization({
   useEffect(() => {
     report(actors.error);
   }, [actors.error, report]);
+
+  const exportReasonId = "audit-export-reason";
+  const exportButton = useRef<HTMLButtonElement>(null);
+  const exportsHeading = useRef<HTMLHeadingElement>(null);
+  const filtersHeading = useRef<HTMLHeadingElement>(null);
+  const exp = useAuditExport({
+    organizationId,
+    role: access.status === "allowed" ? access.role : null,
+    reading,
+    isCurrentScope,
+    report,
+    preferences,
+  });
 
   const data =
     list.data?.organizationId === organizationId ? list.data : undefined;
@@ -299,6 +324,17 @@ function AuditLogForOrganization({
   // empty too; while it is loading or failed, an empty list reads as "no match".
   const noData = actors.isSuccess && actors.data.actors.length === 0;
 
+  // M-4: the export asks for exactly what the list shows: absolute from/to and the list's asOf.
+  const exportFrom = (retainedFrom: string) => listParams.from ?? retainedFrom;
+  const exportTo = (asOf: string) => listParams.to ?? asOf;
+  const exportReason = exp.inProgress
+    ? IN_PROGRESS_REASON
+    : data !== undefined && data.page.total === 0
+      ? EMPTY_REASON
+      : null;
+  const exportBlocked =
+    data === undefined || pastEnd || exp.inProgress || data.page.total === 0;
+
   let body;
   if (rangeError !== undefined) {
     body = (
@@ -414,24 +450,82 @@ function AuditLogForOrganization({
           </>
         }
         actions={
-          <Button
-            type="button"
-            variant="secondary"
-            aria-disabled={loading ? true : undefined}
-            onClick={() => {
-              if (!loading) refresh();
-            }}
-          >
-            รีเฟรช
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              aria-disabled={loading ? true : undefined}
+              onClick={() => {
+                if (!loading) refresh();
+              }}
+            >
+              รีเฟรช
+            </Button>
+            {exp.canExport ? (
+              <Button
+                ref={exportButton}
+                type="button"
+                aria-disabled={exportBlocked ? true : undefined}
+                aria-describedby={
+                  exportReason === null ? undefined : exportReasonId
+                }
+                onClick={() => {
+                  if (!exportBlocked) exp.openDialog(exportButton.current);
+                }}
+              >
+                {exp.inProgress ? "กำลังสร้างไฟล์…" : "ส่งออก"}
+              </Button>
+            ) : null}
+          </>
         }
       />
+      {exp.canExport && exportReason !== null ? (
+        <p id={exportReasonId} className="text-sm text-foreground-secondary">
+          {exportReason}
+        </p>
+      ) : null}
+      {exp.canExport && exp.requestedNotice ? (
+        <ActionNotice
+          onClose={() => {
+            exp.dismissRequestedNotice();
+            exportButton.current?.focus();
+          }}
+          actions={
+            <a
+              href={`#${MY_EXPORTS_ID}`}
+              onClick={(event) => {
+                event.preventDefault();
+                exportsHeading.current?.focus();
+              }}
+              className="rounded-[4px] text-primary underline-offset-4 hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              ดูไฟล์ส่งออกของฉัน
+            </a>
+          }
+        >
+          กำลังสร้างไฟล์ เราจะแจ้งใน{" "}
+          <Link
+            to="/notifications"
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            การแจ้งเตือน
+          </Link>{" "}
+          เมื่อพร้อมดาวน์โหลด
+        </ActionNotice>
+      ) : null}
       <RecordingScopeNote since={since} />
       <section
         aria-labelledby="audit-filters-title"
         className="flex flex-col gap-4"
       >
-        <SectionHeader id="audit-filters-title" code="01" title="ตัวกรอง" />
+        <SectionHeader
+          id="audit-filters-title"
+          code="01"
+          title="ตัวกรอง"
+          headingRef={filtersHeading}
+          headingTabIndex={-1}
+          headingClassName={`w-fit rounded-[4px] ${TITLE_FOCUS_CLASS}`}
+        />
         <AuditFilterBar
           filters={filters}
           actors={actors.data?.actors ?? []}
@@ -459,8 +553,70 @@ function AuditLogForOrganization({
         <p role="status" className="sr-only">
           {data === undefined || pastEnd ? "" : `พบ ${totalText ?? ""} รายการ`}
         </p>
+        {exp.revoked ? (
+          <ActionNotice focusable ref={exp.permissionNotice}>
+            {PERMISSION_CHANGED}
+          </ActionNotice>
+        ) : null}
         {body}
       </section>
+      {exp.canExport ? (
+        <MyExportsSection
+          rows={exp.rows}
+          loading={exp.query.isPending}
+          failedWithoutRows={exp.query.isError && exp.rows === undefined}
+          pollFailed={exp.query.isError && exp.rows !== undefined}
+          onRetryList={() => void exp.query.refetch()}
+          inProgress={exp.inProgress}
+          reasonId={exportReasonId}
+          announcement={exp.announcement}
+          actors={actors.data?.actors}
+          preferences={preferences}
+          headingRef={exportsHeading}
+          buttonSuffix={exp.rowButtonSuffix}
+          onRetryRow={exp.retryRow}
+          onDownload={exp.downloadRow}
+          onAdjustFilters={(record) => {
+            setSearchParams(adjustFilterSearch(record, preferences), {
+              replace: true,
+            });
+            filtersHeading.current?.focus();
+          }}
+        />
+      ) : null}
+      {exp.dialog !== null && data !== undefined ? (
+        <ExportDialog
+          scope={{
+            loadedAt: formatAuditTime(new Date(data.asOf), preferences),
+            timeZone: preferences.timeZone,
+            rangeText: `${formatAuditTimestamp(new Date(exportFrom(data.retainedFrom)), preferences)} – ${formatAuditTimestamp(new Date(exportTo(data.asOf)), preferences)}`,
+            filtersText: describeFilters(filters, actors.data?.actors ?? []),
+            total: data.page.total,
+            recordingSince: since,
+          }}
+          opener={exp.dialog.opener}
+          fallbackFocus={titleRef}
+          onSubmit={(format) =>
+            exp.submitFromDialog({
+              format,
+              timeZone: preferences.timeZone,
+              filters: {
+                from: exportFrom(data.retainedFrom),
+                to: exportTo(data.asOf),
+                ...(listParams.categories === undefined
+                  ? {}
+                  : { categories: [...listParams.categories] }),
+                ...(listParams.actorUserId === undefined
+                  ? {}
+                  : { actorUserId: listParams.actorUserId }),
+                ...(listParams.q === undefined ? {} : { q: listParams.q }),
+              },
+              asOf: data.asOf,
+            })
+          }
+          onCancel={exp.closeDialog}
+        />
+      ) : null}
     </Page>
   );
 }

@@ -173,7 +173,7 @@ describe("requestFile", () => {
         headers: {
           "content-type": "text/csv; charset=utf-8",
           "content-disposition":
-            "attachment; filename=\"nightwatch-audit-log-2026-10-03.csv\"",
+            'attachment; filename="nightwatch-audit-log-2026-10-03.csv"',
         },
       }),
     );
@@ -199,7 +199,9 @@ describe("requestFile", () => {
     await expect(requestFile(path, { params })).resolves.toMatchObject({
       filename: "ก.json",
     });
-    stubFetch(new Response("{}", { headers: { "content-type": "application/json" } }));
+    stubFetch(
+      new Response("{}", { headers: { "content-type": "application/json" } }),
+    );
     await expect(requestFile(path, { params })).resolves.toMatchObject({
       filename: null,
     });
