@@ -2059,7 +2059,7 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
         [monitor.monitorId],
       );
       // A fail is in flight when an Edit supersedes the claim.
-      const release = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<undefined>();
       target.setHandler((_request, response) => {
         void release.promise.then(() => {
           response.statusCode = 503;
@@ -2090,7 +2090,7 @@ describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
         `update monitor_schedule set claim_token = null where monitor_id = $1`,
         [monitor.monitorId],
       );
-      release.resolve();
+      release.resolve(undefined);
       const outcome = await running;
       expect(outcome).toBe("discarded");
       expect(await feedEvents(monitor)).toEqual([]);
