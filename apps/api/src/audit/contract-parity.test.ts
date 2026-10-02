@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { monitorAuditChanges } from "../monitors/audit";
 import type { StoredConfig } from "../monitors/record";
-import { AUDIT_ACTION_CATEGORIES } from "./record";
+import { AUDIT_ACTION_CATEGORIES, roleChange } from "./record";
 
 describe("audit contract and writer agree", () => {
   it("lists the same 16 actions, each with its category and a label", () => {
@@ -82,6 +82,18 @@ describe("monitor changes fit the response schema", () => {
       expect(auditChangeSchema.safeParse(change).success, change.field).toBe(
         true,
       );
+    }
+  });
+});
+
+describe("writer changes fit the response schema", () => {
+  it("parses role changes with and without a side", () => {
+    for (const change of [
+      roleChange("viewer", "admin"),
+      roleChange(null, "viewer"),
+      roleChange("auditor", null),
+    ]) {
+      expect(auditChangeSchema.safeParse(change).success).toBe(true);
     }
   });
 });

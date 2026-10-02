@@ -1,3 +1,4 @@
+import { auditChangeSchema } from "@nightwatch/api-contract";
 import { createDatabase, runMigrations } from "@nightwatch/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -58,7 +59,7 @@ type EventRow = {
 };
 
 async function events(): Promise<EventRow[]> {
-  return (
+  const rows = (
     await owner.query<EventRow>(
       `select actor_user_id, actor_role, category, action, target_type, target_id,
               target_attributes, changes, request_id
@@ -66,6 +67,9 @@ async function events(): Promise<EventRow[]> {
       [organizationId],
     )
   ).rows;
+  // Whatever the services wrote must be readable by the read API contract.
+  for (const row of rows) auditChangeSchema.array().parse(row.changes);
+  return rows;
 }
 
 async function eventCount(): Promise<number> {

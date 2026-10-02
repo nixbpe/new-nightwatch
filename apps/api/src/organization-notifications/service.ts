@@ -29,7 +29,7 @@ function settingsResponse(
 }
 
 function booleanChange(
-  field: string,
+  field: "monitorAlertsEnabled" | "settingsChangedEnabled",
   before: boolean,
   after: boolean,
 ): AuditChange {

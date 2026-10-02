@@ -1,80 +1,33 @@
 import {
-  createDatabase,
   ensureAuditEventPartitions,
-  runMigrations,
   withTenantContextRaw,
+  type Database,
 } from "@nightwatch/db";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Client } from "pg";
+import type { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import { recordAuditEvent } from "./record";
-import { createAuditPartitionFor, dropAuditPartition } from "./test-support";
+import {
+  createAuditPartitionFor,
+  dropAuditPartition,
+  openIsolatedAuditDatabase,
+} from "./test-support";
 
 // Partition create and drop lock the parent table, so this file runs in its
-// own database on the shared cluster (same reason as packages/db monitor
-// tests); the other audit suites keep writing to the shared database.
-const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
-const databaseName = `audit_db_${crypto.randomUUID().replaceAll("-", "")}`;
-const isolatedOwnerUrl = new URL(ownerUrl);
-isolatedOwnerUrl.pathname = `/${databaseName}`;
-const isolatedRuntimeUrl = new URL(runtimeUrl);
-isolatedRuntimeUrl.pathname = `/${databaseName}`;
-const admin = new Client({ connectionString: ownerUrl });
-const owner = new Client({ connectionString: isolatedOwnerUrl.toString() });
-const database = createDatabase(isolatedRuntimeUrl.toString());
-const ownerDatabase = createDatabase(isolatedOwnerUrl.toString());
-const sourceMigrations = new URL(
-  "../../../../packages/db/migrations",
-  import.meta.url,
-).pathname;
+// own database (see openIsolatedAuditDatabase); the other audit suites keep
+// writing to the shared database.
 const AUDIT_MIGRATION = "0019_organization_audit_log.sql";
-let migrationsCopyDir: string | undefined;
-let adminConnected = false;
-let ownerConnected = false;
+let database: Database;
+let ownerDatabase: Database;
+let owner: Client;
+let applyAuditMigration: () => Promise<void>;
+let closeDatabase: () => Promise<void>;
 
 const run = crypto.randomUUID().slice(0, 8);
 const tenantA = crypto.randomUUID();
 const tenantB = crypto.randomUUID();
 const legacyTenant = crypto.randomUUID();
 const legacyCreatedAt = "2026-01-15T00:00:00Z";
-
-/** Roles are cluster-global and already exist once any NightWatch database
- * on the cluster is migrated (architecture DB-13), so `create role` becomes
- * idempotent in the copy. */
-async function copyMigrations(skip?: string): Promise<string> {
-  const target = await mkdtemp(join(tmpdir(), "nightwatch-audit-migrations-"));
-  for (const name of await readdir(sourceMigrations)) {
-    if (name === skip) continue;
-    const sql = (await readFile(join(sourceMigrations, name), "utf8")).replace(
-      /create role (\w+)([^;]*);/g,
-      (_match, role: string, options: string) =>
-        `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
-    );
-    await writeFile(join(target, name), sql);
-  }
-  return target;
-}
-
-async function applyAuditMigration(): Promise<void> {
-  const sql = (
-    await readFile(join(sourceMigrations, AUDIT_MIGRATION), "utf8")
-  ).replace(
-    /create role (\w+)([^;]*);/g,
-    (_match, role: string, options: string) =>
-      `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
-  );
-  if (!migrationsCopyDir) throw new Error("migration copy missing");
-  await writeFile(join(migrationsCopyDir, AUDIT_MIGRATION), sql);
-  await runMigrations({
-    url: isolatedOwnerUrl.toString(),
-    migrationsDir: migrationsCopyDir,
-    log: () => undefined,
-  });
-}
 
 async function partitionNames(): Promise<string[]> {
   const result = await owner.query<{ name: string }>(
@@ -132,21 +85,14 @@ async function ensurePartitionFor(at: Date): Promise<void> {
 }
 
 beforeAll(async () => {
-  await admin.connect();
-  adminConnected = true;
-  await admin.query(`create database ${databaseName}`);
-  await admin.query(
-    `grant connect, temporary on database ${databaseName} to nightwatch`,
-  );
   // Everything before F-007 first, with data that must survive 0019.
-  migrationsCopyDir = await copyMigrations(AUDIT_MIGRATION);
-  await runMigrations({
-    url: isolatedOwnerUrl.toString(),
-    migrationsDir: migrationsCopyDir,
-    log: () => undefined,
-  });
-  await owner.connect();
-  ownerConnected = true;
+  ({
+    database,
+    ownerDatabase,
+    owner,
+    applySkipped: applyAuditMigration,
+    close: closeDatabase,
+  } = await openIsolatedAuditDatabase({ skip: AUDIT_MIGRATION }));
   await owner.query(
     `insert into organization (id, name, slug, created_at)
      values ($1, 'Legacy', $2, $3)`,
@@ -171,36 +117,10 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  try {
-    if (ownerConnected) {
-      for (const name of createdPartitions) {
-        await dropAuditPartition(owner, name).catch(() => undefined);
-      }
-    }
-    await database.close();
-    await ownerDatabase.close();
-    if (ownerConnected) await owner.end();
-  } finally {
-    try {
-      if (adminConnected) {
-        try {
-          await admin.query(`drop database if exists ${databaseName}`);
-        } catch {
-          await admin.query(
-            `select pg_terminate_backend(pid) from pg_stat_activity
-             where datname = $1 and pid <> pg_backend_pid()`,
-            [databaseName],
-          );
-          await admin.query(`drop database if exists ${databaseName}`);
-        }
-      }
-    } finally {
-      await admin.end().catch(() => undefined);
-      if (migrationsCopyDir) {
-        await rm(migrationsCopyDir, { recursive: true, force: true });
-      }
-    }
+  for (const name of createdPartitions) {
+    await dropAuditPartition(owner, name).catch(() => undefined);
   }
+  await closeDatabase();
 }, 60_000);
 
 describe("migration 0019 on a database that already holds F-004 to F-006 data", () => {

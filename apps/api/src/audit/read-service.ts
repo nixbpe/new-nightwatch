@@ -57,7 +57,6 @@ const GATE_CTES = `
   ),
   bounds as (
     select o.audit_recording_started_at as started,
-           now() - interval '365 days' as cutoff,
            greatest(now() - interval '365 days', o.audit_recording_started_at)
              as retained_from,
            now() as db_now
@@ -244,9 +243,9 @@ export async function listAuditEvents(
                or e.action = any($9::text[])
                or au.name ilike $7::text
                or coalesce(mo.name, tu.name) ilike $7::text
-               or ($10::text is not null
-                   and (e.id::text = $10::text
-                        or (e.target_type = 'invitation' and e.target_id = $10::text))))
+               or ($10::uuid is not null
+                   and (e.id = $10::uuid
+                        or (e.target_type = 'invitation' and e.target_id = $10::uuid::text))))
          ),
          page as (
            select * from scoped order by "occurredAt" desc, id desc
@@ -324,7 +323,7 @@ export async function getAuditEvent(
            cross join bounds b
            cross join allowed a
            where a.ok and e.tenant_id = $1 and $3::text is not null
-             and e.id::text = $3::text and e.occurred_at >= b.cutoff
+             and e.id = $3::uuid and e.occurred_at >= b.retained_from
          )
          select a.member, a.ok, a."rawRole",
                 (select to_jsonb(found) from found) as event

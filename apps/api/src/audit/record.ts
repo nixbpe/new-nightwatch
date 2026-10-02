@@ -1,6 +1,16 @@
+import type {
+  AuditAction,
+  AuditCategory,
+  AuditChange,
+  AuditValue,
+} from "@nightwatch/api-contract";
 import type { PoolClient } from "pg";
 
-export const AUDIT_ACTION_CATEGORIES = {
+// Types come from the contract, so a misspelled field or action fails to
+// compile here instead of surfacing as a parse failure when the log is read.
+export type { AuditAction, AuditChange, AuditValue };
+
+export const AUDIT_ACTION_CATEGORIES: Record<AuditAction, AuditCategory> = {
   "organization.monitor.create": "monitor",
   "organization.monitor.update": "monitor",
   "organization.monitor.pause": "monitor",
@@ -18,24 +28,10 @@ export const AUDIT_ACTION_CATEGORIES = {
   "organization.invitation.resend": "invitation",
   "organization.invitation.cancel": "invitation",
   "organization.audit-log.export": "audit_log",
-} as const;
-
-export type AuditAction = keyof typeof AUDIT_ACTION_CATEGORIES;
-
-export type AuditValue =
-  | { kind: "value"; value: string | number | boolean | null }
-  | { kind: "masked" }
-  | { kind: "secret_set" }
-  | { kind: "changed" };
-
-export type AuditChange = {
-  field: string;
-  key?: string;
-  before: AuditValue | null;
-  after: AuditValue | null;
 };
 
-export type AuditTarget = {
+// What a writer passes; the read response shape is `AuditTarget` in the contract.
+export type AuditEventTarget = {
   type:
     | "monitor"
     | "member"
@@ -54,7 +50,7 @@ export type AuditEventInput = {
   /** Role read in the same transaction, already normalized. */
   actorRole: "owner" | "admin" | "viewer" | "auditor";
   action: AuditAction;
-  target: AuditTarget;
+  target: AuditEventTarget;
   /** Redacted by the caller; this helper stores it as given. */
   changes: AuditChange[];
   requestId?: string;

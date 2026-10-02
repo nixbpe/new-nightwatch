@@ -1,4 +1,7 @@
-import type { StoredAssertion } from "@nightwatch/api-contract";
+import type {
+  AuditChangeField,
+  StoredAssertion,
+} from "@nightwatch/api-contract";
 import {
   AppError,
   buildCheckUrl,
@@ -46,7 +49,7 @@ const value = (input: string | number | boolean | null): AuditValue => ({
 });
 
 function scalarChange(
-  field: string,
+  field: AuditChangeField,
   before: string | number | null,
   after: string | number | null,
 ): AuditChange[] {
@@ -101,7 +104,7 @@ function keyedEntries<T>(
 // of equal entries leaves no per-item diff, so the list is reported as
 // changed (no values). Adds and removals are reported by their own changes.
 function orderChange(
-  field: string,
+  field: AuditChangeField,
   before: unknown[],
   after: unknown[],
 ): AuditChange[] {

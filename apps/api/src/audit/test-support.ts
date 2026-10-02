@@ -52,15 +52,26 @@ export async function dropAuditPartition(
   await owner.query(`drop table if exists public.${name}`);
 }
 
+const IDEMPOTENT_ROLE = /create role (\w+)([^;]*);/g;
+const idempotentRole = (_match: string, role: string, options: string) =>
+  `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`;
+
 /**
  * A migrated database of its own on the shared cluster, for tests that create
  * or drop `audit_events` partitions (those lock the parent table). `close`
- * drops it. Roles are cluster-global, so `create role` is made idempotent in
- * the migration copy (architecture DB-13).
+ * drops it, and so does a failed setup. Roles are cluster-global, so `create
+ * role` is made idempotent in the migration copy (architecture DB-13).
+ *
+ * `skip` leaves one migration file out; `applySkipped` runs it later, for a
+ * test that needs data in place before that migration.
  */
-export async function openIsolatedAuditDatabase(): Promise<{
+export async function openIsolatedAuditDatabase(options?: {
+  skip?: string;
+}): Promise<{
   database: Database;
+  ownerDatabase: Database;
   owner: Client;
+  applySkipped: () => Promise<void>;
   close: () => Promise<void>;
 }> {
   const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
@@ -69,49 +80,83 @@ export async function openIsolatedAuditDatabase(): Promise<{
   ownerTarget.pathname = `/${name}`;
   const runtimeTarget = new URL(runtimeUrl);
   runtimeTarget.pathname = `/${name}`;
-  const admin = new Client({ connectionString: ownerUrl });
   const source = new URL("../../../../packages/db/migrations", import.meta.url)
     .pathname;
-  const copy = await mkdtemp(join(tmpdir(), "nightwatch-audit-migrations-"));
-  await admin.connect();
-  await admin.query(`create database ${name}`);
-  await admin.query(
-    `grant connect, temporary on database ${name} to nightwatch`,
-  );
-  for (const file of await readdir(source)) {
-    const sql = (await readFile(join(source, file), "utf8")).replace(
-      /create role (\w+)([^;]*);/g,
-      (_match, role: string, options: string) =>
-        `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
-    );
-    await writeFile(join(copy, file), sql);
-  }
-  await runMigrations({
-    url: ownerTarget.toString(),
-    migrationsDir: copy,
-    log: () => undefined,
-  });
+  const admin = new Client({ connectionString: ownerUrl });
   const owner = new Client({ connectionString: ownerTarget.toString() });
-  await owner.connect();
   const database = createDatabase(runtimeTarget.toString());
+  const ownerDatabase = createDatabase(ownerTarget.toString());
+  let copy: string | undefined;
+  let adminConnected = false;
+  let ownerConnected = false;
+
+  const close = async (): Promise<void> => {
+    await database.close().catch(() => undefined);
+    await ownerDatabase.close().catch(() => undefined);
+    if (ownerConnected) await owner.end().catch(() => undefined);
+    if (adminConnected) {
+      try {
+        try {
+          await admin.query(`drop database if exists ${name}`);
+        } catch {
+          await admin.query(
+            `select pg_terminate_backend(pid) from pg_stat_activity
+             where datname = $1 and pid <> pg_backend_pid()`,
+            [name],
+          );
+          await admin.query(`drop database if exists ${name}`);
+        }
+      } finally {
+        await admin.end().catch(() => undefined);
+      }
+    }
+    if (copy) await rm(copy, { recursive: true, force: true });
+  };
+
+  const migrate = () =>
+    runMigrations({
+      url: ownerTarget.toString(),
+      migrationsDir: copy ?? "",
+      log: () => undefined,
+    });
+
+  try {
+    await admin.connect();
+    adminConnected = true;
+    await admin.query(`create database ${name}`);
+    await admin.query(
+      `grant connect, temporary on database ${name} to nightwatch`,
+    );
+    copy = await mkdtemp(join(tmpdir(), "nightwatch-audit-migrations-"));
+    for (const file of await readdir(source)) {
+      if (file === options?.skip) continue;
+      const sql = (await readFile(join(source, file), "utf8")).replace(
+        IDEMPOTENT_ROLE,
+        idempotentRole,
+      );
+      await writeFile(join(copy, file), sql);
+    }
+    await migrate();
+    await owner.connect();
+    ownerConnected = true;
+  } catch (error) {
+    await close();
+    throw error;
+  }
+
   return {
     database,
+    ownerDatabase,
     owner,
-    close: async () => {
-      await database.close();
-      await owner.end();
-      try {
-        await admin.query(`drop database if exists ${name}`);
-      } catch {
-        await admin.query(
-          `select pg_terminate_backend(pid) from pg_stat_activity
-           where datname = $1 and pid <> pg_backend_pid()`,
-          [name],
-        );
-        await admin.query(`drop database if exists ${name}`);
-      }
-      await admin.end();
-      await rm(copy, { recursive: true, force: true });
+    applySkipped: async () => {
+      if (!options?.skip || !copy) throw new Error("no migration was skipped");
+      const sql = (await readFile(join(source, options.skip), "utf8")).replace(
+        IDEMPOTENT_ROLE,
+        idempotentRole,
+      );
+      await writeFile(join(copy, options.skip), sql);
+      await migrate();
     },
+    close,
   };
 }
