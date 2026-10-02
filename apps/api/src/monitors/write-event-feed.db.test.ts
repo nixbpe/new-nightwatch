@@ -217,6 +217,39 @@ describe("Edit writes the editor and the changed fields", () => {
   });
 });
 
+describe("Two Edits racing on one version", () => {
+  it("writes one config_changed row, by the Edit that won", async () => {
+    for (let round = 0; round < 3; round += 1) {
+      const monitor = await created();
+      const callers = [
+        { user: org.users.owner, name: "From owner" },
+        { user: org.users.admin, name: "From admin" },
+      ];
+      const results = await Promise.all(
+        callers.map(({ user, name }) =>
+          edit(user, monitor, { ...configOf(monitor), name }),
+        ),
+      );
+      expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+      const winner = callers[results.findIndex((r) => r.status === 200)];
+      const rows = await eventRows(monitor.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        kind: "config_changed",
+        actor_user_id: winner?.user,
+        changes: [
+          {
+            field: "name",
+            kind: "value",
+            before: "Monitor",
+            after: winner?.name,
+          },
+        ],
+      });
+    }
+  });
+});
+
 describe("Pause and Resume write the actor", () => {
   it("records the session user for both, and the feed shows the pause close", async () => {
     const monitor = await created();

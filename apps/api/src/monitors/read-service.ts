@@ -1157,16 +1157,20 @@ async function actorResolver(
   ];
   const members = new Map<string, string | null>();
   if (userIds.length > 0) {
-    const found = await client.query<{ userId: string; name: string }>(
-      `select m.user_id as "userId", u.name
-       from member m join "user" u on u.id = m.user_id
-       where m.organization_id = $1 and m.user_id = any($2::text[])`,
+    // A viewer or auditor only needs to know who is still a member, so the
+    // user table is not read for them.
+    const names = canReadActorNames(role);
+    const found = await client.query<{ userId: string; name: string | null }>(
+      names
+        ? `select m.user_id as "userId", u.name
+           from member m join "user" u on u.id = m.user_id
+           where m.organization_id = $1 and m.user_id = any($2::text[])`
+        : `select m.user_id as "userId", null::text as name
+           from member m
+           where m.organization_id = $1 and m.user_id = any($2::text[])`,
       [organizationId, userIds],
     );
-    const names = canReadActorNames(role);
-    for (const member of found.rows) {
-      members.set(member.userId, names ? member.name : null);
-    }
+    for (const member of found.rows) members.set(member.userId, member.name);
   }
   return (row) => {
     if (row.actorKind !== "user") return { kind: "unrecorded" };

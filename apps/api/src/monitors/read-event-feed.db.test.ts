@@ -393,6 +393,18 @@ describe("event actor", () => {
     },
   );
 
+  it("reads the user table for an owner but not for a viewer", async () => {
+    const { monitorId } = await actorFixtures();
+    const readsUsers = async (userId: string) => {
+      ctx.statements.length = 0;
+      await events(userId, monitorId);
+      return ctx.statements.some((text) => text.includes('"user"'));
+    };
+    expect(await readsUsers(org.users.viewer)).toBe(false);
+    expect(await readsUsers(org.users.auditor)).toBe(false);
+    expect(await readsUsers(org.users.owner)).toBe(true);
+  });
+
   it("does not read an account outside the Organization", async () => {
     const monitorId = await seedMonitor(ctx, org.id);
     const stranger = await ctx.createUser("stranger-name");
