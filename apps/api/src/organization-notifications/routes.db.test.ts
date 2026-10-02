@@ -22,6 +22,7 @@ const revokeOrganizationId = crypto.randomUUID();
 const revokeOtherOrganizationId = crypto.randomUUID();
 const leaveOrganizationId = crypto.randomUUID();
 const leaveOtherOrganizationId = crypto.randomUUID();
+const nativeOrganizationId = crypto.randomUUID();
 const inviterId = crypto.randomUUID();
 const memberIds = {
   owner: crypto.randomUUID(),
@@ -67,6 +68,9 @@ const emails = {
   leaveAdmin: `leave-admin-${run}@example.test`,
   leaveViewer: `leave-viewer-${run}@example.test`,
   leaveAuditor: `leave-auditor-${run}@example.test`,
+  nativeOwner: `native-owner-${run}@example.test`,
+  nativeAdmin: `native-admin-${run}@example.test`,
+  nativeViewer: `native-viewer-${run}@example.test`,
 };
 const userIds = new Map<keyof typeof emails, string>();
 const mail: OutboundMail[] = [];
@@ -167,7 +171,10 @@ function verificationToken(email: string): string {
   return token;
 }
 
-async function admit(member: keyof typeof emails): Promise<Client> {
+async function admit(
+  member: keyof typeof emails,
+  admitOrganizationId = organizationId,
+): Promise<Client> {
   const request = client();
   const email = emails[member];
   const invitationId = crypto.randomUUID();
@@ -175,7 +182,7 @@ async function admit(member: keyof typeof emails): Promise<Client> {
     `insert into invitation
        (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
      values ($1, $2, $3, 'viewer', 'pending', $4, now() + interval '1 day', now())`,
-    [invitationId, organizationId, email, inviterId],
+    [invitationId, admitOrganizationId, email, inviterId],
   );
   expect(
     (
@@ -225,7 +232,8 @@ beforeAll(async () => {
             ($13, $14, $15, now()),
             ($16, $17, $18, now()),
             ($19, $20, $21, now()),
-            ($22, $23, $24, now())`,
+            ($22, $23, $24, now()),
+            ($25, $26, $27, now())`,
     [
       organizationId,
       `Member route ${run}`,
@@ -251,6 +259,9 @@ beforeAll(async () => {
       leaveOtherOrganizationId,
       `Leave route B ${run}`,
       `leave-route-b-${run}`,
+      nativeOrganizationId,
+      `Native route ${run}`,
+      `native-route-${run}`,
     ],
   );
   await owner.sql.query(
@@ -270,6 +281,7 @@ afterAll(async () => {
       revokeOtherOrganizationId,
       leaveOrganizationId,
       leaveOtherOrganizationId,
+      nativeOrganizationId,
     ],
   ]);
   await owner.sql.query(
@@ -1593,4 +1605,138 @@ describe("organization member self-leave HTTP contract", () => {
       ).rows,
     ).toHaveLength(1);
   }, 180_000);
+});
+
+describe("native Better Auth organization routes (hotfix)", () => {
+  const blockedPaths = [
+    "/organization/list-invitations",
+    "/organization/get-full-organization",
+    "/organization/cancel-invitation",
+    "/organization/get-invitation",
+    "/organization/reject-invitation",
+    "/organization/list-user-invitations",
+    "/organization/list-members",
+    "/organization/get-active-member-role",
+    "/organization/delete",
+  ];
+
+  it("denies all 9 paths for every role and method, leaving invitations and the organization untouched", async () => {
+    const roles = [
+      ["nativeViewer", "viewer"],
+      ["nativeAdmin", "admin"],
+      ["nativeOwner", "owner"],
+    ] as const;
+    const clients = new Map<string, Client>();
+    for (const [key, role] of roles) {
+      const request = await admit(key, nativeOrganizationId);
+      const userId = userIds.get(key);
+      if (!userId) throw new Error(`native user missing for ${role}`);
+      await owner.sql.query(
+        `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+         values ($1, $2, $3, $4, now(), now())`,
+        [crypto.randomUUID(), nativeOrganizationId, userId, role],
+      );
+      await owner.sql.query(
+        "update session set active_organization_id = $1 where user_id = $2",
+        [nativeOrganizationId, userId],
+      );
+      clients.set(role, request);
+    }
+    const ownerInvitationId = crypto.randomUUID();
+    const inviteeEmail = `native-invitee-${run}@example.test`;
+    await owner.sql.query(
+      `insert into invitation
+         (id, organization_id, email, role, status, inviter_id, expires_at, created_at)
+       values ($1, $2, $3, 'owner', 'pending', $4, now() + interval '1 day', now())`,
+      [ownerInvitationId, nativeOrganizationId, inviteeEmail, inviterId],
+    );
+    const ownerUserId = userIds.get("nativeOwner") ?? "";
+    const denied = {
+      error: {
+        code: "PERMISSION_DENIED",
+        message: "ใช้เส้นทางจัดการสมาชิกใหม่",
+      },
+    };
+    const body = {
+      organizationId: nativeOrganizationId,
+      invitationId: ownerInvitationId,
+    };
+    const query = `?organizationId=${nativeOrganizationId}&userId=${ownerUserId}&id=${ownerInvitationId}`;
+
+    auditLines.length = 0;
+    let requests = 0;
+    for (const [, role] of roles) {
+      const request = clients.get(role);
+      if (!request) throw new Error(`client missing for ${role}`);
+      for (const path of blockedPaths) {
+        for (const method of ["GET", "POST"] as const) {
+          const response =
+            method === "GET"
+              ? await request("GET", `/api/auth${path}${query}`)
+              : await request("POST", `/api/auth${path}`, body);
+          expect({ role, path, method, ...response }).toEqual({
+            role,
+            path,
+            method,
+            status: 403,
+            json: denied,
+          });
+          requests += 1;
+        }
+      }
+    }
+    const adminRequest = clients.get("admin");
+    if (!adminRequest) throw new Error("admin client missing");
+    // Spelling variants of one blocked path must hit the same denial.
+    for (const variant of [
+      "/api/auth/organization/list-members/",
+      "/api/auth/Organization/List-Members",
+      "/api/auth/organization/list%2Dmembers",
+      "/api/auth//organization/list-members",
+    ]) {
+      expect({ variant, ...(await adminRequest("GET", variant)) }).toEqual({
+        variant,
+        status: 403,
+        json: denied,
+      });
+      requests += 1;
+    }
+
+    const state = await owner.sql.query<{ status: string; orgs: number }>(
+      `select i.status,
+              (select count(*)::int from organization where id = $2) as orgs
+         from invitation i where i.id = $1`,
+      [ownerInvitationId, nativeOrganizationId],
+    );
+    expect(state.rows).toEqual([{ status: "pending", orgs: 1 }]);
+
+    const denials = auditLines
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.msg === "organization access denied");
+    expect(denials).toHaveLength(requests);
+    for (const entry of denials) {
+      expect(entry).toMatchObject({ code: "PERMISSION_DENIED" });
+      const baseFields = ["level", "time", "name", "msg", "pid", "hostname"];
+      expect(
+        Object.keys(entry)
+          .filter((key) => !baseFields.includes(key))
+          .sort(),
+      ).toEqual(["action", "actorUserId", "code"]);
+      expect(String(entry.action)).toMatch(
+        /^legacy:\/api\/auth\/organization\//,
+      );
+    }
+    const serialized = auditLines.join("\n");
+    for (const sensitive of [
+      inviteeEmail,
+      ownerInvitationId,
+      nativeOrganizationId,
+      ...Object.values(emails),
+      password,
+      "session_token",
+      "cookie",
+    ]) {
+      expect(serialized).not.toContain(sensitive);
+    }
+  }, 120_000);
 });

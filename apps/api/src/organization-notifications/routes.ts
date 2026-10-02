@@ -1,9 +1,13 @@
 import {
+  invitationCancelResponseSchema,
   invitationCreateInputSchema,
   invitationCreateResponseSchema,
+  invitationResendResponseSchema,
   organizationMemberRoleUpdateResponseSchema,
   organizationMemberListQuerySchema,
   organizationMemberListResponseSchema,
+  pendingInvitationListQuerySchema,
+  pendingInvitationListResponseSchema,
 } from "@nightwatch/api-contract";
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { MiddlewareHandler } from "hono";
@@ -11,14 +15,19 @@ import type { Database } from "@nightwatch/db";
 import { AppError, type AuthEnv, type Logger } from "@nightwatch/shared";
 import { z } from "zod";
 
-import type { Auth } from "../auth";
+import { BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS, type Auth } from "../auth";
 import { buildInvitationEmail } from "../auth/emails";
 import type { Mailer } from "../auth/mailer";
 import { requireVerifiedSession } from "../me/service";
 import { auditMonitorMutation } from "../monitors/audit";
 import { notificationRouteDeclarations } from "../notifications/contract";
 import { invalidInputHook } from "../notifications/invalid-input";
-import { createOrganizationInvitation } from "./invitations";
+import {
+  cancelPendingInvitation,
+  createOrganizationInvitation,
+  listPendingInvitations,
+  resendPendingInvitation,
+} from "./invitations";
 import {
   leaveOrganization,
   listOrganizationMembers,
@@ -30,6 +39,24 @@ import {
   updateOrganizationNotificationSettings,
 } from "./service";
 
+const NATIVE_AUTH_BASE_PATH = "/api/auth";
+
+// Folds case, percent-encoding, repeated and trailing slashes so a variant
+// spelling cannot dodge the blocked set; the method is deliberately ignored.
+function normalizeNativeAuthPath(rawPath: string): string {
+  let path = rawPath;
+  try {
+    path = decodeURIComponent(rawPath);
+  } catch {
+    // Malformed encoding stays as written and matches nothing.
+  }
+  path = path
+    .toLowerCase()
+    .replace(/\/{2,}/g, "/")
+    .replace(/\/+$/, "");
+  return path.slice(NATIVE_AUTH_BASE_PATH.length);
+}
+
 // Must be installed before Better Auth's native organization routes.
 export type NativeOrganizationMutationGuard = MiddlewareHandler;
 
@@ -38,21 +65,13 @@ export function createNativeOrganizationMutationGuard(deps: {
   logger: Logger;
 }): NativeOrganizationMutationGuard {
   return async (c, next) => {
-    if (
-      c.req.method === "POST" &&
-      [
-        "/api/auth/organization/update-member-role",
-        "/api/auth/organization/remove-member",
-        "/api/auth/organization/leave",
-        "/api/auth/organization/invite-member",
-        "/api/auth/organization/accept-invitation",
-      ].includes(c.req.path)
-    ) {
+    const nativePath = normalizeNativeAuthPath(c.req.path);
+    if (BLOCKED_NATIVE_ORGANIZATION_MUTATION_PATHS.has(nativePath)) {
       const session = await deps.auth.getSession(c.req.raw.headers);
       deps.logger.warn(
         {
           actorUserId: session?.user.id ?? null,
-          action: `legacy:${c.req.path}`,
+          action: `legacy:${NATIVE_AUTH_BASE_PATH}${nativePath}`,
           code: "PERMISSION_DENIED",
         },
         "organization access denied",
@@ -204,6 +223,58 @@ const invitationCreateRoute = createRoute({
   },
 });
 
+const invitationListRoute = createRoute({
+  method: "get",
+  path: "/api/organizations/{organizationId}/invitations",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid() }),
+    query: pendingInvitationListQuerySchema,
+  },
+  responses: {
+    200: {
+      description: "Paginated pending organization invitations",
+      content: {
+        "application/json": { schema: pendingInvitationListResponseSchema },
+      },
+    },
+  },
+});
+
+const invitationCancelRoute = createRoute({
+  method: "delete",
+  path: "/api/organizations/{organizationId}/invitations/{publicId}",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid(), publicId: z.uuid() }),
+  },
+  responses: {
+    200: {
+      description: "Invitation canceled",
+      content: {
+        "application/json": { schema: invitationCancelResponseSchema },
+      },
+    },
+  },
+});
+
+const invitationResendRoute = createRoute({
+  method: "post",
+  path: "/api/organizations/{organizationId}/invitations/{publicId}/resend",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid(), publicId: z.uuid() }),
+  },
+  responses: {
+    200: {
+      description: "Invitation link rotated; SMTP transport result",
+      content: {
+        "application/json": { schema: invitationResendResponseSchema },
+      },
+    },
+  },
+});
+
 export function registerOrganizationInvitationRoutes(
   app: OpenAPIHono,
   deps: {
@@ -214,6 +285,77 @@ export function registerOrganizationInvitationRoutes(
     mailer: Mailer;
   },
 ): void {
+  app.openapi(invitationListRoute, async (c) => {
+    const { organizationId } = c.req.valid("param");
+    const { limit, offset } = c.req.valid("query");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    const body = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.invitation.list",
+      () =>
+        listPendingInvitations(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          limit,
+          offset,
+        }),
+    );
+    return c.json(body, 200);
+  });
+  app.openapi(invitationCancelRoute, async (c) => {
+    const { organizationId, publicId } = c.req.valid("param");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.invitation.cancel",
+      () =>
+        cancelPendingInvitation(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          publicId,
+        }),
+    );
+    return c.json({ canceled: true as const }, 200);
+  });
+  app.openapi(invitationResendRoute, async (c) => {
+    const { organizationId, publicId } = c.req.valid("param");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    const invitation = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.invitation.resend",
+      () =>
+        resendPendingInvitation(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          publicId,
+        }),
+    );
+    const timing = {
+      resent: true as const,
+      sentAt: invitation.sentAt,
+      expiresAt: invitation.expiresAt,
+      resendAvailableAt: invitation.resendAvailableAt,
+    };
+    const message = buildInvitationEmail(deps.authEnv, {
+      organizationName: invitation.organizationName,
+      invitationId: invitation.id,
+      inviterName: session.user.name,
+      role: invitation.role,
+    });
+    try {
+      await deps.mailer.send({ ...message, to: invitation.email });
+      return c.json({ ...timing, emailDispatch: "accepted" as const }, 200);
+    } catch {
+      deps.logger.warn(
+        { action: "organization.invitation.resend.send", code: "SMTP_FAILED" },
+        "invitation mail failed",
+      );
+      return c.json({ ...timing, emailDispatch: "failed" as const }, 200);
+    }
+  });
   app.openapi(invitationCreateRoute, async (c) => {
     const { organizationId } = c.req.valid("param");
     const { email, role } = c.req.valid("json");

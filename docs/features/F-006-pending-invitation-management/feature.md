@@ -9,7 +9,7 @@
 | outcome_status         | Not measured |
 | Scope approved by user | 2026-10-01 (ครั้งแรก): `F-006-S01`–`F-006-S03` และ `AC-01`–`AC-12`; 2026-10-01 (ครั้งที่สอง): `F-006-S04` และ `AC-16`–`AC-18` |
 | acceptanceVersion      | `F-006-AC-1` |
-| Acceptance status      | draft (freeze เมื่อผู้ใช้อนุมัติ Technical Spec) |
+| Acceptance status      | frozen (2026-10-01, อนุมัติ Technical Spec) |
 
 ## Problem and scope
 

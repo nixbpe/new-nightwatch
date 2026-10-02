@@ -1991,6 +1991,90 @@ describe("native organization membership mutation guard", () => {
     });
     expect(await membershipCount(organizationId, ownerId)).toBe(1);
   }, 120_000);
+
+  it("denies the 9 hotfix paths in the Better Auth hook when the first-layer guard is bypassed", async () => {
+    const organizationId = crypto.randomUUID();
+    const ownerEmail = userEmail("native-hook-owner");
+    memberGuardFixtureEmails.push(ownerEmail);
+    memberGuardOrganizationIds.push(organizationId);
+    await database.sql.query(
+      "insert into organization (id, name, slug, created_at) values ($1, $2, $3, now())",
+      [organizationId, `Native Hook ${RUN}`, `native-hook-${RUN}`],
+    );
+    const ownerInvitationId = await createInvitation(
+      ownerEmail,
+      "viewer",
+      organizationId,
+    );
+    const owner = await admitUser("native-hook-owner", ownerInvitationId);
+    const ownerId = await sqlUserId(owner.email);
+    await database.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $2, $3, 'owner', now(), now())`,
+      [crypto.randomUUID(), organizationId, ownerId],
+    );
+    const pendingId = await createInvitation(
+      userEmail("native-hook-invitee"),
+      "owner",
+      organizationId,
+    );
+    const directAuth = createAuth({
+      env,
+      authEnv,
+      logger: createLogger({ level: "silent", name: "auth-it" }),
+      database,
+      mailer,
+    });
+    const headers = sessionHeaders(owner.request);
+    headers.set("content-type", "application/json");
+    const nativeEndpoints = [
+      ["GET", "list-invitations"],
+      ["GET", "get-full-organization"],
+      ["POST", "cancel-invitation"],
+      ["GET", "get-invitation"],
+      ["POST", "reject-invitation"],
+      ["GET", "list-user-invitations"],
+      ["GET", "list-members"],
+      ["GET", "get-active-member-role"],
+      ["POST", "delete"],
+    ] as const;
+    for (const [method, endpoint] of nativeEndpoints) {
+      const query = `?organizationId=${organizationId}&id=${pendingId}`;
+      const response = await directAuth.handler(
+        new Request(
+          `${authEnv.BETTER_AUTH_URL}/api/auth/organization/${endpoint}${
+            method === "GET" ? query : ""
+          }`,
+          {
+            method,
+            headers,
+            body:
+              method === "POST"
+                ? JSON.stringify({ organizationId, invitationId: pendingId })
+                : undefined,
+          },
+        ),
+      );
+      // Native get-invitation and reject-invitation also answer 403 on their
+      // own, so only the hook's body proves the path is in the blocked set.
+      expect({
+        endpoint,
+        status: response.status,
+        body: await response.json(),
+      }).toMatchObject({
+        endpoint,
+        status: 403,
+        body: { message: "ใช้เส้นทางจัดการสมาชิกใหม่" },
+      });
+    }
+    const state = await database.sql.query<{ status: string; orgs: number }>(
+      `select i.status,
+              (select count(*)::int from organization where id = $2) as orgs
+         from invitation i where i.id = $1`,
+      [pendingId, organizationId],
+    );
+    expect(state.rows).toEqual([{ status: "pending", orgs: 1 }]);
+  }, 120_000);
 });
 describe("duplicate-account signup stays enumeration-safe and harmless", () => {
   it("answers the generic success without touching the existing account", async () => {

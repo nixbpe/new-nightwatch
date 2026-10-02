@@ -157,6 +157,8 @@ function logSafeOrganizationPath(path: string): string {
     | "organization-route"
     | "member"
     | "member-route"
+    | "invitations"
+    | "invitation-route"
     | "monitors"
     | "monitor-route"
     | "other" = "organization";
@@ -182,8 +184,16 @@ function logSafeOrganizationPath(path: string): string {
         return notificationSettingsSegment;
       }
       if (state === "organization-route" && segment === invitationsSegment) {
-        state = "other";
+        state = "invitations";
         return invitationsSegment;
+      }
+      if (state === "invitations") {
+        state = "invitation-route";
+        return ":publicId";
+      }
+      if (state === "invitation-route" && segment === "resend") {
+        state = "other";
+        return "resend";
       }
       if (state === "organization-route" && segment === monitorsSegment) {
         state = "monitors";
