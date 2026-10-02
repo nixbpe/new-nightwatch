@@ -10,6 +10,8 @@ people and projects) — not implemented screens. They follow
 [`../../design-system.md`](../../design-system.md); where the two disagree, the
 design system doc is the source of truth and these images should be regenerated.
 
+The current design reference is the Claude Design canvas https://claude.ai/artifact/2Rc9dSWEvHwrM1zrFeFchF; the images below are the earlier exploration.
+
 ## Files
 
 | Body variant       | Light                     | Dark                     |
