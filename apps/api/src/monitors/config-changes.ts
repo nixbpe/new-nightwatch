@@ -34,30 +34,74 @@ function value(
   ];
 }
 
-function headerMap(headers: StoredHeader[]): Map<string, StoredHeader> {
-  return new Map(headers.map((header) => [header.name.toLowerCase(), header]));
+// A secret header keeps its slot id across a rename, so ids pair first and
+// names (case-insensitive) pair the rest.
+function pairHeaders(
+  previous: StoredHeader[],
+  next: StoredHeader[],
+): [StoredHeader | undefined, StoredHeader | undefined][] {
+  const remaining = new Set(previous);
+  const take = (match: (old: StoredHeader) => boolean) => {
+    const found = [...remaining].find(match);
+    if (found) remaining.delete(found);
+    return found;
+  };
+  const pairs = next.map(
+    (current): [StoredHeader | undefined, StoredHeader] => [
+      current.id === undefined
+        ? undefined
+        : take((old) => old.id?.toLowerCase() === current.id?.toLowerCase()),
+      current,
+    ],
+  );
+  const paired = pairs.map(
+    ([old, current]): [StoredHeader | undefined, StoredHeader] => [
+      old ??
+        take(
+          (candidate) =>
+            candidate.name.toLowerCase() === current.name.toLowerCase(),
+        ),
+      current,
+    ],
+  );
+  return [
+    ...paired,
+    ...[...remaining].map((old): [StoredHeader, undefined] => [old, undefined]),
+  ];
 }
+
+const renamed = (old: StoredHeader, current: StoredHeader): boolean =>
+  old.name.toLowerCase() !== current.name.toLowerCase();
 
 function headerChanges(
   previous: StoredHeader[],
   next: StoredHeader[],
 ): MonitorConfigChange[] {
-  const before = headerMap(previous);
-  const after = headerMap(next);
   const changes: MonitorConfigChange[] = [];
-  for (const key of new Set([...before.keys(), ...after.keys()])) {
-    const old = before.get(key);
-    const current = after.get(key);
-    const field = `headers.${(current ?? old)?.name ?? key}`;
+  for (const [old, current] of pairHeaders(previous, next)) {
+    const oldField = old && `headers.${old.name}`;
+    const field = `headers.${(current ?? old)?.name ?? ""}`;
     // A secret label on either side keeps every value out of the feed, so the
     // value of a header that just became secret does not linger for 30 days.
     if (old?.secret === true || current?.secret === true) {
-      if (old?.secret === true && current?.secret === true) continue;
+      if (old?.secret === true && current?.secret === true) {
+        // Same slot: a kept or replaced value is reported by the slot diff.
+        if (renamed(old, current)) {
+          changes.push({ field: oldField ?? field, kind: "changed" });
+          changes.push({ field, kind: "changed" });
+        }
+        continue;
+      }
       changes.push({
         field,
         kind: "secret",
         action: current?.secret === true ? "set" : "deleted",
       });
+      continue;
+    }
+    if (old && current && renamed(old, current)) {
+      changes.push(...value(oldField ?? field, old.value ?? null, null));
+      changes.push(...value(field, null, current.value ?? null));
       continue;
     }
     changes.push(...value(field, old?.value ?? null, current?.value ?? null));

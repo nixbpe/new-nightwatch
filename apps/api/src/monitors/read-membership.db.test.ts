@@ -28,6 +28,34 @@ afterAll(async () => {
   await ctx.close();
 });
 
+// The role change commits right after the pre-transaction membership lookup.
+function demotedAfterPreCheck(org: TestOrganization, userId: string): Database {
+  const pool = ctx.runtime.sql;
+  const sql = new Proxy(pool, {
+    get(target, property) {
+      if (property === "query") {
+        return async (...args: Parameters<typeof target.query>) => {
+          const result = await (
+            target.query as (...a: unknown[]) => Promise<unknown>
+          )(...args);
+          if (typeof args[0] === "string" && args[0].includes("from member")) {
+            await ctx.owner.sql.query(
+              "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+              [org.id, userId],
+            );
+          }
+          return result;
+        };
+      }
+      const value: unknown = Reflect.get(target, property);
+      return typeof value === "function"
+        ? (value as (...a: unknown[]) => unknown).bind(target)
+        : value;
+    },
+  });
+  return { ...ctx.runtime, sql };
+}
+
 // The removal commits right after the pre-transaction membership lookup and
 // before the read transaction opens: the window the in-transaction check closes.
 function removedAfterPreCheck(org: TestOrganization, userId: string): Database {
@@ -116,3 +144,37 @@ describe("a member removed between the pre-check and the read transaction", () =
 
 type Identity = { organizationId: string; actorUserId: string };
 const query = { limit: 25, offset: 0 } as const;
+
+describe("an owner demoted between the pre-check and the read transaction", () => {
+  it("is denied the last response", async () => {
+    const org = await ctx.createOrganization("read-demoted-response");
+    const monitorId = await seedMonitor(ctx, org.id);
+    await expect(
+      getLastResponse(
+        demotedAfterPreCheck(org, org.users.owner),
+        { organizationId: org.id, actorUserId: org.users.owner },
+        monitorId,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: "PERMISSION_DENIED" });
+  });
+
+  it("sees the event actor as member_hidden, not by name", async () => {
+    const org = await ctx.createOrganization("read-demoted-feed");
+    const monitorId = await seedMonitor(ctx, org.id);
+    await ctx.owner.sql.query(
+      `insert into monitor_events (monitor_id, tenant_id, kind, actor_kind, actor_user_id)
+       values ($1, $2, 'paused', 'user', $3)`,
+      [monitorId, org.id, org.users.admin],
+    );
+    const body = await listEvents(
+      demotedAfterPreCheck(org, org.users.owner),
+      { organizationId: org.id, actorUserId: org.users.owner },
+      monitorId,
+      { limit: 20, offset: 0 },
+    );
+    expect(body.events).toMatchObject([
+      { kind: "paused", actor: { kind: "member_hidden" } },
+    ]);
+    expect(JSON.stringify(body)).not.toContain(org.users.admin);
+  });
+});

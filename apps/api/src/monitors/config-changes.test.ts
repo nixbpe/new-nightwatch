@@ -105,8 +105,8 @@ describe("diffConfig", () => {
       ),
     ).toEqual([
       { field: "headers.X-Old", kind: "value", before: "a", after: "b" },
-      { field: "headers.X-Gone", kind: "value", before: "g", after: null },
       { field: "headers.X-Added", kind: "value", before: null, after: "n" },
+      { field: "headers.X-Gone", kind: "value", before: "g", after: null },
     ]);
   });
 
@@ -144,6 +144,47 @@ describe("diffConfig", () => {
       action: "deleted",
     });
     expect(JSON.stringify(toPlain)).not.toContain("plain-after");
+  });
+
+  it("reports a renamed header like a plain rename, and a kept secret slot as no secret action", () => {
+    const keep = diff(
+      { headers: [{ id: "h1", name: "X-B", secret: true }] },
+      noSecrets,
+      ["header.h1"],
+      { ...base, headers: [{ id: "h1", name: "X-A", secret: true }] },
+    );
+    expect(keep).toEqual([
+      { field: "headers.X-A", kind: "changed" },
+      { field: "headers.X-B", kind: "changed" },
+    ]);
+
+    const replaced = diff(
+      { headers: [{ id: "h1", name: "X-B", secret: true }] },
+      { writes: [{ slot: "header.h1", value: "v" }], keeps: [], deletes: [] },
+      ["header.h1"],
+      { ...base, headers: [{ id: "h1", name: "X-A", secret: true }] },
+    );
+    expect(replaced).toContainEqual({
+      field: "header.h1",
+      kind: "secret",
+      action: "replaced",
+    });
+    expect(
+      replaced.some(
+        (c) => c.kind === "secret" && c.field.startsWith("headers."),
+      ),
+    ).toBe(false);
+
+    const plain = diff(
+      { headers: [{ name: "X-B", value: "v", secret: false }] },
+      noSecrets,
+      [],
+      { ...base, headers: [{ name: "X-A", value: "v", secret: false }] },
+    );
+    expect(plain).toEqual([
+      { field: "headers.X-B", kind: "value", before: null, after: "v" },
+      { field: "headers.X-A", kind: "value", before: "v", after: null },
+    ]);
   });
 
   it("masks query param values and reports only add, remove and rename", () => {

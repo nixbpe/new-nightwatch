@@ -251,7 +251,7 @@ describe("Two Edits racing on one version", () => {
 });
 
 describe("Pause and Resume write the actor", () => {
-  it("records the session user for both, and the feed shows the pause close", async () => {
+  it("records the session user for both, and the feed shows who paused and resumed", async () => {
     const monitor = await created();
     expect((await action(org.users.admin, monitor, "pause")).status).toBe(200);
     expect((await action(org.users.owner, monitor, "resume")).status).toBe(200);
@@ -259,6 +259,19 @@ describe("Pause and Resume write the actor", () => {
       { kind: "paused", actor_kind: "user", actor_user_id: org.users.admin },
       { kind: "resumed", actor_kind: "user", actor_user_id: org.users.owner },
     ]);
+    const feed = await ctx.call(
+      org.users.owner,
+      "GET",
+      monitorsPath(org.id, `/${monitor.id}/events`),
+    );
+    const { events } = monitorEventsResponseSchema.parse(feed.json);
+    expect(events.map((event) => event.kind).sort()).toEqual([
+      "paused",
+      "resumed",
+    ]);
+    for (const event of events) {
+      expect(event).toMatchObject({ actor: { kind: "member" } });
+    }
   });
 
   it("writes no event for a Pause of an already paused monitor", async () => {
