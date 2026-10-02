@@ -1154,11 +1154,15 @@ describe("purge_expired_monitor_data", () => {
 });
 
 describe("purge of monitor_last_responses", () => {
+  const monitorIds: string[] = [];
+
   async function seedLastResponse(daysAgo: number): Promise<string> {
     const monitorId = await withTenantContextRaw(database, tenantA, (client) =>
       insertMonitor(client, tenantA),
     );
-    // A paused monitor gets no new result, so its row is never overwritten.
+    monitorIds.push(monitorId);
+    // Written directly with an old scheduled_for: a paused monitor gets no
+    // new result, so nothing overwrites its row.
     await owner.query(
       `insert into monitor_last_responses
          (monitor_id, tenant_id, scheduled_for, checked_at, config_version,
@@ -1170,18 +1174,53 @@ describe("purge of monitor_last_responses", () => {
     return monitorId;
   }
 
-  it("deletes a last response older than 30 days by scheduled_for and keeps a 29-day one", async () => {
-    const old = await seedLastResponse(31);
-    const recent = await seedLastResponse(29);
+  async function drain(): Promise<void> {
     let deleted = 1;
     for (let i = 0; i < 50 && deleted > 0; i += 1) {
       deleted = await purgeExpiredMonitorData(database, { limit: 1000 });
     }
+  }
+
+  afterAll(async () => {
+    if (!ownerConnected) return;
+    await owner.query("delete from monitors where id = any($1::uuid[])", [
+      monitorIds,
+    ]);
+  });
+
+  it("deletes a last response older than 30 days by scheduled_for and keeps a 29-day one", async () => {
+    const old = await seedLastResponse(31);
+    const recent = await seedLastResponse(29);
+    await drain();
     expect(await ownerCount("monitor_last_responses", [old])).toBe(0);
     expect(await ownerCount("monitor_last_responses", [recent])).toBe(1);
-    await owner.query("delete from monitors where id = any($1::uuid[])", [
-      [old, recent],
-    ]);
+  });
+
+  it("spends the remaining limit on last responses after incidents", async () => {
+    await drain();
+    const expiredIncidents = await seedLastResponse(0);
+    for (let i = 0; i < 2; i += 1) {
+      await owner.query(
+        `insert into monitor_incidents
+           (monitor_id, tenant_id, started_at, ended_at, end_reason, start_reason)
+         values ($1, $2, now() - interval '40 days', now() - interval '31 days',
+                 'recovered', 'timeout')`,
+        [expiredIncidents, tenantA],
+      );
+    }
+    const lastA = await seedLastResponse(31);
+    const lastB = await seedLastResponse(31);
+    const deleted = await purgeExpiredMonitorData(database, { limit: 3 });
+    expect(deleted).toBe(3);
+    const left =
+      (await ownerCount("monitor_last_responses", [lastA])) +
+      (await ownerCount("monitor_last_responses", [lastB]));
+    expect(left).toBe(1);
+    const incidents = await owner.query<{ n: string }>(
+      "select count(*) as n from monitor_incidents where monitor_id = $1",
+      [expiredIncidents],
+    );
+    expect(Number(incidents.rows[0]?.n)).toBe(0);
   });
 });
 
@@ -1429,7 +1468,9 @@ describe("monitor_events feed columns", () => {
       { kind: "resumed", actor_kind: "user", actor_user_id: userId },
     ]);
 
-    await owner.query('delete from "user" where id = $1', [userId]);
+    // Runtime role: the FK set null runs under FORCE RLS without an UPDATE
+    // grant on monitor_events.
+    await database.sql.query('delete from "user" where id = $1', [userId]);
     expect(await actors()).toEqual([
       { kind: "paused", actor_kind: "unrecorded", actor_user_id: null },
       { kind: "resumed", actor_kind: "user", actor_user_id: null },
@@ -1532,6 +1573,9 @@ describe("monitor_last_responses CHECK constraints", () => {
     await expect(insertLast({ detail_omitted: "other" })).rejects.toThrow(
       /monitor_last_responses_detail_omitted_check/,
     );
+    await expect(insertLast({ outcome: "unknown" })).rejects.toThrow(
+      /monitor_last_responses_outcome_check/,
+    );
     await expect(insertLast({ http_version: "HTTP/2" })).rejects.toThrow(
       /monitor_last_responses_http_version_check/,
     );
@@ -1559,29 +1603,45 @@ describe("monitor_last_responses CHECK constraints", () => {
 });
 
 describe("monitor_incidents end values", () => {
-  it("stores end_http_status and end_response_time_ms and leaves existing incidents null", async () => {
-    const r = await owner.query<{
-      end_http_status: number | null;
-      end_response_time_ms: number | null;
-    }>(
-      `select end_http_status, end_response_time_ms from monitor_incidents
-       where monitor_id = $1`,
-      [seededA.monitorId],
+  it("defaults end_http_status and end_response_time_ms to null and stores them on close", async () => {
+    const monitorId = await withTenantContextRaw(database, tenantA, (client) =>
+      insertMonitor(client, tenantA),
     );
-    expect(r.rows).toEqual([
-      { end_http_status: null, end_response_time_ms: null },
-    ]);
-    await withTenantContextRaw(database, tenantA, (client) =>
-      client.query(
-        `update monitor_incidents set end_http_status = 200, end_response_time_ms = 80
-         where monitor_id = $1`,
-        [seededA.monitorId],
-      ),
-    );
-    const after = await owner.query<{ end_http_status: number }>(
-      "select end_http_status from monitor_incidents where monitor_id = $1",
-      [seededA.monitorId],
-    );
-    expect(after.rows[0]?.end_http_status).toBe(200);
+    try {
+      const read = () =>
+        owner.query<{
+          end_http_status: number | null;
+          end_response_time_ms: number | null;
+        }>(
+          `select end_http_status, end_response_time_ms from monitor_incidents
+           where monitor_id = $1`,
+          [monitorId],
+        );
+      await withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          `insert into monitor_incidents
+             (monitor_id, tenant_id, started_at, start_reason)
+           values ($1, $2, now(), 'timeout')`,
+          [monitorId, tenantA],
+        ),
+      );
+      expect((await read()).rows).toEqual([
+        { end_http_status: null, end_response_time_ms: null },
+      ]);
+      await withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          `update monitor_incidents
+           set ended_at = now(), end_reason = 'recovered',
+               end_http_status = 200, end_response_time_ms = 80
+           where monitor_id = $1`,
+          [monitorId],
+        ),
+      );
+      expect((await read()).rows).toEqual([
+        { end_http_status: 200, end_response_time_ms: 80 },
+      ]);
+    } finally {
+      await owner.query("delete from monitors where id = $1", [monitorId]);
+    }
   });
 });

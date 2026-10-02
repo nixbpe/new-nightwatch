@@ -668,6 +668,9 @@ export const monitorEvents = pgTable(
     }).onDelete("cascade"),
     index("monitor_events_monitor_idx").on(table.monitorId, table.occurredAt),
     index("monitor_events_retention_idx").on(table.occurredAt),
+    index("monitor_events_actor_user_idx")
+      .on(table.actorUserId)
+      .where(sql`${table.actorUserId} is not null`),
   ],
 );
 

@@ -62,13 +62,18 @@ alter table monitor_events
       )
     );
 
+-- Deleting a user sets actor_user_id null; without an index that scan is
+-- sequential over every monitor event.
+create index monitor_events_actor_user_idx
+  on monitor_events (actor_user_id) where actor_user_id is not null;
+
 create table monitor_last_responses (
   monitor_id uuid primary key,
   tenant_id uuid not null references organization (id) on delete cascade,
   scheduled_for timestamptz not null,
   checked_at timestamptz not null,
   config_version integer not null,
-  outcome text not null,
+  outcome text not null check (outcome in ('pass', 'fail', 'check_error')),
   failure_reason text,
   url_masked text not null,
   detail_omitted text,
