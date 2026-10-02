@@ -363,34 +363,48 @@ describe("AuditLogPage custom range (AC-11)", () => {
 });
 
 describe("AuditLogPage states (AC-08)", () => {
-  it("uses different copy for no data and for no match, and ล้างตัวกรอง only for no match", async () => {
+  const NO_DATA = /ยังไม่มีบันทึกกิจกรรมในช่วงที่เก็บไว้ \(ถึง 2025-10-03\)/;
+  const NO_MATCH =
+    /ไม่พบบันทึกที่ตรงกับตัวกรองนี้ ลองขยายช่วงเวลาหรือล้างตัวกรอง/;
+
+  it("claims no data only when the actors list is empty too", async () => {
     listMock.mockResolvedValue(makeList([], 0));
-    const view = open();
-    expect(
-      await screen.findByText(
-        /ยังไม่มีบันทึกกิจกรรมในช่วงที่เก็บไว้ \(ถึง 2025-10-03\)/,
-      ),
-    ).toBeInTheDocument();
+    actorsMock.mockResolvedValue({ actors: [] });
+    open();
+    expect(await screen.findByText(NO_DATA)).toBeInTheDocument();
     expect(
       screen.getByText(/ไม่ได้ยืนยันว่าไม่มีกิจกรรมในหมวดที่ไม่ได้บันทึก/),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/ไม่พบบันทึกที่ตรงกับตัวกรองนี้/),
-    ).not.toBeInTheDocument();
-    view.unmount();
+    expect(screen.queryByText(NO_MATCH)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "ล้างตัวกรอง" })).toHaveLength(
+      1,
+    );
+  });
 
-    open("?q=zzz");
-    expect(
-      await screen.findByText(
-        /ไม่พบบันทึกที่ตรงกับตัวกรองนี้ ลองขยายช่วงเวลาหรือล้างตัวกรอง/,
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/ยังไม่มีบันทึกกิจกรรมในช่วงที่เก็บไว้/),
-    ).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "ล้างตัวกรอง" }).length).toBe(
+  it("reads an empty default 7 days as no match when events exist in retention", async () => {
+    listMock.mockResolvedValue(makeList([], 0));
+    open();
+    expect(await screen.findByText(NO_MATCH)).toBeInTheDocument();
+    expect(screen.queryByText(NO_DATA)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "ล้างตัวกรอง" })).toHaveLength(
       2,
     );
+  });
+
+  it("never claims no data while the actors list is loading or failed", async () => {
+    listMock.mockResolvedValue(makeList([], 0));
+    const pending = Promise.withResolvers<{ actors: [] }>();
+    actorsMock.mockReturnValue(pending.promise);
+    const view = open();
+    expect(await screen.findByText(NO_MATCH)).toBeInTheDocument();
+    expect(screen.queryByText(NO_DATA)).not.toBeInTheDocument();
+    view.unmount();
+
+    actorsMock.mockRejectedValue(new ApiError("INTERNAL", "x", 500));
+    open();
+    expect(await screen.findByText(NO_MATCH)).toBeInTheDocument();
+    await act(() => Promise.resolve());
+    expect(screen.queryByText(NO_DATA)).not.toBeInTheDocument();
   });
 
   it("keeps the filters, hides the count and retries on a failed load", async () => {

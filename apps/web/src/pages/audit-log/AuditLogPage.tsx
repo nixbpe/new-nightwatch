@@ -35,7 +35,7 @@ import {
 import { AuditDenied } from "./AuditDenied";
 import { AuditFilterBar } from "./AuditFilterBar";
 import { AuditTable, type AuditListReturnState } from "./AuditTable";
-import { customRangeError, filterIdentity, hasActiveFilters } from "./filters";
+import { customRangeError, filterIdentity } from "./filters";
 import { RecordingScopeNote } from "./RecordingScopeNote";
 
 const TITLE = "บันทึกกิจกรรมองค์กร";
@@ -283,7 +283,9 @@ function AuditLogForOrganization({
       : formatAuditDate(new Date(scopeInfo.recordingStartedAt), preferences);
   const totalText =
     data === undefined ? null : data.page.total.toLocaleString("en-US");
-  const filtered = hasActiveFilters(filters);
+  // "No data" is claimed only when the actors endpoint (events within retention) is known to be
+  // empty too; while it is loading or failed, an empty list reads as "no match".
+  const noData = actors.isSuccess && actors.data.actors.length === 0;
 
   let body;
   if (rangeError !== undefined) {
@@ -308,11 +310,11 @@ function AuditLogForOrganization({
     body = (
       <Card padding="md">
         <p className="text-sm">
-          {filtered
+          {!noData
             ? "ไม่พบบันทึกที่ตรงกับตัวกรองนี้ ลองขยายช่วงเวลาหรือล้างตัวกรอง"
             : `ยังไม่มีบันทึกกิจกรรมในช่วงที่เก็บไว้ (ถึง ${formatAuditDate(new Date(data.retainedFrom), preferences)}) ข้อความนี้ไม่ได้ยืนยันว่าไม่มีกิจกรรมในหมวดที่ไม่ได้บันทึก`}
         </p>
-        {filtered ? (
+        {!noData ? (
           <div>
             <Button
               type="button"
