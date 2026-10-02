@@ -335,13 +335,24 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                     fill={`url(#${patternId})`}
                   />
                   {w > 84 ? (
-                    <text
-                      x={start + 6}
-                      y={MARGIN.top + 14}
-                      className="fill-foreground-secondary text-xs"
-                    >
-                      ไม่มีข้อมูล
-                    </text>
+                    <>
+                      <rect
+                        data-chart-part="gap-label-pad"
+                        x={start + 3}
+                        y={MARGIN.top + 2}
+                        width={72}
+                        height={18}
+                        rx={3}
+                        className="fill-surface"
+                      />
+                      <text
+                        x={start + 8}
+                        y={MARGIN.top + 15}
+                        className="fill-foreground-secondary text-xs"
+                      >
+                        ไม่มีข้อมูล
+                      </text>
+                    </>
                   ) : null}
                 </g>
               );

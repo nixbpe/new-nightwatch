@@ -666,8 +666,8 @@ describe("Overview success", () => {
     await screen.findByText("Fresh");
     const row = within(rowOf("Fresh"));
     expect(row.getAllByText("ไม่มีข้อมูล").length).toBeGreaterThanOrEqual(3);
-    expect(row.getByText("97.5%")).toBeInTheDocument();
-    expect(row.getByText("ครอบคลุม 61%")).toBeInTheDocument();
+    expect(row.getByText("97.50%")).toBeInTheDocument();
+    expect(row.getByText("ครอบคลุม 61.00%")).toBeInTheDocument();
   });
 
   it("marks each last check time with its instant", async () => {

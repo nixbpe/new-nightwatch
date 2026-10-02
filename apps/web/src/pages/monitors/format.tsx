@@ -62,6 +62,20 @@ export function formatNumber(value: number): string {
   return numberFormat.format(value);
 }
 
+const percentFormat = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Uptime and coverage percentages always show 2 decimals, so 41 reads 41.00
+ * beside 40.77. Rounds down so a window with any failed check never reads
+ * 100.00 (CMP-01: data never looks healthier than it is).
+ */
+export function formatPercent(value: number): string {
+  return percentFormat.format(Math.floor(value * 100) / 100);
+}
+
 const THAI = /[\u0e00-\u0e7f]/;
 
 /**

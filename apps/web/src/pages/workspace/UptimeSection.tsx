@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { MockupFrame } from "../../components/ui/mockup-frame";
 import { SectionHeader } from "../../components/ui/section-header";
 import { cn } from "@/lib/utils";
-import { formatNumber } from "../monitors/format";
+import { formatNumber, formatPercent } from "../monitors/format";
 import { NO_DATA } from "../monitors/MonitorTable";
 import type { MonitorRow } from "./rows";
 
@@ -85,14 +85,14 @@ export function UptimeSection({
                       NO_DATA
                     ) : (
                       <span className="font-mono">
-                        {formatNumber(percent)}%
+                        {formatPercent(percent)}%
                       </span>
                     )}
                     {percent !== null && coveragePercent < 100 ? (
                       <span className="block text-xs text-foreground-secondary">
                         ครอบคลุม{" "}
                         <span className="font-mono">
-                          {formatNumber(coveragePercent)}%
+                          {formatPercent(coveragePercent)}%
                         </span>
                       </span>
                     ) : null}

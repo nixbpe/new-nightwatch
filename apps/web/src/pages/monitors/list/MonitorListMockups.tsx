@@ -19,7 +19,7 @@ export function SortMockup() {
     <MockupFrame
       label="การเรียงลำดับรายการ"
       issue={59}
-      className="w-60 max-w-full self-start"
+      className="w-fit min-w-60 max-w-full self-start"
     >
       <label className="flex flex-col gap-2 text-sm">
         เรียงตาม

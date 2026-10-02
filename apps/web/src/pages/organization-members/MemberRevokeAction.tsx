@@ -205,7 +205,7 @@ export function MemberRevokeButton({
     <Button
       {...{ [REVOKE_ATTRIBUTE]: member.id }}
       type="button"
-      variant="ghost"
+      variant="outline"
       size="sm"
       disabled={pending}
       aria-label={`ถอน ${member.name} ออกจากองค์กร`}

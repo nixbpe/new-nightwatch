@@ -7,6 +7,7 @@ import { SectionHeader } from "../../../components/ui/section-header";
 import {
   formatDuration,
   formatNumber,
+  formatPercent,
   formatTimeOrDate,
   formatTimeWithSeconds,
   HEALTH_REASON_LABELS,
@@ -66,7 +67,7 @@ function UptimeWindow({
         {window.percent === null ? (
           <span className="font-sans text-base font-normal">{NO_DATA}</span>
         ) : (
-          `${formatNumber(window.percent)}%`
+          `${formatPercent(window.percent)}%`
         )}
       </dd>
       {window.percent === null ? null : (
@@ -75,7 +76,7 @@ function UptimeWindow({
           <span className="font-mono">{formatNumber(window.checks)}</span> ครั้ง
           ครอบคลุม{" "}
           <span className="font-mono">
-            {formatNumber(window.coveragePercent)}%
+            {formatPercent(window.coveragePercent)}%
           </span>
         </dd>
       )}

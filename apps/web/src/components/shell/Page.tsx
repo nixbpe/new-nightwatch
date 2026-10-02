@@ -111,7 +111,7 @@ export function PageHeader({
           className={cn(
             "mt-2.5 text-[28px] leading-9 font-semibold text-heading",
             titleTabIndex !== undefined &&
-              "outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "w-fit max-w-full rounded-[4px] outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             titleClassName,
           )}
           ref={titleRef}
