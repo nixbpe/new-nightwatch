@@ -1,6 +1,10 @@
 import type { OutboundResponse } from "../outbound-http";
 import { decodeBody } from "./assertions";
-import { createSecretMasker, type SecretMasker } from "./mask-secrets";
+import {
+  createSecretMasker,
+  createWorkBudget,
+  type SecretMasker,
+} from "./mask-secrets";
 import type { ResponseSnapshot, SnapshotHeader } from "./types";
 
 const MAX_HEADERS = 50;
@@ -180,7 +184,9 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
   };
   // Query values and the request body are not needles: a short non-secret needle
   // would blank ordinary text, and those requests keep no target text at all.
-  const redact = createSecretMasker(input.secretValues);
+  // One budget for the whole snapshot, spent in display order: url, reason, headers, body.
+  const budget = createWorkBudget();
+  const redact = createSecretMasker(input.secretValues, { budget });
   // finalUrl comes from the target's Location header, so it is target text too.
   const url = redact(response.finalUrl);
   if (input.requestValues) {
@@ -205,7 +211,7 @@ export function buildResponseSnapshot(input: SnapshotInput): ResponseSnapshot {
   const { headers, truncated } = headersOf(
     response,
     redact,
-    createSecretMasker(input.secretValues, { lowercase: true }),
+    createSecretMasker(input.secretValues, { lowercase: true, budget }),
     maskedNames,
   );
   return {

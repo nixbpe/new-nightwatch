@@ -1,13 +1,22 @@
 const MASK = "•••";
 
 /**
- * Limits for one call, past which the text is masked whole (fail closed) and
- * `cutShort` is set: characters compared by `indexOf`, and characters decoded
- * into views.
+ * Work one snapshot may spend across all its masking calls, in characters compared
+ * by `indexOf` and characters decoded into views. Past it each further text is
+ * masked whole (fail closed) and `cutShort` is set.
  */
+/** Decoding layers undone in one view, in any order. */
 const LAYERS = 2;
-const SCAN_BUDGET = 24 << 20;
-const VIEW_BUDGET = 2 << 20;
+
+export interface WorkBudget {
+  scan: number;
+  view: number;
+}
+
+export const createWorkBudget = (): WorkBudget => ({
+  scan: 48 << 20,
+  view: 4 << 20,
+});
 
 /**
  * Most original characters one needle character can stand for after two decoding
@@ -236,7 +245,7 @@ const latin1Of = (text: string): string =>
  */
 export function createSecretMasker(
   secretValues: readonly string[],
-  options: { lowercase?: boolean } = {},
+  options: { lowercase?: boolean; budget?: WorkBudget } = {},
 ): SecretMasker {
   const lower = options.lowercase === true;
   const norm = (text: string) =>
@@ -285,17 +294,16 @@ export function createSecretMasker(
     { applies: (t) => t.includes("\\"), run: jsonAtom(lower) },
   ];
 
-  let scanLeft = SCAN_BUDGET;
-  let viewLeft = VIEW_BUDGET;
+  const budget = options.budget ?? createWorkBudget();
   let cutShort = false;
 
   const rangesIn = (view: View, ranges: [number, number][]): boolean => {
     for (const needle of needles) {
       for (let from = 0; ;) {
         const at = view.text.indexOf(needle, from);
-        scanLeft -=
+        budget.scan -=
           (at === -1 ? view.text.length - from : at - from) + needle.length;
-        if (scanLeft < 0) return false;
+        if (budget.scan < 0) return false;
         if (at === -1) break;
         ranges.push([
           view.start === null ? at : (view.start[at] as number),
@@ -322,8 +330,8 @@ export function createSecretMasker(
     if (layer === LAYERS) return true;
     for (const atom of atoms) {
       if (!atom.applies(view.text)) continue;
-      viewLeft -= view.text.length;
-      if (viewLeft < 0) return false;
+      budget.view -= view.text.length;
+      if (budget.view < 0) return false;
       const decoded = atom.run(view);
       if (decoded !== null && !scanTree(decoded, layer + 1, ranges)) {
         return false;
@@ -334,8 +342,6 @@ export function createSecretMasker(
 
   const mask = (text: string, safeEnd?: number): string => {
     cutShort = false;
-    scanLeft = SCAN_BUDGET;
-    viewLeft = VIEW_BUDGET;
     if (needles.length === 0) return text.slice(0, safeEnd);
     const ranges: [number, number][] = [];
     const root: View = {

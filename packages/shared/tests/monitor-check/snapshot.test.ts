@@ -1220,4 +1220,48 @@ describe("work limits", () => {
     expect(snapshot.body.text.startsWith("%41+")).toBe(true);
     expect(snapshot.body.text).not.toBe("•••");
   });
+
+  it("spends one budget per snapshot, so later headers and the body fail closed", async () => {
+    const many = Array.from({ length: 32 }, (_, i) => `${thai}${String(i)}`);
+    const headers: [string, string][] = [["Content-Type", "text/plain"]];
+    for (let i = 0; i < 49; i++) {
+      headers.push([`X-H${String(i)}`, noisy.slice(0, 1300)]);
+    }
+    const snapshot = await check(
+      response({ headers, body: "plain body" }),
+      {
+        headers: many.map((_, i) =>
+          secretHeader(`h${String(i)}`, `X-S${String(i)}`),
+        ),
+      },
+      Object.fromEntries(
+        many.map((value, i) => [`header.h${String(i)}`, value]),
+      ),
+    );
+    const values = snapshot.headers.map((header) => header.value);
+    // Earlier headers were scanned; once the budget ran out the rest are masked whole.
+    expect(values[1]).not.toBe("•••");
+    expect(values[values.length - 1]).toBe("•••");
+    expect(snapshot.body).toMatchObject({
+      kind: "text",
+      text: "•••",
+      truncated: true,
+    });
+    expect(JSON.stringify(snapshot)).not.toContain(thai);
+  });
+
+  it("does not spend the budget of one snapshot on the next", async () => {
+    const first = await check(
+      response({ headers: [["X-A", noisy.slice(0, 1300)]], body: "plain" }),
+      { headers: [secretHeader("h1", "X-Own")] },
+      { "header.h1": thai },
+    );
+    const second = await check(
+      response({ headers: [["Content-Type", "text/plain"]], body: "plain" }),
+      { headers: [secretHeader("h1", "X-Own")] },
+      { "header.h1": thai },
+    );
+    expect(first.headers[0]?.value).not.toBe("•••");
+    expect(second.body).toMatchObject({ text: "plain" });
+  });
 });
