@@ -168,8 +168,8 @@ function summaryOf(row: EventRow): AuditEventSummary {
 
 // The events a filter selects, shared by the list and the export count so a
 // file contains exactly the rows the page shows. Parameters: $1 organization,
-// $3 from, $4 to, $5 categories, $6 actor, $7 search pattern, $8 asOf, $9
-// matching action codes, $10 search text as a UUID.
+// $2 actor of the request, $3..$9 the filter (see auditEventFilterWhere in
+// packages/db), $10 asOf.
 function filteredEventCtes(columns: string): string {
   return `
          win as (

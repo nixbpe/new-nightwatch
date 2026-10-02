@@ -858,6 +858,61 @@ describe("races (AC-25)", () => {
     },
   );
 
+  it("drops a result whose complete waited on the organization lock past the deadline while a stale transition committed", async () => {
+    await seedEvent();
+    const id = await seedRequest();
+    const claim = await claimAuditExport(runtime);
+    if (!claim) throw new Error("claim missing");
+    // The deadline falls 3 seconds from now: complete's transaction starts
+    // before it (now() is the transaction start) and is held until after it.
+    await sql(
+      "update audit_exports set created_at = now() - interval '59 minutes 57 seconds' where id = $1",
+      [id],
+    );
+    await sql(
+      "update audit_export_jobs set created_at = now() - interval '59 minutes 57 seconds' where export_id = $1",
+      [id],
+    );
+
+    // NO KEY UPDATE blocks complete's FOR SHARE but not the foreign key lock
+    // of the stale notification, so the stale transition can commit meanwhile.
+    const holder = await runtime.sql.connect();
+    let pending: Promise<string> | undefined;
+    try {
+      await holder.query("begin");
+      await holder.query(
+        "select id from organization where id = $1 for no key update",
+        [org],
+      );
+      pending = exporter().process({ ...claim, exhausted: false });
+      await waitUntilBlocked();
+      await new Promise((resolve) => setTimeout(resolve, 3_200));
+      expect(
+        await withTenantUserContextRaw(runtime, org, requester, (client) =>
+          failStaleAuditExports(client, {
+            tenantId: org,
+            requestedBy: requester,
+            exportId: id,
+          }),
+        ),
+      ).toEqual([id]);
+      await holder.query("commit");
+      expect(await pending).toBe("discarded");
+    } finally {
+      await holder.query("rollback").catch(() => undefined);
+      holder.release();
+      await pending?.catch(() => undefined);
+    }
+    expect(await exportRow(id)).toMatchObject({
+      state: "failed",
+      failure_code: "EXPORT_FAILED",
+      content: null,
+    });
+    expect(await intentsFor(id)).toEqual([
+      { event_type: "AUDIT_EXPORT_FAILED", recipient_user_id: requester },
+    ]);
+  }, 30_000);
+
   it("keeps the ready result when a stale transition waits on the lock of the uncommitted complete, and raises one ready notification", async () => {
     await seedEvent();
     const id = await seedRequest();
