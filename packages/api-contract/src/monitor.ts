@@ -1032,6 +1032,7 @@ export const monitorRecentEventSchema = z.object({
   at: isoDateTime,
   reason: z.string().nullable(),
   durationSeconds: z.number().int().min(0).optional(),
+  httpStatus: z.number().int().optional(),
   sslLevel: z.enum(SSL_LEVELS).optional(),
   daysRemaining: z.number().int().optional(),
 });
@@ -1062,6 +1063,148 @@ export const monitorIncidentsResponseSchema = z.object({
 });
 export type MonitorIncidentsResponse = z.infer<
   typeof monitorIncidentsResponseSchema
+>;
+
+// ---- Per-monitor event feed and last response (#58) -------------------------
+
+export const MONITOR_EVENTS_WINDOW_DAYS = 30;
+
+/**
+ * Who changed the monitor. `member` carries the name only for an owner or admin
+ * reader (OD-58-08); a viewer or auditor gets `member_hidden`.
+ */
+export const monitorEventActorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("member"),
+    userId: z.string(),
+    displayName: z.string(),
+  }),
+  z.object({ kind: z.literal("member_hidden") }),
+  z.object({ kind: z.literal("former_member") }),
+  z.object({ kind: z.literal("deleted") }),
+  z.object({ kind: z.literal("unrecorded") }),
+]);
+export type MonitorEventActor = z.infer<typeof monitorEventActorSchema>;
+
+export const SECRET_CHANGE_ACTIONS = ["set", "replaced", "deleted"] as const;
+
+/** One changed field of a `config_changed` event; values are masked or absent. */
+export const monitorConfigChangeSchema = z.discriminatedUnion("kind", [
+  z.object({
+    field: z.string(),
+    kind: z.literal("value"),
+    before: z.union([z.string(), z.number()]).nullable(),
+    after: z.union([z.string(), z.number()]).nullable(),
+  }),
+  z.object({ field: z.string(), kind: z.literal("changed") }),
+  z.object({
+    field: z.string(),
+    kind: z.literal("secret"),
+    action: z.enum(SECRET_CHANGE_ACTIONS),
+  }),
+]);
+export type MonitorConfigChange = z.infer<typeof monitorConfigChangeSchema>;
+
+const eventBase = { id: z.string(), at: isoDateTime };
+
+export const monitorEventSchema = z.discriminatedUnion("kind", [
+  z.object({
+    ...eventBase,
+    kind: z.literal("check_failed"),
+    failureReason: z.enum(CHECK_FAILURE_REASONS).nullable(),
+    tlsReason: z.enum(TLS_REASONS).nullable(),
+    httpStatus: z.number().int().nullable(),
+    responseTimeMs: z.number().int().nullable(),
+  }),
+  z.object({
+    ...eventBase,
+    kind: z.literal("incident_opened"),
+    incidentId: z.uuid(),
+    reason: z.string(),
+    httpStatus: z.number().int().nullable(),
+  }),
+  z.object({
+    ...eventBase,
+    kind: z.literal("incident_closed"),
+    incidentId: z.uuid(),
+    endReason: z.enum(["recovered", "paused_by_user"]),
+    durationSeconds: z.number().int().min(0),
+    httpStatus: z.number().int().nullable(),
+    responseTimeMs: z.number().int().nullable(),
+  }),
+  z.object({
+    ...eventBase,
+    kind: z.literal("paused"),
+    actor: monitorEventActorSchema,
+  }),
+  z.object({
+    ...eventBase,
+    kind: z.literal("resumed"),
+    actor: monitorEventActorSchema,
+  }),
+  z.object({
+    ...eventBase,
+    kind: z.literal("config_changed"),
+    actor: monitorEventActorSchema,
+    changes: z.array(monitorConfigChangeSchema),
+  }),
+]);
+export type MonitorEvent = z.infer<typeof monitorEventSchema>;
+
+export const monitorEventsResponseSchema = z.object({
+  events: z.array(monitorEventSchema).max(50),
+  page: pageSchema,
+});
+export type MonitorEventsResponse = z.infer<typeof monitorEventsResponseSchema>;
+
+export const LAST_RESPONSE_BODY_OMITTED_REASONS = [
+  "no_body",
+  "not_text",
+  "undecodable",
+  "request_values",
+] as const;
+
+export const lastResponseSchema = z.object({
+  checkedAt: isoDateTime,
+  scheduledFor: isoDateTime,
+  configVersion: z.number().int(),
+  outcome: z.enum(CHECK_OUTCOMES),
+  failureReason: z.enum(CHECK_FAILURE_REASONS).nullable(),
+  url: z.string(),
+  detailOmitted: z.literal("request_values").nullable(),
+  statusLine: z
+    .object({
+      httpVersion: z.enum(["HTTP/1.0", "HTTP/1.1"]),
+      status: z.number().int(),
+      reasonPhrase: z.string().nullable(),
+    })
+    .nullable(),
+  headers: z.array(
+    z.object({ name: z.string(), value: z.string(), redacted: z.boolean() }),
+  ),
+  headersTruncated: z.boolean(),
+  body: z
+    .discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("text"),
+        text: z.string(),
+        truncated: z.boolean(),
+        totalBytesRead: z.number().int().min(0),
+      }),
+      z.object({
+        kind: z.literal("omitted"),
+        reason: z.enum(LAST_RESPONSE_BODY_OMITTED_REASONS),
+      }),
+    ])
+    .nullable(),
+});
+export type LastResponse = z.infer<typeof lastResponseSchema>;
+
+export const monitorLastResponseResponseSchema = z.object({
+  response: lastResponseSchema.nullable(),
+});
+export type MonitorLastResponseResponse = z.infer<
+  typeof monitorLastResponseResponseSchema
 >;
 
 const interval = z.object({ from: isoDateTime, to: isoDateTime });

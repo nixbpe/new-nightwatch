@@ -2,9 +2,11 @@ import type { Database } from "@nightwatch/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  getLastResponse,
   getMonitor,
   getResponseTimes,
   listChecks,
+  listEvents,
   listIncidents,
   listMonitors,
   listRecentEvents,
@@ -73,6 +75,15 @@ describe("a member removed between the pre-check and the read transaction", () =
         listIncidents(d, i, id, { limit: 20, offset: 0 }),
     ],
     [
+      "Events",
+      (d: Database, i: Identity, id: string) =>
+        listEvents(d, i, id, { limit: 20, offset: 0 }),
+    ],
+    [
+      "Last response",
+      (d: Database, i: Identity, id: string) => getLastResponse(d, i, id),
+    ],
+    [
       "Response times",
       (d: Database, i: Identity, id: string) =>
         getResponseTimes(d, i, id, "24h"),
@@ -80,7 +91,8 @@ describe("a member removed between the pre-check and the read transaction", () =
   ] as const)("%s is denied and returns no data", async (_name, read) => {
     const org = await ctx.createOrganization("read-membership");
     const monitorId = await seedMonitor(ctx, org.id, { name: "Private" });
-    const userId = org.users.viewer;
+    // Owner: the last-response read needs a role that passes the pre-check.
+    const userId = org.users.owner;
     await expect(
       read(
         removedAfterPreCheck(org, userId),
