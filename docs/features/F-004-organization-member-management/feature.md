@@ -8,7 +8,7 @@
 | delivery_status        | Refining                                   |
 | outcome_status         | Not measured                               |
 | Scope approved by user | 2026-09-27                                 |
-| acceptanceVersion      | `F-004-AC-2`                               |
+| acceptanceVersion      | `F-004-AC-3`                               |
 | Acceptance status      | frozen                                     |
 
 ## Problem and scope
@@ -85,10 +85,12 @@ Overlay ต้องมีชื่อ การปิดและทางก�
 
 `F-004-AC-2` frozen เมื่อ 2026-09-27 หลังผู้ใช้อนุมัติ corrected contract: offset pagination ครั้งละ 50 คนพร้อม `total`, hard cap 1,000 และคำเตือนเมื่อ SMTP failure แทน `F-004-AC-1` การ freeze ล็อก `AC-01`–`AC-17` แต่ไม่อนุญาตให้เริ่ม implementation หรือ release
 
+`F-004-AC-3` แทน `F-004-AC-2` เมื่อ 2026-10-03 ตามคำตัดสินของผู้ใช้ผ่าน coordinator ต่างจาก `F-004-AC-2` เฉพาะข้อยกเว้นใน `AC-02` (`auditor` เห็นชื่อสมาชิกในหน้าบันทึกกิจกรรมตาม `F-007` `OD-16`) `AC-01` และ `AC-03`–`AC-17` ไม่เปลี่ยน สถานะยังเป็น frozen และไม่อนุญาตให้เริ่ม implementation หรือ release
+
 | AC | Category | Observable behavior | Verification |
 | -- | -------- | ------------------- | ------------ |
 | AC-01 | Scope | หน้ารายชื่อของ Organization A แสดงจำนวนสมาชิกทั้งหมด พร้อมชื่อ อีเมล และ role ของสมาชิก A ครั้งละไม่เกิน 50 คน ข้อมูลหรือจำนวนสมาชิก B ไม่ปรากฏในทุกหน้าแม้ actor เป็นสมาชิกทั้ง A และ B | ใช้ actor A-only, B-only และ A+B เปิด A/B ผ่าน UI และ request ตรง ไล่หน้าก่อนหน้า/ถัดไป แล้วเทียบ `total` และรายการกับสมาชิกแต่ละ Organization รวม boundary 49, 50 และ 51 คน |
-| AC-02 | Authorization | `owner` และ `admin` อ่านรายชื่อได้ `viewer`, `auditor` และ non-member ไม่เห็นรายชื่อหรือข้อมูลสมาชิก แต่สมาชิกทุก role ยังเข้าถึง action ออกจาก Organization ของตนเองได้ | เปิดหน้าและเรียก list endpoint ตรงด้วยทุก role กับ non-member ตรวจ denied และตรวจว่า viewer/auditor เปิด self-leave flow ได้โดยไม่เห็นรายชื่อ |
+| AC-02 | Authorization | `owner` และ `admin` อ่านรายชื่อได้ `viewer`, `auditor` และ non-member ไม่เห็นรายชื่อหรือข้อมูลสมาชิก แต่สมาชิกทุก role ยังเข้าถึง action ออกจาก Organization ของตนเองได้ ข้อยกเว้น: `auditor` เห็นชื่อสมาชิกที่เป็นผู้ดำเนินการหรือเป้าหมายในหน้าบันทึกกิจกรรมตาม `F-007` `OD-16` โดยไม่เห็นรายชื่อสมาชิกในหน้านี้ | เปิดหน้าและเรียก list endpoint ตรงด้วยทุก role กับ non-member ตรวจ denied และตรวจว่า viewer/auditor เปิด self-leave flow ได้โดยไม่เห็นรายชื่อ |
 | AC-03 | State | ระหว่างโหลดครั้งแรกหรือเปลี่ยนหน้าแสดง loading โดยไม่มีข้อมูลเก่าหรือหน้าก่อนหน้า Failure แสดง error พร้อม retry และไม่แสดง empty หรือ success | ทำให้ request แรกและ request เปลี่ยนหน้าค้างหรือล้มเหลว แล้วตรวจข้อความ ข้อมูลที่แสดง retry และการกลับหน้าก่อนหน้า |
 | AC-04 | Security | ผล denied ไม่เปิดเผยว่า Organization หรือ target มีอยู่จริง Response, logs และ audit ของ failure/denied ไม่บันทึกชื่อ อีเมล token หรือข้อมูลเป้าหมาย | ใช้ actor ที่ไม่มีสิทธิ์เรียก list/invite/update/revoke/leave กับ Organization และ target ที่มี/ไม่มีจริง เปรียบเทียบ status, code, message และ body พร้อมตรวจ logs/audit ว่าไม่มี PII หรือข้อมูลเป้าหมาย |
 | AC-05 | Authorization / concurrency | `owner` เชิญได้ทุก role `admin` เชิญได้เฉพาะ `admin`, `viewer` และ `auditor`; role อื่นเชิญไม่ได้ คำเชิญผูกกับ Organization ที่เลือก และ server ใช้ permission ปัจจุบันเมื่อตัดสินคำขอ | ทดลองทุก actor/role ใน A และ B ผ่าน UI/request ตรง เปลี่ยน role หรือถอน actor ระหว่าง pending แล้วตรวจว่าคำขอที่แพ้ไม่สร้าง invitation และไม่มีข้อมูลข้าม Organization |
@@ -120,6 +122,8 @@ Overlay ต้องมีชื่อ การปิดและทางก�
 ผู้ใช้กำหนด hard cap 1,000 คนเมื่อ 2026-09-27 หลังพบว่า Better Auth 1.6.23 ตรวจ `membershipLimit` ก่อน claim invitation และ native concurrent accepts อาจเกิน cap Candidate จึงกำหนด first-party locked acceptance แทน native accept
 
 Product Owner และ Technical Lead รีวิวและอนุมัติ `F-004-AC-1` ก่อนถูกแทนด้วย `F-004-AC-2` การอนุมัติ `F-004-AC-2` รอบแรกถูกเปิดใหม่เพราะ artifact ไม่ตรง pagination contract ผู้ใช้อนุมัติ corrected `F-004-AC-2` ที่มี exact `total`, hard cap 1,000 และ first-party locked acceptance เมื่อ 2026-09-27 ไม่มีการประเมินว่า implementation ผ่านเกณฑ์
+
+ผู้ใช้ตัดสินผ่าน coordinator เมื่อ 2026-10-02 (`F-007` `OD-16`) ให้ `auditor` เห็นชื่อสมาชิกที่เป็นผู้ดำเนินการหรือเป้าหมายในหน้าบันทึกกิจกรรมของ `F-007` Product Owner จึงเพิ่มข้อยกเว้นใน `AC-02` สิทธิ์ของหน้ารายชื่อสมาชิกและ endpoint ของ `F-004` ไม่เปลี่ยน การแก้นี้เปลี่ยนข้อความของ `AC-02` ที่ frozen ใน `F-004-AC-2` เมื่อ 2026-10-03 ผู้ใช้ตัดสินผ่าน coordinator ให้ออก `F-004-AC-3` ซึ่งรวมข้อยกเว้นนี้
 
 Observed implementation ซึ่งใช้เป็นหลักฐาน ไม่ใช่อำนาจกำหนด requirement:
 

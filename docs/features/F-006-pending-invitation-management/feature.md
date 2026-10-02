@@ -202,11 +202,12 @@ Technical Lead เพิ่มแถว Concurrency, Security และ Verifica
 | `OD-14` | ตาราง Acceptance matrix ไม่ใช้ `<br>` ใน cell | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | `OD-15` | ยอมรับ risk ที่ Technical Spec ระบุ: ผู้รับที่อยู่ระหว่างสมัครด้วยลิงก์เดิมได้ `403`, แถว legacy ซ้ำไม่ถูกล้าง, แถวย้ายหน้าหลัง resend, ปุ่มใน cooldown เป็น `aria-disabled`, cooldown บน UI ใช้นาฬิกาของ browser, "ขึ้นต้นรายการ" ไม่จริงเมื่อมี request พร้อมกัน | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | `OD-16` | อีเมล resend ใช้ชื่อของคนที่กด resend | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
-| `OD-17` | Audit เฉพาะ denial ตาม `F-004` | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
+| `OD-17` | Audit เฉพาะ denial ตาม `F-004` (ถูกแทนเมื่อ 2026-10-02 ด้วย `F-007` `OD-08`) | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | Scope approval `F-006-S04` | อนุมัติ scope ของ `F-006-S04` และ `AC-16`–`AC-18` ตามเนื้อหาที่ Product Owner เขียน (ครั้งที่สอง) ไม่ freeze acceptance ไม่อนุญาตให้เริ่ม implementation และไม่อนุญาต release | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | `OD-18` | (b) re-send ของ provisioning ไม่ผ่าน cooldown 300 วินาที แต่บันทึกเวลาส่ง (`sent_at`) ทำให้ cooldown ของ resend ใน `F-006` เริ่มนับใหม่ (`AC-18` ข้อ 6) | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | `OD-19` | provisioning ที่สร้างคำเชิญ `owner` ใหม่ยกเลิกแถวที่หมดอายุของอีเมลเดียวกันแบบเดียวกับ create (`OD-T2`) (`AC-17` ข้อ 3) | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
 | `OD-20` | คง `acceptanceVersion` เป็น `F-006-AC-1` (draft) เพราะยังไม่เคย freeze | 2026-10-01 | ผู้ใช้ (AskUserQuestion) |
+| `OD-17` แทนที่ | `F-007` `OD-08` แทน `OD-17`: บันทึก event ที่สำเร็จของการสร้าง ส่งซ้ำ และยกเลิกคำเชิญแบบ in-transaction ตาม `docs/features/F-007-organization-audit-log/feature.md` | 2026-10-02 | ผู้ใช้ (ผ่าน coordinator) |
 
 หลักฐานที่อ่าน (2026-10-01):
 
