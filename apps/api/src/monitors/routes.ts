@@ -6,7 +6,7 @@ import type { Redis } from "ioredis";
 import type { Auth } from "../auth";
 import { requireVerifiedSession } from "../me/service";
 import { createRateLimiter } from "../rate-limit";
-import { auditMonitorDenials, auditMonitorMutation } from "./audit";
+import { auditMonitorDenials } from "./audit";
 import { monitorWriteRouteDeclarations as routes } from "./contract";
 import { monitorInvalidInputHook } from "./invalid-input";
 import {
@@ -29,32 +29,6 @@ export type MonitorRouteDeps = {
   /** Without it, a request that stores or reads a secret answers 503. */
   credentialEnv?: CredentialEnv;
 };
-
-// One line per successful mutation that stored or overwrote a slot (AC-61).
-function auditSecrets(
-  logger: Logger,
-  event: {
-    actorUserId: string;
-    organizationId: string;
-    monitorId: string;
-    secretsSet?: number;
-    secretsReplaced?: number;
-  },
-): void {
-  const { secretsSet, secretsReplaced, ...identity } = event;
-  if ((secretsSet ?? 0) > 0) {
-    auditMonitorMutation(logger, {
-      ...identity,
-      action: "organization.monitor.secret.set",
-    });
-  }
-  if ((secretsReplaced ?? 0) > 0) {
-    auditMonitorMutation(logger, {
-      ...identity,
-      action: "organization.monitor.secret.replace",
-    });
-  }
-}
 
 // GET /monitors/recent-events must be registered before GET /monitors/{monitorId}
 // (Task 06B): monitorId is a plain string and would capture "recent-events".
@@ -81,35 +55,20 @@ export function registerMonitorRoutes(
       const input = c.req.valid("json");
       const session = await requireVerifiedSession(auth, c.req.raw.headers);
       const actorUserId = session.user.id;
-      const { monitor, changed, secretsSet, secretsReplaced } =
-        await auditMonitorDenials(
-          logger,
-          actorUserId,
-          "organization.monitor.create",
-          () =>
-            createMonitor(database, {
-              organizationId,
-              actorUserId,
-              input,
-              outbound,
-              credentialEnv,
-            }),
-        );
-      if (changed) {
-        auditMonitorMutation(logger, {
-          actorUserId,
-          action: "organization.monitor.create",
-          organizationId,
-          monitorId: monitor.id,
-        });
-        auditSecrets(logger, {
-          actorUserId,
-          organizationId,
-          monitorId: monitor.id,
-          secretsSet,
-          secretsReplaced,
-        });
-      }
+      const { monitor } = await auditMonitorDenials(
+        logger,
+        actorUserId,
+        "organization.monitor.create",
+        () =>
+          createMonitor(database, {
+            organizationId,
+            actorUserId,
+            input,
+            outbound,
+            credentialEnv,
+            requestId: c.get("requestId"),
+          }),
+      );
       return c.json({ monitor }, 201);
     },
     monitorInvalidInputHook,
@@ -134,23 +93,9 @@ export function registerMonitorRoutes(
             input,
             outbound,
             credentialEnv,
+            requestId: c.get("requestId"),
           }),
       );
-      if (result.changed) {
-        auditMonitorMutation(logger, {
-          actorUserId,
-          action: "organization.monitor.update",
-          organizationId,
-          monitorId: result.monitor.id,
-        });
-        auditSecrets(logger, {
-          actorUserId,
-          organizationId,
-          monitorId: result.monitor.id,
-          secretsSet: result.secretsSet,
-          secretsReplaced: result.secretsReplaced,
-        });
-      }
       return c.json({ monitor: result.monitor }, 200);
     },
     monitorInvalidInputHook,
@@ -167,16 +112,13 @@ export function registerMonitorRoutes(
         actorUserId,
         "organization.monitor.pause",
         () =>
-          pauseMonitor(database, { organizationId, actorUserId, monitorId }),
+          pauseMonitor(database, {
+            organizationId,
+            actorUserId,
+            monitorId,
+            requestId: c.get("requestId"),
+          }),
       );
-      if (result.changed) {
-        auditMonitorMutation(logger, {
-          actorUserId,
-          action: "organization.monitor.pause",
-          organizationId,
-          monitorId: result.monitor.id,
-        });
-      }
       return c.json({ monitor: result.monitor }, 200);
     },
     monitorInvalidInputHook,
@@ -193,16 +135,13 @@ export function registerMonitorRoutes(
         actorUserId,
         "organization.monitor.resume",
         () =>
-          resumeMonitor(database, { organizationId, actorUserId, monitorId }),
+          resumeMonitor(database, {
+            organizationId,
+            actorUserId,
+            monitorId,
+            requestId: c.get("requestId"),
+          }),
       );
-      if (result.changed) {
-        auditMonitorMutation(logger, {
-          actorUserId,
-          action: "organization.monitor.resume",
-          organizationId,
-          monitorId: result.monitor.id,
-        });
-      }
       return c.json({ monitor: result.monitor }, 200);
     },
     monitorInvalidInputHook,
@@ -219,14 +158,13 @@ export function registerMonitorRoutes(
         actorUserId,
         "organization.monitor.delete",
         () =>
-          deleteMonitor(database, { organizationId, actorUserId, monitorId }),
+          deleteMonitor(database, {
+            organizationId,
+            actorUserId,
+            monitorId,
+            requestId: c.get("requestId"),
+          }),
       );
-      auditMonitorMutation(logger, {
-        actorUserId,
-        action: "organization.monitor.delete",
-        organizationId,
-        monitorId,
-      });
       return c.body(null, 204);
     },
     monitorInvalidInputHook,

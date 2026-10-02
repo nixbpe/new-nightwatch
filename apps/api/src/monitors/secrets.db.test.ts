@@ -111,7 +111,6 @@ async function listen(
 
 let ctx: MonitorTestContext;
 let bare: MonitorTestContext;
-let failing: MonitorTestContext;
 let redis: Redis;
 let org: TestOrganization;
 // Listening before collection lets the `it.each` tables name the real port.
@@ -130,7 +129,6 @@ beforeAll(async () => {
   redis = createRedisClient(redisUrl);
   ctx = await openMonitorTestContext({ redis });
   bare = await openMonitorTestContext({ withoutCredentials: true });
-  failing = await openMonitorTestContext({ auditFailure: true });
   org = await ctx.createOrganization("secrets");
   organizationIds.push(org.id);
 }, 120_000);
@@ -141,7 +139,6 @@ afterAll(async () => {
   await clearRateLimitKeys();
   redis.disconnect();
   await bare.close();
-  await failing.close();
   await ctx.close();
 });
 
@@ -307,14 +304,30 @@ async function eventKinds(id: string): Promise<string[]> {
   return result.rows.map((row) => row.kind);
 }
 
-const auditActions = (monitorId: string): string[] =>
-  ctx
-    .logRecords()
-    .filter(
-      (record) =>
-        record.msg === "monitor mutation" && record.monitorId === monitorId,
+// Audit events of one monitor, oldest first (written in the mutation's own
+// transaction, F-007).
+const auditActions = async (monitorId: string): Promise<string[]> =>
+  (
+    await ctx.owner.sql.query<{ action: string }>(
+      `select action from audit_events
+       where target_type = 'monitor' and target_id = $1
+       order by occurred_at, id`,
+      [monitorId],
     )
-    .map((record) => String(record.action));
+  ).rows.map((row) => row.action);
+
+const auditChanges = async (
+  monitorId: string,
+  action: string,
+): Promise<unknown[]> =>
+  (
+    await ctx.owner.sql.query<{ changes: unknown[] }>(
+      `select changes from audit_events
+       where target_type = 'monitor' and target_id = $1 and action = $2
+       order by occurred_at, id`,
+      [monitorId, action],
+    )
+  ).rows.flatMap((row) => row.changes);
 
 function invalidFields(json: unknown): { field: string; reason: string }[] {
   return (
@@ -381,7 +394,7 @@ describe("Create with secrets (AC-25, AC-56)", () => {
     },
   );
 
-  it("audits secret.set once beside create, and nothing for a replay", async () => {
+  it("audits one create event for a Create with a secret, and nothing for a replay", async () => {
     const clientRequestId = crypto.randomUUID();
     const first = await api(owner(), "POST", monitorsPath(org.id), {
       clientRequestId,
@@ -393,10 +406,12 @@ describe("Create with secrets (AC-25, AC-56)", () => {
       ...bearer(),
     });
     expect(replay.status).toBe(201);
-    expect(auditActions(monitor.id).sort()).toEqual([
+    expect(await auditActions(monitor.id)).toEqual([
       "organization.monitor.create",
-      "organization.monitor.secret.set",
     ]);
+    expect(
+      await auditChanges(monitor.id, "organization.monitor.create"),
+    ).toEqual([]);
     expect(await slotsOf(monitor.id)).toEqual(["auth.token"]);
   });
 
@@ -524,9 +539,8 @@ describe("Edit secrets (AC-26, AC-46)", () => {
     const saved = await editOk(monitor);
     expect(saved.version).toBe(1);
     expect(await secretRows(monitor.id)).toEqual(before);
-    expect(auditActions(monitor.id)).toEqual([
+    expect(await auditActions(monitor.id)).toEqual([
       "organization.monitor.create",
-      "organization.monitor.secret.set",
     ]);
   });
 
@@ -571,11 +585,19 @@ describe("Edit secrets (AC-26, AC-46)", () => {
       check_config_version: 2,
     });
     expect(await eventKinds(monitor.id)).toEqual(["config_changed"]);
-    expect(auditActions(monitor.id)).toEqual([
+    expect(await auditActions(monitor.id)).toEqual([
       "organization.monitor.create",
-      "organization.monitor.secret.set",
-      "organization.monitor.update",
       "organization.monitor.secret.replace",
+    ]);
+    expect(
+      await auditChanges(monitor.id, "organization.monitor.secret.replace"),
+    ).toEqual([
+      {
+        field: "secret",
+        key: "auth.token",
+        before: { kind: "secret_set" },
+        after: { kind: "changed" },
+      },
     ]);
   });
 
@@ -698,7 +720,7 @@ describe("Edit secrets (AC-26, AC-46)", () => {
     }
     expect(await secretRows(monitor.id)).toEqual(before);
     expect(await monitorRow(monitor.id)).toMatchObject({ version: 1 });
-    expect(auditActions(monitor.id)).not.toContain(
+    expect(await auditActions(monitor.id)).not.toContain(
       "organization.monitor.secret.replace",
     );
   });
@@ -980,26 +1002,24 @@ describe("Test in Edit reads (R13-01, R13-02, quota)", () => {
   });
 });
 
-describe("Audit lines for secrets (AC-61)", () => {
+describe("Audit events for secrets (F-005 AC-61, F-007)", () => {
   const actionsAfter = async (
     monitorId: string,
     work: () => Promise<unknown>,
   ): Promise<string[]> => {
-    const before = auditActions(monitorId).length;
+    const before = (await auditActions(monitorId)).length;
     await work();
-    return auditActions(monitorId).slice(before);
+    return (await auditActions(monitorId)).slice(before);
   };
 
-  it("writes one secret.set for a Create with two slots", async () => {
+  it("writes one create event and no secret event for a Create with two slots", async () => {
     const monitor = await created(basic());
-    expect(
-      auditActions(monitor.id).filter((action) =>
-        action.endsWith("secret.set"),
-      ),
-    ).toHaveLength(1);
+    expect(await auditActions(monitor.id)).toEqual([
+      "organization.monitor.create",
+    ]);
   });
 
-  it("writes one set and one replace when an Edit stores a new slot and overwrites one", async () => {
+  it("writes one update event when an Edit changes config and stores a new slot and overwrites one", async () => {
     const monitor = await created(basic());
     const actions = await actionsAfter(monitor.id, () =>
       editOk(monitor, {
@@ -1011,14 +1031,26 @@ describe("Audit lines for secrets (AC-61)", () => {
         ],
       }),
     );
-    expect(actions.sort()).toEqual([
-      "organization.monitor.secret.replace",
-      "organization.monitor.secret.set",
-      "organization.monitor.update",
+    expect(actions).toEqual(["organization.monitor.update"]);
+    expect(
+      await auditChanges(monitor.id, "organization.monitor.update"),
+    ).toEqual([
+      {
+        field: "secret",
+        key: "auth.password",
+        before: { kind: "secret_set" },
+        after: { kind: "changed" },
+      },
+      {
+        field: "secret",
+        key: "X-Secret",
+        before: null,
+        after: { kind: "secret_set" },
+      },
     ]);
   });
 
-  it("writes a set for the new slot when the auth type changes", async () => {
+  it("writes one update event with the new auth slot when the auth type changes", async () => {
     const monitor = await created(bearer());
     const actions = await actionsAfter(monitor.id, () =>
       editOk(monitor, {
@@ -1026,10 +1058,115 @@ describe("Audit lines for secrets (AC-61)", () => {
         secrets: [{ slot: "auth.apiKey", action: "replace", value: API_KEY }],
       }),
     );
-    expect(actions.sort()).toEqual([
-      "organization.monitor.secret.set",
+    expect(actions).toEqual(["organization.monitor.update"]);
+    const changes = await auditChanges(
+      monitor.id,
       "organization.monitor.update",
+    );
+    expect(changes).toContainEqual({
+      field: "authType",
+      before: { kind: "value", value: "bearer" },
+      after: { kind: "value", value: "apiKey" },
+    });
+    expect(changes).toContainEqual({
+      field: "secret",
+      key: "auth.apiKey",
+      before: null,
+      after: { kind: "secret_set" },
+    });
+    expect(changes).toContainEqual({
+      field: "secret",
+      key: "auth.token",
+      before: { kind: "secret_set" },
+      after: null,
+    });
+  });
+
+  it("writes secret.set when an Edit only fills a slot the config needs but the store lacks", async () => {
+    const monitor = await created(bearer());
+    await ctx.owner.sql.query(
+      "delete from monitor_secrets where monitor_id = $1",
+      [monitor.id],
+    );
+    const actions = await actionsAfter(monitor.id, () =>
+      editOk(
+        { ...monitor, secretSlots: [] },
+        {
+          secrets: [
+            { slot: "auth.token", action: "replace", value: NEW_TOKEN },
+          ],
+        },
+      ),
+    );
+    expect(actions).toEqual(["organization.monitor.secret.set"]);
+    expect(
+      await auditChanges(monitor.id, "organization.monitor.secret.set"),
+    ).toEqual([
+      {
+        field: "secret",
+        key: "auth.token",
+        before: null,
+        after: { kind: "secret_set" },
+      },
     ]);
+  });
+
+  it("stores neither a query value, a body value nor a secret in any event, and masks the query", async () => {
+    const queryValue = `qv-${RUN}`;
+    const bodyValue = `bv-${RUN}`;
+    const newBodyValue = `bv2-${RUN}`;
+    const monitor = await created({
+      ...bearer(),
+      queryParams: [{ name: "api_key", value: queryValue }],
+      method: "POST",
+      body: { type: "text", content: bodyValue },
+    });
+    await editOk(monitor, {
+      url: targetUrl(`/reflect?sig=${queryValue}`),
+      queryParams: [{ name: "api_key", value: `${queryValue}-2` }],
+      body: { type: "text", content: newBodyValue },
+      secrets: [{ slot: "auth.token", action: "replace", value: NEW_TOKEN }],
+    });
+    const rows = await ctx.owner.sql.query<{ text: string }>(
+      "select t::text as text from audit_events t where target_id = $1",
+      [monitor.id],
+    );
+    const text = rows.rows.map((row) => row.text).join("\n");
+    for (const value of [
+      queryValue,
+      bodyValue,
+      newBodyValue,
+      TOKEN,
+      NEW_TOKEN,
+    ]) {
+      expect(text.includes(value), "audit_events contains a secret").toBe(
+        false,
+      );
+    }
+    const changes = await auditChanges(
+      monitor.id,
+      "organization.monitor.update",
+    );
+    expect(changes).toContainEqual({
+      field: "body",
+      before: null,
+      after: { kind: "changed" },
+    });
+    expect(changes).toContainEqual({
+      field: "queryParam",
+      key: "api_key",
+      before: { kind: "masked" },
+      after: { kind: "masked" },
+    });
+    expect(changes).toContainEqual({
+      field: "url",
+      before: { kind: "value", value: new URL(targetUrl()).href },
+      after: {
+        kind: "value",
+        value: `${new URL(targetUrl()).href}?sig=\u2022\u2022\u2022`,
+      },
+    });
+    expect(JSON.stringify(changes)).toContain("\u2022\u2022\u2022");
   });
 
   it("writes nothing for a denied secret Edit", async () => {
@@ -1048,30 +1185,49 @@ describe("Audit lines for secrets (AC-61)", () => {
     expect(actions).toEqual([]);
   });
 
-  it("does not fail a committed mutation when the audit logger throws", async () => {
-    const organization = await failing.createOrganization("audit-fail");
-    const created = await failing.call(
-      organization.users.owner,
-      "POST",
-      monitorsPath(organization.id),
-      { clientRequestId: crypto.randomUUID(), ...bearer() },
+  it("rolls the secret write back when the event insert fails", async () => {
+    const organization = await ctx.createOrganization("audit-secret-rollback");
+    const as = organization.users.owner;
+    const made = await ctx.call(as, "POST", monitorsPath(organization.id), {
+      clientRequestId: crypto.randomUUID(),
+      ...bearer(),
+    });
+    expect(made.status).toBe(201);
+    const monitor = monitorWriteResponseSchema.parse(made.json).monitor;
+    const before = await secretRows(monitor.id);
+
+    const fn = `audit_events_secret_fail_${organization.id.replaceAll("-", "")}`;
+    await ctx.owner.sql.query(
+      `create function ${fn}() returns trigger language plpgsql as $$
+       begin
+         if new.tenant_id = '${organization.id}'::uuid then
+           raise exception 'audit insert blocked by test';
+         end if;
+         return new;
+       end $$`,
     );
-    expect(created.status).toBe(201);
-    const monitor = monitorWriteResponseSchema.parse(created.json).monitor;
-    const edited = await failing.call(
-      organization.users.owner,
-      "PATCH",
-      monitorsPath(organization.id, `/${monitor.id}`),
-      editBody(monitor, {
-        secrets: [{ slot: "auth.token", action: "replace", value: NEW_TOKEN }],
-      }),
+    await ctx.owner.sql.query(
+      `create trigger ${fn} before insert on audit_events
+       for each row execute function ${fn}()`,
     );
-    expect(edited.status).toBe(200);
-    const rows = await failing.owner.sql.query(
-      "select slot from monitor_secrets where monitor_id = $1",
-      [monitor.id],
-    );
-    expect(rows.rows).toEqual([{ slot: "auth.token" }]);
+    try {
+      const edited = await ctx.call(
+        as,
+        "PATCH",
+        monitorsPath(organization.id, `/${monitor.id}`),
+        editBody(monitor, {
+          secrets: [
+            { slot: "auth.token", action: "replace", value: NEW_TOKEN },
+          ],
+        }),
+      );
+      expect(edited.status).toBe(500);
+    } finally {
+      await ctx.owner.sql.query(`drop trigger ${fn} on audit_events`);
+      await ctx.owner.sql.query(`drop function ${fn}()`);
+    }
+    expect(await secretRows(monitor.id)).toEqual(before);
+    expect(await monitorRow(monitor.id)).toMatchObject({ version: 1 });
   });
 });
 
@@ -1180,6 +1336,7 @@ const SCANNED_TABLES = [
   "notification_inbox_items",
   "notification_intent_recipients",
   "notification_dispatch_ledger",
+  "audit_events",
 ];
 
 describe("Scan for known secret values (AC-43)", () => {

@@ -5,7 +5,6 @@ import {
   loadMonitorEnv,
   type AuthEnv,
   type Env,
-  type Logger,
 } from "@nightwatch/shared";
 import type { Redis } from "ioredis";
 import { fileURLToPath } from "node:url";
@@ -69,7 +68,6 @@ export function validConfig(
  * Every fixture id is run-unique and removed in `close`.
  */
 export async function openMonitorTestContext(options?: {
-  auditFailure?: boolean;
   /** Builds the app without the credential env, as route tests do. */
   withoutCredentials?: boolean;
   /** Backs the Test rate limit; without it every Test answers 503. */
@@ -125,21 +123,10 @@ export async function openMonitorTestContext(options?: {
   };
   const run = crypto.randomUUID().slice(0, 8);
   const lines: string[] = [];
-  const base = createLogger(
+  const logger = createLogger(
     { level: "info", name: "monitor-write-db-test" },
     { write: (line: string) => void lines.push(line) },
   );
-  // `auditFailure` makes only the audit line throw, to prove a logger failure
-  // cannot fail a committed mutation (the request log line must still work).
-  const logger: Logger = options?.auditFailure
-    ? Object.assign(Object.create(base) as Logger, {
-        info: (fields: object, message?: string) => {
-          if (message === "monitor mutation") throw new Error("log down");
-          base.info(fields, message);
-        },
-      })
-    : base;
-
   const appUrl = "http://localhost:5173";
   const env: Env = { PORT: 4000, LOG_LEVEL: "silent", NODE_ENV: "test" };
   const authEnv: AuthEnv = {
