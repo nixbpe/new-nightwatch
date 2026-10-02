@@ -228,12 +228,6 @@ export function LoginPage() {
                 จดจำอุปกรณ์นี้ <span className="font-mono">30</span> วัน
               </label>
             </MockupFrame>
-            <MockupFrame label="ลิงก์ช่วยเหลือ" issue={67}>
-              <div className="flex gap-6 text-[13px] text-foreground-secondary">
-                <span>เอกสาร</span>
-                <span>ติดต่อผู้ดูแล</span>
-              </div>
-            </MockupFrame>
           </div>
         </main>
       </div>
