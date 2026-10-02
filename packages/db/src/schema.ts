@@ -616,6 +616,8 @@ export const monitorIncidents = pgTable(
     startReason: text("start_reason").notNull(),
     startHttpStatus: integer("start_http_status"),
     endReason: text("end_reason"),
+    endHttpStatus: integer("end_http_status"),
+    endResponseTimeMs: integer("end_response_time_ms"),
     downNotified: boolean("down_notified").notNull().default(false),
   },
   (table) => [
@@ -649,6 +651,15 @@ export const monitorEvents = pgTable(
       .notNull()
       .defaultNow(),
     urlMasked: text("url_masked"),
+    actorKind: text("actor_kind").notNull().default("unrecorded"),
+    actorUserId: text("actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    changes: jsonb("changes"),
+    failureReason: text("failure_reason"),
+    tlsReason: text("tls_reason"),
+    httpStatus: integer("http_status"),
+    responseTimeMs: integer("response_time_ms"),
   },
   (table) => [
     foreignKey({
@@ -657,6 +668,46 @@ export const monitorEvents = pgTable(
     }).onDelete("cascade"),
     index("monitor_events_monitor_idx").on(table.monitorId, table.occurredAt),
     index("monitor_events_retention_idx").on(table.occurredAt),
+  ],
+);
+
+export const monitorLastResponses = pgTable(
+  "monitor_last_responses",
+  {
+    monitorId: uuid("monitor_id").primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    scheduledFor: timestamp("scheduled_for", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    checkedAt: timestamp("checked_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    configVersion: integer("config_version").notNull(),
+    outcome: text("outcome").notNull(),
+    failureReason: text("failure_reason"),
+    urlMasked: text("url_masked").notNull(),
+    detailOmitted: text("detail_omitted"),
+    httpVersion: text("http_version"),
+    httpStatus: integer("http_status"),
+    reasonPhrase: text("reason_phrase"),
+    headers: jsonb("headers").notNull().default([]),
+    headersTruncated: boolean("headers_truncated").notNull().default(false),
+    bodyKind: text("body_kind"),
+    bodyText: text("body_text"),
+    bodyTruncated: boolean("body_truncated"),
+    bodyBytesRead: integer("body_bytes_read"),
+    bodyOmittedReason: text("body_omitted_reason"),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.monitorId, table.tenantId],
+      foreignColumns: [monitors.id, monitors.tenantId],
+    }).onDelete("cascade"),
+    index("monitor_last_responses_retention_idx").on(table.scheduledFor),
   ],
 );
 
@@ -682,4 +733,5 @@ export const schema = {
   monitorCheckHourly,
   monitorIncidents,
   monitorEvents,
+  monitorLastResponses,
 };
