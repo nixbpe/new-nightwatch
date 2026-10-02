@@ -4518,8 +4518,8 @@ export interface paths {
                                     field: string;
                                     /** @enum {string} */
                                     kind: "value";
-                                    before: string | number | unknown;
-                                    after: string | number | unknown;
+                                    before: (string | null) | number;
+                                    after: (string | null) | number;
                                 } | {
                                     field: string;
                                     /** @enum {string} */
@@ -4679,18 +4679,18 @@ export interface paths {
                                     redacted: boolean;
                                 }[];
                                 headersTruncated: boolean;
-                                body: {
+                                body: ({
                                     /** @enum {string} */
                                     kind: "text";
                                     text: string;
                                     truncated: boolean;
                                     totalBytesRead: number;
-                                } | {
+                                } | null) | {
                                     /** @enum {string} */
                                     kind: "omitted";
                                     /** @enum {string} */
                                     reason: "no_body" | "not_text" | "undecodable" | "request_values";
-                                } | unknown;
+                                };
                             } | null;
                         };
                     };

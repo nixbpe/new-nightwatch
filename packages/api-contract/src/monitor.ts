@@ -1086,6 +1086,23 @@ export const monitorEventActorSchema = z.discriminatedUnion("kind", [
 ]);
 export type MonitorEventActor = z.infer<typeof monitorEventActorSchema>;
 
+/**
+ * `first | other | null` as an OpenAPI anyOf whose first member carries
+ * `nullable`. Declared with `.nullable()` on a union (or `z.null()` as a
+ * member) the generator emits a bare `{ nullable: true }` member, which the
+ * generated types render as `unknown`. The wire shape is unchanged.
+ */
+function nullableOr<First extends z.ZodType, Other extends z.ZodType>(
+  first: First,
+  other: Other,
+) {
+  const doc = (schema: z.ZodType) =>
+    z.toJSONSchema(schema, { target: "openapi-3.0", io: "input" });
+  return z.union([first.nullable(), other]).meta({
+    anyOf: [{ ...doc(first), nullable: true }, doc(other)],
+  });
+}
+
 export const SECRET_CHANGE_ACTIONS = ["set", "replaced", "deleted"] as const;
 
 /** One changed field of a `config_changed` event; values are masked or absent. */
@@ -1093,8 +1110,8 @@ export const monitorConfigChangeSchema = z.discriminatedUnion("kind", [
   z.object({
     field: z.string(),
     kind: z.literal("value"),
-    before: z.union([z.string(), z.number()]).nullable(),
-    after: z.union([z.string(), z.number()]).nullable(),
+    before: nullableOr(z.string(), z.number()),
+    after: nullableOr(z.string(), z.number()),
   }),
   z.object({ field: z.string(), kind: z.literal("changed") }),
   z.object({
@@ -1183,20 +1200,18 @@ export const lastResponseSchema = z.object({
     z.object({ name: z.string(), value: z.string(), redacted: z.boolean() }),
   ),
   headersTruncated: z.boolean(),
-  body: z
-    .discriminatedUnion("kind", [
-      z.object({
-        kind: z.literal("text"),
-        text: z.string(),
-        truncated: z.boolean(),
-        totalBytesRead: z.number().int().min(0),
-      }),
-      z.object({
-        kind: z.literal("omitted"),
-        reason: z.enum(LAST_RESPONSE_BODY_OMITTED_REASONS),
-      }),
-    ])
-    .nullable(),
+  body: nullableOr(
+    z.object({
+      kind: z.literal("text"),
+      text: z.string(),
+      truncated: z.boolean(),
+      totalBytesRead: z.number().int().min(0),
+    }),
+    z.object({
+      kind: z.literal("omitted"),
+      reason: z.enum(LAST_RESPONSE_BODY_OMITTED_REASONS),
+    }),
+  ),
 });
 export type LastResponse = z.infer<typeof lastResponseSchema>;
 
