@@ -147,6 +147,7 @@ function ResponseBody({ response }: { response: LastResponse }) {
           {body?.kind === "text" ? (
             <div className="min-w-0">
               <pre
+                role="region"
                 tabIndex={0}
                 aria-label="เนื้อหาของการตอบกลับล่าสุด"
                 className="surface-inset max-h-96 overflow-auto rounded-md border border-foreground/10 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-foreground"

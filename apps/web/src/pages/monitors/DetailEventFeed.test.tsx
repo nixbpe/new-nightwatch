@@ -562,7 +562,7 @@ describe("Last response panel", () => {
     lastResponseMock.mockResolvedValue({ response: fullResponse });
     renderDetail();
     const body = await within(await lastResponseSection()).findByRole(
-      "generic",
+      "region",
       { name: "เนื้อหาของการตอบกลับล่าสุด" },
     );
     expect(body.tagName).toBe("PRE");
@@ -602,7 +602,7 @@ describe("Last response panel", () => {
   });
 
   it("drops the panel to the role note and stops polling when a refetch answers PERMISSION_DENIED", async () => {
-    lastResponseMock.mockResolvedValueOnce({ response: fullResponse });
+    lastResponseMock.mockResolvedValue({ response: fullResponse });
     const { queryClient } = renderDetail();
     const section = await lastResponseSection();
     expect(
