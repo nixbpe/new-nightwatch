@@ -19,7 +19,8 @@ import {
   SESSIONS_QUERY_KEY,
   type SessionRow,
 } from "../../lib/sessions/sessions";
-import { Card, CardHeader, CardFooter } from "../../components/ui/card";
+import { Card, CardFooter } from "../../components/ui/card";
+import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
 import { IconTile } from "../../components/ui/icon-tile";
 
@@ -146,11 +147,16 @@ export function SessionsPage() {
 
   return (
     <Card as="section" aria-labelledby="sessions-card-title" padding="md">
-      <CardHeader
-        id="sessions-card-title"
-        title="อุปกรณ์ที่เข้าสู่ระบบอยู่"
-        description="เซสชันทั้งหมดของบัญชีนี้ ออกจากระบบอุปกรณ์ที่ไม่รู้จักได้ทันที"
-      />
+      <div className="flex flex-col gap-2">
+        <SectionHeader
+          id="sessions-card-title"
+          code="01"
+          title="อุปกรณ์ที่เข้าสู่ระบบอยู่"
+        />
+        <p className="text-sm text-foreground-secondary">
+          เซสชันทั้งหมดของบัญชีนี้ ออกจากระบบอุปกรณ์ที่ไม่รู้จักได้ทันที
+        </p>
+      </div>
 
       <ul className="flex flex-col rounded-md border border-foreground/10">
         {rows.map((row, index) => {
@@ -214,7 +220,7 @@ export function SessionsPage() {
                     <Button
                       ref={confirmRef}
                       type="button"
-                      variant="destructive"
+                      variant="destructive-outline"
                       size="sm"
                       disabled={busy === row.token}
                       onClick={() => {
@@ -285,7 +291,7 @@ export function SessionsPage() {
                 <Button
                   ref={confirmRef}
                   type="button"
-                  variant="destructive"
+                  variant="destructive-outline"
                   size="sm"
                   disabled={busy === OTHERS}
                   onClick={() => {

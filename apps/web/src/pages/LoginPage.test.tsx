@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -169,6 +169,39 @@ describe("LoginPage", () => {
       "login-password-error",
     );
     expect(signInEmailMock).not.toHaveBeenCalled();
+  });
+  it("labels both mockups as examples and keeps the disabled checkbox out of the payload", async () => {
+    renderPage();
+
+    const remember = await screen.findByRole("group", {
+      name: "ตัวอย่าง: จดจำอุปกรณ์นี้",
+    });
+    const checkbox = within(remember).getByRole("checkbox");
+    expect(checkbox).toBeDisabled();
+    expect(checkbox).not.toHaveAttribute("name");
+    expect(remember.closest("form")).toBeNull();
+    expect(
+      within(remember).getByRole("link", { name: /issue/ }),
+    ).toHaveAttribute("href", expect.stringMatching(/\/issues\/65$/));
+    const help = screen.getByRole("group", {
+      name: "ตัวอย่าง: ลิงก์ช่วยเหลือ",
+    });
+    expect(within(help).getByRole("link", { name: /issue/ })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/\/issues\/67$/),
+    );
+    expect(within(help).getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "เข้าสู่ระบบ" }),
+    ).toHaveAccessibleName("เข้าสู่ระบบ");
+
+    signInEmailMock.mockResolvedValue({ data: null, error: null });
+    await submitLogin("member@example.com", "correct-password");
+    expect(signInEmailMock).toHaveBeenCalledWith({
+      email: "member@example.com",
+      password: "correct-password",
+    });
   });
   it("prevents a duplicate sign-in while the first request is pending", async () => {
     const finishSignIn = deferSignIn();

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
   fetchMonitorChecks,
@@ -24,6 +25,7 @@ import {
 } from "../../lib/api/monitors";
 import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
 import {
+  A,
   context,
   deferred,
   detail,
@@ -37,6 +39,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
 }));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -340,7 +346,7 @@ describe("Test panel states", () => {
     expect(draftMock).not.toHaveBeenCalled();
     expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveFocus();
     expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-      "กรอก URL",
+      expect.stringContaining("กรอก URL"),
     );
   });
 });
@@ -624,14 +630,18 @@ describe("Edit test", () => {
       target: { value: "https://other.example/health" },
     });
     expect(url).toHaveAccessibleDescription(
-      "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      expect.stringContaining(
+        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      ),
     );
     expect(testButton()).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "บันทึกการแก้ไข" }),
     ).toBeDisabled();
     expect(testButton()).toHaveAccessibleDescription(
-      "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      expect.stringContaining(
+        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      ),
     );
     fireEvent.change(url, {
       target: { value: "https://api.acme.example/other" },
@@ -654,7 +664,9 @@ describe("Edit test", () => {
     await user.click(testButton());
     await waitFor(() => {
       expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+        expect.stringContaining(
+          "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+        ),
       );
     });
   });
@@ -669,5 +681,108 @@ describe("Edit test", () => {
     await screen.findByDisplayValue("Payments API");
     await user.click(testButton());
     expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
+  });
+});
+
+describe("Redesign mockups and notes", () => {
+  const timing = () =>
+    screen.getByRole("group", {
+      name: "ตัวอย่าง: เวลาแยกตามขั้นตอนของการทดสอบ",
+    });
+
+  it("shows no sample status code in the timing example while idle or failed", async () => {
+    draftMock.mockResolvedValue(
+      result({
+        outcome: "fail",
+        failureReason: "http_status",
+        httpStatus: 503,
+      }),
+    );
+    const user = await openCreate();
+    expect(within(timing()).queryByText("200 OK")).toBeNull();
+    expect(within(timing()).getByText("เชื่อมต่อ")).toBeInTheDocument();
+    await user.click(testButton());
+    await screen.findByText(/^ไม่ผ่าน:/);
+    expect(within(timing()).queryByText("200 OK")).toBeNull();
+    expect(within(timing()).queryByText(/status/i)).toBeNull();
+  });
+
+  it("describes the URL input with the scheme and redirect note", async () => {
+    await openCreate();
+    expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
+      /รองรับ http และ https · การเปลี่ยนเส้นทาง \(redirect\) สูงสุด 5 ครั้ง/,
+    );
+  });
+
+  const ALERT_NOTE = /เจ้าของและผู้ดูแลจะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม/;
+
+  it.each([
+    [true, true],
+    [false, false],
+  ])(
+    "shows the alert note only while the org setting is on (%s)",
+    async (enabled, shown) => {
+      vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
+        organizationId: A,
+        version: 1,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: enabled,
+      });
+      await openCreate();
+      const region = screen.getByRole("region", { name: "การแจ้งเตือน" });
+      await waitFor(() => {
+        expect(fetchOrganizationNotificationSettings).toHaveBeenCalled();
+      });
+      if (shown) {
+        expect(await within(region).findByText(ALERT_NOTE)).toBeInTheDocument();
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(within(region).queryByText(ALERT_NOTE)).toBeNull();
+      }
+      for (const box of within(region).getAllByRole("checkbox")) {
+        expect(box).toBeDisabled();
+      }
+    },
+  );
+
+  it("hides the alert note when the org setting cannot be read", async () => {
+    vi.mocked(fetchOrganizationNotificationSettings).mockRejectedValue(
+      new ApiError("FORBIDDEN", "no", 403),
+    );
+    await openCreate();
+    const region = screen.getByRole("region", { name: "การแจ้งเตือน" });
+    await waitFor(() => {
+      expect(fetchOrganizationNotificationSettings).toHaveBeenCalled();
+    });
+    expect(within(region).queryByText(ALERT_NOTE)).toBeNull();
+  });
+
+  it("uses the canvas description on the create form", async () => {
+    await openCreate();
+    expect(
+      screen.getByText(
+        "เพิ่มเว็บไซต์หรือ API เพื่อให้ NightWatch ตรวจสถานะเป็นระยะและแจ้งเมื่อล่มหรือ SSL ใกล้หมดอายุ",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("puts the test panel before the save button in DOM order", async () => {
+    await openCreate();
+    const test = screen.getByRole("button", { name: "ทดสอบการตั้งค่า" });
+    const save = screen.getByRole("button", { name: "บันทึกมอนิเตอร์" });
+    expect(
+      test.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("shows the calls per day for the chosen interval", async () => {
+    const user = await openCreate();
+    expect(screen.getByText(/ครั้งต่อวัน/)).toHaveTextContent(
+      "ประมาณ 288 ครั้งต่อวัน",
+    );
+    await user.click(screen.getByRole("radio", { name: "1 นาที" }));
+    expect(screen.getByText(/ครั้งต่อวัน/)).toHaveTextContent(
+      "ประมาณ 1,440 ครั้งต่อวัน",
+    );
   });
 });

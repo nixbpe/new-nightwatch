@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
   fetchMonitorChecks,
@@ -32,6 +33,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
 }));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -63,6 +68,12 @@ function threeOrgs(active: string) {
 const SECRET_ID = "0f6a4b7e-1c2d-4e3f-8a9b-0c1d2e3f4a5b";
 
 beforeEach(() => {
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: false,
+  });
   meMock.mockResolvedValue(context());
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);

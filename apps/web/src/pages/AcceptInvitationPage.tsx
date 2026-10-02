@@ -5,13 +5,13 @@ import { Link, useNavigate, useParams } from "react-router";
 
 import {
   Alert,
-  AuthPageShell,
   Field,
   FieldValidationError,
   FullPageLoading,
   Input,
   SubmitButton,
 } from "../components/ui";
+import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage, sameEmail } from "../lib/auth-client";
 import {
@@ -62,14 +62,14 @@ export function AcceptInvitationPage() {
 
   if (invitationId.length === 0 || preview.error !== null) {
     return (
-      <AuthPageShell title="คำเชิญ">
+      <AuthPageFrame eyebrow="// invitation" title="คำเชิญ">
         <div className="flex flex-col gap-4">
           <Alert tone="error">{invitationProblemMessage(preview.error)}</Alert>
           <Link to="/login" className="text-sm text-primary underline">
             ไปที่หน้าเข้าสู่ระบบ
           </Link>
         </div>
-      </AuthPageShell>
+      </AuthPageFrame>
     );
   }
 
@@ -84,7 +84,8 @@ export function AcceptInvitationPage() {
     if (!user.emailVerified) {
       rememberInvitation(invitation.id);
       return (
-        <AuthPageShell
+        <AuthPageFrame
+          eyebrow="// invitation"
           title="ยืนยันอีเมลก่อนเข้าร่วม"
           subtitle={`คำเชิญสำหรับ ${invitation.email} กรุณายืนยันอีเมลของบัญชีนี้ก่อนรับคำเชิญ`}
         >
@@ -103,14 +104,15 @@ export function AcceptInvitationPage() {
               ไปที่หน้ายืนยันอีเมล
             </Button>
           </div>
-        </AuthPageShell>
+        </AuthPageFrame>
       );
     }
 
     if (!sameEmail(user.email, invitation.email)) {
       return (
         <div className="break-words">
-          <AuthPageShell
+          <AuthPageFrame
+            eyebrow="// invitation"
             title="บัญชีนี้ไม่ตรงกับคำเชิญ"
             subtitle={`คำเชิญส่งถึง ${invitation.email} แต่คุณกำลังเข้าสู่ระบบด้วย ${user.email}`}
           >
@@ -136,7 +138,7 @@ export function AcceptInvitationPage() {
                 ออกจากระบบและใช้บัญชีอื่น
               </Button>
             </div>
-          </AuthPageShell>
+          </AuthPageFrame>
         </div>
       );
     }
@@ -242,7 +244,8 @@ function VerifiedAcceptance({
     }
   }
   return (
-    <AuthPageShell
+    <AuthPageFrame
+      eyebrow="// invitation"
       title="ยอมรับคำเชิญ"
       subtitle={`คุณได้รับเชิญให้เข้าร่วมองค์กร ${organizationName} ในบทบาท${ROLE_LABELS[role] ?? role}`}
     >
@@ -257,7 +260,7 @@ function VerifiedAcceptance({
           <div
             ref={errorRef}
             tabIndex={-1}
-            className="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+            className="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <Alert tone="error">{error}</Alert>
           </div>
@@ -277,7 +280,7 @@ function VerifiedAcceptance({
           </Button>
         )}
       </form>
-    </AuthPageShell>
+    </AuthPageFrame>
   );
 }
 
@@ -331,7 +334,8 @@ function SignupGate({
   });
 
   return (
-    <AuthPageShell
+    <AuthPageFrame
+      eyebrow="// invitation"
       title="สร้างบัญชีจากคำเชิญ"
       subtitle={`คุณได้รับเชิญให้เข้าร่วมองค์กร ${organizationName} ในบทบาท${ROLE_LABELS[role] ?? role}`}
     >
@@ -469,6 +473,6 @@ function SignupGate({
           ไปที่หน้าเข้าสู่ระบบ
         </Link>
       ) : null}
-    </AuthPageShell>
+    </AuthPageFrame>
   );
 }

@@ -6,7 +6,8 @@ import { Alert, FieldValidationError, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
-import { CardHeader, CardFooter, CardSection } from "../../components/ui/card";
+import { CardFooter, CardSection } from "../../components/ui/card";
+import { SectionHeader } from "../../components/ui/section-header";
 
 const MIN_LENGTH = 8;
 
@@ -62,13 +63,12 @@ export function PasswordCard() {
 
   return (
     <CardSection aria-labelledby="password-card-title">
-      <CardHeader
-        id="password-card-title"
-        title="รหัสผ่าน"
-        description={
-          <>ต้องมีอย่างน้อย {MIN_LENGTH} ตัวอักษร และไม่ซ้ำกับรหัสผ่านเดิม</>
-        }
-      />
+      <div className="flex flex-col gap-2">
+        <SectionHeader id="password-card-title" code="02" title="รหัสผ่าน" />
+        <p className="text-sm text-foreground-secondary">
+          ต้องมีอย่างน้อย {MIN_LENGTH} ตัวอักษร และไม่ซ้ำกับรหัสผ่านเดิม
+        </p>
+      </div>
 
       {notice === null ? null : <Alert tone="success">{notice}</Alert>}
       {formError === null ? null : <Alert tone="error">{formError}</Alert>}

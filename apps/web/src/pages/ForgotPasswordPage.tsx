@@ -4,12 +4,12 @@ import { Link } from "react-router";
 
 import {
   Alert,
-  AuthPageShell,
   Field,
   FieldValidationError,
   Input,
   SubmitButton,
 } from "../components/ui";
+import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 
 export function ForgotPasswordPage() {
@@ -40,7 +40,8 @@ export function ForgotPasswordPage() {
   });
 
   return (
-    <AuthPageShell
+    <AuthPageFrame
+      eyebrow="// forgot password"
       title="ลืมรหัสผ่าน"
       subtitle="กรอกอีเมลที่ใช้เข้าสู่ระบบ เราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้คุณ"
     >
@@ -120,6 +121,6 @@ export function ForgotPasswordPage() {
           </p>
         </form>
       )}
-    </AuthPageShell>
+    </AuthPageFrame>
   );
 }

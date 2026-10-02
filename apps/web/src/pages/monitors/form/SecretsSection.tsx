@@ -1,4 +1,6 @@
-import { Card, CardHeader } from "../../../components/ui/card";
+import { Card } from "../../../components/ui/card";
+import { SectionHeader } from "../../../components/ui/section-header";
+
 import { Button } from "../../../components/ui/button";
 import { SelectControl, TextControl, type SectionProps } from "./controls";
 import { fieldId, type EditBase, type MonitorAuth } from "./model";
@@ -57,7 +59,7 @@ export function SecretsSection({
 
   return (
     <Card as="section" aria-labelledby="monitor-form-auth" padding="md">
-      <CardHeader id="monitor-form-auth" title="การยืนยันตัวตน" />
+      <SectionHeader id="monitor-form-auth" code="03" title="การยืนยันตัวตน" />
       <SelectControl
         path="auth.type"
         label="ชนิด"

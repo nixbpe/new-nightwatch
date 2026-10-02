@@ -1,10 +1,9 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import { Card, CardHeader } from "../../components/ui/card";
 import { ApiError } from "../../lib/api/client";
 import { leaveOrganization } from "../../lib/api/members";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
@@ -157,47 +156,47 @@ export function useSelfLeave({
 
 export type SelfLeave = ReturnType<typeof useSelfLeave>;
 
-/** Entry card, result notices and confirmation dialog; shown to every role. */
+/** Page-header action that opens the leave confirmation; shown to every role. */
+export function SelfLeaveButton({
+  selfLeave,
+  disabled,
+}: {
+  selfLeave: SelfLeave;
+  disabled: boolean;
+}) {
+  return (
+    <Button
+      {...{ [LEAVE_ATTRIBUTE]: "" }}
+      type="button"
+      variant="secondary"
+      wrap
+      disabled={disabled || selfLeave.pending}
+      onClick={(event) => {
+        selfLeave.request(event.currentTarget);
+      }}
+    >
+      ออกจากองค์กร
+    </Button>
+  );
+}
+
+/** Result notice and confirmation dialog; the entry button sits in the page header. */
 export function SelfLeaveSection({
   selfLeave,
   organization,
   actor,
-  disabled,
   headingRef,
 }: {
   selfLeave: SelfLeave;
   organization: { name: string; slug: string; role: string };
   actor: { name: string; email: string } | undefined;
-  disabled: boolean;
   headingRef: RefObject<HTMLElement | null>;
 }) {
-  const headingId = useId();
   return (
     <>
-      <Card as="section" padding="md" aria-labelledby={headingId}>
-        <CardHeader
-          id={headingId}
-          title="ออกจากองค์กร"
-          description={`คุณจะไม่สามารถเข้าถึง ${organization.name} ได้อีก บัญชีและสมาชิกภาพในองค์กรอื่นของคุณยังอยู่`}
-          action={
-            <Button
-              {...{ [LEAVE_ATTRIBUTE]: "" }}
-              type="button"
-              variant="secondary"
-              wrap
-              disabled={disabled || selfLeave.pending}
-              onClick={(event) => {
-                selfLeave.request(event.currentTarget);
-              }}
-            >
-              ออกจากองค์กร
-            </Button>
-          }
-        />
-        {selfLeave.notice !== null ? (
-          <Alert tone="error">{selfLeave.notice}</Alert>
-        ) : null}
-      </Card>
+      {selfLeave.notice !== null ? (
+        <Alert tone="error">{selfLeave.notice}</Alert>
+      ) : null}
       {selfLeave.confirmation !== null ? (
         <ConfirmDialog
           title="ยืนยันการออกจากองค์กร"

@@ -42,17 +42,19 @@ export function Header({
         };
   const trail = rootCrumb === null ? pageTrail : [rootCrumb, ...pageTrail];
 
+  // No display utility here: the collapse toggle sets `hidden sm:inline-flex` and would lose to a base `inline-flex`.
   const iconButton =
-    "inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground-secondary hover:bg-foreground/5 hover:text-foreground";
+    "h-10 w-10 items-center justify-center rounded-md text-foreground-secondary hover:surface-hover hover:text-foreground";
 
   return (
-    <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-foreground/10 bg-background px-3 sm:px-4">
+    // Side padding matches main (16 px, 32 px from 640 px) so the breadcrumb lines up with the page.
+    <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-foreground/10 bg-background px-4 sm:gap-4 sm:px-8">
       <button
         ref={mobileMenuButtonRef}
         type="button"
         aria-label="เปิดเมนู"
         onClick={onOpenMobileMenu}
-        className={`${iconButton} sm:hidden`}
+        className={`${iconButton} inline-flex sm:hidden`}
       >
         <MenuIcon />
       </button>
@@ -67,7 +69,7 @@ export function Header({
         <PanelLeftIcon size={18} />
       </button>
 
-      <nav aria-label="ตำแหน่งปัจจุบัน" className="min-w-0 flex-1 ps-1">
+      <nav aria-label="ตำแหน่งปัจจุบัน" className="min-w-0 flex-1">
         <ol className="flex items-center gap-2 text-sm">
           {trail.map((crumb, index) => {
             const isLast = index === trail.length - 1;
@@ -116,7 +118,7 @@ export function Header({
           type="button"
           onClick={onOpenSearch}
           // Field-shaped, so it uses the control-border token (>= 3:1 contrast), not the divider hairline.
-          className="hidden h-9 w-80 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-sm text-foreground-secondary hover:bg-foreground/5 hover:text-foreground lg:flex"
+          className="hidden h-10 w-[360px] items-center gap-2.5 rounded-md border border-control-border bg-surface ps-3 pe-1.5 text-sm text-foreground-secondary hover:surface-hover hover:text-foreground lg:flex"
         >
           <SearchIcon size={16} />
           <span className="flex-1 text-start">ค้นหาทั้งหมด...</span>
@@ -126,7 +128,7 @@ export function Header({
           type="button"
           aria-label="ค้นหาทั้งหมด"
           onClick={onOpenSearch}
-          className={`${iconButton} lg:hidden`}
+          className={`${iconButton} inline-flex lg:hidden`}
         >
           <SearchIcon size={18} />
         </button>

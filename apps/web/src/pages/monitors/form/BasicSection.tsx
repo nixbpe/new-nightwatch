@@ -1,8 +1,11 @@
 import { MONITOR_INTERVAL_SECONDS } from "@nightwatch/api-contract";
 
-import { Card, CardHeader } from "../../../components/ui/card";
+import { Card } from "../../../components/ui/card";
+import { SectionHeader } from "../../../components/ui/section-header";
+
 import { SegmentedControl } from "../../../components/ui/segmented-control";
 import { DOWN_AFTER_FAILURES, intervalText } from "../detail/labels";
+import { formatNumber } from "../format";
 import { TextControl, type SectionProps } from "./controls";
 
 const INTERVAL_OPTIONS = MONITOR_INTERVAL_SECONDS.map((seconds) => ({
@@ -25,7 +28,7 @@ export function BasicSection({
 }) {
   return (
     <Card as="section" aria-labelledby="monitor-form-basic" padding="md">
-      <CardHeader id="monitor-form-basic" title="ข้อมูลพื้นฐาน" />
+      <SectionHeader id="monitor-form-basic" code="01" title="ข้อมูลพื้นฐาน" />
       <TextControl
         path="name"
         label="ชื่อมอนิเตอร์"
@@ -44,6 +47,13 @@ export function BasicSection({
         spellCheck={false}
         value={values.url}
         error={errors.url ?? urlNote ?? undefined}
+        hint={
+          <>
+            รองรับ <span className="font-mono">http</span> และ{" "}
+            <span className="font-mono">https</span> · การเปลี่ยนเส้นทาง
+            (redirect) สูงสุด <span className="font-mono">5</span> ครั้ง
+          </>
+        }
         disabled={disabled}
         onChange={(event) => {
           onChange({ url: event.target.value }, "url");
@@ -63,6 +73,13 @@ export function BasicSection({
           }}
         />
       </div>
+      <p className="text-xs text-foreground-secondary">
+        ประมาณ{" "}
+        <span className="font-mono font-medium text-foreground">
+          {formatNumber(Math.round(86400 / values.intervalSeconds))}
+        </span>{" "}
+        ครั้งต่อวัน
+      </p>
       {errors.intervalSeconds === undefined ? null : (
         <p role="alert" className="text-sm text-danger">
           {errors.intervalSeconds}

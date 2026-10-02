@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
   fetchMonitorChecks,
@@ -34,6 +35,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
 }));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
+}));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createMonitor: vi.fn(),
@@ -54,6 +59,12 @@ const fetchDetailMock = vi.mocked(fetchMonitorDetail);
 const fetchListMock = vi.mocked(fetchMonitorList);
 
 beforeEach(() => {
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: false,
+  });
   fetchMeContextMock.mockResolvedValue(context());
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
@@ -120,7 +131,9 @@ describe("Create validation and save", () => {
     const url = screen.getByLabelText("URL");
     expect(name).toHaveAttribute("aria-invalid", "true");
     expect(name).toHaveAccessibleDescription("กรอกชื่อมอนิเตอร์");
-    expect(url).toHaveAccessibleDescription("กรอก URL");
+    expect(url).toHaveAccessibleDescription(
+      expect.stringContaining("กรอก URL"),
+    );
     expect(name).toHaveFocus();
     expect(createMock).not.toHaveBeenCalled();
   });

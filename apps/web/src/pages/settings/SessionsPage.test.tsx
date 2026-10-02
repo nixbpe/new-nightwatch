@@ -233,6 +233,9 @@ describe("SessionsPage", () => {
       name: "ยืนยันออกจากระบบ",
     });
     expect(confirm).toHaveFocus();
+    // COL-05: an inline confirm is a Danger outline button, never Danger fill.
+    expect(confirm).toHaveClass("border-danger", "text-danger");
+    expect(confirm).not.toHaveClass("bg-danger");
     await user.click(confirm);
 
     expect(authMock.revokeSession).toHaveBeenCalledWith({

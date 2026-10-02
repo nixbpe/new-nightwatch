@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Card, CardHeader } from "../../../components/ui/card";
+import { MockupFrame } from "../../../components/ui/mockup-frame";
 import { ApiError } from "../../../lib/api/client";
 import {
   AssertionTable,
@@ -257,6 +258,20 @@ export function TestPanel({
       {state.kind === "result" ? (
         <ResultDetails result={state.result} sent={state.sent} stale={stale} />
       ) : null}
+      <MockupFrame
+        label="เวลาแยกตามขั้นตอนของการทดสอบ"
+        issue={61}
+        className="mt-2"
+      >
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+          <dt className="text-foreground-secondary">ค้นหาโดเมน (DNS)</dt>
+          <dd className="font-mono">— ms</dd>
+          <dt className="text-foreground-secondary">เชื่อมต่อ</dt>
+          <dd className="font-mono">— ms</dd>
+          <dt className="text-foreground-secondary">ตอบกลับครั้งแรก (TTFB)</dt>
+          <dd className="font-mono">— ms</dd>
+        </dl>
+      </MockupFrame>
     </Card>
   );
 }

@@ -16,13 +16,13 @@ The shell is the chrome around every signed-in page: a sidebar, a header and a s
 └──────────┴──────────────────────────────────────────────┘
 ```
 
-| Region            | Size and behavior                                                                                                      |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Sidebar, expanded | 240 px at 1024 px and wider                                                                                            |
-| Sidebar, rail     | 56 px icon rail below 1024 px                                                                                          |
-| Sidebar, drawer   | Slide-in over the page below 640 px; modal, focus moves to its close control on open and back to the toggle on close   |
-| Header            | 56 px: sidebar toggle, breadcrumb, search-all field with a ⌘K / Ctrl+K hint, notifications; no product logo or avatar |
-| Main              | Scrollable, 32 px padding; data pages fill the column, form pages cap at 720 px; 24 px rhythm; overview, inbox and directory carry a canvas grain |
+| Region            | Size and behavior                                                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sidebar, expanded | 240 px at 1024 px and wider                                                                                                                                                      |
+| Sidebar, rail     | 56 px icon rail below 1024 px                                                                                                                                                    |
+| Sidebar, drawer   | Slide-in over the page below 640 px; modal, focus moves to its close control on open and back to the toggle on close                                                             |
+| Header            | 56 px, side padding 32 px (16 px below 640 px) aligned with main: sidebar toggle, breadcrumb, search-all field with a ⌘K / Ctrl+K hint, notifications; no product logo or avatar |
+| Main              | Scrollable, 32 px padding; data pages fill the column, form pages cap the form column at 720 px (a test panel may sit beside it from `lg`); 24 px rhythm; overview (`/workspace`), the monitor list and the inbox carry a canvas grain      |
 
 The header toggle overrides the breakpoint default until the breakpoint itself changes. ⌘K / Ctrl+K opens the command palette from anywhere in the shell. The product mark appears only where there is no organization to show: sign-in, auth cards, not-found, and the sidebar of a user without membership.
 
@@ -30,19 +30,19 @@ The header toggle overrides the breakpoint default until the breakpoint itself c
 
 One navigation definition feeds the sidebar, the command palette and the settings tab strip; nothing is defined twice.
 
-- Leaf: label, icon, path, optional roles (hidden from other roles), optional palette entries.
+- Leaf: label, icon, path, optional roles (hidden from other roles), optional palette entries, optional count. The count is a server value in monospace Secondary text, `aria-hidden` so the link name stays the label, hidden in the rail and whenever the value is unknown or failed (never a stale or guessed number, CMP-01). Sources: the inbox shows the unread count shared with the notifications badge (hidden at zero); the monitor list shows `summary.total` of the active organization's monitor list.
 - Group: label and leaves, rendered as a labelled section, never an accordion; the rail shows a divider in its place; a group with nothing visible disappears.
 - A path may carry an organization parameter resolved against the active organization; a leaf that needs one is hidden when there is none.
 - Palette entries are searchable in ⌘K under the leaf's label and form the leaf's tab strip, but are never sidebar rows. The leaf is active on every one of its tabs.
 - Only real destinations are listed; no placeholder routes.
-- Active row: Primary at 12% as fill with Primary text, a 3 px Primary bar on the left edge (also on the rail button), medium weight, `aria-current="page"`. The sidebar width changes over 150 ms; hover fills over 100 ms.
+- Active row: Primary tint (design-system Tokens) as fill with Primary text, a 3 px Primary bar on the left edge (also on the rail button), medium weight, `aria-current="page"`. The sidebar width changes over 150 ms; hover fills over 100 ms.
 
 Example (NightWatch): ภาพรวม; ตรวจสถานะบริการ; การแจ้งเตือน; การตั้งค่าส่วนตัว with tabs โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล; group องค์กร with สมาชิก and ตั้งค่าการแจ้งเตือน (owner, admin).
 
 ## Sidebar
 
-- Organization switcher on top: organization mark (initials, 4 px corner), name, `องค์กร · <role>`. With more than one membership it is a button opening a `menuitemradio` list. Skeleton while the context loads.
-- Account menu at the bottom: avatar (circle), name, e-mail. Opens upward: role pill and organization, one link to personal settings, the theme control, sign-out.
+- Organization switcher on top, in a 56 px row that matches the header: organization mark (solid Primary with On primary initials, monospace when Latin per TYP-04, 4 px corner), name, `องค์กร · <role>`. With more than one membership it is a button opening a `menuitemradio` list. Skeleton while the context loads.
+- Account menu at the bottom: avatar (circle, inset fill with strong edge, Text initials, monospace when Latin per TYP-04), name, e-mail. Opens upward: role pill and organization, one link to personal settings, the theme control, sign-out.
 
 ## Header
 
@@ -53,11 +53,12 @@ The breadcrumb root is the organization the page acts on: on an organization-sco
 Shared menu-button behavior: focus moves in on open; ↑↓ move between items; Escape, an outside click or selecting an item returns focus to the trigger.
 
 - Command palette: modal search-all over the navigation definition, resolved for the active organization and the user's role, so every result navigates. ↑↓ select, ↵ opens, Escape closes, Tab stays inside. The footer names the organization being searched.
-- Notifications popover: title row, the five most recent inbox rows (two lines each), footer links to the inbox page and, for owners and admins, the organization's notification settings. Loading is a skeleton, no data an honest empty line; the unread badge is the server's count.
+- Notifications popover: title row, the five most recent inbox rows (two lines each), footer links to the inbox page and, for owners and admins, the organization's notification settings. Loading is a skeleton, no data an honest empty line; the unread badge is the server's count as a Text-filled counter (Text fill, Canvas numerals in monospace).
+- Inbox rows (popover and inbox page): an unread row carries a Primary dot and a semibold title; a read row a hollow strong-edge dot and a regular title.
 
 ## Page frame
 
-Every routed page uses one frame: a fluid column (forms cap at 720 px) with 24 px rhythm and a page header with a scope row (organization or account mark, name and a role or context pill, no separator characters), the 24 px title, a status line for facts (slug, counts, freshness; identifiers and numbers in monospace), an optional description and actions on the right that wrap under the title when the width runs out. Cards are hairline panels, never shadows. Forms bound their fields (about 448 px wide or a two-column grid) and put actions in a row under a hairline. Page-level loading and error states render as cards inside the frame, never as their own main region.
+Every routed page uses one frame: a fluid column (the form column caps at 720 px; a side panel may sit beside it from `lg`) with 24 px rhythm and a page header with an optional eyebrow (a Latin route code, TYP-04), a scope row (organization or account mark, name and a role or context pill, no separator characters), the 28 px title, a status line for facts (slug, counts, freshness; Thai labels in the sans-serif, values such as counts, ids, times and URLs in monospace; a status pill may lead it), an optional description and actions on the right that wrap under the title when the width runs out. Sections open with a section header: a 16 px semibold h2 with an optional `aria-hidden` section code, meta or actions on the right and a Divider under it. Cards are hairline panels, never shadows; modal dialogs follow LAY-07. Sibling stats or rows may share a hairline grid. A mockup region follows CMP-06. Forms bound their fields (about 448 px wide or a two-column grid) and put actions in a row under a hairline. Page-level loading and error states render as cards inside the frame, never as their own main region.
 
 ## Theme
 

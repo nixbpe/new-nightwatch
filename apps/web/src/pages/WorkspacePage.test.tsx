@@ -8,15 +8,22 @@ import userEvent from "@testing-library/user-event";
 import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { MonitorListResponse } from "@nightwatch/api-contract";
 import { ApiError } from "../lib/api/client";
 import {
   fetchOrganizationMembers,
   memberListQueryKey,
 } from "../lib/api/members";
 import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
+import {
+  fetchMonitorList,
+  fetchMonitorRecentEvents,
+  monitorQueryKeys,
+} from "../lib/api/monitors";
 import { TenantProvider } from "../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 import { WorkspacePage } from "./WorkspacePage";
+import type { MonitorRow } from "./workspace/rows";
 
 // The page header renders scope as a name plus a pill, so match inside the header.
 async function findScope(name: string, tag: string) {
@@ -74,12 +81,72 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
   fetchOrganizationMembers: vi.fn(),
 }));
 
+vi.mock("../lib/api/monitors", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchMonitorList: vi.fn(),
+  fetchMonitorRecentEvents: vi.fn(),
+}));
+
 const fetchMeContextMock = vi.mocked(fetchMeContext);
+const fetchMonitorListMock = vi.mocked(fetchMonitorList);
+const fetchMonitorRecentEventsMock = vi.mocked(fetchMonitorRecentEvents);
 const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
 const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
+
+const MONITOR_A = "33333333-3333-4333-8333-333333333333";
+const MONITOR_B = "44444444-4444-4444-8444-444444444444";
+const okUptime = { percent: 99.5, checks: 10, coveragePercent: 100 };
+
+function monitorItem(
+  id: string,
+  name: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    name,
+    url: `https://${name}.example.com/health`,
+    status: "active",
+    health: "up",
+    healthReason: null,
+    lastKnownDown: false,
+    consecutiveFailures: 0,
+    lastCheckAt: "2026-10-02T05:00:00.000Z",
+    openIncident: null,
+    lastResponseTimeMs: 120,
+    ssl: { level: "ok", daysRemaining: 90, host: `${name}.example.com` },
+    uptime: { h24: okUptime, d30: okUptime },
+    ...overrides,
+  } as MonitorRow;
+}
+
+function monitorList(total = 3): MonitorListResponse {
+  return {
+    summary: { up: 1, down: 1, unknown: 0, paused: 0, total, limit: 50 },
+    monitors: [
+      monitorItem(MONITOR_A, "api-payments", {
+        health: "down",
+        consecutiveFailures: 3,
+        openIncident: {
+          startedAt: "2026-10-02T04:00:00.000Z",
+          reason: "dns_not_found",
+        },
+      }),
+      monitorItem(MONITOR_B, "portal", {
+        ssl: {
+          level: "caution",
+          daysRemaining: 12,
+          host: "portal.example.com",
+        },
+      }),
+    ],
+    page: { limit: 50, offset: 0, total },
+    dataAsOf: "2026-10-02T05:00:00.000Z",
+  };
+}
 
 function meContext(
   organizations: MeContextResponse["organizations"],
@@ -126,6 +193,12 @@ const staleMemberPage: OrganizationMemberListResponse = {
 };
 
 function renderPage() {
+  if (fetchMonitorListMock.getMockImplementation() === undefined) {
+    fetchMonitorListMock.mockResolvedValue(monitorList());
+  }
+  if (fetchMonitorRecentEventsMock.getMockImplementation() === undefined) {
+    fetchMonitorRecentEventsMock.mockResolvedValue({ events: [] });
+  }
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -174,6 +247,8 @@ function renderDeniedMembershipPage() {
 describe("WorkspacePage context states", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
+    fetchMonitorListMock.mockReset();
+    fetchMonitorRecentEventsMock.mockReset();
     updateActiveOrganizationMock.mockReset();
     signOutMock.mockReset();
     sessionState.data = null;
@@ -193,7 +268,9 @@ describe("WorkspacePage context states", () => {
     pending.resolve(meContext([ownerOrg], ORG_A));
 
     await findScope("Org A", "เจ้าของ");
-    expect(screen.queryByRole("status")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).toBeNull();
+    });
   });
 
   it("a failed context load offers an explicit retry that recovers", async () => {
@@ -304,6 +381,8 @@ describe("WorkspacePage context states", () => {
 describe("WorkspacePage organization views", () => {
   afterEach(() => {
     fetchMeContextMock.mockReset();
+    fetchMonitorListMock.mockReset();
+    fetchMonitorRecentEventsMock.mockReset();
     updateActiveOrganizationMock.mockReset();
     signOutMock.mockReset();
     sessionState.data = null;
@@ -326,5 +405,283 @@ describe("WorkspacePage organization views", () => {
     await findScope("Org A", "เจ้าของ");
     expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
     expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+  });
+});
+
+describe("WorkspacePage overview content", () => {
+  afterEach(() => {
+    fetchMeContextMock.mockReset();
+    fetchMonitorListMock.mockReset();
+    fetchMonitorRecentEventsMock.mockReset();
+    sessionState.data = null;
+  });
+
+  it("shows the eyebrow, status line, stats and the problem monitors", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("// overview")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "ภาพรวม" }),
+    ).toBeInTheDocument();
+    const stats = screen.getByRole("region", { name: "สรุปสถานะ" });
+    expect(within(stats).getAllByRole("link")).toHaveLength(4);
+    const issues = screen
+      .getByRole("heading", { name: "ต้องดูตอนนี้" })
+      .closest("section");
+    expect(issues).not.toBeNull();
+    expect(
+      within(issues as HTMLElement).getByText("api-payments"),
+    ).toBeInTheDocument();
+    expect(
+      within(issues as HTMLElement).getByText("portal"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "เพิ่มมอนิเตอร์" }),
+    ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/new`);
+  });
+
+  it("marks every sample region as an example with its issue link", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderPage();
+
+    await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" });
+    const samples = screen.getAllByRole("group", { name: /^ตัวอย่าง: / });
+    expect(samples).toHaveLength(4);
+    const issues = samples.map((sample) =>
+      within(sample)
+        .getByRole("link", { name: /ดู issue #/ })
+        .getAttribute("href"),
+    );
+    expect(issues.map((href) => /(\d+)$/.exec(href ?? "")?.[1])).toEqual(
+      expect.arrayContaining(["56", "58", "59", "63"]),
+    );
+    expect(screen.queryByText(/\d{1,2} ต\.ค\. \d{4}/)).toBeNull();
+    for (const sample of samples) {
+      expect(
+        within(sample).getByText("ตัวอย่าง · ยังไม่เชื่อมข้อมูลจริง"),
+      ).toBeInTheDocument();
+      expect(
+        within(sample).getByRole("link", { name: /ดู issue #/ }),
+      ).toHaveAttribute("target", "_blank");
+    }
+  });
+
+  it("a viewer sees no add button", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
+    renderPage();
+
+    await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" });
+    expect(screen.queryByRole("link", { name: "เพิ่มมอนิเตอร์" })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "ดูมอนิเตอร์ทั้งหมด" }),
+    ).toBeInTheDocument();
+  });
+
+  it("measures the outage against the server's dataAsOf, not the client clock", async () => {
+    // Incident starts 04:00Z and dataAsOf is 05:00Z; a client clock a day ahead must not show "1 วัน".
+    vi.useFakeTimers({
+      toFake: ["Date"],
+      now: new Date("2026-10-03T05:00:00Z"),
+    });
+    try {
+      fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+      renderPage();
+      const issues = (
+        await screen.findByRole("heading", { name: "ต้องดูตอนนี้" })
+      ).closest("section") as HTMLElement;
+      expect(within(issues).getByText("1 ชั่วโมง")).toBeInTheDocument();
+      expect(within(issues).queryByText("1 วัน")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an organization without monitors shows the first-run state", async () => {
+    fetchMonitorListMock.mockResolvedValue({
+      ...monitorList(0),
+      summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+      monitors: [],
+    });
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderPage();
+
+    expect(await screen.findByText("ยังไม่มีมอนิเตอร์")).toBeInTheDocument();
+  });
+
+  it("a failed list offers a retry", async () => {
+    fetchMonitorListMock.mockRejectedValueOnce(new Error("boom"));
+    fetchMonitorListMock.mockResolvedValue(monitorList());
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(
+      await screen.findByText("โหลดมอนิเตอร์ไม่สำเร็จ"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("WorkspacePage denied list", () => {
+  afterEach(() => {
+    fetchMeContextMock.mockReset();
+    fetchMonitorListMock.mockReset();
+    fetchMonitorRecentEventsMock.mockReset();
+    sessionState.data = null;
+  });
+
+  it("a denied first load refreshes the membership context and shows no organization data", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchMonitorListMock.mockRejectedValue(
+      new ApiError("MEMBERSHIP_DENIED", "revoked", 403),
+    );
+    renderPage();
+
+    expect(
+      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+    ).toBeInTheDocument();
+    expect(fetchMeContextMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("Org A")).toBeNull();
+    expect(screen.queryByText("api-payments")).toBeNull();
+  });
+
+  it("a denied refetch after a successful load drops the cached monitors", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchMonitorListMock.mockResolvedValueOnce(monitorList());
+    fetchMonitorListMock.mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "revoked", 403),
+    );
+    fetchMonitorRecentEventsMock.mockResolvedValue({ events: [] });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/workspace"]}>
+          <TenantProvider>
+            <WorkspacePage />
+          </TenantProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findAllByText("api-payments")).not.toHaveLength(0);
+    const callsBefore = fetchMeContextMock.mock.calls.length;
+
+    await queryClient.refetchQueries({ queryKey: monitorQueryKeys.all(ORG_A) });
+
+    expect(
+      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("api-payments")).toBeNull();
+    expect(screen.queryByText("portal")).toBeNull();
+    await waitFor(() => {
+      expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+});
+
+describe("WorkspacePage overview details", () => {
+  afterEach(() => {
+    fetchMeContextMock.mockReset();
+    fetchMonitorListMock.mockReset();
+    fetchMonitorRecentEventsMock.mockReset();
+    sessionState.data = null;
+  });
+
+  it("limit reached disables add with its reason", async () => {
+    fetchMonitorListMock.mockResolvedValue(monitorList(50));
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderPage();
+    const add = await screen.findByRole("button", { name: "เพิ่มมอนิเตอร์" });
+    expect(add).toBeDisabled();
+    expect(add).toHaveAttribute("aria-describedby", "monitor-limit-reason");
+    expect(screen.getByText(/ครบ 50 ตัวแล้ว/)).toBeInTheDocument();
+  });
+
+  it("shows tile values, expired note and orders down before SSL rows", async () => {
+    const list = monitorList(3);
+    list.monitors.push(
+      monitorItem("55555555-5555-4555-8555-555555555555", "legacy", {
+        ssl: {
+          level: "expired",
+          daysRemaining: -2,
+          host: "legacy.example.com",
+        },
+      }),
+    );
+    list.monitors.reverse();
+    fetchMonitorListMock.mockResolvedValue(list);
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderPage();
+    const stats = await screen.findByRole("region", { name: "สรุปสถานะ" });
+    const [, downTile, sslTile] = within(stats).getAllByRole("link");
+    expect(downTile).toHaveTextContent("api-payments");
+    expect(sslTile).toHaveTextContent("2");
+    expect(sslTile).toHaveTextContent("หมดอายุแล้ว 1");
+    const issues = screen
+      .getByRole("heading", { name: "ต้องดูตอนนี้" })
+      .closest("section") as HTMLElement;
+    const names = within(issues)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(names.findIndex((t) => t.includes("api-payments"))).toBeLessThan(
+      names.findIndex((t) => t.includes("portal")),
+    );
+  });
+
+  it("renders no-data uptime, populated events and the stale warning", async () => {
+    const list = monitorList();
+    list.monitors[1] = monitorItem(MONITOR_B, "portal", {
+      uptime: {
+        h24: okUptime,
+        d30: { percent: null, checks: 0, coveragePercent: 0 },
+      },
+    });
+    fetchMonitorListMock.mockResolvedValueOnce(list);
+    fetchMonitorListMock.mockRejectedValue(new Error("boom"));
+    fetchMonitorRecentEventsMock.mockResolvedValue({
+      events: [
+        {
+          kind: "incident_opened",
+          at: "2026-10-02T04:00:00.000Z",
+          monitorId: MONITOR_A,
+          monitorName: "api-payments",
+          reason: "dns_not_found",
+        },
+      ],
+    });
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/workspace"]}>
+          <TenantProvider>
+            <WorkspacePage />
+          </TenantProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const events = (
+      await screen.findByRole("heading", { name: "เหตุการณ์ล่าสุด" })
+    ).closest("section") as HTMLElement;
+    expect(
+      await within(events).findByRole("link", { name: "api-payments" }),
+    ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/${MONITOR_A}`);
+    expect(screen.getAllByText("ไม่มีข้อมูล").length).toBeGreaterThan(0);
+
+    await queryClient.refetchQueries({ queryKey: monitorQueryKeys.all(ORG_A) });
+    expect(
+      await screen.findByText(/อัปเดตข้อมูลไม่สำเร็จ/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("portal").length).toBeGreaterThan(0);
   });
 });

@@ -39,6 +39,7 @@ async function findScope(name: string, tag: string) {
 }
 
 const {
+  fetchMonitorListMock,
   fetchNotificationsMock,
   fetchUnreadCountMock,
   markAllNotificationsReadMock,
@@ -46,6 +47,7 @@ const {
   sessionState,
   signOutMock,
 } = vi.hoisted(() => ({
+  fetchMonitorListMock: vi.fn(),
   fetchNotificationsMock: vi.fn(),
   fetchUnreadCountMock: vi.fn(),
   markAllNotificationsReadMock: vi.fn(),
@@ -89,6 +91,10 @@ vi.mock("../../lib/api/invitations", async (importOriginal) => ({
 vi.mock("../../lib/api/members", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchOrganizationMembers: vi.fn(),
+}));
+vi.mock("../../lib/api/monitors", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchMonitorList: fetchMonitorListMock,
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
@@ -205,6 +211,14 @@ fetchNotificationsMock.mockResolvedValue({
   unreadCount: 0,
 });
 fetchUnreadCountMock.mockResolvedValue({ unreadCount: 0 });
+// The sidebar reads `summary.total`; the overview page also renders the full response.
+const monitorList = (total: number) => ({
+  summary: { up: 0, down: 0, unknown: 0, paused: 0, total, limit: 50 },
+  monitors: [],
+  page: { limit: 50, offset: 0, total },
+  dataAsOf: "2026-10-02T05:00:00.000Z",
+});
+fetchMonitorListMock.mockResolvedValue(monitorList(0));
 
 describe("AppShell", () => {
   afterEach(() => {
@@ -223,6 +237,55 @@ describe("AppShell", () => {
       unreadCount: 0,
     });
     fetchUnreadCountMock.mockResolvedValue({ unreadCount: 0 });
+    fetchMonitorListMock.mockReset();
+    fetchMonitorListMock.mockResolvedValue(monitorList(0));
+  });
+
+  it("shows nav counts without changing the link names, and hides unknown ones", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchMonitorListMock.mockResolvedValue(monitorList(24));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 3 });
+    renderShell();
+
+    const nav = await screen.findByRole("navigation", { name: "เมนูหลัก" });
+    const monitors = await within(nav).findByRole("link", {
+      name: "ตรวจสถานะบริการ",
+    });
+    await waitFor(() => {
+      expect(monitors).toHaveTextContent("24");
+    });
+    const inbox = within(nav).getByRole("link", { name: "การแจ้งเตือน" });
+    await waitFor(() => {
+      expect(inbox).toHaveTextContent("3");
+    });
+    expect(within(monitors).getByText("24")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(fetchMonitorListMock).toHaveBeenCalledWith(ORG_A, {
+      limit: 25,
+      offset: 0,
+    });
+  });
+
+  it("hides a nav count whose request failed", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    fetchMonitorListMock.mockRejectedValue(new Error("list down"));
+    fetchUnreadCountMock.mockRejectedValue(new Error("count down"));
+    renderShell();
+
+    const nav = await screen.findByRole("navigation", { name: "เมนูหลัก" });
+    await waitFor(() => {
+      expect(fetchMonitorListMock).toHaveBeenCalled();
+    });
+    expect(nav.querySelector('[data-slot="nav-count"]')).toBeNull();
+  });
+
+  it("puts the canvas grain on the monitor list route", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderShell(undefined, `/organizations/${ORG_A}/monitors`);
+    expect(await screen.findByText("หน้ามอนิเตอร์")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toHaveClass("canvas-grain");
   });
 
   it("renders org switcher, breadcrumb, nav sections, account block, skip link and routed content", async () => {

@@ -247,7 +247,7 @@ export function MemberRoleActions({
       <select
         {...{ [MEMBER_SELECT_ATTRIBUTE]: member.id }}
         aria-label={`บทบาทใหม่ของ ${member.name}`}
-        className={cn(textInputClass, "w-32 shrink-0 py-0 text-sm")}
+        className={cn(textInputClass, "h-8 w-32 shrink-0 py-0 text-xs")}
         value={role}
         disabled={pending}
         onChange={(event) => {
@@ -263,6 +263,7 @@ export function MemberRoleActions({
       <Button
         type="button"
         variant="secondary"
+        size="sm"
         disabled={pending || role === member.role}
         aria-label={`บันทึกบทบาทของ ${member.name}`}
         onClick={(event) => {

@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import { PostAuthRedirect } from "../components/PostAuthRedirect";
-import { Alert, AuthPageShell, FullPageLoading } from "../components/ui";
+import { Alert, FullPageLoading } from "../components/ui";
+import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
@@ -119,7 +120,7 @@ export function OnboardingPage() {
 
   if (tokenPhase === "failed") {
     return (
-      <AuthPageShell title="ยืนยันอีเมลไม่สำเร็จ">
+      <AuthPageFrame eyebrow="// onboarding" title="ยืนยันอีเมลไม่สำเร็จ">
         <div className="flex flex-col gap-4">
           <Alert tone="error">{tokenError}</Alert>
           <Button
@@ -142,7 +143,7 @@ export function OnboardingPage() {
             กลับไปเข้าสู่ระบบ
           </Button>
         </div>
-      </AuthPageShell>
+      </AuthPageFrame>
     );
   }
 

@@ -96,14 +96,14 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         type="button"
         aria-label="ปิดการค้นหา"
         onClick={onClose}
-        className="backdrop-enter absolute inset-0 bg-foreground/40"
+        className="backdrop-enter absolute inset-0 bg-scrim"
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="ค้นหาทั้งหมด"
         onKeyDown={onKeyDown}
-        className="overlay-enter relative w-full max-w-[640px] rounded-md border border-foreground/10 bg-surface shadow-lg"
+        className="overlay-enter relative w-full max-w-[640px] rounded-md border border-foreground/10 bg-surface shadow-modal"
       >
         <div className="flex h-12 items-center gap-3 border-b border-foreground/10 px-4">
           <span className="text-foreground-secondary">

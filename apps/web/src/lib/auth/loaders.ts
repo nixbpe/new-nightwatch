@@ -13,6 +13,7 @@ import {
   fetchMonitorList,
   monitorQueryKeys,
   MONITOR_LIST_PAGE_SIZE,
+  OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import { authClient } from "../auth-client";
@@ -124,7 +125,21 @@ export async function workspaceLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
-  await prefetchMeContext(sessionOrRedirect.user.id);
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  // Same pick as the page on a cold load (no in-memory choice): last active, else the first.
+  const organization =
+    context?.organizations.find(
+      (item) => item.id === context.lastActiveTenantId,
+    ) ?? context?.organizations[0];
+  if (organization !== undefined) {
+    await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+      .query({
+        queryKey: monitorQueryKeys.list(organization.id, OVERVIEW_LIST_PARAMS),
+        queryFn: () => fetchMonitorList(organization.id, OVERVIEW_LIST_PARAMS),
+        staleTime: "static",
+      })
+      .catch(() => undefined);
+  }
   return null;
 }
 

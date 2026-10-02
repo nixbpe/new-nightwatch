@@ -4,25 +4,29 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { Skeleton } from "../../../components/shell/Skeleton";
 import { Alert } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
-import { Card, CardHeader } from "../../../components/ui/card";
+import { HairlineGrid } from "../../../components/ui/hairline-grid";
 import { ResponseTimeTable } from "../../../components/ui/response-time-table";
 import {
   buildSeries,
   hasChecks,
   pausedThroughout,
+  rangeStats,
   RANGE_LABELS,
   summarize,
   summaryText,
   toChartProps,
   type ChartRange,
 } from "../../../components/ui/response-time-series";
+import { SectionHeader } from "../../../components/ui/section-header";
 import { SegmentedControl } from "../../../components/ui/segmented-control";
 import {
   fetchMonitorResponseTimes,
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../../lib/api/monitors";
-import { formatTimeOrDate, Time, TIME_ZONE } from "../format";
+import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
+import { PercentilesMockup } from "./MonitorDetailMockups";
+import { NO_DATA } from "./StatusCard";
 
 // d3 loads only when the Detail page shows a chart.
 const ResponseTimeChart = lazy(() =>
@@ -48,6 +52,30 @@ function ChartLoading() {
   );
 }
 
+function Kpi({
+  label,
+  value,
+  danger = false,
+}: {
+  label: string;
+  value: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="px-4 py-3">
+      <dt className="text-xs text-foreground-secondary">{label}</dt>
+      <dd
+        className={`mt-1 ${value === NO_DATA ? "font-sans text-base" : "font-mono text-[22px] leading-8 font-medium tabular-nums"} ${danger ? "text-danger" : "text-heading"}`}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+const msText = (value: number | null) =>
+  value === null ? NO_DATA : `${formatNumber(value)} ms`;
+
 // Independent query: a failure stays inside this card.
 export function ResponseTimeCard({
   organizationId,
@@ -56,7 +84,9 @@ export function ResponseTimeCard({
   dataAsOf,
   intervalSeconds,
   createdAt,
+  code,
 }: {
+  code?: string;
   organizationId: string;
   monitorId: string;
   lastCheckAt: string | null;
@@ -83,6 +113,7 @@ export function ResponseTimeCard({
     [chartProps],
   );
 
+  const stats = query.data === undefined ? undefined : rangeStats(query.data);
   const paused = chartProps !== undefined && pausedThroughout(chartProps);
   let body;
   if (chartProps !== undefined && (hasChecks(series) || paused)) {
@@ -151,12 +182,15 @@ export function ResponseTimeCard({
   }
 
   return (
-    <Card as="section" aria-labelledby="detail-response-times">
-      <CardHeader
+    <section
+      aria-labelledby="detail-response-times"
+      className="flex flex-col gap-4"
+    >
+      <SectionHeader
         id="detail-response-times"
+        code={code}
         title="เวลาตอบสนอง"
-        description={`หน่วย: ms ช่วง: ${RANGE_LABELS[range]} แหล่ง: ผลการตรวจของ NightWatch เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}
-        action={
+        meta={
           <SegmentedControl
             label="ช่วงเวลาของกราฟ"
             value={range}
@@ -166,14 +200,43 @@ export function ResponseTimeCard({
             }}
           />
         }
-        className="border-b border-foreground/10 p-4"
       />
-      <div className="flex flex-col gap-3 p-4">
+      <p className="text-xs text-foreground-secondary">
+        หน่วย: ms ช่วง: {RANGE_LABELS[range]} แหล่ง: ผลการตรวจของ NightWatch
+        เวลาแสดงตามเขตเวลา {TIME_ZONE}
+      </p>
+      {stats === undefined ? null : (
+        <HairlineGrid
+          as="dl"
+          className={
+            range === "24h" ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
+          }
+        >
+          {range === "24h" ? (
+            <>
+              <Kpi label="p50" value={msText(stats.p50Ms)} />
+              <Kpi label="p95" value={msText(stats.p95Ms)} />
+            </>
+          ) : null}
+          <Kpi label="จำนวนการตรวจ" value={formatNumber(stats.checks)} />
+          {range === "24h" ? (
+            <Kpi
+              label="ล้มเหลว"
+              value={formatNumber(stats.failed ?? 0)}
+              danger={(stats.failed ?? 0) > 0}
+            />
+          ) : null}
+        </HairlineGrid>
+      )}
+      {stats !== undefined && range !== "24h" ? (
+        <PercentilesMockup range={range} />
+      ) : null}
+      <div className="flex flex-col gap-3">
         {body}
         {chartProps !== undefined && query.isError ? (
           <Alert tone="warning">อัปเดตกราฟไม่สำเร็จ</Alert>
         ) : null}
       </div>
-    </Card>
+    </section>
   );
 }

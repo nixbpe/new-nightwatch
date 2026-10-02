@@ -22,7 +22,8 @@ import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert, Field, FieldValidationError, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
-import { CardHeader, CardSection } from "../../components/ui/card";
+import { CardSection } from "../../components/ui/card";
+import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
 import { IconTile } from "../../components/ui/icon-tile";
 
@@ -293,25 +294,31 @@ export function MfaCard({
 
   return (
     <CardSection aria-labelledby="mfa-card-title">
-      <CardHeader
-        id="mfa-card-title"
-        title="ยืนยันสองขั้นตอน (MFA)"
-        description="ใช้รหัส 6 หลักจากแอปยืนยันตัวตน (TOTP) เพิ่มอีกชั้นเมื่อเข้าสู่ระบบ ไม่บังคับ แต่แนะนำสำหรับเจ้าของและผู้ดูแลองค์กร"
-        action={
-          <StatusPill
-            tone={
-              status.tone === "positive"
-                ? "primary"
-                : status.tone === "caution"
-                  ? "caution"
-                  : "muted"
-            }
-            dot
-          >
-            {status.label}
-          </StatusPill>
-        }
-      />
+      <div className="flex flex-col gap-2">
+        <SectionHeader
+          id="mfa-card-title"
+          code="01"
+          title="ยืนยันสองขั้นตอน (MFA)"
+          meta={
+            <StatusPill
+              tone={
+                status.tone === "positive"
+                  ? "primary"
+                  : status.tone === "caution"
+                    ? "caution"
+                    : "muted"
+              }
+              dot
+            >
+              {status.label}
+            </StatusPill>
+          }
+        />
+        <p className="text-sm text-foreground-secondary">
+          ใช้รหัส 6 หลักจากแอปยืนยันตัวตน (TOTP) เพิ่มอีกชั้นเมื่อเข้าสู่ระบบ
+          ไม่บังคับ แต่แนะนำสำหรับเจ้าของและผู้ดูแลองค์กร
+        </p>
+      </div>
 
       {enabled ? (
         <>
@@ -321,7 +328,7 @@ export function MfaCard({
               ครั้งถัดไปที่เข้าสู่ระบบจะต้องกรอกรหัสจากแอปด้วย
             </Alert>
           ) : null}
-          <div className="flex flex-col rounded-md border border-foreground/10">
+          <div className="flex flex-col rounded border border-foreground/10">
             <div className="flex items-center justify-between gap-3 border-b border-foreground/10 p-4">
               <div className="flex min-w-0 items-center gap-3">
                 <IconTile>
@@ -424,7 +431,7 @@ export function MfaCard({
                     children={(submitting) => (
                       <Button
                         type="submit"
-                        variant="destructive"
+                        variant="destructive-outline"
                         disabled={submitting}
                       >
                         {submitting

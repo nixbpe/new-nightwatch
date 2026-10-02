@@ -8,6 +8,7 @@ import {
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppShell } from "./components/shell/AppShell";
+import { AuthEyebrow } from "./components/shell/AuthFrame";
 import { AuthLayout } from "./components/shell/AuthLayout";
 import { BrandMark } from "./components/shell/BrandMark";
 import { Button } from "./components/ui/button";
@@ -72,7 +73,10 @@ function NotFoundPage() {
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
       <BrandMark withName />
       <Card className="w-full max-w-md items-center p-6 text-center sm:p-8">
-        <h1 className="text-2xl font-semibold">ไม่พบหน้านี้</h1>
+        <AuthEyebrow>{"// 404"}</AuthEyebrow>
+        <h1 className="mt-2 text-[28px] leading-9 font-semibold text-heading">
+          ไม่พบหน้านี้
+        </h1>
         <p className="mt-2 text-sm text-foreground-secondary">
           ตรวจสอบที่อยู่หรือกลับไปยังพื้นที่ทำงาน
         </p>

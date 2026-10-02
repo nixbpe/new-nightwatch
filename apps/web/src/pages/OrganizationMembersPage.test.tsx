@@ -12,6 +12,7 @@ import { useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import { MOCKUP_NOTICE } from "../components/ui/mockup-frame";
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { ApiError } from "../lib/api/client";
 import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
@@ -183,6 +184,9 @@ const getStatus = () => {
 };
 const findStatus = () => waitFor(getStatus);
 
+const totalCountText = (n: number) => (_content: string, el: Element | null) =>
+  el?.tagName === "SPAN" && el.textContent === `สมาชิกทั้งหมด ${String(n)} คน`;
+
 describe("OrganizationMembersPage", () => {
   it.each(invitationOutcomes)(
     "keeps the A invitation mounted across refetch and pagination: %s",
@@ -270,12 +274,38 @@ describe("OrganizationMembersPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByText("สมาชิกทั้งหมด 51 คน")).toBeInTheDocument();
+    expect(await screen.findByText(totalCountText(51))).toBeInTheDocument();
     expect(screen.getByText("Ada")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(await screen.findByText("Zoe")).toBeInTheDocument();
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+  });
+  it("renders the redesigned page structure: mockup group, actor marker, headings and mono counts", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValueOnce(response);
+    renderPage();
+
+    const count = await screen.findByText(totalCountText(51));
+    expect(within(count).getByText("51")).toHaveClass("font-mono");
+
+    const group = screen.getByRole("group", {
+      name: "ตัวอย่าง: เพดานจำนวนสมาชิก",
+    });
+    expect(within(group).getByText(MOCKUP_NOTICE)).toBeInTheDocument();
+    expect(
+      within(group)
+        .getByRole("link")
+        .getAttribute("href")
+        ?.endsWith("/issues/66"),
+    ).toBe(true);
+
+    expect(screen.getAllByText("คุณ")).toHaveLength(1);
+    expect(
+      screen.getAllByRole("heading", { level: 1, name: "สมาชิก" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { level: 2, name: /รายชื่อสมาชิก/ }),
+    ).toBeInTheDocument();
   });
   it("hides stale first-page member data while revisiting it refetches", async () => {
     const secondPage: OrganizationMemberListResponse = {
@@ -314,7 +344,7 @@ describe("OrganizationMembersPage", () => {
     expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
-    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
     expect(screen.queryByText("แสดง 1–1 จาก 51")).not.toBeInTheDocument();
 
     freshFirstPage.resolve({
@@ -323,7 +353,7 @@ describe("OrganizationMembersPage", () => {
     });
 
     expect(await screen.findByText("Fresh Ada")).toBeInTheDocument();
-    expect(screen.getByText("สมาชิกทั้งหมด 51 คน")).toBeInTheDocument();
+    expect(screen.getByText(totalCountText(51))).toBeInTheDocument();
     expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
   });
 
@@ -345,7 +375,7 @@ describe("OrganizationMembersPage", () => {
     expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
-    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
     expect(screen.queryByText("แสดง 1–1 จาก 51")).not.toBeInTheDocument();
 
     freshPage.resolve({
@@ -385,9 +415,9 @@ describe("OrganizationMembersPage", () => {
     expect(heading).toHaveFocus();
     expect(heading).toHaveAttribute("tabindex", "-1");
     expect(heading).toHaveClass(
-      "focus:outline-2",
-      "focus:outline-offset-2",
-      "focus:outline-primary",
+      "focus-visible:outline-2",
+      "focus-visible:outline-offset-2",
+      "focus-visible:outline-primary",
     );
 
     restoredPage.resolve(response);
@@ -420,9 +450,9 @@ describe("OrganizationMembersPage", () => {
     const heading = await screen.findByRole("heading", { name: "สมาชิก" });
     expect(heading).toHaveFocus();
     expect(heading).toHaveClass(
-      "focus:outline-2",
-      "focus:outline-offset-2",
-      "focus:outline-primary",
+      "focus-visible:outline-2",
+      "focus-visible:outline-offset-2",
+      "focus-visible:outline-primary",
     );
     expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
   });
@@ -1009,7 +1039,7 @@ describe("OrganizationMembersPage", () => {
       `/organizations/${organizationId}/members`,
     );
     expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
 
@@ -1159,7 +1189,7 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("workspace")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
     expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1493,7 +1523,7 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("workspace")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
     expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
+    expect(screen.queryByText(totalCountText(51))).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });

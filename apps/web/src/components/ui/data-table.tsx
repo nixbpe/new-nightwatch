@@ -14,7 +14,7 @@ export type DataTableColumn<Row> = {
   cell: (row: Row) => ReactNode;
 };
 
-// Presentational table: header on the inset surface, 44 px rows, hairline
+// Presentational table: sans header on Surface (TYP-04), 44 px rows, hairline
 // dividers and a hover tint. Sorting, filtering and selection are not built
 // in; a data-grid engine can drive this markup later without changing pages.
 export function DataTable<Row>({
@@ -48,7 +48,7 @@ export function DataTable<Row>({
       )}
     >
       <table className="w-full min-w-[560px] text-left text-sm">
-        <thead className="surface-inset sticky top-0 z-10 text-xs font-medium text-foreground-secondary">
+        <thead className="sticky top-0 z-10 bg-surface text-xs font-medium text-foreground-secondary">
           <tr>
             {columns.map((column) => (
               <th

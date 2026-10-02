@@ -5,12 +5,12 @@ import { Navigate, useNavigate } from "react-router";
 
 import {
   Alert,
-  AuthPageShell,
   Field,
   FieldValidationError,
   Input,
   SubmitButton,
 } from "../components/ui";
+import { AuthPageFrame } from "../components/shell/AuthFrame";
 import { Button } from "../components/ui/button";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { fetchInvitation, invitationQueryKey } from "../lib/api/invitations";
@@ -119,7 +119,11 @@ export function VerifyEmailPage() {
       : `เราส่งลิงก์ยืนยันไปที่ ${data.user.email} กรุณาเปิดอีเมลแล้วคลิกลิงก์เพื่อดำเนินการต่อ`;
 
   return (
-    <AuthPageShell title="ยืนยันอีเมลของคุณ" subtitle={subtitle}>
+    <AuthPageFrame
+      eyebrow="// verify email"
+      title="ยืนยันอีเมลของคุณ"
+      subtitle={subtitle}
+    >
       <div className="flex flex-col gap-6">
         {signedIn ? null : (
           <form
@@ -257,6 +261,6 @@ export function VerifyEmailPage() {
           </button>
         </div>
       </div>
-    </AuthPageShell>
+    </AuthPageFrame>
   );
 }

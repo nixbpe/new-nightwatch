@@ -131,6 +131,48 @@ export function chartWindow(props: ResponseTimeChartProps): Span | undefined {
   };
 }
 
+const dayTickFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
+  day: "numeric",
+  month: "short",
+});
+const clockTickFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const clockSecondsTickFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+/**
+ * X-axis ticks with distinct labels. A young monitor gives a window of seconds, where
+ * `HH:mm` would repeat on every tick, so such a span reads in seconds; any label that
+ * still repeats is dropped.
+ */
+export function axisTicks(
+  ticks: readonly Date[],
+  spanMs: number,
+  clock: boolean,
+): { at: Date; label: string }[] {
+  const format = !clock
+    ? dayTickFormat
+    : spanMs < 10 * 60_000
+      ? clockSecondsTickFormat
+      : clockTickFormat;
+  const seen = new Set<string>();
+  const result: { at: Date; label: string }[] = [];
+  for (const at of ticks) {
+    const label = format.format(at);
+    if (seen.has(label)) continue;
+    seen.add(label);
+    result.push({ at, label });
+  }
+  return result;
+}
+
 export type SeriesKind =
   "value" | "no-response" | "check-error" | "gap" | "pause";
 
@@ -475,3 +517,43 @@ export const RANGE_LABELS: Record<ChartRange, string> = {
   "7d": "7 วันล่าสุด",
   "30d": "30 วันล่าสุด",
 };
+
+export type RangeStats = {
+  /** Results in the range. */
+  checks: number;
+  /** Null for 7d and 30d: hourly averages cannot give percentiles (issue #57). */
+  p50Ms: number | null;
+  p95Ms: number | null;
+  /** Results with outcome `fail`; `check_error` is NightWatch-side and not counted. Null for 7d and 30d. */
+  failed: number | null;
+};
+
+/** Nearest-rank percentile of an ascending list. */
+function percentile(sorted: readonly number[], p: number): number | null {
+  if (sorted.length === 0) return null;
+  const rank = Math.max(1, Math.ceil((p / 100) * sorted.length));
+  return sorted[rank - 1] ?? null;
+}
+
+/** KPI figures for the range. Only the 24 h read carries per-check results, so only it backs p50, p95 and failed. */
+export function rangeStats(response: MonitorResponseTimesResponse): RangeStats {
+  if (response.range !== "24h") {
+    return {
+      checks: response.buckets.reduce((sum, bucket) => sum + bucket.checks, 0),
+      p50Ms: null,
+      p95Ms: null,
+      failed: null,
+    };
+  }
+  const times = response.points
+    .flatMap((point) =>
+      point.responseTimeMs === null ? [] : [point.responseTimeMs],
+    )
+    .sort((a, b) => a - b);
+  return {
+    checks: response.points.length,
+    p50Ms: percentile(times, 50),
+    p95Ms: percentile(times, 95),
+    failed: response.points.filter((point) => point.outcome === "fail").length,
+  };
+}

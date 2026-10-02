@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
   fetchMonitorChecks,
@@ -33,6 +34,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
 }));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -82,6 +87,12 @@ const testResult: { result: MonitorTestResult } = {
 };
 
 beforeEach(() => {
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: false,
+  });
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
@@ -684,7 +695,9 @@ describe("Edit: origin change (AC-44)", () => {
     const user = await openEdit();
     changeUrl("https://other.example/health");
     expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-      "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      expect.stringContaining(
+        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      ),
     );
     expect(saveEdit()).toBeDisabled();
     expect(testButton()).toBeDisabled();
@@ -924,7 +937,9 @@ describe("Server refusals of secret entries", () => {
     await user.click(saveEdit());
     await waitFor(() => {
       expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+        expect.stringContaining(
+          "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+        ),
       );
     });
   });

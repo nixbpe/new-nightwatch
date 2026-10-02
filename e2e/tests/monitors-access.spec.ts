@@ -390,16 +390,21 @@ for (const theme of ["light", "dark"] as const) {
         "เพิ่มมอนิเตอร์",
         "รีเฟรช",
         "ค้นหาชื่อหรือ URL",
-        "สถานะ",
+        "ทั้งหมด",
         monitorName,
       ]) {
         order.push(...(await tabTo(page, step)).slice(-1));
       }
-      expect(order).toEqual([
+      // The status filter is a group of toggle chips; its first chip ("ทั้งหมด")
+      // carries an aria-hidden count after the label.
+      await expect(
+        page.getByRole("group", { name: "สถานะ" }).getByRole("button").first(),
+      ).toHaveAttribute("aria-pressed", "true");
+      expect(order.map((name) => name.split("\n")[0])).toEqual([
         "เพิ่มมอนิเตอร์",
         "รีเฟรช",
         "ค้นหาชื่อหรือ URL",
-        "สถานะ",
+        "ทั้งหมด",
         monitorName,
       ]);
 

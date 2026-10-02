@@ -12,6 +12,9 @@ import { Button } from "../components/ui/button";
 import { Notice } from "../components/ui/notice";
 import { DataTable, DataTablePagination } from "../components/ui/data-table";
 import { StatusPill } from "../components/ui/status-pill";
+import { SectionHeader } from "../components/ui/section-header";
+import { MockupFrame } from "../components/ui/mockup-frame";
+import { initialsFontClass, initialsOf } from "../components/shell/initials";
 import { ROLE_LABELS } from "../lib/roles";
 import { Page, PageHeader } from "../components/shell/Page";
 import { PageState } from "../components/shell/PageState";
@@ -33,6 +36,7 @@ import {
   useMemberRoleChange,
 } from "./organization-members/MemberRoleActions";
 import {
+  SelfLeaveButton,
   SelfLeaveSection,
   useFocusHeadingAfterSelfLeave,
   useSelfLeave,
@@ -332,12 +336,14 @@ function OrganizationMembersPageForOrganization({
       </Page>
     );
   }
+  const selfLeaveAction = (
+    <SelfLeaveButton selfLeave={selfLeave} disabled={otherMutationPending} />
+  );
   const selfLeaveSection = (
     <SelfLeaveSection
       selfLeave={selfLeave}
       organization={organization}
       actor={me?.user}
-      disabled={otherMutationPending}
       headingRef={memberPageHeadingRef}
     />
   );
@@ -346,22 +352,28 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader
-          scope={{ mark: organization.name, label: organization.name }}
+          eyebrow="// organization · members"
+          scope={{
+            mark: organization.name,
+            label: organization.name,
+            tag: ROLE_LABELS[organization.role] ?? organization.role,
+          }}
           title="สมาชิก"
           status={
             <span>
               slug <span className="font-mono">{organization.slug}</span>
             </span>
           }
+          actions={selfLeaveAction}
           titleRef={memberPageHeadingRef}
           titleTabIndex={-1}
-          titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+          titleClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         />
+        {selfLeaveSection}
         <PageState
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"
         />
-        {selfLeaveSection}
       </Page>
     );
   }
@@ -409,14 +421,48 @@ function OrganizationMembersPageForOrganization({
         <DataTable
           ariaLabel="ตารางสมาชิก"
           columns={[
-            { key: "name", header: "ชื่อ", width: "30%", cell: (m) => m.name },
-            { key: "email", header: "อีเมล", cell: (m) => m.email },
+            {
+              key: "name",
+              header: "ชื่อ",
+              width: "30%",
+              cell: (m) => {
+                const initials = initialsOf(m.name);
+                return (
+                  <span className="flex items-center gap-3">
+                    <span
+                      aria-hidden="true"
+                      className={`grid size-8 flex-none place-items-center rounded-full border border-foreground/20 surface-hover text-[11px] font-semibold text-foreground ${initialsFontClass(initials)}`}
+                    >
+                      {initials}
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="font-medium text-heading">{m.name}</span>
+                      {m.userId === me?.user.id ? (
+                        <span className="text-xs text-foreground-secondary">
+                          คุณ
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                );
+              },
+            },
+            {
+              key: "email",
+              header: "อีเมล",
+              mono: true,
+              cell: (m) => (
+                <span className="text-foreground-secondary">{m.email}</span>
+              ),
+            },
             {
               key: "role",
               header: "บทบาท",
               width: "160px",
               cell: (m) => (
-                <StatusPill>{ROLE_LABELS[m.role] ?? m.role}</StatusPill>
+                <StatusPill tone={m.role === "owner" ? "primary" : "neutral"}>
+                  {ROLE_LABELS[m.role] ?? m.role}
+                </StatusPill>
               ),
             },
             {
@@ -479,22 +525,41 @@ function OrganizationMembersPageForOrganization({
   return (
     <Page>
       <PageHeader
-        scope={{ mark: organization.name, label: organization.name }}
+        eyebrow="// organization · members"
+        scope={{
+          mark: organization.name,
+          label: organization.name,
+          tag: ROLE_LABELS[organization.role] ?? organization.role,
+        }}
         title="สมาชิก"
+        actions={selfLeaveAction}
         status={
           <>
             <span>
               slug <span className="font-mono">{organization.slug}</span>
             </span>
             {!list.isFetching && !list.isError && !invalidPage && list.data ? (
-              <span>{`สมาชิกทั้งหมด ${String(list.data.page.total)} คน`}</span>
+              <span>
+                สมาชิกทั้งหมด{" "}
+                <span className="font-mono">
+                  {String(list.data.page.total)}
+                </span>{" "}
+                คน
+              </span>
             ) : null}
           </>
         }
         titleRef={memberPageHeadingRef}
         titleTabIndex={-1}
-        titleClassName="focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+        titleClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       />
+      {selfLeaveSection}
+      <MockupFrame label="เพดานจำนวนสมาชิก" issue={66}>
+        <p className="text-sm text-foreground-secondary">
+          เพดานสมาชิกต่อองค์กร{" "}
+          <span className="font-mono text-foreground">N</span> คน
+        </p>
+      </MockupFrame>
       <InvitationPanel
         key={organization.role}
         organizationId={organizationId}
@@ -510,26 +575,6 @@ function OrganizationMembersPageForOrganization({
         refreshMembershipContext={refreshAfterAuthorizationDenied}
         createdSignal={invitationCreations}
       />
-      {roleChange.pendingText !== null ? (
-        <Notice tone="pending">{roleChange.pendingText}</Notice>
-      ) : null}
-      {roleChange.scopeCurrent && roleChange.notice !== null ? (
-        roleChange.notice.tone === "success" ? (
-          <Notice tone="success">{roleChange.notice.text}</Notice>
-        ) : (
-          <Alert tone="error">{roleChange.notice.text}</Alert>
-        )
-      ) : null}
-      {revoke.pendingText !== null ? (
-        <Notice tone="pending">{revoke.pendingText}</Notice>
-      ) : null}
-      {revoke.scopeCurrent && revoke.notice !== null ? (
-        revoke.notice.tone === "success" ? (
-          <Notice tone="success">{revoke.notice.text}</Notice>
-        ) : (
-          <Alert tone="error">{revoke.notice.text}</Alert>
-        )
-      ) : null}
       {revoke.scopeCurrent && revoke.confirmation !== null ? (
         <ConfirmDialog
           title="ยืนยันการถอนสมาชิก"
@@ -587,8 +632,44 @@ function OrganizationMembersPageForOrganization({
           onConfirm={roleChange.confirm}
         />
       ) : null}
-      {directory}
-      {selfLeaveSection}
+      <section
+        aria-labelledby="members-directory-title"
+        className="flex flex-col gap-4"
+      >
+        <SectionHeader
+          id="members-directory-title"
+          code="02"
+          title="รายชื่อสมาชิก"
+          meta={
+            !list.isFetching && !list.isError && !invalidPage && list.data ? (
+              <span>
+                <span className="font-mono">{list.data.page.total}</span> คน
+              </span>
+            ) : undefined
+          }
+        />
+        {roleChange.pendingText !== null ? (
+          <Notice tone="pending">{roleChange.pendingText}</Notice>
+        ) : null}
+        {roleChange.scopeCurrent && roleChange.notice !== null ? (
+          roleChange.notice.tone === "success" ? (
+            <Notice tone="success">{roleChange.notice.text}</Notice>
+          ) : (
+            <Alert tone="error">{roleChange.notice.text}</Alert>
+          )
+        ) : null}
+        {revoke.pendingText !== null ? (
+          <Notice tone="pending">{revoke.pendingText}</Notice>
+        ) : null}
+        {revoke.scopeCurrent && revoke.notice !== null ? (
+          revoke.notice.tone === "success" ? (
+            <Notice tone="success">{revoke.notice.text}</Notice>
+          ) : (
+            <Alert tone="error">{revoke.notice.text}</Alert>
+          )
+        ) : null}
+        {directory}
+      </section>
     </Page>
   );
 }

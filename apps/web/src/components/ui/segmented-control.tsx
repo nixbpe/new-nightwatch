@@ -8,7 +8,8 @@ export type SegmentedOption<Value extends string> = {
 };
 
 // One choice among a few: radio semantics, roving tabindex, arrow keys, and
-// the shared 2 px offset focus ring (A11Y-01). Selected = active surface.
+// the shared 2 px offset focus ring (A11Y-01). Selected = active surface;
+// 32 px segments (LAY-06) inside a Control boundary edge (COL-04).
 export function SegmentedControl<Value extends string>({
   label,
   value,
@@ -39,7 +40,7 @@ export function SegmentedControl<Value extends string>({
       aria-label={label}
       aria-disabled={disabled ? true : undefined}
       className={cn(
-        "inline-flex self-start gap-0.5 rounded-md border border-foreground/10 p-0.5",
+        "inline-flex self-start gap-0.5 rounded-md border border-control-border p-0.5",
         className,
       )}
     >

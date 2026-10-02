@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isLeafActive } from "../../components/shell/nav-config";
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   fetchMonitorChecks,
   fetchMonitorDetail,
@@ -32,6 +33,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
 }));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
+}));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   updateMonitor: vi.fn(),
@@ -48,6 +53,12 @@ const detailMock = vi.mocked(fetchMonitorDetail);
 const SECRET_ID = "0f6a4b7e-1c2d-4e3f-8a9b-0c1d2e3f4a5b";
 
 beforeEach(() => {
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: false,
+  });
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
@@ -88,7 +99,7 @@ describe("Edit opens with the saved configuration", () => {
     renderForm(editPath());
     await screen.findByDisplayValue("Payments API");
     expect(screen.getByRole("radio", { name: "ขั้นสูง" })).toBeChecked();
-    expect(screen.getByLabelText("Method")).toHaveValue("POST");
+    expect(screen.getByLabelText("เมธอด")).toHaveValue("POST");
     expect(screen.getByLabelText("หมดเวลารอ (วินาที)")).toHaveValue("5");
     expect(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ")).toHaveValue(
       "200-299,301",

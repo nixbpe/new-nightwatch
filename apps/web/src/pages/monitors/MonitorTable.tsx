@@ -9,6 +9,7 @@ import {
 import { HealthPill } from "./HealthPill";
 import {
   formatNumber,
+  formatPercent,
   formatTimeOrDate,
   HEALTH_REASON_LABELS,
   incidentReasonLabel,
@@ -19,10 +20,10 @@ import { SslLabel } from "./SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
 
-const NO_DATA = "ไม่มีข้อมูล";
+export const NO_DATA = "ไม่มีข้อมูล";
 
 // The line under the pill says why a state holds; "ล้มเหลว N ครั้ง" is a warning beside a health that has not changed.
-function StatusDetail({ row }: { row: Row }) {
+export function StatusDetail({ row }: { row: Row }) {
   const lines: ReactNode[] = [];
   if (row.health === "down" && row.openIncident !== null) {
     lines.push(
@@ -69,14 +70,15 @@ function StatusDetail({ row }: { row: Row }) {
   );
 }
 
-function Uptime({ window }: { window: Row["uptime"]["h24"] }) {
-  if (window.percent === null) return <span>{NO_DATA}</span>;
+export function Uptime({ window }: { window: Row["uptime"]["h24"] }) {
+  if (window.percent === null)
+    return <span className="whitespace-nowrap">{NO_DATA}</span>;
   return (
-    <span className="flex flex-col">
-      <span>{formatNumber(window.percent)}%</span>
+    <span className="flex flex-col whitespace-nowrap">
+      <span className="font-mono">{formatPercent(window.percent)}%</span>
       {window.coveragePercent < 100 ? (
         <span className="text-xs text-foreground-secondary">
-          ครอบคลุม {formatNumber(window.coveragePercent)}%
+          ครอบคลุม {formatPercent(window.coveragePercent)}%
         </span>
       ) : null}
     </span>
@@ -107,7 +109,7 @@ export function MonitorTable({
       cell: (row) => (
         <Link
           to={`/organizations/${organizationId}/monitors/${row.id}`}
-          className="font-medium text-primary underline-offset-4 hover:underline"
+          className="block min-w-32 max-w-[240px] font-medium text-primary underline-offset-4 hover:underline"
         >
           {row.name}
         </Link>
@@ -117,7 +119,11 @@ export function MonitorTable({
       key: "url",
       header: "URL",
       mono: true,
-      cell: (row) => <span className="break-all">{row.url}</span>,
+      cell: (row) => (
+        <span title={row.url} className="block max-w-[160px] truncate">
+          {row.url}
+        </span>
+      ),
     },
     {
       key: "h24",
@@ -135,9 +141,9 @@ export function MonitorTable({
       align: "end",
       cell: (row) =>
         row.lastResponseTimeMs === null ? (
-          <span>{NO_DATA}</span>
+          <span className="whitespace-nowrap">{NO_DATA}</span>
         ) : (
-          <span className="tabular-nums">
+          <span className="font-mono whitespace-nowrap tabular-nums">
             {formatNumber(row.lastResponseTimeMs)} ms
           </span>
         ),
@@ -146,7 +152,11 @@ export function MonitorTable({
       key: "ssl",
       header: "SSL",
       cell: (row) => (
-        <SslLabel level={row.ssl.level} daysRemaining={row.ssl.daysRemaining} />
+        <SslLabel
+          level={row.ssl.level}
+          daysRemaining={row.ssl.daysRemaining}
+          className="whitespace-nowrap"
+        />
       ),
     },
     {
@@ -154,7 +164,7 @@ export function MonitorTable({
       header: `ตรวจล่าสุด (${TIME_ZONE})`,
       cell: (row) =>
         row.lastCheckAt === null ? (
-          <span>{NO_DATA}</span>
+          <span className="whitespace-nowrap">{NO_DATA}</span>
         ) : (
           <Time iso={row.lastCheckAt} format={formatTimeOrDate} />
         ),

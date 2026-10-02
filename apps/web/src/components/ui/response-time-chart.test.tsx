@@ -706,6 +706,45 @@ describe("ResponseTimeChart drawing", () => {
   );
 });
 
+describe("ResponseTimeChart x-axis ticks", () => {
+  const tickLabels = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("svg text"))
+      .map((node) => node.textContent)
+      .filter((text) => /^\d{2}:\d{2}(:\d{2})?$/.test(text));
+
+  it("never repeats a label when a young monitor makes the window seconds wide", () => {
+    const { container } = render(
+      <ResponseTimeChart
+        {...props24h({
+          buckets: [point("07:00", 100)],
+          pauses: [],
+          window: {
+            from: "2026-09-30T07:00:00.000Z",
+            to: "2026-09-30T07:00:40.000Z",
+          },
+        })}
+      />,
+    );
+    const labels = tickLabels(container);
+    expect(labels.length).toBeGreaterThan(1);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("keeps distinct HH:mm labels across a full 24 h window", () => {
+    const { container } = render(
+      <ResponseTimeChart
+        {...props24h({
+          window: { from: "2026-09-29T07:45:00.000Z", to: T("07:45") },
+        })}
+      />,
+    );
+    const labels = tickLabels(container);
+    expect(labels.length).toBeGreaterThan(1);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels.every((label) => label.length === 5)).toBe(true);
+  });
+});
+
 describe("ResponseTimeChart memo inputs", () => {
   // The same arrays, as structural sharing gives them when only dataAsOf moves.
   const shared = props24h({
@@ -757,6 +796,33 @@ describe("ResponseTimeChart memo inputs", () => {
     expect(gapCount(container)).toBe(1);
     rerender(<ResponseTimeChart {...base} createdAt={T("09:59")} />);
     expect(gapCount(container)).toBe(0);
+  });
+});
+
+describe("ResponseTimeChart clamped window caption", () => {
+  const window = { from: T("08:00"), to: T("12:00") };
+  const caption = "ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์";
+
+  it("explains a window start clamped to the creation time", () => {
+    render(
+      <ResponseTimeChart
+        {...props24h()}
+        window={window}
+        createdAt={T("10:00")}
+      />,
+    );
+    expect(screen.getByText(caption)).toBeInTheDocument();
+  });
+
+  it("stays silent when the monitor is older than the window", () => {
+    render(
+      <ResponseTimeChart
+        {...props24h()}
+        window={window}
+        createdAt={T("07:00")}
+      />,
+    );
+    expect(screen.queryByText(caption)).not.toBeInTheDocument();
   });
 });
 
