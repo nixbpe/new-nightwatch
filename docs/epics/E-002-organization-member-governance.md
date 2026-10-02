@@ -26,7 +26,7 @@
 | ------- | ------- | ------ |
 | `F-004`, `docs/features/F-004-organization-member-management/feature.md` | จัดการสมาชิกของ Organization ที่เลือกผ่านรายชื่อ คำเชิญ role การถอน และการออกด้วยตนเอง โดยคง isolation และ last-owner invariant | Selected; `delivery_status: Refining`, `acceptanceVersion: F-004-AC-3` frozen |
 | `F-006`, `docs/features/F-006-pending-invitation-management/feature.md` | ดู ส่งซ้ำ และยกเลิกคำเชิญที่ยังไม่ตอบรับของ Organization ที่เลือก | Selected; `delivery_status: Refining`, scope approved 2026-10-01, `acceptanceVersion: F-006-AC-1` draft |
-| `F-007`, `docs/features/F-007-organization-audit-log/feature.md` | บันทึกกิจกรรมที่สำเร็จของ Organization ที่เลือก ให้ `owner`/`admin`/`auditor` อ่าน และ `owner`/`admin` ส่งออก | Selected; `delivery_status: Refining`, scope approved 2026-10-02, `acceptanceVersion: F-007-AC-1` frozen (2026-10-03) |
+| `F-007`, `docs/features/F-007-organization-audit-log/feature.md` | บันทึกกิจกรรมที่สำเร็จของ Organization ที่เลือก ให้ `owner`/`admin`/`auditor` อ่าน และ `owner`/`admin` ส่งออก | Selected; `delivery_status: Refining`, scope approved 2026-10-02, `acceptanceVersion: F-007-AC-2` frozen (2026-10-03) |
 
 สถานะ frozen ของ acceptance ไม่อนุญาตให้เริ่ม implementation หรือ release
 
@@ -69,4 +69,5 @@
 | 2026-10-01 | เปลี่ยน `F-006` จาก Candidate เป็น Selected หลังผู้ใช้อนุมัติ scope ของ Feature | ผู้ใช้สั่ง "Approve feature" เมื่อ 2026-10-01 |
 | 2026-10-02 | นำ "audit report UI" ออกจาก Out of scope และเพิ่ม `F-007` เป็น candidate Feature (`F-007` `OD-01`) | ผู้ใช้ตัดสินผ่าน coordinator เมื่อ 2026-10-02 |
 | 2026-10-03 | อ้าง `F-004-AC-3` แทน `F-004-AC-2` (Outcome, Features, Traceability) และเปลี่ยน `F-007-AC-1` เป็น frozen ส่วน Readiness คงข้อความเดิมเพราะบันทึกการอนุมัติเมื่อ 2026-09-27 | ผู้ใช้ออก `F-004-AC-3` และอนุมัติ Technical Spec ของ `F-007` ผ่าน coordinator เมื่อ 2026-10-03 |
+| 2026-10-03 | อ้าง `F-007-AC-2` แทน `F-007-AC-1` (แถว "หมดอายุ" มี `ขอใหม่` ใน `AC-16`) | ผู้ใช้ตัดสิน UX `M-9` ผ่าน coordinator (AskUserQuestion) เมื่อ 2026-10-03 |
 | 2026-10-02 | เปลี่ยน `F-007` จาก Candidate เป็น Selected หลังผู้ใช้อนุมัติ scope ของ Feature | ผู้ใช้สั่ง "approve E-002" เมื่อ 2026-10-02 |
