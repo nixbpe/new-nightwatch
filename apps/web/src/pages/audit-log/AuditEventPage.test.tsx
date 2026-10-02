@@ -250,6 +250,21 @@ describe("AuditEventPage changes (AC-14)", () => {
         after: { kind: "value", value: "new" },
       },
       {
+        field: "settingsChangedEnabled",
+        before: { kind: "value", value: false },
+        after: { kind: "value", value: true },
+      },
+      {
+        field: "intervalSeconds",
+        before: { kind: "value", value: 60 },
+        after: { kind: "value", value: 300 },
+      },
+      {
+        field: "expectedStatus",
+        before: { kind: "value", value: "200" },
+        after: { kind: "value", value: "2xx" },
+      },
+      {
         field: "queryParam",
         key: "token",
         before: null,
@@ -285,8 +300,11 @@ describe("AuditEventPage changes (AC-14)", () => {
     expect(text).toEqual([
       ["บทบาท", "ผู้ชม", "ผู้ดูแล"],
       ["แจ้งเตือนมอนิเตอร์", "เปิด", "ปิด"],
-      ["Timeout (วินาที)", "10", "30"],
-      ["ชื่อ", "old", "new"],
+      ["หมดเวลารอ (วินาที)", "10", "30"],
+      ["ชื่อมอนิเตอร์", "old", "new"],
+      ["แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน", "ปิด", "เปิด"],
+      ["รอบตรวจ (วินาที)", "60", "300"],
+      ["รหัสสถานะที่ถือว่าปกติ", "200", "2xx"],
       ["Query parameter token", "—", "•••"],
       ["ค่าลับ Authorization", "—", "ตั้งค่าแล้ว"],
       ["ค่าลับ auth.token", "ตั้งค่าแล้ว", "เปลี่ยนแล้ว"],

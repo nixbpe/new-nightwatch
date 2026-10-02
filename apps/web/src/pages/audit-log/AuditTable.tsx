@@ -46,7 +46,7 @@ export function AuditTable({
       tabIndex={0}
       role="region"
       aria-label="ตารางบันทึกกิจกรรม"
-      className="max-h-[70vh] overflow-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+      className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
     >
       <table className="w-full min-w-[720px] text-left text-sm">
         <caption className="sr-only">

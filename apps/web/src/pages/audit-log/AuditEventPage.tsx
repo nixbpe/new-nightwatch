@@ -35,7 +35,7 @@ import { AuditDenied } from "./AuditDenied";
 import type { AuditListReturnState } from "./AuditTable";
 import {
   auditValueText,
-  changeFieldLabel,
+  CHANGE_FIELD_LABELS,
   FORMER_MEMBER,
   personName,
   roleLabel,
@@ -382,7 +382,15 @@ function ChangesSection({ detail }: { detail: AuditEventDetail }) {
                   className="border-b border-foreground/10 last:border-0"
                 >
                   <th scope="row" className="px-4 py-2.5 align-top font-medium">
-                    {changeFieldLabel(change)}
+                    {CHANGE_FIELD_LABELS[change.field]}
+                    {change.key === undefined ? null : (
+                      <>
+                        {" "}
+                        <span className="font-mono font-normal">
+                          {change.key}
+                        </span>
+                      </>
+                    )}
                   </th>
                   <td className="px-4 py-2.5 align-top font-mono text-[13px] break-all">
                     {auditValueText(change.field, change.before)}

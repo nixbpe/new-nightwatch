@@ -54,9 +54,9 @@ export function AuditLogPage() {
   );
 }
 
-// `asOf` pins the snapshot the user is paging through. It applies to every page except the one
-// that took the snapshot (`basePage`): that page's own request carries no `asOf` and its cached
-// response is the snapshot, so a page change never refetches the page it leaves.
+// `asOf` pins the snapshot the user is paging through. It applies to every page except
+// `basePage`, the one page that must keep asking without it (0 for none): a page past the end
+// has already asked unpinned and is about to be left.
 type ListView = {
   identity: string;
   now: Date;
@@ -133,8 +133,9 @@ function AuditLogForOrganization({
     timeZone: preferences.timeZone,
     asOf: filters.page === currentView.basePage ? undefined : currentView.asOf,
   });
+  const listKey = auditLogQueryKeys.events(organizationId, listParams);
   const list = useQuery({
-    queryKey: auditLogQueryKeys.events(organizationId, listParams),
+    queryKey: listKey,
     queryFn: () => fetchAuditEvents(organizationId, listParams),
     enabled: reading && rangeError === undefined,
     retry: retryAuditRead,
@@ -182,22 +183,32 @@ function AuditLogForOrganization({
   const clearFilters = () => {
     writeFilters({ range: "7d", categories: [], page: 1 });
   };
-  const goToPage = (page: number) => {
+  // `unpinnedPage` is the page that must keep asking without `asOf`; paging by hand pins every
+  // page of the snapshot (basePage 0), so none drifts after its cache goes stale.
+  const goToPage = (page: number, unpinnedPage = 0) => {
     setView((previous) =>
       previous.asOf !== undefined || data === undefined
         ? previous
-        : { ...previous, asOf: data.asOf, basePage: filters.page },
+        : { ...previous, asOf: data.asOf, basePage: unpinnedPage },
     );
     writeFilters({ ...filters, page });
     tableHeadingRef.current?.focus();
   };
   const refresh = () => {
-    setView({
+    const next: ListView = {
       identity,
       now: new Date(),
       asOf: undefined,
       basePage: filters.page,
-    });
+    };
+    const nextKey = auditLogQueryKeys.events(
+      organizationId,
+      toListParams(filters, { now: next.now, timeZone: preferences.timeZone }),
+    );
+    setView(next);
+    // A custom range has no moving anchor, so its key can stay the same: ask again explicitly.
+    if (JSON.stringify(nextKey) === JSON.stringify(listKey))
+      void list.refetch();
   };
 
   // AC-18: coming back from a detail page puts focus on that row's link, else on the table heading.
@@ -226,7 +237,8 @@ function AuditLogForOrganization({
   useEffect(() => {
     if (!pastEnd || redirectedFromPage.current === filters.page) return;
     redirectedFromPage.current = filters.page;
-    goToPage(lastPage);
+    // The past-the-end page already asked without `asOf`; pinning it would refetch the page being left.
+    goToPage(lastPage, filters.page);
   });
 
   const scope =

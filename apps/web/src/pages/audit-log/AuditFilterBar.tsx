@@ -113,12 +113,11 @@ export function AuditFilterBar({
             onChange={(event) => {
               setDraft(event.target.value);
             }}
-            className="h-8 w-72 max-w-full text-sm"
+            className="w-72 max-w-full text-sm"
           />
         </label>
         <Button
           type="submit"
-          size="sm"
           variant="secondary"
           aria-disabled={busy ? true : undefined}
         >
@@ -167,7 +166,7 @@ export function AuditFilterBar({
               if (busy) return;
               onChange({ actor: event.target.value || undefined });
             }}
-            className="h-8 max-w-56 rounded-md border border-control-border bg-surface px-2 text-[13px] focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="h-10 max-w-56 rounded-md border border-control-border bg-surface px-2 text-sm focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <option value="">ทั้งหมด</option>
             {actorKnown || filters.actor === undefined ? null : (
@@ -193,7 +192,7 @@ export function AuditFilterBar({
               onChange={(event) => {
                 onChange({ from: event.target.value || undefined });
               }}
-              className="h-8 w-40 text-sm"
+              className="w-40 text-sm"
             />
           </label>
           <label className="flex items-center gap-2 text-sm">
@@ -210,7 +209,7 @@ export function AuditFilterBar({
               onChange={(event) => {
                 onChange({ to: event.target.value || undefined });
               }}
-              className="h-8 w-40 text-sm"
+              className="w-40 text-sm"
             />
           </label>
           {customError === undefined ? null : (

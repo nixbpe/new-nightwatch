@@ -57,11 +57,11 @@ describe("audit list filters in the URL", () => {
     });
   });
 
-  it("treats all five categories as no category filter", () => {
+  it("keeps all five categories in the URL so the chips stay pressed", () => {
     const all = "monitor,notification_settings,member,invitation,audit_log";
-    expect(
-      serializeAuditFilters(parse(`categories=${all}`)).has("categories"),
-    ).toBe(false);
+    const filters = parse(`categories=${all}`);
+    expect(filters.categories).toHaveLength(5);
+    expect(serializeAuditFilters(filters).get("categories")).toBe(all);
   });
 });
 

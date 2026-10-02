@@ -213,7 +213,8 @@ export function serializeAuditFilters(filters: AuditFilters): URLSearchParams {
   const categories = AUDIT_CATEGORIES.filter((category) =>
     filters.categories.includes(category),
   );
-  if (categories.length > 0 && categories.length < AUDIT_CATEGORIES.length) {
+  // All five stay in the URL so the chips keep showing what the user picked; none means all.
+  if (categories.length > 0) {
     params.set("categories", categories.join(","));
   }
   if (filters.actor !== undefined) params.set("actor", filters.actor);

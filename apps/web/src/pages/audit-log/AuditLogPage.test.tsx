@@ -438,10 +438,52 @@ describe("AuditLogPage states (AC-08)", () => {
     await waitFor(() => {
       expect(listMock.mock.calls.at(-1)?.[1].asOf).toBeDefined();
     });
+
     await user.click(screen.getByRole("button", { name: "รีเฟรช" }));
     await waitFor(() => {
       expect(listMock.mock.calls.at(-1)?.[1].asOf).toBeUndefined();
     });
+  });
+
+  it("refreshes a custom range even though its request key does not change (C4-01)", async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(makeList([makeEvent(0)]));
+    open("?range=custom&from=2026-09-30&to=2026-10-02");
+    await screen.findByRole("table");
+    expect(listMock).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "รีเฟรช" }));
+    await waitFor(() => {
+      expect(listMock).toHaveBeenCalledTimes(2);
+    });
+    await act(() => Promise.resolve());
+    expect(listMock).toHaveBeenCalledTimes(2);
+    expect(listMock.mock.calls[1]?.[1].asOf).toBeUndefined();
+    expect(listMock.mock.calls[1]?.[1].from).toBe(
+      listMock.mock.calls[0]?.[1].from,
+    );
+  });
+
+  it("keeps page 1 on the pinned snapshot once page 2 is open (C4-02)", async () => {
+    const user = userEvent.setup();
+    listMock.mockImplementation((_org, params) =>
+      Promise.resolve(
+        makeList(
+          [makeEvent(params.offset)],
+          120,
+          { asOf: params.asOf ?? "2026-10-03T07:02:11.000Z" },
+          params.offset,
+        ),
+      ),
+    );
+    open();
+    await screen.findByRole("table");
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    await screen.findByText(/หน้า 2 จาก 3/);
+    await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
+    await screen.findByText(/หน้า 1 จาก 3/);
+    const last = listMock.mock.calls.at(-1)?.[1];
+    expect(last?.offset).toBe(0);
+    expect(last?.asOf).toBe("2026-10-03T07:02:11.000Z");
   });
 });
 

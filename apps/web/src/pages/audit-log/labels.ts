@@ -1,7 +1,6 @@
 import type {
   AuditActor,
   AuditActorOption,
-  AuditChange,
   AuditChangeField,
   AuditTarget,
   AuditValue,
@@ -48,30 +47,25 @@ export function targetText(target: AuditTarget): string {
   }
 }
 
-// feature.md and spec.md give no labels for the change fields; these are the web's wording.
+// feature.md "label ของ field ใน การเปลี่ยนแปลง".
 export const CHANGE_FIELD_LABELS: Record<AuditChangeField, string> = {
   role: "บทบาท",
   monitorAlertsEnabled: "แจ้งเตือนมอนิเตอร์",
-  settingsChangedEnabled: "แจ้งเตือนเมื่อการตั้งค่าเปลี่ยน",
-  name: "ชื่อ",
+  settingsChangedEnabled: "แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน",
+  name: "ชื่อมอนิเตอร์",
   url: "URL",
   method: "เมธอด",
-  intervalSeconds: "ช่วงตรวจสอบ (วินาที)",
-  timeoutSeconds: "Timeout (วินาที)",
+  intervalSeconds: "รอบตรวจ (วินาที)",
+  timeoutSeconds: "หมดเวลารอ (วินาที)",
   header: "Header",
   queryParam: "Query parameter",
   body: "Body",
   authType: "การยืนยันตัวตน",
   apiKeyHeaderName: "ชื่อ header ของ API key",
-  expectedStatus: "สถานะที่คาดหวัง",
+  expectedStatus: "รหัสสถานะที่ถือว่าปกติ",
   assertions: "เงื่อนไขตรวจสอบ",
   secret: "ค่าลับ",
 };
-
-export function changeFieldLabel(change: AuditChange): string {
-  const label = CHANGE_FIELD_LABELS[change.field];
-  return change.key === undefined ? label : `${label} ${change.key}`;
-}
 
 const NO_VALUE = "—";
 
