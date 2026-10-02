@@ -20,7 +20,7 @@ export interface EvaluatedResponse {
   elapsedMs: number;
 }
 
-type Decoded = { ok: true; text: string } | { ok: false };
+export type Decoded = { ok: true; text: string } | { ok: false };
 
 function charsetOf(contentType: string | undefined): string {
   const match = /;\s*charset\s*=\s*"?([^";\s]+)"?/i.exec(contentType ?? "");
@@ -28,7 +28,7 @@ function charsetOf(contentType: string | undefined): string {
 }
 
 /** Supports utf-8, us-ascii and iso-8859-1 (aliases utf8, ascii, latin1); a cut multi-byte tail of a truncated body is not an error. */
-function decodeBody(response: EvaluatedResponse): Decoded {
+export function decodeBody(response: EvaluatedResponse): Decoded {
   switch (charsetOf(response.headers["content-type"])) {
     case "utf-8":
     case "utf8":

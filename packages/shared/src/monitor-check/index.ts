@@ -26,5 +26,8 @@ export {
   type NormalizedAssertion,
   type NormalizedMonitorConfig,
   type PathSegment,
+  type ResponseSnapshot,
+  type SnapshotBody,
+  type SnapshotHeader,
   type StatusRange,
 } from "./types";

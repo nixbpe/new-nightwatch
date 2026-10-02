@@ -115,6 +115,40 @@ export interface AssertionResult {
   reason: AssertionReason | null;
 }
 
+export interface SnapshotHeader {
+  name: string;
+  value: string;
+  redacted: boolean;
+}
+
+export type SnapshotBody =
+  | { kind: "text"; text: string; truncated: boolean; totalBytesRead: number }
+  | {
+      kind: "omitted";
+      reason: "no_body" | "not_text" | "undecodable" | "request_values";
+    };
+
+/**
+ * Redacted and cut view of the last response (shape of `LastResponse` without
+ * the fields the Worker adds). Raw header and body values never leave the executor.
+ */
+export interface ResponseSnapshot {
+  /** Masked with `maskUrl()`. */
+  url: string;
+  /** `request_values`: the request carried a query or body, so only version and status are kept. */
+  detailOmitted: "request_values" | null;
+  /** Null when no response was evaluated (DNS, TLS, timeout, blocked, failed redirect). */
+  statusLine: {
+    httpVersion: "HTTP/1.0" | "HTTP/1.1";
+    status: number;
+    reasonPhrase: string | null;
+  } | null;
+  headers: SnapshotHeader[];
+  /** True when headers were dropped or a name or value was cut. */
+  headersTruncated: boolean;
+  body: SnapshotBody | null;
+}
+
 /** Check result view without `scheduledFor` and `configVersion`, which the caller adds. */
 export interface CheckResult {
   outcome: CheckOutcome;
@@ -129,6 +163,8 @@ export interface CheckResult {
   evaluatedFromPrefix: boolean;
   /** Certificate facts of the last hop, for the SSL state; null for http or no handshake. */
   tls: { host: string; issuer: string | null; notAfter: Date | null } | null;
+  /** Set by `runCheck`; Test (`POST /monitors/test`) never reads it. */
+  responseSnapshot?: ResponseSnapshot;
 }
 
 const CHECK_ERROR_REASONS: ReadonlySet<CheckFailureReason> = new Set([

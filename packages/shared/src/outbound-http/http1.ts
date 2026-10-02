@@ -11,7 +11,10 @@ export interface Http1Request {
 }
 
 export interface Http1Response {
+  httpVersion: "HTTP/1.0" | "HTTP/1.1";
   status: number;
+  /** Raw text after the status code, decoded as latin1; null when the line has none. */
+  reasonPhrase: string | null;
   headers: Record<string, string>;
   body: Buffer;
   bodyTruncated: boolean;
@@ -40,6 +43,8 @@ export function exchange(
   return new Promise((resolve, reject) => {
     let pending: Buffer = Buffer.alloc(0);
     let status = 0;
+    let httpVersion: Http1Response["httpVersion"] = "HTTP/1.1";
+    let reasonPhrase: string | null = null;
     let headers: Record<string, string> | null = null;
     let framing: Framing = "none";
     let remaining = 0;
@@ -54,7 +59,9 @@ export function exchange(
       if (settled) return;
       settled = true;
       resolve({
+        httpVersion,
         status,
+        reasonPhrase,
         headers: headers ?? {},
         body: Buffer.concat(parts),
         bodyTruncated: truncated,
@@ -82,12 +89,15 @@ export function exchange(
 
     const parseHead = (raw: string): boolean => {
       const lines = raw.split("\r\n");
-      const match = /^HTTP\/1\.[01] (\d{3})(?: |$)/.exec(lines[0] ?? "");
+      const match = /^HTTP\/1\.([01]) (\d{3})(?: (.*)|$)/.exec(lines[0] ?? "");
       if (!match) {
         fail("malformed status line");
         return false;
       }
-      status = Number(match[1]);
+      httpVersion = match[1] === "0" ? "HTTP/1.0" : "HTTP/1.1";
+      status = Number(match[2]);
+      reasonPhrase =
+        match[3] === undefined || match[3] === "" ? null : match[3];
       headers = Object.create(null) as Record<string, string>;
       for (const line of lines.slice(1)) {
         const colon = line.indexOf(":");
