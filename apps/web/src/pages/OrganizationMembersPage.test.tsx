@@ -2,9 +2,11 @@ import type {
   InvitationCreateResponse,
   MeContextResponse,
   OrganizationMemberListResponse,
+  PendingInvitation,
+  PendingInvitationListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -17,7 +19,11 @@ import {
   fetchOrganizationMembers,
   memberListQueryKey,
 } from "../lib/api/members";
-import { createInvitation } from "../lib/api/invitations";
+import {
+  cancelInvitation,
+  createInvitation,
+  fetchPendingInvitations,
+} from "../lib/api/invitations";
 import {
   claimContextPublication,
   createContextPublicationClaim,
@@ -100,6 +106,12 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
 vi.mock("../lib/api/invitations", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createInvitation: vi.fn(),
+  cancelInvitation: vi.fn(),
+  fetchPendingInvitations: vi.fn(async (organizationId: string) =>
+    (await import("../test/pendingInvitations")).emptyPendingInvitationList(
+      organizationId,
+    ),
+  ),
 }));
 
 function renderPage() {
@@ -160,6 +172,17 @@ const invitationOutcomes: [
   ],
 ];
 
+// The invitation section keeps an empty status region mounted, so member and
+// notice assertions address the one status region that carries text.
+const textStatuses = () =>
+  screen.queryAllByRole("status").filter((node) => node.textContent !== "");
+const getStatus = () => {
+  const found = textStatuses();
+  expect(found).toHaveLength(1);
+  return found[0] as HTMLElement;
+};
+const findStatus = () => waitFor(getStatus);
+
 describe("OrganizationMembersPage", () => {
   it.each(invitationOutcomes)(
     "keeps the A invitation mounted across refetch and pagination: %s",
@@ -186,9 +209,7 @@ describe("OrganizationMembersPage", () => {
           exact: true,
         });
       });
-      expect(await screen.findByRole("status")).toHaveTextContent(
-        "กำลังโหลดสมาชิก",
-      );
+      expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
       expect(screen.queryByText("Ada")).not.toBeInTheDocument();
       expect(email).toBeInTheDocument();
       expect(email).toHaveValue("new@example.com");
@@ -198,9 +219,7 @@ describe("OrganizationMembersPage", () => {
       refreshedPage.resolve(response);
       expect(await screen.findByText("Ada")).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-      expect(await screen.findByRole("status")).toHaveTextContent(
-        "กำลังโหลดสมาชิก",
-      );
+      expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
       expect(screen.queryByText("Ada")).not.toBeInTheDocument();
       expect(email).toBeInTheDocument();
       nextPage.resolve({
@@ -221,7 +240,11 @@ describe("OrganizationMembersPage", () => {
           post.resolve(outcome);
           await post.promise;
         });
-        expect(screen.getByRole("status")).toHaveTextContent(message);
+        // The pending list reloads page 1 after a create; its own loading
+        // status leaves once that fetch settles, leaving the panel's notice.
+        await waitFor(() => {
+          expect(getStatus()).toHaveTextContent(message);
+        });
         expect(email).toHaveValue("");
       }
       expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
@@ -288,9 +311,7 @@ describe("OrganizationMembersPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดสมาชิก",
-    );
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
     expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
@@ -321,9 +342,7 @@ describe("OrganizationMembersPage", () => {
       });
     });
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดสมาชิก",
-    );
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
     expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).not.toBeInTheDocument();
@@ -361,9 +380,7 @@ describe("OrganizationMembersPage", () => {
     });
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดสมาชิก",
-    );
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     const heading = screen.getByRole("heading", { name: "สมาชิก" });
     expect(heading).toHaveFocus();
     expect(heading).toHaveAttribute("tabindex", "-1");
@@ -431,9 +448,7 @@ describe("OrganizationMembersPage", () => {
     await screen.findByText("Ada");
     await user.click(screen.getByRole("button", { name: "ถัดไป" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดสมาชิก",
-    );
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
     expect(screen.queryByText("แสดง 0–50 จาก 49")).toBeNull();
     expect(
       await screen.findByText("Repaired first member"),
@@ -1560,5 +1575,256 @@ describe("OrganizationMembersPage", () => {
       50,
       0,
     );
+  });
+});
+
+describe("OrganizationMembersPage pending invitations", () => {
+  function asRole(role: TenantOrganization["role"]) {
+    const org = { ...organizationA, role };
+    tenant = { ...tenant, me: { organizations: [org] }, activeOrg: org };
+  }
+  const pending = (emails: string[]): PendingInvitationListResponse => ({
+    organizationId,
+    invitations: emails.map((email, index) => ({
+      publicId: `00000000-0000-4000-8000-00000000000${String(index)}`,
+      email,
+      role: "viewer",
+      sentAt: "2026-09-30T08:00:00.000Z",
+      expiresAt: "2026-10-02T08:00:00.000Z",
+      expired: false,
+      resendAvailableAt: "2026-09-30T08:05:00.000Z",
+      manageable: true,
+    })),
+    activeCount: emails.length,
+    activeLimit: 100,
+    page: { limit: 50, offset: 0, total: emails.length },
+  });
+
+  it.each(["viewer", "auditor"] as const)(
+    "hides the section and requests no invitations for %s",
+    async (role) => {
+      asRole(role);
+      renderPage();
+
+      expect(
+        await screen.findByText("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/คำเชิญที่รอตอบรับ/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/จาก 100/)).not.toBeInTheDocument();
+      expect(fetchPendingInvitations).not.toHaveBeenCalled();
+    },
+  );
+
+  it("shows owner-only text and no cancel button on an owner row for an admin", async () => {
+    asRole("admin");
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    const base = pending(["peer@example.test", "boss@example.test"]);
+    vi.mocked(fetchPendingInvitations).mockResolvedValue({
+      ...base,
+      invitations: [
+        { ...(base.invitations[0] as PendingInvitation) },
+        {
+          ...(base.invitations[1] as PendingInvitation),
+          role: "owner",
+          manageable: false,
+        },
+      ],
+    });
+    renderPage();
+
+    const ownerRow = (await screen.findByText("boss@example.test")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(within(ownerRow).getByText("เฉพาะเจ้าของจัดการได้")).toBeVisible();
+    expect(within(ownerRow).queryByRole("button")).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "ยกเลิกคำเชิญถึง peer@example.test",
+      }),
+    ).toBeVisible();
+  });
+
+  it("drops the section when a cancel and the list refresh are denied after the actor was demoted", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    vi.mocked(fetchPendingInvitations)
+      .mockResolvedValueOnce(pending(["gone@example.test"]))
+      .mockRejectedValue(new ApiError("PERMISSION_DENIED", "demoted", 403));
+    vi.mocked(cancelInvitation).mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "demoted", 403),
+    );
+    tenant = {
+      ...tenant,
+      refreshMembershipContext: vi.fn(() => {
+        tenant = {
+          ...tenant,
+          me: { organizations: [{ ...organizationA, role: "viewer" }] },
+        };
+        return Promise.resolve({
+          organizations: tenant.me?.organizations ?? [],
+          lastActiveTenantId: organizationId,
+        });
+      }),
+    };
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "ยกเลิกคำเชิญถึง gone@example.test",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "ยืนยันการยกเลิกคำเชิญ" }),
+    );
+
+    await waitFor(() => {
+      expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/คำเชิญที่รอตอบรับ/)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
+    expect(cancelInvitation).toHaveBeenCalledOnce();
+  });
+
+  it.each(["owner", "admin"] as const)(
+    "places the section after the invite card and before the member table for %s",
+    async (role) => {
+      asRole(role);
+      vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+      vi.mocked(fetchPendingInvitations).mockResolvedValue(
+        pending(["wait@example.test"]),
+      );
+      renderPage();
+
+      const invite = await screen.findByRole("heading", {
+        name: /เชิญสมาชิกเข้าสู่/,
+      });
+      const section = await screen.findByRole("heading", {
+        name: /คำเชิญที่รอตอบรับ/,
+      });
+      const members = await screen.findByRole("region", {
+        name: "ตารางสมาชิก",
+      });
+      expect(
+        invite.compareDocumentPosition(section) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        section.compareDocumentPosition(members) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(await screen.findByText("wait@example.test")).toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    ["SMTP accepted", { created: true, emailDispatch: "accepted" }],
+    ["SMTP failed", { created: true, emailDispatch: "failed" }],
+  ] as [string, InvitationCreateResponse][])(
+    "refreshes the list after a created invitation, newest first: %s",
+    async (_scenario, outcome) => {
+      vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+      vi.mocked(fetchPendingInvitations)
+        .mockResolvedValueOnce(pending(["old@example.test"]))
+        .mockResolvedValueOnce(
+          pending(["new@example.com", "old@example.test"]),
+        );
+      vi.mocked(createInvitation).mockResolvedValue(outcome);
+      const user = userEvent.setup();
+      renderPage();
+      expect(await screen.findByText("old@example.test")).toBeInTheDocument();
+
+      await user.type(
+        screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+        "new@example.com",
+      );
+      await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+
+      await waitFor(() => {
+        expect(fetchPendingInvitations).toHaveBeenCalledTimes(2);
+      });
+      const table = await screen.findByRole("region", {
+        name: "ตารางคำเชิญที่รอตอบรับ",
+      });
+      expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
+        "new@example.com",
+      );
+    },
+  );
+
+  it("shows the new invitation on page 1 after a create made from page 2", async () => {
+    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
+    const rows = (offset: number): PendingInvitationListResponse => {
+      const emails =
+        offset === 0
+          ? ["new@example.com", "old-1@example.test"]
+          : ["old-51@example.test"];
+      return { ...pending(emails), page: { limit: 50, offset, total: 51 } };
+    };
+    vi.mocked(fetchPendingInvitations).mockImplementation(
+      (_organizationId, _limit, offset) =>
+        Promise.resolve(offset === 0 ? rows(0) : rows(50)),
+    );
+    vi.mocked(createInvitation).mockResolvedValue({
+      created: true,
+      emailDispatch: "accepted",
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("old-1@example.test");
+    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+    await screen.findByText("old-51@example.test");
+
+    await user.type(
+      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      "new@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+
+    expect(await screen.findByText("new@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("old-51@example.test")).toBeNull();
+    expect(fetchPendingInvitations).toHaveBeenLastCalledWith(
+      organizationId,
+      50,
+      0,
+    );
+  });
+
+  it("drops an accepted invitation from the list and shows the recipient as a member", async () => {
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockResolvedValue({
+        ...response,
+        members: [
+          ...response.members,
+          {
+            id: "member-2",
+            userId: "user-2",
+            name: "Recipient",
+            email: "wait@example.test",
+            role: "viewer",
+          },
+        ],
+      });
+    vi.mocked(fetchPendingInvitations)
+      .mockResolvedValueOnce(pending(["wait@example.test"]))
+      .mockResolvedValue(pending([]));
+    const { queryClient } = renderPage();
+    expect(await screen.findByText("wait@example.test")).toBeInTheDocument();
+    expect(screen.queryByText("Recipient")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["tenant"] });
+    });
+
+    expect(
+      await screen.findByText("ไม่มีคำเชิญที่รอตอบรับ"),
+    ).toBeInTheDocument();
+    const members = await screen.findByRole("region", { name: "ตารางสมาชิก" });
+    expect(within(members).getByText("Recipient")).toBeInTheDocument();
+    expect(within(members).getByText("wait@example.test")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "ตารางคำเชิญที่รอตอบรับ" }),
+    ).not.toBeInTheDocument();
   });
 });

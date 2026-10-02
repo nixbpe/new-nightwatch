@@ -1,6 +1,8 @@
 import {
+  invitationCancelResponseSchema,
   invitationCreateInputSchema,
   invitationCreateResponseSchema,
+  invitationResendResponseSchema,
   organizationMemberRoleUpdateResponseSchema,
   organizationMemberListQuerySchema,
   organizationMemberListResponseSchema,
@@ -21,8 +23,10 @@ import { auditMonitorMutation } from "../monitors/audit";
 import { notificationRouteDeclarations } from "../notifications/contract";
 import { invalidInputHook } from "../notifications/invalid-input";
 import {
+  cancelPendingInvitation,
   createOrganizationInvitation,
   listPendingInvitations,
+  resendPendingInvitation,
 } from "./invitations";
 import {
   leaveOrganization,
@@ -237,6 +241,40 @@ const invitationListRoute = createRoute({
   },
 });
 
+const invitationCancelRoute = createRoute({
+  method: "delete",
+  path: "/api/organizations/{organizationId}/invitations/{publicId}",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid(), publicId: z.uuid() }),
+  },
+  responses: {
+    200: {
+      description: "Invitation canceled",
+      content: {
+        "application/json": { schema: invitationCancelResponseSchema },
+      },
+    },
+  },
+});
+
+const invitationResendRoute = createRoute({
+  method: "post",
+  path: "/api/organizations/{organizationId}/invitations/{publicId}/resend",
+  tags: ["organizations"],
+  request: {
+    params: z.object({ organizationId: z.uuid(), publicId: z.uuid() }),
+  },
+  responses: {
+    200: {
+      description: "Invitation link rotated; SMTP transport result",
+      content: {
+        "application/json": { schema: invitationResendResponseSchema },
+      },
+    },
+  },
+});
+
 export function registerOrganizationInvitationRoutes(
   app: OpenAPIHono,
   deps: {
@@ -264,6 +302,59 @@ export function registerOrganizationInvitationRoutes(
         }),
     );
     return c.json(body, 200);
+  });
+  app.openapi(invitationCancelRoute, async (c) => {
+    const { organizationId, publicId } = c.req.valid("param");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.invitation.cancel",
+      () =>
+        cancelPendingInvitation(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          publicId,
+        }),
+    );
+    return c.json({ canceled: true as const }, 200);
+  });
+  app.openapi(invitationResendRoute, async (c) => {
+    const { organizationId, publicId } = c.req.valid("param");
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    const invitation = await auditDenials(
+      deps.logger,
+      session.user.id,
+      "organization.invitation.resend",
+      () =>
+        resendPendingInvitation(deps.database, {
+          organizationId,
+          actorUserId: session.user.id,
+          publicId,
+        }),
+    );
+    const timing = {
+      resent: true as const,
+      sentAt: invitation.sentAt,
+      expiresAt: invitation.expiresAt,
+      resendAvailableAt: invitation.resendAvailableAt,
+    };
+    const message = buildInvitationEmail(deps.authEnv, {
+      organizationName: invitation.organizationName,
+      invitationId: invitation.id,
+      inviterName: session.user.name,
+      role: invitation.role,
+    });
+    try {
+      await deps.mailer.send({ ...message, to: invitation.email });
+      return c.json({ ...timing, emailDispatch: "accepted" as const }, 200);
+    } catch {
+      deps.logger.warn(
+        { action: "organization.invitation.resend.send", code: "SMTP_FAILED" },
+        "invitation mail failed",
+      );
+      return c.json({ ...timing, emailDispatch: "failed" as const }, 200);
+    }
   });
   app.openapi(invitationCreateRoute, async (c) => {
     const { organizationId } = c.req.valid("param");

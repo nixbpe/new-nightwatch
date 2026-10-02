@@ -22,6 +22,7 @@ import {
 } from "../lib/api/members";
 import { useTenant } from "../lib/tenant/TenantProvider";
 import { InvitationPanel } from "./organization-members/InvitationPanel";
+import { PendingInvitationsSection } from "./organization-members/PendingInvitationsSection";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import {
   MemberRevokeButton,
@@ -73,6 +74,7 @@ function OrganizationMembersPageForOrganization({
     "idle" | "refreshing" | "failed" | "list-failed"
   >("idle");
   const membershipRecoveryOperation = useRef(0);
+  const [invitationCreations, setInvitationCreations] = useState(0);
   const [offset, setOffset] = useState(0);
   const memberPageHeadingRef = useRef<HTMLHeadingElement>(null);
   const organization = me?.organizations.find(
@@ -498,6 +500,15 @@ function OrganizationMembersPageForOrganization({
         organizationId={organizationId}
         organizationName={organization.name}
         actorRole={organization.role === "owner" ? "owner" : "admin"}
+        onCreated={() => {
+          setInvitationCreations((count) => count + 1);
+        }}
+      />
+      <PendingInvitationsSection
+        organizationId={organizationId}
+        organizationName={organization.name}
+        refreshMembershipContext={refreshAfterAuthorizationDenied}
+        createdSignal={invitationCreations}
       />
       {roleChange.pendingText !== null ? (
         <Notice tone="pending">{roleChange.pendingText}</Notice>

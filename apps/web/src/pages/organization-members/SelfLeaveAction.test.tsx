@@ -31,6 +31,14 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
 }));
+vi.mock("../../lib/api/invitations", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchPendingInvitations: vi.fn(async (organizationId: string) =>
+    (await import("../../test/pendingInvitations")).emptyPendingInvitationList(
+      organizationId,
+    ),
+  ),
+}));
 vi.mock("../../lib/api/members", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchOrganizationMembers: vi.fn(),

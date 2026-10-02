@@ -1,0 +1,202 @@
+import type {
+  PendingInvitation,
+  PendingInvitationListResponse,
+} from "@nightwatch/api-contract";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+
+import { Button } from "../../components/ui/button";
+import { ApiError } from "../../lib/api/client";
+import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
+import {
+  cancelInvitation,
+  pendingInvitationListQueryPrefix,
+} from "../../lib/api/invitations";
+import { useOrganizationScope } from "./useOrganizationScope";
+
+export type InvitationNotice = {
+  tone: "success" | "warning" | "error";
+  text: string;
+};
+
+export type InvitationCancelConfirmation = {
+  invitation: PendingInvitation;
+  opener: HTMLElement;
+};
+
+/** A row's `publicId`, or "heading", where focus goes once the list settles. */
+export type InvitationFocusTarget = string;
+
+/**
+ * Cancel flow for one Organization's pending list: confirmation, pending guard,
+ * list refetch and stale-scope guard (`useOrganizationScope`). Success is shown
+ * only when the DELETE succeeded and the list refetch succeeded. "กลับ" and
+ * Escape send no request. A server denial refreshes the
+ * membership context. Resend reuses this shape: `request` opens the
+ * confirmation, `confirm` submits once, `cancel` closes without a request.
+ */
+export function useInvitationCancel({
+  organizationId,
+  rows,
+  refetchList,
+  refreshMembershipContext,
+  requestFocus,
+}: {
+  organizationId: string;
+  /** Rows on the open page, used to pick the neighbour that receives focus. */
+  rows: readonly PendingInvitation[];
+  refetchList: () => Promise<{
+    data?: PendingInvitationListResponse;
+    isError: boolean;
+  }>;
+  refreshMembershipContext: () => Promise<unknown>;
+  requestFocus: (target: InvitationFocusTarget) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { isCurrentScope, scopeCurrent } = useOrganizationScope(organizationId);
+  const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
+  const [notice, setNotice] = useState<InvitationNotice | null>(null);
+  const [confirmation, setConfirmation] =
+    useState<InvitationCancelConfirmation | null>(null);
+
+  async function submit(invitation: PendingInvitation) {
+    if (inFlight.current || !isCurrentScope()) return;
+    inFlight.current = true;
+    setPending(true);
+    setNotice(null);
+    let failure: unknown = null;
+    try {
+      await cancelInvitation(organizationId, invitation.publicId);
+    } catch (error) {
+      failure = error;
+    }
+    if (!isCurrentScope()) return;
+    const deniedCode =
+      failure instanceof ApiError &&
+      (failure.code === "PERMISSION_DENIED" ||
+        failure.code === "MEMBERSHIP_DENIED");
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: pendingInvitationListQueryPrefix(organizationId),
+        refetchType: "none",
+      }),
+      deniedCode
+        ? queryClient.invalidateQueries({
+            queryKey: ME_CONTEXT_QUERY_KEY,
+            refetchType: "none",
+          })
+        : Promise.resolve(),
+    ]);
+    if (!isCurrentScope()) return;
+    setConfirmation(null);
+    // A refetch, not the DELETE response, decides what the notice says.
+    const refreshed = await refetchList();
+    if (!isCurrentScope()) return;
+    if (refreshed.isError) {
+      // The section shows its own list error with a retry.
+      setNotice(null);
+    } else if (failure !== null) {
+      setNotice({
+        tone: "error",
+        text: "ยกเลิกคำเชิญไม่สำเร็จ โหลดรายการล่าสุดแล้ว",
+      });
+    } else {
+      // After a 200 the row is canceled and every reader filters on pending.
+      setNotice({
+        tone: "success",
+        text: `ยกเลิกคำเชิญถึง ${invitation.email} แล้ว`,
+      });
+    }
+    requestFocus(
+      failure === null
+        ? neighbourOf(
+            refreshed.data?.invitations ?? [],
+            rows.findIndex((row) => row.publicId === invitation.publicId),
+          )
+        : invitation.publicId,
+    );
+    // A denied list cannot recover on its own, so refresh whatever the refetch said.
+    if (deniedCode) {
+      await refreshMembershipContext();
+      if (!isCurrentScope()) return;
+    }
+    inFlight.current = false;
+    setPending(false);
+  }
+
+  const livePending = scopeCurrent && pending;
+  return {
+    scopeCurrent,
+    pending: livePending,
+    pendingText: livePending ? "กำลังยกเลิกคำเชิญ…" : null,
+    notice,
+    confirmation,
+    request: (invitation: PendingInvitation, opener: HTMLElement) => {
+      if (inFlight.current || !isCurrentScope()) return;
+      setConfirmation({ invitation, opener });
+    },
+    confirm: () => {
+      if (confirmation !== null) void submit(confirmation.invitation);
+    },
+    cancel: () => {
+      if (inFlight.current) return;
+      setConfirmation(null);
+    },
+  };
+}
+
+// Picks from the refreshed page, where the row after the removed one (a row
+// from the next page when it was last) now sits at the removed index. Only
+// manageable rows own a button, so the first one at or after that index gets
+// focus, then the nearest one before it, then the section heading.
+function neighbourOf(
+  refreshedRows: readonly PendingInvitation[],
+  removedIndex: number,
+): InvitationFocusTarget {
+  const index = Math.max(removedIndex, 0);
+  const after = refreshedRows.slice(index).find((row) => row.manageable);
+  const before = refreshedRows
+    .slice(0, index)
+    .reverse()
+    .find((row) => row.manageable);
+  return (after ?? before)?.publicId ?? "heading";
+}
+
+export function InvitationCancelButton({
+  invitation,
+  pending,
+  register,
+  onCancel,
+}: {
+  invitation: PendingInvitation;
+  pending: boolean;
+  /** Lets the section find the control again after the list refetches. */
+  register: (publicId: string, control: HTMLElement | null) => void;
+  onCancel: (invitation: PendingInvitation, opener: HTMLElement) => void;
+}) {
+  if (!invitation.manageable) {
+    return (
+      <span className="text-sm text-foreground-secondary">
+        เฉพาะเจ้าของจัดการได้
+      </span>
+    );
+  }
+  return (
+    <Button
+      ref={(control) => {
+        register(invitation.publicId, control);
+      }}
+      type="button"
+      variant="secondary"
+      size="sm"
+      disabled={pending}
+      aria-label={`ยกเลิกคำเชิญถึง ${invitation.email}`}
+      onClick={(event) => {
+        onCancel(invitation, event.currentTarget);
+      }}
+    >
+      ยกเลิกคำเชิญ
+    </Button>
+  );
+}
