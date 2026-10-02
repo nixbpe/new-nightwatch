@@ -917,7 +917,7 @@ describe("body scan limits", () => {
     // Long secrets shrink to a 3 character mask, so the output stays under 16 KiB
     // and the end of the scanned prefix would be shown.
     const long = `SECRET${"v".repeat(94)}`;
-    const scanned = 2 * 16 * 1024 + 81 * long.length;
+    const scanned = 2 * 16 * 1024 + 36 * long.length;
     const unit = `${long}-`;
     const padding = (scanned - 4) % unit.length;
     const snapshot = await check(
@@ -1187,5 +1187,37 @@ describe("JSON escapes and nested encodings", () => {
     expect(snapshot.body.text).not.toMatch(
       /[\ud800-\udbff](?![\udc00-\udfff])/,
     );
+  });
+});
+
+describe("work limits", () => {
+  const thai = "ก".repeat(1365);
+  const noisy = "%41+\\u00e9%20".repeat(2000);
+  const body = (text: string) =>
+    response({ headers: [["Content-Type", "text/plain"]], body: text });
+
+  it("masks the whole body when decoding would exceed the work budget", async () => {
+    // A long secret widens the scanned prefix; every layer of decoding repeats it.
+    const snapshot = await check(
+      body(noisy.repeat(30)),
+      { headers: [secretHeader("h1", "X-Own")] },
+      { "header.h1": thai },
+    );
+    expect(snapshot.body).toMatchObject({
+      kind: "text",
+      text: "•••",
+      truncated: true,
+    });
+  });
+
+  it("keeps showing a noisy body when the secrets are short", async () => {
+    const snapshot = await check(
+      body(noisy.repeat(30)),
+      { headers: [secretHeader("h1", "X-Own")] },
+      { "header.h1": "short-secret" },
+    );
+    if (snapshot.body?.kind !== "text") throw new Error("expected text");
+    expect(snapshot.body.text.startsWith("%41+")).toBe(true);
+    expect(snapshot.body.text).not.toBe("•••");
   });
 });

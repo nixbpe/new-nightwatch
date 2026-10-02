@@ -1,17 +1,21 @@
 const MASK = "•••";
 
 /**
- * Work limit for one masker, in characters scanned or decoded. Past it the text
- * is masked whole (fail closed) and `cutShort` is set.
+ * Limits for one call, past which the text is masked whole (fail closed) and
+ * `cutShort` is set: characters compared by `indexOf`, and characters decoded
+ * into views.
  */
-const SCAN_BUDGET = 128 << 20;
+const LAYERS = 2;
+const SCAN_BUDGET = 24 << 20;
+const VIEW_BUDGET = 2 << 20;
 
 /**
- * Original characters one view character can stand for: a percent-encoded
- * 3-byte UTF-8 character (9) or a JSON `\uXXXX` escape (6). Two layers compound.
+ * Most original characters one needle character can stand for after two decoding
+ * layers: `\uXXXX` read out of a `\uXXXX`-escaped text (6 x 6), or a 3-byte UTF-8
+ * character percent-encoded inside JSON escapes (9 x 6).
  */
-const MAX_LAYER_EXPANSION = 9;
-const LAYERS = 2;
+const SPAN_PER_CHAR = 36;
+const SPAN_PER_WIDE_CHAR = 54;
 
 export interface SecretMasker {
   /**
@@ -27,35 +31,59 @@ export interface SecretMasker {
 
 interface View {
   text: string;
-  /** Original range of each view character. */
-  start: Int32Array;
-  end: Int32Array;
+  /** Original range of each view character; null for the text itself. */
+  start: Int32Array | null;
+  end: Int32Array | null;
 }
 
-type Atom = (view: View) => View;
+/** Decodes one view into another, or returns null when the result adds nothing. */
+type Atom = (view: View) => View | null;
 
-/** Builds a view from characters that each come from a range of the source view. */
+/**
+ * Builds a view from characters that each come from a range of the source view.
+ * A decoded view is never longer than its source, so buffers are sized once.
+ */
 class ViewBuilder {
-  private readonly chars: string[] = [];
-  private readonly start: number[] = [];
-  private readonly end: number[] = [];
+  private readonly chars: Uint16Array;
+  private readonly start: Int32Array;
+  private readonly end: Int32Array;
+  private length = 0;
 
   constructor(
     private readonly source: View,
     private readonly lower: boolean,
-  ) {}
+  ) {
+    const size = source.text.length;
+    this.chars = new Uint16Array(size);
+    this.start = new Int32Array(size);
+    this.end = new Int32Array(size);
+  }
 
   push(char: string, from: number, to: number): void {
-    this.chars.push(this.lower ? lowerUnit(char) : char);
-    this.start.push(this.source.start[from] as number);
-    this.end.push(this.source.end[to - 1] as number);
+    const { source } = this;
+    this.chars[this.length] = (this.lower ? lowerUnit(char) : char).charCodeAt(
+      0,
+    );
+    this.start[this.length] =
+      source.start === null ? from : (source.start[from] as number);
+    this.end[this.length] =
+      source.end === null ? to : (source.end[to - 1] as number);
+    this.length++;
   }
 
   build(): View {
+    const parts: string[] = [];
+    for (let i = 0; i < this.length; i += 8192) {
+      parts.push(
+        String.fromCharCode(
+          ...this.chars.subarray(i, Math.min(i + 8192, this.length)),
+        ),
+      );
+    }
     return {
-      text: this.chars.join(""),
-      start: Int32Array.from(this.start),
-      end: Int32Array.from(this.end),
+      text: parts.join(""),
+      start: this.start.subarray(0, this.length),
+      end: this.end.subarray(0, this.length),
     };
   }
 }
@@ -74,7 +102,8 @@ function byteAt(text: string, at: number): number {
     : -1;
 }
 
-const utf8 = new TextDecoder("utf-8", { fatal: true });
+// `ignoreBOM` keeps a decoded U+FEFF instead of dropping it.
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 /** UTF-8 lead byte to sequence length; 1 for a byte that cannot lead. */
 function sequenceLength(lead: number): number {
@@ -93,6 +122,7 @@ function percentAtom(plus: boolean, asUtf8: boolean, lower: boolean): Atom {
   return (view) => {
     const out = new ViewBuilder(view, lower);
     const { text } = view;
+    let multibyte = false;
     for (let i = 0; i < text.length;) {
       if (byteAt(text, i) === -1) {
         const char = text.charAt(i);
@@ -120,6 +150,7 @@ function percentAtom(plus: boolean, asUtf8: boolean, lower: boolean): Atom {
           out.push(String.fromCharCode(lead), from, from + 3);
           k++;
         } else {
+          multibyte = true;
           for (const unit of decoded) {
             for (let u = 0; u < unit.length; u++) {
               out.push(unit.charAt(u), from, from + 3 * need);
@@ -130,9 +161,14 @@ function percentAtom(plus: boolean, asUtf8: boolean, lower: boolean): Atom {
       }
       i += 3 * bytes.length;
     }
-    return out.build();
+    // Without a multi-byte sequence the UTF-8 reading equals the latin1 one.
+    if (asUtf8 && !multibyte) return null;
+    return unchanged(out.build(), view);
   };
 }
+
+const unchanged = (decoded: View, source: View): View | null =>
+  decoded.text === source.text ? null : decoded;
 
 const JSON_SIMPLE: Record<string, string> = {
   '"': '"',
@@ -172,7 +208,7 @@ function jsonAtom(lower: boolean): Atom {
         i++;
       }
     }
-    return out.build();
+    return unchanged(out.build(), view);
   };
 }
 
@@ -215,7 +251,16 @@ export function createSecretMasker(
   }
   needleSet.delete("");
   const needles = [...needleSet];
-  const maxNeedle = Math.max(0, ...needles.map((needle) => needle.length));
+  const spanOf = (needle: string): number => {
+    let span = 0;
+    for (let i = 0; i < needle.length; i++) {
+      const code = needle.charCodeAt(i);
+      const wide = code >= 0x800 && (code < 0xd800 || code > 0xdfff);
+      span += wide ? SPAN_PER_WIDE_CHAR : SPAN_PER_CHAR;
+    }
+    return span;
+  };
+  const maxSpan = Math.max(0, ...needles.map(spanOf));
   // `+` alone, `%XX` as latin1 or as UTF-8 (each also with `+`), and JSON escapes.
   const plusOnly: Atom = (view) => {
     const out = new ViewBuilder(view, lower);
@@ -223,7 +268,7 @@ export function createSecretMasker(
       const char = view.text.charAt(i);
       out.push(char === "+" ? " " : char, i, i + 1);
     }
-    return out.build();
+    return unchanged(out.build(), view);
   };
   const atoms: { applies: (text: string) => boolean; run: Atom }[] = [
     { applies: (t) => t.includes("+"), run: plusOnly },
@@ -240,59 +285,23 @@ export function createSecretMasker(
     { applies: (t) => t.includes("\\"), run: jsonAtom(lower) },
   ];
 
-  let remaining = SCAN_BUDGET;
+  let scanLeft = SCAN_BUDGET;
+  let viewLeft = VIEW_BUDGET;
   let cutShort = false;
-
-  const spend = (units: number): boolean => {
-    remaining -= units;
-    return remaining >= 0;
-  };
-
-  /** The text itself plus every distinct view of up to `LAYERS` decoding layers. */
-  const viewsOf = (text: string): View[] | null => {
-    if (!spend(text.length)) return null;
-    const lowered = lower ? Array.from(text, lowerUnit).join("") : text;
-    const root: View = {
-      text: lowered,
-      start: Int32Array.from({ length: text.length }, (_, i) => i),
-      end: Int32Array.from({ length: text.length }, (_, i) => i + 1),
-    };
-    const seen = new Set([root.text]);
-    const views = [root];
-    let frontier = [root];
-    for (let layer = 0; layer < LAYERS; layer++) {
-      const next: View[] = [];
-      for (const view of frontier) {
-        for (const atom of atoms) {
-          if (!atom.applies(view.text)) continue;
-          if (!spend(view.text.length)) return null;
-          const decoded = atom.run(view);
-          if (seen.has(decoded.text)) continue;
-          seen.add(decoded.text);
-          views.push(decoded);
-          next.push(decoded);
-        }
-      }
-      frontier = next;
-    }
-    return views;
-  };
 
   const rangesIn = (view: View, ranges: [number, number][]): boolean => {
     for (const needle of needles) {
       for (let from = 0; ;) {
         const at = view.text.indexOf(needle, from);
-        if (
-          !spend(
-            (at === -1 ? view.text.length - from : at - from) + needle.length,
-          )
-        ) {
-          return false;
-        }
+        scanLeft -=
+          (at === -1 ? view.text.length - from : at - from) + needle.length;
+        if (scanLeft < 0) return false;
         if (at === -1) break;
         ranges.push([
-          view.start[at] as number,
-          view.end[at + needle.length - 1] as number,
+          view.start === null ? at : (view.start[at] as number),
+          view.end === null
+            ? at + needle.length
+            : (view.end[at + needle.length - 1] as number),
         ]);
         from = at + 1;
       }
@@ -300,12 +309,41 @@ export function createSecretMasker(
     return true;
   };
 
+  /**
+   * Scans the text, then each decoded view depth first, so at most the text and
+   * two views exist at once. A view that equals its source is skipped.
+   */
+  const scanTree = (
+    view: View,
+    layer: number,
+    ranges: [number, number][],
+  ): boolean => {
+    if (!rangesIn(view, ranges)) return false;
+    if (layer === LAYERS) return true;
+    for (const atom of atoms) {
+      if (!atom.applies(view.text)) continue;
+      viewLeft -= view.text.length;
+      if (viewLeft < 0) return false;
+      const decoded = atom.run(view);
+      if (decoded !== null && !scanTree(decoded, layer + 1, ranges)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   const mask = (text: string, safeEnd?: number): string => {
     cutShort = false;
+    scanLeft = SCAN_BUDGET;
+    viewLeft = VIEW_BUDGET;
     if (needles.length === 0) return text.slice(0, safeEnd);
-    const views = viewsOf(text);
     const ranges: [number, number][] = [];
-    if (views === null || !views.every((view) => rangesIn(view, ranges))) {
+    const root: View = {
+      text: lower ? Array.from(text, lowerUnit).join("") : text,
+      start: null,
+      end: null,
+    };
+    if (!scanTree(root, 0, ranges)) {
       cutShort = true;
       return MASK;
     }
@@ -335,7 +373,7 @@ export function createSecretMasker(
   return Object.defineProperty(
     Object.assign(mask, {
       cutShort: false,
-      maxSpan: MAX_LAYER_EXPANSION ** LAYERS * maxNeedle,
+      maxSpan,
     }),
     "cutShort",
     { get: () => cutShort },
