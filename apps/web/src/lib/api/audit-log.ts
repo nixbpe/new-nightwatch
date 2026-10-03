@@ -151,10 +151,11 @@ export function createAuditExport(
 export function downloadAuditExport(
   organizationId: string,
   exportId: string,
+  signal?: AbortSignal,
 ): Promise<DownloadedFile> {
   return requestFile(
     "/api/organizations/{organizationId}/audit-log/exports/{exportId}/download",
-    { params: { organizationId, exportId } },
+    { params: { organizationId, exportId }, signal },
   );
 }
 

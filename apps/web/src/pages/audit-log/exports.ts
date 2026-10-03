@@ -46,23 +46,36 @@ export type ExportOutcome =
   | { kind: "empty" }
   | { kind: "in-progress" }
   | { kind: "denied"; error: ApiError & { code: DeniedCode } }
-  | { kind: "failed" };
+  | { kind: "failed" }
+  /** The page left or the Organization scope retired: show nothing. */
+  | { kind: "aborted" };
 
-/** POST with the 15 s timeout (N-4); every failure is sorted into what the UI shows. */
+/**
+ * POST with the 15 s timeout (N-4); every failure is sorted into what the UI shows. `scope`
+ * cancels the request when the Organization scope retires or the page unmounts, so the server
+ * is not asked to create an export for an Organization the user has left.
+ */
 export async function submitExport(
   organizationId: string,
   body: AuditExportRequest,
+  scope?: AbortSignal,
 ): Promise<ExportOutcome> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort();
   }, EXPORT_TIMEOUT_MS);
+  const abortWithScope = () => {
+    controller.abort();
+  };
+  if (scope?.aborted === true) controller.abort();
+  scope?.addEventListener("abort", abortWithScope);
   try {
     const response = await createAuditExport(
       organizationId,
       body,
       controller.signal,
     );
+    if (scope?.aborted === true) return { kind: "aborted" };
     return { kind: "created", record: response.export };
   } catch (error) {
     if (isAuditDenied(error)) return { kind: "denied", error };
@@ -79,9 +92,11 @@ export async function submitExport(
         };
       }
     }
-    return { kind: "failed" };
+    // Only the scope signal means "stay silent"; the timeout keeps its error.
+    return scope?.aborted === true ? { kind: "aborted" } : { kind: "failed" };
   } finally {
     clearTimeout(timer);
+    scope?.removeEventListener("abort", abortWithScope);
   }
 }
 

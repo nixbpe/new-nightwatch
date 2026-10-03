@@ -52,6 +52,7 @@ export function useAuditExport({
   organizationId,
   role,
   reading,
+  scopeCurrent,
   isCurrentScope,
   report,
   preferences,
@@ -59,6 +60,7 @@ export function useAuditExport({
   organizationId: string;
   role: string | null;
   reading: boolean;
+  scopeCurrent: boolean;
   isCurrentScope: () => boolean;
   report: (error: unknown) => void;
   preferences: Preferences;
@@ -72,6 +74,19 @@ export function useAuditExport({
   const [requestedNotice, setRequestedNotice] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const permissionNotice = useRef<HTMLDivElement>(null);
+  // Requests in flight end with the page or when the Organization scope retires: the server
+  // must not create an export for an Organization the user has already left.
+  const scopeAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    scopeAbort.current = controller;
+    return () => {
+      controller.abort();
+    };
+  }, []);
+  useEffect(() => {
+    if (!scopeCurrent) scopeAbort.current?.abort();
+  }, [scopeCurrent]);
   const canExport = (role === "owner" || role === "admin") && !revoked;
 
   const query = useQuery({
@@ -167,8 +182,12 @@ export function useAuditExport({
   const submitFromDialog = async (
     body: AuditExportRequest,
   ): Promise<ExportOutcome> => {
-    const outcome = await submitExport(organizationId, body);
-    if (!isCurrentScope()) return outcome;
+    const outcome = await submitExport(
+      organizationId,
+      body,
+      scopeAbort.current?.signal,
+    );
+    if (outcome.kind === "aborted" || !isCurrentScope()) return outcome;
     if (outcome.kind === "created") {
       writeCreated(outcome.record);
       setRequestedNotice(true);
@@ -189,8 +208,9 @@ export function useAuditExport({
     const outcome = await submitExport(
       organizationId,
       requestFromRecord(record, new Date()),
+      scopeAbort.current?.signal,
     );
-    if (!isCurrentScope()) return null;
+    if (outcome.kind === "aborted" || !isCurrentScope()) return null;
     if (outcome.kind === "created") {
       writeCreated(outcome.record);
     } else if (outcome.kind === "in-progress") {
@@ -205,15 +225,23 @@ export function useAuditExport({
     record: AuditExportRecord,
   ): Promise<string | null> => {
     try {
-      const file = await downloadAuditExport(organizationId, record.id);
-      if (!isCurrentScope()) return null;
+      const file = await downloadAuditExport(
+        organizationId,
+        record.id,
+        scopeAbort.current?.signal,
+      );
+      if (!isCurrentScope() || scopeAbort.current?.signal.aborted === true) {
+        return null;
+      }
       saveBlob(
         file.blob,
         file.filename ?? `audit-log-${record.id}.${record.format}`,
       );
       return null;
     } catch (error) {
-      if (!isCurrentScope()) return null;
+      if (!isCurrentScope() || scopeAbort.current?.signal.aborted === true) {
+        return null;
+      }
       if (isAuditDenied(error)) {
         handleDenied(error);
         return null;

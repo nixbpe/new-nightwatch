@@ -178,6 +178,7 @@ function AuditLogForOrganization({
     organizationId,
     role: access.status === "allowed" ? access.role : null,
     reading,
+    scopeCurrent,
     isCurrentScope,
     report,
     preferences,

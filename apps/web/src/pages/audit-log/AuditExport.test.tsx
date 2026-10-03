@@ -803,7 +803,11 @@ describe("download (M-7)", () => {
       expect(button).toHaveTextContent("ดาวน์โหลด");
     });
     expect(download).toBe("nightwatch-audit-log.csv");
-    expect(downloadMock).toHaveBeenCalledWith(ORG_A, ready.id);
+    expect(downloadMock).toHaveBeenCalledWith(
+      ORG_A,
+      ready.id,
+      expect.any(AbortSignal),
+    );
   });
 
   it.each([
@@ -968,6 +972,145 @@ describe("403 during export (B-2, AC-06, AC-23)", () => {
     expect(
       screen.queryByRole("region", { name: "ตารางบันทึกกิจกรรม" }),
     ).toBeNull();
+  });
+});
+
+describe("requests in flight when the scope retires or the page unmounts", () => {
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const retireScope = (queryClient: QueryClient) => {
+    act(() => {
+      const claim = createContextPublicationClaim();
+      claimContextPublication(queryClient, claim);
+      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
+        user: { id: "user-1" },
+        organizations: [],
+        lastActiveTenantId: OTHER,
+      });
+      publishContextPublication(queryClient, claim);
+    });
+  };
+  const seeded = () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
+      user: { id: "user-1" },
+      organizations: [],
+      lastActiveTenantId: ORG_A,
+    });
+    return queryClient;
+  };
+  // A server that ignores the abort and answers 201 later must still change nothing.
+  const lateCreated = () => {
+    const late = Promise.withResolvers<{ export: AuditExportRecord }>();
+    let signal: AbortSignal | undefined;
+    createMock.mockImplementation((_org, _body, given) => {
+      signal = given;
+      return late.promise;
+    });
+    return { late, signalOf: () => signal };
+  };
+  const exportsKey = ["tenant", "audit-log", "exports", ORG_A];
+
+  it("aborts the dialog's POST when the scope retires and shows nothing afterwards", async () => {
+    const user = userEvent.setup();
+    const queryClient = seeded();
+    open({ queryClient });
+    const dialog = await openDialog(user);
+    const { late, signalOf } = lateCreated();
+    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await waitFor(() => {
+      expect(signalOf()).toBeDefined();
+    });
+    retireScope(queryClient);
+    expect(signalOf()?.aborted).toBe(true);
+    late.resolve({ export: makeRecord() });
+    await act(() => Promise.resolve());
+    expect(screen.queryByText(/กำลังสร้างไฟล์ เราจะแจ้งใน/)).toBeNull();
+    expect(
+      document.querySelector('[data-slot="export-announcement"]')
+        ?.textContent ?? "",
+    ).toBe("");
+    expect(queryClient.getQueryData(exportsKey)).not.toMatchObject({
+      inProgress: true,
+    });
+  });
+
+  it("aborts the POST when the page unmounts", async () => {
+    const user = userEvent.setup();
+    const view = open();
+    const dialog = await openDialog(user);
+    const { late, signalOf } = lateCreated();
+    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await waitFor(() => {
+      expect(signalOf()).toBeDefined();
+    });
+    view.unmount();
+    expect(signalOf()?.aborted).toBe(true);
+    late.resolve({ export: makeRecord() });
+    await act(() => Promise.resolve());
+    expect(view.queryClient.getQueryData(exportsKey)).not.toMatchObject({
+      inProgress: true,
+    });
+  });
+
+  it("aborts a ขอใหม่ POST when the scope retires and writes nothing", async () => {
+    const user = userEvent.setup();
+    const queryClient = seeded();
+    open({
+      queryClient,
+      rows: [makeRecord({ status: "failed", failureCode: "EXPORT_FAILED" })],
+    });
+    await sectionHeading();
+    const { late, signalOf } = lateCreated();
+    await user.click(within(row(0)).getByRole("button", { name: /^ขอใหม่/ }));
+    await waitFor(() => {
+      expect(signalOf()).toBeDefined();
+    });
+    retireScope(queryClient);
+    expect(signalOf()?.aborted).toBe(true);
+    late.resolve({
+      export: makeRecord({ id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }),
+    });
+    await act(() => Promise.resolve());
+    expect(queryClient.getQueryData(exportsKey)).not.toMatchObject({
+      inProgress: true,
+    });
+  });
+
+  it("aborts a download when the page unmounts and shows no error", async () => {
+    const user = userEvent.setup();
+    URL.createObjectURL = vi.fn(() => "blob:test");
+    URL.revokeObjectURL = vi.fn();
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    const view = open({
+      rows: [
+        makeRecord({ status: "ready", expiresAt: "2026-10-04T07:07:30.000Z" }),
+      ],
+    });
+    await sectionHeading();
+    let signal: AbortSignal | undefined;
+    const late = Promise.withResolvers<{
+      blob: Blob;
+      filename: string | null;
+    }>();
+    downloadMock.mockImplementation((_org, _id, given) => {
+      signal = given;
+      return late.promise;
+    });
+    await user.click(
+      within(row(0)).getByRole("button", { name: /^ดาวน์โหลด/ }),
+    );
+    await waitFor(() => {
+      expect(signal).toBeDefined();
+    });
+    view.unmount();
+    expect(signal?.aborted).toBe(true);
+    late.resolve({ blob: new Blob(["a"]), filename: "x.csv" });
+    await act(() => Promise.resolve());
+    expect(click).not.toHaveBeenCalled();
   });
 });
 
