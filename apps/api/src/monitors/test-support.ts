@@ -189,7 +189,7 @@ export async function openMonitorTestContext(options?: {
 
   async function createUser(label: string): Promise<string> {
     const id = crypto.randomUUID();
-    const email = `${label}-${run}-${id.slice(0, 4)}@example.test`;
+    const email = `${label}-${run}-${id}@example.test`;
     await owner.sql.query(
       'insert into "user" (id, name, email, email_verified, created_at, updated_at) values ($1, $2, $3, true, now(), now())',
       [id, label, email],
@@ -210,7 +210,7 @@ export async function openMonitorTestContext(options?: {
     const id = crypto.randomUUID();
     await owner.sql.query(
       "insert into organization (id, name, slug, created_at) values ($1, $2, $3, now())",
-      [id, `${label} ${run}`, `${label}-${run}-${id.slice(0, 4)}`],
+      [id, `${label} ${run}`, `${label}-${run}-${id}`],
     );
     organizationIds.push(id);
     const members = {} as Record<TestRole, string>;
