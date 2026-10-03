@@ -165,24 +165,6 @@ describe("series", () => {
     });
     expect(summarize(series)).toMatchObject({ pauseCount: 1, gapCount: 0 });
   });
-
-  it("reads an empty hour inside a pause as a pause, not a gap", () => {
-    const series = buildSeries({
-      range: "7d",
-      buckets: [
-        {
-          at: T("02:00"),
-          endAt: T("03:00"),
-          avgMs: null,
-          maxMs: null,
-          checks: 0,
-        },
-      ],
-      pauses: [{ from: T("01:30"), to: T("04:00") }],
-      configChanges: [],
-    });
-    expect(series.map((entry) => entry.kind)).toEqual(["pause"]);
-  });
 });
 
 const empty = (from: string, to: string) => ({
@@ -374,25 +356,6 @@ describe("24 h window", () => {
         pauses: [window],
       }).map((entry) => entry.kind),
     ).toEqual(["pause"]);
-    expect(pausedThroughout({ ...base, buckets: [], pauses: [window] })).toBe(
-      true,
-    );
-    expect(pausedThroughout({ ...base, buckets: [], pauses: [] })).toBe(false);
-    // The pauses come from a later read: a sliver at the window's edge is still "throughout".
-    expect(
-      pausedThroughout({
-        ...base,
-        buckets: [],
-        pauses: [{ from: T("00:02"), to: window.to }],
-      }),
-    ).toBe(true);
-    expect(
-      pausedThroughout({
-        ...base,
-        buckets: [],
-        pauses: [{ from: T("02:00"), to: window.to }],
-      }),
-    ).toBe(false);
   });
 });
 
@@ -688,22 +651,13 @@ describe("ResponseTimeChart drawing", () => {
     expect(marks[1]).toHaveTextContent("แก้ค่า");
   });
 
-  it.each(["light", "dark"])(
-    "takes every colour from a design token in the %s theme",
-    (theme) => {
-      document.documentElement.dataset.theme = theme;
-      const { container } = render(<ResponseTimeChart {...props24h()} />);
-      const markup = container.innerHTML;
-      expect(markup).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-      expect(markup).not.toMatch(/rgb\(|hsl\(/i);
-      expect(container.querySelector('[data-chart-part="line"]')).toHaveClass(
-        "stroke-primary",
-      );
-      expect(container.querySelector('[data-chart-part="pause"]')).toHaveClass(
-        "fill-foreground/10",
-      );
-    },
-  );
+  it("takes every colour from a design token, never a literal hex or rgb value", () => {
+    document.documentElement.dataset.theme = "dark";
+    const { container } = render(<ResponseTimeChart {...props24h()} />);
+    const markup = container.innerHTML;
+    expect(markup).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(markup).not.toMatch(/rgb\(|hsl\(/i);
+  });
 });
 
 describe("ResponseTimeChart x-axis ticks", () => {

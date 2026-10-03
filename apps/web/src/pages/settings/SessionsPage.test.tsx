@@ -29,11 +29,6 @@ vi.mock("better-auth/react", () => ({
   }),
 }));
 
-vi.mock("better-auth/client/plugins", () => ({
-  organizationClient: () => ({}),
-  twoFactorClient: () => ({}),
-}));
-
 const NOW = Date.now();
 const STORED_PREFERENCES = {
   language: "th",

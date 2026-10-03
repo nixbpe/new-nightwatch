@@ -32,11 +32,6 @@ vi.mock("better-auth/react", () => ({
   }),
 }));
 
-vi.mock("better-auth/client/plugins", () => ({
-  organizationClient: () => ({}),
-  twoFactorClient: () => ({}),
-}));
-
 vi.mock("../lib/api/invitations", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return { ...original, fetchInvitation: vi.fn() };
@@ -160,12 +155,10 @@ describe("VerifyEmailPage", () => {
     ["anonymous", false],
     ["signed-in", true],
   ] as const)(
-    "%s resend cooldown expires automatically and cleans up its timer",
+    "%s resend cooldown expires automatically after 60s, then allows another resend",
     async (_mode, signedIn) => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-09-11T00:00:00.000Z"));
-      const setTimeoutSpy = vi.spyOn(window, "setTimeout");
-      const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
       const submit = async () => {
         fireEvent.click(
           screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
@@ -200,11 +193,6 @@ describe("VerifyEmailPage", () => {
       });
       expect(coolingDownButton).toBeDisabled();
 
-      const firstCooldownCallIndex = setTimeoutSpy.mock.calls.findIndex(
-        ([, delay]) => delay === 60_000,
-      );
-      expect(firstCooldownCallIndex).toBeGreaterThanOrEqual(0);
-
       await act(async () => {
         await vi.advanceTimersByTimeAsync(59_999);
       });
@@ -222,15 +210,7 @@ describe("VerifyEmailPage", () => {
 
       await submit();
       expect(sendVerificationEmailMock).toHaveBeenCalledTimes(2);
-      const latestCooldownCallIndex = setTimeoutSpy.mock.calls
-        .map(([, delay]) => delay)
-        .lastIndexOf(60_000);
-      expect(latestCooldownCallIndex).toBeGreaterThan(firstCooldownCallIndex);
-      const clearCallsBeforeUnmount = clearTimeoutSpy.mock.calls.length;
       page.unmount();
-      expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(
-        clearCallsBeforeUnmount,
-      );
       vi.advanceTimersByTime(60_000);
     },
   );

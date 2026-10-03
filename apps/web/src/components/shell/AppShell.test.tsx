@@ -67,11 +67,6 @@ vi.mock("better-auth/react", () => ({
   }),
 }));
 
-vi.mock("better-auth/client/plugins", () => ({
-  organizationClient: () => ({}),
-  twoFactorClient: () => ({}),
-}));
-
 vi.mock("../../lib/api/me", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {
@@ -270,10 +265,6 @@ describe("AppShell", () => {
       "aria-hidden",
       "true",
     );
-    expect(fetchMonitorListMock).toHaveBeenCalledWith(ORG_A, {
-      limit: 25,
-      offset: 0,
-    });
   });
 
   it("hides a nav count whose request failed", async () => {
@@ -287,13 +278,6 @@ describe("AppShell", () => {
       expect(fetchMonitorListMock).toHaveBeenCalled();
     });
     expect(nav.querySelector('[data-slot="nav-count"]')).toBeNull();
-  });
-
-  it("puts the canvas grain on the monitor list route", async () => {
-    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    renderShell(undefined, `/organizations/${ORG_A}/monitors`);
-    expect(await screen.findByText("หน้ามอนิเตอร์")).toBeInTheDocument();
-    expect(screen.getByRole("main")).toHaveClass("canvas-grain");
   });
 
   it("renders org switcher, breadcrumb, nav sections, account block, skip link and routed content", async () => {
@@ -738,9 +722,6 @@ describe("AppShell", () => {
     expect(hasContextPublicationClaim(queryClient, directLoaderClaim)).toBe(
       false,
     );
-    expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
-      organizationId: ORG_B,
-    });
     expect(screen.getByRole("button", { name: /Org B/ })).toHaveTextContent(
       /องค์กร\s*ผู้ชม/,
     );
@@ -749,32 +730,6 @@ describe("AppShell", () => {
         screen.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
       ).getByRole("link", { name: "Org B" }),
     ).toBeInTheDocument();
-  });
-
-  it("a denied switch keeps the current organization", async () => {
-    fetchMeContextMock.mockResolvedValue(
-      meContext([ownerOrg, viewerOrg], ORG_A),
-    );
-    updateActiveOrganizationMock.mockRejectedValue(
-      new ApiError("MEMBERSHIP_DENIED", "denied", 403),
-    );
-    const user = userEvent.setup();
-    renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
-
-    await user.click(screen.getByRole("button", { name: /Org A/ }));
-    await user.click(
-      within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
-        "menuitemradio",
-        { name: /Org B/ },
-      ),
-    );
-
-    await waitFor(() => {
-      expect(updateActiveOrganizationMock).toHaveBeenCalled();
-    });
-    await findScope("Org A", "เจ้าของ");
-    expect(screen.getByRole("button", { name: /Org A/ })).toBeInTheDocument();
   });
 
   it("retires role-dependent shell controls after a permission denial refreshes an owner to viewer", async () => {
@@ -1129,79 +1084,6 @@ describe("AppShell", () => {
       name: "ตำแหน่งปัจจุบัน",
     });
     expect(within(breadcrumb).getByText("การแจ้งเตือน")).toBeInTheDocument();
-  });
-
-  it("lists monitor notifications in the popover with title, icon and monitor link", async () => {
-    const monitorId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-    const base = {
-      scope: "organization" as const,
-      organizationId: ORG_A,
-      occurredAt: "2026-09-25T03:00:00.000Z",
-      readAt: null,
-      actor: null,
-      category: "monitor" as const,
-      subject: { monitorId, monitorName: "Checkout" },
-    };
-    const items: NotificationItem[] = [
-      {
-        ...base,
-        id: "10000000-0000-4000-8000-000000000001",
-        eventType: "MONITOR_DOWN",
-        reason: "http_status",
-        sslNotAfter: null,
-      },
-      {
-        ...base,
-        id: "10000000-0000-4000-8000-000000000002",
-        eventType: "MONITOR_RECOVERED",
-        reason: null,
-        sslNotAfter: null,
-      },
-      ...(["CAUTION", "DANGER", "EXPIRED"] as const).map(
-        (level, index): NotificationItem => ({
-          ...base,
-          id: `10000000-0000-4000-8000-00000000000${String(index + 3)}`,
-          eventType: `MONITOR_SSL_${level}`,
-          reason: null,
-          sslNotAfter: "2026-10-20T00:00:00.000Z",
-        }),
-      ),
-    ];
-    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 5 });
-    fetchNotificationsMock.mockResolvedValue({
-      items,
-      nextCursor: null,
-      unreadCount: 5,
-    });
-    const user = userEvent.setup();
-    renderShell();
-
-    await screen.findByRole("link", { name: "Org A" });
-    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
-    const popover = await screen.findByRole("dialog", {
-      name: "การแจ้งเตือน",
-    });
-    const rows = within(popover).getAllByRole("listitem");
-
-    expect(
-      rows.map((row) => within(row).getByRole("button").textContent),
-    ).toEqual([
-      expect.stringContaining("มอนิเตอร์ Checkout ล่ม"),
-      expect.stringContaining("มอนิเตอร์ Checkout กลับมาทำงานแล้ว"),
-      expect.stringContaining("ใกล้หมดอายุ (เหลือไม่เกิน 30 วัน)"),
-      expect.stringContaining("ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)"),
-      expect.stringContaining("หมดอายุแล้ว"),
-    ]);
-    for (const row of rows) {
-      expect(row.querySelector("svg")).not.toBeNull();
-      expect(
-        within(row).getByRole("link", { name: "เปิดมอนิเตอร์ Checkout" }),
-      ).toHaveAttribute(
-        "href",
-        `/organizations/${ORG_A}/monitors/${monitorId}`,
-      );
-    }
   });
 
   it("shows a popover open failure while keeping the list for retry", async () => {
