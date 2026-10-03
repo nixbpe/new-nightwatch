@@ -122,10 +122,13 @@ export type AuditEventBatchRow = {
 };
 
 /**
- * The next batch of one export, newest first, keyset-paged. The window is the
- * later of `from`, 365 days before this statement and the recording start, up
- * to the earlier of `to` and `snapshotAt`. Call it inside a transaction whose
- * tenant context matches `tenantId`.
+ * The next batch of one export, newest first, keyset-paged. The window runs
+ * from the later of `from` and `retainedFrom` up to the earlier of `to` and
+ * `snapshotAt`. The caller computes `retainedFrom` (365 days back, or the
+ * recording start if later) once when generation starts and passes the same
+ * value to every batch, so a row near the boundary cannot be in one batch's
+ * window and out of the next. Call it inside a transaction whose tenant
+ * context matches `tenantId`.
  */
 export async function readAuditEventBatch(
   client: Pick<PoolClient, "query">,
@@ -133,14 +136,15 @@ export async function readAuditEventBatch(
     tenantId: string;
     filter: AuditEventFilter;
     actionCodes: readonly string[];
+    /** The lower end of the window, fixed once per export (see below). */
+    retainedFrom: Date;
     snapshotAt: Date;
     cursor: AuditEventBatchCursor | null;
     limit: number;
   },
 ): Promise<{ rows: AuditEventBatchRow[]; next: AuditEventBatchCursor | null }> {
   const filterWhere = auditEventFilterWhere(2, {
-    retainedFrom:
-      "greatest(now() - interval '365 days', o.audit_recording_started_at)",
+    retainedFrom: "$13::timestamptz",
     asOf: "$9::timestamptz",
   });
   const result = await client.query<AuditEventBatchRow>(
@@ -149,7 +153,6 @@ export async function readAuditEventBatch(
               as "occurredAtUtc",
             e.occurred_at::text as "cursorAt"
      from audit_events e
-     join organization o on o.id = e.tenant_id
      ${AUDIT_EVENT_JOINS}
      where e.tenant_id = $1
        and ${filterWhere}
@@ -164,6 +167,7 @@ export async function readAuditEventBatch(
       input.cursor?.occurredAt ?? null,
       input.cursor?.id ?? null,
       input.limit,
+      input.retainedFrom,
     ],
   );
   const last = result.rows.at(-1);

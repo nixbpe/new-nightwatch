@@ -89,6 +89,7 @@ export async function readEventBatch(
   input: {
     tenantId: string;
     filters: ExportFilters;
+    retainedFrom: Date;
     snapshotAt: Date;
     cursor: BatchCursor | null;
     limit?: number;
@@ -99,6 +100,7 @@ export async function readEventBatch(
     tenantId: input.tenantId,
     filter: filters,
     actionCodes: filters.q ? auditActionCodesMatching(filters.q) : [],
+    retainedFrom: input.retainedFrom,
     snapshotAt: input.snapshotAt,
     cursor: input.cursor,
     limit: input.limit ?? EXPORT_BATCH_SIZE,

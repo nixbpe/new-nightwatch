@@ -243,8 +243,16 @@ export class AuditExporter {
 
   /** Reads batch by batch, each in its own short transaction, and builds the file in memory. */
   async #build(claim: AuditExportClaim, request: ExportRequest) {
-    const startedAt = this.#now().getTime();
     const generatedAt = this.#now();
+    const startedAt = generatedAt.getTime();
+    // Fixed for the whole job (AC-24 holds at the start of generation): every
+    // batch reads the same window, whatever time it takes.
+    const retainedFrom = new Date(
+      Math.max(
+        generatedAt.getTime() - 365 * 24 * 3_600_000,
+        request.recordingStartedAt.getTime(),
+      ),
+    );
     const writer = new ExportFileWriter(
       request.format,
       {
@@ -274,6 +282,7 @@ export class AuditExporter {
           return readEventBatch(client, {
             tenantId: claim.tenantId,
             filters: request.filters,
+            retainedFrom,
             snapshotAt: request.snapshotAt,
             cursor,
             limit: this.#batchSize,

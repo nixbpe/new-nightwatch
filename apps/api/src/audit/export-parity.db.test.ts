@@ -73,6 +73,8 @@ async function viaExport(
   snapshotAt: Date,
 ): Promise<string[]> {
   const out: string[] = [];
+  // The organization started recording 400 days ago, so the window opens 365 days back.
+  const retainedFrom = new Date(Date.now() - 365 * 86_400_000);
   let cursor: { occurredAt: string; id: string } | null = null;
   do {
     const batch = await withTenantUserContextRaw(
@@ -90,6 +92,7 @@ async function viaExport(
             q: filter.q,
           },
           actionCodes: filter.q ? auditActionCodesMatching(filter.q) : [],
+          retainedFrom,
           snapshotAt,
           cursor,
           limit: 7,

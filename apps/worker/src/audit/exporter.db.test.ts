@@ -241,7 +241,7 @@ beforeAll(async () => {
   await addUser(colleague, "Colleague", "owner");
   await addUser(outsider, "Outsider");
   const now = Date.now();
-  for (const days of [364, 365, 366]) {
+  for (const days of [200, 364, 365, 366]) {
     await ensureAuditPartitionFor(owner, new Date(now - days * DAY));
   }
 }, 180_000);
@@ -476,6 +476,33 @@ describe("the file (AC-15, AC-24, AC-26)", () => {
     expect(
       (JSON.parse(await contentOf(clamped)) as { events: unknown[] }).events,
     ).toEqual([]);
+  });
+
+  it("fixes the retention window once per job, so a row near the boundary stays in every batch", async () => {
+    await sql(
+      "update organization set audit_recording_started_at = now() - interval '400 days' where id = $1",
+      [org],
+    );
+    const newest = await seedEvent({ at: "now() - interval '1 minute'" });
+    // One hour inside the window when generation starts.
+    const nearBoundary = await seedEvent({
+      at: "now() - interval '364 days 23 hours'",
+    });
+    const older = await seedEvent({ at: "now() - interval '200 days'" });
+    const id = await seedRequest({ format: "json" });
+    // The clock jumps 2 days after the first reading: a window recomputed for
+    // each batch would then drop the row that is one hour inside the boundary.
+    let reads = 0;
+    const start = Date.now();
+    await exporter({
+      batchSize: 1,
+      timeLimitMs: 1e9,
+      now: () => new Date(start + (reads++ === 0 ? 0 : 2 * DAY)),
+    }).runOnce();
+    const out = (
+      JSON.parse(await contentOf(id)) as { events: { id: string }[] }
+    ).events.map((event) => event.id);
+    expect(out).toEqual([newest, older, nearBoundary]);
   });
 
   it("applies category, actor, time and search filters like the list", async () => {
@@ -1166,6 +1193,29 @@ describe("stale sweep by the scheduler (P-08)", () => {
 });
 
 describe("maintenance", () => {
+  it("drains more due export files than one batch holds in a single run", async () => {
+    await sql(
+      `insert into audit_exports
+         (tenant_id, requested_by, format, filters, time_zone, snapshot_at,
+          content, file_expires_at)
+       select $1, $2, 'csv', '{}'::jsonb, 'UTC', now(), '\\x01'::bytea,
+              now() - interval '1 hour'
+       from generate_series(1, 1200)`,
+      [org, requester],
+    );
+    const due = async () =>
+      (
+        await sql<{ n: number }>(
+          `select count(*)::int as n from audit_exports
+           where file_expires_at <= now() and content_purged_at is null`,
+        )
+      )[0]?.n;
+    expect(await due()).toBe(1200);
+    await runAuditMaintenance(runtime, logger);
+    expect(await due()).toBe(0);
+    expect(lines.join("\n")).not.toContain("batch guard");
+  });
+
   it("purges events past 365 days and old exports, and warns about a short partition horizon", async () => {
     const old = await seedEvent({ at: "now() - interval '365 days 1 hour'" });
     const kept = await seedEvent({ at: "now() - interval '1 day'" });
