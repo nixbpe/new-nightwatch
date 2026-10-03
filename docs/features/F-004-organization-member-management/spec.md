@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Feature | `F-004`, `acceptanceVersion: F-004-AC-2` (`docs/features/F-004-organization-member-management/feature.md`) |
+| Feature | `F-004`, `acceptanceVersion: F-004-AC-3` (`docs/features/F-004-organization-member-management/feature.md`; `F-004-AC-2` จนถึง 2026-10-03 ดู Revisions) |
 | Epic | `E-002`, `docs/epics/E-002-organization-member-governance.md` (Approved) |
 | Status | Approved |
 | Approved by user | 2026-09-27, corrected contract with exact `total`, hard cap 1,000 and first-party locked acceptance |
@@ -159,3 +159,11 @@ Issue [#14](https://github.com/nixbpe/new-nightwatch/issues/14) authorizes this 
 | `ISSUE-14-LEAVE` | **OWNER:** `software-engineer` (integration owner). **READY:** node 04 merged; revoke transition, `MemberActionDialog` and member page present. **OUTCOME:** confirmed self-leave via existing `DELETE /members/me` for every role including viewer/auditor without a member list; server-confirmed active Organization or no-access afterwards. **SOURCE:** #14, `F-004-AC-2` AC-02 (self-leave entry), AC-04 (leave), AC-13, AC-14, AC-15 (leave), AC-16-AC-17 (leave); `specs/05-self-leave.md`. **FILES:** as in `specs/05-self-leave.md`. **NON-GOALS:** sign-out, delete account, cross-tab sync, background task, schema or RLS change. **VERIFY/PROOF:** as in `specs/05-self-leave.md`. **COMMIT_MODE:** `owned-slice`. |
 
 No new open decision.
+
+## Revisions
+
+A change to an approved contract or AC is recorded here and approved again by the user. References to `F-004-AC-2` in the addenda above and in `specs/01`–`05` are kept as the history of the nodes delivered under that version.
+
+| Date | Change | Approved by user | `acceptanceVersion` |
+| ---- | ------ | ---------------- | ------------------- |
+| 2026-10-03 | `AC-02` gains an exception: `auditor` sees the names of members who are the actor or target in the `F-007` audit log page (`F-007` `OD-16`). The member directory page, its endpoints and every other `F-004` contract are unchanged, so no `F-004` node needs rework. | 2026-10-03 (via coordinator) | `F-004-AC-3` (frozen) |

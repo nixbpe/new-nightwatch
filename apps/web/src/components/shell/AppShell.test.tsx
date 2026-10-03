@@ -181,12 +181,20 @@ function renderShell(
             path: "/organizations/:organizationId/notification-settings",
             element: <p>หน้าตั้งค่าองค์กร</p>,
           },
+          {
+            path: "/organizations/:organizationId/audit-log",
+            element: <p>หน้าบันทึกกิจกรรม</p>,
+          },
+          {
+            path: "/organizations/:organizationId/audit-log/:eventId",
+            element: <p>หน้ารายละเอียดบันทึกกิจกรรม</p>,
+          },
         ],
       },
     ],
     { initialEntries: [initialPath] },
   );
-  return { queryClient, ...render(<RouterProvider router={router} />) };
+  return { queryClient, router, ...render(<RouterProvider router={router} />) };
 }
 
 function mockMobileViewport(): void {
@@ -627,6 +635,82 @@ describe("AppShell", () => {
     expect(await within(breadcrumb).findByText("Org B")).toBeInTheDocument();
   });
 
+  it.each([
+    [
+      "owner",
+      "list",
+      `/organizations/${ORG_A}/audit-log?range=30d&page=2`,
+      `/organizations/${ORG_B}/audit-log`,
+    ],
+    [
+      "auditor",
+      "detail",
+      `/organizations/${ORG_A}/audit-log/evt-1`,
+      `/organizations/${ORG_B}/audit-log`,
+    ],
+    [
+      "admin",
+      "list",
+      `/organizations/${ORG_A}/audit-log`,
+      `/organizations/${ORG_B}/audit-log`,
+    ],
+  ] as const)(
+    "switching to an organization where the role is %s moves the audit log %s to its list without filters (OD-14)",
+    async (role, _page, from, to) => {
+      const other = { ...viewerOrg, role };
+      fetchMeContextMock.mockResolvedValue(meContext([ownerOrg, other], ORG_A));
+      updateActiveOrganizationMock.mockResolvedValue(
+        meContext([ownerOrg, other], ORG_B),
+      );
+      const user = userEvent.setup();
+      const { router } = renderShell(undefined, from);
+      await screen.findByRole("button", { name: /Org A/ });
+
+      await user.click(screen.getByRole("button", { name: /Org A/ }));
+      await user.click(
+        within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
+          "menuitemradio",
+          { name: /Org B/ },
+        ),
+      );
+      await vi.waitFor(() => {
+        expect(
+          router.state.location.pathname + router.state.location.search,
+        ).toBe(to);
+      });
+    },
+  );
+
+  it.each([
+    `/organizations/${ORG_A}/audit-log?range=30d`,
+    `/organizations/${ORG_A}/audit-log/evt-1`,
+  ])(
+    "switching to an organization where the role is viewer sends %s to /workspace (OD-14)",
+    async (from) => {
+      fetchMeContextMock.mockResolvedValue(
+        meContext([ownerOrg, viewerOrg], ORG_A),
+      );
+      updateActiveOrganizationMock.mockResolvedValue(
+        meContext([ownerOrg, viewerOrg], ORG_B),
+      );
+      const user = userEvent.setup();
+      const { router } = renderShell(undefined, from);
+      await screen.findByRole("button", { name: /Org A/ });
+
+      await user.click(screen.getByRole("button", { name: /Org A/ }));
+      await user.click(
+        within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
+          "menuitemradio",
+          { name: /Org B/ },
+        ),
+      );
+      await vi.waitFor(() => {
+        expect(router.state.location.pathname).toBe("/workspace");
+      });
+      expect(router.state.location.search).toBe("");
+    },
+  );
+
   it("switching organization from the sidebar publishes the new tenant only after the PATCH succeeds", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
@@ -740,6 +824,55 @@ describe("AppShell", () => {
     },
   );
 
+  it.each([
+    ["owner", true],
+    ["admin", true],
+    ["auditor", true],
+    ["viewer", false],
+  ] as const)(
+    "shows the audit log leaf in the sidebar and ⌘K to a %s: %s (AC-01)",
+    async (role, visible) => {
+      fetchMeContextMock.mockResolvedValue(
+        meContext([{ ...ownerOrg, role }], ORG_A),
+      );
+      const user = userEvent.setup();
+      renderShell();
+      await screen.findByRole("link", { name: "Org A" });
+
+      const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+      const leaf = within(nav).queryByRole("link", { name: "บันทึกกิจกรรม" });
+      await user.keyboard("{Meta>}k{/Meta}");
+      const dialog = screen.getByRole("dialog", { name: "ค้นหาทั้งหมด" });
+      await user.keyboard("บันทึกกิจกรรม");
+      if (!visible) {
+        expect(leaf).toBeNull();
+        expect(within(dialog).queryAllByRole("option")).toHaveLength(0);
+        return;
+      }
+      expect(leaf).toHaveAttribute("href", `/organizations/${ORG_A}/audit-log`);
+      expect(within(dialog).getAllByRole("option")).toHaveLength(1);
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText("หน้าบันทึกกิจกรรม")).toBeInTheDocument();
+    },
+  );
+
+  it("keeps the audit log leaf current and the breadcrumb named on a detail route", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderShell(undefined, `/organizations/${ORG_A}/audit-log/evt-1`);
+    expect(
+      await screen.findByText("หน้ารายละเอียดบันทึกกิจกรรม"),
+    ).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    expect(
+      await within(nav).findByRole("link", { name: "บันทึกกิจกรรม" }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
+      ).getByText("บันทึกกิจกรรม"),
+    ).toBeInTheDocument();
+  });
+
   it("omits the monitors leaf when there is no active organization", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([], null));
     renderShell();
@@ -777,7 +910,7 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    expect(within(dialog).getAllByRole("option")).toHaveLength(10);
+    expect(within(dialog).getAllByRole("option")).toHaveLength(11);
     for (const name of [
       "ภาพรวม",
       "ตรวจสถานะบริการ",
@@ -789,6 +922,7 @@ describe("AppShell", () => {
       "การแสดงผล",
       "สมาชิก",
       "ตั้งค่าการแจ้งเตือน",
+      "บันทึกกิจกรรม",
     ]) {
       expect(
         within(dialog).getByRole("option", {

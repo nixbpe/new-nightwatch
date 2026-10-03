@@ -1211,18 +1211,23 @@ describe("no database write", () => {
     ).toEqual(versions.rows);
   });
 
-  it("writes no audit line for a successful Test", async () => {
+  it("writes no audit event for a successful Test", async () => {
     await clearRateLimitKeys();
-    const start = logLines.length;
+    const count = async () =>
+      (
+        await owner.sql.query<{ n: number }>(
+          "select count(*)::int as n from audit_events where tenant_id = $1",
+          [org.id],
+        )
+      ).rows[0]?.n;
+    const before = await count();
     await call(
       fullApp,
       org.users.owner,
       testPath(org.id),
       config(target(http1, "/ok")),
     );
-    expect(
-      logLines.slice(start).filter((line) => line.includes("monitor mutation")),
-    ).toEqual([]);
+    expect(await count()).toBe(before);
   });
 });
 

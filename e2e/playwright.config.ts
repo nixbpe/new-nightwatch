@@ -69,7 +69,8 @@ export default defineConfig({
       cwd: "..",
       env: {
         ...runtimeEnv(),
-        WORKER_ROLES: "consumer,scheduler,monitor-scheduler,monitor-checker",
+        WORKER_ROLES:
+          "consumer,scheduler,monitor-scheduler,monitor-checker,audit-exporter",
       },
       stdout: "pipe",
       wait: { stdout: /in-app materialize worker ready/ },

@@ -93,6 +93,8 @@ export type RequestOptions<
   M extends RequestMethod = "GET",
 > = {
   method?: M;
+  /** Aborting surfaces as a `NETWORK_ERROR` like any failed fetch. */
+  signal?: AbortSignal;
 } & ([QueryParamsFor<P, M>] extends [never]
   ? { query?: never }
   : { query?: QueryParamsFor<P, M> }) &
@@ -138,6 +140,7 @@ export async function request<
       };
       body?: unknown;
       parseAs: "text";
+      signal?: AbortSignal;
     },
   ) => Promise<ClientOutcome>;
 
@@ -164,6 +167,7 @@ export async function request<
       body: requestBody,
       // Raw text so an unparsable body becomes null instead of throwing.
       parseAs: "text",
+      signal: options?.signal,
     });
   } catch {
     throw new ApiError("NETWORK_ERROR", "Could not reach the API", 0);
@@ -217,4 +221,80 @@ export async function request<
     );
   }
   return parsed.data;
+}
+
+type FileOperation<P extends keyof paths> = Exclude<
+  paths[P]["get" & keyof paths[P]],
+  undefined
+>;
+
+// Only GET paths whose success body is a file (`text/csv`) qualify.
+type FilePaths = {
+  [P in keyof paths]: FileOperation<P> extends {
+    responses: { 200: { content: { "text/csv": string } } };
+  }
+    ? P
+    : never;
+}[keyof paths];
+
+export type DownloadedFile = { blob: Blob; filename: string | null };
+
+function filenameOf(disposition: string | null): string | null {
+  if (disposition === null) return null;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  if (encoded !== undefined) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return null;
+    }
+  }
+  return /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null;
+}
+
+/** A file body as the untouched Blob plus the name from `Content-Disposition`; errors use the JSON envelope like `request`. */
+export async function requestFile<P extends FilePaths>(
+  path: P,
+  options: {
+    params: PathParamsFor<P, "GET">;
+    signal?: AbortSignal;
+  },
+): Promise<DownloadedFile> {
+  const call = client.GET as unknown as (
+    url: string,
+    init: {
+      params: { path: Record<string, string> };
+      parseAs: "blob";
+      signal?: AbortSignal;
+    },
+  ) => Promise<ClientOutcome>;
+  let outcome: ClientOutcome;
+  try {
+    outcome = await call(path, {
+      params: { path: options.params },
+      parseAs: "blob",
+      signal: options.signal,
+    });
+  } catch {
+    throw new ApiError("NETWORK_ERROR", "Could not reach the API", 0);
+  }
+  const { data, error, response } = outcome;
+  if (!response.ok) {
+    const parsed = errorResponseSchema.safeParse(error ?? null);
+    if (parsed.success) {
+      const { code, message, details } = parsed.data.error;
+      throw new ApiError(code, message, response.status, details);
+    }
+    throw new ApiError(
+      `HTTP_${response.status.toString()}`,
+      `Request failed with status ${response.status.toString()}`,
+      response.status,
+    );
+  }
+  // The Blob goes through untouched: reading the body as text would drop a UTF-8 BOM, and
+  // Excel needs it to open the CSV as UTF-8.
+  return {
+    blob: data instanceof Blob ? data : new Blob([]),
+    filename: filenameOf(response.headers.get("Content-Disposition")),
+  };
 }

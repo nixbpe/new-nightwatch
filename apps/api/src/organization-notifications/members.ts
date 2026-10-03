@@ -6,6 +6,7 @@ import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import type { PoolClient } from "pg";
 import { AppError } from "@nightwatch/shared";
 
+import { recordAuditEvent, roleChange } from "../audit/record";
 import { normalizeOrganizationRole } from "../me/service";
 import { assertMemberBeforeTenantContext } from "./service";
 
@@ -41,6 +42,13 @@ function notMember(): never {
 
 function memberNotFound(): never {
   throw new AppError(404, "MEMBER_NOT_FOUND", "ไม่พบสมาชิกองค์กร");
+}
+
+// Called in the transaction so an unknown stored role rolls it back.
+function actorRoleOf(actor: MemberRow): OrganizationRole {
+  const role = normalizeOrganizationRole(actor.role);
+  if (role === null) throw new Error("member has no recognized role");
+  return role;
 }
 
 function isOwner(member: MemberRow): boolean {
@@ -265,6 +273,7 @@ export async function updateOrganizationMemberRole(
     actorUserId: string;
     memberId: string;
     role: OrganizationRole;
+    requestId?: string;
   },
 ): Promise<MemberResponse> {
   if (!ORGANIZATION_ROLES[input.role]) {
@@ -297,6 +306,10 @@ export async function updateOrganizationMemberRole(
         target,
         input.role === "owner",
       );
+      const previousRole = actorRoleOf(target);
+      // Stored value already equals the request: nothing changes, so no write
+      // and no event. A composite such as "viewer,auditor" is rewritten.
+      if (target.role === input.role) return toMemberResponse(target);
       const updated = await client.query<MemberRow>(
         `update member set role = $3, updated_at = now()
        where organization_id = $1 and id = $2
@@ -305,6 +318,15 @@ export async function updateOrganizationMemberRole(
       );
       const member = updated.rows[0];
       if (!member) memberNotFound();
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorRole: actorRoleOf(actor),
+        action: "organization.member.role.update",
+        target: { type: "member", id: target.userId },
+        changes: [roleChange(previousRole, input.role)],
+        requestId: input.requestId,
+      });
       return toMemberResponse(member);
     },
   );
@@ -312,7 +334,12 @@ export async function updateOrganizationMemberRole(
 
 export async function revokeOrganizationMember(
   database: Database,
-  input: { organizationId: string; actorUserId: string; memberId: string },
+  input: {
+    organizationId: string;
+    actorUserId: string;
+    memberId: string;
+    requestId?: string;
+  },
 ): Promise<MemberResponse> {
   return withLockedOrganization(
     database,
@@ -356,7 +383,17 @@ export async function revokeOrganizationMember(
       );
       const member = removed.rows[0];
       if (!member) memberNotFound();
-      return toMemberResponse(member);
+      const response = toMemberResponse(member);
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorRole: actorRoleOf(actor),
+        action: "organization.member.revoke",
+        target: { type: "member", id: target.userId },
+        changes: [roleChange(response.role, null)],
+        requestId: input.requestId,
+      });
+      return response;
     },
   );
 }
@@ -364,7 +401,7 @@ export async function revokeOrganizationMember(
 // Needs no member-delete permission.
 export async function leaveOrganization(
   database: Database,
-  input: { organizationId: string; actorUserId: string },
+  input: { organizationId: string; actorUserId: string; requestId?: string },
 ): Promise<MemberResponse> {
   return withLockedOrganization(
     database,
@@ -400,7 +437,17 @@ export async function leaveOrganization(
       );
       const removedMember = removed.rows[0];
       if (!removedMember) memberNotFound();
-      return toMemberResponse(removedMember);
+      const response = toMemberResponse(removedMember);
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorRole: response.role,
+        action: "organization.member.leave",
+        target: { type: "member", id: member.userId },
+        changes: [roleChange(response.role, null)],
+        requestId: input.requestId,
+      });
+      return response;
     },
   );
 }

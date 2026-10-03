@@ -8,6 +8,8 @@ import { initialsFontClass, initialsOf } from "./initials";
 import { Skeleton } from "./Skeleton";
 import { usePopover } from "./usePopover";
 
+const AUDIT_LOG_ROLES: readonly string[] = ["owner", "admin", "auditor"];
+
 // Falls back to the product mark with no membership or a failed context load; the page surfaces the error.
 export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   const { me, mePending, activeOrg, switchOrg, orgSwitchPending } = useTenant();
@@ -117,22 +119,33 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                 onClick={() => {
                   popover.close();
                   void switchOrg(org.id).then((switched) => {
-                    // A monitor page keeps its own redirect (useLeaveOnOrganizationSwitch), so only the lists are handled here.
+                    // A monitor page keeps its own redirect (useLeaveOnOrganizationSwitch), so only the lists and the audit log are handled here.
                     const match =
-                      /^\/organizations\/([^/]+)\/(members|monitors)$/.exec(
+                      /^\/organizations\/([^/]+)\/(members|monitors|audit-log(?:\/[^/]+)?)$/.exec(
                         location.pathname,
                       );
                     // Choosing the Organization the URL already names changes nothing on the page.
                     const section = match?.[2];
                     if (
-                      switched &&
-                      section !== undefined &&
-                      match?.[1] !== org.id
+                      !switched ||
+                      section === undefined ||
+                      match?.[1] === org.id
                     ) {
-                      void navigate(`/organizations/${org.id}/${section}`, {
-                        replace: true,
-                      });
+                      return;
                     }
+                    if (section.startsWith("audit-log")) {
+                      // OD-14: the audit log is for owner, admin and auditor; any other role lands on the workspace.
+                      void navigate(
+                        AUDIT_LOG_ROLES.includes(org.role)
+                          ? `/organizations/${org.id}/audit-log`
+                          : "/workspace",
+                        { replace: true },
+                      );
+                      return;
+                    }
+                    void navigate(`/organizations/${org.id}/${section}`, {
+                      replace: true,
+                    });
                   });
                 }}
                 className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-start text-sm hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-60"

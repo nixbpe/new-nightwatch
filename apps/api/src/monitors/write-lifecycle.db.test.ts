@@ -6,6 +6,10 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  blockAuditInserts,
+  openIsolatedAuditDatabase,
+} from "../audit/test-support";
+import {
   monitorsPath,
   openMonitorTestContext,
   STUB_HOSTS,
@@ -14,11 +18,15 @@ import {
   type TestOrganization,
 } from "./test-support";
 
+// The AC-21 case creates a trigger on audit_events, which deadlocks with other
+// suites that write events, so this file has a database of its own.
+let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
 let ctx: MonitorTestContext;
 let org: TestOrganization;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  isolated = await openIsolatedAuditDatabase();
+  ctx = await openMonitorTestContext({ urls: isolated.urls });
   org = await ctx.createOrganization("lifecycle");
   // Results are partitioned by month; the delete test inserts one.
   await ctx.owner.sql.query("select ensure_monitor_partitions(3)");
@@ -26,7 +34,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await ctx.close();
-});
+  await isolated.close();
+}, 60_000);
 
 const owner = () => org.users.owner;
 const SECRET_ID = "5b0c1a3e-6f0a-4a57-9c4e-8d1b2a3c4d5e";
@@ -141,14 +150,27 @@ async function events(id: string) {
   return result.rows;
 }
 
-const mutationLines = (monitorId?: string) =>
-  ctx
-    .logRecords()
-    .filter(
-      (line) =>
-        line.msg === "monitor mutation" &&
-        (monitorId === undefined || line.monitorId === monitorId),
-    );
+// Audit events of one monitor, oldest first (F-007: written in the mutation's
+// own transaction).
+const mutationLines = async (monitorId: string) =>
+  (
+    await ctx.owner.sql.query<{
+      actorUserId: string;
+      actorRole: string;
+      action: string;
+      organizationId: string;
+      monitorId: string;
+      changes: unknown[];
+      requestId: string | null;
+    }>(
+      `select actor_user_id as "actorUserId", actor_role as "actorRole", action,
+              tenant_id as "organizationId", target_id as "monitorId", changes,
+              request_id as "requestId"
+       from audit_events where target_type = 'monitor' and target_id = $1
+       order by occurred_at, id`,
+      [monitorId],
+    )
+  ).rows;
 
 describe("Create", () => {
   it("stores normalized forms, schedules the first check now and returns the record", async () => {
@@ -249,13 +271,15 @@ describe("Create", () => {
     const monitor = await created(
       validConfig({ url: `https://${STUB_HOSTS.public}/x?token=audit-marker` }),
     );
-    const lines = mutationLines(monitor.id);
+    const lines = await mutationLines(monitor.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({
       actorUserId: owner(),
+      actorRole: "owner",
       action: "organization.monitor.create",
       organizationId: org.id,
       monitorId: monitor.id,
+      changes: [],
     });
     expect(JSON.stringify(lines[0])).not.toContain("audit-marker");
     expect(JSON.stringify(lines[0])).not.toContain(STUB_HOSTS.public);
@@ -306,7 +330,7 @@ describe("Create", () => {
       monitorWriteResponseSchema.parse(replay.response.json).monitor.id,
     ).toBe(monitor.id);
     expect(await count(limited)).toBe(50);
-    expect(mutationLines(monitor.id)).toHaveLength(1);
+    expect(await mutationLines(monitor.id)).toHaveLength(1);
   });
 
   it("lets exactly one of two concurrent creates take the 50th slot", async () => {
@@ -334,7 +358,7 @@ describe("Create", () => {
     );
     expect(results.map((result) => result.response.status)).toEqual([201, 201]);
     expect(ids[0]).toBe(ids[1]);
-    expect(mutationLines(ids[0])).toHaveLength(1);
+    expect(await mutationLines(ids[0] ?? "")).toHaveLength(1);
   });
 });
 
@@ -353,7 +377,7 @@ describe("Create replay before save-time checks", () => {
       monitorWriteResponseSchema.parse(replay.response.json).monitor.id,
     ).toBe(monitor.id);
     expect(ctx.resolverCalls.length).toBe(calls);
-    expect(mutationLines(monitor.id)).toHaveLength(1);
+    expect(await mutationLines(monitor.id)).toHaveLength(1);
   });
 });
 
@@ -642,7 +666,7 @@ describe("Pause racing Delete (AC-50)", () => {
         [monitor.id],
       );
       expect(left.rows).toHaveLength(0);
-      const paused = mutationLines(monitor.id).some(
+      const paused = (await mutationLines(monitor.id)).some(
         (line) => line.action === "organization.monitor.pause",
       );
       expect(paused).toBe(pause.status === 200);
@@ -669,7 +693,7 @@ describe("Edit", () => {
     });
     expect((await monitorRow(monitor.id)).version).toBe(2);
     expect(
-      mutationLines(monitor.id).filter(
+      (await mutationLines(monitor.id)).filter(
         (l) => l.action === "organization.monitor.update",
       ),
     ).toHaveLength(1);
@@ -889,14 +913,14 @@ describe("Edit", () => {
 
   it("does nothing for an identical configuration", async () => {
     const monitor = await created();
-    const before = mutationLines(monitor.id).length;
+    const before = (await mutationLines(monitor.id)).length;
     const response = await edit(monitor, configOf(monitor));
     expect(response.status).toBe(200);
     expect(
       monitorWriteResponseSchema.parse(response.json).monitor.version,
     ).toBe(1);
     expect(await events(monitor.id)).toEqual([]);
-    expect(mutationLines(monitor.id)).toHaveLength(before);
+    expect(await mutationLines(monitor.id)).toHaveLength(before);
   });
 
   it("keeps a paused monitor unclaimable through edits", async () => {
@@ -987,7 +1011,7 @@ describe("Pause and Resume", () => {
       "paused",
     ]);
     expect(
-      mutationLines(monitor.id).filter(
+      (await mutationLines(monitor.id)).filter(
         (l) => l.action === "organization.monitor.pause",
       ),
     ).toHaveLength(1);
@@ -1026,7 +1050,7 @@ describe("Pause and Resume", () => {
       "resumed",
     ]);
     expect(
-      mutationLines(monitor.id).filter(
+      (await mutationLines(monitor.id)).filter(
         (l) => l.action === "organization.monitor.resume",
       ),
     ).toHaveLength(1);
@@ -1075,7 +1099,7 @@ describe("Delete", () => {
     );
     expect(repeat.status).toBe(404);
     expect(
-      mutationLines(monitor.id).filter(
+      (await mutationLines(monitor.id)).filter(
         (l) => l.action === "organization.monitor.delete",
       ),
     ).toHaveLength(1);
@@ -1083,7 +1107,7 @@ describe("Delete", () => {
 });
 
 describe("audit and logs", () => {
-  it("writes one audit line per successful mutation and none for denials", async () => {
+  it("writes one audit event per successful mutation and none for denials", async () => {
     const monitor = await created();
     await edit(monitor, configOf({ ...monitor, name: "audited" }));
     await action(monitor, "pause");
@@ -1096,29 +1120,19 @@ describe("audit and logs", () => {
     expect(viewerAttempt.status).toBe(403);
     await ctx.call(owner(), "DELETE", monitorsPath(org.id, `/${monitor.id}`));
 
-    expect(mutationLines(monitor.id).map((line) => line.action)).toEqual([
+    expect(
+      (await mutationLines(monitor.id)).map((line) => line.action),
+    ).toEqual([
       "organization.monitor.create",
       "organization.monitor.update",
       "organization.monitor.pause",
       "organization.monitor.resume",
       "organization.monitor.delete",
     ]);
-    for (const line of mutationLines(monitor.id)) {
-      expect(Object.keys(line).sort()).toEqual(
-        [
-          "action",
-          "actorUserId",
-          "hostname",
-          "level",
-          "monitorId",
-          "msg",
-          "name",
-          "organizationId",
-          "pid",
-          "time",
-        ].sort(),
-      );
-    }
+    // Identifiers and redacted changes only: no URL or query in any event.
+    expect(JSON.stringify(await mutationLines(monitor.id))).not.toContain(
+      "https://",
+    );
     const denial = ctx
       .logRecords()
       .find(
@@ -1131,6 +1145,35 @@ describe("audit and logs", () => {
       code: "PERMISSION_DENIED",
     });
     expect(JSON.stringify(denial)).not.toContain(monitor.id);
+  });
+
+  it("stores each response x-request-id as the event request_id for create, edit, pause, resume and delete", async () => {
+    const { response: createResponse } = await create();
+    expect(createResponse.status).toBe(201);
+    const monitor = monitorWriteResponseSchema.parse(
+      createResponse.json,
+    ).monitor;
+    const path = monitorsPath(org.id, `/${monitor.id}`);
+    const responses = {
+      "organization.monitor.create": createResponse,
+      "organization.monitor.update": await edit(
+        monitor,
+        configOf({ ...monitor, name: "traced" }),
+      ),
+      "organization.monitor.pause": await action(monitor, "pause"),
+      "organization.monitor.resume": await action(monitor, "resume"),
+      "organization.monitor.delete": await ctx.call(owner(), "DELETE", path),
+    };
+    const events = await mutationLines(monitor.id);
+    expect(events.map((event) => event.action)).toEqual(Object.keys(responses));
+    for (const event of events) {
+      const requestId =
+        responses[event.action as keyof typeof responses].headers.get(
+          "x-request-id",
+        );
+      expect(requestId).toBeTruthy();
+      expect(event.requestId).toBe(requestId);
+    }
   });
 
   it("logs request paths as templates without organization or monitor ids", async () => {
@@ -1152,28 +1195,112 @@ describe("audit and logs", () => {
   });
 });
 
-describe("audit failure", () => {
-  it("does not fail a committed mutation when the audit logger throws", async () => {
-    const failing = await openMonitorTestContext({ auditFailure: true });
-    try {
-      const failingOrg = await failing.createOrganization("audit-failure");
-      const response = await failing.call(
-        failingOrg.users.owner,
-        "POST",
-        monitorsPath(failingOrg.id),
-        { ...validConfig(), clientRequestId: crypto.randomUUID() },
-      );
+describe("audit failure (AC-21)", () => {
+  it("rolls back create, edit, pause, resume and delete when the event insert fails", async () => {
+    const rollbackOrg = await ctx.createOrganization("audit-rollback");
+    const as = rollbackOrg.users.owner;
+    const base = `/api/organizations/${rollbackOrg.id}/monitors`;
+    const make = async (): Promise<MonitorRecord> => {
+      const response = await ctx.call(as, "POST", base, {
+        ...validConfig(),
+        clientRequestId: crypto.randomUUID(),
+      });
       expect(response.status).toBe(201);
-      const stored = await failing.owner.sql.query(
-        "select 1 from monitors where tenant_id = $1",
-        [failingOrg.id],
-      );
-      expect(stored.rows).toHaveLength(1);
-      expect(
-        failing.logRecords().some((line) => line.msg === "monitor mutation"),
-      ).toBe(false);
+      return monitorWriteResponseSchema.parse(response.json).monitor;
+    };
+    const active = await make();
+    const paused = await make();
+    expect(
+      (await ctx.call(as, "POST", `${base}/${paused.id}/pause`)).status,
+    ).toBe(200);
+
+    const snapshot = async () => ({
+      monitors: (
+        await ctx.owner.sql.query(
+          "select * from monitors where tenant_id = $1 order by id",
+          [rollbackOrg.id],
+        )
+      ).rows,
+      schedule: (
+        await ctx.owner.sql.query(
+          "select * from monitor_schedule where tenant_id = $1 order by monitor_id",
+          [rollbackOrg.id],
+        )
+      ).rows,
+      events: (
+        await ctx.owner.sql.query(
+          "select kind from monitor_events where tenant_id = $1 order by id",
+          [rollbackOrg.id],
+        )
+      ).rows,
+      audit: (
+        await ctx.owner.sql.query(
+          "select id from audit_events where tenant_id = $1 order by id",
+          [rollbackOrg.id],
+        )
+      ).rows,
+    });
+    const before = await snapshot();
+
+    const unblock = await blockAuditInserts(
+      isolated.urls.ownerUrl,
+      rollbackOrg.id,
+    );
+    try {
+      const attempts = [
+        () =>
+          ctx.call(as, "POST", base, {
+            ...validConfig(),
+            clientRequestId: crypto.randomUUID(),
+          }),
+        () =>
+          ctx.call(as, "PATCH", `${base}/${active.id}`, {
+            ...configOf(active),
+            name: "must not stick",
+            expectedVersion: active.version,
+          }),
+        () => ctx.call(as, "POST", `${base}/${active.id}/pause`),
+        () => ctx.call(as, "POST", `${base}/${paused.id}/resume`),
+        () => ctx.call(as, "DELETE", `${base}/${active.id}`),
+      ];
+      for (const attempt of attempts) {
+        const response = await attempt();
+        expect(response.status).toBe(500);
+        expect(JSON.stringify(response.json)).not.toContain("audit insert");
+      }
     } finally {
-      await failing.close();
+      await unblock();
     }
+
+    expect(await snapshot()).toEqual(before);
+  });
+  it("answers a generic 500 with no cause when the event insert of a settings change fails", async () => {
+    const settingsOrg = await ctx.createOrganization("audit-settings-500");
+    const as = settingsOrg.users.owner;
+    const path = `/api/organizations/${settingsOrg.id}/notification-settings`;
+    const version = async () =>
+      (await ctx.call(as, "GET", path)).json as { version: number };
+    const before = await version();
+    const unblock = await blockAuditInserts(
+      isolated.urls.ownerUrl,
+      settingsOrg.id,
+    );
+    try {
+      const failed = await ctx.call(as, "PATCH", path, {
+        monitorAlertsEnabled: false,
+        expectedVersion: before.version,
+      });
+      expect(failed.status).toBe(500);
+      expect(failed.json).toEqual({
+        error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+      });
+      const text = JSON.stringify(failed.json);
+      expect(text).not.toContain("audit insert blocked");
+      expect(text).not.toContain("audit_events");
+      expect(text).not.toMatch(/\bat \S+\.ts/);
+    } finally {
+      await unblock();
+    }
+    expect((await version()).version).toBe(before.version);
   });
 });

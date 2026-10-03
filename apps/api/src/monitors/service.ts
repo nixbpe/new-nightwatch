@@ -1,5 +1,6 @@
 import {
   MONITOR_LIMIT_PER_ORGANIZATION,
+  type OrganizationRole,
   type MonitorCreateInput,
   type MonitorEditInput,
   type MonitorInvalidReason,
@@ -19,6 +20,9 @@ import {
 } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
+import { recordAuditEvent } from "../audit/record";
+import { normalizeOrganizationRole } from "../me/service";
+import { editAuditAction, monitorAuditChanges } from "./audit";
 import { diffConfig } from "./config-changes";
 import {
   assertMemberPermissionBeforeTenantContext,
@@ -48,9 +52,6 @@ export type MonitorMutation = {
   monitor: MonitorRecord;
   /** False for an idempotent no-op or a replayed Create: nothing was written. */
   changed: boolean;
-  /** Slots this mutation stored for the first time or overwrote (AC-61). */
-  secretsSet?: number;
-  secretsReplaced?: number;
 };
 
 const UUID_PATTERN =
@@ -144,7 +145,11 @@ function urlMarker(previous: StoredConfig, nextMasked: string): string | null {
     : nextMasked;
 }
 
-type Identity = { organizationId: string; actorUserId: string };
+type Identity = {
+  organizationId: string;
+  actorUserId: string;
+  requestId?: string;
+};
 
 // Lock order shared with the Worker: organization row, then the
 // per-Organization advisory lock (Create only), monitors row, schedule row,
@@ -153,7 +158,7 @@ type Identity = { organizationId: string; actorUserId: string };
 export async function enterOrganization(
   client: PoolClient,
   identity: Identity,
-): Promise<void> {
+): Promise<OrganizationRole> {
   const organization = await client.query(
     "select id from organization where id = $1 for share",
     [identity.organizationId],
@@ -164,6 +169,10 @@ export async function enterOrganization(
     [identity.organizationId, identity.actorUserId],
   );
   assertMonitorPermission(member.rows[0]?.role, "write");
+  // Write permission already implies a recognized role.
+  const role = normalizeOrganizationRole(member.rows[0]?.role ?? "");
+  if (role === null) throw new Error("member has no recognized role");
+  return role;
 }
 
 async function secretSlots(
@@ -197,11 +206,8 @@ async function storeSecrets(
   identity: Identity,
   monitorId: string,
   plan: SecretPlan,
-  stored: ReadonlySet<string>,
   env: CredentialEnv | undefined,
-): Promise<{ set: number; replaced: number; deleted: number }> {
-  let set = 0;
-  let replaced = 0;
+): Promise<void> {
   for (const { slot, value } of plan.writes) {
     const encrypted = encryptSecret(
       {
@@ -230,8 +236,6 @@ async function storeSecrets(
         encrypted.keyVersion,
       ],
     );
-    if (stored.has(slot)) replaced += 1;
-    else set += 1;
   }
   if (plan.deletes.length > 0) {
     await client.query(
@@ -239,7 +243,6 @@ async function storeSecrets(
       [monitorId, plan.deletes],
     );
   }
-  return { set, replaced, deleted: plan.deletes.length };
 }
 
 async function loadRecord(
@@ -355,7 +358,7 @@ export async function createMonitor(
     database,
     input.organizationId,
     async (client) => {
-      await enterOrganization(client, input);
+      const actorRole = await enterOrganization(client, input);
       await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
         `monitors:${input.organizationId}`,
       ]);
@@ -402,19 +405,19 @@ export async function createMonitor(
        values ($1, $2, now(), 1, $3, $4)`,
         [row.id, input.organizationId, row.intervalSeconds, row.timeoutSeconds],
       );
-      const written = await storeSecrets(
-        client,
-        input,
-        row.id,
-        plan,
-        new Set(),
-        input.credentialEnv,
-      );
+      await storeSecrets(client, input, row.id, plan, input.credentialEnv);
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorRole,
+        action: "organization.monitor.create",
+        target: { type: "monitor", id: row.id },
+        changes: [],
+        requestId: input.requestId,
+      });
       return {
         monitor: toRecord(row, plan.writes.map((write) => write.slot).sort()),
         changed: true,
-        secretsSet: written.set,
-        secretsReplaced: written.replaced,
       };
     },
   );
@@ -446,7 +449,7 @@ export async function editMonitor(
     database,
     input.organizationId,
     async (client) => {
-      await enterOrganization(client, input);
+      const actorRole = await enterOrganization(client, input);
       const row = await lockMonitor(client, input, monitorId);
       if (row.version !== input.input.expectedVersion) {
         throw new AppError(
@@ -554,20 +557,23 @@ export async function editMonitor(
           JSON.stringify(diffConfig(previous, next, plan, stored)),
         ],
       );
-      const written = await storeSecrets(
-        client,
-        input,
-        monitorId,
-        plan,
+      await storeSecrets(client, input, monitorId, plan, input.credentialEnv);
+      // Slot names only: the plan's values never reach the audit diff.
+      const slotChanges = {
+        written: plan.writes.map((write) => write.slot),
         stored,
-        input.credentialEnv,
-      );
-      return {
-        monitor: await loadRecord(client, saved),
-        changed: true,
-        secretsSet: written.set,
-        secretsReplaced: written.replaced,
+        deleted: plan.deletes,
       };
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorRole,
+        action: editAuditAction(!sameConfig(previous, next), slotChanges),
+        target: { type: "monitor", id: monitorId },
+        changes: monitorAuditChanges(previous, next, slotChanges),
+        requestId: input.requestId,
+      });
+      return { monitor: await loadRecord(client, saved), changed: true };
     },
   );
 }
@@ -602,7 +608,7 @@ async function changeMonitorStatus(
     database,
     input.organizationId,
     async (client) => {
-      await enterOrganization(client, input);
+      const actorRole = await enterOrganization(client, input);
       const row = await lockMonitor(client, input, monitorId);
       if (row.status === target) {
         return { monitor: await loadRecord(client, row), changed: false };
@@ -648,6 +654,18 @@ async function changeMonitorStatus(
           input.actorUserId,
         ],
       );
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorRole,
+        action:
+          target === "paused"
+            ? "organization.monitor.pause"
+            : "organization.monitor.resume",
+        target: { type: "monitor", id: monitorId },
+        changes: [],
+        requestId: input.requestId,
+      });
       return { monitor: await loadRecord(client, saved), changed: true };
     },
   );
@@ -668,11 +686,20 @@ export async function deleteMonitor(
   const monitorId = parseMonitorId(input.monitorId);
 
   await withTenantContextRaw(database, input.organizationId, async (client) => {
-    await enterOrganization(client, input);
+    const actorRole = await enterOrganization(client, input);
     await lockMonitor(client, input, monitorId);
     await client.query(
       "delete from monitors where id = $1 and tenant_id = $2",
       [monitorId, input.organizationId],
     );
+    await recordAuditEvent(client, {
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      actorRole,
+      action: "organization.monitor.delete",
+      target: { type: "monitor", id: monitorId },
+      changes: [],
+      requestId: input.requestId,
+    });
   });
 }

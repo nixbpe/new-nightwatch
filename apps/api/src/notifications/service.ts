@@ -75,6 +75,17 @@ function toItem(row: InboxRow): NotificationItem {
       category: "notification-settings",
     };
   }
+  if (
+    row.eventType === "AUDIT_EXPORT_READY" ||
+    row.eventType === "AUDIT_EXPORT_FAILED"
+  ) {
+    return {
+      ...organization,
+      eventType: row.eventType,
+      actor: null,
+      category: "audit-log",
+    };
+  }
   if (!row.subjectMonitorId || !row.subjectMonitorName) {
     throw new Error("monitor notification requires a subject");
   }

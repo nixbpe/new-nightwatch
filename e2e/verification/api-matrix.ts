@@ -1,9 +1,9 @@
 /**
  * Integrated verification against a running stack (API, Worker with all roles,
- * PostgreSQL, Redis). Not part of `bun run e2e`: it needs the API and Worker
- * logs of that stack, which the caller starts with stdout redirected to files.
+ * PostgreSQL, Redis). Not part of `bun run e2e`: it needs the Worker
+ * log of that stack, which the caller starts with stdout redirected to files.
  *
- *   API_LOG=... WORKER_LOG=... OUTBOUND_TEST_ALLOWED_HOSTS=<host> \
+ *   WORKER_LOG=... OUTBOUND_TEST_ALLOWED_HOSTS=<host> \
  *   EVIDENCE_OUT=... bun e2e/verification/api-matrix.ts
  *
  * Scenarios: role x operation matrix with direct requests (AC-02, AC-03, AC-48,
@@ -13,7 +13,7 @@
  * written to RESPONSES_OUT so the secret scan can read it.
  */
 import { randomUUID } from "node:crypto";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
@@ -32,7 +32,6 @@ import {
   type Role,
 } from "../support/monitor-fixtures";
 
-const API_LOG = process.env.API_LOG!;
 // Fail at the start, not in the middle of the secrets scenario.
 if (!process.env.REDIS_CONTAINER) {
   throw new Error("REDIS_CONTAINER must name the Redis container to inspect");
@@ -93,23 +92,6 @@ function wrap(
       return reply;
     },
   };
-}
-
-// ---- audit log helpers -------------------------------------------------------
-type LogLine = { msg?: string; actorUserId?: string; action?: string } & Record<
-  string,
-  unknown
->;
-function logOffset() {
-  return statSync(API_LOG).size;
-}
-async function linesSince(offset: number): Promise<LogLine[]> {
-  await sleep(300);
-  const text = readFileSync(API_LOG).subarray(offset).toString("utf8");
-  return text
-    .split("\n")
-    .filter((line) => line.startsWith("{"))
-    .map((line) => JSON.parse(line) as LogLine);
 }
 
 // ---- state snapshot ----------------------------------------------------------
@@ -422,13 +404,17 @@ async function matrix() {
       }
       const before = await snapshot(org, id);
       const hitsBefore = probe.hits.length;
-      const offset = logOffset();
-      const reply = await op.call(sessions[role], org, id);
-      const lines = await linesSince(offset);
       const actor = people[role].userId;
-      const audit = lines.filter(
-        (l) => l.msg === "monitor mutation" && l.actorUserId === actor,
-      );
+      const auditCount = async () =>
+        (
+          await pool.query(
+            "select count(*)::int n from audit_events where actor_user_id=$1",
+            [actor],
+          )
+        ).rows[0].n as number;
+      const auditBefore = await auditCount();
+      const reply = await op.call(sessions[role], org, id);
+      const auditAfter = await auditCount();
       const after = await snapshot(org, id);
       rows.push({
         role,
@@ -437,7 +423,7 @@ async function matrix() {
         code: reply.body?.error?.code ?? reply.body?.code ?? null,
         probeHits: probe.hits.length - hitsBefore,
         unchanged: isolated ? null : before === after,
-        auditLines: audit.length,
+        auditLines: auditAfter - auditBefore,
       });
     }
   }
@@ -468,10 +454,9 @@ async function matrix() {
       !isRead &&
       !["test draft", "test draft with secret", "test edit"].includes(r.op)
     ) {
-      const expectAudit =
-        r.op === "create with secret" || r.op === "edit secret replace" ? 2 : 1;
+      const expectAudit = 1;
       check(
-        `audit ${r.role} / ${r.op}: ${expectAudit} monitor mutation line(s)`,
+        `audit ${r.role} / ${r.op}: ${expectAudit} audit event(s)`,
         r.auditLines === expectAudit ||
           (r.op === "monitor alerts toggle" && r.auditLines <= 1),
         r,
@@ -749,7 +734,8 @@ async function secrets() {
   const headerId = randomUUID();
   const created: { kind: string; id: string; target: Target; name: string }[] =
     [];
-  const offsetAll = logOffset();
+  const auditSince = (await pool.query("select clock_timestamp() as t")).rows[0]
+    .t as Date;
   for (const k of kinds.concat([
     {
       kind: "header",
@@ -1105,16 +1091,19 @@ async function secrets() {
     [del.status, gone.rows[0].n],
   );
 
-  // Audit lines for the whole secret scenario: no secret, no query, no body.
-  const lines = await linesSince(offsetAll);
-  const mutation = lines.filter((l) => l.msg === "monitor mutation");
+  // Audit events for the whole secret scenario: no secret value (F-007 keeps
+  // the masked URL and secret slot names, never a value).
+  const mutation = (
+    await pool.query(
+      "select t::text as text, action from audit_events t where tenant_id=$1 and occurred_at >= $2",
+      [orgA, auditSince],
+    )
+  ).rows as { text: string; action: string }[];
   const dump = JSON.stringify(mutation);
   check(
-    "AC-61 audit lines of the secret scenario carry no secret, URL or body",
+    "AC-61 audit events of the secret scenario carry no secret, query or body value",
     mutation.length > 0 &&
-      !KNOWN_SECRETS.some((s) => dump.includes(s)) &&
-      !dump.includes("http://") &&
-      !dump.includes(host),
+      ![...KNOWN_SECRETS, ...HIDDEN_VALUES].some((s) => dump.includes(s)),
     mutation.length,
   );
   evidence.auditActions = mutation.map((l) => l.action);

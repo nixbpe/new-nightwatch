@@ -60,6 +60,7 @@ const emails = {
   roleOwner: `role-owner-${run}@example.test`,
   roleAdmin: `role-admin-${run}@example.test`,
   roleViewer: `role-viewer-${run}@example.test`,
+  auditOwner: `audit-owner-${run}@example.test`,
   revokeOwner: `revoke-owner-${run}@example.test`,
   revokeAdmin: `revoke-admin-${run}@example.test`,
   revokeTarget: `revoke-target-${run}@example.test`,
@@ -120,7 +121,7 @@ type Client = (
   method: "DELETE" | "GET" | "PATCH" | "POST",
   path: string,
   body?: Record<string, unknown>,
-  options?: { invitationId?: string },
+  options?: { invitationId?: string; responseHeaders?: Headers[] },
 ) => Promise<ApiResponse>;
 
 function client(): Client {
@@ -144,6 +145,7 @@ function client(): Client {
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
+    options?.responseHeaders?.push(response.headers);
     for (const setCookie of response.headers.getSetCookie()) {
       const [pair] = setCookie.split(";");
       if (!pair) continue;
@@ -1095,14 +1097,22 @@ describe("organization monitor alerts setting HTTP contract", () => {
         [memberIds[key], settingsOrganizationId, userIds.get(key), role],
       );
     }
-    const alertAudits = () =>
-      auditLines
-        .map((line) => JSON.parse(line) as Record<string, unknown>)
-        .filter(
-          (entry) =>
-            entry.action ===
-            "organization.notification-settings.monitor-alerts.update",
-        );
+    // The audit event is written in the mutation's transaction (F-007).
+    const alertAudits = async () =>
+      (
+        await owner.sql.query<{
+          actorUserId: string;
+          actorRole: string;
+          changes: unknown;
+        }>(
+          `select actor_user_id as "actorUserId", actor_role as "actorRole", changes
+           from audit_events
+           where tenant_id = $1
+             and action = 'organization.notification-settings.monitor-alerts.update'
+           order by occurred_at, id`,
+          [settingsOrganizationId],
+        )
+      ).rows;
     const changedIntents = async () =>
       (
         await owner.sql.query(
@@ -1129,7 +1139,7 @@ describe("organization monitor alerts setting HTTP contract", () => {
       settingsChangedEnabled: true,
       monitorAlertsEnabled: true,
     });
-    expect(alertAudits()).toHaveLength(0);
+    expect(await alertAudits()).toHaveLength(0);
 
     // At least one toggle is required.
     state = await current();
@@ -1153,12 +1163,19 @@ describe("organization monitor alerts setting HTTP contract", () => {
       version: state.version + 1,
     });
     expect(await changedIntents()).toBe((intentsBefore ?? 0) + 1);
-    expect(alertAudits()).toHaveLength(1);
-    expect(alertAudits()[0]).toMatchObject({
+    const alertEvents = await alertAudits();
+    expect(alertEvents).toHaveLength(1);
+    expect(alertEvents[0]).toMatchObject({
       actorUserId: ownerId,
-      organizationId: settingsOrganizationId,
+      actorRole: "owner",
+      changes: [
+        {
+          field: "monitorAlertsEnabled",
+          before: { kind: "value", value: true },
+          after: { kind: "value", value: false },
+        },
+      ],
     });
-    expect(alertAudits()[0]).not.toHaveProperty("monitorId");
 
     // Stale version: 409, no write, no audit.
     const conflict = await ownerClient("PATCH", settingsPath, {
@@ -1187,7 +1204,7 @@ describe("organization monitor alerts setting HTTP contract", () => {
     });
     expect(noop.status).toBe(200);
     expect(noop.json).toMatchObject({ version: state.version });
-    expect(alertAudits()).toHaveLength(1);
+    expect(await alertAudits()).toHaveLength(1);
 
     // Admin may edit it back; second audit line names the admin.
     const restored = await adminClient("PATCH", settingsPath, {
@@ -1196,9 +1213,11 @@ describe("organization monitor alerts setting HTTP contract", () => {
     });
     expect(restored.status).toBe(200);
     expect(restored.json).toMatchObject({ monitorAlertsEnabled: true });
-    expect(alertAudits()).toHaveLength(2);
-    expect(alertAudits()[1]).toMatchObject({
+    const afterRestore = await alertAudits();
+    expect(afterRestore).toHaveLength(2);
+    expect(afterRestore[1]).toMatchObject({
       actorUserId: userIds.get("settingsAdmin"),
+      actorRole: "admin",
     });
   }, 180_000);
 });
@@ -1605,6 +1624,94 @@ describe("organization member self-leave HTTP contract", () => {
         )
       ).rows,
     ).toHaveLength(1);
+  }, 180_000);
+});
+
+describe("audit events over HTTP", () => {
+  const eventsFor = async (requestId: string | null) =>
+    (
+      await owner.sql.query<{ action: string; actor_user_id: string }>(
+        `select action, actor_user_id from audit_events
+         where tenant_id = $1 and request_id = $2`,
+        [roleOrganizationId, requestId],
+      )
+    ).rows;
+
+  async function requestIdOf(
+    call: (options: { responseHeaders: Headers[] }) => Promise<ApiResponse>,
+  ): Promise<{ response: ApiResponse; requestId: string | null }> {
+    const responseHeaders: Headers[] = [];
+    const response = await call({ responseHeaders });
+    return {
+      response,
+      requestId: responseHeaders[0]?.get("x-request-id") ?? null,
+    };
+  }
+
+  it("records the response x-request-id on member, invitation and settings events", async () => {
+    const ownerClient = await admit("auditOwner");
+    const ownerId = userIds.get("auditOwner");
+    if (!ownerId) throw new Error("audit owner missing");
+    const targetMemberId = crypto.randomUUID();
+    await owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $3, $4, 'owner', now(), now()),
+              ($2, $3, $5, 'viewer', now(), now())`,
+      [
+        crypto.randomUUID(),
+        targetMemberId,
+        roleOrganizationId,
+        ownerId,
+        inviterId,
+      ],
+    );
+
+    const member = await requestIdOf((options) =>
+      ownerClient(
+        "PATCH",
+        `/api/organizations/${roleOrganizationId}/members/${targetMemberId}/role`,
+        { role: "auditor" },
+        options,
+      ),
+    );
+    expect(member.response.status).toBe(200);
+    expect(member.requestId).toBeTruthy();
+    expect(await eventsFor(member.requestId)).toEqual([
+      { action: "organization.member.role.update", actor_user_id: ownerId },
+    ]);
+
+    const invitation = await requestIdOf((options) =>
+      ownerClient(
+        "POST",
+        `/api/organizations/${roleOrganizationId}/invitations`,
+        { email: `audit-invitee-${run}@example.test`, role: "viewer" },
+        options,
+      ),
+    );
+    expect(invitation.response.status).toBe(201);
+    expect(await eventsFor(invitation.requestId)).toEqual([
+      { action: "organization.invitation.create", actor_user_id: ownerId },
+    ]);
+
+    const settingsPath = `/api/organizations/${roleOrganizationId}/notification-settings`;
+    const current = (await ownerClient("GET", settingsPath)).json as {
+      version: number;
+    };
+    const settings = await requestIdOf((options) =>
+      ownerClient(
+        "PATCH",
+        settingsPath,
+        { monitorAlertsEnabled: false, expectedVersion: current.version },
+        options,
+      ),
+    );
+    expect(settings.response.status).toBe(200);
+    expect(await eventsFor(settings.requestId)).toEqual([
+      {
+        action: "organization.notification-settings.monitor-alerts.update",
+        actor_user_id: ownerId,
+      },
+    ]);
   }, 180_000);
 });
 

@@ -3,9 +3,12 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   claimNotificationDispatches,
   failNotificationDispatch,
+  failStaleAuditExports,
+  findStaleAuditExports,
   markNotificationDispatchEnqueued,
   purgeExpiredNotificationInboxItems,
   requeueStaleNotificationDispatches,
+  withTenantUserContextRaw,
   type Database,
   type NotificationDispatchClaim,
   type NotificationDispatchFailureReason,
@@ -19,6 +22,7 @@ export const IN_APP_MATERIALIZE_QUEUE = "in-app-materialize";
 export const DISPATCH_BATCH_SIZE = 10;
 export const DISPATCH_INTERVAL_MS = 60_000;
 export const DISPATCH_CLAIM_LEASE_MS = 5 * 60_000;
+export const STALE_AUDIT_EXPORT_SWEEP_LIMIT = 50;
 
 const JOB_OPTIONS = {
   attempts: 3,
@@ -61,7 +65,45 @@ export class NotificationDispatchScheduler {
         await this.enqueueClaim(claim, claimToken);
       }
     } finally {
+      // After the dispatch steps, whatever they did: an export stuck as
+      // generating is failed even while the audit-exporter role is down.
+      await this.sweepStaleAuditExports();
       this.#running = false;
+    }
+  }
+
+  /**
+   * Fails the audit exports that outlived `audit_export_deadline()`, one
+   * transaction per request with its failure notification (P-08). Never
+   * throws: a fault here is logged and the next cycle tries again.
+   */
+  async sweepStaleAuditExports(): Promise<void> {
+    try {
+      const stale = await findStaleAuditExports(this.database, {
+        limit: STALE_AUDIT_EXPORT_SWEEP_LIMIT,
+      });
+      for (const row of stale) {
+        try {
+          await withTenantUserContextRaw(
+            this.database,
+            row.tenantId,
+            row.requestedBy,
+            (client) =>
+              failStaleAuditExports(client, {
+                tenantId: row.tenantId,
+                requestedBy: row.requestedBy,
+                exportId: row.exportId,
+              }),
+          );
+        } catch {
+          this.logger.error(
+            { exportId: row.exportId },
+            "stale audit export sweep failed for a request",
+          );
+        }
+      }
+    } catch {
+      this.logger.error({}, "stale audit export sweep failed");
     }
   }
 

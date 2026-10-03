@@ -3,11 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   defaultPreferences,
+  formatAuditDate,
+  formatAuditTime,
+  formatAuditTimestamp,
   formatDateTime,
   PREFERENCES_KEY,
   readPreferences,
   usePreferences,
   writePreferences,
+  zonedDayBoundary,
   type Preferences,
 } from "./preferences";
 
@@ -121,5 +125,108 @@ describe("formatDateTime", () => {
     const expected = formatDateTime(instant, defaultPreferences());
 
     expect(invalid).toBe(expected);
+  });
+});
+
+describe("audit timestamps", () => {
+  const prefs = (timeZone: string): Preferences => ({
+    ...STORED,
+    timeZone,
+    hourCycle: "h12",
+  });
+  const instant = new Date("2026-10-02T07:01:55.000Z");
+
+  it("renders Gregorian year, seconds and 24-hour time in the preference zone", () => {
+    expect(formatAuditTimestamp(instant, prefs("Asia/Bangkok"))).toBe(
+      "2026-10-02 14:01:55",
+    );
+    expect(formatAuditTimestamp(instant, prefs("America/New_York"))).toBe(
+      "2026-10-02 03:01:55",
+    );
+    expect(formatAuditDate(instant, prefs("Pacific/Auckland"))).toBe(
+      "2026-10-02",
+    );
+    expect(formatAuditTime(instant, prefs("Asia/Kolkata"))).toBe("12:31:55");
+  });
+
+  it("shows midnight as 00 and moves the date with the zone", () => {
+    const midnight = new Date("2026-10-01T17:00:00.000Z");
+    expect(formatAuditTimestamp(midnight, prefs("Asia/Bangkok"))).toBe(
+      "2026-10-02 00:00:00",
+    );
+    expect(formatAuditDate(midnight, prefs("UTC"))).toBe("2026-10-01");
+  });
+
+  it("falls back to the default zone for an unknown one", () => {
+    expect(formatAuditDate(instant, prefs("Not/AZone"))).toMatch(
+      /^\d{4}-\d{2}-\d{2}$/,
+    );
+  });
+
+  // The local calendar date of an instant, from Intl directly (not from our own helpers).
+  const localDate = (instant: Date, timeZone: string) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      calendar: "gregory",
+      numberingSystem: "latn",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(instant);
+
+  it("starts a day where midnight does not exist (Havana, 2026-03-08)", () => {
+    const start = zonedDayBoundary("2026-03-08", "America/Havana", "start");
+    expect(start.toISOString()).toBe("2026-03-08T05:00:00.000Z");
+    expect(localDate(start, "America/Havana")).toBe("2026-03-08");
+    expect(localDate(new Date(start.getTime() - 1), "America/Havana")).toBe(
+      "2026-03-07",
+    );
+    const end = zonedDayBoundary("2026-03-08", "America/Havana", "end");
+    expect(end.toISOString()).toBe("2026-03-09T03:59:59.999Z");
+  });
+
+  it.each([
+    ["America/Havana", "2026-03-07"],
+    ["America/Havana", "2026-03-08"],
+    ["America/Havana", "2026-03-09"],
+    // Chile falls back at 24:00, so 23:00 on 2026-04-04 happens twice.
+    ["America/Santiago", "2026-04-03"],
+    ["America/Santiago", "2026-04-04"],
+    ["America/Santiago", "2026-04-05"],
+    // Spring forward at midnight, fall back at midnight, a half-hour shift and a plain zone.
+    ["America/Asuncion", "2026-10-04"],
+    ["Asia/Beirut", "2026-03-29"],
+    ["Australia/Lord_Howe", "2026-04-05"],
+    ["Australia/Lord_Howe", "2026-10-04"],
+    ["Asia/Bangkok", "2026-10-02"],
+    ["America/New_York", "2026-11-01"],
+    ["Pacific/Auckland", "2026-09-27"],
+  ])(
+    "%s %s: start and end are the first and last instants of that local day",
+    (timeZone, day) => {
+      const start = zonedDayBoundary(day, timeZone, "start");
+      const end = zonedDayBoundary(day, timeZone, "end");
+      expect(localDate(start, timeZone)).toBe(day);
+      expect(localDate(new Date(start.getTime() - 1), timeZone)).not.toBe(day);
+      expect(localDate(end, timeZone)).toBe(day);
+      expect(localDate(new Date(end.getTime() + 1), timeZone)).not.toBe(day);
+      expect(end.getTime()).toBeGreaterThan(start.getTime());
+    },
+  );
+
+  it("maps a calendar day to its boundaries in the zone", () => {
+    expect(
+      zonedDayBoundary("2026-10-02", "Asia/Bangkok", "start").toISOString(),
+    ).toBe("2026-10-01T17:00:00.000Z");
+    expect(
+      zonedDayBoundary("2026-10-02", "Asia/Bangkok", "end").toISOString(),
+    ).toBe("2026-10-02T16:59:59.999Z");
+    // DST starts 2026-03-08 in New York: the day is 23 hours long.
+    expect(
+      zonedDayBoundary("2026-03-08", "America/New_York", "start").toISOString(),
+    ).toBe("2026-03-08T05:00:00.000Z");
+    expect(
+      zonedDayBoundary("2026-03-08", "America/New_York", "end").toISOString(),
+    ).toBe("2026-03-09T03:59:59.999Z");
   });
 });

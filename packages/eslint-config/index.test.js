@@ -51,6 +51,16 @@ const forbiddenImports = [
     "api allows only @nightwatch/api-contract, @nightwatch/shared, @nightwatch/db.",
   ],
   [
+    "worker",
+    "@nightwatch/api-contract",
+    "worker allows only @nightwatch/shared, @nightwatch/db.",
+  ],
+  [
+    "worker",
+    "@nightwatch/api",
+    "worker allows only @nightwatch/shared, @nightwatch/db.",
+  ],
+  [
     "config",
     "@nightwatch/shared",
     "config allows no workspace runtime packages.",
@@ -88,6 +98,7 @@ const forbiddenRelativeImports = [
   ["shared", "../../../apps/api/src/app", "packages/shared/src/boundary.js"],
   ["shared", "../../db/src/client", "packages/shared/src/boundary.js"],
   ["api", "../../web/src/main", "apps/api/src/boundary.js"],
+  ["worker", "../../api/src/app", "apps/worker/src/boundary.js"],
 ];
 
 for (const [kind, specifier, filePath] of forbiddenRelativeImports) {
@@ -125,6 +136,8 @@ const allowedImports = [
   ["api", "@nightwatch/api-contract"],
   ["api", "@nightwatch/shared"],
   ["api", "@nightwatch/db/subpath"],
+  ["worker", "@nightwatch/shared"],
+  ["worker", "@nightwatch/db"],
   ["shared", "zod"],
   ["db", "pg"],
   ["api-contract", "zod"],

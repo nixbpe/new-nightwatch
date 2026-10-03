@@ -74,6 +74,27 @@ const monitorNotifications: NotificationItem[] = [
   },
 ];
 
+const auditBase = {
+  scope: "organization" as const,
+  organizationId: ORG_A,
+  occurredAt: "2026-09-25T03:00:00.000Z",
+  readAt: null,
+  actor: null,
+  category: "audit-log" as const,
+};
+const auditNotifications: NotificationItem[] = [
+  {
+    ...auditBase,
+    id: "20000000-0000-4000-8000-000000000001",
+    eventType: "AUDIT_EXPORT_READY",
+  },
+  {
+    ...auditBase,
+    id: "20000000-0000-4000-8000-000000000002",
+    eventType: "AUDIT_EXPORT_FAILED",
+  },
+];
+
 let userId = "user-a";
 let serverActiveOrgId: string | null = ORG_A;
 
@@ -181,6 +202,59 @@ describe("NotificationsPage", () => {
     expect(
       within(rows[4] as HTMLElement).getByText(/ใบรับรองหมดอายุเมื่อ/),
     ).toBeInTheDocument();
+  });
+
+  it("shows audit export results with their title, category, icon and a link to the export list", async () => {
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: auditNotifications,
+      nextCursor: null,
+      unreadCount: 2,
+    });
+    renderPage();
+    const rows = await screen.findAllByRole("listitem");
+    const expected = [
+      "ไฟล์ส่งออกบันทึกกิจกรรมพร้อมดาวน์โหลด",
+      "สร้างไฟล์ส่งออกไม่สำเร็จ",
+    ];
+    rows.forEach((row, index) => {
+      expect(
+        within(row).getByText(expected[index] as string),
+      ).toBeInTheDocument();
+      expect(within(row).getByText("องค์กร")).toBeInTheDocument();
+      expect(within(row).getByText("บันทึกกิจกรรม")).toBeInTheDocument();
+      expect(row.querySelector("svg")).not.toBeNull();
+      expect(
+        within(row).getByRole("link", { name: "เปิดบันทึกกิจกรรม" }),
+      ).toHaveAttribute("href", `/organizations/${ORG_A}/audit-log#my-exports`);
+    });
+  });
+
+  it("opens an audit export notification with a link to the export list", async () => {
+    const ready = auditNotifications[0] as NotificationItem;
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: [ready],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    openNotificationMock.mockResolvedValue({
+      ...ready,
+      readAt: "2026-09-25T03:01:00.000Z",
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /ไฟล์ส่งออกบันทึกกิจกรรมพร้อมดาวน์โหลด/,
+      }),
+    );
+
+    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "เปิดบันทึกกิจกรรม" }),
+    ).toHaveAttribute("href", `/organizations/${ORG_A}/audit-log#my-exports`);
   });
 
   it("opens a monitor notification with its subject, reason and link", async () => {

@@ -5,6 +5,9 @@ import type {
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 
+import { recordAuditEvent, type AuditChange } from "../audit/record";
+import { normalizeOrganizationRole } from "../me/service";
+
 type MembershipRow = { role: string };
 type SettingsRow = {
   settingsChangedEnabled: boolean;
@@ -22,6 +25,18 @@ function settingsResponse(
     settingsChangedEnabled: row?.settingsChangedEnabled ?? true,
     monitorAlertsEnabled: row?.monitorAlertsEnabled ?? true,
     version: row?.version ?? 0,
+  };
+}
+
+function booleanChange(
+  field: "monitorAlertsEnabled" | "settingsChangedEnabled",
+  before: boolean,
+  after: boolean,
+): AuditChange {
+  return {
+    field,
+    before: { kind: "value", value: before },
+    after: { kind: "value", value: after },
   };
 }
 
@@ -134,8 +149,7 @@ export async function updateOrganizationNotificationSettings(
     userId: string;
     actorDisplayName: string;
     update: NotificationSettingsUpdate;
-    /** Called after commit when `monitorAlertsEnabled` really changed (audit hook). */
-    onMonitorAlertsChanged?: () => void;
+    requestId?: string;
   },
 ): Promise<OrganizationNotificationSettings> {
   await assertMemberBeforeTenantContext(
@@ -143,8 +157,7 @@ export async function updateOrganizationNotificationSettings(
     input.organizationId,
     input.userId,
   );
-  const change = { monitorAlertsChanged: false };
-  const settings = await withTenantContextRaw(
+  return withTenantContextRaw(
     database,
     input.organizationId,
     async (client) => {
@@ -162,13 +175,14 @@ export async function updateOrganizationNotificationSettings(
       await client.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [
         `notification-membership:${input.organizationId}`,
       ]);
-      assertSettingsAdministrator(
-        await membershipFor(
-          client.query.bind(client),
-          input.organizationId,
-          input.userId,
-        ),
+      const membership = await membershipFor(
+        client.query.bind(client),
+        input.organizationId,
+        input.userId,
       );
+      assertSettingsAdministrator(membership);
+      const actorRole = normalizeOrganizationRole(membership?.role ?? "");
+      if (actorRole === null) throw new Error("member has no recognized role");
 
       const current = await client.query<SettingsRow>(
         `select org_settings_changed_enabled as "settingsChangedEnabled",
@@ -202,8 +216,27 @@ export async function updateOrganizationNotificationSettings(
       ) {
         return currentSettings;
       }
-      change.monitorAlertsChanged =
-        next.monitorAlertsEnabled !== currentSettings.monitorAlertsEnabled;
+      const changes: AuditChange[] = [];
+      if (
+        next.settingsChangedEnabled !== currentSettings.settingsChangedEnabled
+      ) {
+        changes.push(
+          booleanChange(
+            "settingsChangedEnabled",
+            currentSettings.settingsChangedEnabled,
+            next.settingsChangedEnabled,
+          ),
+        );
+      }
+      if (next.monitorAlertsEnabled !== currentSettings.monitorAlertsEnabled) {
+        changes.push(
+          booleanChange(
+            "monitorAlertsEnabled",
+            currentSettings.monitorAlertsEnabled,
+            next.monitorAlertsEnabled,
+          ),
+        );
+      }
 
       const nextVersion = currentSettings.version + 1;
       await client.query(
@@ -272,6 +305,20 @@ export async function updateOrganizationNotificationSettings(
         ]);
       }
 
+      await recordAuditEvent(client, {
+        organizationId: input.organizationId,
+        actorUserId: input.userId,
+        actorRole,
+        // One mutation, one event: monitor alerts alone has its own action.
+        action:
+          next.settingsChangedEnabled !== currentSettings.settingsChangedEnabled
+            ? "organization.notification-settings.update"
+            : "organization.notification-settings.monitor-alerts.update",
+        target: { type: "notification_settings" },
+        changes,
+        requestId: input.requestId,
+      });
+
       return {
         organizationId: input.organizationId,
         ...next,
@@ -279,6 +326,4 @@ export async function updateOrganizationNotificationSettings(
       };
     },
   );
-  if (change.monitorAlertsChanged) input.onMonitorAlertsChanged?.();
-  return settings;
 }

@@ -23,6 +23,7 @@ import type { QueryConfig } from "pg";
 import pkg from "../package.json";
 import type { Auth } from "./auth";
 import type { Mailer } from "./auth/mailer";
+import { registerAuditLogReadRoutes } from "./audit/routes";
 import { registerHelloRoutes } from "./hello/routes";
 import { registerMeRoutes } from "./me/routes";
 import { registerMonitorReadRoutes } from "./monitors/read-routes";
@@ -61,6 +62,7 @@ const membersSegment = "members";
 const invitationsSegment = "invitations";
 const notificationSettingsSegment = "notification-settings";
 const monitorsSegment = "monitors";
+const auditLogSegment = "audit-log";
 // `test` and `recent-events` are routes, not monitor ids, so they stay static.
 const monitorStaticSegments = new Set(["test", "recent-events"]);
 const monitorActionSegments = new Set([
@@ -161,6 +163,10 @@ function logSafeOrganizationPath(path: string): string {
     | "invitation-route"
     | "monitors"
     | "monitor-route"
+    | "audit-log"
+    | "audit-events"
+    | "audit-exports"
+    | "audit-export-route"
     | "other" = "organization";
   const safeSegments = path
     .slice(namespaceEnd)
@@ -198,6 +204,34 @@ function logSafeOrganizationPath(path: string): string {
       if (state === "organization-route" && segment === monitorsSegment) {
         state = "monitors";
         return monitorsSegment;
+      }
+      if (state === "organization-route" && segment === auditLogSegment) {
+        state = "audit-log";
+        return auditLogSegment;
+      }
+      if (state === "audit-log" && segment === "events") {
+        state = "audit-events";
+        return segment;
+      }
+      if (state === "audit-log" && segment === "actors") {
+        state = "other";
+        return segment;
+      }
+      if (state === "audit-log" && segment === "exports") {
+        state = "audit-exports";
+        return segment;
+      }
+      if (state === "audit-events") {
+        state = "other";
+        return ":eventId";
+      }
+      if (state === "audit-exports") {
+        state = "audit-export-route";
+        return ":exportId";
+      }
+      if (state === "audit-export-route" && segment === "download") {
+        state = "other";
+        return segment;
       }
       if (state === "monitors") {
         if (monitorStaticSegments.has(segment)) {
@@ -413,6 +447,11 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       credentialEnv: deps.credentialEnv,
     });
     registerMonitorReadRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+    });
+    registerAuditLogReadRoutes(app, {
       auth,
       database,
       logger: deps.logger,
