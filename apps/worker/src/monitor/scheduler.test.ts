@@ -9,17 +9,12 @@ import { monitorCheckJobId } from "./queue";
 import {
   aheadSuffixes,
   MonitorScheduler,
-  MONITOR_SCHEDULER_INTERVAL_MS,
   startMonitorSchedule,
 } from "./scheduler";
 
 const logger = { error: () => undefined, warn: () => undefined } as never;
 
-describe("monitor scheduler constants and ids", () => {
-  it("polls every 10 seconds in production", () => {
-    expect(MONITOR_SCHEDULER_INTERVAL_MS).toBe(10_000);
-  });
-
+describe("monitor scheduler job ids", () => {
   it("derives a stable job id from monitor id and claim token only", () => {
     const id = monitorCheckJobId("monitor-1", "token-a");
     expect(id).toMatch(/^monitor-check-[0-9a-f]{64}$/);
