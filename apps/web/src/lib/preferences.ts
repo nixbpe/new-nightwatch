@@ -145,9 +145,12 @@ type AuditParts = Record<
 >;
 
 // Audit times are Gregorian, Latin digits and 24-hour whatever the display preferences say (F-007).
-function auditParts(date: Date, timeZone: string): AuditParts {
-  const make = (zone: string) =>
-    new Intl.DateTimeFormat("en-US", {
+const auditFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function auditFormatter(zone: string): Intl.DateTimeFormat {
+  let formatter = auditFormatters.get(zone);
+  if (formatter === undefined) {
+    formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: zone,
       calendar: "gregory",
       numberingSystem: "latn",
@@ -159,11 +162,17 @@ function auditParts(date: Date, timeZone: string): AuditParts {
       minute: "2-digit",
       second: "2-digit",
     });
+    auditFormatters.set(zone, formatter);
+  }
+  return formatter;
+}
+
+function auditParts(date: Date, timeZone: string): AuditParts {
   let formatter: Intl.DateTimeFormat;
   try {
-    formatter = make(timeZone);
+    formatter = auditFormatter(timeZone);
   } catch {
-    formatter = make(defaultPreferences().timeZone);
+    formatter = auditFormatter(defaultPreferences().timeZone);
   }
   const parts: Record<string, string> = {};
   for (const part of formatter.formatToParts(date)) {
@@ -192,7 +201,12 @@ export function formatAuditTime(date: Date, preferences: Preferences): string {
   return `${p.hour}:${p.minute}:${p.second}`;
 }
 
-/** The instant a wall-clock day boundary (`YYYY-MM-DD`, start or end of day) falls on in `timeZone`. */
+/**
+ * The first (`start`) or last (`end`) instant whose local date in `timeZone` is `day`
+ * (`YYYY-MM-DD`). Found by searching on the local date instead of correcting an offset: a
+ * zone that skips or repeats midnight has no 00:00 or 23:59:59.999 to convert back from, and
+ * an offset correction can land on the neighbouring day.
+ */
 export function zonedDayBoundary(
   day: string,
   timeZone: string,
@@ -203,23 +217,29 @@ export function zonedDayBoundary(
     number,
     number,
   ];
-  const wall =
-    boundary === "start"
-      ? Date.UTC(year, month - 1, date, 0, 0, 0, 0)
-      : Date.UTC(year, month - 1, date, 23, 59, 59, 999);
-  const offsetAt = (instant: number) => {
+  const target = year * 10_000 + month * 100 + date;
+  const localDay = (instant: number) => {
     const p = auditParts(new Date(instant), timeZone);
-    const asUtc = Date.UTC(
-      Number(p.year),
-      Number(p.month) - 1,
-      Number(p.day),
-      Number(p.hour),
-      Number(p.minute),
-      Number(p.second),
-    );
-    return asUtc - Math.floor(instant / 1000) * 1000;
+    return Number(p.year) * 10_000 + Number(p.month) * 100 + Number(p.day);
   };
-  // Two passes settle the offset when the day boundary sits next to a DST change.
-  const first = wall - offsetAt(wall);
-  return new Date(wall - offsetAt(first));
+  // 36 h before and 60 h after UTC midnight of the day cover every UTC offset (-12 h to +14 h).
+  const midnight = Date.UTC(year, month - 1, date);
+  let before = midnight - 36 * 3_600_000; // local day < target
+  let after = midnight + 60 * 3_600_000; // local day > target
+  if (boundary === "start") {
+    // Narrow to the earliest instant whose local day is the target or later.
+    while (after - before > 1) {
+      const mid = Math.floor((before + after) / 2);
+      if (localDay(mid) >= target) after = mid;
+      else before = mid;
+    }
+    return new Date(after);
+  }
+  // Narrow to the latest instant whose local day is the target or earlier.
+  while (after - before > 1) {
+    const mid = Math.floor((before + after) / 2);
+    if (localDay(mid) <= target) before = mid;
+    else after = mid;
+  }
+  return new Date(before);
 }

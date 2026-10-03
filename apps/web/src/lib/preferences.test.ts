@@ -163,6 +163,57 @@ describe("audit timestamps", () => {
     );
   });
 
+  // The local calendar date of an instant, from Intl directly (not from our own helpers).
+  const localDate = (instant: Date, timeZone: string) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      calendar: "gregory",
+      numberingSystem: "latn",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(instant);
+
+  it("starts a day where midnight does not exist (Havana, 2026-03-08)", () => {
+    const start = zonedDayBoundary("2026-03-08", "America/Havana", "start");
+    expect(start.toISOString()).toBe("2026-03-08T05:00:00.000Z");
+    expect(localDate(start, "America/Havana")).toBe("2026-03-08");
+    expect(localDate(new Date(start.getTime() - 1), "America/Havana")).toBe(
+      "2026-03-07",
+    );
+    const end = zonedDayBoundary("2026-03-08", "America/Havana", "end");
+    expect(end.toISOString()).toBe("2026-03-09T03:59:59.999Z");
+  });
+
+  it.each([
+    ["America/Havana", "2026-03-07"],
+    ["America/Havana", "2026-03-08"],
+    ["America/Havana", "2026-03-09"],
+    // Chile falls back at 24:00, so 23:00 on 2026-04-04 happens twice.
+    ["America/Santiago", "2026-04-03"],
+    ["America/Santiago", "2026-04-04"],
+    ["America/Santiago", "2026-04-05"],
+    // Spring forward at midnight, fall back at midnight, a half-hour shift and a plain zone.
+    ["America/Asuncion", "2026-10-04"],
+    ["Asia/Beirut", "2026-03-29"],
+    ["Australia/Lord_Howe", "2026-04-05"],
+    ["Australia/Lord_Howe", "2026-10-04"],
+    ["Asia/Bangkok", "2026-10-02"],
+    ["America/New_York", "2026-11-01"],
+    ["Pacific/Auckland", "2026-09-27"],
+  ])(
+    "%s %s: start and end are the first and last instants of that local day",
+    (timeZone, day) => {
+      const start = zonedDayBoundary(day, timeZone, "start");
+      const end = zonedDayBoundary(day, timeZone, "end");
+      expect(localDate(start, timeZone)).toBe(day);
+      expect(localDate(new Date(start.getTime() - 1), timeZone)).not.toBe(day);
+      expect(localDate(end, timeZone)).toBe(day);
+      expect(localDate(new Date(end.getTime() + 1), timeZone)).not.toBe(day);
+      expect(end.getTime()).toBeGreaterThan(start.getTime());
+    },
+  );
+
   it("maps a calendar day to its boundaries in the zone", () => {
     expect(
       zonedDayBoundary("2026-10-02", "Asia/Bangkok", "start").toISOString(),
