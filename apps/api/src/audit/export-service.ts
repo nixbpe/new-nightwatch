@@ -40,23 +40,23 @@ function exportDenied(): never {
   );
 }
 
-/** Role of the actor inside the open transaction; owner or admin, else a denial. */
+/**
+ * The actor's role inside the open transaction, owner or admin, else a denial.
+ * The organization and the member row are locked FOR SHARE, in the order every
+ * membership change uses, and stay locked until commit: a demotion or removal
+ * either commits before this check or waits until the request is done.
+ */
 async function requireExporter(
   client: PoolClient,
   identity: ExportIdentity,
-  lock: boolean,
 ): Promise<"owner" | "admin"> {
-  if (lock) {
-    const organization = await client.query(
-      "select id from organization where id = $1 for share",
-      [identity.organizationId],
-    );
-    if (organization.rows.length === 0) membershipDenied();
-  }
+  const organization = await client.query(
+    "select id from organization where id = $1 for share",
+    [identity.organizationId],
+  );
+  if (organization.rows.length === 0) membershipDenied();
   const member = await client.query<{ role: string }>(
-    `select role from member where organization_id = $1 and user_id = $2${
-      lock ? " for share" : ""
-    }`,
+    "select role from member where organization_id = $1 and user_id = $2 for share",
     [identity.organizationId, identity.actorUserId],
   );
   const raw = member.rows[0]?.role;
@@ -166,7 +166,7 @@ export async function createAuditExport(
     identity.organizationId,
     identity.actorUserId,
     async (client) => {
-      const role = await requireExporter(client, identity, true);
+      const role = await requireExporter(client, identity);
       // A request that outlived its lifetime must not block this one.
       await failStaleAuditExports(client, {
         tenantId: identity.organizationId,
@@ -269,8 +269,9 @@ export async function listAuditExports(
     identity.organizationId,
     identity.actorUserId,
     async (client) => {
-      // Membership, then role: a denial writes nothing.
-      await requireExporter(client, identity, false);
+      // Membership, then role, both locked through the stale transition and the
+      // read: a denial writes nothing.
+      await requireExporter(client, identity);
       await failStaleAuditExports(client, {
         tenantId: identity.organizationId,
         requestedBy: identity.actorUserId,

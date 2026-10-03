@@ -513,6 +513,93 @@ describe("GET exports", () => {
   });
 });
 
+describe("GET exports against a demotion (AC-06, AC-25)", () => {
+  // Waits for a session whose statement matches `pattern` to wait on a lock;
+  // other suites share the database, so any waiting session is not enough.
+  async function waitForBlocked(pattern: string): Promise<void> {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const rows = await ctx.owner.sql.query(
+        `select 1 from pg_stat_activity
+         where wait_event_type = 'Lock' and datname = current_database()
+           and query ilike $1`,
+        [pattern],
+      );
+      if (rows.rows.length > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error(`no session running ${pattern} waited on a lock`);
+  }
+
+  it("answers 403 with no export metadata when a demotion that holds the member row commits first", async () => {
+    const org = await organization("auditexp-list-demote");
+    await seedExport(org.id, org.users.admin, "ready");
+    const holder = new Client({ connectionString: ownerUrl });
+    await holder.connect();
+    let pending: Promise<ApiResponse> | undefined;
+    try {
+      await holder.query("begin");
+      await holder.query(
+        "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+        [org.id, org.users.admin],
+      );
+      pending = listExports(org.users.admin, org.id);
+      await waitForBlocked("select role from member%for share%");
+      await holder.query("commit");
+      const response = await pending;
+      expect(response.status).toBe(403);
+      expect(response.json).toMatchObject({
+        error: { code: "PERMISSION_DENIED" },
+      });
+      expect(JSON.stringify(response.json)).not.toContain("exports");
+    } finally {
+      await holder.query("rollback").catch(() => undefined);
+      await holder.end();
+      await pending?.catch(() => undefined);
+    }
+  });
+
+  it("lets a list that already holds its share locks finish with 200, makes the demotion wait, and denies the next request", async () => {
+    const org = await organization("auditexp-list-holds");
+    const late = await seedExport(org.id, org.users.admin, "queued", {
+      age: "61 minutes",
+    });
+    // Holds the late request's ledger row so the list waits inside its
+    // transaction, after taking the organization and member locks.
+    const holder = new Client({ connectionString: ownerUrl });
+    await holder.connect();
+    let list: Promise<ApiResponse> | undefined;
+    let demotion: Promise<unknown> | undefined;
+    try {
+      await holder.query("begin");
+      await holder.query(
+        "select 1 from audit_export_jobs where export_id = $1 for update",
+        [late],
+      );
+      list = listExports(org.users.admin, org.id);
+      await waitForBlocked("update audit_export_jobs set state = 'failed'%");
+      demotion = ctx.owner.sql.query(
+        "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+        [org.id, org.users.admin],
+      );
+      await waitForBlocked("update member set role = 'viewer'%");
+      await holder.query("rollback");
+      const response = await list;
+      expect(response.status).toBe(200);
+      expect(asList(response).exports.map((item) => item.id)).toEqual([late]);
+      await demotion;
+    } finally {
+      await holder.query("rollback").catch(() => undefined);
+      await holder.end();
+      await list?.catch(() => undefined);
+      await demotion?.catch(() => undefined);
+    }
+    const next = await listExports(org.users.admin, org.id);
+    expect(next.status).toBe(403);
+    expect(next.json).toMatchObject({ error: { code: "PERMISSION_DENIED" } });
+  });
+});
+
 describe("GET download (AC-23)", () => {
   it("serves the requester's own ready file with the headers of the spec, and writes no event", async () => {
     const org = await organization("auditexp-dl");
