@@ -11,7 +11,6 @@ import {
 import {
   monitorsPath,
   openMonitorTestContext,
-  TEST_ROLES,
   type MonitorTestContext,
   type TestOrganization,
   type TestRole,
@@ -19,15 +18,11 @@ import {
 
 let ctx: MonitorTestContext;
 let org: TestOrganization;
-let other: TestOrganization;
-let outsider: string;
 
 beforeAll(async () => {
   ctx = await openMonitorTestContext();
   await ctx.owner.sql.query("select ensure_monitor_partitions(3)");
   org = await ctx.createOrganization("times");
-  other = await ctx.createOrganization("times-other");
-  outsider = await ctx.createUser("times-outsider");
 }, 120_000);
 
 afterAll(async () => {
@@ -317,48 +312,14 @@ describe("config changes", () => {
 
 describe("Response times: access", () => {
   let id: string;
-  let foreign: string;
 
   beforeAll(async () => {
     id = await seedMonitor(ctx, org.id, { name: "Secret Name" });
-    foreign = await seedMonitor(ctx, other.id, { name: "Other org monitor" });
   });
 
-  it("every role can read", async () => {
-    for (const role of TEST_ROLES) {
-      for (const range of ["24h", "7d", "30d"]) {
-        expect((await series(id, range, role)).range).toBe(range);
-      }
-    }
-  });
-
-  it("answers a non-member like a missing Organization", async () => {
-    const path = `/${id}/response-times`;
-    const denied = await ctx.call(outsider, "GET", monitorsPath(org.id, path));
-    const absent = await ctx.call(
-      outsider,
-      "GET",
-      monitorsPath(crypto.randomUUID(), path),
-    );
-    expect(denied.status).toBe(403);
-    expect(denied.json).toEqual(absent.json);
-    expect(JSON.stringify(denied.json)).not.toMatch(/Secret Name|total/i);
-  });
-
-  it("answers a missing, a malformed and a foreign id with the same 404", async () => {
-    const bodies = [];
-    for (const target of [crypto.randomUUID(), "not-a-uuid", foreign]) {
-      const response = await ctx.call(
-        org.users.viewer,
-        "GET",
-        monitorsPath(org.id, `/${target}/response-times`),
-      );
-      expect(response.status).toBe(404);
-      bodies.push(response.json);
-    }
-    expect(bodies[1]).toEqual(bodies[0]);
-    expect(bodies[2]).toEqual(bodies[0]);
-  });
+  // Every role can read, a non-member is denied like a missing Organization,
+  // and a missing/malformed/foreign id answers 404: read-detail.db.test.ts's
+  // "Detail, Checks and Incidents: access" suffixes loop covers this route too.
 
   it("rejects an unknown range", async () => {
     const response = await ctx.call(

@@ -10,7 +10,6 @@ import { seedIncident, seedMonitor } from "./read-test-support";
 import {
   monitorsPath,
   openMonitorTestContext,
-  TEST_ROLES,
   type MonitorTestContext,
   type TestOrganization,
 } from "./test-support";
@@ -99,30 +98,10 @@ async function closeIncident(
 }
 
 describe("GET /monitors/{monitorId}/events access", () => {
-  it.each(TEST_ROLES)("%s reads the feed", async (role) => {
-    const monitorId = await seedMonitor(ctx, org.id);
-    const body = await events(org.users[role], monitorId);
-    expect(body).toEqual({
-      events: [],
-      page: { limit: 20, offset: 0, total: 0 },
-    });
-  });
-
-  it("answers a non-member 403 and a foreign or malformed id 404", async () => {
-    const monitorId = await seedMonitor(ctx, org.id);
-    const outsider = await ctx.createUser("feed-outsider");
-    const denied = await feed(outsider, monitorId);
-    expect(denied.status).toBe(403);
-    expect(denied.json).toMatchObject({ error: { code: "MEMBERSHIP_DENIED" } });
-
-    const foreign = await feed(other.users.owner, monitorId, "", other);
-    expect(foreign.status).toBe(404);
-    expect(foreign.json).toMatchObject({
-      error: { code: "MONITOR_NOT_FOUND" },
-    });
-    const malformed = await feed(org.users.owner, "not-a-uuid");
-    expect(malformed.status).toBe(404);
-  });
+  // Every role can read, a non-member is denied, and a missing/malformed/
+  // foreign id answers 404: read-detail.db.test.ts's "Detail, Checks and
+  // Incidents: access" suffixes loop covers this route too. The no-session
+  // case below has no equivalent there, so it stays.
 
   it("answers 401 without a session", async () => {
     const monitorId = await seedMonitor(ctx, org.id);
