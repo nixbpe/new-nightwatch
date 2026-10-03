@@ -194,7 +194,8 @@ function AuditEventForOrganization({
             <span className="font-mono">{time}</span> {preferences.timeZone}
           </span>
           <span>
-            รหัสเหตุการณ์ <span className="font-mono">{detail.id}</span>
+            รหัสเหตุการณ์{" "}
+            <span className="font-mono break-all">{detail.id}</span>
           </span>
           <CopyId value={detail.id} />
         </>,
@@ -359,7 +360,12 @@ function ChangesSection({ detail }: { detail: AuditEventDetail }) {
           เหตุการณ์นี้ไม่มีข้อมูลการเปลี่ยนแปลง
         </p>
       ) : (
-        <div className="overflow-auto rounded-md border border-foreground/10 bg-surface">
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label="ตารางการเปลี่ยนแปลง"
+          className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+        >
           <table className="w-full min-w-[480px] text-left text-sm">
             <caption className="sr-only">การเปลี่ยนแปลงก่อนและหลัง</caption>
             <thead className="text-xs font-medium text-foreground-secondary">

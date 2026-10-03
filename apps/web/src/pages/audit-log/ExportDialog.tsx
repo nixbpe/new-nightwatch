@@ -147,7 +147,12 @@ export function ExportDialog({
         >
           ส่งออกบันทึกกิจกรรม
         </h2>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label="รายละเอียดการส่งออก"
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary sm:px-6"
+        >
           <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-[max-content_1fr]">
             <dt className="text-foreground-secondary">ขอบเขต</dt>
             <dd className="break-words">

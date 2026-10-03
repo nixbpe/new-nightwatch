@@ -313,6 +313,30 @@ describe("AuditEventPage changes (AC-14)", () => {
     ]);
   });
 
+  it("wraps the changes table in a named, focusable, horizontal-only scroll region", async () => {
+    open(
+      makeDetail({
+        changes: [
+          {
+            field: "name",
+            before: { kind: "value", value: "a" },
+            after: { kind: "value", value: "b" },
+          },
+        ],
+      }),
+    );
+    const region = await screen.findByRole("region", {
+      name: "ตารางการเปลี่ยนแปลง",
+    });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toContainElement(screen.getByRole("table"));
+    expect(region.className).toContain("overflow-x-auto");
+    expect(region.className).not.toContain("overflow-auto");
+    expect(region.className).toContain("focus:outline-primary");
+    region.focus();
+    expect(region).toHaveFocus();
+  });
+
   it("says so when an event has no changes", async () => {
     open(makeDetail());
     expect(

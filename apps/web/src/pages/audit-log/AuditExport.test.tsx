@@ -230,15 +230,34 @@ describe("export dialog (M-3, M-4)", () => {
     expect(dialog).not.toHaveClass("overflow-y-auto");
   });
 
+  it("makes the scrolling body a named, focusable region and keeps first focus on CSV", async () => {
+    const user = userEvent.setup();
+    open();
+    const dialog = await openDialog(user);
+    const body = within(dialog).getByRole("region", {
+      name: "รายละเอียดการส่งออก",
+    });
+    expect(body).toHaveAttribute("tabindex", "0");
+    expect(body.className).toContain("overflow-y-auto");
+    expect(body.className).toContain("focus-visible:outline-primary");
+    expect(within(dialog).getByRole("radio", { name: "CSV" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(body).toHaveFocus();
+  });
+
   it("traps Tab inside and returns focus to the button on cancel", async () => {
     const user = userEvent.setup();
     open();
     const dialog = await openDialog(user);
     const cancel = within(dialog).getByRole("button", { name: "ยกเลิก" });
     const create = within(dialog).getByRole("button", { name: "สร้างไฟล์" });
+    const body = within(dialog).getByRole("region", {
+      name: "รายละเอียดการส่งออก",
+    });
     create.focus();
     await user.tab();
-    expect(within(dialog).getByRole("radio", { name: "CSV" })).toHaveFocus();
+    // The scrolling body is the first stop of the trap, so Tab from the last control wraps to it.
+    expect(body).toHaveFocus();
     await user.tab({ shift: true });
     expect(create).toHaveFocus();
     await user.click(cancel);
