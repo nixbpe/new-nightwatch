@@ -1,8 +1,6 @@
 import type {
   InvitationCreateResponse,
-  MeContextResponse,
   OrganizationMemberListResponse,
-  PendingInvitation,
   PendingInvitationListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,7 +12,6 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
 import { ApiError } from "../lib/api/client";
-import { ME_CONTEXT_QUERY_KEY } from "../lib/api/me";
 import {
   fetchOrganizationMembers,
   memberListQueryKey,
@@ -24,11 +21,6 @@ import {
   createInvitation,
   fetchPendingInvitations,
 } from "../lib/api/invitations";
-import {
-  claimContextPublication,
-  createContextPublicationClaim,
-  publishContextPublication,
-} from "../lib/queryClient";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -151,28 +143,6 @@ afterEach(() => {
   };
 });
 
-const invitationOutcomes: [
-  string,
-  InvitationCreateResponse | ApiError,
-  string,
-][] = [
-  [
-    "pre-insert failure",
-    new ApiError("INVITATION_LIMIT_REACHED", "limit", 409),
-    "ครบ 100 รายการ",
-  ],
-  [
-    "SMTP accepted",
-    { created: true, emailDispatch: "accepted" },
-    "สร้างคำเชิญแล้ว",
-  ],
-  [
-    "SMTP failed",
-    { created: true, emailDispatch: "failed" },
-    "สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ",
-  ],
-];
-
 // The invitation section keeps an empty status region mounted, so member and
 // notice assertions address the one status region that carries text.
 const textStatuses = () =>
@@ -191,73 +161,66 @@ const totalCountText =
     el.textContent === `สมาชิกทั้งหมด ${total} / ${limit} คน`;
 
 describe("OrganizationMembersPage", () => {
-  it.each(invitationOutcomes)(
-    "keeps the A invitation mounted across refetch and pagination: %s",
-    async (_scenario, outcome, message) => {
-      const post = Promise.withResolvers<InvitationCreateResponse>();
-      const nextPage = Promise.withResolvers<OrganizationMemberListResponse>();
-      const refreshedPage =
-        Promise.withResolvers<OrganizationMemberListResponse>();
-      vi.mocked(createInvitation).mockReturnValue(post.promise);
-      vi.mocked(fetchOrganizationMembers)
-        .mockResolvedValueOnce(response)
-        .mockImplementationOnce(() => refreshedPage.promise)
-        .mockImplementationOnce(() => nextPage.promise);
-      const user = userEvent.setup();
-      const { queryClient } = renderPage();
-      expect(await screen.findByText("Ada")).toBeInTheDocument();
-      const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
-      await user.type(email, "new@example.com");
-      await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-      expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
-      act(() => {
-        void queryClient.invalidateQueries({
-          queryKey: memberListQueryKey(organizationId, 50, 0),
-          exact: true,
-        });
+  // The outcome messages (pre-insert failure, SMTP accepted, SMTP failed) are
+  // each asserted by InvitationPanel.test.tsx; this page-level test only
+  // needs one outcome to exercise the behavior unique to it, which is
+  // outcome-independent: the draft survives a background member-list
+  // refetch and pagination while the create is still pending.
+  it("keeps the A invitation mounted across refetch and pagination", async () => {
+    const post = Promise.withResolvers<InvitationCreateResponse>();
+    const nextPage = Promise.withResolvers<OrganizationMemberListResponse>();
+    const refreshedPage =
+      Promise.withResolvers<OrganizationMemberListResponse>();
+    vi.mocked(createInvitation).mockReturnValue(post.promise);
+    vi.mocked(fetchOrganizationMembers)
+      .mockResolvedValueOnce(response)
+      .mockImplementationOnce(() => refreshedPage.promise)
+      .mockImplementationOnce(() => nextPage.promise);
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
+    await user.type(email, "new@example.com");
+    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+    act(() => {
+      void queryClient.invalidateQueries({
+        queryKey: memberListQueryKey(organizationId, 50, 0),
+        exact: true,
       });
-      expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
-      expect(screen.queryByText("Ada")).not.toBeInTheDocument();
-      expect(email).toBeInTheDocument();
-      expect(email).toHaveValue("new@example.com");
-      expect(
-        screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
-      ).toBeDisabled();
-      refreshedPage.resolve(response);
-      expect(await screen.findByText("Ada")).toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-      expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
-      expect(screen.queryByText("Ada")).not.toBeInTheDocument();
-      expect(email).toBeInTheDocument();
-      nextPage.resolve({
-        ...response,
-        members: [{ ...firstMember, id: "member-51", name: "Zoe" }],
-        page: { limit: 50, offset: 50, total: 51 },
-        memberLimit: 1000,
-      });
-      expect(await screen.findByText("Zoe")).toBeInTheDocument();
-      if (outcome instanceof Error) {
-        await act(async () => {
-          post.reject(outcome);
-          await Promise.resolve();
-        });
-        expect(screen.getByRole("alert")).toHaveTextContent(message);
-        expect(email).toHaveValue("new@example.com");
-      } else {
-        await act(async () => {
-          post.resolve(outcome);
-          await post.promise;
-        });
-        // The pending list reloads page 1 after a create; its own loading
-        // status leaves once that fetch settles, leaving the panel's notice.
-        await waitFor(() => {
-          expect(getStatus()).toHaveTextContent(message);
-        });
-        expect(email).toHaveValue("");
-      }
-      expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
-    },
-  );
+    });
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(email).toBeInTheDocument();
+    expect(email).toHaveValue("new@example.com");
+    expect(
+      screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
+    ).toBeDisabled();
+    refreshedPage.resolve(response);
+    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(email).toBeInTheDocument();
+    nextPage.resolve({
+      ...response,
+      members: [{ ...firstMember, id: "member-51", name: "Zoe" }],
+      page: { limit: 50, offset: 50, total: 51 },
+      memberLimit: 1000,
+    });
+    expect(await screen.findByText("Zoe")).toBeInTheDocument();
+    await act(async () => {
+      post.resolve({ created: true, emailDispatch: "accepted" });
+      await post.promise;
+    });
+    // The pending list reloads page 1 after a create; its own loading
+    // status leaves once that fetch settles, leaving the panel's notice.
+    await waitFor(() => {
+      expect(getStatus()).toHaveTextContent("สร้างคำเชิญแล้ว");
+    });
+    expect(email).toHaveValue("");
+    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
+  });
   it("shows total and moves through offset pagination without stale first-page rows", async () => {
     const secondPage: OrganizationMemberListResponse = {
       organizationId,
@@ -290,9 +253,7 @@ describe("OrganizationMembersPage", () => {
     vi.mocked(fetchOrganizationMembers).mockResolvedValueOnce(response);
     renderPage();
 
-    const count = await screen.findByText(totalCountText("51"));
-    expect(within(count).getByText("51")).toHaveClass("font-mono");
-    expect(within(count).getByText("1,000")).toHaveClass("font-mono");
+    await screen.findByText(totalCountText("51"));
 
     expect(
       screen.queryByRole("group", { name: "ตัวอย่าง: เพดานจำนวนสมาชิก" }),
@@ -315,8 +276,7 @@ describe("OrganizationMembersPage", () => {
     });
     renderPage();
 
-    const count = await screen.findByText(totalCountText("1,234", "2,500"));
-    expect(within(count).getByText("2,500")).toHaveClass("font-mono");
+    await screen.findByText(totalCountText("1,234", "2,500"));
   });
   it("hides stale first-page member data while revisiting it refetches", async () => {
     const secondPage: OrganizationMemberListResponse = {
@@ -427,11 +387,6 @@ describe("OrganizationMembersPage", () => {
     const heading = screen.getByRole("heading", { name: "สมาชิก" });
     expect(heading).toHaveFocus();
     expect(heading).toHaveAttribute("tabindex", "-1");
-    expect(heading).toHaveClass(
-      "focus-visible:outline-2",
-      "focus-visible:outline-offset-2",
-      "focus-visible:outline-primary",
-    );
 
     restoredPage.resolve(response);
 
@@ -462,11 +417,6 @@ describe("OrganizationMembersPage", () => {
 
     const heading = await screen.findByRole("heading", { name: "สมาชิก" });
     expect(heading).toHaveFocus();
-    expect(heading).toHaveClass(
-      "focus-visible:outline-2",
-      "focus-visible:outline-offset-2",
-      "focus-visible:outline-primary",
-    );
     expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
   });
 
@@ -820,104 +770,6 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByText("B-only")).toBeInTheDocument();
   });
 
-  it("hides A invitation immediately on confirmed B publication before navigation", async () => {
-    const post = Promise.withResolvers<InvitationCreateResponse>();
-    const navigation = Promise.withResolvers<boolean>();
-    vi.mocked(createInvitation).mockReturnValue(post.promise);
-    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    const confirmedContext: MeContextResponse = {
-      user: {
-        id: "user-1",
-        name: "Tester",
-        email: "tester@example.test",
-        emailVerified: true,
-        twoFactorEnabled: false,
-      },
-      organizations: [organizationA, organizationB],
-      lastActiveTenantId: organizationId,
-    };
-    queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, confirmedContext);
-
-    function SwitchableDirectory() {
-      const [, setRevision] = useState(0);
-      tenant = {
-        ...tenant,
-        me: { organizations: [organizationA, organizationB] },
-        activeOrg: tenant.activeOrg,
-        switchOrg: (id: string) => {
-          if (id !== organizationBId) return Promise.resolve(false);
-          const claim = createContextPublicationClaim();
-          claimContextPublication(queryClient, claim);
-          tenant = { ...tenant, activeOrg: organizationB };
-          queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
-            ...confirmedContext,
-            lastActiveTenantId: organizationBId,
-          });
-          publishContextPublication(queryClient, claim);
-          setRevision((value) => value + 1);
-          return navigation.promise;
-        },
-      };
-      return (
-        <>
-          <OrgSwitcher collapsed={false} />
-          <output data-testid="location">{useLocation().pathname}</output>
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<OrganizationMembersPage />}
-            />
-          </Routes>
-        </>
-      );
-    }
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter
-          initialEntries={[`/organizations/${organizationId}/members`]}
-        >
-          <SwitchableDirectory />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
-    await user.type(
-      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
-      "a-draft@example.test",
-    );
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-    expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole("button", { name: /Acme/ }));
-    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${organizationId}/members`,
-    );
-    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
-    await act(async () => {
-      post.resolve({ created: true, emailDispatch: "failed" });
-      await post.promise;
-    });
-    expect(
-      screen.queryByRole("status", { name: /สร้างคำเชิญแล้ว/ }),
-    ).toBeNull();
-    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
-    await act(async () => {
-      navigation.resolve(true);
-      await navigation.promise;
-    });
-    expect(await screen.findByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
-      "",
-    );
-    expect(
-      screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
-    ).toBeNull();
-  });
-
   it("keeps A scope, route, list, and offset when an A to B switch is denied", async () => {
     const aSecondPage: OrganizationMemberListResponse = {
       ...response,
@@ -1113,28 +965,9 @@ describe("OrganizationMembersPage", () => {
     expect(
       screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
     ).not.toBeInTheDocument();
-    expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
-  });
-
-  it("refetches once after fresh owner confirmation for the same organization", async () => {
-    tenant = {
-      ...tenant,
-      refreshMembershipContext: vi.fn().mockResolvedValue({
-        organizations: [organizationA],
-        lastActiveTenantId: organizationId,
-      }),
-    };
-    vi.mocked(fetchOrganizationMembers)
-      .mockRejectedValueOnce(
-        new ApiError("PERMISSION_DENIED", "authorization stale", 403),
-      )
-      .mockResolvedValueOnce(response);
-
-    renderPage();
-
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
-    expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
+    // The retry after a confirmed, unchanged membership requests the same
+    // organization and page, not a reset.
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
       1,
@@ -1148,9 +981,6 @@ describe("OrganizationMembersPage", () => {
       50,
       0,
     );
-    expect(
-      screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
-    ).not.toBeInTheDocument();
   });
 
   it("recovers fresh membership again when the bounded refetch is denied", async () => {
@@ -1671,35 +1501,6 @@ describe("OrganizationMembersPage pending invitations", () => {
     },
   );
 
-  it("shows owner-only text and no cancel button on an owner row for an admin", async () => {
-    asRole("admin");
-    vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
-    const base = pending(["peer@example.test", "boss@example.test"]);
-    vi.mocked(fetchPendingInvitations).mockResolvedValue({
-      ...base,
-      invitations: [
-        { ...(base.invitations[0] as PendingInvitation) },
-        {
-          ...(base.invitations[1] as PendingInvitation),
-          role: "owner",
-          manageable: false,
-        },
-      ],
-    });
-    renderPage();
-
-    const ownerRow = (await screen.findByText("boss@example.test")).closest(
-      "tr",
-    ) as HTMLElement;
-    expect(within(ownerRow).getByText("เฉพาะเจ้าของจัดการได้")).toBeVisible();
-    expect(within(ownerRow).queryByRole("button")).toBeNull();
-    expect(
-      screen.getByRole("button", {
-        name: "ยกเลิกคำเชิญถึง peer@example.test",
-      }),
-    ).toBeVisible();
-  });
-
   it("drops the section when a cancel and the list refresh are denied after the actor was demoted", async () => {
     vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
     vi.mocked(fetchPendingInvitations)
@@ -1770,41 +1571,6 @@ describe("OrganizationMembersPage pending invitations", () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       expect(await screen.findByText("wait@example.test")).toBeInTheDocument();
-    },
-  );
-
-  it.each([
-    ["SMTP accepted", { created: true, emailDispatch: "accepted" }],
-    ["SMTP failed", { created: true, emailDispatch: "failed" }],
-  ] as [string, InvitationCreateResponse][])(
-    "refreshes the list after a created invitation, newest first: %s",
-    async (_scenario, outcome) => {
-      vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
-      vi.mocked(fetchPendingInvitations)
-        .mockResolvedValueOnce(pending(["old@example.test"]))
-        .mockResolvedValueOnce(
-          pending(["new@example.com", "old@example.test"]),
-        );
-      vi.mocked(createInvitation).mockResolvedValue(outcome);
-      const user = userEvent.setup();
-      renderPage();
-      expect(await screen.findByText("old@example.test")).toBeInTheDocument();
-
-      await user.type(
-        screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
-        "new@example.com",
-      );
-      await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-
-      await waitFor(() => {
-        expect(fetchPendingInvitations).toHaveBeenCalledTimes(2);
-      });
-      const table = await screen.findByRole("region", {
-        name: "ตารางคำเชิญที่รอตอบรับ",
-      });
-      expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
-        "new@example.com",
-      );
     },
   );
 

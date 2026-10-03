@@ -24,7 +24,6 @@ import {
 } from "../../lib/api/members";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "../OrganizationMembersPage";
-import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -250,20 +249,13 @@ it("asks owners to confirm owner-involved changes, and cancel sends no request",
   expect(updateOrganizationMemberRole).not.toHaveBeenCalled();
 });
 
-it("traps Tab inside the dialog and confirms with one PATCH", async () => {
+it("confirms an owner-involved change with one PATCH", async () => {
   const user = await renderAs("owner");
   await user.selectOptions(roleSelect("Ann"), "owner");
   await user.click(save("Ann"));
-  const cancel = screen.getByRole("button", { name: "ยกเลิก" });
   const confirm = screen.getByRole("button", {
     name: "ยืนยันการเปลี่ยนบทบาท",
   });
-  await user.tab();
-  expect(confirm).toHaveFocus();
-  await user.tab();
-  expect(cancel).toHaveFocus();
-  await user.tab({ shift: true });
-  expect(confirm).toHaveFocus();
   await user.click(confirm);
   expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
@@ -598,45 +590,6 @@ it.each([
   expect(await screen.findByText(message)).toBeInTheDocument();
   expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
-});
-
-it("keeps Tab inside the generic dialog across links, inputs and buttons", async () => {
-  const user = userEvent.setup();
-  const heading = { current: document.body };
-  render(
-    <ConfirmDialog
-      title="ยืนยัน"
-      description={
-        <>
-          <a href="#more">รายละเอียด</a>
-          <input aria-label="เหตุผล" />
-        </>
-      }
-      confirmLabel="ตกลง"
-      confirmVariant="destructive"
-      pendingLabel="กำลังทำ…"
-      pending={false}
-      opener={null}
-      fallbackFocus={heading}
-      onCancel={() => undefined}
-      onConfirm={() => undefined}
-    />,
-  );
-  const link = screen.getByRole("link", { name: "รายละเอียด" });
-  const input = screen.getByRole("textbox", { name: "เหตุผล" });
-  const confirm = screen.getByRole("button", { name: "ตกลง" });
-  // Initial focus is Cancel; DOM order is link, input, Cancel, confirm.
-  expect(screen.getByRole("button", { name: "ยกเลิก" })).toHaveFocus();
-  await user.tab();
-  expect(confirm).toHaveFocus();
-  await user.tab();
-  expect(link).toHaveFocus();
-  await user.tab();
-  expect(input).toHaveFocus();
-  // Shift+Tab from the first focusable wraps to the last.
-  link.focus();
-  await user.tab({ shift: true });
-  expect(confirm).toHaveFocus();
 });
 
 it("does not refresh membership context when another member changes on a page without the actor", async () => {

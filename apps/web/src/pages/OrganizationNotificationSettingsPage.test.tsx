@@ -125,6 +125,10 @@ describe("OrganizationNotificationSettingsPage", () => {
       screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
     );
 
+    expect(updateSettingsMock).toHaveBeenCalledWith(ORG_A, {
+      settingsChangedEnabled: false,
+      expectedVersion: 4,
+    });
     expect(
       await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
     ).not.toBeChecked();

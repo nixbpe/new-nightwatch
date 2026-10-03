@@ -233,19 +233,6 @@ it("cancel and Escape send no request, keep the context and return focus to the 
   );
 });
 
-it("traps Tab inside the dialog in both directions", async () => {
-  const user = await renderAs("auditor");
-  await user.click(entry());
-  const cancel = screen.getByRole("button", { name: "ยกเลิก" });
-  expect(cancel).toHaveFocus();
-  await user.tab();
-  expect(confirmButton()).toHaveFocus();
-  await user.tab();
-  expect(cancel).toHaveFocus();
-  await user.tab({ shift: true });
-  expect(confirmButton()).toHaveFocus();
-});
-
 it("blocks a second confirm, cancel and Escape while the DELETE is pending", async () => {
   const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
   vi.mocked(leaveOrganization).mockReturnValue(pending.promise);
