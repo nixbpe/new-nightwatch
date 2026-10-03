@@ -150,15 +150,6 @@ describe("Edit opens with the saved configuration", () => {
   });
 });
 
-// "Edit keeps stored secrets" was removed: the auth-as-set display and its
-// replace button are covered by MonitorFormSecrets.test.tsx's "shows
-// 'ตั้งค่าแล้ว' with a replace button and sends keep when it is not pressed";
-// the stored secret header's checked state and replace are covered by its
-// "secret headers" nested describe's "shows a stored secret header as set and
-// replaces it with a new value"; the "keep every stored slot" payload shape
-// is covered at the model level by form/model.test.ts's "keeps every stored
-// slot the config still uses and sends the header as a secret without a value".
-
 describe("Edit save", () => {
   it("sends one update for a repeated press", async () => {
     const pending = deferred<{ monitor: ReturnType<typeof record> }>();

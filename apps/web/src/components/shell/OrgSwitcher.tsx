@@ -74,7 +74,6 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   }`;
 
   return (
-    // h-14 like the header, so the two hairlines meet at the same y.
     <div className="relative flex h-14 items-center border-b border-foreground/10 px-2">
       {canSwitch ? (
         <button

@@ -4,11 +4,7 @@
 # manifests live there):
 #   docker build -f apps/worker/Dockerfile -t nightwatch-worker .
 
-# ---------------------------------------------------------------------------
-# Stage 1: deps: install the full workspace from the frozen lockfile.
-# Only manifests + lockfile are copied so source changes never bust this
-# layer's cache.
-# ---------------------------------------------------------------------------
+# Copy manifests and lockfile only so source changes preserve the dependency cache.
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -22,11 +18,7 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/typescript-config/package.json packages/typescript-config/
 RUN bun install --frozen-lockfile
 
-# ---------------------------------------------------------------------------
-# Stage 2: build: bundle the Worker into one file for the Bun runtime.
-# Every dependency (bullmq, pg, zod, pino, @nightwatch/*) is inlined; only
-# node builtins remain as imports.
-# ---------------------------------------------------------------------------
+# Bundle dependencies for Bun; only node builtins remain as imports.
 FROM deps AS build
 WORKDIR /app
 COPY packages packages
@@ -35,8 +27,6 @@ WORKDIR /app/apps/worker
 ENV NODE_ENV=production
 RUN bun run build && test -f dist/index.js
 
-# ---------------------------------------------------------------------------
-# Stage 3: runtime: minimal, non-root, no source, no node_modules.
 # The runtime is Bun 1.3.14, the version the SSRF helper (node:tls path) was
 # validated on; never run this bundle on Node. No .env or secrets enter any
 # stage; configuration arrives via runtime environment variables.
@@ -55,7 +45,6 @@ RUN bun run build && test -f dist/index.js
 # and is never set here.
 #
 # The Worker exposes no HTTP endpoint, so the image has no HEALTHCHECK.
-# ---------------------------------------------------------------------------
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS runtime
 WORKDIR /app
 # The base digest freezes Bun and the initial filesystem. Security fixes are

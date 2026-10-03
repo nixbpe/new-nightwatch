@@ -2,12 +2,8 @@ import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * Section opener: a 16 px semibold h2, an optional section code (`01`) that is
- * `aria-hidden` so the heading's name stays its title (TYP-04), and a meta
- * slot on the right for counts, notes or links. A Divider closes the row.
- * Meta text is sans-serif; callers wrap values in `font-mono`.
- */
+// TYP-04: the section code is `aria-hidden` so the heading's name stays its title.
+// Callers wrap values in `font-mono`; meta text stays sans-serif.
 export function SectionHeader({
   id,
   title,

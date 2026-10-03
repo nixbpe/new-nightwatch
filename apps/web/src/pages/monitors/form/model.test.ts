@@ -249,11 +249,6 @@ describe("Edit payloads", () => {
     ).not.toHaveProperty("expectedVersion");
   });
 
-  // Path/query, scheme, port and host origin-change cases are covered by
-  // form/secrets.test.tsx's "treats %s as %s" it.each; the no-secrets-at-all
-  // case is covered by MonitorFormSecrets.test.tsx's "does not block an
-  // origin change on a monitor without secrets".
-
   it("counts advanced settings that are not at their default", () => {
     expect(advancedCount(defaultValues())).toBe(0);
     expect(advancedCount(valuesFromRecord(stored))).toBe(1 + 2);

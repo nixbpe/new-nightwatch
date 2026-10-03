@@ -4,11 +4,8 @@
  * dev graph with WEB_PORT/API_PORT injected, so every worktree gets an
  * isolated stack without manual configuration.
  *
- * The auth environment comes from scripts/dev-env.mjs: generated
- * .env.compose.local secrets (written by `bun run db:up`) plus computed
- * per-worktree origins/SMTP, with explicitly exported shell variables
- * always winning. Run `bun run db:up` before `bun run dev` — the API
- * cannot start database-backed features without it.
+ * Environment resolution lives in scripts/dev-env.mjs.
+ * Run `bun run db:up` before `bun run dev` for database-backed features.
  */
 import { spawn } from "node:child_process";
 

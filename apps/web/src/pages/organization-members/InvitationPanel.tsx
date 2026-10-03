@@ -185,7 +185,6 @@ export function InvitationPanel({
         className="flex flex-col gap-3 p-5"
         noValidate
       >
-        {/* Bottom-aligned so the button meets the fields whatever the label height; the error sits under the row. */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <Field label="อีเมลของผู้ได้รับเชิญ" className="min-w-0 flex-1">
             <Input

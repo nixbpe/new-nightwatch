@@ -6,8 +6,6 @@ import type {
 } from "@nightwatch/api-contract";
 import type { PoolClient } from "pg";
 
-// Types come from the contract, so a misspelled field or action fails to
-// compile here instead of surfacing as a parse failure when the log is read.
 export type { AuditAction, AuditChange, AuditValue };
 
 export const AUDIT_ACTION_CATEGORIES: Record<AuditAction, AuditCategory> = {

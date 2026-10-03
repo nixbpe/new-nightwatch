@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 /**
- * Browser-safe auth/onboarding contracts shared by the web app, the API
- * and the future OrgAccess slice. No server-only imports.
+ * Browser-safe auth/onboarding contracts shared by the web app and the API.
+ * No server-only imports.
  */
 
 /** Custom organization roles (Better Auth organization plugin AC roles). */

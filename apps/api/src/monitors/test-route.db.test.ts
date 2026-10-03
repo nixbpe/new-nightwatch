@@ -1139,7 +1139,6 @@ describe("target outcomes are results (AC-10, AC-32, AC-34)", () => {
   });
 
   it("uses the request-level auth of the body: bearer without a stored secret is a check error", async () => {
-    // Task 13 supplies stored secrets; until then a secret-bearing config cannot run.
     const result = await outcome({
       url: target(http1, "/ok"),
       auth: { type: "bearer" },

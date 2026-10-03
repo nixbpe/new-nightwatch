@@ -47,7 +47,6 @@ export function Header({
     "h-10 w-10 items-center justify-center rounded-md text-foreground-secondary hover:surface-hover hover:text-foreground";
 
   return (
-    // Side padding matches main (16 px, 32 px from 640 px) so the breadcrumb lines up with the page.
     <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-foreground/10 bg-background px-4 sm:gap-4 sm:px-8">
       <button
         ref={mobileMenuButtonRef}

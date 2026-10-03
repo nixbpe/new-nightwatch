@@ -8,13 +8,10 @@
  *   bun run provision:organization -- \
  *     --name "Acme" --slug acme --owner-email admin@example.com
  *
- * Environment comes from scripts/dev-env.mjs (same convention as
- * `bun run dev` / `db:migrate`): generated .env.compose.local secrets plus
- * computed local origins/SMTP, with explicitly exported shell variables
- * always winning. The operator writes pre-tenant identity/membership rows
- * as the owner role and sends the invitation through configured SMTP, so
- * DATABASE_OWNER_URL (or DATABASE_URL) and SMTP_* must resolve. All
- * arguments are forwarded explicitly to the CLI; nothing is fabricated.
+ * Environment resolution lives in scripts/dev-env.mjs. The operator writes
+ * pre-tenant identity/membership rows as the owner role and sends mail through
+ * configured SMTP, so DATABASE_OWNER_URL (or DATABASE_URL) and SMTP_* must resolve.
+ * All arguments are forwarded explicitly to the CLI; nothing is fabricated.
  */
 import { spawn } from "node:child_process";
 

@@ -57,10 +57,8 @@ function ScopeMark({ name, shape }: { name: string; shape: "org" | "person" }) {
   );
 }
 
-// Scope row (who or what the page acts on), optional eyebrow (a Latin route
-// code such as `// overview`, TYP-04), title, then a status line for facts:
-// slug, counts, freshness. Labels sit in Thai sans at 12 px; callers wrap
-// values (counts, ids, times, URLs) in `font-mono`. No tracking on Thai.
+// TYP-04: eyebrow is a Latin route code such as `// overview`.
+// Labels stay Thai sans without tracking; callers wrap status values in `font-mono`.
 export function PageHeader({
   eyebrow,
   scope,

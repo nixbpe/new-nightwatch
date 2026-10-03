@@ -189,9 +189,6 @@ describe("Create validation and save", () => {
     await screen.findByTestId("location");
   });
 
-  // The same-client-request-id-after-a-5xx-retry case is covered more
-  // strictly by MonitorFormRepair.test.tsx's "stays the same after..." it.each.
-
   it("shows a blocked address beside the URL, without an address, and keeps the values", async () => {
     createMock.mockRejectedValue(
       new ApiError("MONITOR_TARGET_BLOCKED", "10.0.0.5 is private", 422, {
@@ -285,11 +282,6 @@ describe("Access", () => {
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
   });
-
-  // The PERMISSION_DENIED and MEMBERSHIP_DENIED role-drop-after-save cases are
-  // covered by MonitorFormEdit.test.tsx's "Edit save" describe block: both
-  // Create and Edit submit through MonitorForm.tsx's single save() function,
-  // whose handleSaveError switch is mode-agnostic for these two error codes.
 });
 
 describe("Organization switch", () => {
@@ -421,9 +413,6 @@ describe("Edit", () => {
     });
     expect(updateMock.mock.calls[1]?.[2].expectedVersion).toBe(5);
   });
-
-  // The not-found-on-open case (a missing id) is covered by
-  // MonitorFormEdit.test.tsx's 3-case "shows the same not-found text" it.each.
 
   it("shows not-found when the monitor is deleted before the save", async () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail() });

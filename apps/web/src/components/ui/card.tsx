@@ -8,7 +8,6 @@ const cardVariants = cva(
   "flex flex-col rounded-md border border-foreground/10 bg-surface text-foreground",
   {
     variants: {
-      // `md` is the page card: 24 px inset, 24 px rhythm between header, body and footer.
       padding: { none: "", md: "gap-6 p-6" },
     },
     defaultVariants: { padding: "none" },
@@ -31,8 +30,6 @@ function Card({
   );
 }
 
-// One heading block per card: 16 px semibold title, optional 14 px description,
-// optional action (a pill or button) aligned to the title's right edge.
 function CardHeader({
   id,
   title,
@@ -80,7 +77,6 @@ const cardFooterVariants = cva("border-t border-foreground/10 pt-4", {
   defaultVariants: { variant: "end" },
 });
 
-// `hint` is the note that sits opposite the actions (variant split).
 function CardFooter({
   className,
   variant,
