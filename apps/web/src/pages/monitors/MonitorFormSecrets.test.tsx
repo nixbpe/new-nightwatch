@@ -388,28 +388,9 @@ describe("Create: secret headers", () => {
     expect(body?.headers?.[0]).toMatchObject({ value: "plain", secret: false });
   });
 
-  it("sends one create for a repeated press with secrets", async () => {
-    const user = await openCreate();
-    await chooseAuth(user, "bearer");
-    await user.type(screen.getByLabelText("Token"), SECRET);
-    let release: (value: { monitor: ReturnType<typeof record> }) => void = () =>
-      undefined;
-    createMock.mockReturnValue(
-      new Promise((resolve) => {
-        release = resolve;
-      }),
-    );
-    const button = () =>
-      screen.getByRole("button", { name: /^(บันทึกมอนิเตอร์|กำลังบันทึก…)$/ });
-    await user.click(button());
-    await user.click(button());
-    await user.keyboard("{Enter}");
-    expect(createMock).toHaveBeenCalledTimes(1);
-    release({ monitor: record() });
-    await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent(MONITOR_ID);
-    });
-  });
+  // The double-submit guard is covered by MonitorFormPage.test.tsx's "sends
+  // one request when Save is pressed twice while pending": saveInFlight is
+  // checked before payload construction, so a typed secret has no bearing on it.
 });
 
 describe("Edit: replace, keep and delete", () => {
@@ -701,6 +682,11 @@ describe("Edit: origin change (AC-44)", () => {
     );
     expect(saveEdit()).toBeDisabled();
     expect(testButton()).toBeDisabled();
+    expect(testButton()).toHaveAccessibleDescription(
+      expect.stringContaining(
+        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
+      ),
+    );
     await user.click(screen.getByRole("button", { name: "แทนที่ Token" }));
     // An open replacement is not a kept value: Save is on, and it asks for the new value.
     await user.click(saveEdit());
@@ -753,30 +739,28 @@ describe("Edit: origin change (AC-44)", () => {
     });
   });
 
-  it.each([
-    ["a path", "https://api.acme.example/other"],
-    ["a query", "https://api.acme.example/health?probe=1"],
-    ["an explicit default port", "https://api.acme.example:443/health"],
-  ])(
-    "keeps Save and Test on with a kept secret when only %s changes",
-    async (_name, next) => {
-      const user = await openEdit();
-      changeUrl(next);
-      expect(saveEdit()).toBeEnabled();
-      expect(testButton()).toBeEnabled();
-      expect(screen.getByLabelText("URL")).not.toHaveAccessibleDescription(
-        /เปลี่ยนที่อยู่ปลายทาง/,
-      );
-      await user.click(saveEdit());
-      await waitFor(() => {
-        expect(updateMock).toHaveBeenCalledTimes(1);
-      });
-      expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
-        url: next,
-        secrets: [{ slot: "auth.token", action: "keep" }],
-      });
-    },
-  );
+  // Path, query and default-port equivalence are unit-tested directly against
+  // secretOriginChanged in form/secrets.test.tsx's "treats %s as %s" it.each;
+  // this one case confirms that logic also drives the UI (Save/Test enabled,
+  // no origin-changed description, a "keep" sent on save).
+  it("keeps Save and Test on with a kept secret when only a path changes", async () => {
+    const next = "https://api.acme.example/other";
+    const user = await openEdit();
+    changeUrl(next);
+    expect(saveEdit()).toBeEnabled();
+    expect(testButton()).toBeEnabled();
+    expect(screen.getByLabelText("URL")).not.toHaveAccessibleDescription(
+      /เปลี่ยนที่อยู่ปลายทาง/,
+    );
+    await user.click(saveEdit());
+    await waitFor(() => {
+      expect(updateMock).toHaveBeenCalledTimes(1);
+    });
+    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+      url: next,
+      secrets: [{ slot: "auth.token", action: "keep" }],
+    });
+  });
 
   it("does not block an origin change on a monitor without secrets", async () => {
     const user = await openEdit(detail());
@@ -832,8 +816,15 @@ describe("Test panel with secrets", () => {
     await user.type(screen.getByLabelText("ค่า header แถวที่ 1"), SECRET);
     await user.click(testButton());
     await screen.findByText("การทดสอบผ่าน");
+    expect(draftMock).not.toHaveBeenCalled();
     const [, monitorId, body] = editTestMock.mock.calls[0] ?? [];
     expect(monitorId).toBe(MONITOR_ID);
+    expect(body).toMatchObject({
+      name: "Payments API",
+      url: "https://api.acme.example/health",
+      auth: { type: "bearer" },
+    });
+    expect(body).not.toHaveProperty("expectedVersion");
     expect(body?.secrets).toEqual([
       { slot: "auth.token", action: "keep" },
       { slot: `header.${HEADER_ID}`, action: "replace", value: SECRET },
@@ -908,25 +899,10 @@ describe("Test panel with secrets", () => {
 });
 
 describe("Server refusals of secret entries", () => {
-  it("places a required refusal of an auth slot beside the token field", async () => {
-    const { ApiError } = await import("../../lib/api/client");
-    const user = await openCreate();
-    await chooseAuth(user, "bearer");
-    await user.type(screen.getByLabelText("Token"), SECRET);
-    createMock.mockRejectedValue(
-      new ApiError("MONITOR_INVALID", "invalid", 400, {
-        fields: [{ field: "secrets.0.value", reason: "too_long" }],
-      }),
-    );
-    await user.click(saveCreate());
-    expect(await screen.findByText("ค่าลับยาวได้ไม่เกิน 4 KiB")).toBeVisible();
-    expect(screen.getByLabelText("Token")).toHaveAttribute(
-      "aria-invalid",
-      "true",
-    );
-    // The typed value is still there for a retry.
-    expect(screen.getByLabelText("Token")).toHaveValue(SECRET);
-  });
+  // The too_long-at-secrets.N.value-beside-its-field case is covered by the
+  // "places secrets.N.value %s..." it.each below. Token-value retention after
+  // a refusal is covered by the Secret hygiene (AC-25) describe block's
+  // "keeps the typed value out of the markup after a refused save" test.
 
   it("shows the origin wording beside the URL on a 422 with a replaced secret", async () => {
     const { ApiError } = await import("../../lib/api/client");
@@ -1057,33 +1033,13 @@ describe("Server refusals of secret entries are placed beside the slot's field",
   });
 });
 
-describe("Detail shows secrets as set only", () => {
-  it.each(["viewer", "auditor"] as const)(
-    "shows %s the auth type and 'ตั้งค่าแล้ว' with no field, button or value",
-    async (role) => {
-      vi.mocked(fetchMeContext).mockResolvedValue(context(role));
-      detailMock.mockResolvedValue({
-        monitor: detail({
-          auth: { type: "bearer" },
-          headers: [{ id: HEADER_ID, name: "X-Api-Key", secret: true }],
-          secretSlots: [
-            { slot: "auth.token", configured: true },
-            { slot: `header.${HEADER_ID}`, configured: true },
-          ],
-        }),
-      });
-      renderForm(`/organizations/${A}/monitors/${MONITOR_ID}`);
-      const card = (
-        await screen.findByRole("heading", { name: "การตั้งค่า" })
-      ).closest("section");
-      expect(card).not.toBeNull();
-      expect(card).toHaveTextContent("Bearer token (ตั้งค่าแล้ว)");
-      expect(card).toHaveTextContent("ตั้งค่าแล้ว (ค่าลับ)");
-      expect(passwordInputs()).toHaveLength(0);
-      expect(screen.queryByRole("button", { name: /แทนที่/ })).toBeNull();
-    },
-  );
-});
+// This file's own renderForm(`/organizations/${A}/monitors/${MONITOR_ID}`)
+// (no /edit) resolves to DetailPage per form-test-support.tsx's route table,
+// not MonitorFormPage. DetailPage.test.tsx's "shows 'ตั้งค่าแล้ว' from the
+// stored slots, never a value" already asserts the same Bearer-token and
+// secret-header text, and DetailPage never renders a password field or a
+// replace button for any role, so a viewer/auditor variation here exercised
+// no role-gated branch.
 
 describe("Secret hygiene (AC-25)", () => {
   type Rendered = ReturnType<typeof renderForm>;

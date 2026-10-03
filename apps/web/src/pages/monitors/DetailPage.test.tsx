@@ -750,12 +750,9 @@ describe("Detail access", () => {
     expect(screen.queryByText("Payments API")).toBeNull();
   });
 
-  it("shows the same text when a notification link opens a deleted monitor", async () => {
-    // The inbox links to /organizations/<id>/monitors/<monitorId>; the monitor is gone.
-    fetchDetailMock.mockRejectedValue(notFound());
-    renderDetail(A, "cccccccc-cccc-4ccc-8ccc-cccccccccccc");
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
-  });
+  // A notification link opening a deleted monitor is the same
+  // mockRejectedValue(notFound()) + a differing id already covered by the
+  // "answers %s with the same text" it.each above.
 });
 
 describe("Detail loading, failure and refetch", () => {
