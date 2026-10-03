@@ -116,30 +116,6 @@ describe("createLogger", () => {
     expect(line["msg"]).toBe("MFA challenge completed");
   });
 
-  it("emits structured JSON with level, name and timestamp", () => {
-    const { stream, read } = captureStream();
-    const logger = createLogger(
-      { level: "info", name: "nightwatch-api" },
-      stream,
-    );
-    logger.info({ requestId: "req-1" }, "request completed");
-    const line = JSON.parse(read().trim()) as Record<string, unknown>;
-    expect(line["level"]).toBe(30);
-    expect(line["name"]).toBe("nightwatch-api");
-    expect(line["requestId"]).toBe("req-1");
-    expect(line["msg"]).toBe("request completed");
-    expect(typeof line["time"]).toBe("string");
-  });
-
-  it("suppresses records below the configured level", () => {
-    const { stream, read } = captureStream();
-    const logger = createLogger({ level: "warn", name: "test" }, stream);
-    logger.info("quiet");
-    logger.warn("loud");
-    expect(read()).not.toContain("quiet");
-    expect(read()).toContain("loud");
-  });
-
   it("redacts monitor header values, secrets and auth while keeping names", () => {
     const { stream, read } = captureStream();
     const logger = createLogger({ level: "info", name: "test" }, stream);

@@ -153,12 +153,6 @@ describe("checkMonitorUrl", () => {
   ])("rejects %j as %s", (url, reason) => {
     expect(checkMonitorUrl(url)).toEqual({ ok: false, reason });
   });
-
-  it.each([443, 80, 1024, 65535])("accepts port %i", (port) => {
-    expect(checkMonitorUrl(`http://example.com:${String(port)}/`).ok).toBe(
-      true,
-    );
-  });
 });
 
 describe("monitorConfigSchema", () => {

@@ -146,6 +146,13 @@ describe("legacy MFA projection migration", () => {
        values ($1, false)`,
       [staleProjectionUser],
     );
+    expect(
+      (
+        await isolatedOwner.query(
+          "select count(*)::integer as count from notification_account_mfa_state",
+        )
+      ).rows,
+    ).toEqual([{ count: 1 }]);
 
     isolatedDatabase = createDatabase(isolatedRuntimeUrl.toString());
     const releaseDisable = Promise.withResolvers<undefined>();
@@ -182,9 +189,13 @@ describe("legacy MFA projection migration", () => {
       },
     );
     await baselineLocked.promise;
-    await cp(
-      join(migrationsDir, "0006_notification_account_mfa_backfill.sql"),
-      join(legacyMigrationsDir, "0006_notification_account_mfa_backfill.sql"),
+    await Promise.all(
+      [
+        "0006_notification_account_mfa_backfill.sql",
+        "0007_notification_dispatch_failure_summary.sql",
+      ].map((name) =>
+        cp(join(migrationsDir, name), join(legacyMigrationsDir, name)),
+      ),
     );
     const migration = runMigrations({
       url: isolatedOwnerUrl.toString(),
@@ -221,6 +232,7 @@ describe("legacy MFA projection migration", () => {
     const result = await migration;
     expect(result.applied).toEqual([
       "0006_notification_account_mfa_backfill.sql",
+      "0007_notification_dispatch_failure_summary.sql",
     ]);
     expect(
       (

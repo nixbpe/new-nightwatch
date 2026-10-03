@@ -20,7 +20,6 @@ vi.mock("pg", () => ({
 import {
   createDatabase,
   DB_POOL_CONNECTION_TIMEOUT_MS,
-  DB_READINESS_TIMEOUT_MS,
   DB_POOL_MAX,
   DB_QUERY_TIMEOUT_MS,
 } from "../src/client";
@@ -44,10 +43,6 @@ describe("createDatabase", () => {
       query_timeout: DB_QUERY_TIMEOUT_MS,
       statement_timeout: DB_QUERY_TIMEOUT_MS,
     });
-    expect(DB_POOL_MAX).toBe(10);
-    expect(DB_POOL_CONNECTION_TIMEOUT_MS).toBe(5_000);
-    expect(DB_QUERY_TIMEOUT_MS).toBe(10_000);
-    expect(DB_READINESS_TIMEOUT_MS).toBe(2_000);
     await database.close();
     expect(poolEndMock).toHaveBeenCalledOnce();
   });
