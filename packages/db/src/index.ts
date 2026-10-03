@@ -38,7 +38,6 @@ export {
 } from "./notification";
 export {
   AUDIT_EVENT_COLUMNS,
-  AUDIT_EVENT_FILTER_PARAM_COUNT,
   AUDIT_EVENT_JOINS,
   auditEventFilterParams,
   auditEventFilterWhere,

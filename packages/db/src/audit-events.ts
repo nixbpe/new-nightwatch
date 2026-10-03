@@ -43,8 +43,6 @@ export const AUDIT_EVENT_COLUMNS = `
   (tm.user_id is not null) as "targetCurrent",
   (mo.id is not null) as "monitorExists"`;
 
-export const AUDIT_EVENT_FILTER_PARAM_COUNT = 7;
-
 /**
  * The seven values of `auditEventFilterWhere`, in order. `actionCodes` are the
  * action codes whose code or label contains `q` (the caller knows the labels).
