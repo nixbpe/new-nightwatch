@@ -92,6 +92,7 @@ function listFor(organizationId: string): OrganizationMemberListResponse {
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
   }
   const members = MEMBERS.filter((member) => !removed.has(member.id)).map(
@@ -104,6 +105,7 @@ function listFor(organizationId: string): OrganizationMemberListResponse {
     organizationId: A,
     members,
     page: { limit: 50, offset: 0, total: members.length },
+    memberLimit: 1000,
   };
 }
 

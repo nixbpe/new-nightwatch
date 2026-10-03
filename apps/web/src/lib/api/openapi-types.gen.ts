@@ -1291,6 +1291,7 @@ export interface paths {
                                 offset: number;
                                 total: number;
                             };
+                            memberLimit: number;
                         };
                     };
                 };

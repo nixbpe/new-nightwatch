@@ -1,3 +1,4 @@
+import { ORGANIZATION_MEMBER_LIMIT } from "@nightwatch/api-contract";
 import {
   initializeAccountMfaState,
   insertAccountNotificationIntent,
@@ -156,7 +157,7 @@ export function createAuth(deps: AuthDeps) {
   const organizationOptions = {
     roles: organizationRoles,
     allowUserToCreateOrganization: false,
-    membershipLimit: 1000,
+    membershipLimit: ORGANIZATION_MEMBER_LIMIT,
     requireEmailVerificationOnInvitation: true,
     sendInvitationEmail: async (data) => {
       const mail = buildInvitationEmail(authEnv, {

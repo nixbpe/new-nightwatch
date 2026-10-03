@@ -13,7 +13,6 @@ import { Notice } from "../components/ui/notice";
 import { DataTable, DataTablePagination } from "../components/ui/data-table";
 import { StatusPill } from "../components/ui/status-pill";
 import { SectionHeader } from "../components/ui/section-header";
-import { MockupFrame } from "../components/ui/mockup-frame";
 import { initialsFontClass, initialsOf } from "../components/shell/initials";
 import { ROLE_LABELS } from "../lib/roles";
 import { Page, PageHeader } from "../components/shell/Page";
@@ -542,7 +541,11 @@ function OrganizationMembersPageForOrganization({
               <span>
                 สมาชิกทั้งหมด{" "}
                 <span className="font-mono">
-                  {String(list.data.page.total)}
+                  {list.data.page.total.toLocaleString("en-US")}
+                </span>{" "}
+                /{" "}
+                <span className="font-mono">
+                  {list.data.memberLimit.toLocaleString("en-US")}
                 </span>{" "}
                 คน
               </span>
@@ -554,12 +557,6 @@ function OrganizationMembersPageForOrganization({
         titleClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       />
       {selfLeaveSection}
-      <MockupFrame label="เพดานจำนวนสมาชิก" issue={66}>
-        <p className="text-sm text-foreground-secondary">
-          เพดานสมาชิกต่อองค์กร{" "}
-          <span className="font-mono text-foreground">N</span> คน
-        </p>
-      </MockupFrame>
       <InvitationPanel
         key={organization.role}
         organizationId={organizationId}

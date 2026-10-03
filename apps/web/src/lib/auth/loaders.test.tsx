@@ -698,6 +698,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
       },
     ],
     page: { limit: 50, offset: 0, total: 1 },
+    memberLimit: 1000,
   };
 
   afterEach(() => {
@@ -835,6 +836,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
           },
         ],
         page: { limit: 50, offset: 0, total: 7 },
+        memberLimit: 1000,
       };
       const freshRequest =
         Promise.withResolvers<OrganizationMemberListResponse>();
@@ -914,6 +916,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
     const abortController = new AbortController();
     const loading = organizationMembersLoader({
@@ -1062,6 +1065,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
     const membersA: OrganizationMemberListResponse = {
       organizationId,
@@ -1075,6 +1079,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
         },
       ],
       page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
     };
     const oldRequest = Promise.withResolvers<MeContextResponse>();
     const newRequest = Promise.withResolvers<MeContextResponse>();
@@ -1148,6 +1153,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
       organizationId: organizationB,
       members: [],
       page: { limit: 50, offset: 0, total: 0 },
+      memberLimit: 1000,
     };
     const sessionA = Promise.withResolvers<{
       data: { user: SessionUser };

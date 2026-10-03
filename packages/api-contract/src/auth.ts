@@ -51,6 +51,9 @@ export const organizationMemberSchema = z.object({
   role: organizationRoleSchema,
 });
 
+/** Per-organization member cap enforced by Better Auth `membershipLimit`. */
+export const ORGANIZATION_MEMBER_LIMIT = 1000;
+
 export const organizationMemberListResponseSchema = z.object({
   organizationId: z.uuid(),
   members: z.array(organizationMemberSchema).max(50),
@@ -59,6 +62,7 @@ export const organizationMemberListResponseSchema = z.object({
     offset: z.number().int().min(0),
     total: z.number().int().min(0),
   }),
+  memberLimit: z.number().int().min(1),
 });
 
 export const organizationMemberRoleUpdateResponseSchema = z.object({

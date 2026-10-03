@@ -1,4 +1,7 @@
-import type { OrganizationMemberListResponse } from "@nightwatch/api-contract";
+import {
+  ORGANIZATION_MEMBER_LIMIT,
+  type OrganizationMemberListResponse,
+} from "@nightwatch/api-contract";
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
 import type { PoolClient } from "pg";
 import { AppError } from "@nightwatch/shared";
@@ -166,6 +169,7 @@ export async function listOrganizationMembers(
         organizationId: input.organizationId,
         members,
         page: { limit: input.limit, offset: input.offset, total: row.total },
+        memberLimit: ORGANIZATION_MEMBER_LIMIT,
       };
     },
   );

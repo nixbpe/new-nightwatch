@@ -1,4 +1,5 @@
 import {
+  ORGANIZATION_MEMBER_LIMIT,
   organizationRoleSchema,
   type InvitationResponse,
 } from "@nightwatch/api-contract";
@@ -86,7 +87,7 @@ export async function acceptInvitation(
       "select count(*)::int as total from member where organization_id = $1",
       [organizationId],
     );
-    if ((count.rows[0]?.total ?? 0) >= 1000) {
+    if ((count.rows[0]?.total ?? 0) >= ORGANIZATION_MEMBER_LIMIT) {
       throw new AppError(
         409,
         "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED",

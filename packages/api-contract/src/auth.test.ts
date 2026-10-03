@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { organizationMemberListQuerySchema } from "./auth";
+import {
+  ORGANIZATION_MEMBER_LIMIT,
+  organizationMemberListQuerySchema,
+  organizationMemberListResponseSchema,
+} from "./auth";
 
 describe("organizationMemberListQuerySchema", () => {
   it("uses defaults only for missing values", () => {
@@ -40,4 +44,30 @@ describe("organizationMemberListQuerySchema", () => {
       ).toBe(false);
     },
   );
+});
+
+describe("organizationMemberListResponseSchema", () => {
+  const body = {
+    organizationId: "6f1c7b0e-2c58-4f3a-9a64-0d0f9a6f1b11",
+    members: [],
+    page: { limit: 50, offset: 0, total: 0 },
+  };
+
+  it("requires memberLimit as a positive integer", () => {
+    expect(organizationMemberListResponseSchema.safeParse(body).success).toBe(
+      false,
+    );
+    for (const memberLimit of [0, 1.5, "1000"]) {
+      expect(
+        organizationMemberListResponseSchema.safeParse({ ...body, memberLimit })
+          .success,
+      ).toBe(false);
+    }
+    expect(
+      organizationMemberListResponseSchema.parse({
+        ...body,
+        memberLimit: ORGANIZATION_MEMBER_LIMIT,
+      }).memberLimit,
+    ).toBe(1000);
+  });
 });

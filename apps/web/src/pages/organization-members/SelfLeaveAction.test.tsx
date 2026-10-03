@@ -82,6 +82,7 @@ const list = (organizationId: string): OrganizationMemberListResponse => ({
     },
   ],
   page: { limit: 50, offset: 0, total: 1 },
+  memberLimit: 1000,
 });
 
 const left = (role: OrganizationRole = "viewer") =>
