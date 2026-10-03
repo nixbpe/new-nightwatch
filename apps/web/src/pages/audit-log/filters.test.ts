@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_FILTERS, parseAuditFilters } from "../../lib/api/audit-log";
-import { customRangeError, hasActiveFilters } from "./filters";
+import {
+  customRangeError,
+  DEFAULT_FILTERS,
+  parseAuditFilters,
+} from "../../lib/api/audit-log";
+import { hasActiveFilters } from "./filters";
 
 const parse = (search: string) =>
   parseAuditFilters(new URLSearchParams(search));

@@ -541,6 +541,32 @@ describe("audit log loaders", () => {
     },
   );
 
+  it.each([
+    ["a reversed", "?range=custom&from=2026-10-02&to=2026-10-01", false],
+    ["a valid", "?range=custom&from=2026-10-01&to=2026-10-02", true],
+  ])(
+    "%s custom range: list prefetch sent is %s (AC-11)",
+    async (_name, search, sent) => {
+      sessionState.data = { user: VERIFIED };
+      as("owner");
+      vi.mocked(fetchAuditEvents).mockResolvedValue({
+        organizationId,
+        asOf: "2026-10-03T07:02:11.000Z",
+        retainedFrom: "2025-10-03T07:02:11.000Z",
+        recordingStartedAt: "2025-06-01T00:00:00.000Z",
+        events: [],
+        page: { limit: 50, offset: 0, total: 0 },
+      });
+      vi.mocked(fetchAuditActors).mockResolvedValue({ actors: [] });
+      renderAt(
+        [listRoute],
+        `/organizations/${organizationId}/audit-log${search}`,
+      );
+      expect(await screen.findByText("audit-area")).toBeInTheDocument();
+      expect(vi.mocked(fetchAuditEvents).mock.calls.length).toBe(sent ? 1 : 0);
+    },
+  );
+
   it("asks for the list once when the loader and the page open the same link", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-03T07:02:11.500Z"));

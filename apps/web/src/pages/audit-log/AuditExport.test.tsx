@@ -958,11 +958,12 @@ describe("403 during export (B-2, AC-06, AC-23)", () => {
 
   it("sends MEMBERSHIP_DENIED to the page's denied card", async () => {
     open({ exportsError: denied("MEMBERSHIP_DENIED") });
-    expect(
-      await screen.findByRole("heading", {
-        name: "เข้าถึงบันทึกกิจกรรมไม่ได้",
-      }),
-    ).toHaveFocus();
+    const heading = await screen.findByRole("heading", {
+      name: "เข้าถึงบันทึกกิจกรรมไม่ได้",
+    });
+    await waitFor(() => {
+      expect(heading).toHaveFocus();
+    });
     expect(screen.getByText("คุณไม่ใช่สมาชิกขององค์กรนี้")).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "ตารางบันทึกกิจกรรม" }),

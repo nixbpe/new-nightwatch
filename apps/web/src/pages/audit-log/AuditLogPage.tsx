@@ -14,6 +14,7 @@ import {
   auditLogQueryKeys,
   fetchAuditActors,
   fetchAuditEvents,
+  customRangeError,
   floorToMinute,
   parseAuditFilters,
   serializeAuditFilters,
@@ -37,7 +38,7 @@ import {
 import { AuditDenied } from "./AuditDenied";
 import { AuditFilterBar, describeFilters } from "./AuditFilterBar";
 import { AuditTable, type AuditListReturnState } from "./AuditTable";
-import { customRangeError, filterIdentity } from "./filters";
+import { filterIdentity } from "./filters";
 import { ExportDialog } from "./ExportDialog";
 import {
   adjustFilterSearch,
@@ -203,14 +204,27 @@ function AuditLogForOrganization({
     else rowLinks.current.set(eventId, element);
   };
 
-  const writeFilters = (next: AuditFilters) => {
-    setSearchParams(serializeAuditFilters(next), { replace: true });
+  // Changes made before the router commits the previous one (same tick, or while a loader
+  // runs) must stack: each starts from the params the last one wrote, not from the URL of
+  // the last render (O1). The URL wins again once it actually changes.
+  const latestParams = useRef(searchParams);
+  const committedParams = useRef(searchParams.toString());
+  if (committedParams.current !== searchParams.toString()) {
+    committedParams.current = searchParams.toString();
+    latestParams.current = searchParams;
+  }
+  const writeFilters = (update: (current: AuditFilters) => AuditFilters) => {
+    const next = serializeAuditFilters(
+      update(parseAuditFilters(latestParams.current)),
+    );
+    latestParams.current = next;
+    setSearchParams(next, { replace: true });
   };
   const changeFilters = (change: Partial<AuditFilters>) => {
-    writeFilters({ ...filters, ...change, page: 1 });
+    writeFilters((current) => ({ ...current, ...change, page: 1 }));
   };
   const clearFilters = () => {
-    writeFilters({ range: "7d", categories: [], page: 1 });
+    writeFilters(() => ({ range: "7d", categories: [], page: 1 }));
   };
   // `unpinnedPage` is the page that must keep asking without `asOf`; paging by hand pins every
   // page of the snapshot (basePage 0), so none drifts after its cache goes stale.
@@ -220,7 +234,7 @@ function AuditLogForOrganization({
         ? previous
         : { ...previous, asOf: data.asOf, basePage: unpinnedPage },
     );
-    writeFilters({ ...filters, page });
+    writeFilters((current) => ({ ...current, page }));
     tableHeadingRef.current?.focus();
   };
   const refresh = () => {

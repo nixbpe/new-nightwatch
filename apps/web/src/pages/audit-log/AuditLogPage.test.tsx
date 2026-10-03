@@ -1,7 +1,14 @@
-import { QueryClient } from "@tanstack/react-query";
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Route } from "react-router";
+import { createMemoryRouter, Route, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
@@ -377,6 +384,78 @@ describe("AuditLogPage custom range (AC-11)", () => {
     expect(listMock.mock.calls.at(-1)?.[1].from).toBe(
       "2025-10-03T17:00:00.000Z",
     );
+  });
+});
+
+describe("AuditLogPage same-tick filter changes (O1)", () => {
+  it("keeps both dates when two changes happen before the next render", async () => {
+    listMock.mockResolvedValue(makeList([makeEvent(0)]));
+    open("?range=custom");
+    await screen.findByRole("table");
+    act(() => {
+      fireEvent.change(screen.getByLabelText("วันเริ่ม"), {
+        target: { value: "2026-09-30" },
+      });
+      fireEvent.change(screen.getByLabelText("วันสิ้นสุด"), {
+        target: { value: "2026-10-02" },
+      });
+    });
+    await waitFor(() => {
+      expect(location()).toContain("from=2026-09-30");
+    });
+    expect(location()).toContain("to=2026-10-02");
+    expect(screen.getByLabelText("วันเริ่ม")).toHaveValue("2026-09-30");
+    expect(screen.getByLabelText("วันสิ้นสุด")).toHaveValue("2026-10-02");
+  });
+
+  it("keeps both dates when the router is still running a loader after the first change", async () => {
+    listMock.mockResolvedValue(makeList([makeEvent(0)]));
+    setTenant("owner");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: PATH,
+          // A slow loader keeps the URL of the last render stale for a while.
+          loader: () =>
+            new Promise((resolve) =>
+              setTimeout(() => {
+                resolve(null);
+              }, 150),
+            ),
+          element: <AuditLogPage />,
+        },
+      ],
+      { initialEntries: [`/organizations/${ORG_A}/audit-log?range=custom`] },
+    );
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("table");
+    fireEvent.change(screen.getByLabelText("วันเริ่ม"), {
+      target: { value: "2026-09-30" },
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    fireEvent.change(screen.getByLabelText("วันสิ้นสุด"), {
+      target: { value: "2026-10-02" },
+    });
+    await waitFor(() => {
+      expect(router.state.location.search).toContain("to=2026-10-02");
+    });
+    expect(router.state.location.search).toContain("from=2026-09-30");
+  });
+
+  it("marks the pressed chip with the design-system Primary tint", async () => {
+    listMock.mockResolvedValue(makeList([makeEvent(0)]));
+    open();
+    await screen.findByRole("table");
+    const chip = screen.getByRole("button", { name: "7 วัน" });
+    expect(chip.className).toContain("bg-primary-tint");
+    expect(chip.className).not.toContain("bg-primary/10");
   });
 });
 

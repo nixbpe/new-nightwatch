@@ -9,13 +9,9 @@ import { useState, type SyntheticEvent } from "react";
 
 import { Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import type { AuditFilters } from "../../lib/api/audit-log";
+import type { AuditFilters, CustomRangeError } from "../../lib/api/audit-log";
 import { cn } from "../../lib/utils";
-import {
-  hasActiveFilters,
-  RANGE_OPTIONS,
-  type CustomRangeError,
-} from "./filters";
+import { hasActiveFilters, RANGE_OPTIONS } from "./filters";
 import { personName } from "./labels";
 
 const CUSTOM_ERROR_TEXT: Record<
@@ -48,7 +44,7 @@ function Chip({
       onClick={() => {
         if (!busy) onPress();
       }}
-      className={cn(pressed && "border-primary bg-primary/10 text-primary")}
+      className={cn(pressed && "border-primary bg-primary-tint text-primary")}
     >
       {children}
     </Button>

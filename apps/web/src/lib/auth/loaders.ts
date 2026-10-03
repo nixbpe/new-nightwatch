@@ -1,4 +1,7 @@
-import type { MeContextResponse } from "@nightwatch/api-contract";
+import type {
+  AuditLogListResponse,
+  MeContextResponse,
+} from "@nightwatch/api-contract";
 
 import {
   redirectDocument,
@@ -14,6 +17,7 @@ import {
   parseAuditFilters,
   toListParams,
   auditLogQueryKeys,
+  customRangeError,
 } from "../api/audit-log";
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
@@ -26,7 +30,7 @@ import {
 } from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import { authClient } from "../auth-client";
-import { readPreferences } from "../preferences";
+import { formatAuditDate, readPreferences } from "../preferences";
 import {
   fetchNotifications,
   fetchOrganizationNotificationSettings,
@@ -295,20 +299,42 @@ export async function auditLogLoader({
     return reader;
   }
   const filters = parseAuditFilters(new URL(request.url).searchParams);
+  const preferences = readPreferences();
   const listParams = toListParams(filters, {
     now: floorToMinute(new Date()),
-    timeZone: readPreferences().timeZone,
+    timeZone: preferences.timeZone,
   });
   const queryClient = resolveQueryClientForIdentity(reader.userId);
+  // AC-11: an invalid custom range sends no request. The retained day is the one the page
+  // knows too: the latest list already in the cache, if any.
+  const known = queryClient
+    .getQueriesData<AuditLogListResponse>({
+      queryKey: auditLogQueryKeys
+        .events(reader.organizationId, { offset: 0 })
+        .slice(0, 4),
+    })
+    .find(([, data]) => data !== undefined)?.[1];
+  const validRange =
+    customRangeError(
+      filters,
+      known === undefined
+        ? undefined
+        : formatAuditDate(new Date(known.retainedFrom), preferences),
+    ) === undefined;
   await Promise.all([
-    queryClient
-      .query({
-        queryKey: auditLogQueryKeys.events(reader.organizationId, listParams),
-        queryFn: () => fetchAuditEvents(reader.organizationId, listParams),
-        staleTime: "static",
-        retry: false,
-      })
-      .catch(() => undefined),
+    validRange
+      ? queryClient
+          .query({
+            queryKey: auditLogQueryKeys.events(
+              reader.organizationId,
+              listParams,
+            ),
+            queryFn: () => fetchAuditEvents(reader.organizationId, listParams),
+            staleTime: "static",
+            retry: false,
+          })
+          .catch(() => undefined)
+      : Promise.resolve(),
     queryClient
       .query({
         queryKey: auditLogQueryKeys.actors(reader.organizationId),

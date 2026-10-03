@@ -301,3 +301,31 @@ export function toListParams(
   if (options.asOf !== undefined) params.asOf = options.asOf;
   return params;
 }
+
+export type CustomRangeError = "start-after-end" | "before-retention";
+
+/**
+ * AC-11. `retainedDay` is the "เก็บย้อนหลังถึง" date of the latest response in the
+ * preference zone, not the browser clock; unknown until a list has loaded.
+ */
+export function customRangeError(
+  filters: AuditFilters,
+  retainedDay: string | undefined,
+): CustomRangeError | undefined {
+  if (filters.range !== "custom") return undefined;
+  if (
+    filters.from !== undefined &&
+    filters.to !== undefined &&
+    filters.from > filters.to
+  ) {
+    return "start-after-end";
+  }
+  if (
+    filters.from !== undefined &&
+    retainedDay !== undefined &&
+    filters.from < retainedDay
+  ) {
+    return "before-retention";
+  }
+  return undefined;
+}
