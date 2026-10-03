@@ -6,6 +6,10 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  blockAuditInserts,
+  openIsolatedAuditDatabase,
+} from "../audit/test-support";
+import {
   monitorsPath,
   openMonitorTestContext,
   STUB_HOSTS,
@@ -14,11 +18,15 @@ import {
   type TestOrganization,
 } from "./test-support";
 
+// The AC-21 case creates a trigger on audit_events, which deadlocks with other
+// suites that write events, so this file has a database of its own.
+let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
 let ctx: MonitorTestContext;
 let org: TestOrganization;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  isolated = await openIsolatedAuditDatabase();
+  ctx = await openMonitorTestContext({ urls: isolated.urls });
   org = await ctx.createOrganization("lifecycle");
   // Results are partitioned by month; the delete test inserts one.
   await ctx.owner.sql.query("select ensure_monitor_partitions(3)");
@@ -26,7 +34,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await ctx.close();
-});
+  await isolated.close();
+}, 60_000);
 
 const owner = () => org.users.owner;
 const SECRET_ID = "5b0c1a3e-6f0a-4a57-9c4e-8d1b2a3c4d5e";
@@ -1233,19 +1242,9 @@ describe("audit failure (AC-21)", () => {
     });
     const before = await snapshot();
 
-    const fn = `audit_events_monitor_fail_${rollbackOrg.id.replaceAll("-", "")}`;
-    await ctx.owner.sql.query(
-      `create function ${fn}() returns trigger language plpgsql as $$
-       begin
-         if new.tenant_id = '${rollbackOrg.id}'::uuid then
-           raise exception 'audit insert blocked by test';
-         end if;
-         return new;
-       end $$`,
-    );
-    await ctx.owner.sql.query(
-      `create trigger ${fn} before insert on audit_events
-       for each row execute function ${fn}()`,
+    const unblock = await blockAuditInserts(
+      isolated.urls.ownerUrl,
+      rollbackOrg.id,
     );
     try {
       const attempts = [
@@ -1270,10 +1269,38 @@ describe("audit failure (AC-21)", () => {
         expect(JSON.stringify(response.json)).not.toContain("audit insert");
       }
     } finally {
-      await ctx.owner.sql.query(`drop trigger ${fn} on audit_events`);
-      await ctx.owner.sql.query(`drop function ${fn}()`);
+      await unblock();
     }
 
     expect(await snapshot()).toEqual(before);
+  });
+  it("answers a generic 500 with no cause when the event insert of a settings change fails", async () => {
+    const settingsOrg = await ctx.createOrganization("audit-settings-500");
+    const as = settingsOrg.users.owner;
+    const path = `/api/organizations/${settingsOrg.id}/notification-settings`;
+    const version = async () =>
+      (await ctx.call(as, "GET", path)).json as { version: number };
+    const before = await version();
+    const unblock = await blockAuditInserts(
+      isolated.urls.ownerUrl,
+      settingsOrg.id,
+    );
+    try {
+      const failed = await ctx.call(as, "PATCH", path, {
+        monitorAlertsEnabled: false,
+        expectedVersion: before.version,
+      });
+      expect(failed.status).toBe(500);
+      expect(failed.json).toEqual({
+        error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+      });
+      const text = JSON.stringify(failed.json);
+      expect(text).not.toContain("audit insert blocked");
+      expect(text).not.toContain("audit_events");
+      expect(text).not.toMatch(/\bat \S+\.ts/);
+    } finally {
+      await unblock();
+    }
+    expect((await version()).version).toBe(before.version);
   });
 });

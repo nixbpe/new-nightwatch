@@ -1,6 +1,6 @@
 import { auditChangeSchema } from "@nightwatch/api-contract";
-import { createDatabase, runMigrations } from "@nightwatch/db";
-import { Client } from "pg";
+import type { Database } from "@nightwatch/db";
+import type { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -14,17 +14,15 @@ import {
   updateOrganizationMemberRole,
 } from "../organization-notifications/members";
 import { updateOrganizationNotificationSettings } from "../organization-notifications/service";
-import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
+import { blockAuditInserts, openIsolatedAuditDatabase } from "./test-support";
 
-const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
+// The AC-21 case creates a trigger on audit_events, which deadlocks with other
+// suites that write events, so this file has a database of its own.
+let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
+let database: Database;
+let owner: Client;
 const run = crypto.randomUUID().slice(0, 8);
 const organizationId = crypto.randomUUID();
-const database = createDatabase(runtimeUrl);
-const owner = new Client({ connectionString: ownerUrl });
-const migrationsDir = new URL(
-  "../../../../packages/db/migrations",
-  import.meta.url,
-).pathname;
 const createdUsers: string[] = [];
 
 type Person = { userId: string; memberId: string };
@@ -102,8 +100,9 @@ let viewerPerson: Person;
 let auditorPerson: Person;
 
 beforeAll(async () => {
-  await owner.connect();
-  await runMigrations({ url: ownerUrl, migrationsDir });
+  isolated = await openIsolatedAuditDatabase();
+  database = isolated.database;
+  owner = isolated.owner;
   await owner.query(
     "insert into organization (id, name, slug) values ($1, 'Audit events', $2)",
     [organizationId, `audit-events-${run}`],
@@ -115,17 +114,12 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  await owner.query(
-    "drop trigger if exists audit_events_test_fail on audit_events",
-  );
-  await owner.query("drop function if exists audit_events_test_fail()");
   await owner.query("delete from organization where id = $1", [organizationId]);
   await owner.query('delete from "user" where id = any($1::text[])', [
     createdUsers,
   ]);
-  await owner.end();
-  await database.close();
-});
+  await isolated.close();
+}, 60_000);
 
 describe("member events", () => {
   it("role update writes one event with the actor role, target user and role change", async () => {
@@ -495,27 +489,6 @@ describe("notification settings events", () => {
 });
 
 describe("a failed event insert rolls the mutation back", () => {
-  async function installFailingTrigger() {
-    // Fails only this file's Organization so parallel suites keep writing.
-    await owner.query(
-      `create or replace function audit_events_test_fail() returns trigger
-       language plpgsql as $$
-       begin
-         if new.tenant_id = '${organizationId}'::uuid then
-           raise exception 'audit insert blocked by test';
-         end if;
-         return new;
-       end $$`,
-    );
-    await owner.query(
-      `create trigger audit_events_test_fail before insert on audit_events
-       for each row execute function audit_events_test_fail()`,
-    );
-  }
-  async function removeFailingTrigger() {
-    await owner.query("drop trigger audit_events_test_fail on audit_events");
-  }
-
   it("leaves members, invitations and settings unchanged and returns the error for every request type", async () => {
     const roleTarget = await addMember("rb-role", "viewer");
     const revokeTarget = await addMember("rb-revoke", "viewer");
@@ -563,7 +536,10 @@ describe("a failed event insert rolls the mutation back", () => {
     const intentsBefore = await intentCount();
     const eventsBefore = await eventCount();
 
-    await installFailingTrigger();
+    const unblock = await blockAuditInserts(
+      isolated.urls.ownerUrl,
+      organizationId,
+    );
     try {
       const attempts: (() => Promise<unknown>)[] = [
         () =>
@@ -629,7 +605,7 @@ describe("a failed event insert rolls the mutation back", () => {
         await expect(attempt()).rejects.toThrow(/audit insert blocked by test/);
       }
     } finally {
-      await removeFailingTrigger();
+      await unblock();
     }
 
     expect(await memberRole(roleTarget.memberId)).toBe("viewer");

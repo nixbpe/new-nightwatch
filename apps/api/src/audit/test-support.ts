@@ -1,4 +1,5 @@
 import { createDatabase, runMigrations, type Database } from "@nightwatch/db";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,6 +72,8 @@ export async function openIsolatedAuditDatabase(options?: {
   database: Database;
   ownerDatabase: Database;
   owner: Client;
+  /** URLs of the isolated database, for a context that opens its own pools. */
+  urls: { runtimeUrl: string; ownerUrl: string };
   applySkipped: () => Promise<void>;
   close: () => Promise<void>;
 }> {
@@ -148,6 +151,10 @@ export async function openIsolatedAuditDatabase(options?: {
     database,
     ownerDatabase,
     owner,
+    urls: {
+      runtimeUrl: runtimeTarget.toString(),
+      ownerUrl: ownerTarget.toString(),
+    },
     applySkipped: async () => {
       if (!options?.skip || !copy) throw new Error("no migration was skipped");
       const sql = (await readFile(join(source, options.skip), "utf8")).replace(
@@ -159,4 +166,45 @@ export async function openIsolatedAuditDatabase(options?: {
     },
     close,
   };
+}
+
+/**
+ * Makes every insert into `audit_events` for one Organization fail, to prove a
+ * mutation rolls back with its event (AC-21). Pass the owner URL of a database
+ * of its own (`openIsolatedAuditDatabase`): creating and dropping a trigger
+ * takes a table lock that deadlocks with the inserts of suites that run in
+ * parallel on the shared database, and the trigger stays scoped to the
+ * Organization so nothing else in that database is affected. Returns the
+ * function that removes the trigger.
+ */
+export async function blockAuditInserts(
+  ownerUrl: string,
+  tenantId: string,
+): Promise<() => Promise<void>> {
+  const name = `audit_events_block_${randomUUID().replaceAll("-", "")}`;
+  const run = async (statements: string[]) => {
+    const client = new Client({ connectionString: ownerUrl });
+    await client.connect();
+    try {
+      for (const statement of statements) await client.query(statement);
+    } finally {
+      await client.end();
+    }
+  };
+  await run([
+    `create function ${name}() returns trigger language plpgsql as $$
+     begin
+       if new.tenant_id = '${tenantId}'::uuid then
+         raise exception 'audit insert blocked by test';
+       end if;
+       return new;
+     end $$`,
+    `create trigger ${name} before insert on audit_events
+     for each row execute function ${name}()`,
+  ]);
+  return () =>
+    run([
+      `drop trigger if exists ${name} on audit_events`,
+      `drop function if exists ${name}()`,
+    ]);
 }

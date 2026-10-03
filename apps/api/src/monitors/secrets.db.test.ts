@@ -13,6 +13,10 @@ import http from "node:http";
 import type net from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  blockAuditInserts,
+  openIsolatedAuditDatabase,
+} from "../audit/test-support";
 import { createRedisClient } from "../rate-limit";
 import {
   monitorsPath,
@@ -109,6 +113,9 @@ async function listen(
 
 // ---- Fixtures -------------------------------------------------------------------
 
+// The AC-21 case creates a trigger on audit_events, which deadlocks with other
+// suites that write events, so this file has a database of its own.
+let isolated: Awaited<ReturnType<typeof openIsolatedAuditDatabase>>;
 let ctx: MonitorTestContext;
 let bare: MonitorTestContext;
 let redis: Redis;
@@ -127,8 +134,12 @@ const organizationIds: string[] = [];
 
 beforeAll(async () => {
   redis = createRedisClient(redisUrl);
-  ctx = await openMonitorTestContext({ redis });
-  bare = await openMonitorTestContext({ withoutCredentials: true });
+  isolated = await openIsolatedAuditDatabase();
+  ctx = await openMonitorTestContext({ redis, urls: isolated.urls });
+  bare = await openMonitorTestContext({
+    withoutCredentials: true,
+    urls: isolated.urls,
+  });
   org = await ctx.createOrganization("secrets");
   organizationIds.push(org.id);
 }, 120_000);
@@ -140,7 +151,8 @@ afterAll(async () => {
   redis.disconnect();
   await bare.close();
   await ctx.close();
-});
+  await isolated.close();
+}, 60_000);
 
 afterEach(async () => {
   target.seen.length = 0;
@@ -1201,19 +1213,9 @@ describe("Audit events for secrets (F-005 AC-61, F-007)", () => {
     const monitor = monitorWriteResponseSchema.parse(made.json).monitor;
     const before = await secretRows(monitor.id);
 
-    const fn = `audit_events_secret_fail_${organization.id.replaceAll("-", "")}`;
-    await ctx.owner.sql.query(
-      `create function ${fn}() returns trigger language plpgsql as $$
-       begin
-         if new.tenant_id = '${organization.id}'::uuid then
-           raise exception 'audit insert blocked by test';
-         end if;
-         return new;
-       end $$`,
-    );
-    await ctx.owner.sql.query(
-      `create trigger ${fn} before insert on audit_events
-       for each row execute function ${fn}()`,
+    const unblock = await blockAuditInserts(
+      isolated.urls.ownerUrl,
+      organization.id,
     );
     try {
       const edited = await ctx.call(
@@ -1228,8 +1230,7 @@ describe("Audit events for secrets (F-005 AC-61, F-007)", () => {
       );
       expect(edited.status).toBe(500);
     } finally {
-      await ctx.owner.sql.query(`drop trigger ${fn} on audit_events`);
-      await ctx.owner.sql.query(`drop function ${fn}()`);
+      await unblock();
     }
     expect(await secretRows(monitor.id)).toEqual(before);
     expect(await monitorRow(monitor.id)).toMatchObject({ version: 1 });

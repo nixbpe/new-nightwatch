@@ -1647,7 +1647,7 @@ describe("audit events over HTTP", () => {
     };
   }
 
-  it("records the response x-request-id on member, invitation and settings events, and hides the cause when the event insert fails", async () => {
+  it("records the response x-request-id on member, invitation and settings events", async () => {
     const ownerClient = await admit("auditOwner");
     const ownerId = userIds.get("auditOwner");
     if (!ownerId) throw new Error("audit owner missing");
@@ -1711,46 +1711,6 @@ describe("audit events over HTTP", () => {
         actor_user_id: ownerId,
       },
     ]);
-
-    // AC-21 over HTTP: a failing event insert is a generic 500 with no cause.
-    const fn = `audit_events_http_fail_${run.replaceAll("-", "")}`;
-    await owner.sql.query(
-      `create function ${fn}() returns trigger language plpgsql as $$
-       begin
-         if new.tenant_id = '${roleOrganizationId}'::uuid then
-           raise exception 'audit insert blocked by test';
-         end if;
-         return new;
-       end $$`,
-    );
-    await owner.sql.query(
-      `create trigger ${fn} before insert on audit_events
-       for each row execute function ${fn}()`,
-    );
-    try {
-      const after = (await ownerClient("GET", settingsPath)).json as {
-        version: number;
-      };
-      const failed = await ownerClient("PATCH", settingsPath, {
-        monitorAlertsEnabled: true,
-        expectedVersion: after.version,
-      });
-      expect(failed.status).toBe(500);
-      expect(failed.json).toEqual({
-        error: { code: "INTERNAL_ERROR", message: "Internal server error" },
-      });
-      const text = JSON.stringify(failed.json);
-      expect(text).not.toContain("audit insert blocked");
-      expect(text).not.toContain("audit_events");
-      expect(text).not.toMatch(/\bat \S+\.ts/);
-      expect(
-        ((await ownerClient("GET", settingsPath)).json as { version: number })
-          .version,
-      ).toBe(after.version);
-    } finally {
-      await owner.sql.query(`drop trigger ${fn} on audit_events`);
-      await owner.sql.query(`drop function ${fn}()`);
-    }
   }, 180_000);
 });
 

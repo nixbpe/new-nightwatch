@@ -75,8 +75,11 @@ export async function openMonitorTestContext(options?: {
   withoutCredentials?: boolean;
   /** Backs the Test rate limit; without it every Test answers 503. */
   redis?: Redis;
+  /** A database that is already migrated and used by this suite alone. */
+  urls?: { runtimeUrl: string; ownerUrl: string };
 }) {
-  const { runtimeUrl, ownerUrl } = requireIntegrationDatabaseUrls();
+  const { runtimeUrl, ownerUrl } =
+    options?.urls ?? requireIntegrationDatabaseUrls();
   const migrationsDir =
     process.env.MIGRATIONS_DIR ??
     fileURLToPath(
@@ -84,7 +87,7 @@ export async function openMonitorTestContext(options?: {
     );
   const runtime: Database = createDatabase(runtimeUrl);
   const owner: Database = createDatabase(ownerUrl);
-  await runMigrations({ url: ownerUrl, migrationsDir });
+  if (!options?.urls) await runMigrations({ url: ownerUrl, migrationsDir });
 
   // Every statement the app runs on a pooled client, for single-query proofs.
   const statements: string[] = [];
