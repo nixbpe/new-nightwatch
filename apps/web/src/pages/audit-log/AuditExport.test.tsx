@@ -547,6 +547,25 @@ describe("my exports section (M-8, M-6, M-9, N-3)", () => {
     expect(within(section).getAllByRole("status")).toHaveLength(1);
   });
 
+  it("wraps the table in a focusable, named scroll region", async () => {
+    open({
+      rows: [makeRecord({ status: "failed", failureCode: "EXPORT_FAILED" })],
+    });
+    await sectionHeading();
+    const region = screen.getByRole("region", {
+      name: "ตารางไฟล์ส่งออกของฉัน",
+    });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toContainElement(
+      screen.getByRole("table", { name: "ไฟล์ส่งออกของฉัน" }),
+    );
+    expect(region.className).toContain("overflow-x-auto");
+    expect(region.className).not.toContain("overflow-y");
+    expect(region.className).toContain("focus:outline-primary");
+    region.focus();
+    expect(region).toHaveFocus();
+  });
+
   it("hides the section when there are no requests", async () => {
     open({ rows: [] });
     await screen.findByRole("table");

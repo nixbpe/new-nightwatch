@@ -134,7 +134,12 @@ export function MyExportsSection({
         </div>
       ) : null}
       {rows === undefined || rows.length === 0 ? null : (
-        <div className="overflow-x-auto rounded-md border border-foreground/10 bg-surface">
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label="ตารางไฟล์ส่งออกของฉัน"
+          className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+        >
           <table className="w-full min-w-[760px] text-left text-sm">
             <caption className="sr-only">ไฟล์ส่งออกของฉัน</caption>
             <thead className="text-xs font-medium text-foreground-secondary">
