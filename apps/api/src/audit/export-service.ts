@@ -124,10 +124,23 @@ function recordOf(row: ExportRow): AuditExportRecord {
   };
 }
 
+// The client left (the page moved to another organization): nothing is written.
+function requestCancelled(): never {
+  throw new AppError(499, "REQUEST_CANCELLED", "คำขอถูกยกเลิก");
+}
+
+/**
+ * `signal` is the HTTP request's. It is checked again just before the first
+ * write, so a request the client already abandoned rolls back instead of
+ * creating an export for an organization the user has left. That narrows the
+ * window but cannot close it: once the commit has started the export stays
+ * valid, because the user asked for it while in that organization.
+ */
 export async function createAuditExport(
   database: Database,
   identity: ExportIdentity,
   request: AuditExportRequest,
+  signal?: AbortSignal,
 ): Promise<AuditExportCreateResponse> {
   await assertMemberBeforeTenantContext(
     database,
@@ -172,6 +185,7 @@ export async function createAuditExport(
         tenantId: identity.organizationId,
         requestedBy: identity.actorUserId,
       });
+      if (signal?.aborted) requestCancelled();
       const stored = {
         from: filters.from,
         to: filters.to,

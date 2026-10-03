@@ -5,6 +5,7 @@ import type {
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { createAuditExport } from "./export-service";
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
 import {
   openMonitorTestContext,
@@ -510,6 +511,61 @@ describe("GET exports", () => {
       [viaPost],
     );
     expect(failed.rows[0]?.state).toBe("failed");
+  });
+});
+
+describe("POST exports from a client that has left (cancellation)", () => {
+  const request = () => body() as Parameters<typeof createAuditExport>[2];
+
+  it("rolls back with no request, ledger row, event or notification when the request signal is aborted", async () => {
+    const org = await organization("auditexp-cancel");
+    await seedEvents(org.id, org.users.owner);
+    // A late request of the same user: its stale transition runs in the same
+    // transaction and must roll back with it.
+    const late = await seedExport(org.id, org.users.owner, "queued", {
+      age: "61 minutes",
+    });
+    const rowsBefore = await counts(org.id);
+    const intents = async () =>
+      (
+        await ctx.owner.sql.query<{ n: number }>(
+          "select count(*)::int as n from notification_intents where tenant_id = $1",
+          [org.id],
+        )
+      ).rows[0]?.n;
+    const intentsBefore = await intents();
+
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      createAuditExport(
+        ctx.runtime,
+        { organizationId: org.id, actorUserId: org.users.owner },
+        request(),
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ statusCode: 499, code: "REQUEST_CANCELLED" });
+
+    expect(await counts(org.id)).toEqual(rowsBefore);
+    expect(await intents()).toBe(intentsBefore);
+    const state = await ctx.owner.sql.query<{ state: string }>(
+      "select state from audit_export_jobs where export_id = $1",
+      [late],
+    );
+    expect(state.rows[0]?.state).toBe("queued");
+  });
+
+  it("still commits when the signal is not aborted", async () => {
+    const org = await organization("auditexp-no-cancel");
+    await seedEvents(org.id, org.users.owner);
+    const created = await createAuditExport(
+      ctx.runtime,
+      { organizationId: org.id, actorUserId: org.users.owner },
+      request(),
+      new AbortController().signal,
+    );
+    expect(created.export.status).toBe("generating");
+    expect(await counts(org.id)).toEqual({ exports: 1, jobs: 1, events: 1 });
   });
 });
 

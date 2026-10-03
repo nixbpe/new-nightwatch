@@ -267,6 +267,7 @@ export function registerAuditLogReadRoutes(
           database,
           { organizationId, actorUserId, requestId: c.get("requestId") },
           request,
+          c.req.raw.signal,
         ),
     );
     return c.json(body, 201);
