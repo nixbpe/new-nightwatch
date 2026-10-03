@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "WORKER_ROLES=consumer,scheduler,monitor-scheduler,monitor-checker bun --watch src/index.ts",
+    "dev": "WORKER_ROLES=consumer,scheduler,monitor-scheduler,monitor-checker,audit-exporter bun --watch src/index.ts",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "lint": "eslint .",

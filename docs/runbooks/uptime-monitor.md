@@ -56,7 +56,7 @@ readable with the old key until it is removed from the map.
   each are safe: claims use `FOR UPDATE SKIP LOCKED` and job ids are
   deterministic.
 - Local dev: the `dev` script in `apps/worker/package.json` runs
-  `consumer,scheduler,monitor-scheduler,monitor-checker`.
+  `consumer,scheduler,monitor-scheduler,monitor-checker,audit-exporter`.
 - Stop with SIGTERM; the scheduler stops before the checker.
 
 ### Worker image
