@@ -255,6 +255,8 @@ function AuditLogForOrganization({
     // A custom range has no moving anchor, so its key can stay the same: ask again explicitly.
     if (JSON.stringify(nextKey) === JSON.stringify(listKey))
       void list.refetch();
+    // The actor options (and who counts as a former member) change with the list.
+    void actors.refetch();
   };
 
   // AC-18: coming back from a detail page puts focus on that row's link, else on the table heading.
@@ -343,7 +345,8 @@ function AuditLogForOrganization({
     data === undefined ? null : data.page.total.toLocaleString("en-US");
   // "No data" is claimed only when the actors endpoint (events within retention) is known to be
   // empty too; while it is loading or failed, an empty list reads as "no match".
-  const noData = actors.isSuccess && actors.data.actors.length === 0;
+  const noData =
+    actors.isSuccess && !actors.isFetching && actors.data.actors.length === 0;
 
   // M-4: the export asks for exactly what the list shows: absolute from/to and the list's asOf.
   const exportFrom = (retainedFrom: string) => listParams.from ?? retainedFrom;

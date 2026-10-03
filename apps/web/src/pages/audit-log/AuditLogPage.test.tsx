@@ -560,6 +560,42 @@ describe("AuditLogPage states (AC-08)", () => {
     );
   });
 
+  it("refetches the actor options on รีเฟรช so a removed member leaves the list", async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(makeList([makeEvent(0)]));
+    actorsMock.mockResolvedValue({
+      actors: [
+        { userId: "user-1", displayName: "สมชาย ก.", membership: "current" },
+        { userId: "user-2", displayName: "มาลี ข.", membership: "current" },
+      ],
+    });
+    open();
+    await screen.findByRole("table");
+    const names = () =>
+      within(screen.getByRole("combobox", { name: "ผู้ดำเนินการ" }))
+        .getAllByRole("option")
+        .map((option) => option.textContent);
+    await waitFor(() => {
+      expect(names()).toContain("มาลี ข.");
+    });
+    expect(actorsMock).toHaveBeenCalledTimes(1);
+    // user-2 was removed in the meantime: the server now lists them as a former member.
+    actorsMock.mockResolvedValue({
+      actors: [
+        { userId: "user-1", displayName: "สมชาย ก.", membership: "current" },
+        { userId: "user-2", displayName: null, membership: "former" },
+      ],
+    });
+    await user.click(screen.getByRole("button", { name: "รีเฟรช" }));
+    await waitFor(() => {
+      expect(actorsMock).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(names()).not.toContain("มาลี ข.");
+    });
+    expect(names()).toContain("ไม่ใช่สมาชิกแล้ว");
+  });
+
   it("keeps page 1 on the pinned snapshot once page 2 is open (C4-02)", async () => {
     const user = userEvent.setup();
     listMock.mockImplementation((_org, params) =>

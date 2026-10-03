@@ -585,6 +585,34 @@ describe("my exports section (M-8, M-6, M-9, N-3)", () => {
     expect(region).toHaveFocus();
   });
 
+  it("shows the scope in the zone the request was made in and the request times in the viewer's zone", async () => {
+    // Bangkok is the viewer's preference (set in beforeEach); the request was made in New York.
+    open({
+      rows: [
+        makeRecord({
+          status: "ready",
+          timeZone: "America/New_York",
+          expiresAt: "2026-10-04T07:07:30.000Z",
+          filters: {
+            ...makeRecord().filters,
+            from: "2026-09-25T17:00:00.000Z",
+            to: "2026-10-03T07:02:00.000Z",
+          },
+        }),
+      ],
+    });
+    await sectionHeading();
+    const first = row(0);
+    expect(first).toHaveTextContent(
+      "2026-09-25 13:00:00 – 2026-10-03 03:02:00 (America/New_York)",
+    );
+    expect(first).not.toHaveTextContent("(Asia/Bangkok)");
+    expect(first).toHaveTextContent("2026-10-03 14:05:10 Asia/Bangkok");
+    expect(first).toHaveTextContent(
+      "ดาวน์โหลดได้ถึง 2026-10-04 14:07:30 Asia/Bangkok",
+    );
+  });
+
   it("hides the section when there are no requests", async () => {
     open({ rows: [] });
     await screen.findByRole("table");

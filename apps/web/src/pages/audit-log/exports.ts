@@ -169,8 +169,11 @@ export function scopeText(
   actors: readonly AuditActorOption[] | undefined,
 ): string {
   const { filters } = record;
+  // The scope is shown in the zone the request was made in, as the file's metadata states it;
+  // "ขอเมื่อ" and "ดาวน์โหลดได้ถึง" stay in the viewer's zone.
+  const requested = { ...preferences, timeZone: record.timeZone };
   const parts = [
-    `${formatAuditTimestamp(new Date(filters.from), preferences)} – ${formatAuditTimestamp(new Date(filters.to), preferences)} (${preferences.timeZone})`,
+    `${formatAuditTimestamp(new Date(filters.from), requested)} – ${formatAuditTimestamp(new Date(filters.to), requested)} (${record.timeZone})`,
   ];
   if (filters.categories.length > 0) {
     parts.push(
