@@ -389,11 +389,6 @@ describe("WorkspacePage organization views", () => {
     sessionState.data = null;
   });
 
-  // A viewer having no invite controls is subsumed by "an owner sees overview
-  // without the removed invitation form": the invitation form was removed for
-  // every role, not gated by role, so the owner case (the role most likely to
-  // have kept it) is the stronger assertion.
-
   it("an owner sees overview without the removed invitation form", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();

@@ -387,10 +387,6 @@ describe("Create: secret headers", () => {
     expect(body?.secrets).toEqual([]);
     expect(body?.headers?.[0]).toMatchObject({ value: "plain", secret: false });
   });
-
-  // The double-submit guard is covered by MonitorFormPage.test.tsx's "sends
-  // one request when Save is pressed twice while pending": saveInFlight is
-  // checked before payload construction, so a typed secret has no bearing on it.
 });
 
 describe("Edit: replace, keep and delete", () => {
@@ -899,11 +895,6 @@ describe("Test panel with secrets", () => {
 });
 
 describe("Server refusals of secret entries", () => {
-  // The too_long-at-secrets.N.value-beside-its-field case is covered by the
-  // "places secrets.N.value %s..." it.each below. Token-value retention after
-  // a refusal is covered by the Secret hygiene (AC-25) describe block's
-  // "keeps the typed value out of the markup after a refused save" test.
-
   it("shows the origin wording beside the URL on a 422 with a replaced secret", async () => {
     const { ApiError } = await import("../../lib/api/client");
     updateMock.mockRejectedValue(
@@ -1032,14 +1023,6 @@ describe("Server refusals of secret entries are placed beside the slot's field",
     expect(await screen.findByText(/^ค่าลับ: /)).toBeVisible();
   });
 });
-
-// This file's own renderForm(`/organizations/${A}/monitors/${MONITOR_ID}`)
-// (no /edit) resolves to DetailPage per form-test-support.tsx's route table,
-// not MonitorFormPage. DetailPage.test.tsx's "shows 'ตั้งค่าแล้ว' from the
-// stored slots, never a value" already asserts the same Bearer-token and
-// secret-header text, and DetailPage never renders a password field or a
-// replace button for any role, so a viewer/auditor variation here exercised
-// no role-gated branch.
 
 describe("Secret hygiene (AC-25)", () => {
   type Rendered = ReturnType<typeof renderForm>;

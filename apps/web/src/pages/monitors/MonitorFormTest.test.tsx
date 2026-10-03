@@ -351,11 +351,6 @@ describe("Test panel states", () => {
   });
 });
 
-// The type-mismatch wording and AC-33 prefix label are rendered by the same
-// shared AssertionTable component (../detail/AssertionTable) that
-// DetailPage.test.tsx's "shows the actual type of a type mismatch..." case
-// already covers.
-
 describe("Test panel SSL line", () => {
   it.each([
     [
@@ -557,17 +552,6 @@ describe("Saving and testing are independent", () => {
 });
 
 describe("Edit test", () => {
-  // "tests the complete config in the Edit endpoint with keep for every
-  // slot" was merged into MonitorFormSecrets.test.tsx's "tests in Edit with
-  // keep for an untouched slot and replace for a replaced one" (its unique
-  // assertions on name/url/auth, draftMock not called and no expectedVersion
-  // were moved there).
-
-  // Save/Test being disabled with the origin wording on both the URL field
-  // and the Test button is covered by MonitorFormSecrets.test.tsx's "names
-  // the origin wording, turns Save and Test off..." test (the Test button's
-  // accessible description assertion was moved there).
-
   it("shows the origin wording beside the URL on a 422 from the server", async () => {
     vi.mocked(fetchMonitorDetail).mockResolvedValue({ monitor: detail() });
     editTestMock.mockRejectedValue(

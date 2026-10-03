@@ -15,8 +15,7 @@ export type DataTableColumn<Row> = {
 };
 
 // Presentational table: sans header on Surface (TYP-04), 44 px rows, hairline
-// dividers and a hover tint. Sorting, filtering and selection are not built
-// in; a data-grid engine can drive this markup later without changing pages.
+// dividers and a hover tint. Callers own sorting, filtering and selection.
 export function DataTable<Row>({
   ariaLabel,
   columns,

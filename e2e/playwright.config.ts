@@ -3,8 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { resolvePorts } from "../scripts/ports.mjs";
 
 // Per-worktree ports (scripts/ports.mjs) let parallel checkouts run the e2e
-// suite side by side. Playwright starts both dev servers itself, so
-// `bun run e2e` is self-contained on a fresh machine.
+// suite side by side.
 const { webPort, apiPort } = resolvePorts();
 const webUrl = `http://localhost:${webPort}`;
 const apiUrl = `http://localhost:${apiPort}`;

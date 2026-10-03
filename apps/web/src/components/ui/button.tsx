@@ -4,13 +4,11 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-// Offset focus outline stays visible against the solid primary fill; 40px height matches <Input>.
-// `sm` is the 32 px small size for table row actions and filter chips (LAY-06);
-// `destructive` is the Danger-filled confirm inside a confirmation dialog (COL-05);
-// `destructive-outline` is the Danger outline confirm of an inline two-step confirm.
-// Filled variants go neutral when disabled instead of fading, so a disabled
-// primary never reads as a washed-out action; `wrap` lets long Thai labels
-// break onto two lines at narrow widths without an ancestor override.
+// Offset focus outline stays visible against the solid primary fill.
+// `sm` is for table row actions and filter chips (LAY-06).
+// `destructive` is for confirmation dialogs (COL-05); `destructive-outline` is for inline confirms.
+// Disabled filled variants go neutral so they never read as washed-out actions.
+// `wrap` lets long Thai labels break without an ancestor override.
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors " +
     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary " +

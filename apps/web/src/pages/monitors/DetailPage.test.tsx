@@ -749,10 +749,6 @@ describe("Detail access", () => {
     ).toBeGreaterThan(0);
     expect(screen.queryByText("Payments API")).toBeNull();
   });
-
-  // A notification link opening a deleted monitor is the same
-  // mockRejectedValue(notFound()) + a differing id already covered by the
-  // "answers %s with the same text" it.each above.
 });
 
 describe("Detail loading, failure and refetch", () => {

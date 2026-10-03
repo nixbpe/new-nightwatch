@@ -3,7 +3,6 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-// Renders a real <label>, preserving implicit input association for assistive tech.
 function Label({
   className,
   ...props

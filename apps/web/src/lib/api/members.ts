@@ -43,7 +43,6 @@ export function updateOrganizationMemberRole(
   );
 }
 
-// Revoke answers with the same `{ member }` body as a role update.
 const organizationMemberRevokeResponseSchema =
   organizationMemberRoleUpdateResponseSchema;
 
@@ -58,7 +57,6 @@ export function revokeOrganizationMember(
   );
 }
 
-// Leave answers with the same `{ member }` body as a role update.
 export function leaveOrganization(
   organizationId: string,
 ): Promise<OrganizationMemberRoleUpdateResponse> {

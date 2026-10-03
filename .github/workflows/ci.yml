@@ -7,8 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Release-stage job (e2e + container) runs only on manual dispatch until
-  # the domain apps and the T9 Dockerfile land.
+  # Release-stage job (e2e + container) runs only on manual dispatch.
   workflow_dispatch:
 
 permissions:

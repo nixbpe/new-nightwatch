@@ -4,11 +4,7 @@
 # manifests live there):
 #   docker build -f apps/api/Dockerfile -t nightwatch-api .
 
-# ---------------------------------------------------------------------------
-# Stage 1: deps — install the full workspace from the frozen lockfile.
-# Only manifests + lockfile are copied so source changes never bust this
-# layer's cache.
-# ---------------------------------------------------------------------------
+# Copy manifests and lockfile only so source changes preserve the dependency cache.
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -22,11 +18,7 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/typescript-config/package.json packages/typescript-config/
 RUN bun install --frozen-lockfile
 
-# ---------------------------------------------------------------------------
-# Stage 2: build — compile the API to a single self-contained bundle.
-# `bun build --target bun` inlines every dependency (hono, zod, pino, the
-# @nightwatch/* workspace sources and apps/api/package.json), so the runtime
-# stage needs nothing but dist/index.js.
+# `bun build --target bun` inlines dependencies, including workspace sources.
 FROM deps AS build
 WORKDIR /app
 COPY packages packages
@@ -39,12 +31,8 @@ RUN bun run build && test -f dist/index.js
 WORKDIR /app/packages/db
 RUN bun run build:migrate && test -f dist-migrate/migrate.js
 
-# ---------------------------------------------------------------------------
-# Stage 3: runtime — minimal, non-root, no source, no node_modules.
-# Verified: dist/index.js is self-contained (no top-level imports; every
-# workspace + npm dependency is inlined at build time), so no production
-# install or workspace sources are copied. No .env or secrets enter any
-# stage; configuration arrives via runtime environment variables.
+# Runtime needs no production install or workspace sources.
+# No .env or secrets enter any stage; configuration arrives via runtime environment variables.
 #
 # Required at container start (the API fails fast without them):
 #   DATABASE_URL          runtime DB role (non-owner, NOBYPASSRLS)
