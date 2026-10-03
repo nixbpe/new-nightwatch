@@ -12,7 +12,6 @@ import {
   SubmitButton,
 } from "../components/ui";
 import { Label } from "../components/ui/label";
-import { MockupFrame } from "../components/ui/mockup-frame";
 import { authClient, authErrorMessage } from "../lib/auth-client";
 import { normalizeReturnTo, rememberReturnTo } from "../lib/auth/continuation";
 
@@ -218,16 +217,6 @@ export function LoginPage() {
             <p className="text-xs text-foreground-secondary">
               ยังไม่มีคำเชิญ? ติดต่อผู้ดูแลองค์กรของคุณ
             </p>
-            <MockupFrame label="จดจำอุปกรณ์นี้" issue={65}>
-              <label className="flex items-center gap-3 text-[13px] text-foreground-secondary">
-                <input
-                  type="checkbox"
-                  disabled
-                  className="size-4 rounded border-control-border accent-[var(--primary)]"
-                />
-                จดจำอุปกรณ์นี้ <span className="font-mono">30</span> วัน
-              </label>
-            </MockupFrame>
           </div>
         </main>
       </div>

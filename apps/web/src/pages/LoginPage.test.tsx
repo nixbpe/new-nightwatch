@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -170,19 +170,10 @@ describe("LoginPage", () => {
     );
     expect(signInEmailMock).not.toHaveBeenCalled();
   });
-  it("keeps the remember-device mockup and removes the cancelled help-link mockup", async () => {
+  it("removes the cancelled help-link mockup and preserves the login payload", async () => {
     renderPage();
+    await screen.findByRole("button", { name: "เข้าสู่ระบบ" });
 
-    const remember = await screen.findByRole("group", {
-      name: "ตัวอย่าง: จดจำอุปกรณ์นี้",
-    });
-    const checkbox = within(remember).getByRole("checkbox");
-    expect(checkbox).toBeDisabled();
-    expect(checkbox).not.toHaveAttribute("name");
-    expect(remember.closest("form")).toBeNull();
-    expect(
-      within(remember).getByRole("link", { name: /issue/ }),
-    ).toHaveAttribute("href", expect.stringMatching(/\/issues\/65$/));
     expect(
       screen.queryByRole("group", { name: "ตัวอย่าง: ลิงก์ช่วยเหลือ" }),
     ).toBeNull();
