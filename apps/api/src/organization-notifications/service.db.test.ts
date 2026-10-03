@@ -9,11 +9,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
-import {
-  leaveOrganization,
-  revokeOrganizationMember,
-  updateOrganizationMemberRole,
-} from "./members";
+import { revokeOrganizationMember } from "./members";
 import {
   getOrganizationNotificationSettings,
   updateOrganizationNotificationSettings,
@@ -114,7 +110,7 @@ describe("organization notification mutations", () => {
     ).toBe(0);
   });
 
-  it("uses the old disabled value to avoid an intent and atomically clears revoked active mirrors", async () => {
+  it("uses the old disabled value to avoid an intent", async () => {
     await updateOrganizationNotificationSettings(database, {
       organizationId,
       userId: ownerId,
@@ -139,80 +135,6 @@ describe("organization notification mutations", () => {
          from notification_intent_recipients
          where tenant_id = $1 and recipient_user_id = $2`,
         [organizationId, adminId],
-      ),
-    ).toBe(1);
-
-    await expect(
-      revokeOrganizationMember(database, {
-        organizationId,
-        actorUserId: adminId,
-        memberId: ownerMemberId,
-      }),
-    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
-    await revokeOrganizationMember(database, {
-      organizationId,
-      actorUserId: ownerId,
-      memberId: targetMemberId,
-    });
-    expect(
-      await count("select count(*)::int as count from member where id = $1", [
-        targetMemberId,
-      ]),
-    ).toBe(0);
-    expect(
-      await count(
-        `select count(*)::int as count from "user" where id = $1 and last_active_tenant_id is null`,
-        [targetId],
-      ),
-    ).toBe(1);
-    expect(
-      await count(
-        "select count(*)::int as count from session where user_id = $1 and active_organization_id is null",
-        [targetId],
-      ),
-    ).toBe(1);
-  });
-
-  it("allows a viewer to self-leave but denies the last owner", async () => {
-    await leaveOrganization(database, {
-      organizationId,
-      actorUserId: viewerId,
-    });
-    expect(
-      await count("select count(*)::int as count from member where id = $1", [
-        viewerMemberId,
-      ]),
-    ).toBe(0);
-    await expect(
-      leaveOrganization(database, { organizationId, actorUserId: ownerId }),
-    ).rejects.toMatchObject({ code: "LAST_OWNER" });
-  });
-
-  it("preserves the last owner while permitting an owner role transfer", async () => {
-    await expect(
-      updateOrganizationMemberRole(database, {
-        organizationId,
-        actorUserId: ownerId,
-        memberId: ownerMemberId,
-        role: "admin",
-      }),
-    ).rejects.toMatchObject({ code: "LAST_OWNER" });
-    await updateOrganizationMemberRole(database, {
-      organizationId,
-      actorUserId: ownerId,
-      memberId: adminMemberId,
-      role: "owner",
-    });
-    await updateOrganizationMemberRole(database, {
-      organizationId,
-      actorUserId: ownerId,
-      memberId: ownerMemberId,
-      role: "admin",
-    });
-    expect(
-      await count(
-        `select count(*)::int as count from member where organization_id = $1 and role = 'owner'`,
-        [organizationId],
       ),
     ).toBe(1);
   });

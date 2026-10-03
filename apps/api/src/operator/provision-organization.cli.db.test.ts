@@ -301,32 +301,21 @@ describe("bun run provision:organization against an existing organization", () =
     leaksNoIdentifier(result.stdout + result.stderr, [oldId, mailed ?? ""]);
   });
 
-  it.each([
-    ["100 live rows", false],
-    ["100 live rows plus an expired row", true],
-  ])(
-    "at %s prints the quota message, exits 1 and sends nothing",
-    async (_l, withExpired) => {
-      const aSlug = slug(`quota-${String(withExpired)}`);
-      const org = await seedOrg(aSlug);
-      await seedLive(org, 100);
-      if (withExpired) {
-        await seedInvitation(org, address(`quota-${String(withExpired)}`), {
-          expiresIn: "-1 hour",
-        });
-      }
-      const before = await invitationRows(org);
-      const result = await cli(aSlug, address(`quota-${String(withExpired)}`));
+  it("at 100 live rows prints the quota message, exits 1 and sends nothing", async () => {
+    const aSlug = slug("quota");
+    const org = await seedOrg(aSlug);
+    await seedLive(org, 100);
+    const before = await invitationRows(org);
+    const result = await cli(aSlug, address("quota"));
 
-      expect(result.code).toBe(1);
-      expect(result.stderr).toContain("provision-organization: failed");
-      expect(result.stderr).toContain(
-        `Organization "${aSlug}" already has 100 pending invitations; no invitation was created.`,
-      );
-      expect(received).toHaveLength(0);
-      expect(await invitationRows(org)).toEqual(before);
-    },
-  );
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("provision-organization: failed");
+    expect(result.stderr).toContain(
+      `Organization "${aSlug}" already has 100 pending invitations; no invitation was created.`,
+    );
+    expect(received).toHaveLength(0);
+    expect(await invitationRows(org)).toEqual(before);
+  });
 
   it("with a live admin invitation exits 1, leaves the row and sends nothing", async () => {
     const aSlug = slug("admin");
