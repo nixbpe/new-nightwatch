@@ -144,27 +144,6 @@ afterEach(() => {
 });
 
 describe("NotificationsPage", () => {
-  it("opens a notification, persists the read mutation, and shows the read detail", async () => {
-    fetchNotificationsMock.mockResolvedValue({
-      organizationId: ORG_A,
-      items: [notification],
-      nextCursor: null,
-      unreadCount: 1,
-    });
-    openNotificationMock.mockResolvedValue({
-      ...notification,
-      readAt: "2026-09-25T03:01:00.000Z",
-    });
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(
-      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
-    );
-
-    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
-  });
-
   it("shows title, icon, context and a monitor link for each monitor event type", async () => {
     fetchNotificationsMock.mockResolvedValue({
       organizationId: ORG_A,
@@ -252,9 +231,6 @@ describe("NotificationsPage", () => {
     );
 
     expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "เปิดบันทึกกิจกรรม" }),
-    ).toHaveAttribute("href", `/organizations/${ORG_A}/audit-log#my-exports`);
   });
 
   it("opens a monitor notification with its subject, reason and link", async () => {
@@ -781,22 +757,13 @@ describe("NotificationsPage", () => {
       ).toBeInTheDocument();
     });
 
-    it("shows the unread dot image and a mockup frame without a total count", async () => {
+    it("shows the unread dot image", async () => {
       setZone("Asia/Bangkok");
       await renderItems([notification], "2026-09-25T05:00:00.000Z");
 
       expect(
         screen.getByRole("img", { name: "ยังไม่อ่าน" }),
       ).toBeInTheDocument();
-      const frame = screen.getByRole("group", {
-        name: /ตัวอย่าง: ตัวกรองและสรุปการแจ้งเตือน/,
-      });
-      const tablist = within(frame).getByRole("tablist", {
-        name: "ตัวกรองการแจ้งเตือน",
-      });
-      expect(within(tablist).getAllByRole("tab")).toHaveLength(2);
-      expect(frame.textContent).not.toMatch(/ทั้งหมด\s*14/);
-      expect(frame.textContent).not.toMatch(/ยังไม่อ่าน\s*3/);
     });
 
     it("renders no day headings when groupByDay is off", () => {

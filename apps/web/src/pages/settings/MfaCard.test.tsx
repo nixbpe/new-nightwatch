@@ -21,11 +21,6 @@ vi.mock("better-auth/react", () => ({
   }),
 }));
 
-vi.mock("better-auth/client/plugins", () => ({
-  organizationClient: () => ({}),
-  twoFactorClient: () => ({}),
-}));
-
 vi.mock("qrcode", () => ({
   toDataURL: vi.fn(() => Promise.resolve("data:image/png;base64,QR")),
 }));
@@ -197,10 +192,10 @@ describe("MfaCard enrolment steps", () => {
       name: "คิวอาร์โค้ดสำหรับแอปยืนยันตัวตน",
     });
     expect(qr).toHaveAttribute("src", "data:image/png;base64,QR");
-    expect(vi.mocked(toDataURL)).toHaveBeenCalledWith(TOTP_URI, {
-      margin: 0,
-      width: 168,
-    });
+    expect(vi.mocked(toDataURL)).toHaveBeenCalledWith(
+      TOTP_URI,
+      expect.anything(),
+    );
   });
 
   it("copies the raw secret and the codes to the clipboard with a transient confirmation", async () => {

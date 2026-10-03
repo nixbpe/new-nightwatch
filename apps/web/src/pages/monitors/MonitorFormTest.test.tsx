@@ -351,39 +351,10 @@ describe("Test panel states", () => {
   });
 });
 
-describe("Test result wording", () => {
-  it("shows the type that came back for a type mismatch and the AC-33 prefix label", async () => {
-    draftMock.mockResolvedValue(
-      result({
-        outcome: "fail",
-        failureReason: "assertion_failed",
-        evaluatedFromPrefix: true,
-        assertions: [
-          {
-            kind: "jsonPathEquals",
-            expected: "1",
-            actual: '"1"',
-            actualType: "string",
-            actualTruncated: false,
-            status: "fail",
-            reason: "type_mismatch",
-          },
-        ],
-      }),
-    );
-    const user = await openCreate();
-    await user.click(testButton());
-    const table = await screen.findByRole("table", {
-      name: "ผลการทดสอบต่อเงื่อนไข",
-    });
-    expect(
-      within(table).getByText(/ชนิดข้อมูลไม่ตรง \(ค่าจริงเป็น string\)/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("ประเมินจากส่วนต้นของ response"),
-    ).toBeInTheDocument();
-  });
-});
+// The type-mismatch wording and AC-33 prefix label are rendered by the same
+// shared AssertionTable component (../detail/AssertionTable) that
+// DetailPage.test.tsx's "shows the actual type of a type mismatch..." case
+// already covers.
 
 describe("Test panel SSL line", () => {
   it.each([
@@ -586,72 +557,16 @@ describe("Saving and testing are independent", () => {
 });
 
 describe("Edit test", () => {
-  const storedSecrets = record({
-    auth: { type: "bearer" },
-    secretSlots: [{ slot: "auth.token", configured: true }],
-  });
+  // "tests the complete config in the Edit endpoint with keep for every
+  // slot" was merged into MonitorFormSecrets.test.tsx's "tests in Edit with
+  // keep for an untouched slot and replace for a replaced one" (its unique
+  // assertions on name/url/auth, draftMock not called and no expectedVersion
+  // were moved there).
 
-  it("tests the complete config in the Edit endpoint with keep for every slot", async () => {
-    vi.mocked(fetchMonitorDetail).mockResolvedValue({
-      monitor: detail({
-        auth: { type: "bearer" },
-        secretSlots: storedSecrets.secretSlots,
-      }),
-    });
-    editTestMock.mockResolvedValue(result());
-    const user = userEvent.setup();
-    renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
-    await user.click(testButton());
-    await screen.findByText("การทดสอบผ่าน");
-    expect(draftMock).not.toHaveBeenCalled();
-    const [, monitorId, body] = editTestMock.mock.calls[0] ?? [];
-    expect(monitorId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    expect(body).toMatchObject({
-      name: "Payments API",
-      url: "https://api.acme.example/health",
-      auth: { type: "bearer" },
-      secrets: [{ slot: "auth.token", action: "keep" }],
-    });
-    expect(body).not.toHaveProperty("expectedVersion");
-  });
-
-  it("turns Save and Test off beside the URL when the origin changes while a secret is kept", async () => {
-    vi.mocked(fetchMonitorDetail).mockResolvedValue({
-      monitor: detail({
-        auth: { type: "bearer" },
-        secretSlots: storedSecrets.secretSlots,
-      }),
-    });
-    const user = userEvent.setup();
-    renderForm(editPath());
-    const url = await screen.findByLabelText("URL");
-    fireEvent.change(url, {
-      target: { value: "https://other.example/health" },
-    });
-    expect(url).toHaveAccessibleDescription(
-      expect.stringContaining(
-        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
-      ),
-    );
-    expect(testButton()).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "บันทึกการแก้ไข" }),
-    ).toBeDisabled();
-    expect(testButton()).toHaveAccessibleDescription(
-      expect.stringContaining(
-        "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
-      ),
-    );
-    fireEvent.change(url, {
-      target: { value: "https://api.acme.example/other" },
-    });
-    expect(testButton()).not.toBeDisabled();
-    editTestMock.mockResolvedValue(result());
-    await user.click(testButton());
-    expect(editTestMock).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("การทดสอบผ่าน")).toBeInTheDocument();
-  });
+  // Save/Test being disabled with the origin wording on both the URL field
+  // and the Test button is covered by MonitorFormSecrets.test.tsx's "names
+  // the origin wording, turns Save and Test off..." test (the Test button's
+  // accessible description assertion was moved there).
 
   it("shows the origin wording beside the URL on a 422 from the server", async () => {
     vi.mocked(fetchMonitorDetail).mockResolvedValue({ monitor: detail() });
@@ -755,15 +670,6 @@ describe("Redesign mockups and notes", () => {
       expect(fetchOrganizationNotificationSettings).toHaveBeenCalled();
     });
     expect(within(region).queryByText(ALERT_NOTE)).toBeNull();
-  });
-
-  it("uses the canvas description on the create form", async () => {
-    await openCreate();
-    expect(
-      screen.getByText(
-        "เพิ่มเว็บไซต์หรือ API เพื่อให้ NightWatch ตรวจสถานะเป็นระยะและแจ้งเมื่อล่มหรือ SSL ใกล้หมดอายุ",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("puts the test panel before the save button in DOM order", async () => {

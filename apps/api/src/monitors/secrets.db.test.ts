@@ -732,9 +732,10 @@ describe("Edit secrets (AC-26, AC-46)", () => {
     }
     expect(await secretRows(monitor.id)).toEqual(before);
     expect(await monitorRow(monitor.id)).toMatchObject({ version: 1 });
-    expect(await auditActions(monitor.id)).not.toContain(
-      "organization.monitor.secret.replace",
-    );
+    // A denied Edit writes no audit event at all, not just none named for a secret.
+    expect(await auditActions(monitor.id)).toEqual([
+      "organization.monitor.create",
+    ]);
   });
 
   it("leaves no monitor_secrets rows after the monitor is deleted", async () => {
@@ -1024,13 +1025,6 @@ describe("Audit events for secrets (F-005 AC-61, F-007)", () => {
     return (await auditActions(monitorId)).slice(before);
   };
 
-  it("writes one create event and no secret event for a Create with two slots", async () => {
-    const monitor = await created(basic());
-    expect(await auditActions(monitor.id)).toEqual([
-      "organization.monitor.create",
-    ]);
-  });
-
   it("writes one update event when an Edit changes config and stores a new slot and overwrites one", async () => {
     const monitor = await created(basic());
     const actions = await actionsAfter(monitor.id, () =>
@@ -1184,22 +1178,6 @@ describe("Audit events for secrets (F-005 AC-61, F-007)", () => {
       },
     });
     expect(JSON.stringify(changes)).toContain("\u2022\u2022\u2022");
-  });
-
-  it("writes nothing for a denied secret Edit", async () => {
-    const monitor = await created(bearer());
-    const actions = await actionsAfter(monitor.id, () =>
-      edit(
-        monitor,
-        {
-          secrets: [
-            { slot: "auth.token", action: "replace", value: NEW_TOKEN },
-          ],
-        },
-        org.users.viewer,
-      ),
-    );
-    expect(actions).toEqual([]);
   });
 
   it("rolls the secret write back when the event insert fails", async () => {

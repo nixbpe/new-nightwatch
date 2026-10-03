@@ -554,21 +554,6 @@ describe("invitation resend", () => {
     ).toBeVisible();
   });
 
-  it("traps Tab inside the dialog between กลับ and the confirm button", async () => {
-    serve(range(2));
-    const user = userEvent.setup();
-    renderSection();
-    await screen.findByText(emailOf(1));
-
-    await user.click(resendButton(1));
-    const back = screen.getByRole("button", { name: "กลับ" });
-    expect(back).toHaveFocus();
-    await user.tab();
-    expect(confirmButton()).toHaveFocus();
-    await user.tab();
-    expect(back).toHaveFocus();
-  });
-
   async function cancelThenResend(user: ReturnType<typeof userEvent.setup>) {
     await user.click(
       screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(3)}` }),

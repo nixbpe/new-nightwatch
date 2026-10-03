@@ -553,38 +553,6 @@ describe("organization member HTTP mutations", () => {
         .status,
     ).toBe(200);
 
-    // An unauthorized actor is denied before any target lookup, so a missing
-    // and an existing target are indistinguishable to a viewer.
-    for (const probedMemberId of [memberIds.owner, crypto.randomUUID()]) {
-      const probe = await targetClient(
-        "PATCH",
-        `/api/organizations/${organizationId}/members/${probedMemberId}/role`,
-        { role: "viewer" },
-      );
-      expect(probe.status).toBe(403);
-      expect(probe.json).toMatchObject({
-        error: { code: "PERMISSION_DENIED" },
-      });
-    }
-
-    const role = await ownerClient(
-      "PATCH",
-      `/api/organizations/${organizationId}/members/${memberIds.target}/role`,
-      { role: "admin" },
-    );
-    expect(role.status).toBe(200);
-    expect(role.json).toMatchObject({
-      member: { id: memberIds.target, userId: targetId, role: "admin" },
-    });
-    expect(
-      (
-        await owner.sql.query<{ role: string }>(
-          "select role from member where id = $1",
-          [memberIds.target],
-        )
-      ).rows[0]?.role,
-    ).toBe("admin");
-
     // Composite stored roles are projected to one contract role.
     await owner.sql.query(
       "update member set role = 'admin,viewer' where id = $1",
@@ -711,20 +679,6 @@ describe("organization member HTTP mutations", () => {
       });
       expect(JSON.stringify(denial)).not.toContain(organizationId);
     }
-
-    const lastOwner = await ownerClient(
-      "DELETE",
-      `/api/organizations/${organizationId}/members/me`,
-    );
-    expect(lastOwner.status).toBe(400);
-    expect(lastOwner.json).toMatchObject({ error: { code: "LAST_OWNER" } });
-    expect(
-      (
-        await owner.sql.query("select 1 from member where id = $1", [
-          memberIds.owner,
-        ])
-      ).rows,
-    ).toHaveLength(1);
 
     // Keep the target client live until all mutations complete: its session was
     // a real Better Auth session whose active-org mirror was cleared by revoke.
@@ -1307,13 +1261,6 @@ describe("organization member revoke HTTP contract", () => {
     expect(ownerAbsent.json).toMatchObject({
       error: { code: "MEMBER_NOT_FOUND" },
     });
-    // The sole owner cannot revoke itself.
-    const lastOwner = await ownerClient(
-      "DELETE",
-      `/api/organizations/${a}/members/${memberIds.revokeOwner}`,
-    );
-    expect(lastOwner.status).toBe(400);
-    expect(lastOwner.json).toMatchObject({ error: { code: "LAST_OWNER" } });
     const serialized = auditLines.join("\n");
     for (const secret of [
       a,

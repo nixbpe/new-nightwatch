@@ -189,26 +189,8 @@ describe("Create validation and save", () => {
     await screen.findByTestId("location");
   });
 
-  it("keeps the values and the same client request id when a retry follows a failure", async () => {
-    createMock
-      .mockRejectedValueOnce(new ApiError("INTERNAL_ERROR", "boom", 500))
-      .mockResolvedValueOnce(written());
-    fetchDetailMock.mockResolvedValue({ monitor: detail() });
-    const user = await openCreate();
-    await fillBasic(user);
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
-    expect(
-      await screen.findByText("บันทึกไม่สำเร็จ ลองอีกครั้ง"),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("Payments API");
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
-    await waitFor(() => {
-      expect(createMock).toHaveBeenCalledTimes(2);
-    });
-    expect(createMock.mock.calls[0]?.[1].clientRequestId).toBe(
-      createMock.mock.calls[1]?.[1].clientRequestId,
-    );
-  });
+  // The same-client-request-id-after-a-5xx-retry case is covered more
+  // strictly by MonitorFormRepair.test.tsx's "stays the same after..." it.each.
 
   it("shows a blocked address beside the URL, without an address, and keeps the values", async () => {
     createMock.mockRejectedValue(
@@ -304,46 +286,10 @@ describe("Access", () => {
     expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
   });
 
-  it("keeps the typed values and turns actions off when the role drops after PERMISSION_DENIED", async () => {
-    createMock.mockRejectedValue(
-      new ApiError("PERMISSION_DENIED", "denied", 403),
-    );
-    const user = await openCreate();
-    await fillBasic(user);
-    fetchMeContextMock.mockResolvedValue(context("viewer"));
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
-    expect(
-      (await screen.findAllByText("สิทธิ์ของคุณเปลี่ยนแล้ว")).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("Payments API");
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }),
-      ).toHaveAttribute("aria-disabled", "true");
-    });
-    expect(
-      screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }),
-    ).toHaveFocus();
-    expect(createMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows denied without the typed values when the user is removed from the Organization", async () => {
-    createMock.mockRejectedValue(
-      new ApiError("MEMBERSHIP_DENIED", "denied", 403),
-    );
-    const user = await openCreate();
-    await fillBasic(user);
-    fetchMeContextMock.mockResolvedValue(
-      context("owner", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
-    );
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
-    expect(
-      await screen.findByText(
-        "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Payments API")).toBeNull();
-  });
+  // The PERMISSION_DENIED and MEMBERSHIP_DENIED role-drop-after-save cases are
+  // covered by MonitorFormEdit.test.tsx's "Edit save" describe block: both
+  // Create and Edit submit through MonitorForm.tsx's single save() function,
+  // whose handleSaveError switch is mode-agnostic for these two error codes.
 });
 
 describe("Organization switch", () => {
@@ -476,13 +422,8 @@ describe("Edit", () => {
     expect(updateMock.mock.calls[1]?.[2].expectedVersion).toBe(5);
   });
 
-  it.each([
-    ["a missing id", () => new ApiError("MONITOR_NOT_FOUND", "nf", 404)],
-  ])("shows the same not-found text for %s on open", async (_label, error) => {
-    fetchDetailMock.mockRejectedValue(error());
-    renderForm(editPath());
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
-  });
+  // The not-found-on-open case (a missing id) is covered by
+  // MonitorFormEdit.test.tsx's 3-case "shows the same not-found text" it.each.
 
   it("shows not-found when the monitor is deleted before the save", async () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail() });

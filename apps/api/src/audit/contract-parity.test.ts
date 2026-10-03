@@ -12,19 +12,17 @@ import type { StoredConfig } from "../monitors/record";
 import { AUDIT_ACTION_CATEGORIES, roleChange } from "./record";
 
 describe("audit contract and writer agree", () => {
-  it("lists the same 16 actions, each with its category and a label", () => {
+  it("lists the same actions, each with its category and a label", () => {
     expect([...AUDIT_ACTIONS].sort()).toEqual(
       Object.keys(AUDIT_ACTION_CATEGORIES).sort(),
     );
-    expect(AUDIT_ACTIONS).toHaveLength(16);
     for (const action of AUDIT_ACTIONS) {
       expect(AUDIT_CATEGORIES).toContain(AUDIT_ACTION_CATEGORIES[action]);
       expect(AUDIT_ACTION_LABELS[action].length).toBeGreaterThan(0);
     }
   });
 
-  it("has a label for each of the 5 categories", () => {
-    expect(AUDIT_CATEGORIES).toHaveLength(5);
+  it("has a label for each category", () => {
     expect(Object.keys(AUDIT_CATEGORY_LABELS).sort()).toEqual(
       [...AUDIT_CATEGORIES].sort(),
     );

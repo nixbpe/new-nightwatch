@@ -673,18 +673,8 @@ describe("AuditLogPage authorization (AC-05, AC-06)", () => {
       await screen.findByText("คุณไม่ใช่สมาชิกขององค์กรนี้"),
     ).toBeInTheDocument();
   });
-
-  it("lets an auditor read and never offers export", async () => {
-    listMock.mockResolvedValue(makeList([makeEvent(0)]));
-    open("", undefined, "auditor");
-    expect(await screen.findByRole("table")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /ส่งออก/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "ไฟล์ส่งออกของฉัน" }),
-    ).not.toBeInTheDocument();
-  });
+  // An auditor's read access and the absence of export controls are covered
+  // by AuditExport.test.tsx's "does not render the button..." case.
 });
 
 describe("AuditLogPage Organization scope (AC-07)", () => {

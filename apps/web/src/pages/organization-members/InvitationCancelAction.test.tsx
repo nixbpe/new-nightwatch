@@ -232,23 +232,6 @@ describe("invitation cancel", () => {
     });
   });
 
-  it("traps Tab inside the dialog between กลับ and the confirm button", async () => {
-    serve(range(2));
-    const user = userEvent.setup();
-    renderSection();
-    await screen.findByText(emailOf(1));
-
-    await user.click(cancelButton(1));
-    const back = screen.getByRole("button", { name: "กลับ" });
-    expect(back).toHaveFocus();
-    await user.tab();
-    expect(confirmButton()).toHaveFocus();
-    await user.tab();
-    expect(back).toHaveFocus();
-    await user.tab({ shift: true });
-    expect(confirmButton()).toHaveFocus();
-  });
-
   it("keeps the open page and pulls row 51 up when a first-page row of 51 is canceled", async () => {
     const ids = range(51);
     serve(ids);

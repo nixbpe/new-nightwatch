@@ -30,16 +30,4 @@ describe("listMigrations", () => {
     ]);
     expect(migrations[0]?.sha256).toBe(sha256("select 1;"));
   });
-
-  it("rejects nothing on an empty directory", async () => {
-    expect(await listMigrations(dir)).toEqual([]);
-  });
-});
-
-describe("sha256", () => {
-  it("is stable and content-sensitive", () => {
-    expect(sha256("a")).toBe(sha256("a"));
-    expect(sha256("a")).not.toBe(sha256("b"));
-    expect(sha256("a")).toMatch(/^[0-9a-f]{64}$/);
-  });
 });

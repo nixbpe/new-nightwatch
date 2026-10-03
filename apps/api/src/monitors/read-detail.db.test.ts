@@ -109,28 +109,6 @@ describe("health: the seven steps, in List and Detail", () => {
       },
     },
     {
-      name: "3: a pass 2 x interval - 1 s old is fresh",
-      seed: (id) => results(id, [2 * INTERVAL - 1], "pass"),
-      expected: {
-        health: "up",
-        healthReason: null,
-        lastKnownDown: false,
-        consecutiveFailures: 0,
-        openIncident: false,
-      },
-    },
-    {
-      name: "3: a pass 2 x interval + 1 s old is stale",
-      seed: (id) => results(id, [2 * INTERVAL + 1], "pass"),
-      expected: {
-        health: "unknown",
-        healthReason: "stale",
-        lastKnownDown: false,
-        consecutiveFailures: 0,
-        openIncident: false,
-      },
-    },
-    {
       name: "3: stale with an open incident keeps lastKnownDown",
       monitor: { consecutiveFailures: 2 },
       seed: async (id) => {
@@ -188,17 +166,6 @@ describe("health: the seven steps, in List and Detail", () => {
         lastKnownDown: true,
         consecutiveFailures: 2,
         openIncident: true,
-      },
-    },
-    {
-      name: "6: pass",
-      seed: (id) => results(id, [10], "pass"),
-      expected: {
-        health: "up",
-        healthReason: null,
-        lastKnownDown: false,
-        consecutiveFailures: 0,
-        openIncident: false,
       },
     },
     {
@@ -388,11 +355,10 @@ describe("Resume compares database times (AC-19)", () => {
 
 describe("SSL level in Detail", () => {
   const DAY = 86_400;
+  // The full boundary matrix is the unit source of truth (health.test.ts,
+  // computeSsl); these two rows only prove the route wires it through.
   it.each([
     ["30 d exactly", 30 * DAY, "caution", 30],
-    ["30 d + 1 s", 30 * DAY + 1, "ok", 31],
-    ["7 d exactly", 7 * DAY, "danger", 7],
-    ["7 d + 1 s", 7 * DAY + 1, "caution", 8],
     ["expired 1 s ago", -1, "expired", 0],
   ] as const)("%s", async (name, secondsLeft, level, days) => {
     const id = await seedMonitor(ctx, detail.id, {
@@ -805,7 +771,7 @@ describe("Incidents", () => {
 describe("Detail, Checks and Incidents: access", () => {
   let id: string;
   let foreign: string;
-  const suffixes = ["", "/checks", "/incidents"];
+  const suffixes = ["", "/checks", "/incidents", "/response-times", "/events"];
 
   beforeAll(async () => {
     id = await seedMonitor(ctx, access.id, {

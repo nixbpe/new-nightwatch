@@ -63,11 +63,6 @@ vi.mock("better-auth/react", async () => {
   };
 });
 
-vi.mock("better-auth/client/plugins", () => ({
-  organizationClient: () => ({}),
-  twoFactorClient: () => ({}),
-}));
-
 function LocationProbe() {
   const location = useLocation();
   return (
@@ -170,23 +165,9 @@ describe("LoginPage", () => {
     );
     expect(signInEmailMock).not.toHaveBeenCalled();
   });
-  it("removes the cancelled help-link mockup and preserves the login payload", async () => {
+  it("submits the entered credentials unchanged", async () => {
     renderPage();
     await screen.findByRole("button", { name: "เข้าสู่ระบบ" });
-
-    expect(
-      screen.queryByRole("group", { name: "ตัวอย่าง: ลิงก์ช่วยเหลือ" }),
-    ).toBeNull();
-    expect(screen.queryByRole("link", { name: /issue #67/ })).toBeNull();
-    expect(screen.queryByText("เอกสาร")).toBeNull();
-    expect(screen.queryByText("ติดต่อผู้ดูแล", { exact: true })).toBeNull();
-    expect(
-      screen.getByText("ยังไม่มีคำเชิญ? ติดต่อผู้ดูแลองค์กรของคุณ"),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("navigation")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "เข้าสู่ระบบ" }),
-    ).toHaveAccessibleName("เข้าสู่ระบบ");
 
     signInEmailMock.mockResolvedValue({ data: null, error: null });
     await submitLogin("member@example.com", "correct-password");
@@ -238,8 +219,43 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: "เข้าสู่ระบบ" })).toBeEnabled();
   });
 
-  it("an unverified account is offered the resend page instead of a dead end", async () => {
-    // EMAIL_NOT_VERIFIED is recoverable: the error links to the anonymous-safe resend hub.
+  it.each([
+    [
+      "EMAIL_NOT_VERIFIED with a 403 status",
+      {
+        code: "EMAIL_NOT_VERIFIED",
+        message: "Email not verified",
+        status: 403,
+      },
+      "อีเมลนี้ยังไม่ได้รับการยืนยัน",
+    ],
+    [
+      "EMAIL_NOT_VERIFIED without a 403 status",
+      { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
+      "อีเมลนี้ยังไม่ได้รับการยืนยัน",
+    ],
+    [
+      "a 403 without a code",
+      { message: "Forbidden", status: 403 },
+      "เข้าสู่ระบบไม่สำเร็จ",
+    ],
+  ] as const)(
+    // Each of these is recoverable: the error links to the anonymous-safe resend hub.
+    "offers the resend page instead of a dead end for %s",
+    async (_label, error, alertText) => {
+      signInEmailMock.mockResolvedValue({ data: null, error });
+      renderPage();
+
+      await submitLogin("new@example.com", "super-secret-1");
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(alertText);
+      expect(
+        screen.getByRole("link", { name: "ไปที่หน้ายืนยันอีเมล" }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("the resend link navigates to the verify-email page", async () => {
     signInEmailMock.mockResolvedValue({
       data: null,
       error: {
@@ -251,10 +267,7 @@ describe("LoginPage", () => {
     renderPage();
 
     await submitLogin("new@example.com", "super-secret-1");
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "อีเมลนี้ยังไม่ได้รับการยืนยัน",
-    );
+    await screen.findByRole("alert");
     const user = userEvent.setup();
     await user.click(
       screen.getByRole("link", { name: "ไปที่หน้ายืนยันอีเมล" }),
@@ -262,40 +275,6 @@ describe("LoginPage", () => {
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/verify-email",
     );
-  });
-
-  it("offers the resend page for EMAIL_NOT_VERIFIED even without a 403 status", async () => {
-    signInEmailMock.mockResolvedValue({
-      data: null,
-      error: { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
-    });
-    renderPage();
-
-    await submitLogin("new@example.com", "super-secret-1");
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "อีเมลนี้ยังไม่ได้รับการยืนยัน",
-    );
-    expect(
-      screen.getByRole("link", { name: "ไปที่หน้ายืนยันอีเมล" }),
-    ).toBeInTheDocument();
-  });
-
-  it("offers the resend page on a 403 without a code, showing the fallback text", async () => {
-    signInEmailMock.mockResolvedValue({
-      data: null,
-      error: { message: "Forbidden", status: 403 },
-    });
-    renderPage();
-
-    await submitLogin("new@example.com", "super-secret-1");
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "เข้าสู่ระบบไม่สำเร็จ",
-    );
-    expect(
-      screen.getByRole("link", { name: "ไปที่หน้ายืนยันอีเมล" }),
-    ).toBeInTheDocument();
   });
 
   it("keeps the deep link when session identity remounts before sign-in settles", async () => {

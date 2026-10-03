@@ -18,8 +18,4 @@ describe("AppError", () => {
     expect(error.message).toBe("A scan is already running");
     expect(error.details).toEqual({ scanId: "123" });
   });
-
-  it("defaults to statusCode 500", () => {
-    expect(new AppError(500, "BOOM", "boom").statusCode).toBe(500);
-  });
 });

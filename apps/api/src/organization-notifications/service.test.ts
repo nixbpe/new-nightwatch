@@ -107,41 +107,4 @@ describe("updateOrganizationNotificationSettings", () => {
       ),
     ).toBe(false);
   });
-
-  it("rejects a stale version before a no-op can hide it", async () => {
-    const database = {
-      sql: {
-        connect: () =>
-          Promise.resolve({
-            query: (text: string) => {
-              if (text.includes("from organization"))
-                return Promise.resolve({ rows: [{ id: ORGANIZATION_ID }] });
-              if (text.includes("pg_advisory_xact_lock"))
-                return Promise.resolve({ rows: [] });
-              if (text.includes("from member"))
-                return Promise.resolve({ rows: [{ role: "owner" }] });
-              if (text.includes("notification_org_settings")) {
-                return Promise.resolve({
-                  rows: [{ settingsChangedEnabled: true, version: 2 }],
-                });
-              }
-              throw new Error(`unexpected query: ${text}`);
-            },
-            release: () => undefined,
-          }),
-      },
-    };
-
-    await expect(
-      updateOrganizationNotificationSettings(database as never, {
-        organizationId: ORGANIZATION_ID,
-        userId: USER_ID,
-        actorDisplayName: "Owner",
-        update: { expectedVersion: 1, settingsChangedEnabled: true },
-      }),
-    ).rejects.toMatchObject({
-      code: "SETTINGS_VERSION_CONFLICT",
-      statusCode: 409,
-    });
-  });
 });

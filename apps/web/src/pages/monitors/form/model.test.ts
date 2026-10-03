@@ -249,42 +249,10 @@ describe("Edit payloads", () => {
     ).not.toHaveProperty("expectedVersion");
   });
 
-  it("detects an origin change only when a secret slot is kept", () => {
-    const values = valuesFromRecord(stored);
-    const base = editBaseFromRecord(stored);
-    expect(secretOriginChanged(base, values)).toBe(false);
-    expect(
-      secretOriginChanged(base, {
-        ...values,
-        url: "https://api.acme.example/other?x=1",
-      }),
-    ).toBe(false);
-    expect(
-      secretOriginChanged(base, {
-        ...values,
-        url: "http://api.acme.example/health",
-      }),
-    ).toBe(true);
-    expect(
-      secretOriginChanged(base, {
-        ...values,
-        url: "https://api.acme.example:8443/health",
-      }),
-    ).toBe(true);
-    expect(
-      secretOriginChanged(base, {
-        ...values,
-        url: "https://other.example/health",
-      }),
-    ).toBe(true);
-    const plain = record();
-    expect(
-      secretOriginChanged(editBaseFromRecord(plain), {
-        ...valuesFromRecord(plain),
-        url: "https://other.example",
-      }),
-    ).toBe(false);
-  });
+  // Path/query, scheme, port and host origin-change cases are covered by
+  // form/secrets.test.tsx's "treats %s as %s" it.each; the no-secrets-at-all
+  // case is covered by MonitorFormSecrets.test.tsx's "does not block an
+  // origin change on a monitor without secrets".
 
   it("counts advanced settings that are not at their default", () => {
     expect(advancedCount(defaultValues())).toBe(0);

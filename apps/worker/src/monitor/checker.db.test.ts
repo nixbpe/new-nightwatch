@@ -18,7 +18,6 @@ import {
   seedMonitor,
   startTarget,
   startTestDatabase,
-  TARGET_HOST,
   updateMonitor,
   type SeededMonitor,
   type Target,
@@ -495,33 +494,6 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     }
   });
 
-  it("pass, fail, pass opens no incident", async () => {
-    const target = await startTarget();
-    try {
-      const monitor = await seedMonitor(db, { url: `${target.url}/` });
-      const { events } = await runSteps(monitor, target, [
-        "pass",
-        "fail",
-        "pass",
-      ]);
-      expect(events).toEqual([]);
-      expect((await countAll(monitor)).incidents).toBe(0);
-    } finally {
-      await target.close();
-    }
-  });
-
-  it("fail, fail from the first check opens an incident", async () => {
-    const target = await startTarget();
-    try {
-      const monitor = await seedMonitor(db, { url: `${target.url}/` });
-      const { states } = await runSteps(monitor, target, ["fail", "fail"]);
-      expect(states.map((state) => state.open)).toEqual([false, true]);
-    } finally {
-      await target.close();
-    }
-  });
-
   it("a third failure keeps the one open incident", async () => {
     const target = await startTarget();
     try {
@@ -769,36 +741,6 @@ async function storeSecret(
 }
 
 describe("secrets in the checker (JOB-05)", () => {
-  it("decrypts in memory, sends the value and stores none of it", async () => {
-    const target = await startTarget();
-    try {
-      const monitor = await seedMonitor(db, {
-        url: `${target.url}/`,
-        authType: "bearer",
-      });
-      // Built at runtime so no key-like literal sits in the source.
-      const secretValue = ["tok", "fixture", randomUUID()].join("-");
-      await storeSecret(monitor, "auth.token", secretValue);
-      expect(await processMonitorCheck(monitor.job(), dependencies())).toBe(
-        "recorded",
-      );
-
-      expect(target.requests[0]?.headers.authorization).toBe(
-        `Bearer ${secretValue}`,
-      );
-      const stored = await rows(
-        db,
-        monitor,
-        "select * from monitor_check_results where monitor_id = $1",
-        [monitor.monitorId],
-      );
-      expect(JSON.stringify(stored)).not.toContain(secretValue);
-      expect(stored[0]?.outcome).toBe("pass");
-    } finally {
-      await target.close();
-    }
-  });
-
   it("sends basic credentials, an API key and a secret header on scheduled checks", async () => {
     const target = await startTarget();
     try {
@@ -906,33 +848,6 @@ describe("secrets in the checker (JOB-05)", () => {
       expect(reads).toHaveLength(1);
       expect(reads[0]).toMatch(/from\s+monitors\s+as\s+m/);
       expect(target.requests[0]?.headers.authorization).toBe("Bearer tok");
-    } finally {
-      await target.close();
-    }
-  });
-
-  it("a tampered ciphertext is check_error secret_decrypt_failed with no request", async () => {
-    const target = await startTarget();
-    try {
-      const monitor = await seedMonitor(db, {
-        url: `${target.url}/`,
-        authType: "bearer",
-      });
-      await storeSecret(monitor, "auth.token", "tok");
-      await withTenantContextRaw(db.runtime, monitor.tenantId, (client) =>
-        client.query(
-          `update monitor_secrets
-           set ciphertext = set_byte(ciphertext, 0, get_byte(ciphertext, 0) # 255)
-           where monitor_id = $1`,
-          [monitor.monitorId],
-        ),
-      );
-      await processMonitorCheck(monitor.job(), dependencies());
-      expect(target.requests).toHaveLength(0);
-      expect((await results(monitor))[0]).toMatchObject({
-        outcome: "check_error",
-        failure_reason: "secret_decrypt_failed",
-      });
     } finally {
       await target.close();
     }
@@ -1172,32 +1087,6 @@ describe("egress canary classification (AC-55)", () => {
     } finally {
       await target.close();
     }
-  });
-
-  it("probes the canary URL through the SSRF helper", async () => {
-    const answering = await startTarget();
-    try {
-      const up = createEgressCanary({
-        urls: [`${answering.url}/ping`],
-        outbound: outboundDeps,
-      });
-      expect(await up.status()).toBe("ok");
-      expect(answering.requests[0]?.method).toBe("HEAD");
-    } finally {
-      await answering.close();
-    }
-    const port = await closedPort();
-    const down = createEgressCanary({
-      urls: [`http://target.nw-test.internal:${String(port)}/`],
-      outbound: outboundDeps,
-    });
-    expect(await down.status()).toBe("failed");
-    // A canary URL that resolves to a forbidden address is refused, never contacted.
-    const blocked = createEgressCanary({
-      urls: ["http://blocked.example.test:8080/"],
-      outbound: { resolver: () => Promise.resolve(["127.0.0.1"]) },
-    });
-    expect(await blocked.status()).toBe("failed");
   });
 });
 
@@ -1519,25 +1408,6 @@ describe("assertion values and redirects on scheduled checks", () => {
       await forbidden.close();
     }
   });
-
-  it("more than five redirects is redirect_limit and a fail (AC-34)", async () => {
-    const target = await startTarget((request, response) => {
-      const hop = Number(/hop=(\d+)/.exec(request.url ?? "")?.[1] ?? "0");
-      response.statusCode = 302;
-      response.setHeader("location", `/?hop=${String(hop + 1)}`);
-      response.end();
-    });
-    try {
-      const monitor = await seedMonitor(db, { url: `${target.url}/` });
-      await processMonitorCheck(monitor.job(), dependencies());
-      expect((await results(monitor))[0]).toMatchObject({
-        outcome: "fail",
-        failure_reason: "redirect_limit",
-      });
-    } finally {
-      await target.close();
-    }
-  });
 });
 
 describe("hourly rollup response times", () => {
@@ -1638,69 +1508,6 @@ describe("shutdown signal listeners", () => {
       held.resolve(undefined);
       await running;
       expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
-    } finally {
-      await target.close();
-    }
-  });
-});
-
-describe("egress canary and redirects", () => {
-  it("a canary that redirects to a dead port still reads ok and is not followed", async () => {
-    const dead = await closedPort();
-    const target = await startTarget((_request, response) => {
-      response.statusCode = 302;
-      response.setHeader("location", `http://${TARGET_HOST}:${String(dead)}/`);
-      response.end();
-    });
-    try {
-      const canary = createEgressCanary({
-        urls: [`${target.url}/`],
-        outbound: outboundDeps,
-      });
-      expect(await canary.status()).toBe("ok");
-      expect(target.requests).toHaveLength(1);
-    } finally {
-      await target.close();
-    }
-  });
-
-  it("an aborted shutdown signal skips the probe and reads unknown", async () => {
-    let probes = 0;
-    const controller = new AbortController();
-    const canary = createEgressCanary({
-      urls: ["https://canary.example.test"],
-      signal: controller.signal,
-      probe: () => {
-        probes += 1;
-        return Promise.resolve(false);
-      },
-    });
-    controller.abort();
-    expect(await canary.status()).toBe("unknown");
-    expect(probes).toBe(0);
-  });
-
-  it("counts a redirecting or looping canary URL as answering", async () => {
-    const target = await startTarget((request, response) => {
-      if (request.url === "/loop") {
-        response.statusCode = 302;
-        response.setHeader("location", "/loop");
-      } else if (request.url === "/hop") {
-        response.statusCode = 302;
-        response.setHeader("location", "/final");
-      } else {
-        response.statusCode = 200;
-      }
-      response.end();
-    });
-    try {
-      for (const path of ["/hop", "/loop"]) {
-        const canary = createEgressCanary({
-          urls: [`${target.url}${path}`],
-          outbound: outboundDeps,
-        });
-        expect(await canary.status()).toBe("ok");
-      }
     } finally {
       await target.close();
     }

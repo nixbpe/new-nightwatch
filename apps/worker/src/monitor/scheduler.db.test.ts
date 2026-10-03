@@ -632,38 +632,6 @@ describe("monitor scheduler", () => {
 });
 
 describe("worker shutdown", () => {
-  it("stops the monitor scheduler on SIGTERM and exits cleanly", async () => {
-    const child = spawn("bun", ["run", workerEntry], {
-      env: {
-        PATH: process.env.PATH,
-        DATABASE_URL: runtimeUrl,
-        REDIS_URL: redisUrl,
-        WORKER_ROLES: "monitor-scheduler",
-        NODE_ENV: "test",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let output = "";
-    const ready = Promise.withResolvers<undefined>();
-    child.stdout.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-      if (output.includes("worker ready")) ready.resolve(undefined);
-    });
-    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
-    const exited = new Promise<number | null>((resolve) =>
-      child.once("close", resolve),
-    );
-    await ready.promise;
-    child.kill("SIGTERM");
-
-    expect(await exited).toBe(0);
-    const requested = output.indexOf("worker shutdown requested");
-    const stopped = output.indexOf("monitor scheduler stopped");
-    expect(requested).toBeGreaterThan(-1);
-    expect(stopped).toBeGreaterThan(requested);
-    expect(output).not.toContain("failed");
-  }, 30_000);
-
   it.each(["blackholed", "refused"] as const)(
     "exits 0 on SIGTERM while an enqueue is in flight and Redis is %s",
     async (mode) => {
@@ -733,7 +701,10 @@ describe("worker shutdown", () => {
 
         expect(await exited).toBe(0);
         expect(Date.now() - signalled).toBeLessThan(15_000);
-        expect(output).toContain("monitor scheduler stopped");
+        const requested = output.indexOf("worker shutdown requested");
+        const stopped = output.indexOf("monitor scheduler stopped");
+        expect(requested).toBeGreaterThan(-1);
+        expect(stopped).toBeGreaterThan(requested);
         for (const line of [
           "round failed",
           "purge failed",

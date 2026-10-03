@@ -389,16 +389,10 @@ describe("WorkspacePage organization views", () => {
     sessionState.data = null;
   });
 
-  it("a viewer membership sees no invite controls", async () => {
-    // Invitation is owner/admin-only in the UI, matching the server-side 403 for lesser roles.
-    fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
-    renderPage();
-
-    await findScope("Org B", "ผู้ชม");
-    expect(screen.getByText(/ผู้ชม/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
-    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
-  });
+  // A viewer having no invite controls is subsumed by "an owner sees overview
+  // without the removed invitation form": the invitation form was removed for
+  // every role, not gated by role, so the owner case (the role most likely to
+  // have kept it) is the stronger assertion.
 
   it("an owner sees overview without the removed invitation form", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));

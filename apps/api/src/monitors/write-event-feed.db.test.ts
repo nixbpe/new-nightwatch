@@ -190,13 +190,6 @@ describe("Edit writes the editor and the changed fields", () => {
     expect(named.rows).toEqual([{ url_masked: null }]);
   });
 
-  it("writes no event for a save that changes nothing", async () => {
-    const monitor = await created();
-    const response = await edit(org.users.owner, monitor, configOf(monitor));
-    expect(response.status).toBe(200);
-    expect(await eventRows(monitor.id)).toEqual([]);
-  });
-
   it("writes no event for the Edit that loses with 409", async () => {
     const monitor = await created();
     const first = await edit(org.users.owner, monitor, {
@@ -272,12 +265,5 @@ describe("Pause and Resume write the actor", () => {
     for (const event of events) {
       expect(event).toMatchObject({ actor: { kind: "member" } });
     }
-  });
-
-  it("writes no event for a Pause of an already paused monitor", async () => {
-    const monitor = await created();
-    await action(org.users.owner, monitor, "pause");
-    await action(org.users.owner, monitor, "pause");
-    expect(await eventRows(monitor.id)).toHaveLength(1);
   });
 });

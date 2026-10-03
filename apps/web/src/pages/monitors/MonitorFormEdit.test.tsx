@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,7 +50,6 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
 
 const updateMock = vi.mocked(updateMonitor);
 const detailMock = vi.mocked(fetchMonitorDetail);
-const SECRET_ID = "0f6a4b7e-1c2d-4e3f-8a9b-0c1d2e3f4a5b";
 
 beforeEach(() => {
   vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
@@ -151,70 +150,14 @@ describe("Edit opens with the saved configuration", () => {
   });
 });
 
-describe("Edit keeps stored secrets", () => {
-  const withSecrets = () =>
-    detail({
-      auth: { type: "bearer" },
-      headers: [
-        { id: SECRET_ID, name: "X-Api-Key", secret: true },
-        { name: "X-Team", value: "core", secret: false },
-      ],
-      secretSlots: [
-        { slot: "auth.token", configured: true },
-        { slot: `header.${SECRET_ID}`, configured: true },
-      ],
-    });
-
-  it("shows auth and secret headers as set, with a replace button and no value or password field", async () => {
-    detailMock.mockResolvedValue({ monitor: withSecrets() });
-    renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
-    const auth = screen.getByRole("region", { name: "การยืนยันตัวตน" });
-    expect(within(auth).getByLabelText("ชนิด")).toHaveValue("bearer");
-    expect(within(auth).getByText("ตั้งค่าแล้ว")).toBeInTheDocument();
-    expect(
-      within(auth).getByRole("button", { name: "แทนที่ Token" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "แทนที่ ค่า header แถวที่ 1" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "ลบ header แถวที่ 1" }),
-    ).toBeInTheDocument();
-    expect(document.querySelector('input[type="password"]')).toBeNull();
-    expect(screen.getByLabelText("ค่าลับ header แถวที่ 1")).toBeChecked();
-    expect(screen.getByLabelText("ค่าลับ header แถวที่ 2")).not.toBeChecked();
-  });
-
-  it("saves with the same auth, the secret header and a keep for every slot", async () => {
-    detailMock.mockResolvedValue({ monitor: withSecrets() });
-    const user = userEvent.setup();
-    renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
-    await user.click(screen.getByRole("button", { name: "เพิ่ม header" }));
-    await user.type(screen.getByLabelText("ชื่อ header แถวที่ 3"), "X-New");
-    await user.type(screen.getByLabelText("ค่า header แถวที่ 3"), "1");
-    await user.click(saveEdit());
-    await waitFor(() => {
-      expect(updateMock).toHaveBeenCalledTimes(1);
-    });
-    expect(updateMock.mock.calls[0]?.[2]).toEqual(
-      expect.objectContaining({
-        expectedVersion: 1,
-        auth: { type: "bearer" },
-        headers: [
-          { id: SECRET_ID, name: "X-Api-Key", secret: true },
-          { name: "X-Team", value: "core", secret: false },
-          { name: "X-New", value: "1", secret: false },
-        ],
-        secrets: [
-          { slot: "auth.token", action: "keep" },
-          { slot: `header.${SECRET_ID}`, action: "keep" },
-        ],
-      }),
-    );
-  });
-});
+// "Edit keeps stored secrets" was removed: the auth-as-set display and its
+// replace button are covered by MonitorFormSecrets.test.tsx's "shows
+// 'ตั้งค่าแล้ว' with a replace button and sends keep when it is not pressed";
+// the stored secret header's checked state and replace are covered by its
+// "secret headers" nested describe's "shows a stored secret header as set and
+// replaces it with a new value"; the "keep every stored slot" payload shape
+// is covered at the model level by form/model.test.ts's "keeps every stored
+// slot the config still uses and sends the header as a secret without a value".
 
 describe("Edit save", () => {
   it("sends one update for a repeated press", async () => {

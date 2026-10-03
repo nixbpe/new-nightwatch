@@ -252,11 +252,10 @@ describe("List: filters", () => {
 
 describe("List: SSL level", () => {
   const DAY = 86_400;
+  // The full boundary matrix is the unit source of truth (health.test.ts,
+  // computeSsl); these two rows only prove the route wires it through.
   it.each([
     ["30 d exactly", 30 * DAY, "caution", 30],
-    ["30 d + 1 s", 30 * DAY + 1, "ok", 31],
-    ["7 d exactly", 7 * DAY, "danger", 7],
-    ["7 d + 1 s", 7 * DAY + 1, "caution", 8],
     ["expired 1 s ago", -1, "expired", 0],
   ] as const)("%s", async (label, secondsLeft, level, days) => {
     // The fixture expiry is fixed before the request, so the request sees a

@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app";
 import type { Auth } from "./auth";
 import { createMailer } from "./auth/mailer";
+import pkg from "../package.json";
 
 const env: Env = { PORT: 4000, LOG_LEVEL: "silent", NODE_ENV: "test" };
 const authEnv: AuthEnv = {
@@ -92,8 +93,8 @@ describe("system endpoints", () => {
     const res = await makeApp().request("/version");
     expect(res.status).toBe(200);
     expect(versionResponseSchema.parse(await res.json())).toEqual({
-      name: "@nightwatch/api",
-      version: "0.0.1",
+      name: pkg.name,
+      version: pkg.version,
     });
   });
 });
@@ -414,37 +415,37 @@ describe("auth boundary wiring", () => {
     expect(serializedBody).not.toContain(submittedOrganizationId);
   });
 
-  it.each(["9007199254740992", "9223372036854775808", "1e2", "1.5"])(
-    "rejects invalid member offset %j before opening a database connection",
-    async (offset) => {
-      const connect = vi.fn(() => {
-        throw new Error("member list database access must not occur");
-      });
-      const query = vi.fn(() => {
-        throw new Error("member list database access must not occur");
-      });
-      const database = {
-        db: undefined as unknown as Database["db"],
-        sql: { connect, query } as unknown as Database["sql"],
-        close: () => Promise.resolve(),
-      } satisfies Database;
-      const app = makeApp({ auth: stubAuth, database });
+  it("rejects an invalid member offset before opening a database connection", async () => {
+    // The schema's own boundaries (safe integer, decimal only) are covered by
+    // packages/api-contract/src/auth.test.ts; this proves the route never
+    // touches the database for a value that schema already rejects.
+    const connect = vi.fn(() => {
+      throw new Error("member list database access must not occur");
+    });
+    const query = vi.fn(() => {
+      throw new Error("member list database access must not occur");
+    });
+    const database = {
+      db: undefined as unknown as Database["db"],
+      sql: { connect, query } as unknown as Database["sql"],
+      close: () => Promise.resolve(),
+    } satisfies Database;
+    const app = makeApp({ auth: stubAuth, database });
 
-      const res = await app.request(
-        `/api/organizations/11111111-1111-4111-8111-111111111111/members?offset=${offset}`,
-      );
+    const res = await app.request(
+      "/api/organizations/11111111-1111-4111-8111-111111111111/members?offset=9223372036854775808",
+    );
 
-      expect(res.status).toBe(400);
-      expect(errorResponseSchema.parse(await res.json())).toEqual({
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "Request validation failed",
-        },
-      });
-      expect(connect).not.toHaveBeenCalled();
-      expect(query).not.toHaveBeenCalled();
-    },
-  );
+    expect(res.status).toBe(400);
+    expect(errorResponseSchema.parse(await res.json())).toEqual({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Request validation failed",
+      },
+    });
+    expect(connect).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+  });
 
   it("routes /api/auth/* through the composed auth handler", async () => {
     const app = makeApp({

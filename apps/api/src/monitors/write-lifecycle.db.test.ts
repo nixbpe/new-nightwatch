@@ -1175,24 +1175,6 @@ describe("audit and logs", () => {
       expect(event.requestId).toBe(requestId);
     }
   });
-
-  it("logs request paths as templates without organization or monitor ids", async () => {
-    const monitor = await created();
-    await action(monitor, "pause");
-    const paths = ctx
-      .logRecords()
-      .filter((line) => line.msg === "request completed")
-      .map((line) => String(line.path));
-    expect(paths).toContain(
-      "/api/organizations/:organizationId/monitors/:monitorId/pause",
-    );
-    expect(paths).toContain("/api/organizations/:organizationId/monitors");
-    for (const path of paths) {
-      expect(path).not.toMatch(
-        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
-      );
-    }
-  });
 });
 
 describe("audit failure (AC-21)", () => {

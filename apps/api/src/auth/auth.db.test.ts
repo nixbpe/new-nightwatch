@@ -997,55 +997,6 @@ describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
   });
 });
 
-describe("password recovery cycle", () => {
-  it("issues a reset token by mail and rotates the password exactly", async () => {
-    const owner = await signInOwner();
-    const invite = await owner(
-      "POST",
-      `/api/organizations/${ORG_ID}/invitations`,
-      {
-        email: userEmail("recover"),
-        role: "viewer",
-      },
-    );
-    expect(invite.status).toBe(201);
-    const invitationId = invitationIdFromMail(
-      findMail(userEmail("recover"), "คำเชิญ").text,
-    );
-    const recover = await admitUser("recover", invitationId);
-    const accepted = await recover.request(
-      "POST",
-      `/api/onboarding/invitations/${invitationId}/accept`,
-    );
-    expect(accepted.status).toBe(200);
-
-    const request = await recover.request(
-      "POST",
-      "/api/auth/request-password-reset",
-      { email: recover.email, redirectTo: `${APP_URL}/reset-password` },
-    );
-    expect(request.status).toBe(200);
-    const resetMail = findMail(recover.email, "รีเซ็ตรหัสผ่าน");
-    const token = linkQuery(resetMail.text, "token");
-    const newPassword = "Auth-It-NewPassw0rd!";
-    const reset = await recover.request("POST", "/api/auth/reset-password", {
-      newPassword,
-      token,
-    });
-    expect(reset.status).toBe(200);
-
-    const oldLogin = await client()("POST", "/api/auth/sign-in/email", {
-      email: recover.email,
-      password: PASSWORD,
-    });
-    expect(oldLogin.status).toBe(401);
-    const newLogin = await client()("POST", "/api/auth/sign-in/email", {
-      email: recover.email,
-      password: newPassword,
-    });
-    expect(newLogin.status).toBe(200);
-  });
-});
 describe("native password notification origins", () => {
   it("emits once for a changed native credential hash, skips repeated identical hashes, and rolls back failed intent writes", async () => {
     const email = userEmail("password-origin");
@@ -1333,8 +1284,9 @@ describe("native password notification origins", () => {
       { email: member.email, redirectTo: `${APP_URL}/reset-password` },
     );
     expect(resetRequest.status).toBe(200);
+    const newPassword = "Auth-It-FirstCredentialPassw0rd!";
     const reset = await member.request("POST", "/api/auth/reset-password", {
-      newPassword: "Auth-It-FirstCredentialPassw0rd!",
+      newPassword,
       token: linkQuery(findMail(member.email, "รีเซ็ตรหัสผ่าน").text, "token"),
     });
     expect(reset.status).toBe(200);
@@ -1343,6 +1295,19 @@ describe("native password notification origins", () => {
       intentCount: 1,
       ledgerCount: 1,
     });
+
+    // The reset created the only credential, so the signup password never
+    // worked and the new one signs in through the ordinary HTTP flow.
+    const oldLogin = await client()("POST", "/api/auth/sign-in/email", {
+      email: member.email,
+      password: PASSWORD,
+    });
+    expect(oldLogin.status).toBe(401);
+    const newLogin = await client()("POST", "/api/auth/sign-in/email", {
+      email: member.email,
+      password: newPassword,
+    });
+    expect(newLogin.status).toBe(200);
   });
 });
 
@@ -1815,7 +1780,7 @@ describe("MFA re-enrollment atomicity", () => {
 });
 
 describe("native organization membership mutation guard", () => {
-  it("rejects direct native member mutations without touching membership mirrors or notification state, while first-party mutations retain their locked rules", async () => {
+  it("rejects direct native member mutations without touching membership mirrors or notification state", async () => {
     const organizationId = crypto.randomUUID();
     const ownerEmail = userEmail("member-guard-owner");
     const targetEmail = userEmail("member-guard-target");
@@ -1947,49 +1912,10 @@ describe("native organization membership mutation guard", () => {
         leaverId,
       ),
     ).toEqual(before);
-
-    const role = await owner.request(
-      "PATCH",
-      `/api/organizations/${organizationId}/members/${targetMemberId}/role`,
-      { role: "admin" },
-    );
-    expect(role.status).toBe(200);
-    const revoke = await owner.request(
-      "DELETE",
-      `/api/organizations/${organizationId}/members/${targetMemberId}`,
-    );
-    expect(revoke.status).toBe(200);
-    const leave = await leaver.request(
-      "DELETE",
-      `/api/organizations/${organizationId}/members/me`,
-    );
-    expect(leave.status).toBe(200);
-    const lastOwner = await owner.request(
-      "DELETE",
-      `/api/organizations/${organizationId}/members/me`,
-    );
-    expect(lastOwner.status).toBe(400);
-    expect(lastOwner.json).toMatchObject({ error: { code: "LAST_OWNER" } });
-
-    const afterFirstParty = await memberMutationSnapshot(
-      organizationId,
-      ownerId,
-      targetMemberId,
-      targetId,
-      leaverId,
-    );
-    expect(afterFirstParty).toMatchObject({
-      targetRole: null,
-      targetMembership: 0,
-      leaverMembership: 0,
-      targetLastActiveOrganizationId: null,
-      leaverLastActiveOrganizationId: null,
-      targetActiveOrganizationSessions: 0,
-      leaverActiveOrganizationSessions: 0,
-      notificationIntentCount: before.notificationIntentCount,
-      notificationLedgerCount: before.notificationLedgerCount,
-    });
-    expect(await membershipCount(organizationId, ownerId)).toBe(1);
+    // Role PATCH, revoke, leave and the LAST_OWNER guard through the
+    // first-party routes are covered by organization-notifications/routes.db.test.ts
+    // ("organization member HTTP mutations", "organization member revoke HTTP
+    // contract", "organization member self-leave HTTP contract").
   }, 120_000);
 
   it("denies the 9 hotfix paths in the Better Auth hook when the first-layer guard is bypassed", async () => {

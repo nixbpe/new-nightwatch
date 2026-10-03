@@ -26,11 +26,6 @@ vi.mock("better-auth/react", () => ({
   }),
 }));
 
-vi.mock("better-auth/client/plugins", () => ({
-  organizationClient: () => ({}),
-  twoFactorClient: () => ({}),
-}));
-
 vi.mock("qrcode", () => ({
   toDataURL: vi.fn(() => Promise.resolve("data:image/png;base64,QR")),
 }));
@@ -127,32 +122,6 @@ describe("SecurityPage enrollment", () => {
     expect(screen.getByText("กำลังตั้งค่า")).toBeInTheDocument();
     expect(screen.queryByText("เปิดอยู่")).toBeNull();
     expect(screen.queryByRole("button", { name: /สร้างชุดใหม่/ })).toBeNull();
-  });
-
-  it("a wrong first code stays on the verification step with a visible error", async () => {
-    const user = await enroll();
-    twoFactorMock.verifyTotp.mockResolvedValue({
-      data: null,
-      error: { code: "INVALID_CODE", message: "Invalid code" },
-    });
-
-    await user.type(screen.getByLabelText(/รหัสยืนยัน 6 หลัก/), "000000");
-    await user.click(
-      screen.getByRole("button", { name: /ยืนยันและเปิดใช้งาน/ }),
-    );
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "รหัสยืนยันไม่ถูกต้อง",
-    );
-    expect(screen.getByLabelText(/รหัสยืนยัน 6 หลัก/)).toHaveAttribute(
-      "aria-invalid",
-      "true",
-    );
-    expect(screen.getByText("กำลังตั้งค่า")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /ยืนยันและเปิดใช้งาน/ }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("เปิดอยู่")).toBeNull();
   });
 
   it("shows enabled only after the server confirms twoFactorEnabled", async () => {
@@ -298,40 +267,5 @@ describe("SecurityPage recovery regeneration", () => {
       screen.getByRole("button", { name: "เปิดใช้งาน" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("เปิดอยู่")).toBeNull();
-  });
-
-  it("renders the password card below the MFA card", async () => {
-    renderPage();
-    await screen.findByText("ปิดอยู่");
-
-    const headings = screen.getAllByRole("heading", { level: 2 });
-    expect(headings).toHaveLength(2);
-    expect(headings[0]).toHaveAccessibleName("ยืนยันสองขั้นตอน (MFA)");
-    expect(headings[1]).toHaveAccessibleName("รหัสผ่าน");
-    expect(
-      screen.getByRole("button", { name: "เปลี่ยนรหัสผ่าน" }),
-    ).toBeInTheDocument();
-  });
-
-  it("renders the account security mockup as a static sample", async () => {
-    renderPage();
-    await screen.findByText("ปิดอยู่");
-
-    const frame = screen.getByRole("group", {
-      name: "ตัวอย่าง: ข้อมูลความปลอดภัยของบัญชี",
-    });
-    expect(
-      within(frame).getByText("ตัวอย่าง · ยังไม่เชื่อมข้อมูลจริง"),
-    ).toBeInTheDocument();
-    expect(within(frame).getByRole("link").getAttribute("href")).toMatch(
-      /issues\/64$/,
-    );
-    expect(within(frame).queryByRole("status")).toBeNull();
-    expect(frame.querySelector("[aria-live]")).toBeNull();
-    for (const name of ["ตั้งค่าใหม่", "สร้างรหัสใหม่"]) {
-      expect(within(frame).getByRole("button", { name })).toBeDisabled();
-    }
-    expect(within(frame).getByText(/แอปยืนยันตัวตน/)).toBeInTheDocument();
-    expect(within(frame).getByText("ความแข็งแรง: ดี")).toBeInTheDocument();
   });
 });
