@@ -52,6 +52,7 @@ const MONITOR_TABLES = [
   "monitor_check_hourly",
   "monitor_incidents",
   "monitor_events",
+  "monitor_last_responses",
 ] as const;
 
 type Seeded = { monitorId: string };
@@ -130,6 +131,13 @@ async function seedTenant(tenantId: string): Promise<Seeded> {
     await client.query(
       `insert into monitor_events (monitor_id, tenant_id, kind)
        values ($1, $2, 'paused')`,
+      [monitorId, tenantId],
+    );
+    await client.query(
+      `insert into monitor_last_responses
+         (monitor_id, tenant_id, scheduled_for, checked_at, config_version,
+          outcome, url_masked)
+       values ($1, $2, now(), now(), 1, 'pass', 'https://target.example.test/')`,
       [monitorId, tenantId],
     );
     return { monitorId };
@@ -351,6 +359,7 @@ describe("monitor tenant isolation", () => {
       monitor_check_hourly: "SELECT,INSERT,UPDATE",
       monitor_incidents: "SELECT,INSERT,UPDATE",
       monitor_events: "SELECT,INSERT",
+      monitor_last_responses: "SELECT,INSERT,UPDATE",
     };
     for (const table of MONITOR_TABLES) {
       const actual: string[] = [];
@@ -457,6 +466,15 @@ async function insertChildRow(
       await client.query(
         `insert into monitor_events (monitor_id, tenant_id, kind)
          values ($1, $2, 'resumed')`,
+        [monitorId, tenantId],
+      );
+      return;
+    case "monitor_last_responses":
+      await client.query(
+        `insert into monitor_last_responses
+           (monitor_id, tenant_id, scheduled_for, checked_at, config_version,
+            outcome, url_masked)
+         values ($1, $2, now(), now(), 1, 'pass', 'u')`,
         [monitorId, tenantId],
       );
       return;
@@ -1135,6 +1153,85 @@ describe("purge_expired_monitor_data", () => {
   });
 });
 
+describe("purge of monitor_last_responses", () => {
+  const monitorIds: string[] = [];
+
+  async function seedLastResponse(daysAgo: number): Promise<string> {
+    const monitorId = await withTenantContextRaw(database, tenantA, (client) =>
+      insertMonitor(client, tenantA),
+    );
+    monitorIds.push(monitorId);
+    // Written directly with an old scheduled_for: a paused monitor gets no
+    // new result, so nothing overwrites its row.
+    await owner.query(
+      `insert into monitor_last_responses
+         (monitor_id, tenant_id, scheduled_for, checked_at, config_version,
+          outcome, url_masked)
+       values ($1, $2, now() - make_interval(days => $3),
+               now() - make_interval(days => $3), 1, 'pass', 'u')`,
+      [monitorId, tenantA, daysAgo],
+    );
+    return monitorId;
+  }
+
+  async function drain(): Promise<void> {
+    let deleted = 1;
+    for (let i = 0; i < 50 && deleted > 0; i += 1) {
+      deleted = await purgeExpiredMonitorData(database, { limit: 1000 });
+    }
+  }
+
+  afterAll(async () => {
+    if (!ownerConnected) return;
+    await owner.query("delete from monitors where id = any($1::uuid[])", [
+      monitorIds,
+    ]);
+  });
+
+  it("deletes a last response older than 30 days by scheduled_for and keeps a 29-day one", async () => {
+    const old = await seedLastResponse(31);
+    const recent = await seedLastResponse(29);
+    await drain();
+    expect(await ownerCount("monitor_last_responses", [old])).toBe(0);
+    expect(await ownerCount("monitor_last_responses", [recent])).toBe(1);
+  });
+
+  it("purges last responses in the first run even when other tables expire past the limit", async () => {
+    await drain();
+    const owning = await seedLastResponse(0);
+    // Five expired events outnumber the limit of 2.
+    for (let i = 0; i < 5; i += 1) {
+      await owner.query(
+        `insert into monitor_events (monitor_id, tenant_id, kind, occurred_at)
+         values ($1, $2, 'config_changed', now() - interval '40 days')`,
+        [owning, tenantA],
+      );
+    }
+    const lastA = await seedLastResponse(31);
+    const lastB = await seedLastResponse(31);
+    const deleted = await purgeExpiredMonitorData(database, { limit: 2 });
+    // Last responses go first and spend the shared budget of 2.
+    expect(deleted).toBe(2);
+    expect(await ownerCount("monitor_last_responses", [lastA, lastB])).toBe(0);
+    const events = await owner.query<{ n: string }>(
+      "select count(*) as n from monitor_events where monitor_id = $1",
+      [owning],
+    );
+    expect(Number(events.rows[0]?.n)).toBe(5);
+  });
+
+  it("deletes at most p_limit last responses per run", async () => {
+    await drain();
+    const ids = [
+      await seedLastResponse(31),
+      await seedLastResponse(31),
+      await seedLastResponse(31),
+    ];
+    expect(await purgeExpiredMonitorData(database, { limit: 2 })).toBe(2);
+    expect(await ownerCount("monitor_last_responses", ids)).toBe(1);
+  });
+});
+
 describe("monitor deletion", () => {
   it("cascades secrets, schedule and child data", async () => {
     const { monitorId } = await seedTenant(tenantA);
@@ -1240,5 +1337,319 @@ describe("monitor catalog invariants", () => {
       expect(row.runtime_exec).toBe(true);
     }
     expect(ensure.runtime_exec).toBe(false);
+  });
+});
+
+describe("monitor_events feed columns", () => {
+  const userIds: string[] = [];
+  const monitorIds: string[] = [];
+
+  async function freshMonitor(): Promise<string> {
+    const id = await withTenantContextRaw(database, tenantA, (client) =>
+      insertMonitor(client, tenantA),
+    );
+    monitorIds.push(id);
+    return id;
+  }
+
+  async function createUser(): Promise<string> {
+    const id = randomUUID();
+    userIds.push(id);
+    await owner.query(
+      `insert into "user" (id, name, email) values ($1, 'Feed Actor', $2)`,
+      [id, `feed-${id}@example.test`],
+    );
+    return id;
+  }
+
+  function insertEvent(
+    monitorId: string,
+    columns: Record<string, string | number | null>,
+  ): Promise<unknown> {
+    const names = ["monitor_id", "tenant_id", ...Object.keys(columns)];
+    const values = [monitorId, tenantA, ...Object.values(columns)];
+    return withTenantContextRaw(database, tenantA, (client) =>
+      client.query(
+        `insert into monitor_events (${names.join(", ")})
+         values (${names.map((_, i) => `$${String(i + 1)}`).join(", ")})`,
+        values,
+      ),
+    );
+  }
+
+  afterAll(async () => {
+    if (!ownerConnected) return;
+    await owner.query("delete from monitors where id = any($1::uuid[])", [
+      monitorIds,
+    ]);
+    await owner.query('delete from "user" where id = any($1::text[])', [
+      userIds,
+    ]);
+  });
+
+  it("accepts check_failed with its fields and defaults actor_kind to unrecorded", async () => {
+    const monitorId = await freshMonitor();
+    await insertEvent(monitorId, {
+      kind: "check_failed",
+      failure_reason: "http_status",
+      tls_reason: null,
+      http_status: 503,
+      response_time_ms: 120,
+    });
+    const r = await owner.query<{ actor_kind: string; actor_user_id: null }>(
+      "select actor_kind, actor_user_id from monitor_events where monitor_id = $1",
+      [monitorId],
+    );
+    expect(r.rows).toEqual([{ actor_kind: "unrecorded", actor_user_id: null }]);
+  });
+
+  it("rejects an unknown kind and an unknown actor_kind", async () => {
+    const monitorId = await freshMonitor();
+    await expect(insertEvent(monitorId, { kind: "deleted" })).rejects.toThrow(
+      /monitor_events_kind_check/,
+    );
+    await expect(
+      insertEvent(monitorId, { kind: "paused", actor_kind: "system" }),
+    ).rejects.toThrow(/monitor_events_actor_kind_check/);
+  });
+
+  it("rejects an actor on check_failed and an actor_user_id without actor_kind user", async () => {
+    const monitorId = await freshMonitor();
+    const userId = await createUser();
+    await expect(
+      insertEvent(monitorId, { kind: "check_failed", actor_kind: "user" }),
+    ).rejects.toThrow(/monitor_events_actor_scope_check/);
+    await expect(
+      insertEvent(monitorId, { kind: "paused", actor_user_id: userId }),
+    ).rejects.toThrow(/monitor_events_actor_user_check/);
+  });
+
+  it("rejects changes outside config_changed and check_failed fields outside check_failed", async () => {
+    const monitorId = await freshMonitor();
+    await expect(
+      insertEvent(monitorId, { kind: "paused", changes: "[]" }),
+    ).rejects.toThrow(/monitor_events_changes_scope_check/);
+    for (const column of [
+      "failure_reason",
+      "tls_reason",
+      "http_status",
+      "response_time_ms",
+    ]) {
+      await expect(
+        insertEvent(monitorId, {
+          kind: "config_changed",
+          [column]:
+            column.endsWith("status") || column.endsWith("ms") ? 1 : "x",
+        }),
+      ).rejects.toThrow(/monitor_events_check_failed_scope_check/);
+    }
+    await insertEvent(monitorId, {
+      kind: "config_changed",
+      actor_kind: "user",
+      changes: '[{"field":"name","kind":"value","before":"a","after":"b"}]',
+    });
+  });
+
+  it("keeps actor_kind user and nulls actor_user_id when the account is deleted, under FORCE RLS with select and insert grants only", async () => {
+    const monitorId = await freshMonitor();
+    const userId = await createUser();
+    await insertEvent(monitorId, { kind: "paused" });
+    await insertEvent(monitorId, {
+      kind: "resumed",
+      actor_kind: "user",
+      actor_user_id: userId,
+    });
+    const actors = async () =>
+      (
+        await owner.query<{
+          kind: string;
+          actor_kind: string;
+          actor_user_id: string | null;
+        }>(
+          `select kind, actor_kind, actor_user_id from monitor_events
+           where monitor_id = $1 order by kind`,
+          [monitorId],
+        )
+      ).rows;
+    expect(await actors()).toEqual([
+      { kind: "paused", actor_kind: "unrecorded", actor_user_id: null },
+      { kind: "resumed", actor_kind: "user", actor_user_id: userId },
+    ]);
+
+    // Runtime role: the FK set null runs under FORCE RLS without an UPDATE
+    // grant on monitor_events.
+    await database.sql.query('delete from "user" where id = $1', [userId]);
+    expect(await actors()).toEqual([
+      { kind: "paused", actor_kind: "unrecorded", actor_user_id: null },
+      { kind: "resumed", actor_kind: "user", actor_user_id: null },
+    ]);
+    const privileges = await owner.query<{ priv: string; ok: boolean }>(
+      `select p as priv, has_table_privilege('nightwatch', 'monitor_events', p) as ok
+       from unnest(array['UPDATE', 'DELETE']) as p`,
+    );
+    expect(privileges.rows.filter((row) => row.ok)).toEqual([]);
+  });
+
+  it("hides another tenant's actor_user_id columns from tenant B", async () => {
+    const monitorId = await freshMonitor();
+    const userId = await createUser();
+    await insertEvent(monitorId, {
+      kind: "paused",
+      actor_kind: "user",
+      actor_user_id: userId,
+    });
+    const asB = await withTenantContextRaw(database, tenantB, (client) =>
+      client.query("select 1 from monitor_events where monitor_id = $1", [
+        monitorId,
+      ]),
+    );
+    expect(asB.rows).toEqual([]);
+  });
+});
+
+describe("monitor_last_responses CHECK constraints", () => {
+  async function insertLast(
+    columns: Record<string, string | number | boolean | null>,
+  ): Promise<void> {
+    const monitorId = await withTenantContextRaw(database, tenantA, (client) =>
+      insertMonitor(client, tenantA),
+    );
+    try {
+      const all: Record<string, string | number | boolean | null> = {
+        monitor_id: monitorId,
+        tenant_id: tenantA,
+        config_version: 1,
+        outcome: "pass",
+        url_masked: "u",
+        ...columns,
+      };
+      const names = Object.keys(all);
+      await withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          `insert into monitor_last_responses
+             (scheduled_for, checked_at, ${names.join(", ")})
+           values (now(), now(), ${names.map((_, i) => `$${String(i + 1)}`).join(", ")})`,
+          Object.values(all),
+        ),
+      );
+    } finally {
+      await owner.query("delete from monitors where id = $1", [monitorId]);
+    }
+  }
+
+  it("accepts a request_values row that keeps only version and status", async () => {
+    await insertLast({
+      detail_omitted: "request_values",
+      http_version: "HTTP/1.1",
+      http_status: 200,
+      body_kind: "omitted",
+      body_omitted_reason: "request_values",
+    });
+  });
+
+  it("accepts a full row without detail_omitted", async () => {
+    await insertLast({
+      http_version: "HTTP/1.0",
+      http_status: 200,
+      reason_phrase: "OK",
+      headers:
+        '[{"name":"content-type","value":"text/plain","redacted":false}]',
+      body_kind: "text",
+      body_text: "ok",
+      body_truncated: false,
+      body_bytes_read: 2,
+    });
+  });
+
+  it("rejects request_values with a reason phrase, headers or body text", async () => {
+    const base = { detail_omitted: "request_values" };
+    await expect(insertLast({ ...base, reason_phrase: "OK" })).rejects.toThrow(
+      /monitor_last_responses_request_values_check/,
+    );
+    await expect(
+      insertLast({
+        ...base,
+        headers: '[{"name":"a","value":"b","redacted":false}]',
+      }),
+    ).rejects.toThrow(/monitor_last_responses_request_values_check/);
+    await expect(
+      insertLast({ ...base, body_kind: "text", body_text: "leak" }),
+    ).rejects.toThrow(/monitor_last_responses_request_values_check/);
+  });
+
+  it("rejects an unknown detail_omitted, http_version, body_kind and body_omitted_reason", async () => {
+    await expect(insertLast({ detail_omitted: "other" })).rejects.toThrow(
+      /monitor_last_responses_detail_omitted_check/,
+    );
+    await expect(insertLast({ outcome: "unknown" })).rejects.toThrow(
+      /monitor_last_responses_outcome_check/,
+    );
+    await expect(insertLast({ http_version: "HTTP/2" })).rejects.toThrow(
+      /monitor_last_responses_http_version_check/,
+    );
+    await expect(insertLast({ body_kind: "binary" })).rejects.toThrow(
+      /monitor_last_responses_body_kind_check/,
+    );
+    await expect(insertLast({ body_omitted_reason: "other" })).rejects.toThrow(
+      /monitor_last_responses_body_omitted_reason_check/,
+    );
+  });
+
+  it("keeps one row per monitor", async () => {
+    await expect(
+      withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          `insert into monitor_last_responses
+             (monitor_id, tenant_id, scheduled_for, checked_at, config_version,
+              outcome, url_masked)
+           values ($1, $2, now(), now(), 1, 'pass', 'u')`,
+          [seededA.monitorId, tenantA],
+        ),
+      ),
+    ).rejects.toThrow(/monitor_last_responses_pkey/);
+  });
+});
+
+describe("monitor_incidents end values", () => {
+  it("defaults end_http_status and end_response_time_ms to null and stores them on close", async () => {
+    const monitorId = await withTenantContextRaw(database, tenantA, (client) =>
+      insertMonitor(client, tenantA),
+    );
+    try {
+      const read = () =>
+        owner.query<{
+          end_http_status: number | null;
+          end_response_time_ms: number | null;
+        }>(
+          `select end_http_status, end_response_time_ms from monitor_incidents
+           where monitor_id = $1`,
+          [monitorId],
+        );
+      await withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          `insert into monitor_incidents
+             (monitor_id, tenant_id, started_at, start_reason)
+           values ($1, $2, now(), 'timeout')`,
+          [monitorId, tenantA],
+        ),
+      );
+      expect((await read()).rows).toEqual([
+        { end_http_status: null, end_response_time_ms: null },
+      ]);
+      await withTenantContextRaw(database, tenantA, (client) =>
+        client.query(
+          `update monitor_incidents
+           set ended_at = now(), end_reason = 'recovered',
+               end_http_status = 200, end_response_time_ms = 80
+           where monitor_id = $1`,
+          [monitorId],
+        ),
+      );
+      expect((await read()).rows).toEqual([
+        { end_http_status: 200, end_response_time_ms: 80 },
+      ]);
+    } finally {
+      await owner.query("delete from monitors where id = $1", [monitorId]);
+    }
   });
 });

@@ -14,7 +14,9 @@ import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import {
   fetchMonitorChecks,
   fetchMonitorDetail,
+  fetchMonitorEvents,
   fetchMonitorIncidents,
+  fetchMonitorLastResponse,
   fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
@@ -47,6 +49,8 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   // Short enough to exercise the real refetch interval inside a test.
   MONITOR_REFETCH_INTERVAL_MS: 60,
   fetchMonitorDetail: vi.fn(),
+  fetchMonitorEvents: vi.fn(),
+  fetchMonitorLastResponse: vi.fn(),
   fetchMonitorChecks: vi.fn(),
   fetchMonitorIncidents: vi.fn(),
   fetchMonitorList: vi.fn(),
@@ -61,6 +65,8 @@ const fetchChecksMock = vi.mocked(fetchMonitorChecks);
 const fetchIncidentsMock = vi.mocked(fetchMonitorIncidents);
 const fetchListMock = vi.mocked(fetchMonitorList);
 const fetchEventsMock = vi.mocked(fetchMonitorRecentEvents);
+const fetchFeedMock = vi.mocked(fetchMonitorEvents);
+const fetchLastResponseMock = vi.mocked(fetchMonitorLastResponse);
 const fetchResponseTimesMock = vi.mocked(fetchMonitorResponseTimes);
 
 beforeEach(() => {
@@ -69,6 +75,11 @@ beforeEach(() => {
   fetchChecksMock.mockResolvedValue(noChecks);
   fetchIncidentsMock.mockResolvedValue(noIncidents);
   fetchEventsMock.mockResolvedValue({ events: [] });
+  fetchFeedMock.mockResolvedValue({
+    events: [],
+    page: { limit: 20, offset: 0, total: 0 },
+  });
+  fetchLastResponseMock.mockResolvedValue({ response: null });
   fetchResponseTimesMock.mockResolvedValue(noResponseTimes);
 });
 
@@ -820,10 +831,12 @@ describe("Detail structure", () => {
       "เวลาตอบสนอง",
       "สถานะปัจจุบัน",
       "ผลการตรวจล่าสุดและ Assertions",
+      "ฟีดเหตุการณ์",
       "เหตุการณ์",
       "ประวัติการตรวจ",
       "การตั้งค่า",
       "SSL",
+      "การตอบกลับล่าสุด",
     ];
     const headings = screen.getAllByRole("heading", { level: 2 });
     expect(headings).toHaveLength(names.length);
@@ -1414,7 +1427,17 @@ describe("Detail redesign behaviours", () => {
     const frames = Array.from(
       document.querySelectorAll('[data-slot="mockup-frame"]'),
     );
-    expect(frames.length).toBeGreaterThanOrEqual(3);
+    // Only the #56 sample shows by default (#57 appears on the 7d and 30d ranges); the #58 regions are live.
+    expect(
+      frames.map(
+        (frame) =>
+          /(\d+)$/.exec(
+            within(frame as HTMLElement)
+              .getByRole("link")
+              .getAttribute("href") ?? "",
+          )?.[1],
+      ),
+    ).toEqual(["56"]);
     for (const frame of frames) {
       expect(frame.textContent).not.toMatch(/HTTP\/\d/);
       expect(frame).toHaveAccessibleName(/^ตัวอย่าง:/);

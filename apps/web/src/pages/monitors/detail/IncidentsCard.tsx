@@ -25,7 +25,6 @@ import {
   Time,
   TIME_ZONE,
 } from "../format";
-import { EventFeedMockup } from "./MonitorDetailMockups";
 
 type Incident = MonitorIncidentsResponse["incidents"][number];
 
@@ -168,7 +167,6 @@ export function IncidentsCard({
           <Alert tone="warning">อัปเดตเหตุการณ์ไม่สำเร็จ</Alert>
         ) : null}
       </div>
-      <EventFeedMockup />
     </section>
   );
 }

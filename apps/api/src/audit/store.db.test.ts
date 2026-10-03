@@ -16,7 +16,7 @@ import {
 // Partition create and drop lock the parent table, so this file runs in its
 // own database (see openIsolatedAuditDatabase); the other audit suites keep
 // writing to the shared database.
-const AUDIT_MIGRATION = "0019_organization_audit_log.sql";
+const AUDIT_MIGRATION = "0020_organization_audit_log.sql";
 let database: Database;
 let ownerDatabase: Database;
 let owner: Client;
@@ -85,7 +85,7 @@ async function ensurePartitionFor(at: Date): Promise<void> {
 }
 
 beforeAll(async () => {
-  // Everything before F-007 first, with data that must survive 0019.
+  // Everything before F-007 first, with data that must survive 0020.
   ({
     database,
     ownerDatabase,
@@ -123,7 +123,7 @@ afterAll(async () => {
   await closeDatabase();
 }, 60_000);
 
-describe("migration 0019 on a database that already holds F-004 to F-006 data", () => {
+describe("migration 0020 on a database that already holds F-004 to F-006 data", () => {
   it("applies, keeps existing rows, stamps the recording start and creates 3 months of partitions", async () => {
     const before = await owner.query(
       "select count(*)::int as n from monitors where tenant_id = $1",

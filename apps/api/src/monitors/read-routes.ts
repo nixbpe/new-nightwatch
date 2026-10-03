@@ -5,8 +5,10 @@ import {
   membershipDeniedErrorResponseSchema,
   monitorChecksResponseSchema,
   monitorDetailResponseSchema,
+  monitorEventsResponseSchema,
   monitorHistoryQuerySchema,
   monitorIncidentsResponseSchema,
+  monitorLastResponseResponseSchema,
   monitorListQuerySchema,
   monitorListResponseSchema,
   monitorNotFoundErrorResponseSchema,
@@ -28,8 +30,10 @@ import { requireVerifiedSession } from "../me/service";
 import { auditMonitorDenials } from "./audit";
 import { monitorInvalidInputHook } from "./invalid-input";
 import {
+  getLastResponse,
   getMonitor,
   listChecks,
+  listEvents,
   listIncidents,
   listMonitors,
   getResponseTimes,
@@ -163,6 +167,41 @@ export const monitorReadRouteDeclarations = {
         description: "One page of incidents",
         content: {
           "application/json": { schema: monitorIncidentsResponseSchema },
+        },
+      },
+      ...readErrors,
+      404: notFoundResponse,
+    },
+  }),
+  events: createRoute({
+    method: "get",
+    path: `${monitorBase}/{monitorId}/events`,
+    tags,
+    summary: "Event feed of the last 30 days, newest first",
+    request: { params: monitorParamsSchema, query: monitorHistoryQuerySchema },
+    responses: {
+      200: {
+        description:
+          "One page of failed checks, incidents, pauses, resumes and configuration changes",
+        content: {
+          "application/json": { schema: monitorEventsResponseSchema },
+        },
+      },
+      ...readErrors,
+      404: notFoundResponse,
+    },
+  }),
+  lastResponse: createRoute({
+    method: "get",
+    path: `${monitorBase}/{monitorId}/last-response`,
+    tags,
+    summary: "Redacted last response of the monitor (owner and admin)",
+    request: { params: monitorParamsSchema },
+    responses: {
+      200: {
+        description: "The last recorded response, or null before the first",
+        content: {
+          "application/json": { schema: monitorLastResponseResponseSchema },
         },
       },
       ...readErrors,
@@ -306,6 +345,48 @@ export function registerMonitorReadRoutes(
             monitorId,
             range,
           ),
+      );
+      return c.json(body, 200);
+    },
+    monitorInvalidInputHook,
+  );
+
+  app.openapi(
+    routes.events,
+    async (c) => {
+      const { organizationId, monitorId } = c.req.valid("param");
+      const query = c.req.valid("query");
+      const session = await requireVerifiedSession(auth, c.req.raw.headers);
+      const actorUserId = session.user.id;
+      const body = await auditMonitorDenials(
+        logger,
+        actorUserId,
+        "organization.monitor.read",
+        () =>
+          listEvents(
+            database,
+            { organizationId, actorUserId },
+            monitorId,
+            query,
+          ),
+      );
+      return c.json(body, 200);
+    },
+    monitorInvalidInputHook,
+  );
+
+  app.openapi(
+    routes.lastResponse,
+    async (c) => {
+      const { organizationId, monitorId } = c.req.valid("param");
+      const session = await requireVerifiedSession(auth, c.req.raw.headers);
+      const actorUserId = session.user.id;
+      const body = await auditMonitorDenials(
+        logger,
+        actorUserId,
+        "organization.monitor.read-response",
+        () =>
+          getLastResponse(database, { organizationId, actorUserId }, monitorId),
       );
       return c.json(body, 200);
     },

@@ -3859,6 +3859,7 @@ export interface paths {
                                 at: string;
                                 reason: string | null;
                                 durationSeconds?: number;
+                                httpStatus?: number;
                                 /** @enum {string} */
                                 sslLevel?: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
                                 daysRemaining?: number;
@@ -4318,6 +4319,411 @@ export interface paths {
                                 urlChanged: boolean;
                                 url?: string;
                             }[];
+                        };
+                    };
+                };
+                /** @description Invalid query */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified or membership is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/monitors/{monitorId}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Event feed of the last 30 days, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                    monitorId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One page of failed checks, incidents, pauses, resumes and configuration changes */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            events: ({
+                                id: string;
+                                /** Format: date-time */
+                                at: string;
+                                /** @enum {string} */
+                                kind: "check_failed";
+                                /** @enum {string|null} */
+                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
+                                /** @enum {string|null} */
+                                tlsReason: "expired" | "hostname_mismatch" | "untrusted" | "self_signed" | "handshake_failed" | null;
+                                httpStatus: number | null;
+                                responseTimeMs: number | null;
+                            } | {
+                                id: string;
+                                /** Format: date-time */
+                                at: string;
+                                /** @enum {string} */
+                                kind: "incident_opened";
+                                /** Format: uuid */
+                                incidentId: string;
+                                reason: string;
+                                httpStatus: number | null;
+                            } | {
+                                id: string;
+                                /** Format: date-time */
+                                at: string;
+                                /** @enum {string} */
+                                kind: "incident_closed";
+                                /** Format: uuid */
+                                incidentId: string;
+                                /** @enum {string} */
+                                endReason: "recovered" | "paused_by_user";
+                                durationSeconds: number;
+                                httpStatus: number | null;
+                                responseTimeMs: number | null;
+                            } | {
+                                id: string;
+                                /** Format: date-time */
+                                at: string;
+                                /** @enum {string} */
+                                kind: "paused";
+                                actor: {
+                                    /** @enum {string} */
+                                    kind: "member";
+                                    userId: string;
+                                    displayName: string;
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "member_hidden";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "former_member";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "deleted";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "unrecorded";
+                                };
+                            } | {
+                                id: string;
+                                /** Format: date-time */
+                                at: string;
+                                /** @enum {string} */
+                                kind: "resumed";
+                                actor: {
+                                    /** @enum {string} */
+                                    kind: "member";
+                                    userId: string;
+                                    displayName: string;
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "member_hidden";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "former_member";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "deleted";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "unrecorded";
+                                };
+                            } | {
+                                id: string;
+                                /** Format: date-time */
+                                at: string;
+                                /** @enum {string} */
+                                kind: "config_changed";
+                                actor: {
+                                    /** @enum {string} */
+                                    kind: "member";
+                                    userId: string;
+                                    displayName: string;
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "member_hidden";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "former_member";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "deleted";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "unrecorded";
+                                };
+                                changes: ({
+                                    field: string;
+                                    /** @enum {string} */
+                                    kind: "value";
+                                    before: (string | null) | number;
+                                    after: (string | null) | number;
+                                } | {
+                                    field: string;
+                                    /** @enum {string} */
+                                    kind: "changed";
+                                } | {
+                                    field: string;
+                                    /** @enum {string} */
+                                    kind: "secret";
+                                    /** @enum {string} */
+                                    action: "set" | "replaced" | "deleted";
+                                })[];
+                            })[];
+                            page: {
+                                limit: number;
+                                offset: number;
+                                total: number;
+                            };
+                        };
+                    };
+                };
+                /** @description Invalid query */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified or membership is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The monitor does not exist, is malformed or belongs to another Organization */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "MONITOR_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/monitors/{monitorId}/last-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Redacted last response of the monitor (owner and admin) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    monitorId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The last recorded response, or null before the first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            response: {
+                                /** Format: date-time */
+                                checkedAt: string;
+                                /** Format: date-time */
+                                scheduledFor: string;
+                                configVersion: number;
+                                /** @enum {string} */
+                                outcome: "pass" | "fail" | "check_error";
+                                /** @enum {string|null} */
+                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
+                                url: string;
+                                /** @enum {string|null} */
+                                detailOmitted: "request_values" | null;
+                                statusLine: {
+                                    /** @enum {string} */
+                                    httpVersion: "HTTP/1.0" | "HTTP/1.1";
+                                    status: number;
+                                    reasonPhrase: string | null;
+                                } | null;
+                                headers: {
+                                    name: string;
+                                    value: string;
+                                    redacted: boolean;
+                                }[];
+                                headersTruncated: boolean;
+                                body: ({
+                                    /** @enum {string} */
+                                    kind: "text";
+                                    text: string;
+                                    truncated: boolean;
+                                    totalBytesRead: number;
+                                } | null) | {
+                                    /** @enum {string} */
+                                    kind: "omitted";
+                                    /** @enum {string} */
+                                    reason: "no_body" | "not_text" | "undecodable" | "request_values";
+                                };
+                            } | null;
                         };
                     };
                 };

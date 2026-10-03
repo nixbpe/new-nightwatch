@@ -13,7 +13,7 @@ import type { AuditChange, AuditValue } from "../audit/record";
 import type { StoredConfig } from "./record";
 
 export type MonitorDenialAction =
-  `organization.monitor.${"list" | "read" | "create" | "update" | "pause" | "resume" | "delete" | "test"}`;
+  `organization.monitor.${"list" | "read" | "read-response" | "create" | "update" | "pause" | "resume" | "delete" | "test"}`;
 
 // Names only, never values: this is what `monitorAuditChanges` may learn about
 // the secret slots a request wrote or removed.

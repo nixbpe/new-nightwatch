@@ -66,20 +66,28 @@ async function countAll(monitor: SeededMonitor): Promise<{
   results: number;
   incidents: number;
   events: number;
+  lastResponses: number;
 }> {
   const [counts] = await rows<{
     results: number;
     incidents: number;
     events: number;
+    lastResponses: number;
   }>(
     db,
     monitor,
     `select (select count(*)::int from monitor_check_results where monitor_id = $1) as results,
             (select count(*)::int from monitor_incidents where monitor_id = $1) as incidents,
-            (select count(*)::int from monitor_events where monitor_id = $1) as events`,
+            (select count(*)::int from monitor_events where monitor_id = $1) as events,
+            (select count(*)::int from monitor_last_responses where monitor_id = $1) as "lastResponses"`,
     [monitor.monitorId],
   );
-  return counts as { results: number; incidents: number; events: number };
+  return counts as {
+    results: number;
+    incidents: number;
+    events: number;
+    lastResponses: number;
+  };
 }
 
 async function claimToken(monitor: SeededMonitor): Promise<string | null> {
@@ -334,6 +342,7 @@ describe("checker records a result (transaction A then B)", () => {
           results: 0,
           incidents: 0,
           events: 0,
+          lastResponses: 0,
         });
       }
       expect((await countAll(untouched)).results).toBe(1);
@@ -1047,6 +1056,7 @@ describe("a failing check that reflects its secret leaks it nowhere (AC-43)", ()
         "monitor_check_hourly",
         "monitor_incidents",
         "monitor_events",
+        "monitor_last_responses",
         "monitor_schedule",
         "monitors",
       ];
@@ -1691,6 +1701,463 @@ describe("egress canary and redirects", () => {
         });
         expect(await canary.status()).toBe("ok");
       }
+    } finally {
+      await target.close();
+    }
+  });
+});
+
+describe("event feed rows (P58-01, P58-03, P58-04, P58-08)", () => {
+  type FeedEvent = {
+    kind: string;
+    occurred_at: Date;
+    failure_reason: string | null;
+    tls_reason: string | null;
+    http_status: number | null;
+    response_time_ms: number | null;
+  };
+  const feedEvents = (monitor: SeededMonitor) =>
+    rows<FeedEvent>(
+      db,
+      monitor,
+      `select kind, occurred_at, failure_reason, tls_reason, http_status,
+              response_time_ms
+       from monitor_events where monitor_id = $1 order by occurred_at, kind`,
+      [monitor.monitorId],
+    );
+
+  /** One check at `startAt + index` minutes; the clock of the check is `checkedAt`. */
+  async function check(
+    monitor: SeededMonitor,
+    index: number,
+    checkedAt?: Date,
+  ): Promise<string> {
+    const token = randomUUID();
+    await updateMonitor(
+      db,
+      monitor,
+      "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+      [monitor.monitorId, token],
+    );
+    return processMonitorCheck(
+      monitor.job({
+        claimToken: token,
+        scheduledFor: new Date(
+          Date.now() - 3_600_000 + index * 60_000,
+        ).toISOString(),
+      }),
+      dependencies(checkedAt ? { clock: () => checkedAt } : {}),
+    );
+  }
+
+  it("pass, fail, pass writes one check_failed at checkedAt and no incident", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      let status = 200;
+      target.setHandler((_request, response) => {
+        response.statusCode = status;
+        response.end("body");
+      });
+      await check(monitor, 0);
+      status = 503;
+      const checkedAt = new Date(Date.now() - 1_234_000);
+      await check(monitor, 1, checkedAt);
+      status = 200;
+      await check(monitor, 2);
+      const events = await feedEvents(monitor);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        kind: "check_failed",
+        failure_reason: "http_status",
+        tls_reason: null,
+        http_status: 503,
+      });
+      expect(events[0]?.response_time_ms).not.toBeNull();
+      expect(events[0]?.occurred_at.getTime()).toBe(checkedAt.getTime());
+      expect((await countAll(monitor)).incidents).toBe(0);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("pass, fail, fail, pass writes check_failed once and closes with the passing status and time", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      let status = 200;
+      target.setHandler((_request, response) => {
+        response.statusCode = status;
+        response.end("body");
+      });
+      await check(monitor, 0);
+      status = 503;
+      await check(monitor, 1);
+      await check(monitor, 2);
+      await check(monitor, 3);
+      status = 200;
+      await check(monitor, 4);
+      expect((await feedEvents(monitor)).map((event) => event.kind)).toEqual([
+        "check_failed",
+      ]);
+      const [incident] = await rows<{
+        end_reason: string;
+        end_http_status: number | null;
+        end_response_time_ms: number | null;
+      }>(
+        db,
+        monitor,
+        `select end_reason, end_http_status, end_response_time_ms
+         from monitor_incidents where monitor_id = $1`,
+        [monitor.monitorId],
+      );
+      expect(incident).toMatchObject({
+        end_reason: "recovered",
+        end_http_status: 200,
+      });
+      const [passing] = await rows<{ response_time_ms: number }>(
+        db,
+        monitor,
+        `select response_time_ms from monitor_check_results
+         where monitor_id = $1 order by scheduled_for desc limit 1`,
+        [monitor.monitorId],
+      );
+      expect(incident?.end_response_time_ms).toBe(passing?.response_time_ms);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a fail after a check_error still starts the streak with check_failed, a check_error writes none", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      target.setHandler((_request, response) => {
+        response.statusCode = 503;
+        response.end("body");
+      });
+      const token = randomUUID();
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+        [monitor.monitorId, token],
+      );
+      await processMonitorCheck(
+        monitor.job({ claimToken: token }),
+        dependencies({
+          outbound: {
+            ...outboundDeps,
+            resolver: () =>
+              Promise.reject(
+                Object.assign(new Error("resolver"), { code: "EAI_AGAIN" }),
+              ),
+          },
+        }),
+      );
+      expect(await feedEvents(monitor)).toEqual([]);
+      const [last] = await rows<{
+        outcome: string;
+        http_status: number | null;
+        body_kind: string | null;
+      }>(
+        db,
+        monitor,
+        "select outcome, http_status, body_kind from monitor_last_responses where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(last).toEqual({
+        outcome: "check_error",
+        http_status: null,
+        body_kind: null,
+      });
+      await check(monitor, 5);
+      expect((await feedEvents(monitor)).map((event) => event.kind)).toEqual([
+        "check_failed",
+      ]);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("an edit that resets the streak during an open incident adds no check_failed", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      target.setHandler((_request, response) => {
+        response.statusCode = 503;
+        response.end("body");
+      });
+      await check(monitor, 0);
+      await check(monitor, 1);
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set consecutive_failures = 0 where id = $1",
+        [monitor.monitorId],
+      );
+      await check(monitor, 2);
+      expect((await feedEvents(monitor)).map((event) => event.kind)).toEqual([
+        "check_failed",
+      ]);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("stores the snapshot of the latest check in one row per monitor", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      target.setHandler((_request, response) => {
+        response.statusCode = 200;
+        response.setHeader("content-type", "text/plain");
+        response.setHeader("x-trace", "abc");
+        response.end("hello");
+      });
+      await check(monitor, 0);
+      await check(monitor, 1);
+      const stored = await rows<{
+        http_version: string;
+        http_status: number;
+        reason_phrase: string | null;
+        headers: { name: string; value: string }[];
+        body_kind: string;
+        body_text: string;
+        body_truncated: boolean;
+        body_bytes_read: number;
+        body_omitted_reason: string | null;
+        detail_omitted: string | null;
+        config_version: number;
+        outcome: string;
+        scheduled_for: Date;
+        failure_reason: string | null;
+        headers_truncated: boolean;
+        url_masked: string;
+        checked_at: Date;
+      }>(
+        db,
+        monitor,
+        "select * from monitor_last_responses where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(stored).toHaveLength(1);
+      expect(stored[0]).toMatchObject({
+        http_version: "HTTP/1.1",
+        http_status: 200,
+        body_kind: "text",
+        body_text: "hello",
+        body_truncated: false,
+        body_bytes_read: 5,
+        body_omitted_reason: null,
+        detail_omitted: null,
+        config_version: 1,
+        outcome: "pass",
+        reason_phrase: "OK",
+        headers_truncated: false,
+        failure_reason: null,
+      });
+      expect(stored[0]?.url_masked).toBe(
+        (await results(monitor))[1]?.url_masked,
+      );
+      expect(stored[0]?.checked_at.getTime()).toBeGreaterThan(
+        Date.now() - 60_000,
+      );
+      expect(stored[0]?.headers).toContainEqual(
+        expect.objectContaining({ name: "x-trace", value: "abc" }),
+      );
+      expect(stored[0]?.scheduled_for.getTime()).toBe(
+        (await results(monitor))[1]?.scheduled_for.getTime(),
+      );
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a monitor with a query keeps only version and status (request_values)", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, {
+        url: `${target.url}/`,
+        queryParams: [{ name: "key", value: "s3cret-query" }],
+      });
+      target.setHandler((request, response) => {
+        response.statusCode = 200;
+        response.setHeader("x-echo", request.url ?? "");
+        response.end(request.url ?? "");
+      });
+      await check(monitor, 0);
+      const [stored] = await rows<{
+        detail_omitted: string;
+        http_status: number;
+        reason_phrase: string | null;
+        headers: unknown[];
+        headers_truncated: boolean;
+        body_kind: string;
+        body_omitted_reason: string;
+        body_text: string | null;
+      }>(
+        db,
+        monitor,
+        "select * from monitor_last_responses where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(stored).toMatchObject({
+        detail_omitted: "request_values",
+        http_status: 200,
+        reason_phrase: null,
+        headers: [],
+        headers_truncated: false,
+        body_kind: "omitted",
+        body_omitted_reason: "request_values",
+        body_text: null,
+      });
+      expect(JSON.stringify(stored)).not.toContain("s3cret-query");
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a late result does not replace a newer last response", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      let status = 200;
+      target.setHandler((_request, response) => {
+        response.statusCode = status;
+        response.end("body");
+      });
+      await check(monitor, 5);
+      status = 503;
+      await check(monitor, 3);
+      const [stored] = await rows<{ http_status: number; outcome: string }>(
+        db,
+        monitor,
+        "select http_status, outcome from monitor_last_responses where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(stored).toEqual({ http_status: 200, outcome: "pass" });
+      expect((await countAll(monitor)).results).toBe(2);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a discarded fail leaves the last response and the feed unchanged", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      target.setHandler((_request, response) => {
+        response.statusCode = 200;
+        response.end("body");
+      });
+      await check(monitor, 5);
+      const before = await rows<Record<string, unknown>>(
+        db,
+        monitor,
+        "select * from monitor_last_responses where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      // A fail is in flight when an Edit supersedes the claim.
+      const release = Promise.withResolvers<undefined>();
+      target.setHandler((_request, response) => {
+        void release.promise.then(() => {
+          response.statusCode = 503;
+          response.end("body");
+        });
+      });
+      const token = randomUUID();
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+        [monitor.monitorId, token],
+      );
+      const running = processMonitorCheck(
+        monitor.job({
+          claimToken: token,
+          scheduledFor: new Date(Date.now()).toISOString(),
+        }),
+        dependencies(),
+      );
+      const started = Date.now();
+      while (target.requests.length < 2 && Date.now() - started < 4_000) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await updateMonitor(
+        db,
+        monitor,
+        `update monitor_schedule set claim_token = null where monitor_id = $1`,
+        [monitor.monitorId],
+      );
+      release.resolve(undefined);
+      const outcome = await running;
+      expect(outcome).toBe("discarded");
+      expect(await feedEvents(monitor)).toEqual([]);
+      expect(
+        await rows<Record<string, unknown>>(
+          db,
+          monitor,
+          "select * from monitor_last_responses where monitor_id = $1",
+          [monitor.monitorId],
+        ),
+      ).toEqual(before);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("a runCheck that rejects still overwrites the last response with a body-free check_error", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      target.setHandler((_request, response) => {
+        response.statusCode = 200;
+        response.end("from-the-target");
+      });
+      await check(monitor, 0);
+      const token = randomUUID();
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitor_schedule set claim_token = $2 where monitor_id = $1",
+        [monitor.monitorId, token],
+      );
+      // The first clock read is inside runCheck and rejects it; the fallback reads again.
+      let reads = 0;
+      const outcome = await processMonitorCheck(
+        monitor.job({
+          claimToken: token,
+          scheduledFor: new Date(Date.now() - 60_000).toISOString(),
+        }),
+        dependencies({
+          clock: () => {
+            if (reads++ === 0) throw new Error("clock failed");
+            return new Date();
+          },
+        }),
+      );
+      expect(outcome).toBe("recorded");
+      expect(reads).toBeGreaterThan(1);
+      const [stored] = await rows<Record<string, unknown>>(
+        db,
+        monitor,
+        "select * from monitor_last_responses where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(stored).toMatchObject({
+        outcome: "check_error",
+        failure_reason: "executor_error",
+        detail_omitted: null,
+        http_version: null,
+        http_status: null,
+        reason_phrase: null,
+        headers: [],
+        headers_truncated: false,
+        body_kind: null,
+        body_text: null,
+      });
+      expect(JSON.stringify(stored)).not.toContain("from-the-target");
     } finally {
       await target.close();
     }

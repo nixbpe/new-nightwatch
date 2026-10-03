@@ -170,7 +170,7 @@ describe("LoginPage", () => {
     );
     expect(signInEmailMock).not.toHaveBeenCalled();
   });
-  it("labels both mockups as examples and keeps the disabled checkbox out of the payload", async () => {
+  it("keeps the remember-device mockup and removes the cancelled help-link mockup", async () => {
     renderPage();
 
     const remember = await screen.findByRole("group", {
@@ -183,14 +183,15 @@ describe("LoginPage", () => {
     expect(
       within(remember).getByRole("link", { name: /issue/ }),
     ).toHaveAttribute("href", expect.stringMatching(/\/issues\/65$/));
-    const help = screen.getByRole("group", {
-      name: "ตัวอย่าง: ลิงก์ช่วยเหลือ",
-    });
-    expect(within(help).getByRole("link", { name: /issue/ })).toHaveAttribute(
-      "href",
-      expect.stringMatching(/\/issues\/67$/),
-    );
-    expect(within(help).getAllByRole("link")).toHaveLength(1);
+    expect(
+      screen.queryByRole("group", { name: "ตัวอย่าง: ลิงก์ช่วยเหลือ" }),
+    ).toBeNull();
+    expect(screen.queryByRole("link", { name: /issue #67/ })).toBeNull();
+    expect(screen.queryByText("เอกสาร")).toBeNull();
+    expect(screen.queryByText("ติดต่อผู้ดูแล", { exact: true })).toBeNull();
+    expect(
+      screen.getByText("ยังไม่มีคำเชิญ? ติดต่อผู้ดูแลองค์กรของคุณ"),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("navigation")).toBeNull();
     expect(
       screen.getByRole("button", { name: "เข้าสู่ระบบ" }),

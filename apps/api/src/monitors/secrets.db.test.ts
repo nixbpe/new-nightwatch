@@ -1336,6 +1336,7 @@ const SCANNED_TABLES = [
   "monitor_incidents",
   "monitor_check_results",
   "monitor_check_hourly",
+  "monitor_last_responses",
   "monitor_secrets",
   "notification_intents",
   "notification_inbox_items",

@@ -37,7 +37,7 @@ const owner = new Client({ connectionString: isolatedOwnerUrl.toString() });
 const database = createDatabase(isolatedRuntimeUrl.toString());
 const ownerDatabase = createDatabase(isolatedOwnerUrl.toString());
 const sourceMigrations = new URL("../migrations", import.meta.url).pathname;
-const EXPORT_MIGRATION = "0020_audit_exports.sql";
+const EXPORT_MIGRATION = "0021_audit_exports.sql";
 let migrationsCopyDir: string | undefined;
 let adminConnected = false;
 let ownerConnected = false;
@@ -198,7 +198,7 @@ afterAll(async () => {
   }
 }, 60_000);
 
-describe("migration 0020 on a database that already holds notifications", () => {
+describe("migration 0021 on a database that already holds notifications", () => {
   it("applies, keeps existing notification rows and accepts the two new types for tenant scope only", async () => {
     await owner.query(
       `insert into notification_intents
