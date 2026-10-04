@@ -9,7 +9,7 @@ NightWatch is one multi-tenant application (a modular monolith) whose organizati
 
 ## System parts
 
-Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app notifications and uptime monitor checks. `Implemented`: the Worker roles `monitor-scheduler` and `monitor-checker` and the queue `monitor-check`, the shared SSRF helper (OUT-01), the Redis rate limiter (REQ-04), credential encryption (DB-14) and monthly partitions of the monitor result tables. Deferred: other Worker roles and queues, a shared queue package, and a marketing site.
+Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app notifications and uptime monitor checks. `Implemented`: the Worker roles `monitor-scheduler` and `monitor-checker` and the queue `monitor-check`, the shared SSRF helper (OUT-01), the Redis rate limiter (REQ-04), credential encryption (DB-14) and monthly partitions of the monitor result tables. `Implemented`: the `audit-exporter` Worker role claims exports from PostgreSQL without a queue; audit maintenance runs with that role. Deferred: additional Worker roles and queues, a shared queue package, and a marketing site.
 
 **Principle.** PostgreSQL holds all state; Redis only carries jobs. Users reach data only through the Web app calling the API with a session cookie, and only the API and Worker call outside systems. The marketing site gets no login data, cookies or internal data. Platform-admin access is checked per operation and never bypasses tenant isolation. Commit to the database before enqueueing, and record enqueue failures in the database.
 
@@ -30,7 +30,7 @@ Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app noti
 
 ## Handling API requests
 
-**Principle.** A request acts for exactly one organization, chosen on the server from the signed-in identity and a checked membership (Planned); URL, header, body and browser values are hints. That organization runs through the URL, service, database context and any job. Decide each route's kind first (organization, pre-organization or narrow platform access). Check membership and a per-operation permission before touching data, and audit rejections without protected data.
+**Principle.** A request acts for exactly one organization, chosen on the server from the signed-in identity and a checked membership; URL, header, body and browser values are hints. That organization runs through the URL, service, database context and any job. Decide each route's kind first (organization, pre-organization or narrow platform access). Check membership and a per-operation permission before touching data, and audit rejections without protected data.
 
 - REQ-01 Keep network calls and heavy CPU work outside database transactions.
 - REQ-02 Validate input with shared Zod schemas from the contract package.
