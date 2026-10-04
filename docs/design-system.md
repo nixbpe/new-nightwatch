@@ -4,6 +4,8 @@ Calm, precise security operations: readable evidence, clear scope, obvious next 
 
 - Findings cite a numbered rule (e.g. `COL-01`) or a section's principle by its heading. Rule IDs never change: a new rule takes the next number in its section, and a retired rule keeps its number marked retired.
 
+The reference canvas is [Claude Design](https://claude.ai/artifact/2Rc9dSWEvHwrM1zrFeFchF), private until shared. This document is the source of truth where the canvas and these rules disagree.
+
 ## Tokens
 
 Ten semantic roles, the same in both themes. Every color in the product comes from this table, its derived levels below, or a rule that states its exact value (On danger in COL-05, the modal shadow in LAY-07).

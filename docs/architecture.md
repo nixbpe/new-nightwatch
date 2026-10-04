@@ -48,6 +48,8 @@ Built: Web app, API, PostgreSQL, and a Worker using Redis/BullMQ for in-app noti
 - AUTH-04 Auth library endpoints keep their own error format; application routes use REQ-03.
 - AUTH-05 Normalize a post-login "return to" address to a same-site absolute path before saving, redirecting and reading it from browser storage. Another site, `//`, a backslash or a control character (plain or percent-encoded) falls back to the default signed-in page.
 
+Current session policy and browser auth error decisions are recorded in [Authentication behavior](ref/authentication.md).
+
 ## Background jobs
 
 The in-app notification channel and the `monitor-check` queue (Worker roles `monitor-scheduler` and `monitor-checker`) are `Implemented`; later queues follow the same rules.

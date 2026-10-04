@@ -7,7 +7,10 @@
 | Status | Approved |
 | Approved by user | 2026-09-27, corrected contract with exact `total`, hard cap 1,000 and first-party locked acceptance |
 | Task-file split | 2026-09-27, requested by user; no behavior contract change |
-| Implementation authorization | ไม่มี; ต้องได้รับ start authorization แยกต่างหากก่อน dispatch |
+| Implementation authorization | Historical planning record; issue-specific authorization is retained in the addenda below. New work requires separate start authorization. |
+| Delivery | Implemented; all five nodes are in Git history, ending with `cb6d971` (PR #47). |
+
+Authorization, `READY` and PR instructions below describe the original delivery. The Contracts and Revisions remain authoritative; the delivered task plans do not authorize new implementation or release.
 
 ## Contracts
 

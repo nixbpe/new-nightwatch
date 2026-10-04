@@ -15,9 +15,12 @@ Owner: Technical Lead Spec นี้เป็น source of truth ของ imple
 | Epic                 | `E-002`, `docs/epics/E-002-organization-member-governance.md` |
 | Status               | Approved |
 | Approved by user     | 2026-10-03 ผ่าน coordinator (AskUserQuestion) freeze `F-007-AC-1` แล้วแทนด้วย `F-007-AC-2` (frozen, 2026-10-03, ดู Revisions) |
-| Start authorization  | None |
-| `COMMIT_MODE`        | none |
-| `STOP_AT`            | review-ready (ผู้ใช้เลือกใหม่ได้ตอนให้ start authorization) |
+| Start authorization  | None (original planning record) |
+| `COMMIT_MODE`        | none (original planning record) |
+| `STOP_AT`            | review-ready (original planning record) |
+| Delivery             | Implemented in `3839a4f` (PR #72). |
+
+Authorization, `READY` and PR sequencing below describe the original delivery. The Contracts and Revisions remain authoritative. The delivery record does not claim new runtime verification or authorize further implementation or release.
 
 ศัพท์ที่ใช้ใน Spec นี้:
 - event: แถวใน `audit_events` หนึ่งแถวต่อ mutation ที่สำเร็จหนึ่งครั้ง

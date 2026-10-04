@@ -1,22 +1,35 @@
 # Tech Stack Upgrade Technical Spec
 
-Owner: Technical Lead. Written from the tech stack review and a read-only platform-engineer verification on 2026-09-29. The user approved this spec and the scope-now set NODE-1, NODE-2, NODE-3, NODE-8, NODE-10 on 2026-09-29. No work is authorized to start.
+Owner: Technical Lead. The original tech stack review and read-only platform-engineer verification were recorded on 2026-09-29. The user approved NODE-1, NODE-2, NODE-3, NODE-8 and NODE-10 on 2026-09-29. Those tasks were delivered in `d37e760` (PR #48).
 
-| Field               | Value                                                                                          |
-| ------------------- | ---------------------------------------------------------------------------------------------- |
-| Feature             | None (platform chore; no Feature, Story or Acceptance matrix; exit criteria live in each Task's VERIFY/PROOF) |
-| Epic                | None                                                                                           |
-| Status              | Approved                                                                                       |
-| Approved by user    | 2026-09-29 (covers this spec and the scope-now set NODE-1, NODE-2, NODE-3, NODE-8, NODE-10)    |
-| Start authorization | None                                                                                           |
-| `COMMIT_MODE`       | none                                                                                           |
-| `STOP_AT`           | merge-ready                                                                                    |
+| Field | Value |
+| --- | --- |
+| Feature | None (platform chore; no Feature, Story or Acceptance matrix) |
+| Epic | None |
+| Status | Approved |
+| Approved by user | 2026-09-29 (NODE-1, NODE-2, NODE-3, NODE-8, NODE-10) |
+| Delivery | Implemented for NODE-1, NODE-2, NODE-3, NODE-8, NODE-10. |
+| Start authorization | None for deferred NODE-4, NODE-5, NODE-6, NODE-7, NODE-9. |
+| `COMMIT_MODE` | none for deferred work |
+| `STOP_AT` | merge-ready |
 
-Tracking: the user decided on 2026-09-29 to track this work as a platform chore under this spec. No Feature or Epic will be created. There is no Acceptance matrix and no `acceptanceVersion`, so approval freezes no matrix; exit criteria stay in each Task's VERIFY and PROOF and in Integrated verification.
+The remaining work is `Deferred`. Each task requires separate start authorization. Its VERIFY and PROOF define the exit criteria; there is no `acceptanceVersion`.
+
+The deferred plans retain the 2026-09-29 baseline. Versions, migration numbers and external release claims need rechecking before implementation. No new runtime or security scan is claimed here.
+
+Delivered baseline for deferred dependencies:
+
+| Task | Delivered scope |
+| --- | --- |
+| NODE-1 | CI action upgrades and the `ubuntu-24.04` runner pin |
+| NODE-2 | Bun 1.3.14 across `package.json` `packageManager`, `.github/workflows/ci.yml` `BUN_VERSION` and both `FROM` lines of `apps/api/Dockerfile` |
+| NODE-3 | ESLint 10 |
+| NODE-8 | Node 24 engines and CI setup |
+| NODE-10 | hono and nodemailer advisory updates |
 
 ## Evidence base
 
-Observed on 2026-09-29 by platform-engineer (read-only, no file changed). "Confirmed" means read at the primary source listed; "unconfirmed" means it comes only from the earlier WebSearch summary.
+Historical observations from 2026-09-29 by platform-engineer (read-only, no file changed). These rows describe the pre-upgrade state. "Confirmed" means read at the primary source listed; "unconfirmed" means it comes only from the earlier WebSearch summary.
 
 | Item | Finding | Status | Source |
 | --- | --- | --- | --- |
@@ -44,25 +57,12 @@ Observed on 2026-09-29 by platform-engineer (read-only, no file changed). "Confi
 
 ## Design decisions
 
-- Architecture drivers touched:
-  - Security: CVE-2026-24910 (Bun), base image OS CVEs, moderate advisories in `hono` and `nodemailer`, ESLint 9 EOL (no further fixes).
-  - Maintainability: actions on a supported runtime, one Bun pin across four places, ESLint and TypeScript on supported lines, `packages/eslint-config` peers widened in step with the toolchain, `engines.node` on 24.
-  - Operability: CI keeps passing without deprecation warnings on a pinned runner image; image rebuild and migration runner (`dist-migrate`) keep working; local Compose volumes survive or have a documented path.
-- Scope now (user decision 2026-09-29): NODE-1, NODE-2, NODE-3, NODE-8, NODE-10. NODE-1, NODE-2, NODE-3 and NODE-10 rest on confirmed or observed evidence (Node 20 removed and v4 forced to Node 24; CVE-2026-24910; ESLint 9 EOL; observed `bun audit` advisories). NODE-8 is in scope by user decision to move `engines` to Node 24 now.
-- CI actions (user decision 2026-09-29): `actions/checkout` v6 and `actions/upload-artifact` v6 (`node24` verified); v7.0.1 is not used. Every job's `runs-on` is pinned to `ubuntu-24.04` so the 2026-10-19 `ubuntu-latest` move to Ubuntu 26 does not change CI.
-- Scope-now order: NODE-1, NODE-2, NODE-3, then NODE-8 and NODE-10. NODE-8 follows NODE-1 because NODE-1 pins the runner image and both edit `ci.yml` (NODE-8 adds the `setup-node` steps). It follows NODE-2 and NODE-3 because both write root `package.json` (`packageManager`, `eslint`) and NODE-3 writes `bun.lock`; NODE-8 edits only `engines` in that file. NODE-8 and NODE-10 share no file and have the same owner, so they run one after the other in that order.
-- Deferred: NODE-4, NODE-5, NODE-6, NODE-7, NODE-9. No confirmed deadline or vulnerability drives them. Each needs its own start authorization.
-- Bun ownership: platform-engineer owns all four Bun pins in NODE-2 as one toolchain change, including the `packageManager` line of root `package.json`. software-engineer is the integration owner of root `package.json` and `bun.lock` for every other Task; NODE-2 edits only the `packageManager` line and finishes before NODE-3 starts.
-- Risks:
-  - v4 actions work today only because the runner forces Node 24; GitHub may stop that at any time (unknown). NODE-1 removes the dependency on it.
-  - A newer Bun base image may be on another alpine branch, so the current apk pins may not resolve. NODE-2 re-derives pins from a scan of the new base.
-  - ESLint 10 config and rule changes are unverified; lint output may change. NODE-3 fixes only what breaks and records new warnings.
-  - `typescript-eslint` 8.69.0 caps TypeScript at `<6.1.0`, so NODE-4 can target 6.0.x only; TypeScript 7 stays blocked.
-  - PG18: existing `pgdata` volumes created by PG17 do not start under a new major. A change in the postgres:18 image PGDATA or mount layout is an unverified recollection that NODE-6 must check.
-  - `ubuntu-24.04` pin: the label's own support end date is not checked; the pin must be revisited before it ends.
-  - Node 24 floor: developers on Node 22 fail the `engines` check after NODE-8. The `ubuntu-24.04` image ships Node 22.23.2, so CI gets Node 24 from `actions/setup-node` (NODE-8).
-- Assumptions: none of these upgrades changes product behavior; the test suites in `scripts/quality/README.md` are the regression proof.
-- Non-goals: new features, refactors, lowering coverage thresholds, deployment (no cloud environment exists in the repo), upgrading packages marked keep in the review (except `hono` via NODE-10).
+- Deferred: NODE-4, NODE-5, NODE-6, NODE-7, NODE-9. No confirmed deadline or vulnerability drove them in the original review. Each needs its own start authorization.
+- `typescript-eslint` 8.69.0 caps TypeScript at `<6.1.0`, so NODE-4 targets 6.0.x. TypeScript 7 stays blocked by that peer range.
+- Existing PG17 `pgdata` volumes do not start under a new major. NODE-6 must check the postgres:18 image volume and PGDATA layout at the primary source.
+- The `ubuntu-24.04` support end date was not checked in the review.
+- No task changes product behavior. Regression checks live in `scripts/quality/README.md`.
+- Non-goals: new features, refactors, lowering coverage thresholds or deployment.
 
 ## Tasks
 
@@ -70,93 +70,13 @@ Order and ownership:
 
 | Task | Scope | Depends on | Integration owner of shared files |
 | --- | --- | --- | --- |
-| NODE-1 CI actions to v6 and runner pin | now | None | platform-engineer (`.github/workflows/ci.yml`) |
-| NODE-2 Bun 1.3.14 | now | NODE-1 | platform-engineer (`ci.yml`, `apps/api/Dockerfile`, `packageManager` line) |
-| NODE-3 ESLint 10 | now | NODE-2 | software-engineer (root `package.json`, `bun.lock`) |
-| NODE-8 Node engines 24 | now | NODE-3 | software-engineer (root `package.json` `engines`); platform-engineer (`ci.yml` `setup-node` steps) |
-| NODE-10 hono and nodemailer advisories | now | NODE-3 (runs after NODE-8, same owner) | software-engineer (`apps/api/package.json`, `bun.lock`) |
-| NODE-4 TypeScript 6.0 | deferred | NODE-3 | software-engineer |
+| NODE-4 TypeScript 6.0 | deferred | NODE-3 (delivered) | software-engineer |
 | NODE-5 better-auth 1.7 | deferred | NODE-4 | software-engineer (`e2e/bun.lock`, `packages/db/migrations/`) |
-| NODE-6 PostgreSQL 18 | deferred | NODE-2 | platform-engineer (`compose.yaml`, `ci.yml`) |
-| NODE-7 Bun 1.4 | deferred | NODE-2, NODE-6 | platform-engineer |
+| NODE-6 PostgreSQL 18 | deferred | NODE-2 (delivered) | platform-engineer (`compose.yaml`, `ci.yml`) |
+| NODE-7 Bun 1.4 | deferred | NODE-2 (delivered), NODE-6 | platform-engineer |
 | NODE-9 Playwright 1.62.1 | deferred | NODE-5 | software-engineer (`e2e/package.json`, `e2e/bun.lock`) |
 
 Tasks sharing a file never run concurrently; each starts after its dependency's owner reports changed files and stops writing.
-
-### NODE-1 CI actions to v6
-
-- **OWNER:** platform-engineer
-- **READY:** start authorized (spec approved 2026-09-29; upload-artifact v6 and `ubuntu-24.04` decided)
-- **OUTCOME:** every `actions/checkout` ref in `ci.yml` is v6 and every `actions/upload-artifact` ref is v6, both declaring `node24`; every job has `runs-on: ubuntu-24.04`; CI runs with no Node 20 deprecation annotation
-- **SOURCE:** Evidence base rows "Node 20 on runners", "Action runtimes" and "ubuntu-latest"; user decision 2026-09-29
-- **INVARIANTS:** job names, steps, `permissions: contents: read`, `fetch-depth: 0` on `secrets`, artifact name `coverage-report` and path
-- **FILES:** `.github/workflows/ci.yml` (action refs and the `runs-on` line of every job)
-- **NON-GOALS:** Bun version, service images, new jobs, `upload-artifact` v7
-- **CONTRACTS:** CI contract above
-- **VERIFY:** `bun run workflow:test`; `gh api` read of `action.yml` `runs.using` at each new ref; no `ubuntu-latest` left in `ci.yml`
-- **PROOF:** PR CI run with all jobs green on `ubuntu-24.04` and no "Node.js 20 is deprecated" annotation; `coverage-report` artifact present
-- **ROLLBACK:** revert the ref and `runs-on` changes in `ci.yml` (v4 still runs on forced Node 24 as of 2026-09-29; `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19)
-- **COVERS:** none (no Feature Acceptance matrix)
-
-### NODE-2 Bun 1.3.14 across the four pins
-
-- **OWNER:** platform-engineer
-- **READY:** NODE-1 merged or its owner stopped writing `ci.yml`; start authorized
-- **OUTCOME:** Bun 1.3.14 (outside the CVE-2026-24910 range) in all four places; API image built on the new digest with apk pins that clear HIGH/CRITICAL
-- **SOURCE:** Evidence base rows "CVE-2026-24910", "Bun versions", "Base image"; Toolchain contract
-- **INVARIANTS:** both `FROM` lines use the same `oven/bun:1.3.14-alpine@sha256:<digest>`; non-root user 1001; no `apk upgrade`; `dist/index.js` and `dist-migrate/migrate.js` still built; `HEALTHCHECK` unchanged
-- **FILES:** `package.json` (`packageManager` line only), `.github/workflows/ci.yml` (`BUN_VERSION`), `apps/api/Dockerfile` (lines 12 and 61, apk pin block lines 65-70)
-- **NON-GOALS:** Bun 1.4; `@types/bun` (already `~1.3.14`); lockfile regeneration unless `--frozen-lockfile` fails
-- **CONTRACTS:** NODE-3 and NODE-7 start from this pin
-- **VERIFY:** `bun --version` 1.3.14; `bun install --frozen-lockfile`; `trivy image --severity HIGH,CRITICAL` on the new base to derive pins; `docker build -f apps/api/Dockerfile .`
-- **PROOF:** resolved digest and its source; alpine release of the new base; `bun run security:image` exit 0 on the built image; container starts and `/health` answers; PR CI green on 1.3.14
-- **ROLLBACK:** restore the four 1.3.2 pins, digest `sha256:adda30fd4db7d8ef9a2113cb935c6f751de3daad39373713b56eefe49db78471` and the current apk pins together
-- **COVERS:** none (no Feature Acceptance matrix)
-
-### NODE-3 ESLint 10
-
-- **OWNER:** software-engineer
-- **READY:** NODE-2 owner stopped writing root `package.json`; start authorized
-- **OUTCOME:** all packages lint with ESLint 10 through `@nightwatch/eslint-config`
-- **SOURCE:** Evidence base rows "ESLint 9" and "Plugin peers"
-- **INVARIANTS:** rule set and severity unchanged except where ESLint 10 removes or renames a rule (recorded); `typescript-eslint` stays on 8.x; no new lint disables
-- **FILES:** `package.json` (`eslint`), `packages/eslint-config/package.json` (`@eslint/js`, peer `eslint`), `packages/eslint-config/index.js` and `index.test.js` if the config API changed, `apps/api/eslint.config.js`, `apps/web/eslint.config.js`, `apps/worker/eslint.config.js` only if they break, `bun.lock`
-- **NON-GOALS:** TypeScript peer change (NODE-4), `engines` change (NODE-8), fixing unrelated existing warnings
-- **CONTRACTS:** peer `eslint` becomes `^10.0.0`
-- **VERIFY:** `bun run lint`; `bun run --cwd packages/eslint-config test`; `bun install --frozen-lockfile` after the lockfile update
-- **PROOF:** `bun run validate` green; list of ESLint 10 breaking changes that applied, from the ESLint 10 migration guide (currently unverified), including ESLint 10's Node requirement for NODE-8
-- **ROLLBACK:** revert the three manifests, config edits and `bun.lock`
-- **COVERS:** none (no Feature Acceptance matrix)
-
-### NODE-8 Node engines 24
-
-- **OWNER:** software-engineer (`engines`); platform-engineer (`ci.yml` `setup-node` steps, as `ci.yml` integration owner)
-- **READY:** NODE-1 merged (runner pinned); NODE-3 owner stopped writing root `package.json`; start authorized
-- **OUTCOME:** `engines.node` requires Node 24; every `ci.yml` job runs `actions/setup-node` (a `node24` ref) with `node-version: 24` before its first `bun` step; Node-run scripts pass on Node 24 locally and in CI
-- **SOURCE:** user decisions 2026-09-29 (Node 24 now; add `setup-node` because `ubuntu-24.04` ships Node 22.23.2); Evidence base row "Node in repo"
-- **INVARIANTS:** runtime for the API image stays Bun; `bun.lock` unchanged; job names, commands and gates in `ci.yml` unchanged
-- **FILES:** `package.json` (`engines`), `.github/workflows/ci.yml` (one `actions/setup-node` step per job)
-- **NON-GOALS:** switching any runtime from Bun to Node
-- **CONTRACTS:** Toolchain and CI contracts (`engines.node` on 24; `setup-node` Node 24 in every job)
-- **VERIFY:** `bun run --cwd packages/eslint-config test` under Node 24; `bun run validate`; `bun install --frozen-lockfile`; `bun run workflow:test`; `gh api` read of `action.yml` `runs.using` at the `setup-node` ref
-- **PROOF:** `bun run validate` green; Node 24 used in every CI job on `ubuntu-24.04`, named from the PR CI log
-- **ROLLBACK:** revert `engines` to `>=22.12.0` and remove the `setup-node` steps from `ci.yml`
-- **COVERS:** none (no Feature Acceptance matrix)
-
-### NODE-10 hono and nodemailer moderate advisories
-
-- **OWNER:** software-engineer
-- **READY:** NODE-3 owner stopped writing `bun.lock`; NODE-8 done (same owner); start authorized
-- **OUTCOME:** `bun audit` reports no advisory for `hono` or `nodemailer`
-- **SOURCE:** Evidence base row "`bun audit`"; user decision 2026-09-29
-- **INVARIANTS:** API routes, OpenAPI output and mail sending unchanged; `@hono/zod-openapi` stays compatible
-- **FILES:** `apps/api/package.json` (`hono` range `~4.12.0` to a range allowing `>=4.13.5`; `nodemailer` already allows 10.0.2), `bun.lock`
-- **NON-GOALS:** other API dependencies
-- **CONTRACTS:** `bun run codegen:check` shows no OpenAPI drift
-- **VERIFY:** `bun run --cwd apps/api test`; `bun run codegen:check`; `bun audit`
-- **PROOF:** full `bun audit` output without the 4 moderate findings; `COVERAGE_GATE=1 bun run test:coverage` green with the integration environment
-- **ROLLBACK:** revert `apps/api/package.json` and `bun.lock`
-- **COVERS:** none (no Feature Acceptance matrix)
 
 ### NODE-4 TypeScript 6.0 (deferred)
 
@@ -209,13 +129,13 @@ Tasks sharing a file never run concurrently; each starts after its dependency's 
 - **READY:** NODE-2 and NODE-6 merged; Bun 1.4 breaking changes read at the primary source
 - **OUTCOME:** four pins on a Bun 1.4.x release with a digest-pinned base and re-derived apk pins
 - **SOURCE:** Evidence base row "Bun versions" (1.4.2 released 2026-09-05)
-- **INVARIANTS:** same as NODE-2
-- **FILES:** as NODE-2, plus `package.json` `@types/bun` and `bun.lock` via software-engineer if the lockfile format changes
+- **INVARIANTS:** both `FROM` lines use the same digest-pinned Bun image; non-root user 1001; no `apk upgrade`; `dist/index.js` and `dist-migrate/migrate.js` still built; `HEALTHCHECK` unchanged
+- **FILES:** `package.json` (`packageManager`, plus `@types/bun` via software-engineer), `.github/workflows/ci.yml` (`BUN_VERSION`), `apps/api/Dockerfile` (both `FROM` lines and apk pins), `bun.lock` via software-engineer if the lockfile format changes
 - **NON-GOALS:** adopting new Bun APIs
 - **CONTRACTS:** Toolchain contract
-- **VERIFY:** as NODE-2 plus `bun run test`
-- **PROOF:** as NODE-2 plus `bun run validate`, `bun run build`, `COVERAGE_GATE=1 bun run test:coverage` and `bun run e2e` green
-- **ROLLBACK:** restore NODE-2 pins, digest and apk pins
+- **VERIFY:** `bun --version` matches the selected release; `bun install --frozen-lockfile`; `trivy image --severity HIGH,CRITICAL` on the new base to derive pins; `docker build -f apps/api/Dockerfile .`; `bun run test`
+- **PROOF:** resolved digest and its source; alpine release of the new base; `bun run security:image` exit 0 on the built image; container starts and `/health` answers; PR CI green; `bun run validate`, `bun run build`, `COVERAGE_GATE=1 bun run test:coverage` and `bun run e2e` green
+- **ROLLBACK:** restore the delivered NODE-2 Bun 1.3.14 pins, digest and apk pins together
 - **COVERS:** none (no Feature Acceptance matrix)
 
 ### NODE-9 Playwright 1.62.1 (deferred)
@@ -236,17 +156,15 @@ Tasks sharing a file never run concurrently; each starts after its dependency's 
 ## Integrated verification
 
 - Exit criteria per Task are their VERIFY and PROOF; there is no Acceptance matrix, so no AC is covered here.
-- After all scope-now writers (NODE-1, NODE-2, NODE-3, NODE-8, NODE-10) stop, run once on `ubuntu-24.04` CI with Node 24 from `actions/setup-node` and locally on Node 24: `bun run validate`, `COVERAGE_GATE=1 bun run test:coverage`, `bun run build`, `bun run security` (see `scripts/quality/README.md`), then code-reviewer final review of the combined diff.
-- `bun run security:image` and `bun run e2e` belong to the NODE-2 and NODE-5/NODE-9 PROOF and to the dispatch-only `full` job.
+- Deferred work runs `bun run validate`, `COVERAGE_GATE=1 bun run test:coverage`, `bun run build` and `bun run security` on the changed candidate under the current quality gates in `scripts/quality/README.md`.
+- Image and E2E checks remain required where named in the deferred task's PROOF.
 
 ## Open decisions
 
 | Decision | Owner |
 | --- | --- |
-| Check whether CVE-2026-24910 is exploitable here (trustedDependencies, non-npm deps); affects urgency only, NODE-2 still fixes it | Technical Lead |
 | Start timing for deferred NODE-4, NODE-5, NODE-6, NODE-7, NODE-9, each needing its own authorization | User |
 | PG17 local volume path for NODE-6 (dump/restore or fresh volume) | User |
-| Start authorization and `COMMIT_MODE` for scope-now NODE-1, NODE-2, NODE-3, NODE-8, NODE-10 | User |
 | Closed 2026-09-29: the `ubuntu-24.04` image ships Node 22.23.2; user decided NODE-8 adds `actions/setup-node` with Node 24 to every `ci.yml` job | User (decided) |
 
 ## Revisions

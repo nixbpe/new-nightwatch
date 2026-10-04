@@ -60,6 +60,18 @@ Shared menu-button behavior: focus moves in on open; ↑↓ move between items; 
 
 Every routed page uses one frame: a fluid column (the form column caps at 720 px; a side panel may sit beside it from `lg`) with 24 px rhythm and a page header with an optional eyebrow (a Latin route code, TYP-04), a scope row (organization or account mark, name and a role or context pill, no separator characters), the 28 px title, a status line for facts (slug, counts, freshness; Thai labels in the sans-serif, values such as counts, ids, times and URLs in monospace; a status pill may lead it), an optional description and actions on the right that wrap under the title when the width runs out. Sections open with a section header: a 16 px semibold h2 with an optional `aria-hidden` section code, meta or actions on the right and a Divider under it. Cards are hairline panels, never shadows; modal dialogs follow LAY-07. Sibling stats or rows may share a hairline grid. A mockup region follows CMP-06. Forms bound their fields (about 448 px wide or a two-column grid) and put actions in a row under a hairline. Page-level loading and error states render as cards inside the frame, never as their own main region.
 
+## Settings reflow
+
+The four routes `/settings/{profile,security,sessions,display}` keep full-label icon tabs, `aria-selected`, DOM and Tab focus order, and visible focus. Whole fixed-height tabs wrap into rows without horizontal scrolling, clipping or page overflow. Labels do not wrap inside tabs, and tabs do not become icon-only.
+
+The selected tab has a 2 px underline on its own row. On the last row it overlays the wrapper's 1 px hairline; earlier rows remain visible above the hairline. The wrapper owns `border-b` and the nav owns `-mb-px`. The nav has no vertical overflow (`scrollHeight === clientHeight`). Overflow masking and label truncation do not replace this geometry.
+
+The three-step MFA indicator keeps full labels, `aria-current="step"` and completed states. Narrow layouts stack the steps vertically. At `lg`, the steps are horizontal with wrapping labels and decorative connectors. The connectors are hidden in the vertical layout.
+
+MFA footer actions keep secondary before primary in DOM order. They stack on narrow screens and return to a row at `sm`. Labels wrap inside actions, and actions remain within the card and viewport. Keyboard focus, acknowledgment and stage controls remain unchanged.
+
+Issue #22 delivered this behavior in `1693dad`. The authenticated regression matrix lives in `e2e/tests/settings.spec.ts`. The issue-specific tab and stepper rules are stricter than the horizontal-scroll allowance in LAY-02; they do not change table behavior.
+
 ## Theme
 
 Three states: system, light, dark. An explicit choice overrides the system preference with the same tokens either way. The choice is persisted per browser and applied before first paint so no page flashes the wrong theme. The account menu and the display settings tab drive one shared state, so a change in either shows in both.
