@@ -26,6 +26,7 @@ const RUNTIME_ENV_NAMES = [
   "SMTP_PASSWORD",
   "SMTP_FROM",
   "REDIS_URL",
+  "REDIS_KEY_PREFIX",
   "CREDENTIAL_ENCRYPTION_KEYS",
   "CREDENTIAL_ENCRYPTION_ACTIVE_KEY_VERSION",
   "OUTBOUND_TEST_ALLOWED_HOSTS",
@@ -83,7 +84,7 @@ export default defineConfig({
       env: apiServerEnv(),
       // API log lines reach the run output so a run can be scanned for secrets.
       stdout: "pipe",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 60_000,
     },
     {
@@ -91,7 +92,7 @@ export default defineConfig({
       cwd: "../apps/web",
       url: webUrl,
       env: { WEB_PORT: String(webPort), API_PORT: String(apiPort) },
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
   ],

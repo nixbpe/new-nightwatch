@@ -12,7 +12,7 @@ bun run agent:check
 bun run candidate:manifest -- --base HEAD
 ```
 
-- `workflow:test` exercises the agent-reference and candidate-binding scripts. Root `validate` runs it before other gates.
+- `workflow:test` exercises the agent-reference, candidate-binding, and E2E runner scripts. Root `validate` runs it before other gates.
 - `agent:check` validates agent model ids, tool allowlists, skill preloads and explicit references under `.claude`. Reference metadata uses `agent:<name>`, `skill:<name>`, `command:/<name>` and `file:<path>` with the value enclosed in backticks after the prefix. Fenced examples are ignored; referenced files and canonical `SKILL.md` files must resolve inside the repository.
 - `candidate:manifest` binds the resolved base commit to all tracked changes, deletions and non-ignored untracked files. Each included file records its normalized repository-relative path, state, kind, mode and SHA-256 content or symlink-target digest; the output also includes a digest of the complete payload.
 - Positional paths or `--from <newline-delimited-file>` may make the scope explicit, but every discovered path must be included. `--exclude path=reason` declares an ambient path outside the candidate under `nonCandidateExclusions`; it is not a scanner waiver or approval to omit candidate source. Repository escapes, control characters, undecodable paths, unchanged paths, unexplained exclusions and empty candidate scopes fail.
@@ -73,7 +73,7 @@ NOCREATEDB NOCREATEROLE NOBYPASSRLS`). The runtime role is created by
   `scripts/db/init/001-roles.sh` (also used by CI); table grants are applied by
   migrations. `DATABASE_URL` must use the runtime role, `DATABASE_OWNER_URL`
   the owner; the migration runner resolves owner before app URL.
-- Notification migration `0008_notification_function_owners.sql` creates cluster-global NOLOGIN function-owner roles. A clean migration must use a fresh dedicated PostgreSQL cluster, not a second database on a cluster where NightWatch migrations already ran; only one NightWatch database per cluster is supported by this migration. The DDL owner needs `CREATEROLE` or superuser privileges for initial creation; runtime stays unprivileged. The isolated Worker scheduler integration test must provision and remove only its own ephemeral cluster. Deployment still requires a separate approval gate (architecture DB-13).
+- Notification migration `0008_notification_function_owners.sql` creates cluster-global NOLOGIN function-owner roles. Clean migration replay requires a fresh PostgreSQL cluster. Local E2E can restore a schema-only snapshot and its migration ledger into a separate database on the dev cluster without recreating roles (architecture DB-13). The DDL owner needs `CREATEROLE` or superuser privileges for initial creation; runtime stays unprivileged. The isolated Worker scheduler integration test still provisions its own cluster to verify clean migrations. Deployment requires a separate approval gate.
 - Development secrets (role passwords, `BETTER_AUTH_SECRET`) are generated on
   first `bun run db:up` into `.env.compose.local` — gitignored, mode 0600,
   never committed. `scripts/dev.mjs` forwards them with the computed
@@ -201,14 +201,17 @@ db:migrate` applies schema migrations before tests/e2e (in CI there is no
   unset in CI because runners may lack internet; tests are intended to inject
   the canary (not yet exercised).
 - e2e (`e2e/tests/monitors.spec.ts`): `playwright.config.ts` starts the Worker
-  with all four roles and forwards the four monitor variables above to the Worker
+  with roles `consumer,scheduler,monitor-scheduler,monitor-checker,audit-exporter`
+  and forwards the four monitor variables above to the Worker
   and API. The spec needs `OUTBOUND_TEST_ALLOWED_HOSTS` to name a hostname that
   resolves to 127.0.0.1; it starts its own target server on 127.0.0.1 (from
   `e2e/support/monitor-target.mjs`) and reaches it through that hostname. CI
-  provides `target.nw-test.internal`. Locally, when that name does not resolve
-  and `/etc/hosts` is not editable, use `OUTBOUND_TEST_ALLOWED_HOSTS=127.0.0.1.nip.io`
-  (public wildcard DNS, needs internet). The credential keys stay unset outside
-  production (development key). The down and recovered flow waits for real
+  provides `target.nw-test.internal`. The local runner defaults to
+  `OUTBOUND_TEST_ALLOWED_HOSTS=127.0.0.1.nip.io` (public wildcard DNS, needs
+  internet). Override it with a loopback hostname already mapped in `/etc/hosts`
+  to avoid public DNS. The credential keys stay unset outside
+  production (development key). `REDIS_KEY_PREFIX` is optional and defaults to
+  the existing queue and rate-limit namespaces when unset. The down and recovered flow waits for real
   schedule rounds (1 minute interval), so the spec takes about 5 minutes.
 - `turbo.json` `globalPassThroughEnv` forwards the four monitor variables to
   turbo-run tasks without putting key values in the cache hash.
@@ -241,44 +244,67 @@ bun run codegen:check          # check committed output without changing it
 
 ## Playwright E2E
 
-Playwright is already configured in `e2e/playwright.config.ts`. It starts the
-Worker, API, and Web servers itself and runs `e2e/tests` in Chromium. Install
-isolated E2E dependencies and Chromium once:
-
-The caller supplies runtime configuration; Playwright forwards `DATABASE_URL`
-and `REDIS_URL` to the Worker and `REDIS_URL` to the API without fabricating
-either service. The Worker must log `in-app materialize worker ready` after its
-Redis queue/consumer is ready; Playwright waits for that bounded readiness
-signal before browser tests begin. A notification E2E can therefore exercise
-real materialization only when the caller has started local PostgreSQL and
-Redis and applied the required schema migrations.
+Install E2E dependencies and Chromium once, then run the suite with Docker
+available:
 
 ```sh
-(
-  set -e
-  bun run db:up
-  trap 'bun run db:down' EXIT
-  bun -e '
-    const { resolveDevEnv } = await import("./scripts/dev-env.mjs");
-    const { env } = resolveDevEnv();
-    for (const script of ["db:migrate", "e2e"]) {
-      const child = Bun.spawn(["bun", "run", script], {
-        env,
-        stdin: "inherit",
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      const exitCode = await child.exited;
-      if (exitCode !== 0) process.exit(exitCode);
-    }
-  '
-)
+bun install --cwd e2e --frozen-lockfile
+(cd e2e && bun x playwright install chromium)
+bun run db:up
+bun run db:migrate
+bun run e2e
+bun run --cwd e2e test tests/monitors-states.spec.ts
 ```
 
-Resolved values pass directly in `env`, never through shell source. The `EXIT`
-trap cleans up after success, migration/E2E failure, or interruption. Cleanup affects only
-the current worktree's containers and network. It keeps the database volume
-unless `db:down -- -v` is used.
+`scripts/e2e.mjs` reuses this worktree's PostgreSQL, Redis, and Mailpit
+containers. Each local run owns a `nw_e2e_<uuid>` database and Redis prefix,
+a fresh auth secret, and dynamically allocated API and Web ports. It creates
+no containers or volumes. Playwright refuses to reuse an existing API or Web
+server.
+
+`scripts/e2e-database.mjs` checks that the caller's database and Redis URLs
+match the generated local Compose configuration. The dev migration ledger must
+match the repository's migration names and checksums exactly. The helper
+exports a read-only PostgreSQL snapshot, restores schema only, and copies the
+migration ledger from that same snapshot. It copies no application data and
+changes no cluster roles. The regular migration runner then checks the copied
+ledger, and `db:partitions` prepares current monitor and audit partitions in the
+E2E database. This E2E bootstrap does not replace fresh-cluster migration tests.
+
+`REDIS_KEY_PREFIX` isolates both BullMQ queues and consumers, and the API's
+rate-limit keys, including Lua script keys. Cleanup drops only the generated
+database and scans and unlinks only keys under that run's prefix after success,
+failure, SIGINT, or SIGTERM. It never uses `FLUSHDB` or stops dev containers.
+SIGKILL cannot run cleanup.
+
+Keep `bun run dev` running if needed. Separate databases prevent dev schedulers
+from claiming E2E monitor rows. Redis prefixes prevent dev consumers from
+receiving E2E jobs without `OUTBOUND_TEST_ALLOWED_HOSTS`. Increasing assertion
+timeouts does not correct a `blocked_address` result from those consumers.
+
+Verify logical isolation against the running local services:
+
+```sh
+bun test scripts/verification/e2e-isolation.test.mjs
+```
+
+This check creates two E2E databases and prefixes. It verifies empty application
+tables, copied migration checksums, runtime role and RLS flags, delivery through
+both queues, independent Lua rate limits, and cleanup that preserves an
+unprefixed Redis sentinel.
+
+With `CI` set or `E2E_EXTERNAL_SERVICES=1`, the runner uses caller-supplied
+services through `resolveDevEnv()` and does not create, migrate, or remove a
+database or Redis namespace. Apply migrations and provision any `E2E_EMAIL`/`E2E_PASSWORD`
+fixture before this mode. Use dedicated services with no competing dev Worker.
+Local isolated runs generate `E2E_EMAIL` and `E2E_PASSWORD` and invoke
+`apps/api/src/operator/provision-e2e-fixture.ts` inside the E2E database. They set
+`E2E_REQUIRE_CREDENTIALS=1`, so all four signed-in settings tests run without
+using a dev account. The tests enable and disable MFA and change and restore
+the password. `--list` and `--help` bypass database bootstrap and provisioning.
+
+The Worker must log `in-app materialize worker ready` after its Redis consumer
+is ready. Playwright waits for that signal before browser tests begin.
 
 The suite covers observable browser/API contracts. These include public auth
 entry and client-side validation without an invalid boundary request. They also

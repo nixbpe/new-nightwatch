@@ -507,20 +507,30 @@ test.describe("signed-in settings", () => {
       "true",
     );
 
+    const other = await browser.newContext();
+    const otherPage = await other.newPage();
+    await signIn(otherPage, PASSWORD!);
+    await otherPage.goto("/settings/security");
+    await expect(
+      otherPage.getByRole("region", { name: "รหัสผ่าน" }),
+    ).toBeVisible();
+
     await card.getByLabel("รหัสผ่านปัจจุบัน").fill(PASSWORD!);
     await card.getByRole("button", { name: "เปลี่ยนรหัสผ่าน" }).click();
     await expect(card.getByRole("alert")).toContainText("เปลี่ยนรหัสผ่านแล้ว");
 
-    const other = await browser.newContext();
-    const otherPage = await other.newPage();
-    await otherPage.goto("/login");
+    await otherPage.reload();
+    await expect(otherPage).toHaveURL(/\/login\?from=%2Fsettings%2Fsecurity$/);
     await otherPage.getByLabel("อีเมล").fill(EMAIL!);
     await otherPage.locator("#login-password").fill(PASSWORD!);
     await otherPage.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+    await expect(otherPage.getByRole("alert")).toContainText(
+      "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+    );
     await expect(otherPage).toHaveURL(/\/login/);
     await otherPage.locator("#login-password").fill(temporary);
     await otherPage.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
-    await expect(otherPage).toHaveURL(/\/workspace/);
+    await expect(otherPage).toHaveURL(/\/settings\/security$/);
     await other.close();
 
     // Revert from the still-signed-in session.

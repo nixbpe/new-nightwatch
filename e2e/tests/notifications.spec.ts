@@ -1031,6 +1031,19 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
     });
     expect(unreadBefore.status).toBe(200);
     expect(unreadBefore.body.unreadCount).toBeGreaterThanOrEqual(1);
+    await page.route(
+      "**/api/notifications?*",
+      async (route) => {
+        const hasCursor = new URL(route.request().url()).searchParams.has(
+          "cursor",
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, hasCursor ? 2_000 : 1_000),
+        );
+        await route.continue();
+      },
+      { times: 2 },
+    );
     const marked = page.waitForResponse(
       (response) =>
         response.url().includes("/api/notifications/read-all") &&
@@ -1045,6 +1058,9 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
       [paginationIds[20]],
     );
     expect(pageTwo.rows[0]?.readAt).not.toBeNull();
+    await expect(
+      page.getByText("ทำเครื่องหมายว่าอ่านแล้วทั้งหมด", { exact: true }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" })
       .click();

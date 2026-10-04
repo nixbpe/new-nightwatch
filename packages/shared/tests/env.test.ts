@@ -12,6 +12,17 @@ describe("loadEnv", () => {
     });
   });
 
+  it("accepts a Redis namespace and rejects empty or wildcard prefixes", () => {
+    expect(loadEnv({ REDIS_KEY_PREFIX: "nw_e2e_123" }).REDIS_KEY_PREFIX).toBe(
+      "nw_e2e_123",
+    );
+    for (const prefix of ["", "nw:*", "nw:run", "nw run"]) {
+      expect(() => loadEnv({ REDIS_KEY_PREFIX: prefix })).toThrow(
+        EnvValidationError,
+      );
+    }
+  });
+
   it("coerces PORT from a string", () => {
     expect(loadEnv({ PORT: "8080" }).PORT).toBe(8080);
   });

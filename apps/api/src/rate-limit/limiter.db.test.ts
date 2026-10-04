@@ -46,6 +46,29 @@ describe("consumeRateLimit", () => {
     if (keys.length > 0) await redis.del(...keys);
   });
 
+  it("isolates identical rate-limit keys by Redis namespace", async () => {
+    const prefixA = `rl-a-${randomUUID()}`;
+    const prefixB = `rl-b-${randomUUID()}`;
+    const a = createRedisClient(redisUrl, undefined, prefixA);
+    const b = createRedisClient(redisUrl, undefined, prefixB);
+    clients.push(a, b);
+    const key = freshKey();
+    const request = { key, limit: 1, windowMs };
+    const first = createRateLimiter({ redis: a });
+    const second = createRateLimiter({ redis: b });
+    try {
+      expect((await first.consumeRateLimit(request)).allowed).toBe(true);
+      expect((await first.consumeRateLimit(request)).allowed).toBe(false);
+      expect((await second.consumeRateLimit(request)).allowed).toBe(true);
+      expect(await redis.exists(key)).toBe(0);
+      expect(await redis.exists(`${prefixA}:${key}`, `${prefixB}:${key}`)).toBe(
+        2,
+      );
+    } finally {
+      await Promise.all([a.del(key), b.del(key)]);
+    }
+  });
+
   it("allows up to the limit and denies the next request with a retry hint", async () => {
     let clock = 1_000_000;
     const limiter = createRateLimiter({ redis, now: () => clock });

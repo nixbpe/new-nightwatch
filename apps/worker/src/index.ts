@@ -67,9 +67,11 @@ const monitorChecker =
   monitorEnv && roles.has("monitor-checker")
     ? startMonitorChecker(monitorEnv)
     : null;
-const queue = roles.has("scheduler") ? createDispatchQueue(redisUrl) : null;
+const queue = roles.has("scheduler")
+  ? createDispatchQueue(redisUrl, { prefix: env.REDIS_KEY_PREFIX })
+  : null;
 const monitorQueue = roles.has("monitor-scheduler")
-  ? createMonitorCheckQueue(redisUrl)
+  ? createMonitorCheckQueue(redisUrl, { prefix: env.REDIS_KEY_PREFIX })
   : null;
 await Promise.all([
   queue?.waitUntilReady(),
@@ -204,6 +206,7 @@ function startMonitorChecker(monitor: MonitorEnv): Worker<MonitorCheckJob> {
     },
     {
       connection: redisConnection(redisUrl),
+      prefix: env.REDIS_KEY_PREFIX,
       concurrency: 20,
       // attempts 1 also means a check that stalled (Worker crash) is not run again.
       maxStalledCount: 0,
@@ -234,7 +237,11 @@ function startConsumer(): Worker<MaterializeJobData> {
       assertMaterializeJobData(job.data);
       await processMaterialization(job.data, dependencies);
     },
-    { connection: redisConnection(redisUrl), concurrency: 5 },
+    {
+      connection: redisConnection(redisUrl),
+      prefix: env.REDIS_KEY_PREFIX,
+      concurrency: 5,
+    },
   );
 
   consumer.on("failed", (job) => {

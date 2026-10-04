@@ -194,7 +194,7 @@ Tasks sharing a file never run concurrently; each starts after its dependency's 
 - **READY:** NODE-2 merged; start authorized; postgres:18 image volume/PGDATA layout checked at the primary source
 - **OUTCOME:** Compose and CI run `postgres:18.x-alpine`; all migrations and RLS tests pass on it
 - **SOURCE:** Data contract; DB-01, DB-03, DB-04, DB-10, DB-13
-- **INVARIANTS:** owner and runtime roles from `scripts/db/init/001-roles.sh`; loopback-only ports; one NightWatch database per cluster; other worktrees' volumes untouched
+- **INVARIANTS:** owner and runtime roles from `scripts/db/init/001-roles.sh`; loopback-only ports; one primary NightWatch database per cluster, with local E2E schema-only snapshots permitted by DB-13; other worktrees' volumes untouched
 - **FILES:** `compose.yaml`, `.github/workflows/ci.yml` (service image and the two `docker run postgres:` role steps), `scripts/quality/README.md` for the local volume upgrade note
 - **NON-GOALS:** production data migration (no cloud environment defined in repo); Redis upgrade
 - **CONTRACTS:** CI and Compose use the same Postgres tag

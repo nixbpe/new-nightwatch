@@ -180,9 +180,11 @@ export class NotificationDispatchScheduler {
 
 export function createDispatchQueue(
   redisUrl: string,
+  options: { prefix?: string } = {},
 ): Queue<MaterializeJobData> {
   return new Queue(IN_APP_MATERIALIZE_QUEUE, {
     connection: redisConnection(redisUrl),
+    prefix: options.prefix,
   });
 }
 

@@ -16,7 +16,11 @@ const env = loadEnv();
 const authEnv = loadAuthEnv();
 const logger = createLogger({ level: env.LOG_LEVEL, name: "nightwatch-api" });
 const monitorEnv = loadMonitorEnv();
-const redis = createRedisClient(monitorEnv.REDIS_URL, logger);
+const redis = createRedisClient(
+  monitorEnv.REDIS_URL,
+  logger,
+  env.REDIS_KEY_PREFIX,
+);
 const database = createDatabase(authEnv.DATABASE_URL);
 const mailer = createMailer(authEnv, logger);
 await mailer.verify();

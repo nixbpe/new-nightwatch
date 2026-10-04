@@ -8,8 +8,13 @@ export const RATE_LIMIT_TIMEOUT_MS = 2000;
  * 2 s timeout. Connection errors are logged when the error kind changes and
  * again after the connection recovers, not on every reconnect attempt.
  */
-export function createRedisClient(url: string, logger?: Logger): Redis {
+export function createRedisClient(
+  url: string,
+  logger?: Logger,
+  prefix?: string,
+): Redis {
   const redis = new Redis(url, {
+    keyPrefix: prefix === undefined ? "" : `${prefix}:`,
     commandTimeout: RATE_LIMIT_TIMEOUT_MS,
     maxRetriesPerRequest: 1,
   });

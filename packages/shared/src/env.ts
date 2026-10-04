@@ -8,6 +8,10 @@ import { z } from "zod";
  */
 export const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+  REDIS_KEY_PREFIX: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional(),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
