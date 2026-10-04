@@ -72,17 +72,7 @@ Cannot reproduce on demand:
     └── Document the conditions observed and revisit when it recurs
 ```
 
-For test failures (npm shown; substitute the repository's own test command, found by checking how the repository tests):
-```bash
-# Run the specific failing test
-npm test -- --grep "test name"
-
-# Run with verbose output
-npm test -- --verbose
-
-# Run in isolation (rules out test pollution)
-npm test -- --testPathPattern="specific-file" --runInBand
-```
+Use the failing package's focused test command from its `package.json`. Database-backed checks use the wrapper in file:`../../../scripts/quality/README.md`. Compare the failing test alone with the same test after its preceding operations.
 
 ### Step 2: Localize
 
@@ -98,15 +88,7 @@ Which layer is failing?
 └── Test itself     → Check if the test is correct (false negative)
 ```
 
-**Use bisection for regression bugs:**
-```bash
-# Find which commit introduced the bug
-git bisect start
-git bisect bad                    # Current commit is broken
-git bisect good <known-good-sha> # This commit worked
-# Git will checkout midpoint commits; run your test at each
-git bisect run npm test -- --grep "failing test"  # substitute the repository's focused-test command
-```
+For regression bisection, use an isolated worktree and the repository's focused reproduction command. Do not switch commits in a shared dirty worktree or run an unrelated full suite as the reproduction.
 
 ### Step 3: Reduce
 
@@ -196,32 +178,7 @@ Runtime error:
 
 ## Safe Fallback Patterns
 
-When under time pressure, use safe fallbacks:
-
-```typescript
-// Safe default + warning (instead of crashing)
-function getConfig(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    console.warn(`Missing config: ${key}, using default`);
-    return DEFAULTS[key] ?? '';
-  }
-  return value;
-}
-
-// Graceful degradation (instead of broken feature)
-function renderChart(data: ChartData[]) {
-  if (data.length === 0) {
-    return <EmptyState message="No data available for this period" />;
-  }
-  try {
-    return <Chart data={data} />;
-  } catch (error) {
-    console.error('Chart render failed:', error);
-    return <ErrorState message="Unable to display chart" />;
-  }
-}
-```
+Use only a fallback defined by the accepted contract. Preserve distinct empty, failed and unavailable states. Missing required configuration is a blocker; do not replace it with an empty value or an invented default.
 
 ## Instrumentation Guidelines
 

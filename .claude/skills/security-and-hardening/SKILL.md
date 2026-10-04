@@ -47,7 +47,7 @@ If you can't name the trust boundaries for a feature, you're not ready to secure
 - **Parameterize all database queries**, never concatenate user input into SQL
 - **Encode output** to prevent XSS (use framework auto-escaping, don't bypass it)
 - **Use HTTPS** for all external communication
-- **Hash passwords** with bcrypt/scrypt/argon2
+- Keep password handling inside the existing authentication library
 - **Set security headers** (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
 - **Use httpOnly, secure, sameSite cookies** for sessions
 - **Run the detected package manager's native audit** against the committed lockfile before every release
@@ -77,189 +77,41 @@ These are prevention patterns, not a ranking. For the OWASP 2021 ordering, use f
 
 ### Injection (SQL, NoSQL, OS Command)
 
-```typescript
-// BAD: SQL injection via string concatenation
-const query = `SELECT * FROM users WHERE id = '${userId}'`;
-
-// GOOD: Parameterized query
-const user = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
-```
+Bind query values and constrain command arguments at the boundary. Apply DB-02 in file:`../../../docs/architecture.md`.
 
 ### Broken Authentication
 
-```typescript
-// Password hashing
-import { hash, compare } from 'bcrypt';
-
-const SALT_ROUNDS = 12;
-const hashedPassword = await hash(plaintext, SALT_ROUNDS);
-const isValid = await compare(plaintext, hashedPassword);
-
-// Session management
-app.use(session({
-  secret: process.env.SESSION_SECRET,  // From environment, not code
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,     // Not accessible via JavaScript
-    secure: true,       // HTTPS only
-    sameSite: 'lax',    // CSRF protection
-    maxAge: 24 * 60 * 60 * 1000,  // 24 hours
-  },
-}));
-```
+Use the existing authentication library and its session policy in file:`../../../docs/ref/authentication.md`. Do not introduce a separate password or session implementation from a generic example.
 
 ### Cross-Site Scripting (XSS)
 
-```typescript
-// BAD: Rendering user input as HTML
-element.innerHTML = userInput;
-
-// GOOD: Use framework auto-escaping (React does this by default)
-return <div>{userInput}</div>;
-
-// If you must render HTML, sanitize first
-import DOMPurify from 'dompurify';
-const clean = DOMPurify.sanitize(userInput);
-```
+Use framework output escaping. Treat raw HTML as an untrusted boundary requiring an approved sanitizer; do not bypass escaping for user-controlled content.
 
 ### Broken Access Control
 
-```typescript
-app.patch('/api/tasks/:id', authenticate, async (req, res) => {
-  const task = await taskService.findById(req.params.id);
-
-  // Authorization, not just authentication
-  if (task.ownerId !== req.user.id) {
-    return res.status(403).json({
-      error: { code: 'FORBIDDEN', message: 'Not authorized to modify this task' }
-    });
-  }
-
-  const updated = await taskService.update(req.params.id, req.body);
-  return res.json(updated);
-});
-```
+Check the current actor's membership and operation permission before protected data lookup. Apply the request and isolation rules in file:`../../../docs/architecture.md`.
 
 ### Security Misconfiguration
 
-```typescript
-import helmet from 'helmet';
-app.use(helmet());
-
-app.use(helmet.contentSecurityPolicy({
-  directives: {
-    defaultSrc: ["'self'"],
-    scriptSrc: ["'self'"],
-    styleSrc: ["'self'", "'unsafe-inline'"],  // Tighten if possible
-    imgSrc: ["'self'", 'data:', 'https:'],
-    connectSrc: ["'self'"],
-  },
-}));
-
-// CORS — restrict to known origins
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
-  credentials: true,
-}));
-```
+Review the actual application headers, trusted origins and credentialed CORS configuration. Cookie and origin rules are AUTH-02 and AUTH-03 in file:`../../../docs/architecture.md`.
 
 ### Sensitive Data Exposure
 
-```typescript
-// Never return sensitive fields in API responses
-function sanitizeUser(user: UserRecord): PublicUser {
-  const { passwordHash, resetToken, ...publicFields } = user;
-  return publicFields;
-}
-
-// Use environment variables for secrets
-const API_KEY = process.env.STRIPE_API_KEY;
-if (!API_KEY) throw new Error('STRIPE_API_KEY not configured');
-```
+Check response field allowlists and log redaction against the approved contract. Secrets come from the existing environment interface, never from a fallback literal.
 
 ### Server-Side Request Forgery (SSRF)
 
-When the server fetches a URL the user influenced (webhooks, "import from URL", image proxies, link previews), an attacker can aim it at internal services (cloud metadata, `localhost`, private IPs).
-
-```typescript
-// BAD: fetch whatever the user gives you
-await fetch(req.body.webhookUrl);
-
-// GOOD: allowlist scheme + host, reject if ANY resolved IP is private, forbid redirects
-import { lookup } from 'node:dns/promises';
-import ipaddr from 'ipaddr.js';
-
-const ALLOWED_HOSTS = new Set(['hooks.example.com']);
-
-async function assertSafeUrl(raw: string): Promise<URL> {
-  const url = new URL(raw);
-  if (url.protocol !== 'https:') throw new Error('https only');
-  if (!ALLOWED_HOSTS.has(url.hostname)) throw new Error('host not allowed');
-  // Resolve ALL records; a single private/reserved address fails the check.
-  const addrs = await lookup(url.hostname, { all: true });
-  if (addrs.some((a) => ipaddr.parse(a.address).range() !== 'unicast')) {
-    throw new Error('private/reserved IP');
-  }
-  return url;
-}
-
-await fetch(await assertSafeUrl(req.body.webhookUrl), { redirect: 'error' });
-```
-
-The `range() !== 'unicast'` check covers loopback, link-local `169.254.169.254` (cloud metadata, the #1 SSRF target), private, and unique-local ranges across IPv4 and IPv6.
-
-**Caveat: this still has a TOCTOU gap.** `fetch` resolves DNS again after the check, so an attacker using a short-TTL record can rebind to an internal IP between validation and connection. For high-risk surfaces, resolve once and connect to the pinned IP, or put a filtering agent in front (`request-filtering-agent` / `ssrf-req-filter`).
+Use the shared outbound helper required by OUT-01 in file:`../../../docs/architecture.md`. Verify DNS, redirect and connection-time behavior together; validation followed by a separate DNS lookup leaves a rebinding gap.
 
 ## Input Validation Patterns
 
 ### Schema Validation at Boundaries
 
-```typescript
-import { z } from 'zod';
-
-const CreateTaskSchema = z.object({
-  title: z.string().min(1).max(200).trim(),
-  description: z.string().max(2000).optional(),
-  priority: z.enum(['low', 'medium', 'high']).default('medium'),
-  dueDate: z.string().datetime().optional(),
-});
-
-// Validate at the route handler
-app.post('/api/tasks', async (req, res) => {
-  const result = CreateTaskSchema.safeParse(req.body);
-  if (!result.success) {
-    return res.status(422).json({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Invalid input',
-        details: result.error.flatten(),
-      },
-    });
-  }
-  // result.data is now typed and validated
-  const task = await taskService.create(result.data);
-  return res.status(201).json(task);
-});
-```
+Apply REQ-02 and REQ-05 in file:`../../../docs/architecture.md`. Use the shared boundary schema and standard error envelope; generic framework validation examples do not define the response contract.
 
 ### File Upload Safety
 
-```typescript
-// Restrict file types and sizes
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-
-function validateUpload(file: UploadedFile) {
-  if (!ALLOWED_TYPES.includes(file.mimetype)) {
-    throw new ValidationError('File type not allowed');
-  }
-  if (file.size > MAX_SIZE) {
-    throw new ValidationError('File too large (max 5MB)');
-  }
-  // Don't trust the file extension — check magic bytes if critical
-}
-```
+When uploads are in scope, check the approved type and size limits and validate content rather than trusting extensions or client metadata.
 
 ### Destructive Operations on Derived Paths
 
@@ -313,110 +165,21 @@ Audits do not catch a newly malicious or typosquatted package. Therefore:
 
 ## Rate Limiting
 
-```typescript
-import rateLimit from 'express-rate-limit';
-
-// General API rate limit
-app.use('/api/', rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,                   // 100 requests per window
-  standardHeaders: true,
-  legacyHeaders: false,
-}));
-
-// Stricter limit for auth endpoints
-app.use('/api/auth/', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,  // 10 attempts per 15 minutes
-}));
-```
-
-**Count in a shared store once there is more than one process.** `express-rate-limit` keeps counters in process memory by default. Behind a load balancer each instance holds its own count, so the effective limit is `max × instances`; on serverless or edge runtimes a fresh invocation starts from zero, so the auth limit above may never fire. Pass a shared `store` (Redis via `rate-limit-redis`), or use an HTTP-based limiter that works where a long-lived TCP connection does not (for example `@upstash/ratelimit`):
-
-```typescript
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
-
-const authLimiter = new Ratelimit({
-  redis: Redis.fromEnv(),                       // UPSTASH_REDIS_REST_URL + _TOKEN
-  limiter: Ratelimit.slidingWindow(10, '15 m'), // 10 attempts per 15 minutes, across all instances
-});
-const { success } = await authLimiter.limit(`login:${req.ip}`);
-if (!success) return res.status(429).end();
-```
+Check the existing shared-store limiter and its failure behavior. Application limiting follows REQ-04 in file:`../../../docs/architecture.md`; auth throttling remains a separate boundary.
 
 ## Secrets Management
 
-```
-.env files:
-  ├── .env.example  → Committed (template with placeholder values)
-  ├── .env          → NOT committed (contains real secrets)
-  └── .env.local    → NOT committed (local overrides)
+Use the repository's secrets gate in file:`../../../scripts/quality/README.md` and check staged scope before commit. A keyword grep is not a replacement for the scanner.
 
-.gitignore must include:
-  .env
-  .env.local
-  .env.*.local
-  *.pem
-  *.key
-```
-
-**Always check before committing:**
-```bash
-# Check for accidentally staged secrets
-git diff --cached | grep -i "password\|secret\|api_key\|token"
-```
-
-**If a secret is ever committed, rotate it.** Deleting the line or rewriting history is not enough: assume it's compromised the moment it reaches a remote. Revoke and reissue the key first, then purge it from history.
+If a secret was committed, treat it as compromised. Rotate or revoke it through an authorized owner before any history cleanup.
 
 ## Data Privacy & Compliance
 
-Securing data asks "can an attacker read it?" Privacy asks "should *we* even hold it, and for how long?", which hardening doesn't answer. The cheapest data to protect is the data you never collected. Treat personal data as a liability to minimize.
-
-**Know what you hold.** You can't protect or honor a deletion request for data you can't find. Classify fields as you add them:
-
-| Class | Examples | Handling |
-|---|---|---|
-| **Non-personal** | Aggregates, anonymized counts | Normal handling |
-| **Personal (PII)** | Name, email, IP, device/user IDs | Minimize, access-control, include in export/delete |
-| **Sensitive** | Health, finance, location, biometrics, gov IDs, anything about minors | Extra basis to collect, stricter access, often encryption + audit logging |
-
-**Operating rules:**
-- **Minimize and set a purpose.** Collect a field only against a stated use. “It might be useful later” is latent breach scope, not a purpose. Never log PII into telemetry.
-- **Set retention up front, then actually delete.** Every personal-data store needs a TTL and a working deletion path — including backups, caches, search indexes, and analytics copies. 
-- **Support the data-subject rights your jurisdiction requires** (GDPR/CCPA and kin): export, correct, and delete on request. Design the schema so a user's data is *findable* and *erasable*.
-- **Get consent before collection or third-party sharing**, and make it auditable. Sending PII to an analytics/ad/LLM vendor is "sharing": the user's choice gates it, and the vendor needs a data-processing agreement.
-- **Localize defaults, don't hardcode one region's law.** Data-residency and rules differ by user location; make the policy a configurable boundary.
-
-When data crosses a trust boundary, validate it as untrusted (see Input Validation above). When a privacy incident exposes personal data, the breach-notification clock belongs in the postmortem.
+For collection, retention, deletion, export, residency or third-party sharing of personal data, read the Data Privacy & Compliance section in file:`../../references/security-special-cases.md`.
 
 ## Securing AI / LLM Features
 
-If your app calls an LLM (chatbots, summarizers, agents, RAG), map its attack surface to the [OWASP Top 10 for LLM Applications (2025)](https://genai.owasp.org/llm-top-10/):
-
-- **Treat all model output as untrusted input (LLM05: Improper Output Handling).** Never pass LLM output straight into `eval`, SQL, a shell, `innerHTML`, or a file path. Validate and encode it as you would raw user input.
-- **Assume prompts can be hijacked (LLM01: Prompt Injection).** Untrusted text in the context window (a user message, a fetched web page, a PDF) can carry instructions. The system prompt is not a security boundary; enforce permissions in code, not in the prompt.
-- **Keep secrets and other users' data out of prompts (LLM02 / LLM07).** Anything in the context can be echoed back. Don't put API keys, cross-tenant data, or the full system prompt where the model can repeat it.
-- **Constrain tool and agent permissions (LLM06: Excessive Agency).** Scope tools to the minimum, require confirmation for destructive or irreversible actions, and validate every tool argument.
-- **Bound consumption (LLM10: Unbounded Consumption).** Cap tokens, request rate, and loop/recursion depth so a crafted input can't run up cost or hang the system.
-- **Isolate retrieval data (LLM08: Vector and Embedding Weaknesses).** In RAG, treat the vector store as a trust boundary: partition embeddings per tenant so one user can't retrieve another's data, and validate documents before indexing.
-
-```typescript
-// BAD: trusting model output as a command or as markup
-const sql = await llm.generate(`Write SQL for: ${userQuestion}`);
-await db.query(sql);                                   // arbitrary query execution
-container.innerHTML = await llm.reply(userMessage);   // stored XSS, via the model
-
-// GOOD: model output is data — parse defensively, then validate, then encode
-let intent;
-try {
-  intent = CommandSchema.parse(JSON.parse(await llm.replyJson(userMessage)));
-} catch {
-  throw new ValidationError('unexpected model output'); // JSON.parse or schema failed
-}
-await runAllowlistedAction(intent.action, intent.params);
-container.textContent = await llm.reply(userMessage);
-```
+When the change adds an LLM call, retrieval or model-driven action, read the Securing AI / LLM Features section in file:`../../references/security-special-cases.md`.
 
 ## See Also
 
