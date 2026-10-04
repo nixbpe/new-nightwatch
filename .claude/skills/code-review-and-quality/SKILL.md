@@ -1,260 +1,117 @@
 ---
 name: code-review-and-quality
-description: Conducts static multi-axis code review by reading source, tests and author evidence, without running code. Use before merging any change that edits code. Use when reviewing code written by yourself, another agent, or a human. Use when you need to assess code quality across multiple dimensions before it enters the main branch.
+description: Review source, tests, and author evidence for correctness, readability, architecture, security, and performance without running code.
 ---
 
 # Code Review and Quality
 
 ## Overview
 
-Every change that edits code gets reviewed before merge. A change with no code edit (docs-only, config-only or other non-code content) needs no code review, per file:`AGENTS.md`. Review covers five axes: correctness, readability, architecture, security, and performance.
+Review code edits before merge. Non-code changes need no code review under repository instructions.
 
-**Static review only.** The reviewer reads source, tests and the author's evidence. It does not run the app, tests, builds, profilers or benchmarks. Where a judgment depends on a runtime fact (a measured latency, a query plan, a bundle size), cite the author's evidence or ask for it; do not estimate one.
+Keep the review static. Read source, tests, and author evidence; never run the app, tests, builds, profilers, or benchmarks. For runtime-dependent judgments, cite measured author evidence or report the gap. Never estimate latency, query plans, or bundle size.
 
-**The approval standard:** Approve a change when it definitely improves overall code health, even if it isn't perfect. Perfect code doesn't exist. Don't block a change because it isn't exactly how you would have written it. If it improves the codebase and follows the project's conventions, approve it.
-
-## When to Use
-
-- Before merging any PR or change that edits code
-- After completing a feature implementation
-- When another agent or model produced code you need to evaluate
-- When refactoring existing code
-- After any bug fix (review both the fix and the regression test)
+Approve an improvement that follows accepted contracts and conventions. Do not require your preferred implementation or perfection.
 
 ## The Five-Axis Review
 
 ### 1. Correctness
 
-Does the code do what it claims to do?
-
-- Does it match the spec or task requirements?
-- Are edge cases (null, empty, boundary values) and error paths handled, not just the happy path?
-- Does it pass all tests? Are the tests actually testing the right things?
-- Are there off-by-one errors, race conditions, or state inconsistencies?
+Compare the change with its criteria, boundary and failure behavior, tests, and state transitions. Check null, empty, boundary, race, and error paths. Verify that regression tests detect the changed behavior.
 
 ### 2. Readability & Simplicity
 
-Can another engineer (or agent) understand this code without the author explaining it?
+Check names, control flow, grouping, and module boundaries. Reject no-op variables, compatibility debris, and comments that narrate removed code. Question `temp`, `data`, `result`, `_unused`, and `// removed` without context.
 
-- Are names descriptive and consistent with project conventions? (No `temp`, `data`, `result` without context)
-- Is the control flow straightforward (avoid nested ternaries, deep callbacks)?
-- Is the code organized logically (related code grouped, clear module boundaries)?
-- Are there any "clever" tricks that should be simplified?
-- **Could this be done in fewer lines?** (1000 lines where 100 suffice is a failure)
-- **Are abstractions earning their complexity?** (Don't generalize until the third use case)
-- Would comments help clarify non-obvious intent? (But don't comment obvious code.)
-- Are there dead code artifacts: no-op variables (`_unused`), backwards-compat shims, or `// removed` comments?
-- **Is a new conditional bolted onto an unrelated flow?** That's a design smell, not a nit: push the logic into its own helper, state, or policy.
-- **Do repeated conditionals on the same shape appear?** They signal a missing model or dispatcher. A "temporary" branch is usually permanent debt.
+Prefer a complete shorter solution; 1000 lines where 100 suffice is a failure. Do not generalize before the third use case. Repeated conditionals on one shape suggest a missing model or dispatcher. Keep new policy out of unrelated flows.
 
 ### 3. Architecture
 
-Does the change fit the system's design?
+Check approved patterns, ownership, dependency direction, duplication, and explicit type boundaries. Question circular dependencies, gratuitous `any`, `unknown`, optional values, or casts, and silent fallbacks hiding an unclear invariant.
 
-- Does it follow existing patterns or introduce a new one? If new, is it justified?
-- Does it maintain clean module boundaries?
-- Is there code duplication that should be shared?
-- Are dependencies flowing in the right direction (no circular dependencies)?
-- Is the abstraction level appropriate (not over-engineered, not too coupled)?
-- **Does this refactor reduce complexity or just relocate it?** Count the concepts a reader must hold to follow the change. If a "cleaner" version leaves that count unchanged, it isn't cleaner. Prefer the restructuring that makes whole branches, modes, or layers disappear over one that re-centralizes the same logic. Prefer deleting an abstraction to polishing it.
-- **Is feature-specific logic leaking into a shared or general-purpose module?** Keep logic in its owning layer, reuse the existing canonical helper instead of a near-duplicate, and don't normalize architectural drift.
-- **Are type boundaries explicit?** Question gratuitous `any`/`unknown`/optional/casts and silent fallbacks that paper over an unclear invariant; an explicit boundary often simplifies the surrounding control flow.
+A refactor must remove complexity, not relocate it. Keep feature logic in its owning module and reuse canonical helpers.
 
 ### 4. Security
 
-Review with the security lens; it holds the checks.
+Apply the assigned security lens and the relevant checks in file:`../../references/security-checklist.md`. Do not treat a general code review as proof that security-sensitive paths were exercised.
 
 ### 5. Performance
 
-Judge from the source. Flag a pattern with a known cost; when the impact depends on data volume or a measured number, ask the author for the evidence instead of guessing. Web Vitals values below are industry references, not project targets; the project sets targets in its own contracts.
+Identify costs visible in source. Require author measurements when impact depends on volume or runtime behavior. Web Vitals references below are not project targets.
 
-**Data access**
+Check these patterns:
 
-- **N+1 queries:** a query or per-item `await` inside a loop. Propose one query with a join/`include`, or a batch by ids.
-- **Unbounded fetch:** a list query or endpoint with no limit, pagination or cursor.
-- **Predicates that defeat an index:** leading-wildcard `LIKE '%term'`, a function on the indexed column (`lower(email) = ?`; index the expression instead), a composite index with the range or sort column before the equality columns.
-- **New index without a stated query shape:** every index taxes each write; ask which query it serves and for the plan before and after.
-- **Partial, expression or trigram index missing** where the query shape needs one; unused or duplicate indexes left on a write-heavy table.
-- **Loop of single calls** where a bulk operation exists.
+- Data access: N+1 queries, per-item `await`, unbounded lists, and missed bulk operations.
+- Indexes: leading-wildcard `LIKE '%term'`, `lower(email) = ?` without an expression index, composite order incompatible with equality and range predicates, missing partial, expression, or trigram indexes required by the query shape, and new or duplicate indexes without a query shape or before/after plan.
+- Connections: per-request or per-module pools, pool `max` multiplied by instance count exceeding `max_connections`, missing `connectionTimeoutMillis`, leaked clients, and long transactions. Do not raise limits without finding what holds connections.
+- Request work: heavy synchronous computation and uncompressed large responses.
+- Caches: unproven benefit, omitted tenant, viewer, locale, permission, or flag inputs, undefined staleness, missing or layered invalidation, missing eviction or memory ceilings, stampedes, cached errors, equal TTLs for misses and hits, and stale balances or permissions. A missing identity input can leak data and is Critical. Match write-through or write-behind to durability and latency needs. Write-through adds write latency; write-behind can lose pending data when the cache fails.
+- Frontend: unstable props to memoized children, blanket `React.memo`, `useMemo`, or `useCallback` without profiles, heavy static imports instead of `lazy(() => import(...))`, missing virtualization or `content-visibility: auto`, and layout thrashing.
+- Images: missing `width` or `height`, below-fold images without `loading="lazy"`, lazy-loaded LCP images, or LCP images without `fetchpriority="high"`.
+- Main thread: tasks over 50ms without `scheduler.yield()` or `yieldToMain`, unnecessary synchronous analytics, and animation outside `transform` and `opacity`. Reference values are LCP ≤ 2.5s, INP ≤ 200ms, and CLS ≤ 0.1.
+- Delivery: scripts without `async` or `defer`, blocking CSS, excessive font families or weights, missing self-hosted WOFF2, `font-display: swap`, or LCP font preload.
+- Network: static assets without content hashes and long `max-age`, unnecessary redirects, and `unload` or `Cache-Control: no-store` that prevent bfcache.
 
-**Connections and request path**
-
-- **Pool per request or per module.** Pool `max` times instance count must stay under the database `max_connections`; no `connectionTimeoutMillis`, so exhaustion queues forever. Raising `max` is not a fix until what holds connections is found (long transactions, missing `await`, leaked clients).
-- **Synchronous heavy computation** in a request handler.
-- **Large responses not compressed.**
-
-**Caching**
-
-- **Cached call not shown to be expensive**, or read rarely relative to writes.
-- **Key omits an input the response varies on** (tenant, viewer, locale, permissions, feature flag). This leaks one user's data to another: **Critical**.
-- **No staleness window or invalidation strategy**, or more than one strategy layered.
-- **Hot key with no stampede guard** (request coalescing, lock or `stale-while-revalidate`).
-- **Data cached whose staleness is a correctness bug** (balances, permissions); origin errors cached; negative results cached with the same TTL as hits.
-- **No eviction policy or memory ceiling** on an in-process or shared cache.
-- **Write strategy mismatched to the need:** write-through adds cache latency to every write; write-behind loses data if the cache dies before the flush.
-
-**Frontend**
-
-- **New object, array or function literal passed as a prop** to a memoized child, so the memo never hits.
-- **`React.memo`/`useMemo`/`useCallback` on everything** with no profiling evidence; over-use is as much a finding as under-use.
-- **Heavy library imported statically** into a route that could `lazy(() => import(...))`; route-level code splitting missing.
-- **Images:** no `width`/`height`; below-the-fold image without `loading="lazy"`; LCP image lazy-loaded or without `fetchpriority="high"`.
-- **Long lists rendered without virtualization**; off-screen sections without `content-visibility: auto`.
-- **Long tasks (> 50ms) in an event handler** with no `scheduler.yield()` or `yieldToMain`, the main lever for INP (reference: LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1); non-urgent work (analytics, logging) run inside the handler.
-- **Layout thrashing** (reads and writes interleaved in one handler); animation on properties other than `transform` and `opacity`.
-- **Third-party script** loaded without `async`/`defer`; non-critical CSS that blocks rendering.
-- **Fonts:** many families or weights, not self-hosted WOFF2, no `font-display: swap`, LCP font not preloaded.
-- **Network:** static assets without long `max-age` and content hashes; unnecessary redirects; `unload` handlers or `Cache-Control: no-store` on HTML, which lose bfcache eligibility.
-
-**Speculative optimization**
-
-- Complexity added "for performance" with no cited before/after numbers from the author. Ask for them; an optimization that shows no measurable gain is not worth keeping.
-- An "optimization" that drops work the product needs (skipped validation, cached data that must be fresh, a removed load-bearing `await`) is a regression.
-- A test changed, skipped or deleted to make an optimization pass.
+Flag unmeasured optimization, skipped required work or validation, removed load-bearing `await`, and tests changed or disabled to make optimization pass.
 
 ## Structural Remedies
 
-When you flag a structural problem, propose the move, not just the problem. Reach for a named restructuring:
+Propose a concrete move for each structural finding: typed model or dispatcher, collapsed duplicate branches, separated orchestration, correct ownership, canonical helper reuse, explicit type boundary, deleted pass-through wrapper, or focused module split.
 
-- **Replace a chain of conditionals** with a typed model or an explicit dispatcher.
-- **Collapse duplicate branches** into a single clearer flow.
-- **Separate orchestration from business logic** so each reads on its own.
-- **Move feature-specific logic** out of a shared module into the package that owns the concept.
-- **Reuse the canonical helper** instead of a bespoke near-duplicate.
-- **Make a type boundary explicit** so downstream branching disappears.
-- **Delete a pass-through wrapper** that adds indirection without clarifying the API.
-- **Extract a helper, or split a large file** into focused modules.
-
-Prefer the remedy that removes moving pieces over one that spreads the same complexity around.
+Prefer the remedy that removes concepts rather than redistributing them.
 
 ## Change Sizing
 
-Flag a change over ~300 changed lines, one that mixes refactoring with new behavior, or one that grows an already-large file (~1000 lines) without decomposing it, and propose the split: stack, by file group, horizontal (shared code first) or vertical (full-stack slices). Complete file deletions and automated refactors may be large.
+Flag changes over ~300 lines, mixed refactoring and behavior, or growth beyond ~1000 lines without decomposition. Propose a stack or cohesive horizontal or vertical split. Complete deletions and automated refactors can be larger.
 
 ## Review Process
 
 ### Step 1: Understand the Context
 
-```
-- What is this change trying to accomplish?
-- What spec or task does it implement?
-- What is the expected behavior change?
-```
+Read accepted scope, criteria, contracts, expected behavior, and non-goals.
 
 ### Step 2: Review the Tests First
 
-Tests reveal intent and coverage:
-
-```
-- Do tests exist for the change?
-- Do they test behavior (not implementation details)?
-- Are edge cases covered?
-- Do tests have descriptive names?
-- Would the tests catch a regression if the code changed?
-```
+Check behavioral coverage, boundaries, meaningful names, and whether the tests detect a regression.
 
 ### Step 3: Review the Implementation
 
-```
-For each file changed:
-1. Correctness: Does this code do what the test says it should?
-2. Readability: Can I understand this without help?
-3. Architecture: Does this fit the system?
-4. Security: Any vulnerabilities?
-5. Performance: Any anti-pattern from the list above?
-```
+Apply all required axes to changed code and relevant consumers.
 
 ### Step 4: Categorize Findings
 
-Use the severity labels and disposition rules supplied in the review assignment. Order findings by correctness, security and structural impact. Keep optional suggestions separate from defects and evidence gaps.
+Use the assignment's severity and disposition rules. Order correctness, security, and structural findings before optional suggestions. Keep defects and evidence gaps distinct.
 
 ### Step 5: Verify the Verification
 
-Check the author's verification story as evidence, without re-running it:
-
-```
-- Which tests does the author report, and do they cover the change?
-- Is the build result reported?
-- Is manual testing described?
-- Are there screenshots for UI changes?
-- Is there a before/after measurement for a performance claim?
-```
-
-Report a missing item as a gap. Do not run tests, builds or profilers to fill it.
+Inspect author test and build results, required manual observations or UI screenshots, and measurements for performance claims. Report gaps without running tools to fill them.
 
 ## Multi-Model Review Pattern
 
-Apply the assigned review lenses to the same candidate and criteria. Model selection, delegation and the final disposition belong to the caller; this skill creates no additional review workflow.
+Use the assigned lenses on the same candidate and criteria. Model selection, delegation, and disposition belong to the caller. Create no additional workflow.
 
 ## Review Speed
 
-Return one batch of findings at the assigned checkpoint. Report a scope that cannot be reviewed within the assignment rather than silently omitting files or evidence.
+Return one finding batch at the assigned checkpoint. Report unreviewable scope instead of silently skipping it.
 
 ## Handling Disagreements
 
-When resolving review disputes, apply this hierarchy:
-
-1. **Technical facts and data** override opinions and preferences
-2. **Style guides** are the absolute authority on style matters
-3. **Software design** must be evaluated on engineering principles, not personal preference
-4. **Codebase consistency** is acceptable if it doesn't degrade overall health
-
-Classify an in-scope defect under the assigned severity rules. Report surrounding issues separately; do not expand the change or assign follow-up work without authorization.
+Use technical facts over preference, repository style rules for style, engineering principles for design, and consistency that preserves code health. Record unsettled disagreements with evidence for the caller. Author agreement does not replace independent review.
 
 ## Honesty in Review
 
-When reviewing code, whether written by you, another agent, or a human:
-
-- **Don't rubber-stamp.** "LGTM" without evidence of review helps no one.
-- **Don't soften real issues.** "This might be a minor concern" when it's a bug that will hit production is dishonest.
-- **Quantify problems from the code, not from guesses.** "This loop issues one query per row, so a 100-row page costs 101 queries" is better than "this could be slow." Do not invent latency figures.
-- **Push back on approaches with clear problems.** Sycophancy is a failure mode in reviews. Say so directly and propose alternatives.
-- Record unresolved disagreements with their evidence for the caller's disposition. Author agreement does not replace independent review.
+Give evidence for findings and acceptance. Do not rubber-stamp or soften defects. Quantify source-visible work without inventing runtime numbers. Suggest a simpler alternative to a flawed design. Keep surrounding issues separate; never expand scope or assign follow-ups without authority.
 
 ## See Also
 
-- Detailed security review: file:`../../references/security-checklist.md`
-
-## Common Rationalizations
-
-| Rationalization | Reality |
-|---|---|
-| "It works, that's good enough" | Working code that's unreadable, insecure, or architecturally wrong creates debt that compounds. |
-| "I wrote it, so I know it's correct" | Authors are blind to their own assumptions. Every change benefits from another set of eyes. |
-| "We'll clean it up later" | Later never comes. Require cleanup before merge, not after. |
-| "AI-generated code is probably fine" | AI code needs more scrutiny, not less. It's confident and plausible, even when wrong. |
-| "The tests pass, so it's good" | Tests don't catch architecture problems, security issues, or readability concerns. |
-| "The refactor makes it cleaner" | Relocating complexity isn't reducing it. Look for the version where branches disappear. |
-| "It's only a small addition to this file" | Small diffs still push files past a healthy size and bolt branches onto unrelated flows. Judge the resulting structure, not the diff size. |
-| "We'll optimize later" | Fix known anti-patterns (N+1, unbounded fetch, per-request pools) now; defer micro-optimizations. |
-| "This optimization is obvious" | Then the author can cite the measurement. Unmeasured wins are how neutral complexity lands. |
-| "Just cache it" | Caching a cheap call adds a staleness bug for no gain, and a key that omits the viewer leaks data. |
-| "It's just a version bump" | A bump is a behavior change you didn't write. Read the changelog; semver doesn't guarantee no breakage. |
-| "I'll upgrade everything in one PR to save time" | A bulk bump that breaks the build hides which package did it. One dependency per change keeps the cause and the revert clean. |
-
-## Red Flags
-
-- PRs merged without any review, or "LGTM" without evidence of review
-- Review that only checks if tests pass (ignoring other axes)
-- Security-sensitive changes without security-focused review
-- Large PRs that are "too big to review properly" (split them)
-- No regression tests with bug fix PRs
-- Review comments without severity labels
-- Accepting "I'll fix it later"
-- N+1 query, unbounded list, or cache key missing tenant/viewer in the diff
-- Performance complexity added with no author measurement
-- Review that runs code or estimates runtime numbers instead of reading the source and the author's evidence
+Use the security checklist above for detailed controls rather than copying them into this review.
 
 ## Verification
 
-After review is complete:
+Check finding dispositions, author proof coverage, and documented verification. The reviewer must not have rerun tests or builds.
 
-- [ ] Each required finding has a disposition under the assignment's severity rules
-- [ ] The author's test and build results are reported and cover the change (reviewer did not re-run them)
-- [ ] The verification story is documented (what changed, how it was verified)
-
-**Presumptive blockers:** surface and propose the simpler design for each of these; classify as blocking under the assigned rules only when the change actively makes structure worse: a refactor that relocates complexity instead of reducing it; a change that pushes a file past the size boundary with no decomposition; feature logic added to a shared module; a near-duplicate of an existing canonical helper; a silent fallback that hides an unclear invariant.
+Treat structural regressions as presumptive blockers under assigned severity rules only when the change makes structure worse. Examples include relocated complexity, excessive file growth, feature logic in shared modules, duplicated canonical helpers, and invariant-hiding fallbacks.
 
 ## Simplification
 
-Suggest a simplification only when it preserves behavior exactly. Understand why the code exists (history, tests) before removing it, apply changes one at a time with the tests rerun after each, and revert one that changes behavior or makes the diff harder to review.
+Understand source history and tests before suggesting removal. Preserve behavior exactly. Apply and test simplifications one at a time through the authorized owner; revert changes that alter behavior or make review harder.
