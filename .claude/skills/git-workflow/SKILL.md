@@ -1,139 +1,69 @@
 ---
 name: git-workflow
-description: Structures git workflow practices. Use when making any code change. Use when committing, branching, resolving conflicts, splitting uncommitted work in a messy working tree into clean atomic commits, opening or reviewing a pull request (PR), pushing to a remote, or when you need to organize work across multiple parallel streams.
+description: Keep branches, checkpoints, commits, staging, conflicts, and PR publication scoped, authorized, and recoverable.
 ---
+
 # Git Workflow
 
 ## Overview
 
-Commits are save points, branches are sandboxes and history is documentation. Disciplined version control keeps fast AI-generated changes reviewable and reversible.
-
-## When to Use
-
-Always. Every code change flows through git.
+Follow the repository's branch conventions and the user's publication authority. Passing checks do not authorize commits, push, or merge.
 
 ## Core Principles
 
 ### Trunk-Based Development (Recommended)
 
-Keep `main` always deployable. Work in short-lived feature branches that merge back within 1-3 days, since long-lived branches diverge, conflict and delay integration.
-
-```
-main ──●──●──●──●──●──●──  (always deployable)
-        ╲      ╱  ╲    ╱
-         ●──●─╱    ●──╱    ← short-lived feature branches (1-3 days)
-```
-
-Teams using gitflow or long-lived branches can adapt the same principles (atomic commits, small changes, descriptive messages) to their branching model. Release branches are acceptable when stabilizing a release while main moves forward; prefer feature flags over long branches for incomplete work.
+Keep `main` deployable and use short-lived branches, normally 1-3 days. Adapt to established release branches or gitflow; prefer feature flags for incomplete work.
 
 ### 1. Checkpoint Early; Commit When Authorized
 
-Keep recoverable checkpoints, but commit only when the user or assignment authorizes it. A passing check proves behavior; it does not grant commit authority. In shared worktrees, use scoped diffs or an isolated worktree until ownership and staging are clear.
+Use scoped diffs or isolated worktrees for recoverable checkpoints. Commit only with user or assignment authorization and clear ownership.
 
 ### 2. Atomic Commits
 
-Each commit does one logical thing:
-
-```
-# Good
-a1b2c3d Add task creation endpoint with validation
-d4e5f6g Add task creation form component
-
-# Bad
-x1y2z3a Add task feature, fix sidebar, update deps, refactor utils
-```
+Commit one logical behavior with its proof. Never absorb unrelated formatting, dependencies, or refactors.
 
 ### 3. Descriptive Messages
 
-Explain the *why*, not just the *what*:
-
-```
-feat: add email validation to registration endpoint
-
-Prevents invalid email formats from reaching the database, using
-Zod at the route handler level (consistent with auth.ts).
-```
-
-**Format:** `<type>: <short description>`, then a blank line and an optional body explaining why. **Types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
+Use `<type>: <short description>` and an optional body explaining why. Supported types are `feat`, `fix`, `refactor`, `test`, `docs`, and `chore`.
 
 ### 4. Keep Concerns Separate
 
-Don't combine formatting, refactors, and features in one commit, ideally not in one PR either. Small cleanups (renaming a variable) can ride along in a feature commit at reviewer discretion.
+Separate formatting, refactoring, and features. Include a small related cleanup only when the reviewer accepts its scope.
 
 ### 5. Size Your Changes
 
-Target ~100 lines per commit/PR; split anything over ~1000.
+Target ~100 lines per commit or PR. Split changes over ~1000 into independently reviewable units.
 
 ## Branching Strategy
 
-- One feature per branch (`feature/task-creation`), branched from `main`
-- Delete branches after merge
+Use one feature per branch from `main`, following repository naming. Existing prefixes include `feature/<desc>`, `fix/<desc>`, `chore/<desc>`, and `refactor/<desc>`. Delete branches after merge.
 
-**Naming:** `feature/<desc>`, `fix/<desc>`, `chore/<desc>`, `refactor/<desc>`.
-
-For parallel agent branches, use file:`WORKTREES.md`.
+For parallel worktrees, read file:`WORKTREES.md`. Isolate writers instead of switching a shared directory between branches.
 
 ## Safe Checkpoint and Recovery
 
-```text
-change → focused check → scoped checkpoint → continue
-                    └→ fail → diagnose or restore owned hunks only
-```
-
-- Never use repository-wide `git reset --hard`, `git restore`, `git clean` or stash in a dirty/shared worktree.
-- Restore only paths or hunks you created after confirming no later writer touched them.
-- If ownership is ambiguous, stop and coordinate; do not guess.
-- Prefer an isolated worktree for risky experiments or parallel writers.
-- An authorized commit is an atomic checkpoint, not permission to absorb ambient work.
-- Before an authorized commit, stage only owned paths, inspect `git diff --cached --name-only` and `git diff --cached --check`, and regenerate or reconcile the candidate manifest so staged bytes and deletions match the accepted worktree binding. Any ambient, unexpected or mismatched staged content blocks the commit.
+- Never use repository-wide `git reset --hard`, `git restore`, `git clean`, or stash in a dirty or shared worktree.
+- Restore only owned paths or hunks after confirming no later writer touched them. Stop and coordinate when ownership is unclear.
+- Prefer isolated worktrees for experiments. Save changes before removing their workspace; do not assume cleanup preserves uncommitted work.
+- Before an authorized commit, stage owned paths and inspect `git diff --cached --name-only` and `git diff --cached --check`.
+- Regenerate or reconcile the candidate manifest so staged bytes and deletions match the accepted worktree binding. Unexpected, ambient, or mismatched staged content blocks the commit.
+- Treat commit, push, PR creation, deploy, force-push, and history rewrite as separate permissions. Never force-push a shared branch without authorization.
 
 ## Change Summaries
 
-After any modification, provide a structured summary:
-
-```
-CHANGES MADE:
-- src/routes/tasks.ts: Added validation middleware to POST endpoint
-
-THINGS I DIDN'T TOUCH (intentionally):
-- src/routes/auth.ts: Has similar validation gap but out of scope
-
-POTENTIAL CONCERNS:
-- Added zod as a dependency (72KB gzipped)
-```
-
-The "DIDN'T TOUCH" section matters most: it shows scope discipline.
+Report CHANGES MADE, THINGS I DIDN'T TOUCH (intentionally), and POTENTIAL CONCERNS. Use exact paths and concrete effects. Omit empty sections rather than retelling the work.
 
 ## Pre-Commit Hygiene
 
-**Before every commit:** run the applicable quality gates in Quality scripts before reporting completion, when source code changed. Documentation-only changes don't require them.
+Run applicable repository checks before reporting changed source complete. Documentation-only changes do not require application gates; check their formatting and references.
 
 ## Handling Generated Files
 
-- **Commit generated files** only if the project expects them (`package-lock.json`, Prisma migrations)
-- **Don't commit** build output, `.env`, or unshared IDE config
-- **`.gitignore`** should cover `node_modules/`, `dist/`, `.env`, `.env.local`, `*.pem`
+Commit generated files only when repository policy requires them, including `package-lock.json` or Prisma migrations. Never commit build output, `.env`, or unshared IDE configuration.
 
-## Common Rationalizations
-
-| Rationalization | Reality |
-|---|---|
-| "I'll commit when the feature is done" | Large unreviewed changes hide defects; keep scoped checkpoints and make authorized commits atomic. |
-| "The message doesn't matter" | Messages are documentation. Future you (and future agents) need to understand what changed and why. |
-| "I'll squash it all later" | Squashing destroys the development narrative. Prefer clean incremental commits from the start. |
-
-## Red Flags
-
-- Large changes without scoped checkpoints
-- Commit messages like "fix", "update", "misc"
-- Formatting mixed with behavior changes
-- Missing `.gitignore`, or committed dependencies, secrets or build output
-- Repository-wide reset, clean, restore or stash in a dirty worktree
-- Force-pushing to shared branches
+Keep appropriate exclusions for `node_modules/`, `dist/`, `.env`, `.env.local`, and `*.pem`. Never add ignore rules that hide in-scope evidence or candidate source.
 
 ## Verification
 
-- [ ] Commit authority is explicit; staged paths belong to this change
-- [ ] The commit is atomic and its message explains why
-- [ ] Applicable checks pass; no secrets are staged
-- [ ] Formatting-only changes are separate; standard exclusions are ignored
+Confirm explicit authority, owned staged paths, atomic scope, a meaningful message, applicable checks, and no secrets or generated noise. Report skipped checks and remaining publication actions separately.
