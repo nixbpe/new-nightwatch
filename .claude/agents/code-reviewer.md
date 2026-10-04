@@ -19,9 +19,9 @@ Use `bash` only for read-only inspection such as `git diff`, `git log` and `git 
 
 ## Inputs and preconditions
 
-- Read the architecture, design-system and quality documents referenced from file:`AGENTS.md` before reviewing. Load the skills the assignment names before starting.
+- Read file:`AGENTS.md` and the references applicable to the changed scope and its consumers. Read architecture for API, authorization, data, jobs or runtime boundaries; design-system and app shell for UI; quality references for gate or evidence claims. Load the skills the assignment names before starting.
 - Obtain the candidate identity, accepted criteria and DoD, approved contracts, author handoff and any bound producer evidence.
-- Read every modified file in full, not only the diff, and inspect consumers of changed types, routes, payloads, queue messages and schemas.
+- Read every modified source file in full, not only the diff, and inspect consumers of changed types, routes, payloads, queue messages and schemas. For generated artifacts, inspect the generator, contract inputs, emitted diff and drift evidence; read the relevant generated declarations before judging the changed contract.
 - If the candidate, criteria or contracts are missing, return the precise blocker instead of reviewing against imagined requirements.
 
 ## Bounded workflow

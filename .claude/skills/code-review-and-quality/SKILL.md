@@ -166,17 +166,7 @@ For each file changed:
 
 ### Step 4: Categorize Findings
 
-Label every comment with its severity so the author knows what's required vs optional:
-
-| Prefix | Meaning | Author Action |
-|--------|---------|---------------|
-| *(no prefix)* | Required change | Must address before merge |
-| **Critical:** | Blocks merge | Security vulnerability, data loss, broken functionality |
-| **Nit:** | Minor, optional | Author may ignore (formatting, style preferences) |
-| **Optional:** / **Consider:** | Suggestion | Worth considering but not required |
-| **FYI** | Informational only | No action needed |
-
-**Lead with what matters.** Order findings by leverage: correctness and security first, then structural regressions and missed simplifications, then everything else. A few high-conviction comments beat a long list. If you have one structural problem and ten nits, the structural problem *is* the review.
+Use the severity labels and disposition rules supplied in the review assignment. Order findings by correctness, security and structural impact. Keep optional suggestions separate from defects and evidence gaps.
 
 ### Step 5: Verify the Verification
 
@@ -194,36 +184,11 @@ Report a missing item as a gap. Do not run tests, builds or profilers to fill it
 
 ## Multi-Model Review Pattern
 
-Use different models for different review perspectives, since different models have different blind spots:
-
-```
-Model A writes the code
-    │
-    ▼
-Model B reviews for correctness and architecture
-    │
-    ▼
-Model A addresses the feedback
-    │
-    ▼
-Human makes the final call
-```
-
-**Example prompt for a review agent:**
-```
-Review this code change for correctness, security, and adherence to
-our project conventions. The spec says [X]. The change should [Y].
-Flag any issues as Critical, Required, Optional, or Nit.
-```
+Apply the assigned review lenses to the same candidate and criteria. Model selection, delegation and the final disposition belong to the caller; this skill creates no additional review workflow.
 
 ## Review Speed
 
-Slow reviews block entire teams; the cost of context-switching to review is less than the waiting cost imposed on others.
-
-- **Respond within one business day**, the maximum, not the target
-- **Ideal cadence:** Respond shortly after a review request arrives, unless deep in focused coding. A typical change should complete multiple review rounds in a single day
-- **Prioritize fast individual responses** over quick final approval
-- **Large changes:** Ask the author to split them rather than reviewing one massive changeset
+Return one batch of findings at the assigned checkpoint. Report a scope that cannot be reviewed within the assignment rather than silently omitting files or evidence.
 
 ## Handling Disagreements
 
@@ -234,7 +199,7 @@ When resolving review disputes, apply this hierarchy:
 3. **Software design** must be evaluated on engineering principles, not personal preference
 4. **Codebase consistency** is acceptable if it doesn't degrade overall health
 
-**Don't accept "I'll clean it up later."** Deferred cleanup rarely happens. Require cleanup before submission unless it's a genuine emergency. If surrounding issues can't be addressed in this change, require filing a bug with self-assignment.
+Classify an in-scope defect under the assigned severity rules. Report surrounding issues separately; do not expand the change or assign follow-up work without authorization.
 
 ## Honesty in Review
 
@@ -244,7 +209,7 @@ When reviewing code, whether written by you, another agent, or a human:
 - **Don't soften real issues.** "This might be a minor concern" when it's a bug that will hit production is dishonest.
 - **Quantify problems from the code, not from guesses.** "This loop issues one query per row, so a 100-row page costs 101 queries" is better than "this could be slow." Do not invent latency figures.
 - **Push back on approaches with clear problems.** Sycophancy is a failure mode in reviews. Say so directly and propose alternatives.
-- **Accept override gracefully.** If the author has full context and disagrees, defer to their judgment. Comment on code, not people.
+- Record unresolved disagreements with their evidence for the caller's disposition. Author agreement does not replace independent review.
 
 ## See Also
 
@@ -284,12 +249,11 @@ When reviewing code, whether written by you, another agent, or a human:
 
 After review is complete:
 
-- [ ] All Critical issues are resolved
-- [ ] All Required (no-prefix) changes are resolved or explicitly deferred with justification
+- [ ] Each required finding has a disposition under the assignment's severity rules
 - [ ] The author's test and build results are reported and cover the change (reviewer did not re-run them)
 - [ ] The verification story is documented (what changed, how it was verified)
 
-**Presumptive blockers:** surface and propose the simpler design for each of these; escalate to Required only when the change actively makes structure worse: a refactor that relocates complexity instead of reducing it; a change that pushes a file past the size boundary with no decomposition; feature logic added to a shared module; a near-duplicate of an existing canonical helper; a silent fallback that hides an unclear invariant.
+**Presumptive blockers:** surface and propose the simpler design for each of these; classify as blocking under the assigned rules only when the change actively makes structure worse: a refactor that relocates complexity instead of reducing it; a change that pushes a file past the size boundary with no decomposition; feature logic added to a shared module; a near-duplicate of an existing canonical helper; a silent fallback that hides an unclear invariant.
 
 ## Simplification
 

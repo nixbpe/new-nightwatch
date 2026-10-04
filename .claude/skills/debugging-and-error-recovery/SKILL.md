@@ -121,18 +121,7 @@ Write a test that reproduces this specific failure. It fails without the fix and
 
 ### Step 6: Verify End-to-End
 
-After fixing, verify the complete scenario with the repository's own commands (npm shown):
-
-```bash
-# Run the full test suite (check for regressions)
-npm test
-
-# Build the project (check for type/compilation errors)
-npm run build
-
-# Manual spot check if applicable
-npm run dev  # Verify in browser
-```
+Reproduce the original scenario after the fix and run the assigned `VERIFY` checks. The assignment determines the check scope; do not launch full suites or builds during sibling work or focused repair without authorization. Gate commands and database wrappers live in file:`../../../scripts/quality/README.md`.
 
 ## Error-Specific Patterns
 
@@ -222,5 +211,5 @@ After fixing a bug:
 - [ ] Root cause is identified and documented
 - [ ] Fix addresses the root cause, not just symptoms
 - [ ] A regression test exists that fails without the fix
-- [ ] All existing tests pass and the build succeeds
+- [ ] Assigned checks pass; broader gates and unexercised paths are reported separately
 - [ ] The original bug scenario is verified end-to-end

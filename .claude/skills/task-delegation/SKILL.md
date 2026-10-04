@@ -33,6 +33,7 @@ Route by outcome:
 
 Every dispatch:
 - names the exact role (so model routing applies) and includes the gate, criteria, contracts, binding, sibling ownership, `COMMIT_MODE` and the skills the worker loads (table below);
+- points `SOURCE` to the exact approved spec path, relevant headings and AC IDs; sends the assigned Task and shared invariants, not the full Feature, historical task plan or raw logs. The worker reads the named contract sections and follows relevant consumers before editing;
 - sends independent Tasks together and repeated assignments to one worker separately;
 - starts a software Task with `/build NODE-<id>` and its fields, never `/build auto` or bare `auto`/`all`. While siblings write, `VERIFY` replaces full-suite and build steps.
 
