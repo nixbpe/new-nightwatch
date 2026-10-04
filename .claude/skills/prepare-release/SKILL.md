@@ -1,6 +1,6 @@
 ---
 name: prepare-release
-description: Separate flow that takes a merged or merge-ready change to release-ready - target environment checks, deploy readiness evidence, candidate binding, the full release gates and a final delta review. Used only when the user asks to prepare a release or deployment.
+description: Prepare a merge-ready change for release with environment evidence, immutable candidate binding, full gates, and independent acceptance. Never deploy without separate authorization.
 argument-hint: "<Feature id, PR number or URL>"
 ---
 
@@ -8,31 +8,39 @@ argument-hint: "<Feature id, PR number or URL>"
 
 ## What this is for
 
-Implementation stops at review-ready or merge-ready. Preparing a release is its own task: check the target environment, lock the exact code with a fingerprint, run the full gates against it, and finish with a final review. Any file change after the lock breaks it and the affected checks rerun. Release and deploy approval stay with people.
+Release preparation is separate from implementation and PR review. Bind exact source, verify its environment and full gates, and stop at release-ready. Any source change invalidates the binding. People retain release and deployment approval.
 
 ## Running it as a command
 
-Run in a main session started as the Technical Lead (`claude --agent tech-lead`). Require one Feature id, PR number or URL naming a merge-ready change; if it is not merge-ready, stop and say so. The run stops at `release-ready`. Deployment or production actions need the user's exact target and scope, relayed to the platform worker.
+Require one Feature id, PR number, or URL naming a merge-ready change. Follow repository role permissions and coordinate through an authorized owner. Stop if the change is not merge-ready.
+
+The run stops at `release-ready`. Production actions require the user's exact target and scope plus the external approval gate. Relay that authorization to the assigned platform owner.
 
 ## 1. Environment readiness
 
-agent:`platform-engineer` returns one checkpoint with evidence:
-- TLS, allowed origins, secrets, replica counts, credentials and database permissions in the target environment;
-- database, Redis and Compose readiness, the shared-lifecycle owner, the env names each gate needs (never values) and the frozen migration digest;
-- deployment and migration effects (data compatibility, health checks, rollback limits), operability of the changed path, and a recovery runbook entry;
-- task-owned services, containers and volumes with their state and cleanup owner.
+Require one platform checkpoint with evidence for:
 
-An environment failure names its cause and each affected gate.
+- TLS, allowed origins, secrets, replicas, credentials, and database permissions.
+- Database, Redis, and Compose readiness; shared-lifecycle owner; required environment names without values; and frozen migration digest.
+- Deployment and migration compatibility, health, rollback limits, operability, and recovery runbook.
+- Task-owned services, containers, and volumes, with observed state and cleanup owner.
+
+For a failure, name its cause and affected gates.
 
 ## 2. Candidate binding
 
-- States run `mutating → source-complete → reviewed → bound → validating → release-ready`; report only the current one. Any source edit returns to `mutating` and review.
-- Bind a snapshot taken after all writers stopped: a clean commit SHA, or `bun run candidate:manifest` output. Name it `<Feature-id>-C<n>` with its `acceptanceVersion` and manifest digest; every review and gate cites that triple.
-- A bound candidate is immutable. Any changed file, including formatter or generated output, invalidates it: report `<id> → invalidated`, repair, and bind the next id naming the superseded candidate and the addressed finding IDs.
+Use `mutating → source-complete → reviewed → bound → validating → release-ready` and report only the current state. Any source edit returns to `mutating` and review.
+
+After all writers stop, bind a clean commit SHA or `bun run candidate:manifest` snapshot. Name it `<Feature-id>-C<n>` with `acceptanceVersion` and manifest digest. Every review and gate cites that triple.
+
+Any file change, including formatting or generated output, invalidates a bound candidate. Report `<id> → invalidated`, repair, and bind the next id with its superseded candidate and addressed finding IDs.
 
 ## 3. Release gate
 
-In parallel, agent:`software-engineer` runs the application gates without editing and agent:`platform-engineer` runs the scanners, both against the binding:
+Assign no-edit application gates and platform scanners to their authorized owners. Independent review consumes their evidence, never substitutes author self-approval.
+
+Run these gates against the binding:
+
 ```text
 bun run validate
 bun run test:integration
@@ -41,20 +49,23 @@ bun run e2e
 bun run security
 bun run security:image
 ```
-PR CI never runs `e2e`; only the human-dispatched `full` job does, so run it locally or report it not verified.
 
-agent:`code-reviewer` then reviews the bound evidence. The Technical Lead accepts the candidate only when, on the same binding, every required criterion is observed pass and every manifest file, including deleted paths, is scanned or scanner-skipped with reason (`nonCandidateExclusions` are reconciled separately as outside the candidate). Missing, mismatched or not-verified evidence blocks acceptance; author-produced results are not independent evidence.
+PR CI does not run `e2e`; only the human-dispatched `full` job does. Run locally or report not verified.
 
-Scanner evidence from agent:`platform-engineer`: candidate binding, command, tool version, configuration, execution identity, date, exit code and result location, plus every candidate manifest path accounted as scanned or scanner-skipped with reason. Deletions count as skipped. Non-candidate exclusions are listed separately and never waive scanning of candidate source.
+For every scanner result, require binding, command, tool version, configuration, execution identity, date, exit code, and result location. Account for every manifest path as scanned or scanner-skipped with reason. Deleted paths count as skipped. Reconcile `nonCandidateExclusions` separately; they never waive scanning of candidate source.
 
-Bound-evidence review by agent:`code-reviewer`: judge pass or fail only from bound gate evidence, verify that every producer result names the same binding and scope, check the manifest accounting above, and map each required criterion to observed pass, observed fail or not verified.
+Independent bound-evidence review must verify matching binding and scope, complete manifest accounting, and each criterion as observed pass, observed fail, or not verified. Missing, mismatched, or unverified evidence blocks acceptance.
 
-Final delta review of a frozen candidate checks only that the candidate matches its manifest, prior findings are closed against their evidence, repairs introduced no new regression, the full-verification evidence is bound to this exact candidate, and out-of-scope observations are filed as follow-ups. The verdict is APPROVED, or CHANGES_REQUESTED naming Blocker/Major finding IDs. An addition that violates neither the frozen acceptance matrix nor an existing architecture invariant is not a finding.
+Final delta review checks manifest identity, proof closing prior findings, absence of repair regressions, full evidence bound to this candidate, and follow-ups for out-of-scope observations. Use APPROVED or CHANGES_REQUESTED with Blocker/Major finding IDs. Additions that violate neither frozen acceptance nor an existing architecture invariant are not findings.
 
 ## 4. Repair and cap
 
-Batch all findings and failed gates, repair with the focused checks in skill:`task-delegation` step 5, rerun only the failed gates, and never send a candidate with a red gate to final review. Allow one repair cycle and one final delta review; a reproducible Blocker or Major found there gets a second and last cycle. Minor issues become follow-ups, and a new requirement goes through the After freeze rules in skill:`technical-spec`. When the cap is used up, stop and give the user the evidence and the decision needed.
+Batch findings and failed gates. Diagnose causes and repair with focused checks. If source changes, invalidate and rebind it, then produce required evidence on the new binding. Otherwise rerun failed gates only. Never send a candidate with a failed gate to final review.
+
+Allow one repair cycle and one final delta review. A reproducible Blocker or Major permits a second and last cycle. Record Minor follow-ups. Return new requirements through the approved acceptance-freeze procedure.
+
+At the cap, stop and report the evidence and decision needed. Do not increase the limit or acceptance scope yourself.
 
 ## 5. Done
 
-Release-ready means acceptance is frozen, every accepted finding is fixed, the release gate is green, the environment checkpoint passed and the final delta review is approved, with no file changed since the gates ran.
+Report release-ready only when acceptance is frozen, accepted findings are fixed, full gates and the environment checkpoint pass, and final delta review is approved on the same unchanged binding. Never claim deployment or release approval.

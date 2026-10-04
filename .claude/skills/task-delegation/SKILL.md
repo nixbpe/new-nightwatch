@@ -1,95 +1,80 @@
 ---
 name: task-delegation
-description: How the Technical Lead splits a ready Feature or Story into Tasks, assigns them to workers, waits for results and gets the change to a review-ready state. Use for implement, platform and repair work.
+description: Split approved work into owned Tasks, coordinate writers and evidence, and finish at the authorized review-ready or merge-ready state.
 ---
 
 # Task Delegation
 
 ## What this is for
 
-The Technical Lead's playbook for building a change: cut the work into Tasks one owner can finish, hand them out with clear limits, wait for short reports, and bring the result to review-ready or merge-ready. Release preparation is a separate flow in skill:`prepare-release`.
+Coordinate work within repository role permissions. Delegate only when separate ownership or role limits require it. Release preparation remains a separate, user-authorized flow.
 
 ## 1. Split the work into Tasks
 
-The breakdown lives in the user-approved Technical Spec (skill:`technical-spec`). Create no other planning files and delegate no top-level planning.
+Keep the breakdown in the approved Technical Spec. Create no other planning files and delegate no top-level planning.
 
 Each Task declares:
-- `OWNER`, `READY`, `OUTCOME` and `SOURCE`
-- `INVARIANTS`, `FILES` and `NON-GOALS`
-- sibling `CONTRACTS`, permitted `VERIFY` and required `PROOF`
 
-How to cut:
-- Split by behavior, failure or permission boundary, and by application versus platform ownership, not by files or steps.
-- Give one owner the whole behavior it can finish, with its callers, errors and regression proof; not one agent per AC.
-- `parent` is containment, not dependency.
-- Put shared files under one integration owner. Resolve contracts first, then dispatch only ready, disjoint work whose prerequisites are done.
-- Map every criterion to a Task or to integrated verification; broad labels are not Tasks.
+- `OWNER`, `READY`, `OUTCOME`, and `SOURCE`.
+- `INVARIANTS`, `FILES`, and `NON-GOALS`.
+- Sibling `CONTRACTS`, permitted `VERIFY`, and required `PROOF`.
+
+Split by behavior, failure or permission boundary, and application versus platform ownership. Give one owner the complete behavior, callers, errors, and regression proof. Do not create an agent per AC.
+
+Use `parent` for containment, not dependency. Resolve contracts and prerequisites before dispatch. Give shared files one integration owner. Map every criterion to a Task or integrated verification.
 
 ## 2. Assign the Tasks
 
-Route by outcome:
-- Application behavior, API, UI, schema, migration and tests → agent:`software-engineer` via command:`/build`.
-- Environment, CI/CD, containers, infrastructure, secrets, observability and runbooks → agent:`platform-engineer` with target, provider and budget constraints. Deployment requires the user's authorization, relayed by you.
+Choose registered roles by outcome and permissions. Separate application behavior, API, UI, schema, migrations, and tests from environment, CI/CD, infrastructure, secrets, observability, and runbooks. Include platform target, provider, and budget constraints. Deployment requires explicit user authorization.
 
-Every dispatch:
-- names the exact role (so model routing applies) and includes the gate, criteria, contracts, binding, sibling ownership, `COMMIT_MODE` and the skills the worker loads (table below);
-- points `SOURCE` to the exact approved spec path, relevant headings and AC IDs; sends the assigned Task and shared invariants, not the full Feature, historical task plan or raw logs. The worker reads the named contract sections and follows relevant consumers before editing;
-- sends independent Tasks together and repeated assignments to one worker separately;
-- starts a software Task with `/build NODE-<id>` and its fields, never `/build auto` or bare `auto`/`all`. While siblings write, `VERIFY` replaces full-suite and build steps.
+For each assignment:
 
-**Worker skills.** Workers name no skills themselves; the dispatch tells them which to load with the Skill tool:
+- Name the role for model routing. Include criteria, contracts, binding, sibling ownership, `COMMIT_MODE`, and the procedure skills to load. Workers do not select additional skills themselves.
+- Point `SOURCE` to the approved spec path, relevant headings, and AC IDs. Send the assigned Task and shared invariants, not the whole Feature or raw logs. Require the owner to trace named contracts and consumers before editing.
+- Dispatch independent Tasks together only with disjoint ownership. Send repeated assignments to one worker separately.
+- For software implementation, use `/build NODE-<id>`, never `/build auto` or bare `auto`/`all`. While siblings write, `VERIFY` replaces full-suite and build steps.
+- Supply the assigned implementation and handoff procedures. Include security checks for authentication, input, organization data, or credentials; debugging for failures; and release procedures only for authorized release work. Static reviewers do not run code.
 
-| Worker | Load |
-|---|---|
-| agent:`software-engineer` | skill:`build`, skill:`worker-handoff`; skill:`security-and-hardening` when the Task touches authentication, input handling, organization data or credentials |
-| agent:`platform-engineer` | skill:`worker-handoff`; skill:`debugging-and-error-recovery` when a setup, gate or environment fails; skill:`prepare-release` for release work |
-| agent:`code-reviewer` | skill:`code-review-and-quality` for static correctness, maintainability and performance review; skill:`security-and-hardening`; skill:`prepare-release` for bound-evidence review |
-| agent:`product-owner` | skill:`requirements` |
-| agent:`ux-designer` | skill:`technical-spec` after the spec is approved |
+Set commit authority from the user's authorization:
 
-**Commits.** Set `COMMIT_MODE` from the user's actual authorization; use `none` if unclear, and ask only when the user wants commits.
-- `none`: workers never commit; bind by manifest.
-- `owned-slice`: name shared-file owners and dependency order. After focused verification each owner stages only in-scope files, commits one behavior with its regression proof and sends the SHA to the integration owner. Behavior that spans slices commits once at fan-in, when its contract is ready. No scaffold-only commits.
-- Commit authority never covers push, PR, deploy, force-push or rewriting an existing PR.
+- `none`: workers never commit; bind by manifest. Use this when authority is unclear.
+- `owned-slice`: name shared-file owners and dependency order. After focused checks, stage owned files and commit one behavior with proof. Cross-slice behavior commits once at integration, when its contract is ready. Never make scaffold-only commits.
 
-**Reports back.** Implementation and platform workers return a short handoff: `OWNER`, `CHANGED FILES`, `PROOF` (with per-criterion results and scanner coverage), `BLOCKER` and a details link. Open the link only if `PROOF` leaves a claim open. Keep in your own state only Task, owner, state, candidate triple, open finding IDs and blockers.
+Commit permission does not authorize push, PR creation, deploy, force-push, or history rewrite. Ask about commits only when the user wants them.
+
+Require a short handoff with `OWNER`, `CHANGED FILES`, `PROOF`, `BLOCKER`, and a details link. Proof includes per-criterion results and scanner coverage. Open details only for unresolved claims. Track Task, owner, state, candidate triple, open finding IDs, and blockers.
 
 ## 3. Wait without polling
 
-- Wait for results that arrive on their own, with a finite timeout. A timeout is not a failure, a delivered message does not mean work started, and a running agent is not proof of progress.
-- Inspect jobs, agents, output or history only when a result is missing after the timeout, work stalls or you have a concrete doubt, and not again without a new trigger. Then:
-  - saved result → use it;
-  - new activity → wait again;
-  - idle or parked → ask for one bounded checkpoint;
-  - failed for good, or nothing running → re-dispatch through an authorized route, report the blocker or stop.
-- Do not restart work without a new assignment or evidence. Report runtime limits without guessing causes.
-- Move ownership only after the previous owner names its changed files and confirms it stopped writing there. Its later edits are out of scope, not merge input.
-- Report milestones, blockers and state changes, not waiting. Mark unknowns as unknown.
+Wait for delivered results with a finite timeout. Timeout is not failure; delivery does not prove work started, and a running agent does not prove progress.
+
+Inspect once after a missing result, stalled work, or concrete doubt. Use saved results, wait for new activity, request one checkpoint from an idle worker, or re-dispatch through an authorized route after confirmed failure. Do not inspect again without a new trigger or restart work without new evidence or assignment.
+
+Move ownership only after the previous owner names changed files and confirms mutation stopped. Later edits are out of scope. Report milestones, blockers, and state changes, not waiting. Mark unknowns and runtime limits without guessing causes.
 
 ## 4. Build to review-ready
 
-1. Dispatch ready Tasks together only when ownership is disjoint; owners build in slices per skill:`build` (one slice may cover several ACs). No candidate exists yet.
-2. As each handoff arrives, send that Task's diff to agent:`code-reviewer` against its criteria, contracts and non-goals, and return Blocker/Major findings to the owner before dependent Tasks start. Evidence must exercise each claim.
-   - When relevant, stateful proof names one trigger, the mutation or interleaving it reached, and the state it preserved.
-   - Integration tests that write data need run-unique fixtures and owned cleanup.
-   - If evidence misses an applicable requirement, mark the handoff source-complete, not author-verified.
-3. After sibling writers stop, owners run focused verification and smoke-test their behavior, including DB/RLS and security checks the change requires. The integration owner then settles lockfiles, generated files, formatting and docs. Close every proof gap now.
+1. Start ready, disjoint Tasks. Require behavioral slices; no candidate exists yet.
+2. For code edits, review each Task against criteria, contracts, and non-goals before dependent work starts. Return Blocker/Major findings to its owner. Require evidence for each claim, including stateful triggers, mutations or interleavings, and preserved state. Data-writing integration tests need run-unique fixtures and owned cleanup. Mark missing proof source-complete, not author-verified.
+3. After sibling writers stop, run focused checks and smoke tests, including required DB/RLS and security checks. Let the integration owner settle lockfiles, generated output, formatting, and docs. Close proof gaps.
 
-With `STOP_AT: review-ready`, stop here and report each check as passed, failed or not run.
+With `STOP_AT: review-ready`, stop and report each check as passed, failed, or not run.
 
 ## 5. Finish at merge-ready
 
 With `STOP_AT: merge-ready`, continue after step 3:
 
-1. Send the whole change to agent:`code-reviewer` for one final review of how the Tasks fit together and of changes made after their step 2 reviews.
-2. Run the same gates as PR CI:
+1. Obtain one final independent review for code edits, covering integration and changes since Task reviews.
+2. Run the PR CI gates:
+
    ```text
    bun run validate
    COVERAGE_GATE=1 bun run test:coverage
    bun run build
    bun run security
    ```
-3. Batch review findings and gate failures and repair once. Fix only in-scope defects that break a criterion or contract; record the rest. Find the cause with skill:`debugging-and-error-recovery` first. Repairs run focused checks only (formatter on touched files, lint and typecheck for the affected package, the regression test, a DB scenario or targeted security check only when the finding needs it), then rerun the failed gates.
-4. Report merge-ready with the reviewed commit or diff. If a Blocker, Major or red gate remains after that repair, stop and give the user the evidence and the decision needed.
 
-Merge-ready means review and PR CI gates pass. Full E2E, the image scan, candidate binding and environment checks belong to skill:`prepare-release`.
+3. Batch findings and gate failures into one repair. Fix only in-scope criterion or contract defects; record other findings. Diagnose causes first. Run focused formatting, package lint and typecheck, regression, and applicable DB or security checks, then rerun failed gates.
+4. Report the reviewed commit or diff. If Blocker, Major, or a failed gate remains, stop and return evidence and the decision needed.
+
+Merge-ready requires review and PR CI gates. Full E2E, image scans, candidate binding, and environment checks remain release preparation.
