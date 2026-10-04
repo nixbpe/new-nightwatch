@@ -16,6 +16,7 @@ Inspect with read-only `gh pr view`, `gh pr diff`, `gh pr checks` and `gh api`. 
 - Use the linked issue, Feature or accepted criteria. Never invent criteria.
 - Repair only the PR head branch with `COMMIT_MODE: owned-slice`. Never rewrite history, force-push, retarget or touch another branch.
 - `STOP_AT: merge-ready`. Release requires the `release` intent.
+- Technical Lead owns Codex thread resolution and may resolve only under Procedure step 3. Workers never resolve Codex threads.
 - Cap repairs at 3 rounds, each with one repair batch, push, PR CI run and Codex re-review. At the cap or an unsettled decision, stop and return the evidence and decision to the user.
 
 ## Merge-ready
@@ -43,7 +44,7 @@ Require all on the same head commit:
 
 - Send diff, criteria, contracts and non-goals to agent:`code-reviewer` for three lenses, using file:`AGENTS.md`, file:`docs/architecture.md` and file:`docs/design-system.md`.
 - Inspect the head's Codex summary (`<!-- codex-pull-request-review-summary -->`) and unresolved P1, P2 and P3 threads. P1 and P2 are findings; P3 is a follow-up unless it breaks an accepted criterion or approved rule.
-- Disagree with evidence naming the AC, rule, path and observed behavior. Never resolve Codex threads yourself. Request one re-review with `@codex review`. Without 👍 afterward, stop and return the decision to the user.
+- For disagreement, reply in the thread with evidence naming the AC, rule, path and observed behavior. Request one re-review with `@codex review`. If Codex still upholds the finding, the outcome is unclear or there is no 👍, leave the thread open and return the decision to the user. Never resolve a disputed finding to pass a gate.
 
 ### 3. Repair round (at most 3)
 
@@ -52,6 +53,7 @@ Require all on the same head commit:
 3. Comment `@codex review` after the push, followed by addressed finding IDs and commit SHA, one per line.
 4. Wait without polling using `gh pr checks <n> --watch --fail-fast` with a finite timeout, then a timed wait for Codex on the new head. On timeout, inspect once; use the result, wait once more or report the runtime limit. Timeout is not failure.
 5. Send only the delta to agent:`code-reviewer` per skill:`task-delegation` step 5. Confirm prior findings closed with evidence, no new regression and PR body matching the head.
+6. After Codex's latest review on the current head is `Completed` with 👍, the Technical Lead checks each repaired finding against the diff and proof, replies in its thread with the head SHA and closing evidence, then resolves that thread. For disputed findings, also require Codex's explicit acceptance of the rebuttal. Leave unverified findings open. Recheck the head and unresolved threads before deciding merge-ready; resolution alone never passes the review gate.
 
 ### 4. Decide and record
 
