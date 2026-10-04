@@ -42,10 +42,10 @@ Keep P0, P1, and P2 findings as blockers until repaired or disproved with eviden
 
 ### 3. Repair round (at most 3)
 
-Use 3 repair rounds by default. Each round includes one repair batch, one push, and verification of the new head:
+Use 3 repair rounds by default. Each round includes one repair batch, one commit, one push, and verification of the new head:
 
 1. Batch P0, P1, and P2 findings, pattern violations, and failed required checks. Fix causes within the accepted scope.
-2. Run focused checks and rerun failed checks. Update the PR evidence and push.
+2. Run focused checks and rerun failed checks. Update the PR evidence, commit the in-scope repairs, and push. Confirm commit and push authority separately before performing either action; if either is missing, stop and ask the user.
 3. Request `@codex review` with the new head SHA and addressed finding IDs.
 4. Wait for CI and Codex with finite timeouts. On timeout, inspect once and report pending results. Never count a timeout as a pass or failure.
 5. Compare the new review with the fixes. For repaired findings, verify the diff and proof. After Codex completes its review on that head, reply with closing evidence and resolve verified threads. Never resolve a finding that Codex still upholds. Keep unverified findings open.
