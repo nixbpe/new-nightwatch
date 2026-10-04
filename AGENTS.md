@@ -17,7 +17,9 @@ Follow the applicable reference, including its verification requirements. Keep d
 | Epics, Features, Stories and Technical Specs    | [Templates](docs/templates/)                 |
 | Pull requests and PR review                     | [PR template](.github/PULL_REQUEST_TEMPLATE.md) |
 | App shell layout, navigation and overlays       | [App shell](docs/ref/shell-structure.md)     |
+| Finding contract sources and code entry points  | [Context index](docs/README.md)              |
 
+Search the owning module first, then expand to relevant consumers and shared contracts. Include generated output, lockfiles and historical logs when the question needs them; keep them available for drift, dependency and evidence checks. Do not add blanket ignore rules to reduce context.
 
 ## Golden Rules
 
