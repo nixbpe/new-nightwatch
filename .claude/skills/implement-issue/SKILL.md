@@ -24,7 +24,7 @@ Apply these permissions only to this source:
 - For an issue, the command authorizes its scope, approval of the resulting Technical Spec, and implementation. Write the spec from accepted criteria. Stop for decisions the issue does not settle.
 - For a spec path, use its existing approval.
 - Override `COMMIT_MODE: none` with `COMMIT_MODE: owned-slice`. Set `STOP_AT: merge-ready`.
-- Commit, push the current working branch, and open one PR. If on the default branch, create a branch named for the issue or spec folder. Relay these source-specific permissions to assigned owners; they override worker publication prohibitions only for this source.
+- If on the default branch, create a branch named for the issue or spec folder. Relay scoped commit permissions to assigned owners. Name one integration owner with sole authority to push the current working branch and open one PR; this overrides worker publication prohibitions only for that owner and this source. Other owners retain only their scoped commit permissions.
 - Never merge or start dependent follow-up work.
 
 Implement the source's behavior, tests, runtime smoke checks, accessibility, and required `PROOF`.
