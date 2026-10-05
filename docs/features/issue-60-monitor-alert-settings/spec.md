@@ -109,8 +109,9 @@ Migration `0022_monitor_alert_settings.sql` ตาม DB-11, DB-12 Drizzle schem
 
 ### Web
 
-- **Form** (`apps/web/src/pages/monitors/form/`): `AlertsSection.tsx` แทน `MockupFrame` ของ issue 60 ด้วย control จริงที่ผูกกับค่า form: select "แจ้งเมื่อล้มเหลวติดกัน" (option 1, 2, 3 ครั้ง ตาม OD-60-03), checkbox "แจ้งเมื่อล่มและกลับมาปกติ", checkbox "แจ้งเมื่อ SSL ใกล้หมดอายุ" และช่องจำนวนวัน (8 ถึง 30) ที่ disabled เมื่อ checkbox SSL ปิด ข้อความเดิมเรื่อง `monitorAlertsEnabled` (41-47) คงไว้ และเมื่อ toggle องค์กรปิดแสดงว่า "การแจ้งเตือนมอนิเตอร์ขององค์กรปิดอยู่ ค่าด้านล่างจะมีผลเมื่อเปิด" [สมมติฐาน: ข้อความรอ UX] ตำแหน่ง select ดู UX-60-01 error ของ field ใช้ `monitorIssueReason` เดิม
-- **Detail**: `StatusCard.tsx:172` อ่าน `monitor.alerts.failureThreshold` และลบ `DOWN_AFTER_FAILURES` จาก `detail/labels.ts:12` ส่วนแสดงเกณฑ์การแจ้งสำหรับทุก role: เกณฑ์ล้มเหลว, สถานะ toggle ทั้งสอง และจำนวนวัน SSL จาก `monitor.alerts` สถานะ toggle องค์กรแสดงเฉพาะ `owner`/`admin` เพราะ GET notification settings ตรวจ `assertSettingsAdministrator` (`apps/api/src/organization-notifications/service.ts:124`) [ตรวจแล้ว] `viewer`/`auditor` ไม่ยิง query นั้น ตำแหน่งรอ UX-60-02
+- **Form** (`apps/web/src/pages/monitors/form/`): `AlertsSection.tsx` แทน `MockupFrame` ของ issue 60 ด้วย control จริงที่ผูกกับค่า form (ตำแหน่งยืนยันแล้ว `UX-60-01`: อยู่ใน `AlertsSection.tsx` ไม่ใช่ `BasicSection.tsx` เพราะเป็น object `alerts` เดียวกันและ `AlertsSection` render ทั้งสองโหมด basic/advanced อยู่แล้ว): select "แจ้งเมื่อล้มเหลวติดกัน" (option 1, 2, 3 ครั้ง ตาม OD-60-03, label เดิมตาม P60-01 ไม่เปลี่ยน) พร้อม `aria-describedby` ว่า "ค่านี้ใช้ตัดสินว่ามอนิเตอร์ล่มด้วย แม้ปิด 'แจ้งเมื่อล่มและกลับมาปกติ'" (เพราะ OD-60-02 (a) ผูกเกณฑ์นี้กับนิยาม "ล่ม" เสมอ ไม่ขึ้นกับ toggle การแจ้ง) select enable อิสระ ไม่ซ้อนใต้ checkbox ใด, checkbox "แจ้งเมื่อล่มและกลับมาปกติ", checkbox "แจ้งเมื่อ SSL ใกล้หมดอายุ" และช่องจำนวนวัน (8 ถึง 30) ที่ disabled เมื่อ checkbox SSL ปิด ข้อความเดิมเรื่อง `monitorAlertsEnabled` (41-47) คงไว้ และเมื่อ toggle องค์กรปิดแสดงข้อความยืนยันแล้ว (`UX-60-02` (ข)): "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ" error ของ field ใช้ `monitorIssueReason` เดิม
+  - **`BasicSection.tsx`**: ลบการ import และแสดง `DOWN_AFTER_FAILURES` (`:7,104-106`) เปลี่ยนไปอ่าน `values.alerts.failureThreshold` ที่มีใน `FormValues`/`SectionProps` อยู่แล้ว ไฟล์นี้ต้องแก้เสมอ ไม่ขึ้นกับ `UX-60-01` (`DOWN_AFTER_FAILURES` ถูกลบออกจาก `detail/labels.ts` ไม่ว่ากรณีใด)
+- **Detail**: Card ใหม่แยกต่างหากชื่อ "การแจ้งเตือน" ในคอลัมน์ aside (ไม่ต่อท้าย `StatusCard`) วางระหว่าง `ConfigCard` กับ `SslCard` ไม่มีเลข section code (เหมือน `ConfigCard`/`SslCard`) ตำแหน่งยืนยันแล้ว (`UX-60-02` (ก)) เหตุผล: `StatusCard` เป็น telemetry ที่มี meta "ข้อมูล ณ `<เวลา>`" ผสมกับค่า config จะขัด CMP-01 และจบด้วย `UptimeStripMockup` (mockup ของ #56) ซึ่งจะสร้างความสับสนเรื่องจริง/ตัวอย่างถ้าแปะต่อกัน โครงสร้างแถว (`dl`/`dt`/`dd` แบบ `ConfigCard.tsx:47-141`), เรียงบนลงล่าง: (1) การแจ้งเตือนระดับองค์กร: เปิด/ปิด เห็นเฉพาะ `owner`/`admin` (ใช้เงื่อนไข `canWrite` เดียวกับ `DetailPage.tsx:380-381`, fetch ด้วย `fetchOrganizationNotificationSettings`/`organizationNotificationSettingsQueryKey` ตัวเดียวกับที่ `AlertsSection.tsx` ใช้ เพื่อแชร์ cache ไม่ยิง query เลยถ้า role ไม่ผ่าน) states: loading (skeleton แบบ `LastResponseCard.tsx:220-228`), error (Alert + "ลองอีกครั้ง" แบบ `LastResponseCard.tsx:206-219`, ไม่แสดง "เปิด" เด็ดขาด), denied กลางคัน (หยุด poll แบบ `LastResponseCard.tsx:174-203`) (2) เกณฑ์ล้มเหลว: `monitor.alerts.failureThreshold` ครั้ง เห็นทุก role (3) แจ้งเมื่อล่มและกลับมาปกติ: เปิด/ปิด จาก `monitor.alerts.downEnabled` เห็นทุก role (4) แจ้งเมื่อ SSL ใกล้หมดอายุ: เปิด/ปิด (ล่วงหน้า N วัน) จาก `monitor.alerts.sslEnabled`/`sslCautionDays` เห็นทุก role มอนิเตอร์ที่ `monitor.ssl.state === "not_https"` ต่อท้ายด้วยข้อความเดียวกับ `SslCard.tsx:31` ("มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง") แทนการแสดง "เปิด (ล่วงหน้า 30 วัน)" เฉย ๆ แถวที่ (1) ปิดแสดงข้อความ `UX-60-02` (ข) เดียวกับในฟอร์ม `StatusCard.tsx:172` คงที่เดิม เปลี่ยนเฉพาะค่าเป็น `monitor.alerts.failureThreshold` (ไม่ย้ายไปการ์ดใหม่ เพราะเป็น telemetry ของ "ใกล้ล่มแค่ไหนตอนนี้" คนละหน้าที่กับการ์ดตั้งค่า) **Non-goal เพิ่ม**: ลิงก์จากแถว (1) ไปหน้า `/organizations/:organizationId/notification-settings` (ข้อเสนอของ UX ยังไม่ยืนยัน ไม่อยู่ใน scope นี้)
 - **Inbox** (`NotificationsPage.tsx:62`): ข้อความ caution ไม่ระบุ "30 วัน" ตายตัว ใช้จำนวนวันที่เหลือคำนวณจาก `sslNotAfter` กับ `occurredAt` หรือข้อความที่ไม่มีตัวเลข [สมมติฐาน: เลือกตอน implement ตามที่ UX ตอบ] item เก่าจึงไม่แสดงตัวเลขผิด ข้อความ danger 7 วัน (64) คงเดิมภายใต้ OD-60-04 (a)
 - **Audit log** (`apps/web/src/pages/audit-log/labels.ts`): ป้ายของสี่ field ใหม่
 - **Event feed** (`detail/labels.ts`): ป้ายของสี่ `field` ใหม่ใน `changes[]` และ `enabled`/`disabled` เป็น "เปิด"/"ปิด"
@@ -148,6 +149,7 @@ Migration `0022_monitor_alert_settings.sql` ตาม DB-11, DB-12 Drizzle schem
   - เกณฑ์ที่สูงขึ้นทำให้ incident เปิดช้าลง และ uptime/incident history ต่างกันต่อ monitor (OD-60-02 (a)) หน้า Detail แสดงเกณฑ์ให้เห็น
   - migration `0022` ชนกับ branch อื่น: ตรวจเลขตอน rebase ห้ามแก้ migration ที่ apply แล้ว (DB-11)
   - ข้อความ inbox ของ item เก่าที่อ้าง 30 วัน: แก้ที่ฝั่ง render จึงครอบ item เก่า
+  - `viewer`/`auditor` เห็นแถว (2) ถึง (4) ของการ์ด "การแจ้งเตือน" เป็น "เปิด" โดยไม่เห็นแถว (1) (องค์กร) เลย จึงไม่รู้ว่าการแจ้งจริงถูกปิดจากระดับองค์กรหรือไม่ เป็นผลของ `assertSettingsAdministrator` ที่ตัดสินใจแล้วในชั้น API ของ F-005 ยอมรับเป็นความเสี่ยง ไม่ใช่ blocker ของงานนี้ (`UX-60-02`)
 - **Assumptions**:
   - "admin" และ "owner" ใน user stories หมายถึง role ที่มี `write` ตาม F-005 ทั้งคู่
   - story ของ viewer ต้องการเห็นค่า ไม่ต้องการแก้
@@ -242,11 +244,11 @@ Migration `0022_monitor_alert_settings.sql` ตาม DB-11, DB-12 Drizzle schem
 ### NODE-60-05 Web
 
 - **OWNER:** software-engineer
-- **READY:** commit และ handoff ของ 03 ผ่าน review ของ Technical Lead และคำตอบของ UX-60-01, UX-60-02
+- **READY:** commit และ handoff ของ 03 ผ่าน review ของ Technical Lead (`UX-60-01`, `UX-60-02` ปิดแล้ว ดู Decisions)
 - **OUTCOME:** control จริงใน form แทน mockup, ส่วนเกณฑ์ในหน้า Detail, ข้อความ inbox, ป้าย audit log และ event feed
 - **SOURCE:** Contracts → Web, design system, `docs/ref/shell-structure.md`
 - **INVARIANTS:** ไม่แก้ `openapi-types.gen.ts` ด้วยมือ ลบ `MockupFrame` ของ issue 60 ใน `AlertsSection.tsx`
-- **FILES:** `apps/web/src/pages/monitors/form/AlertsSection.tsx`, `MonitorForm.tsx`, `BasicSection.tsx` (ถ้า UX-60-01 เลือก), `apps/web/src/pages/monitors/detail/`, `apps/web/src/pages/NotificationsPage.tsx`, `apps/web/src/pages/audit-log/labels.ts`, tests
+- **FILES:** `apps/web/src/pages/monitors/form/AlertsSection.tsx`, `MonitorForm.tsx`, `BasicSection.tsx` (บังคับเสมอ ลบการใช้ `DOWN_AFTER_FAILURES`), `apps/web/src/pages/monitors/detail/`, `apps/web/src/pages/NotificationsPage.tsx`, `apps/web/src/pages/audit-log/labels.ts`, tests
 - **NON-GOALS:** หน้า notification settings ขององค์กร
 - **CONTRACTS:** none
 - **VERIFY:** `bun run --cwd apps/web test`, typecheck ของ web
@@ -288,15 +290,12 @@ OD-60-01 ถึง OD-60-06: ผู้ใช้ยืนยันตามข้
 | `OD-60-07` | (a) ช่องทาง `#ops-alerts` และ "อีเมล owner" นอกขอบเขต ไม่มี contract ของช่องทาง UI ไม่แสดงช่องทาง (ยืนยันจาก codebase) |
 | `PO-60-01` | story ของ viewer ("เข้าใจว่าทำไมได้หรือไม่ได้รับการแจ้งเตือน") หมายถึง viewer เห็นเกณฑ์การแจ้งเท่านั้น ผู้รับ notification ของ monitor ยังเป็น `owner`/`admin` ตาม F-005 OD-16 เดิม ไม่เปลี่ยน ปิดโดยการอนุมัติ spec นี้ที่เขียน contract แบบนี้อยู่แล้ว ไม่ใช่คำตอบแยกจาก Product Owner |
 | `PO-60-02` | แถว behavior P60-01 ถึง P60-09 ร่างโดย Technical Lead ผู้ใช้อนุมัติโดยตรงพร้อม spec นี้ แทนการให้ Product Owner รับเป็นเจ้าของแยก (ตามที่ข้ามขั้นตอน Product Owner มาตั้งแต่ต้น) |
+| `UX-60-01` | select อยู่ใน `AlertsSection.tsx` ไม่ใช่ `BasicSection.tsx` เพราะเป็น object `alerts` เดียวกันและ section นี้ render ทั้งโหมด basic/advanced อยู่แล้ว `BasicSection.tsx` ยังต้องแก้เสมอเพื่อลบ `DOWN_AFTER_FAILURES` UX Designer เสนอ 2026-10-05 ไม่กระทบ contract |
+| `UX-60-02` | (ก) Card ใหม่ "การแจ้งเตือน" แยกจาก `StatusCard` วางใน aside ระหว่าง `ConfigCard` กับ `SslCard` ไม่มี section code (ข) ข้อความ toggle องค์กรปิด: "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ" (แทนข้อความร่างเดิมใน spec ที่ผิดข้อเท็จจริง) UX Designer เสนอ 2026-10-05 ไม่กระทบ contract รายละเอียดแถวและ state อยู่ใน Contracts → Web |
 
 ## Open decisions
 
-เหลือเฉพาะ `UX-60-01` และ `UX-60-02` ไม่กระทบ contract และไม่บล็อก freeze ของ spec นี้ ต้องปิดก่อน `NODE-60-05` เริ่มงาน (ดู READY ของ Task นั้น)
-
-| OD | คำถาม | ผลต่อ contract | ข้อเสนอ | Owner |
-| --- | --- | --- | --- | --- |
-| UX-60-01 | ตำแหน่ง select "แจ้งเมื่อล้มเหลวติดกัน": issue ระบุ `BasicSection.tsx` แต่ mockup ใน code อยู่ใน `AlertsSection.tsx` | ไม่กระทบ contract | ไม่เสนอ รอ UX Designer | UX Designer ผ่าน Technical Lead session หลัก |
-| UX-60-02 | ตำแหน่งและข้อความของส่วน "เกณฑ์การแจ้ง" ในหน้า Detail และข้อความเมื่อ toggle องค์กรปิด | ไม่กระทบ contract | ไม่เสนอ รอ UX Designer | UX Designer ผ่าน Technical Lead session หลัก |
+ไม่มี Open decisions เหลือ `UX-60-01` และ `UX-60-02` ปิดแล้ว (ดู Decisions) `NODE-60-05` เริ่มงานได้ตาม READY
 
 ## Revisions
 
@@ -305,3 +304,4 @@ OD-60-01 ถึง OD-60-06: ผู้ใช้ยืนยันตามข้
 | 2026-10-05 | ร่างแรกจากเนื้อหา issue #60 โดยข้าม Feature doc ตามคำสั่งผู้ใช้ | Not yet | none |
 | 2026-10-05 | ผู้ใช้ยืนยัน OD-60-01 ถึง 07 ตามข้อเสนอทุกข้อ เติม MIN/MAX | ผู้ใช้ (OD เท่านั้น ยังไม่ freeze เพราะ PO-60-01, PO-60-02, UX-60-01, UX-60-02 ยังเปิดอยู่) | none |
 | 2026-10-05 | ผู้ใช้อนุมัติ spec ทั้งฉบับ freeze acceptance ปิด `PO-60-01` (viewer เห็นเกณฑ์เท่านั้น ตามที่ contract เขียนไว้) และ `PO-60-02` (ผู้ใช้รับแถว P60-01 ถึง P60-09 โดยตรง) เหลือ `UX-60-01`, `UX-60-02` เปิดแบบไม่บล็อก | ผู้ใช้ | `issue-60-AC-1` |
+| 2026-10-05 | `/implement-issue` เริ่มงาน (`COMMIT_MODE` owned-slice, `STOP_AT` merge-ready) UX Designer ปิด `UX-60-01` และ `UX-60-02` ไม่มี Open decisions เหลือ แก้ Contracts → Web ให้ตรงกับคำตอบ, แก้ FILES/READY ของ `NODE-60-05`, เพิ่ม risk เรื่อง `viewer`/`auditor` ไม่เห็นสถานะ toggle องค์กร | ผู้ใช้ (ผ่านคำสั่ง `/implement-issue`), UX Designer | `issue-60-AC-1` (ไม่เปลี่ยน) |
