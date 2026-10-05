@@ -65,8 +65,6 @@ function scalarChange(
       ];
 }
 
-// Booleans stay raw here (unlike the `config_changed` feed, which spells them
-// "enabled"/"disabled" because its `changes[]` schema has no boolean member).
 function booleanChange(
   field: AuditChangeField,
   before: boolean,

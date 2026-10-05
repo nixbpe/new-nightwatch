@@ -78,8 +78,6 @@ beforeEach(() => {
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
-  // A successful save navigates to the new monitor's Detail page, which
-  // mounts the event feed and last-response cards.
   vi.mocked(fetchMonitorEvents).mockResolvedValue({
     events: [],
     page: { limit: 20, offset: 0, total: 0 },
@@ -738,7 +736,6 @@ describe("Alerts section controls", () => {
   it("updates the down-status note to 3 failures and submits the complete alerts object with the selected values", async () => {
     const user = await openCreate();
     await user.selectOptions(thresholdSelect(), "3");
-    // BasicSection reads the same value, not a fixed constant (P60-01).
     expect(
       screen.getByText(/ถือว่าล่มเมื่อล้มเหลวติดกัน\s*3\s*ครั้ง/),
     ).toBeInTheDocument();

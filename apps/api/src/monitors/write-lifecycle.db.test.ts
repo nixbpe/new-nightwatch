@@ -1292,9 +1292,6 @@ describe("audit failure (AC-21)", () => {
   });
 });
 
-// Kept last: the role-denial case below adds "organization access denied" log
-// lines for `org.users.viewer`, and "audit and logs" above finds its denial
-// by scanning `ctx.logRecords()` for the first line from that actor.
 describe("Monitor alert settings on Create and Edit", () => {
   it("defaults alerts on Create when the field is omitted", async () => {
     const monitor = await created();
@@ -1400,10 +1397,6 @@ describe("Monitor alert settings on Create and Edit", () => {
 
   it("an alerts-only Edit increments version, preserves check state and scheduling, and uses the new threshold for health", async () => {
     const monitor = await created();
-    // Two failures already recorded against config version 1, which also
-    // passed once. Raising the threshold to 3 in the same Edit must keep
-    // health "up" (OD-60-02 (a)), proving it is read with the *new*
-    // threshold right after the save, not reset to unknown or stale.
     await ctx.owner.sql.query(
       `update monitors set consecutive_failures = 2,
          last_passed_config_version = 1 where id = $1`,

@@ -12,19 +12,11 @@ import { SelectControl, TextControl, type SectionProps } from "./controls";
 const CHECKBOX_CARD =
   "flex items-start gap-3 rounded-md border border-foreground/10 px-4 py-3 text-sm";
 
-// OD-60-02 (a): the threshold always decides "ล่ม", whether or not the down
-// toggle below sends a notification for it (UX-60-01, label text frozen P60-01).
 const FAILURE_THRESHOLD_HINT =
   "ค่านี้ใช้ตัดสินว่ามอนิเตอร์ล่มด้วย แม้ปิด 'แจ้งเมื่อล่มและกลับมาปกติ'";
 const SSL_DAYS_DISABLED_HINT =
   "เปิด 'แจ้งเมื่อ SSL ใกล้หมดอายุ' ก่อน จึงจะแก้จำนวนวันนี้ได้";
 
-/**
- * Alerts step (issue 60): real controls bound to `values.alerts`, replacing
- * the sample mockup. Down, recovery and SSL expiry notifications are also
- * gated by the org setting `monitorAlertsEnabled` (worker notifications.ts);
- * this note mirrors that state without duplicating the per-monitor toggles.
- */
 export function AlertsSection({
   code,
   organizationId,

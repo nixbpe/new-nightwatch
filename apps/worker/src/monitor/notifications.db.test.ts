@@ -284,7 +284,6 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
       expect(await intentTypes(monitor)).toEqual(
         sends ? ["MONITOR_DOWN", "MONITOR_RECOVERED"] : [],
       );
-      // Incident and health change the same way regardless of the toggles.
       const [incident] = await rows<{
         down_notified: boolean;
         ended_at: Date | null;
@@ -670,9 +669,6 @@ describe("SSL notifications (AC-36)", () => {
         "update monitors set alert_ssl_caution_days = 14 where id = $1",
         [monitor.monitorId],
       );
-      // 20 days remaining: above the 14-day notify edge (no event yet), but
-      // the fixed 30-day display edge (sslLevel, unaffected by this column)
-      // already shows caution.
       await record(monitor, certResult(notAfter, daysBefore(20)));
       expect(await intentTypes(monitor)).toEqual([]);
       const [displayed] = await rows<{ ssl_state: string }>(

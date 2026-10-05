@@ -59,7 +59,6 @@ export const writeMonitorNotification: MonitorEventHook = async (tx, event) => {
 
   if (event.type === "incident_closed") {
     if (!event.downNotified || event.endReason !== "recovered") return;
-    // The incident already closed; only the notification follows the toggles.
     if (
       !event.alertDownEnabled ||
       !(await monitorAlertsEnabled(tx, event.tenantId))
@@ -111,8 +110,6 @@ async function writeSslNotification(
   const reported = sameCertificate && row.level ? SSL_RANK[row.level] : 0;
   if (SSL_RANK[event.level] <= reported) return;
 
-  // With either alert off nothing is sent, but the level still advances so
-  // turning them on again does not replay a stale level.
   if (
     event.alertSslEnabled &&
     (await monitorAlertsEnabled(tx, event.tenantId))

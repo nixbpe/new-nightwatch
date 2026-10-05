@@ -467,7 +467,6 @@ export const monitors = pgTable(
       withTimezone: true,
     }),
     sslNotifiedLevel: text("ssl_notified_level"),
-    // Notification config per monitor (#60); defaults match pre-#60 behavior.
     alertFailureThreshold: smallint("alert_failure_threshold")
       .notNull()
       .default(2),

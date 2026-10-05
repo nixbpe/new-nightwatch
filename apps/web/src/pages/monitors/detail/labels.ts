@@ -8,11 +8,6 @@ import type {
 
 import { incidentReasonLabel } from "../format";
 
-/**
- * Shown in the form and the Detail "การแจ้งเตือน" card when the org toggle
- * (`monitorAlertsEnabled`) is off (UX-60-02 (ข)): the per-monitor toggles
- * below still hold their values, but nothing sends until the org re-enables.
- */
 export const ORG_ALERTS_OFF_MESSAGE =
   "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ";
 
@@ -182,13 +177,11 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   "alerts.sslCautionDays": "แจ้งล่วงหน้าก่อน SSL หมดอายุ (วัน)",
 };
 
-/** `changes[]` spells a toggle as `'enabled' | 'disabled'` (#58 Data), never a raw boolean. */
 const ENABLED_VALUE_FIELDS: ReadonlySet<string> = new Set([
   "alerts.downEnabled",
   "alerts.sslEnabled",
 ]);
 
-/** A `kind: "value"` change's before/after text; only the two alert toggles carry the enabled/disabled enum. */
 export function configChangeValueText(
   field: string,
   value: string | number | null,

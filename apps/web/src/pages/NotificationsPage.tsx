@@ -51,12 +51,6 @@ type MonitorNotificationItem = Extract<
 
 const SSL_CAUTION_DAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Days left when the caution notification fired, rounded up the same way as
- * `sslNotifyLevel` (packages/shared/src/monitor-check/ssl-level.ts) so the
- * count matches the per-monitor `sslCautionDays` threshold that triggered it
- * (issue 60): the caution edge is no longer a fixed 30 days.
- */
 function sslDaysRemainingAt(notAfter: string, occurredAt: string): number {
   const remainingMs =
     new Date(notAfter).getTime() - new Date(occurredAt).getTime();

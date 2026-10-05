@@ -13,7 +13,6 @@ export type SeedMonitor = {
   checkConfigVersion?: number;
   consecutiveFailures?: number;
   lastPassedConfigVersion?: number | null;
-  /** Issue #60; default 2 matches the pre-issue-60 incident threshold. */
   alertFailureThreshold?: number;
   lastCheckAgoSeconds?: number | null;
   sslHost?: string | null;

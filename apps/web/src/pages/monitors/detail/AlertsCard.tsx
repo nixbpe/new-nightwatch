@@ -20,17 +20,11 @@ function isDenied(error: unknown): boolean {
   return error instanceof ApiError && error.code === "PERMISSION_DENIED";
 }
 
-/**
- * Only `owner`/`admin` read this (F-005 `assertSettingsAdministrator`); the
- * query shares its cache key with `AlertsSection.tsx` in the form.
- * `enabled: canWrite` keeps `viewer`/`auditor` from firing the request at all.
- */
 function useOrgAlertsSetting(organizationId: string, canWrite: boolean) {
   return useQuery({
     queryKey: organizationNotificationSettingsQueryKey(organizationId),
     queryFn: () => fetchOrganizationNotificationSettings(organizationId),
     enabled: canWrite,
-    // A 403 means the role changed since mount: stop polling, like LastResponseCard.
     refetchInterval: (current) =>
       isDenied(current.state.error) ? false : MONITOR_REFETCH_INTERVAL_MS,
   });
@@ -48,8 +42,6 @@ function OrgAlertsValue({
       </span>
     );
   }
-  // Any current error, even with stale data cached, never shows a toggle
-  // state: a possibly-wrong "เปิด" here would hide a real delivery failure.
   if (org.isError) {
     return (
       <span className="inline-flex flex-col items-end gap-1.5">
@@ -78,10 +70,6 @@ function OrgAlertsValue({
   return <>{org.data.monitorAlertsEnabled ? "เปิด" : "ปิด"}</>;
 }
 
-/**
- * "การแจ้งเตือน" (issue 60): settings, not telemetry, so it sits between
- * `ConfigCard` and `SslCard` rather than after `StatusCard` (UX-60-02 (ก)).
- */
 export function AlertsCard({
   monitor,
   organizationId,

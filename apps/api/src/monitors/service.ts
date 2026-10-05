@@ -467,7 +467,6 @@ export async function editMonitor(
       }
       const previous = storedFromRow(row);
       next.headers = assignHeaderIds(next.headers, previous.headers);
-      // Omitted entirely (`undefined`): keep the stored value (API, Edit).
       next.alerts = input.input.alerts ?? previous.alerts;
       const stored = new Set(await secretSlots(client, monitorId));
       const plan = planSecrets({

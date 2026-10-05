@@ -590,7 +590,6 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
           [2, false],
         ],
       );
-      // The save itself (an Edit, simulated directly) does not open an incident.
       await updateMonitor(
         db,
         monitor,

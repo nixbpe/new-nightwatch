@@ -446,9 +446,6 @@ describe("Detail alerts card", () => {
   const alertsCard = async () =>
     sectionOf(await screen.findByRole("heading", { name: "การแจ้งเตือน" }));
 
-  // Rows "แจ้งเมื่อล่มและกลับมาปกติ" and "แจ้งเมื่อ SSL ใกล้หมดอายุ" can also
-  // read "เปิด"/"ปิด", so the org row's own value is read from its <dd>
-  // specifically rather than a page-wide text match.
   function orgRowValue(card: HTMLElement): HTMLElement {
     const dt = within(card).getByText("การแจ้งเตือนระดับองค์กร");
     return must(dt.nextElementSibling as HTMLElement | null);
@@ -490,7 +487,6 @@ describe("Detail alerts card", () => {
     expect(
       within(card).getByText("มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง"),
     ).toBeInTheDocument();
-    // The toggle's own value still shows: the note is additive, not a replacement.
     expect(within(card).getByText(/เปิด \(ล่วงหน้า/)).toBeInTheDocument();
   });
 

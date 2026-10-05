@@ -225,10 +225,6 @@ function numberOf(text: string): number {
   return text.trim() === "" ? Number.NaN : Number(text);
 }
 
-// `alerts` is narrowed to the complete, non-optional shape (not the wider,
-// per-field-optional `MonitorConfigInput["alerts"]`): every caller below
-// always fills all four fields, which is what Edit requires when it sends
-// `alerts` at all (monitorEditSchema, packages/api-contract/src/monitor.ts).
 export function configInput(
   values: FormValues,
 ): Omit<MonitorConfigInput, "alerts"> & { alerts: AlertSettings } {
@@ -266,9 +262,6 @@ export function configInput(
           : { kind: assertion.kind, ms: numberOf(assertion.ms) },
     ),
     auth: values.auth,
-    // Always the complete object: Edit treats a partial `alerts` as invalid
-    // (monitorEditSchema, packages/api-contract/src/monitor.ts) to keep a
-    // client that sends only some fields from silently resetting the rest.
     alerts: {
       failureThreshold: values.alerts.failureThreshold,
       downEnabled: values.alerts.downEnabled,

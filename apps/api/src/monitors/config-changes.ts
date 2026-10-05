@@ -18,8 +18,6 @@ function cut(value: string): string {
     : points.slice(0, VALUE_MAX_CHARS).join("");
 }
 
-// `changes[]` has no boolean member (#58 Data: `'enabled' | 'disabled'`), so a
-// toggle is spelled out rather than sent as a raw boolean.
 const enabledLabel = (on: boolean): "enabled" | "disabled" =>
   on ? "enabled" : "disabled";
 

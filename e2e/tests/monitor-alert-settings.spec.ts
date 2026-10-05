@@ -16,12 +16,6 @@ import {
   type Person,
 } from "../support/monitor-fixtures";
 
-/**
- * Issue #60 (P60-01, P60-02): a per-monitor failure threshold decides "ล่ม"
- * independently of its own down/recovery toggle (OD-60-02 (a), OD-60-01 (a)).
- * One Organization, one owner, two monitors created against a fixed 1-minute
- * interval so three checks land inside the test's budget.
- */
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -31,9 +25,7 @@ let host: string;
 let org: string;
 let owner: Person;
 const userIds: string[] = [];
-// Monitor 1: down from creation, failure threshold raised to 3 through the form.
 let targetThreshold: Target;
-// Monitor 2: up at first so its Edit (toggle off) lands before any failure.
 let targetToggle: Target;
 const thresholdName = `alert-threshold-${run}`;
 const toggleName = `alert-toggle-${run}`;
@@ -131,7 +123,6 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   test.setTimeout(8 * 60_000);
   await signIn(page, owner);
 
-  // Monitor 1: created through the form with a 1-minute interval and "3 ครั้ง" selected.
   await page.goto(`/organizations/${org}/monitors/new`);
   await page.getByLabel("ชื่อมอนิเตอร์").fill(thresholdName);
   await page
@@ -150,7 +141,6 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   expect(read1.status).toBe(200);
   expect((read1.body as MonitorBody).monitor.alerts.failureThreshold).toBe(3);
 
-  // Monitor 2: created through the API with default alerts, target still up.
   const create2 = await session.request("POST", monitorPath(org), {
     ...basicConfig(toggleName, urlOf(targetToggle, "/health")),
     clientRequestId: randomUUID(),
@@ -158,7 +148,6 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   expect(create2.status).toBe(201);
   const m2 = (create2.body as MonitorBody).monitor.id;
 
-  // Turn its down/recovery toggle off through the Edit form before it ever fails.
   await page.goto(`/organizations/${org}/monitors/${m2}/edit`);
   await expect(
     page.getByRole("heading", { name: `แก้ไข ${toggleName}` }),
@@ -171,10 +160,8 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
     false,
   );
 
-  // Only now does monitor 2's target start failing, so the Edit cannot race the incident.
   targetToggle.setMode("down");
 
-  // Monitor 1: the incident and MONITOR_DOWN must land at the third failure, not the second.
   await waitFor(
     async () => (await openIncident(m1)) !== null,
     240_000,
@@ -197,19 +184,14 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
     [m1, incident1!.started_at],
   );
   expect(failUpToOpen1.rows[0]!.n).toBe(3);
-  // `down_notified` is set in the same transaction as the incident row, so a
-  // row that exists already carries the final value of this run.
   expect(incident1!.down_notified).toBe(true);
 
-  // The pipeline is live: monitor 1's MONITOR_DOWN reaches the inbox.
   await waitFor(
     async () => (await countInbox(m1, "MONITOR_DOWN")) === 1,
     60_000,
     "monitor 1 MONITOR_DOWN reaching the inbox",
   );
 
-  // Monitor 2: the incident still opens (threshold is independent of the toggle),
-  // but its own toggle kept MONITOR_DOWN from ever being written.
   await waitFor(
     async () => (await openIncident(m2)) !== null,
     180_000,

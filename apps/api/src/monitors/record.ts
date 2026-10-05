@@ -119,15 +119,6 @@ function storedHeader(header: MonitorConfig["headers"][number]): StoredHeader {
   return { name: header.name, value: header.value ?? "", secret: false };
 }
 
-/**
- * `alerts` is optional here only because `MonitorEditInput` makes it optional
- * (an Edit that omits it keeps the stored value). The caller is responsible
- * for resolving that before the value is used: `editMonitor` overwrites
- * `.alerts` with the previous stored value once it is loaded under lock, the
- * same way it overwrites `.headers` with id-assigned ones. Create and Test
- * always pass a resolved `MonitorConfig`, so `config.alerts` is never
- * actually missing for them.
- */
 export function toStoredConfig(
   config: Omit<MonitorConfig, "alerts"> & { alerts?: AlertSettings },
 ): StoredConfig {

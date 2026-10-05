@@ -26,7 +26,6 @@ type EventContext = {
   monitorId: string;
   monitorName: string;
   occurredAt: Date;
-  /** Per-monitor toggles (issue #60), read under the same lock as the event. */
   alertDownEnabled: boolean;
   alertSslEnabled: boolean;
 };
@@ -346,8 +345,6 @@ function nextSsl(
   if (result.outcome === "check_error") return none;
   const { tls } = result;
   if (tls?.notAfter) {
-    // `state` (displayed, AC-05) keeps the fixed 30/7-day edges; `notifyLevel`
-    // (event only, OD-60-04, OD-60-05) uses the monitor's own caution days.
     const { level: state } = sslLevel(tls.notAfter, result.checkedAt);
     const { level: notifyLevel } = sslNotifyLevel(
       tls.notAfter,

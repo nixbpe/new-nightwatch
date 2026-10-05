@@ -158,8 +158,6 @@ describe("NotificationsPage", () => {
     const titles = [
       "มอนิเตอร์ Checkout ล่ม",
       "มอนิเตอร์ Checkout กลับมาทำงานแล้ว",
-      // 2026-09-25T03:00 to 2026-10-20T00:00, rounded up like sslNotifyLevel
-      // (issue 60): the caution edge is a per-monitor day count, not a fixed 30.
       "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุ (เหลือไม่เกิน 25 วัน)",
       "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)",
       "ใบรับรอง SSL ของ Checkout หมดอายุแล้ว",
@@ -194,8 +192,6 @@ describe("NotificationsPage", () => {
           id: "10000000-0000-4000-8000-000000000006",
           eventType: "MONITOR_SSL_CAUTION",
           reason: null,
-          // 10 days after occurredAt (2026-09-25T03:00:00.000Z): a monitor
-          // whose own sslCautionDays is well under the old fixed 30.
           sslNotAfter: "2026-10-05T03:00:00.000Z",
         },
       ],

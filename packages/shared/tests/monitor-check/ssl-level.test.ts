@@ -28,9 +28,6 @@ describe("sslLevel", () => {
 });
 
 describe("sslNotifyLevel", () => {
-  // issue #60, OD-60-04 / OD-60-05: caution edge is the monitor's own
-  // `cautionDays` (here 15, inside the validated 8-30 range); danger (7
-  // days) and expired stay fixed like `sslLevel`.
   it.each([
     ["15 days exactly", "caution", 15 * DAY, 15],
     ["15 days + 1 s", "ok", 15 * DAY + 1000, 16],
