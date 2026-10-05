@@ -1,7 +1,9 @@
 import { isDenied } from "../workspace/rows";
-import type {
-  MonitorHealthName,
-  MonitorListResponse,
+import {
+  MONITOR_LIST_SORTS,
+  type MonitorHealthName,
+  type MonitorListResponse,
+  type MonitorListSort,
 } from "@nightwatch/api-contract";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -12,7 +14,7 @@ import { ActivityIcon, SearchIcon } from "../../components/shell/icons";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { Skeleton } from "../../components/shell/Skeleton";
-import { Alert, Input } from "../../components/ui";
+import { Alert, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Notice } from "../../components/ui/notice";
 import { DataTablePagination } from "../../components/ui/data-table";
@@ -32,7 +34,6 @@ import { useTenant } from "../../lib/tenant/TenantProvider";
 import { useFlashNotice } from "./flash";
 import { formatTimeWithSeconds, Time, TIME_ZONE } from "./format";
 import { HEALTH_LABELS } from "./HealthPill";
-import { CardEnrichmentMockup, SortMockup } from "./list/MonitorListMockups";
 import { MonitorCards } from "./list/MonitorCards";
 import { MonitorTable } from "./MonitorTable";
 import { RecentEventsCard } from "./RecentEventsCard";
@@ -51,6 +52,13 @@ const VIEW_OPTIONS = [
   { value: "cards", label: "การ์ด" },
   { value: "table", label: "ตาราง" },
 ] as const;
+const SORT_LABELS: Record<MonitorListSort, string> = {
+  problems: "ปัญหาก่อน",
+  name: "ชื่อ A-Z",
+  uptime: "ความพร้อมใช้งานต่ำสุด",
+  response_time: "ตอบกลับช้าสุด",
+  newest: "เพิ่มล่าสุด",
+};
 type ViewMode = (typeof VIEW_OPTIONS)[number]["value"];
 
 // Per-viewer convenience only; storage can be blocked, so every access is guarded.
@@ -137,6 +145,8 @@ function OverviewForOrganization({
   const [offset, setOffset] = useState(0);
   const [health, setHealth] = useState<MonitorHealthName | undefined>();
   const [q, setQ] = useState("");
+  // Page state only: never stored, so a new visit starts at "problems".
+  const [sort, setSort] = useState<MonitorListSort>("problems");
   const [searchText, setSearchText] = useState("");
   const [announcement, setAnnouncement] = useState({ text: "", count: 0 });
   const [refreshing, setRefreshing] = useState(false);
@@ -146,6 +156,7 @@ function OverviewForOrganization({
   >("idle");
   // Set by a filter change the user made; the announcement waits for that filter's own data.
   const pendingAnnouncement = useRef(false);
+  const pendingSortLabel = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const listParams = {
@@ -153,6 +164,8 @@ function OverviewForOrganization({
     offset,
     health,
     q: q === "" ? undefined : q,
+    // The default order sends no sort, so its key equals the loader and nav counts key.
+    sort: sort === "problems" ? undefined : sort,
   };
   const list = useQuery({
     queryKey: monitorQueryKeys.list(organizationId, listParams),
@@ -181,8 +194,11 @@ function OverviewForOrganization({
     if (!pendingAnnouncement.current || data === undefined) return;
     if (list.isPlaceholderData) return;
     pendingAnnouncement.current = false;
+    const found = `พบ ${String(data.page.total)} จาก ${String(data.summary.total)}`;
+    const sortLabel = pendingSortLabel.current;
+    pendingSortLabel.current = null;
     setAnnouncement((previous) => ({
-      text: `พบ ${String(data.page.total)} จาก ${String(data.summary.total)}`,
+      text: sortLabel === null ? found : `เรียงตาม ${sortLabel} · ${found}`,
       count: previous.count + 1,
     }));
   }, [data, list.isPlaceholderData]);
@@ -306,6 +322,32 @@ function OverviewForOrganization({
         writeView(next);
       }}
     />
+  );
+
+  const sortControl = (
+    <Label className="flex w-fit max-w-full flex-col gap-2 text-sm">
+      เรียงตาม
+      <select
+        className={textInputClass}
+        value={sort}
+        onChange={(event) => {
+          const next = MONITOR_LIST_SORTS.find(
+            (value) => value === event.target.value,
+          );
+          if (next === undefined) return;
+          pendingAnnouncement.current = true;
+          pendingSortLabel.current = SORT_LABELS[next];
+          setOffset(0);
+          setSort(next);
+        }}
+      >
+        {MONITOR_LIST_SORTS.map((value) => (
+          <option key={value} value={value}>
+            {SORT_LABELS[value]}
+          </option>
+        ))}
+      </select>
+    </Label>
   );
 
   const clearFilters = () => {
@@ -527,7 +569,7 @@ function OverviewForOrganization({
         </Alert>
       ) : null}
       <SummaryStrip summary={data.summary} />
-      {filterControls(!(page.total === 0 && filtered), <SortMockup />)}
+      {filterControls(!(page.total === 0 && filtered), sortControl)}
       <p role="status" aria-label="ผลการกรอง" className="sr-only">
         <span key={announcement.count}>{announcement.text}</span>
       </p>
@@ -576,7 +618,6 @@ function OverviewForOrganization({
           }}
         />
       )}
-      {view === "cards" ? <CardEnrichmentMockup /> : null}
       <RecentEventsCard organizationId={organizationId} />
     </Page>
   );

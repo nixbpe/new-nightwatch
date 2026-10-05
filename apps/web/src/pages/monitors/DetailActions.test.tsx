@@ -361,6 +361,8 @@ describe("Delete", () => {
       id,
       name,
       url: "https://example.test/",
+      method: "GET" as const,
+      intervalSeconds: 300,
       status: "active" as const,
       health: "up" as const,
       healthReason: null,
@@ -369,7 +371,17 @@ describe("Delete", () => {
       lastCheckAt: "2026-09-30T07:30:00.000Z",
       openIncident: null,
       lastResponseTimeMs: 100,
-      ssl: { level: "ok" as const, daysRemaining: 100, host: null },
+      ssl: {
+        level: "ok" as const,
+        daysRemaining: 100,
+        host: null,
+        issuer: null,
+        notAfter: null,
+      },
+      responseSparkline: Array.from({ length: 24 }, (_, hour) => ({
+        hourStart: new Date(Date.UTC(2026, 8, 29, 8 + hour)).toISOString(),
+        avgMs: null,
+      })),
       uptime: {
         h24: { percent: 100, checks: 1, coveragePercent: 100 },
         d30: { percent: 100, checks: 1, coveragePercent: 100 },
