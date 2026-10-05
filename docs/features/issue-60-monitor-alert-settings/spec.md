@@ -9,9 +9,9 @@ Owner: Technical Lead spec นี้ได้รับอนุมัติแ�
 | Epic                 | None |
 | Status               | Approved |
 | Approved by user     | 2026-10-05 (ยืนยัน OD-60-01 ถึง 07 และอนุมัติ spec พร้อม freeze) |
-| Start authorization  | None |
-| `COMMIT_MODE`        | none |
-| `STOP_AT`            | review-ready (ค่าเริ่มต้น ผู้ใช้ยังไม่ได้สั่ง implement แยกต่างหาก) |
+| Start authorization  | 2026-10-05, `/implement-issue` ("issue 60 ตาม spec และให้ commit mode = owned-slice") |
+| `COMMIT_MODE`        | owned-slice |
+| `STOP_AT`            | merge-ready |
 
 ป้ายในวงเล็บ: [ตรวจแล้ว] คือสิ่งที่อ่านใน code หรือเอกสาร ณ 2026-10-05 บน branch `nixbpe/feature-monitor` [สมมติฐาน] คือสิ่งที่ยังไม่ได้พิสูจน์ เนื้อหา issue มาจาก team-lead (Technical Lead ไม่ได้เปิด `gh` เอง) canvas ใน issue เป็นข้อมูลตัวอย่าง spec นี้ไม่ใช้ตัวเลข 14 และ 3 วันจาก canvas
 
