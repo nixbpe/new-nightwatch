@@ -12,7 +12,6 @@ function facts(overrides: Partial<HealthFacts> = {}): HealthFacts {
     consecutiveFailures: 0,
     lastPassedConfigVersion: 1,
     hasOpenIncident: false,
-    alertFailureThreshold: 2,
     latest: {
       outcome: "pass",
       configVersion: 1,
@@ -172,52 +171,33 @@ describe("computeHealth, in the order of the seven steps", () => {
     ).toEqual({ health: "unknown", healthReason: null, lastKnownDown: false });
   });
 
-  it("7: two failures without an incident row is not up", () => {
+  it("7: two failures without an incident row is still up", () => {
+    // No upper bound on consecutiveFailures (issue #60, P60-06): the Worker
+    // opens the incident in the same transaction that would reach the
+    // monitor's threshold, so a failing streak with no incident row is read
+    // as "up" regardless of how high it is. See the next test for why this
+    // matters: an Edit can raise or lower the threshold without a new check.
     expect(
       computeHealth(facts({ consecutiveFailures: 2, latest: latest("fail") }))
         .health,
-    ).toBe("unknown");
+    ).toBe("up");
+    expect(
+      computeHealth(facts({ consecutiveFailures: 50, latest: latest("fail") }))
+        .health,
+    ).toBe("up");
   });
 
-  it("keeps health up below the failure threshold and returns unknown at the threshold without an open incident", () => {
-    // Threshold 1: no failure is "up", the first failure is already the edge.
+  it("an Edit that changes the failure threshold never flips health to unknown on its own (P60-06)", () => {
+    // Before issue #60 this comparison used a fixed consecutiveFailures < 2
+    // bound, so an Edit that lowered the threshold while the streak already
+    // sat at or above the new value read as "unknown" until the next check,
+    // even though nothing about the monitor's own result stream changed.
+    // Health now depends only on hasOpenIncident and the result stream, so
+    // the stored threshold can move freely between checks.
     expect(
-      computeHealth(
-        facts({
-          alertFailureThreshold: 1,
-          consecutiveFailures: 1,
-          latest: latest("fail"),
-        }),
-      ).health,
-    ).toBe("unknown");
-    // Threshold 3: up survives two failures, not a third.
-    expect(
-      computeHealth(
-        facts({
-          alertFailureThreshold: 3,
-          consecutiveFailures: 1,
-          latest: latest("fail"),
-        }),
-      ).health,
+      computeHealth(facts({ consecutiveFailures: 3, latest: latest("fail") }))
+        .health,
     ).toBe("up");
-    expect(
-      computeHealth(
-        facts({
-          alertFailureThreshold: 3,
-          consecutiveFailures: 2,
-          latest: latest("fail"),
-        }),
-      ).health,
-    ).toBe("up");
-    expect(
-      computeHealth(
-        facts({
-          alertFailureThreshold: 3,
-          consecutiveFailures: 3,
-          latest: latest("fail"),
-        }),
-      ).health,
-    ).toBe("unknown");
   });
 });
 

@@ -124,7 +124,6 @@ type StateRow = {
   checkConfigVersion: number;
   consecutiveFailures: number;
   lastPassedConfigVersion: number | null;
-  alertFailureThreshold: number;
   sslHost: string | null;
   sslIssuer: string | null;
   sslNotAfter: Date | null;
@@ -164,7 +163,6 @@ const STATE_QUERY = `
     m.check_config_version as "checkConfigVersion",
     m.consecutive_failures as "consecutiveFailures",
     m.last_passed_config_version as "lastPassedConfigVersion",
-    m.alert_failure_threshold as "alertFailureThreshold",
     m.ssl_host as "sslHost", m.ssl_issuer as "sslIssuer",
     m.ssl_not_after as "sslNotAfter", m.ssl_state as "sslState",
     m.ssl_reason as "sslReason",
@@ -230,7 +228,6 @@ export function healthOf(row: StateRow) {
     intervalSeconds: row.intervalSeconds,
     consecutiveFailures: row.consecutiveFailures,
     lastPassedConfigVersion: row.lastPassedConfigVersion,
-    alertFailureThreshold: row.alertFailureThreshold,
     hasOpenIncident: row.incidentStartedAt !== null,
     latest:
       row.latestOutcome === null ||

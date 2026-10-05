@@ -246,11 +246,11 @@ describe("health: the seven steps, in List and Detail", () => {
       },
     },
     {
-      name: "7: three consecutive failures return unknown without an open incident when the threshold is 3",
+      name: "7: three consecutive failures are still up without an open incident, even at the threshold (P60-06)",
       monitor: { alertFailureThreshold: 3, consecutiveFailures: 3 },
       seed: (id) => results(id, [10], "fail"),
       expected: {
-        health: "unknown",
+        health: "up",
         healthReason: null,
         lastKnownDown: false,
         consecutiveFailures: 3,

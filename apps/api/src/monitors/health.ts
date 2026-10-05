@@ -11,8 +11,6 @@ export type HealthFacts = {
   consecutiveFailures: number;
   lastPassedConfigVersion: number | null;
   hasOpenIncident: boolean;
-  /** The monitor's own incident threshold (issue #60, OD-60-02 (a)). */
-  alertFailureThreshold: number;
   /**
    * Newest result of the monitor under any config version. `ageSeconds` is
    * `now() - checked_at` measured by the database, so the freshness boundary
@@ -67,11 +65,16 @@ export function computeHealth(facts: HealthFacts): Health {
   if (facts.hasOpenIncident) return decided("down");
   const passedInCurrentConfig =
     facts.lastPassedConfigVersion === facts.checkConfigVersion;
+  // No upper bound on `consecutiveFailures` here (issue #60, P60-06): the
+  // Worker opens the incident in the same transaction that would push
+  // `consecutiveFailures` to the monitor's threshold, so `hasOpenIncident`
+  // above already covers "failed enough to be down" in every state a real
+  // check produces. Gating on the threshold here too would make this reread
+  // as "unknown" right after an Edit that only lowers it, before any new
+  // check has run.
   if (
     latest.outcome === "pass" ||
-    (facts.consecutiveFailures >= 1 &&
-      facts.consecutiveFailures < facts.alertFailureThreshold &&
-      passedInCurrentConfig)
+    (facts.consecutiveFailures >= 1 && passedInCurrentConfig)
   ) {
     return decided("up");
   }
