@@ -1,5 +1,7 @@
 import {
+  MONITOR_DEFAULT_ALERTS,
   normalizeMonitorConfig,
+  type AlertSettings,
   type MonitorConfig,
   type MonitorRecord,
   type StatusRange,
@@ -15,6 +17,10 @@ export const MONITOR_COLUMNS = `id, name, url, method, headers,
   expected_status_text as "expectedStatusText",
   expected_status_ranges as "expectedStatusRanges", assertions,
   interval_seconds as "intervalSeconds", timeout_seconds as "timeoutSeconds",
+  alert_failure_threshold as "alertFailureThreshold",
+  alert_down_enabled as "alertDownEnabled",
+  alert_ssl_enabled as "alertSslEnabled",
+  alert_ssl_caution_days as "alertSslCautionDays",
   status, version, last_check_at as "lastCheckAt",
   created_at as "createdAt", updated_at as "updatedAt"`;
 
@@ -34,6 +40,10 @@ export type MonitorRow = {
   assertions: StoredAssertion[];
   intervalSeconds: number;
   timeoutSeconds: number;
+  alertFailureThreshold: number;
+  alertDownEnabled: boolean;
+  alertSslEnabled: boolean;
+  alertSslCautionDays: number;
   status: "active" | "paused";
   version: number;
   lastCheckAt: Date | null;
@@ -56,6 +66,7 @@ export type StoredConfig = {
   apiKeyHeaderName: string | null;
   expectedStatusText: string;
   expectedStatusRanges: StatusRange[];
+  alerts: AlertSettings;
   assertions: StoredAssertion[];
 };
 
@@ -108,7 +119,18 @@ function storedHeader(header: MonitorConfig["headers"][number]): StoredHeader {
   return { name: header.name, value: header.value ?? "", secret: false };
 }
 
-export function toStoredConfig(config: MonitorConfig): StoredConfig {
+/**
+ * `alerts` is optional here only because `MonitorEditInput` makes it optional
+ * (an Edit that omits it keeps the stored value). The caller is responsible
+ * for resolving that before the value is used: `editMonitor` overwrites
+ * `.alerts` with the previous stored value once it is loaded under lock, the
+ * same way it overwrites `.headers` with id-assigned ones. Create and Test
+ * always pass a resolved `MonitorConfig`, so `config.alerts` is never
+ * actually missing for them.
+ */
+export function toStoredConfig(
+  config: Omit<MonitorConfig, "alerts"> & { alerts?: AlertSettings },
+): StoredConfig {
   const normalized = normalizeMonitorConfig(config);
   return {
     name: config.name,
@@ -126,6 +148,7 @@ export function toStoredConfig(config: MonitorConfig): StoredConfig {
     expectedStatusText: normalized.expectedStatusText,
     expectedStatusRanges: normalized.expectedStatusRanges,
     assertions: normalized.assertions,
+    alerts: config.alerts ?? MONITOR_DEFAULT_ALERTS,
   };
 }
 
@@ -145,6 +168,12 @@ export function storedFromRow(row: MonitorRow): StoredConfig {
     expectedStatusText: row.expectedStatusText,
     expectedStatusRanges: row.expectedStatusRanges,
     assertions: row.assertions,
+    alerts: {
+      failureThreshold: row.alertFailureThreshold,
+      downEnabled: row.alertDownEnabled,
+      sslEnabled: row.alertSslEnabled,
+      sslCautionDays: row.alertSslCautionDays,
+    },
   };
 }
 
@@ -236,5 +265,11 @@ export function toRecord(
     version: row.version,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    alerts: {
+      failureThreshold: row.alertFailureThreshold,
+      downEnabled: row.alertDownEnabled,
+      sslEnabled: row.alertSslEnabled,
+      sslCautionDays: row.alertSslCautionDays,
+    },
   };
 }

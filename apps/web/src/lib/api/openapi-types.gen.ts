@@ -1762,6 +1762,24 @@ export interface paths {
                             type: "apiKey";
                             headerName: string;
                         };
+                        /**
+                         * @default {
+                         *       "failureThreshold": 2,
+                         *       "downEnabled": true,
+                         *       "sslEnabled": true,
+                         *       "sslCautionDays": 30
+                         *     }
+                         */
+                        alerts?: {
+                            /** @default 2 */
+                            failureThreshold?: number;
+                            /** @default true */
+                            downEnabled?: boolean;
+                            /** @default true */
+                            sslEnabled?: boolean;
+                            /** @default 30 */
+                            sslCautionDays?: number;
+                        };
                         /** @default [] */
                         secrets?: {
                             slot: string;
@@ -2041,6 +2059,24 @@ export interface paths {
                             /** @enum {string} */
                             type: "apiKey";
                             headerName: string;
+                        };
+                        /**
+                         * @default {
+                         *       "failureThreshold": 2,
+                         *       "downEnabled": true,
+                         *       "sslEnabled": true,
+                         *       "sslCautionDays": 30
+                         *     }
+                         */
+                        alerts?: {
+                            /** @default 2 */
+                            failureThreshold?: number;
+                            /** @default true */
+                            downEnabled?: boolean;
+                            /** @default true */
+                            sslEnabled?: boolean;
+                            /** @default 30 */
+                            sslCautionDays?: number;
                         };
                         /** @default [] */
                         secrets?: {
@@ -2499,6 +2535,24 @@ export interface paths {
                             type: "apiKey";
                             headerName: string;
                         };
+                        /**
+                         * @default {
+                         *       "failureThreshold": 2,
+                         *       "downEnabled": true,
+                         *       "sslEnabled": true,
+                         *       "sslCautionDays": 30
+                         *     }
+                         */
+                        alerts?: {
+                            /** @default 2 */
+                            failureThreshold?: number;
+                            /** @default true */
+                            downEnabled?: boolean;
+                            /** @default true */
+                            sslEnabled?: boolean;
+                            /** @default 30 */
+                            sslCautionDays?: number;
+                        };
                         /** Format: uuid */
                         clientRequestId: string;
                         /** @default [] */
@@ -2582,6 +2636,12 @@ export interface paths {
                                 createdAt: string;
                                 /** Format: date-time */
                                 updatedAt: string;
+                                alerts: {
+                                    failureThreshold: number;
+                                    downEnabled: boolean;
+                                    sslEnabled: boolean;
+                                    sslCautionDays: number;
+                                };
                             };
                         };
                     };
@@ -2825,6 +2885,12 @@ export interface paths {
                                 createdAt: string;
                                 /** Format: date-time */
                                 updatedAt: string;
+                                alerts: {
+                                    failureThreshold: number;
+                                    downEnabled: boolean;
+                                    sslEnabled: boolean;
+                                    sslCautionDays: number;
+                                };
                                 /** @enum {string} */
                                 health: "up" | "down" | "unknown" | "paused";
                                 /** @enum {string|null} */
@@ -3175,6 +3241,12 @@ export interface paths {
                             type: "apiKey";
                             headerName: string;
                         };
+                        alerts?: {
+                            failureThreshold: number;
+                            downEnabled: boolean;
+                            sslEnabled: boolean;
+                            sslCautionDays: number;
+                        };
                         expectedVersion: number;
                         /** @default [] */
                         secrets?: {
@@ -3259,6 +3331,12 @@ export interface paths {
                                 createdAt: string;
                                 /** Format: date-time */
                                 updatedAt: string;
+                                alerts: {
+                                    failureThreshold: number;
+                                    downEnabled: boolean;
+                                    sslEnabled: boolean;
+                                    sslCautionDays: number;
+                                };
                             };
                         };
                     };
@@ -3524,6 +3602,12 @@ export interface paths {
                                 createdAt: string;
                                 /** Format: date-time */
                                 updatedAt: string;
+                                alerts: {
+                                    failureThreshold: number;
+                                    downEnabled: boolean;
+                                    sslEnabled: boolean;
+                                    sslCautionDays: number;
+                                };
                             };
                         };
                     };
@@ -3720,6 +3804,12 @@ export interface paths {
                                 createdAt: string;
                                 /** Format: date-time */
                                 updatedAt: string;
+                                alerts: {
+                                    failureThreshold: number;
+                                    downEnabled: boolean;
+                                    sslEnabled: boolean;
+                                    sslCautionDays: number;
+                                };
                             };
                         };
                     };
@@ -5068,7 +5158,7 @@ export interface paths {
                                 };
                                 changes: {
                                     /** @enum {string} */
-                                    field: "role" | "monitorAlertsEnabled" | "settingsChangedEnabled" | "name" | "url" | "method" | "intervalSeconds" | "timeoutSeconds" | "header" | "queryParam" | "body" | "authType" | "apiKeyHeaderName" | "expectedStatus" | "assertions" | "secret";
+                                    field: "role" | "monitorAlertsEnabled" | "settingsChangedEnabled" | "name" | "url" | "method" | "intervalSeconds" | "timeoutSeconds" | "header" | "queryParam" | "body" | "authType" | "apiKeyHeaderName" | "expectedStatus" | "assertions" | "secret" | "alertFailureThreshold" | "alertDownEnabled" | "alertSslEnabled" | "alertSslCautionDays";
                                     key?: string;
                                     before: ({
                                         /** @enum {string} */

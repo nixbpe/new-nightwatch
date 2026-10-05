@@ -12,6 +12,7 @@ function facts(overrides: Partial<HealthFacts> = {}): HealthFacts {
     consecutiveFailures: 0,
     lastPassedConfigVersion: 1,
     hasOpenIncident: false,
+    alertFailureThreshold: 2,
     latest: {
       outcome: "pass",
       configVersion: 1,
@@ -175,6 +176,47 @@ describe("computeHealth, in the order of the seven steps", () => {
     expect(
       computeHealth(facts({ consecutiveFailures: 2, latest: latest("fail") }))
         .health,
+    ).toBe("unknown");
+  });
+
+  it("OD-60-02 (a): the up streak reaches alertFailureThreshold - 1 at any threshold", () => {
+    // Threshold 1: no failure is "up", the first failure is already the edge.
+    expect(
+      computeHealth(
+        facts({
+          alertFailureThreshold: 1,
+          consecutiveFailures: 1,
+          latest: latest("fail"),
+        }),
+      ).health,
+    ).toBe("unknown");
+    // Threshold 3: up survives two failures, not a third.
+    expect(
+      computeHealth(
+        facts({
+          alertFailureThreshold: 3,
+          consecutiveFailures: 1,
+          latest: latest("fail"),
+        }),
+      ).health,
+    ).toBe("up");
+    expect(
+      computeHealth(
+        facts({
+          alertFailureThreshold: 3,
+          consecutiveFailures: 2,
+          latest: latest("fail"),
+        }),
+      ).health,
+    ).toBe("up");
+    expect(
+      computeHealth(
+        facts({
+          alertFailureThreshold: 3,
+          consecutiveFailures: 3,
+          latest: latest("fail"),
+        }),
+      ).health,
     ).toBe("unknown");
   });
 });

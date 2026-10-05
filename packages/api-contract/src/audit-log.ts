@@ -85,6 +85,11 @@ export const AUDIT_CHANGE_FIELDS = [
   "expectedStatus",
   "assertions",
   "secret",
+  // Issue #60: per-monitor alert settings.
+  "alertFailureThreshold",
+  "alertDownEnabled",
+  "alertSslEnabled",
+  "alertSslCautionDays",
 ] as const;
 export type AuditChangeField = (typeof AUDIT_CHANGE_FIELDS)[number];
 

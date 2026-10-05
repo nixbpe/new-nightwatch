@@ -72,6 +72,19 @@ describe("monitorInvalidInputHook", () => {
     ]);
   });
 
+  it("reports alerts fields by their own path, not the generic request field (issue #60)", () => {
+    expect(
+      fieldsOf({
+        name: "a",
+        url: "https://example.com/",
+        alerts: { failureThreshold: 0, sslCautionDays: "x" },
+      }),
+    ).toEqual([
+      { field: "alerts.failureThreshold", reason: "out_of_range" },
+      { field: "alerts.sslCautionDays", reason: "invalid_format" },
+    ]);
+  });
+
   it("reports the clientRequestId of Create", () => {
     expect(
       fieldsOf(

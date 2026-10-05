@@ -7,7 +7,7 @@ import type { ZodError } from "zod";
 
 // Field names come from this allow-list of config paths, never from input.
 const FIELD_PATTERN =
-  /^(name|url|intervalSeconds|timeoutSeconds|method|expectedStatus|expectedVersion|clientRequestId|body(\.(type|content))?|auth(\.(type|headerName))?|headers(\.\d{1,6}(\.(id|name|value|secret))?)?|queryParams(\.\d{1,6}(\.(name|value))?)?|assertions(\.\d{1,6}(\.(kind|path|expected|text|ms))?)?|secrets(\.\d{1,6}(\.(slot|action|value))?)?)$/;
+  /^(name|url|intervalSeconds|timeoutSeconds|method|expectedStatus|expectedVersion|clientRequestId|body(\.(type|content))?|auth(\.(type|headerName))?|headers(\.\d{1,6}(\.(id|name|value|secret))?)?|queryParams(\.\d{1,6}(\.(name|value))?)?|assertions(\.\d{1,6}(\.(kind|path|expected|text|ms))?)?|secrets(\.\d{1,6}(\.(slot|action|value))?)?|alerts(\.(failureThreshold|downEnabled|sslEnabled|sslCautionDays))?)$/;
 
 const MAX_REPORTED_FIELDS = 100;
 

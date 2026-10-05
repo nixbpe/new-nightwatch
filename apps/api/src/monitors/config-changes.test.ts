@@ -19,6 +19,12 @@ const base: StoredConfig = {
   expectedStatusText: "200",
   expectedStatusRanges: [{ from: 200, to: 200 }],
   assertions: [],
+  alerts: {
+    failureThreshold: 2,
+    downEnabled: true,
+    sslEnabled: true,
+    sslCautionDays: 30,
+  },
 };
 const noSecrets: SecretPlan = { writes: [], keeps: [], deletes: [] };
 const diff = (

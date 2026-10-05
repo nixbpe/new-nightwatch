@@ -1,4 +1,5 @@
 import {
+  monitorDetailResponseSchema,
   monitorWriteResponseSchema,
   type MonitorConfigInput,
   type MonitorRecord,
@@ -103,6 +104,10 @@ type MonitorDbRow = {
   assertions: unknown;
   headers: unknown;
   last_check_at: Date | null;
+  alert_failure_threshold: number;
+  alert_down_enabled: boolean;
+  alert_ssl_enabled: boolean;
+  alert_ssl_caution_days: number;
 };
 type ScheduleDbRow = {
   next_check_at: Date | null;
@@ -1284,5 +1289,209 @@ describe("audit failure (AC-21)", () => {
       await unblock();
     }
     expect((await version()).version).toBe(before.version);
+  });
+});
+
+// Kept last: the role-denial case below adds "organization access denied" log
+// lines for `org.users.viewer`, and "audit and logs" above finds its denial
+// by scanning `ctx.logRecords()` for the first line from that actor.
+describe("Edit alerts (issue #60)", () => {
+  it("defaults alerts on Create when the field is omitted", async () => {
+    const monitor = await created();
+    expect(monitor.alerts).toEqual({
+      failureThreshold: 2,
+      downEnabled: true,
+      sslEnabled: true,
+      sslCautionDays: 30,
+    });
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      alert_failure_threshold: 2,
+      alert_down_enabled: true,
+      alert_ssl_enabled: true,
+      alert_ssl_caution_days: 30,
+    });
+  });
+
+  it("keeps the stored alerts when an Edit omits the field entirely", async () => {
+    const monitor = await created(
+      validConfig({
+        alerts: {
+          failureThreshold: 3,
+          downEnabled: false,
+          sslEnabled: false,
+          sslCautionDays: 8,
+        },
+      }),
+    );
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      name: "Renamed, alerts untouched",
+    });
+    expect(response.status).toBe(200);
+    const { monitor: saved } = monitorWriteResponseSchema.parse(response.json);
+    expect(saved.alerts).toEqual({
+      failureThreshold: 3,
+      downEnabled: false,
+      sslEnabled: false,
+      sslCautionDays: 8,
+    });
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      alert_failure_threshold: 3,
+      alert_down_enabled: false,
+      alert_ssl_enabled: false,
+      alert_ssl_caution_days: 8,
+    });
+  });
+
+  it("rejects a partial alerts object on Edit instead of defaulting the rest, naming every missing field", async () => {
+    const monitor = await created();
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      alerts: { failureThreshold: 3 },
+    });
+    expect(response.status).toBe(400);
+    expect(response.json).toEqual({
+      error: {
+        code: "MONITOR_INVALID",
+        message: "Invalid monitor input",
+        details: {
+          fields: [
+            { field: "alerts.downEnabled", reason: "required" },
+            { field: "alerts.sslEnabled", reason: "required" },
+            { field: "alerts.sslCautionDays", reason: "required" },
+          ],
+        },
+      },
+    });
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      alert_failure_threshold: 2,
+    });
+  });
+
+  it.each([
+    ["failureThreshold", 0, "out_of_range"],
+    ["failureThreshold", 4, "out_of_range"],
+    ["failureThreshold", "2", "invalid_format"],
+    ["sslCautionDays", 7, "out_of_range"],
+    ["sslCautionDays", 31, "out_of_range"],
+  ] as const)(
+    "Edit rejects alerts.%s = %s as %s, naming the field",
+    async (field, value, reason) => {
+      const monitor = await created();
+      const response = await edit(monitor, {
+        ...configOf(monitor),
+        alerts: {
+          failureThreshold: 2,
+          downEnabled: true,
+          sslEnabled: true,
+          sslCautionDays: 30,
+          [field]: value,
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(response.json).toMatchObject({
+        error: {
+          code: "MONITOR_INVALID",
+          details: { fields: [{ field: `alerts.${field}`, reason }] },
+        },
+      });
+    },
+  );
+
+  it("an alerts-only Edit changes version but neither bumps check_config_version nor resets the streak, claim or schedule; health stays up (P60-06)", async () => {
+    const monitor = await created();
+    // Two failures already recorded against config version 1, which also
+    // passed once: at the default threshold (2) this monitor would already
+    // read as "unknown" (two failures, step 7). Raising the threshold to 3
+    // in the same Edit must keep it "up" (OD-60-02 (a)), proving health is
+    // read with the *new* threshold right after the save, not reset.
+    await ctx.owner.sql.query(
+      `update monitors set consecutive_failures = 2,
+         last_passed_config_version = 1 where id = $1`,
+      [monitor.id],
+    );
+    await ctx.owner.sql.query(
+      `insert into monitor_check_results
+         (monitor_id, tenant_id, scheduled_for, checked_at, outcome,
+          url_masked, check_config_version, interval_seconds)
+       values ($1, $2, now(), now(), 'fail', 'https://x.example/', 1, 300)`,
+      [monitor.id, org.id],
+    );
+    await ctx.owner.sql.query(
+      `update monitor_schedule set claim_token = 'held',
+         claimed_until = now() + interval '1 minute',
+         next_check_at = now() + interval '1 hour' where monitor_id = $1`,
+      [monitor.id],
+    );
+    const before = await scheduleRow(monitor.id);
+
+    const response = await edit(monitor, {
+      ...configOf(monitor),
+      alerts: {
+        failureThreshold: 3,
+        downEnabled: false,
+        sslEnabled: false,
+        sslCautionDays: 8,
+      },
+    });
+    expect(response.status).toBe(200);
+
+    const row = await monitorRow(monitor.id);
+    expect(row).toMatchObject({
+      version: 2,
+      check_config_version: 1,
+      consecutive_failures: 2,
+      alert_failure_threshold: 3,
+      alert_down_enabled: false,
+      alert_ssl_enabled: false,
+      alert_ssl_caution_days: 8,
+    });
+    expect(await scheduleRow(monitor.id)).toMatchObject({
+      claim_token: before.claim_token,
+      claimed_until: before.claimed_until,
+      next_check_at: before.next_check_at,
+    });
+    expect(await events(monitor.id)).toEqual([
+      { kind: "config_changed", url_masked: null },
+    ]);
+
+    const detail = await ctx.call(
+      org.users.owner,
+      "GET",
+      monitorsPath(org.id, `/${monitor.id}`),
+    );
+    expect(detail.status).toBe(200);
+    const { monitor: view } = monitorDetailResponseSchema.parse(detail.json);
+    expect(view).toMatchObject({
+      health: "up",
+      healthReason: null,
+      consecutiveFailures: 2,
+    });
+  });
+
+  it("viewer and auditor cannot change alerts through Edit, and the row is unchanged", async () => {
+    const monitor = await created();
+    for (const role of ["viewer", "auditor"] as const) {
+      const response = await ctx.call(
+        org.users[role],
+        "PATCH",
+        monitorsPath(org.id, `/${monitor.id}`),
+        {
+          ...configOf(monitor),
+          alerts: {
+            failureThreshold: 3,
+            downEnabled: false,
+            sslEnabled: false,
+            sslCautionDays: 8,
+          },
+          expectedVersion: monitor.version,
+        },
+      );
+      expect(response.status).toBe(403);
+    }
+    expect(await monitorRow(monitor.id)).toMatchObject({
+      version: 1,
+      alert_failure_threshold: 2,
+    });
   });
 });

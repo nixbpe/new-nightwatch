@@ -13,6 +13,8 @@ export type SeedMonitor = {
   checkConfigVersion?: number;
   consecutiveFailures?: number;
   lastPassedConfigVersion?: number | null;
+  /** Issue #60; default 2 matches the pre-issue-60 incident threshold. */
+  alertFailureThreshold?: number;
   lastCheckAgoSeconds?: number | null;
   sslHost?: string | null;
   sslNotAfterInSeconds?: number | null;
@@ -31,7 +33,7 @@ export async function seedMonitor(
        (tenant_id, client_request_id, name, url, status, interval_seconds,
         timeout_seconds, check_config_version, consecutive_failures,
         last_passed_config_version, last_check_at, ssl_host, ssl_not_after,
-        ssl_state, ssl_reason, created_at, updated_at)
+        ssl_state, ssl_reason, created_at, updated_at, alert_failure_threshold)
      values ($1, gen_random_uuid(), $2, $3, $4, $5, 10, $6, $7, $8,
        case when $9::float8 is null then null
             else now() - make_interval(secs => $9::float8) end,
@@ -40,7 +42,8 @@ export async function seedMonitor(
             else now() + make_interval(secs => $11::float8) end,
        $12, $13,
        now() - make_interval(secs => $14::float8),
-       now() - make_interval(secs => $14::float8))
+       now() - make_interval(secs => $14::float8),
+       $15)
      returning id`,
     [
       organizationId,
@@ -59,6 +62,7 @@ export async function seedMonitor(
       options.sslState ?? null,
       options.sslReason ?? null,
       options.createdAgoSeconds ?? 90 * 86400,
+      options.alertFailureThreshold ?? 2,
     ],
   );
   const row = result.rows[0];
