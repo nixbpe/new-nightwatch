@@ -49,6 +49,12 @@ describe("monitor changes fit the response schema", () => {
       expectedStatusText: "200",
       expectedStatusRanges: [{ from: 200, to: 200 }],
       assertions: [{ kind: "bodyContains", text: "x" }],
+      alerts: {
+        failureThreshold: 2,
+        downEnabled: true,
+        sslEnabled: true,
+        sslCautionDays: 30,
+      },
     };
     const after: StoredConfig = {
       ...before,
@@ -57,6 +63,12 @@ describe("monitor changes fit the response schema", () => {
       method: "POST",
       intervalSeconds: 300,
       timeoutSeconds: 10,
+      alerts: {
+        failureThreshold: 3,
+        downEnabled: false,
+        sslEnabled: false,
+        sslCautionDays: 8,
+      },
       headers: [
         { name: "A", value: "2", secret: false },
         { id: "h1", name: "S2", secret: true },

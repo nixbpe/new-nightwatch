@@ -25,6 +25,12 @@ const base: StoredConfig = {
   expectedStatusText: "200-299",
   expectedStatusRanges: [{ from: 200, to: 299 }],
   assertions: [],
+  alerts: {
+    failureThreshold: 2,
+    downEnabled: true,
+    sslEnabled: true,
+    sslCautionDays: 30,
+  },
 };
 const noSecrets = { written: [], stored: new Set<string>(), deleted: [] };
 const changesOf = (next: Partial<StoredConfig>, previous = base) =>

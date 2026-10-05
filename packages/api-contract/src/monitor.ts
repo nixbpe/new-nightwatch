@@ -335,6 +335,37 @@ const authSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+// Per-monitor notification settings (issue #60). `failureThreshold` decides
+// both the incident threshold (OD-60-02, OD-60-03) and the up/down health
+// boundary; `sslCautionDays` replaces the fixed 30-day caution edge for
+// notification only (OD-60-04, OD-60-05); the danger edge (7 days) is fixed.
+export const MONITOR_DEFAULT_ALERTS = {
+  failureThreshold: 2,
+  downEnabled: true,
+  sslEnabled: true,
+  sslCautionDays: 30,
+} as const;
+
+// Every field required, no per-field default: used where an absent `alerts`
+// key must mean "keep the stored value", not "fill in defaults" (Edit), and
+// for the stored record, which always has a complete, already-valid value.
+const alertsFieldsSchema = z.strictObject({
+  failureThreshold: z.number().int().min(1).max(3),
+  downEnabled: z.boolean(),
+  sslEnabled: z.boolean(),
+  sslCautionDays: z.number().int().min(8).max(30),
+});
+export type AlertSettings = z.output<typeof alertsFieldsSchema>;
+
+// Create and Test: a field or the whole object may be omitted and still
+// resolve to the default (AC-06 parity with the rest of the config).
+const alertsSchema = z.strictObject({
+  failureThreshold: z.number().int().min(1).max(3).default(2),
+  downEnabled: z.boolean().default(true),
+  sslEnabled: z.boolean().default(true),
+  sslCautionDays: z.number().int().min(8).max(30).default(30),
+}).default(MONITOR_DEFAULT_ALERTS);
+
 // No `mode` field: basic and advanced mode belong to the UI.
 // Strict: an unknown field (a `secrets` on the plain config) must not be silently ignored.
 export const monitorConfigBaseSchema = z.strictObject({
@@ -363,12 +394,21 @@ export const monitorConfigBaseSchema = z.strictObject({
     .max(MONITOR_MAX_ASSERTIONS)
     .default([]),
   auth: authSchema.default({ type: "none" }),
+  alerts: alertsSchema,
 });
 
 type ConfigBase = z.output<typeof monitorConfigBaseSchema>;
 
-/** Rules a field-level type or length check cannot express. Issues carry `params.reason`. */
-function refineMonitorConfig(config: ConfigBase, ctx: z.RefinementCtx): void {
+/**
+ * Rules a field-level type or length check cannot express. Issues carry
+ * `params.reason`. `alerts` is range-checked by the field schemas themselves
+ * (no custom rule needed), and Edit's `alerts` is optional where this is
+ * shared with Create and Test, so this does not read it.
+ */
+function refineMonitorConfig(
+  config: Omit<ConfigBase, "alerts">,
+  ctx: z.RefinementCtx,
+): void {
   const add = (
     path: (string | number)[],
     reason: MonitorInvalidReason,
@@ -669,6 +709,11 @@ export const monitorEditSchema = monitorConfigBaseSchema
   .extend({
     expectedVersion: z.number().int().min(1),
     secrets: secretsEditField,
+    // Omitted entirely: keep the stored value (no client-side default would
+    // be correct, since the server does not know what is stored). Present:
+    // must be the complete object, so a partial send is a validation error
+    // rather than a silent partial reset.
+    alerts: alertsFieldsSchema.optional(),
   })
   .superRefine((config, ctx) => {
     refineMonitorConfig(config, ctx);
@@ -703,9 +748,13 @@ export type NormalizedMonitorStorage = {
   assertions: StoredAssertion[];
 };
 
-/** Call only with a config that passed `monitorConfigSchema`. */
+/**
+ * Call only with a config that passed `monitorConfigSchema`. Does not read
+ * `alerts`, so an Edit input (where `alerts` may be absent) also satisfies
+ * this parameter type.
+ */
 export function normalizeMonitorConfig(
-  config: MonitorConfig,
+  config: Omit<MonitorConfig, "alerts">,
 ): NormalizedMonitorStorage {
   const status = parseExpectedStatus(config.expectedStatus);
   if (!status.ok) throw new Error("expected status was not validated");
@@ -780,6 +829,9 @@ export const monitorRecordSchema = z.object({
   version: z.number().int().min(1),
   createdAt: isoDateTime,
   updatedAt: isoDateTime,
+  // Every role with read sees it (issue #60); Detail (`monitorSchema`) gets
+  // it through `extend`, the List item does not.
+  alerts: alertsFieldsSchema,
 });
 export type MonitorRecord = z.infer<typeof monitorRecordSchema>;
 

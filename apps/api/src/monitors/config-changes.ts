@@ -18,6 +18,11 @@ function cut(value: string): string {
     : points.slice(0, VALUE_MAX_CHARS).join("");
 }
 
+// `changes[]` has no boolean member (#58 Data: `'enabled' | 'disabled'`), so a
+// toggle is spelled out rather than sent as a raw boolean.
+const enabledLabel = (on: boolean): "enabled" | "disabled" =>
+  on ? "enabled" : "disabled";
+
 function value(
   field: string,
   before: string | number | null,
@@ -181,6 +186,26 @@ export function diffConfig(
   changes.push(
     ...value("intervalSeconds", previous.intervalSeconds, next.intervalSeconds),
     ...value("timeoutSeconds", previous.timeoutSeconds, next.timeoutSeconds),
+    ...value(
+      "alerts.failureThreshold",
+      previous.alerts.failureThreshold,
+      next.alerts.failureThreshold,
+    ),
+    ...value(
+      "alerts.downEnabled",
+      enabledLabel(previous.alerts.downEnabled),
+      enabledLabel(next.alerts.downEnabled),
+    ),
+    ...value(
+      "alerts.sslEnabled",
+      enabledLabel(previous.alerts.sslEnabled),
+      enabledLabel(next.alerts.sslEnabled),
+    ),
+    ...value(
+      "alerts.sslCautionDays",
+      previous.alerts.sslCautionDays,
+      next.alerts.sslCautionDays,
+    ),
     ...headerChanges(previous.headers, next.headers),
     ...queryParamChanges(previous.queryParams, next.queryParams),
   );
