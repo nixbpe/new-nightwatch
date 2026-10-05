@@ -124,6 +124,12 @@ export function detail(overrides: Partial<Monitor> = {}): Monitor {
       d30: { percent: 99.2, checks: 8640, coveragePercent: 100 },
     },
     dataAsOf: DATA_AS_OF,
+    alerts: {
+      failureThreshold: 2,
+      downEnabled: true,
+      sslEnabled: true,
+      sslCautionDays: 30,
+    },
     ...overrides,
   };
 }

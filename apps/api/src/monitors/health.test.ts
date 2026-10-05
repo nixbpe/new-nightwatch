@@ -171,11 +171,22 @@ describe("computeHealth, in the order of the seven steps", () => {
     ).toEqual({ health: "unknown", healthReason: null, lastKnownDown: false });
   });
 
-  it("7: two failures without an incident row is not up", () => {
+  it("7: two failures without an incident row is still up", () => {
     expect(
       computeHealth(facts({ consecutiveFailures: 2, latest: latest("fail") }))
         .health,
-    ).toBe("unknown");
+    ).toBe("up");
+    expect(
+      computeHealth(facts({ consecutiveFailures: 50, latest: latest("fail") }))
+        .health,
+    ).toBe("up");
+  });
+
+  it("an Edit that changes the failure threshold never flips health to unknown on its own (P60-06)", () => {
+    expect(
+      computeHealth(facts({ consecutiveFailures: 3, latest: latest("fail") }))
+        .health,
+    ).toBe("up");
   });
 });
 

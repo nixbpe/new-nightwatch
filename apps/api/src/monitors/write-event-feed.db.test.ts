@@ -243,6 +243,98 @@ describe("Two Edits racing on one version", () => {
   });
 });
 
+describe("Edit alerts: changes[] and audit before/after", () => {
+  it("records all four fields in the event feed as values, booleans spelled enabled/disabled", async () => {
+    const monitor = await created();
+    const response = await edit(org.users.admin, monitor, {
+      ...configOf(monitor),
+      alerts: {
+        failureThreshold: 3,
+        downEnabled: false,
+        sslEnabled: false,
+        sslCautionDays: 8,
+      },
+    });
+    expect(response.status).toBe(200);
+    const rows = await eventRows(monitor.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.changes).toEqual(
+      expect.arrayContaining([
+        {
+          field: "alerts.failureThreshold",
+          kind: "value",
+          before: 2,
+          after: 3,
+        },
+        {
+          field: "alerts.downEnabled",
+          kind: "value",
+          before: "enabled",
+          after: "disabled",
+        },
+        {
+          field: "alerts.sslEnabled",
+          kind: "value",
+          before: "enabled",
+          after: "disabled",
+        },
+        {
+          field: "alerts.sslCautionDays",
+          kind: "value",
+          before: 30,
+          after: 8,
+        },
+      ]),
+    );
+  });
+
+  it("writes the same four fields to the audit log as number/boolean before and after", async () => {
+    const monitor = await created();
+    const response = await edit(org.users.owner, monitor, {
+      ...configOf(monitor),
+      alerts: {
+        failureThreshold: 1,
+        downEnabled: false,
+        sslEnabled: false,
+        sslCautionDays: 9,
+      },
+    });
+    expect(response.status).toBe(200);
+    const audit = await ctx.owner.sql.query<{ changes: unknown }>(
+      `select changes from audit_events
+       where target_type = 'monitor' and target_id = $1
+         and action = 'organization.monitor.update'
+       order by occurred_at, id`,
+      [monitor.id],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.changes).toEqual(
+      expect.arrayContaining([
+        {
+          field: "alertFailureThreshold",
+          before: { kind: "value", value: 2 },
+          after: { kind: "value", value: 1 },
+        },
+        {
+          field: "alertDownEnabled",
+          before: { kind: "value", value: true },
+          after: { kind: "value", value: false },
+        },
+        {
+          field: "alertSslEnabled",
+          before: { kind: "value", value: true },
+          after: { kind: "value", value: false },
+        },
+        {
+          field: "alertSslCautionDays",
+          before: { kind: "value", value: 30 },
+          after: { kind: "value", value: 9 },
+        },
+      ]),
+    );
+  });
+});
+
 describe("Pause and Resume write the actor", () => {
   it("records the session user for both, and the feed shows who paused and resumed", async () => {
     const monitor = await created();

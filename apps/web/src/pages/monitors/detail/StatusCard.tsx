@@ -16,7 +16,6 @@ import {
   TIME_ZONE,
 } from "../format";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
-import { DOWN_AFTER_FAILURES } from "./labels";
 import { UptimeStripMockup } from "./MonitorDetailMockups";
 
 export const NO_DATA = "ยังไม่มีข้อมูล";
@@ -169,8 +168,8 @@ export function StatusCard({
               ล้มเหลว {consecutiveFailures} ครั้ง
               <span className="font-normal text-foreground-secondary">
                 {" "}
-                จะเปลี่ยนเป็นล่มเมื่อล้มเหลวติดกันครบ {DOWN_AFTER_FAILURES}{" "}
-                ครั้ง
+                จะเปลี่ยนเป็นล่มเมื่อล้มเหลวติดกันครบ{" "}
+                {monitor.alerts.failureThreshold} ครั้ง
               </span>
             </span>
           ) : null}

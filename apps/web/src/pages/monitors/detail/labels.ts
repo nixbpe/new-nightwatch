@@ -8,8 +8,8 @@ import type {
 
 import { incidentReasonLabel } from "../format";
 
-/** The API opens an incident after this many consecutive failures (feature.md, Health model). */
-export const DOWN_AFTER_FAILURES = 2;
+export const ORG_ALERTS_OFF_MESSAGE =
+  "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ";
 
 export function intervalText(seconds: number): string {
   return seconds % 60 === 0
@@ -171,7 +171,26 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   "auth.apiKey": "ค่า API key",
   body: "เนื้อหาคำขอ",
   assertions: "Assertions",
+  "alerts.failureThreshold": "แจ้งเมื่อล้มเหลวติดกัน",
+  "alerts.downEnabled": "แจ้งเมื่อล่มและกลับมาปกติ",
+  "alerts.sslEnabled": "แจ้งเมื่อ SSL ใกล้หมดอายุ",
+  "alerts.sslCautionDays": "แจ้งล่วงหน้าก่อน SSL หมดอายุ (วัน)",
 };
+
+const ENABLED_VALUE_FIELDS: ReadonlySet<string> = new Set([
+  "alerts.downEnabled",
+  "alerts.sslEnabled",
+]);
+
+export function configChangeValueText(
+  field: string,
+  value: string | number | null,
+): string | number | null {
+  if (!ENABLED_VALUE_FIELDS.has(field)) return value;
+  if (value === "enabled") return "เปิด";
+  if (value === "disabled") return "ปิด";
+  return value;
+}
 
 /**
  * Label of a changed field. `headers.<name>` and `queryParams.<name>` carry the

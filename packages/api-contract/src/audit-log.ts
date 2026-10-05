@@ -85,6 +85,10 @@ export const AUDIT_CHANGE_FIELDS = [
   "expectedStatus",
   "assertions",
   "secret",
+  "alertFailureThreshold",
+  "alertDownEnabled",
+  "alertSslEnabled",
+  "alertSslCautionDays",
 ] as const;
 export type AuditChangeField = (typeof AUDIT_CHANGE_FIELDS)[number];
 

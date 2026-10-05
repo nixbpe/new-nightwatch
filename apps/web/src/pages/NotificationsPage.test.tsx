@@ -158,7 +158,7 @@ describe("NotificationsPage", () => {
     const titles = [
       "มอนิเตอร์ Checkout ล่ม",
       "มอนิเตอร์ Checkout กลับมาทำงานแล้ว",
-      "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุ (เหลือไม่เกิน 30 วัน)",
+      "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุ (เหลือไม่เกิน 25 วัน)",
       "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)",
       "ใบรับรอง SSL ของ Checkout หมดอายุแล้ว",
     ];
@@ -180,6 +180,29 @@ describe("NotificationsPage", () => {
     ).toBeInTheDocument();
     expect(
       within(rows[4] as HTMLElement).getByText(/ใบรับรองหมดอายุเมื่อ/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows 10 days remaining in the SSL caution title when sslNotAfter is 10 days after occurredAt", async () => {
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      items: [
+        {
+          ...monitorBase,
+          id: "10000000-0000-4000-8000-000000000006",
+          eventType: "MONITOR_SSL_CAUTION",
+          reason: null,
+          sslNotAfter: "2026-10-05T03:00:00.000Z",
+        },
+      ],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    renderPage();
+    expect(
+      await screen.findByText(
+        "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุ (เหลือไม่เกิน 10 วัน)",
+      ),
     ).toBeInTheDocument();
   });
 

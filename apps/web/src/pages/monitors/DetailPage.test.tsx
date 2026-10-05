@@ -21,6 +21,7 @@ import {
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
 } from "../../lib/api/monitors";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   A,
   B,
@@ -38,11 +39,16 @@ import {
   sectionOf,
 } from "./detail-test-support";
 import { formatDateTime, formatTime } from "./format";
+import { deferred } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
 }));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -68,6 +74,7 @@ const fetchEventsMock = vi.mocked(fetchMonitorRecentEvents);
 const fetchFeedMock = vi.mocked(fetchMonitorEvents);
 const fetchLastResponseMock = vi.mocked(fetchMonitorLastResponse);
 const fetchResponseTimesMock = vi.mocked(fetchMonitorResponseTimes);
+const fetchOrgAlertsMock = vi.mocked(fetchOrganizationNotificationSettings);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
@@ -81,6 +88,12 @@ beforeEach(() => {
   });
   fetchLastResponseMock.mockResolvedValue({ response: null });
   fetchResponseTimesMock.mockResolvedValue(noResponseTimes);
+  fetchOrgAlertsMock.mockResolvedValue({
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: true,
+  });
 });
 
 afterEach(() => {
@@ -426,6 +439,183 @@ describe("Detail SSL card", () => {
       "datetime",
       "2027-02-05T00:00:00.000Z",
     );
+  });
+});
+
+describe("Detail alerts card", () => {
+  const alertsCard = async () =>
+    sectionOf(await screen.findByRole("heading", { name: "การแจ้งเตือน" }));
+
+  function orgRowValue(card: HTMLElement): HTMLElement {
+    const dt = within(card).getByText("การแจ้งเตือนระดับองค์กร");
+    return must(dt.nextElementSibling as HTMLElement | null);
+  }
+
+  it("shows the stored failure threshold, down and SSL alert settings, and SSL caution days", async () => {
+    showDetail(
+      detail({
+        alerts: {
+          failureThreshold: 3,
+          downEnabled: false,
+          sslEnabled: true,
+          sslCautionDays: 15,
+        },
+      }),
+    );
+    renderDetail();
+    const card = await alertsCard();
+    expect(within(card).getByText("3")).toBeInTheDocument();
+    expect(within(card).getByText("ปิด")).toBeInTheDocument();
+    expect(within(card).getByText(/เปิด \(ล่วงหน้า/)).toBeInTheDocument();
+    expect(within(card).getByText("15")).toBeInTheDocument();
+  });
+
+  it("shows the HTTP certificate note without hiding the enabled SSL alert setting", async () => {
+    showDetail(
+      detail({
+        alerts: {
+          failureThreshold: 2,
+          downEnabled: true,
+          sslEnabled: true,
+          sslCautionDays: 30,
+        },
+        ssl: { ...detail().ssl, state: "not_https" },
+      }),
+    );
+    renderDetail();
+    const card = await alertsCard();
+    expect(
+      within(card).getByText("มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง"),
+    ).toBeInTheDocument();
+    expect(within(card).getByText(/เปิด \(ล่วงหน้า/)).toBeInTheDocument();
+  });
+
+  it("hides the SSL advance-notice text when monitor SSL alerts are off", async () => {
+    showDetail(
+      detail({
+        alerts: {
+          failureThreshold: 2,
+          downEnabled: true,
+          sslEnabled: false,
+          sslCautionDays: 30,
+        },
+      }),
+    );
+    renderDetail();
+    const card = await alertsCard();
+    expect(within(card).queryByText(/ล่วงหน้า/)).toBeNull();
+  });
+
+  it.each(["owner", "admin"] as const)(
+    "shows disabled organization monitor alerts and the suppression note to %s",
+    async (role) => {
+      fetchMeContextMock.mockResolvedValue(context(role));
+      fetchOrgAlertsMock.mockResolvedValue({
+        organizationId: A,
+        version: 1,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: false,
+      });
+      showDetail(detail());
+      renderDetail();
+      const card = await alertsCard();
+      await waitFor(() => {
+        expect(orgRowValue(card)).toHaveTextContent("ปิด");
+      });
+      expect(
+        await within(card).findByText(
+          "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ",
+        ),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it.each(["viewer", "auditor"] as const)(
+    "hides organization monitor alert settings from %s without requesting them",
+    async (role) => {
+      fetchMeContextMock.mockResolvedValue(context(role));
+      showDetail(detail());
+      renderDetail();
+      const card = await alertsCard();
+      expect(within(card).getByText("เกณฑ์ล้มเหลว")).toBeInTheDocument();
+      expect(within(card).queryByText("การแจ้งเตือนระดับองค์กร")).toBeNull();
+      await screen.findByText("ยังไม่มีเหตุการณ์ใน 30 วันล่าสุด");
+      expect(fetchOrgAlertsMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("shows a loading placeholder for organization monitor alerts, then เปิด when loading succeeds", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof fetchOrgAlertsMock>>>();
+    fetchOrgAlertsMock.mockReturnValue(pending.promise);
+    showDetail(detail());
+    renderDetail();
+    const card = await alertsCard();
+    expect(
+      within(orgRowValue(card)).getByText("กำลังโหลดการตั้งค่าระดับองค์กร"),
+    ).toBeInTheDocument();
+    pending.resolve({
+      organizationId: A,
+      version: 1,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+    });
+    await waitFor(() => {
+      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+    });
+  });
+
+  it("shows a load error for organization monitor alerts without เปิด, then shows เปิด after a successful retry", async () => {
+    fetchOrgAlertsMock.mockRejectedValueOnce(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    showDetail(detail());
+    renderDetail();
+    const card = await alertsCard();
+    await waitFor(() => {
+      expect(
+        within(orgRowValue(card)).getByText("โหลดไม่สำเร็จ"),
+      ).toBeInTheDocument();
+    });
+    expect(orgRowValue(card)).not.toHaveTextContent("เปิด");
+    fetchOrgAlertsMock.mockResolvedValue({
+      organizationId: A,
+      version: 1,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+    });
+    await userEvent
+      .setup({ advanceTimers: vi.advanceTimersByTime })
+      .click(within(card).getByRole("button", { name: "ลองอีกครั้ง" }));
+    await waitFor(() => {
+      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+    });
+  });
+
+  it("replaces the organization monitor alert value with a permission-denied message and stops polling after PERMISSION_DENIED", async () => {
+    fetchOrgAlertsMock.mockResolvedValue({
+      organizationId: A,
+      version: 1,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+    });
+    showDetail(detail());
+    const { queryClient } = renderDetail();
+    const card = await alertsCard();
+    await waitFor(() => {
+      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+    });
+    fetchOrgAlertsMock.mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "denied", 403),
+    );
+    await queryClient.refetchQueries({
+      queryKey: ["tenant", "notification-settings", A],
+    });
+    await waitFor(() => {
+      expect(orgRowValue(card)).toHaveTextContent("ไม่มีสิทธิ์ดูการตั้งค่านี้");
+    });
+    const calls = fetchOrgAlertsMock.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(fetchOrgAlertsMock.mock.calls.length).toBe(calls);
   });
 });
 
@@ -828,6 +1018,7 @@ describe("Detail structure", () => {
       "เหตุการณ์",
       "ประวัติการตรวจ",
       "การตั้งค่า",
+      "การแจ้งเตือน",
       "SSL",
       "การตอบกลับล่าสุด",
     ];

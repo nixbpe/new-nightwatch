@@ -9,6 +9,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -466,6 +467,14 @@ export const monitors = pgTable(
       withTimezone: true,
     }),
     sslNotifiedLevel: text("ssl_notified_level"),
+    alertFailureThreshold: smallint("alert_failure_threshold")
+      .notNull()
+      .default(2),
+    alertDownEnabled: boolean("alert_down_enabled").notNull().default(true),
+    alertSslEnabled: boolean("alert_ssl_enabled").notNull().default(true),
+    alertSslCautionDays: smallint("alert_ssl_caution_days")
+      .notNull()
+      .default(30),
     clientRequestId: uuid("client_request_id").notNull(),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()

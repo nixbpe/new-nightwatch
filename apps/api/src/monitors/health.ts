@@ -67,7 +67,7 @@ export function computeHealth(facts: HealthFacts): Health {
     facts.lastPassedConfigVersion === facts.checkConfigVersion;
   if (
     latest.outcome === "pass" ||
-    (facts.consecutiveFailures === 1 && passedInCurrentConfig)
+    (facts.consecutiveFailures >= 1 && passedInCurrentConfig)
   ) {
     return decided("up");
   }

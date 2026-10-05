@@ -301,6 +301,10 @@ function configParameters(stored: StoredConfig): unknown[] {
     JSON.stringify(stored.assertions),
     stored.intervalSeconds,
     stored.timeoutSeconds,
+    stored.alerts.failureThreshold,
+    stored.alerts.downEnabled,
+    stored.alerts.sslEnabled,
+    stored.alerts.sslCautionDays,
   ];
 }
 
@@ -386,9 +390,11 @@ export async function createMonitor(
          (tenant_id, client_request_id, name, url, method, headers,
           query_params, body_type, body_content, auth_type,
           api_key_header_name, expected_status_text, expected_status_ranges,
-          assertions, interval_seconds, timeout_seconds)
+          assertions, interval_seconds, timeout_seconds,
+          alert_failure_threshold, alert_down_enabled, alert_ssl_enabled,
+          alert_ssl_caution_days)
        values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12,
-               $13::jsonb, $14::jsonb, $15, $16)
+               $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20)
        returning ${MONITOR_COLUMNS}`,
         [
           input.organizationId,
@@ -461,6 +467,7 @@ export async function editMonitor(
       }
       const previous = storedFromRow(row);
       next.headers = assignHeaderIds(next.headers, previous.headers);
+      next.alerts = input.input.alerts ?? previous.alerts;
       const stored = new Set(await secretSlots(client, monitorId));
       const plan = planSecrets({
         required: requiredSlots(next),
@@ -486,20 +493,22 @@ export async function editMonitor(
          auth_type = $10, api_key_header_name = $11,
          expected_status_text = $12, expected_status_ranges = $13::jsonb,
          assertions = $14::jsonb, interval_seconds = $15, timeout_seconds = $16,
+         alert_failure_threshold = $17, alert_down_enabled = $18,
+         alert_ssl_enabled = $19, alert_ssl_caution_days = $20,
          version = version + 1,
-         check_config_version = check_config_version + $17::int,
-         consecutive_failures = case when $17::int = 1 then 0
+         check_config_version = check_config_version + $21::int,
+         consecutive_failures = case when $21::int = 1 then 0
                                      else consecutive_failures end,
          -- The certificate belongs to the old destination; until a check of
          -- the new one records its own, the SSL state is no_data.
-         ssl_host = case when $18::boolean then null else ssl_host end,
-         ssl_issuer = case when $18::boolean then null else ssl_issuer end,
-         ssl_not_after = case when $18::boolean then null else ssl_not_after end,
-         ssl_state = case when $18::boolean then null else ssl_state end,
-         ssl_reason = case when $18::boolean then null else ssl_reason end,
-         ssl_notified_not_after = case when $18::boolean then null
+         ssl_host = case when $22::boolean then null else ssl_host end,
+         ssl_issuer = case when $22::boolean then null else ssl_issuer end,
+         ssl_not_after = case when $22::boolean then null else ssl_not_after end,
+         ssl_state = case when $22::boolean then null else ssl_state end,
+         ssl_reason = case when $22::boolean then null else ssl_reason end,
+         ssl_notified_not_after = case when $22::boolean then null
                                        else ssl_notified_not_after end,
-         ssl_notified_level = case when $18::boolean then null
+         ssl_notified_level = case when $22::boolean then null
                                    else ssl_notified_level end,
          updated_at = now()
        where id = $1 and tenant_id = $2

@@ -664,6 +664,173 @@ describe("monitors config CHECK constraints", () => {
   });
 });
 
+describe("monitors alert settings defaults and bounds", () => {
+  async function insertWithAlert(
+    column: "alert_failure_threshold" | "alert_ssl_caution_days",
+    value: number,
+  ): Promise<void> {
+    await withTenantContextRaw(database, tenantA, (client) =>
+      client.query(
+        `insert into monitors
+           (tenant_id, client_request_id, name, url, ${column})
+         values ($1, $2, 'cfg', 'https://target.example.test/', $3)`,
+        [tenantA, randomUUID(), value],
+      ),
+    );
+  }
+
+  it("defaults a new monitor inserted without alert columns to threshold 2, both toggles on, 30-day SSL caution", async () => {
+    const monitorId = await withTenantContextRaw(database, tenantA, (client) =>
+      insertMonitor(client, tenantA),
+    );
+    const row = await owner.query<{
+      alert_failure_threshold: number;
+      alert_down_enabled: boolean;
+      alert_ssl_enabled: boolean;
+      alert_ssl_caution_days: number;
+    }>(
+      `select alert_failure_threshold, alert_down_enabled, alert_ssl_enabled,
+              alert_ssl_caution_days
+       from monitors where id = $1`,
+      [monitorId],
+    );
+    expect(row.rows[0]).toEqual({
+      alert_failure_threshold: 2,
+      alert_down_enabled: true,
+      alert_ssl_enabled: true,
+      alert_ssl_caution_days: 30,
+    });
+  });
+
+  it("accepts alert_failure_threshold at 1 and 3, rejects 0 and 4", async () => {
+    await insertWithAlert("alert_failure_threshold", 1);
+    await insertWithAlert("alert_failure_threshold", 3);
+    await expect(insertWithAlert("alert_failure_threshold", 0)).rejects.toThrow(
+      /monitors_alert_failure_threshold_check/,
+    );
+    await expect(insertWithAlert("alert_failure_threshold", 4)).rejects.toThrow(
+      /monitors_alert_failure_threshold_check/,
+    );
+  });
+
+  it("accepts alert_ssl_caution_days at 8 and 30, rejects 7 and 31", async () => {
+    await insertWithAlert("alert_ssl_caution_days", 8);
+    await insertWithAlert("alert_ssl_caution_days", 30);
+    await expect(insertWithAlert("alert_ssl_caution_days", 7)).rejects.toThrow(
+      /monitors_alert_ssl_caution_days_check/,
+    );
+    await expect(insertWithAlert("alert_ssl_caution_days", 31)).rejects.toThrow(
+      /monitors_alert_ssl_caution_days_check/,
+    );
+  });
+});
+
+describe("monitors alert settings backfill from migration 0022", () => {
+  // Migrates a fresh database only through 0021, inserts a monitor row the
+  // way pre-#60 code would, then applies 0022 alone. Postgres serves an
+  // ADD COLUMN ... DEFAULT to a pre-existing row through a fast-default
+  // (attmissingval), a different path than the INSERT-time default new rows
+  // get; this is the proof that a deployed monitor keeps today's behavior.
+  const legacyDbName = `monitor_legacy_${randomUUID().replaceAll("-", "")}`;
+  const legacyOwnerUrl = new URL(ownerUrl);
+  legacyOwnerUrl.pathname = `/${legacyDbName}`;
+  let legacyOwner: Client | undefined;
+  let preDir: string | undefined;
+  let postDir: string | undefined;
+
+  async function copyIdempotent(names: string[], dir: string): Promise<void> {
+    const source = new URL("../migrations", import.meta.url).pathname;
+    for (const name of names) {
+      const sql = (await readFile(join(source, name), "utf8")).replace(
+        /create role (\w+)([^;]*);/g,
+        (_match, role: string, options: string) =>
+          `do $role$ begin if not exists (select from pg_roles where rolname = '${role}') then create role ${role}${options}; end if; end $role$;`,
+      );
+      await writeFile(join(dir, name), sql);
+    }
+  }
+
+  afterAll(async () => {
+    await legacyOwner?.end().catch(() => undefined);
+    if (adminConnected) {
+      try {
+        await admin.query(`drop database if exists ${legacyDbName}`);
+      } catch {
+        await admin.query(
+          `select pg_terminate_backend(pid) from pg_stat_activity
+           where datname = $1 and pid <> pg_backend_pid()`,
+          [legacyDbName],
+        );
+        await admin.query(`drop database if exists ${legacyDbName}`);
+      }
+    }
+    for (const dir of [preDir, postDir]) {
+      if (dir) await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("backfills threshold 2, both toggles on and 30-day caution onto a row inserted before 0022", async () => {
+    await admin.query(`create database ${legacyDbName}`);
+    await admin.query(
+      `grant connect, temporary on database ${legacyDbName} to nightwatch`,
+    );
+
+    const source = new URL("../migrations", import.meta.url).pathname;
+    const allNames = (await readdir(source)).sort();
+    const preNames = allNames.filter((name) => name < "0022_");
+    const postNames = allNames.filter((name) => !preNames.includes(name));
+
+    preDir = await mkdtemp(join(tmpdir(), "nightwatch-monitor-legacy-pre-"));
+    await copyIdempotent(preNames, preDir);
+    await runMigrations({
+      url: legacyOwnerUrl.toString(),
+      migrationsDir: preDir,
+      log: () => undefined,
+    });
+
+    legacyOwner = new Client({ connectionString: legacyOwnerUrl.toString() });
+    await legacyOwner.connect();
+    const tenantId = randomUUID();
+    await legacyOwner.query(
+      `insert into organization (id, name, slug) values ($1, 'Legacy', $2)`,
+      [tenantId, `monitor-legacy-${run}`],
+    );
+    const monitorId = randomUUID();
+    await legacyOwner.query(
+      `insert into monitors (id, tenant_id, name, url, client_request_id)
+       values ($1, $2, 'legacy', 'https://target.example.test/', $3)`,
+      [monitorId, tenantId, randomUUID()],
+    );
+
+    postDir = await mkdtemp(join(tmpdir(), "nightwatch-monitor-legacy-post-"));
+    await copyIdempotent(postNames, postDir);
+    const result = await runMigrations({
+      url: legacyOwnerUrl.toString(),
+      migrationsDir: postDir,
+      log: () => undefined,
+    });
+    expect(result.applied).toEqual(["0022_monitor_alert_settings.sql"]);
+
+    const row = await legacyOwner.query<{
+      alert_failure_threshold: number;
+      alert_down_enabled: boolean;
+      alert_ssl_enabled: boolean;
+      alert_ssl_caution_days: number;
+    }>(
+      `select alert_failure_threshold, alert_down_enabled, alert_ssl_enabled,
+              alert_ssl_caution_days
+       from monitors where id = $1`,
+      [monitorId],
+    );
+    expect(row.rows[0]).toEqual({
+      alert_failure_threshold: 2,
+      alert_down_enabled: true,
+      alert_ssl_enabled: true,
+      alert_ssl_caution_days: 30,
+    });
+  }, 60_000);
+});
+
 describe("claim_due_monitor_checks", () => {
   const ancient = "2000-01-01T00:00:00Z";
 

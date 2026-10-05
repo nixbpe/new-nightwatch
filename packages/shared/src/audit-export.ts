@@ -69,7 +69,11 @@ export type AuditChange = {
     | "apiKeyHeaderName"
     | "expectedStatus"
     | "assertions"
-    | "secret";
+    | "secret"
+    | "alertFailureThreshold"
+    | "alertDownEnabled"
+    | "alertSslEnabled"
+    | "alertSslCautionDays";
   key?: string | undefined;
   before: AuditValue | null;
   after: AuditValue | null;

@@ -1,5 +1,5 @@
 import { withTenantContextRaw, type Database } from "@nightwatch/db";
-import { sslLevel, type CheckResult } from "@nightwatch/shared";
+import { sslLevel, sslNotifyLevel, type CheckResult } from "@nightwatch/shared";
 
 import { writeMonitorNotification } from "./notifications";
 
@@ -26,6 +26,8 @@ type EventContext = {
   monitorId: string;
   monitorName: string;
   occurredAt: Date;
+  alertDownEnabled: boolean;
+  alertSslEnabled: boolean;
 };
 
 export type MonitorEvent = EventContext &
@@ -73,6 +75,10 @@ type LockedMonitor = {
   ssl_not_after: Date | null;
   ssl_notified_level: string | null;
   ssl_notified_not_after: Date | null;
+  alert_failure_threshold: number;
+  alert_down_enabled: boolean;
+  alert_ssl_enabled: boolean;
+  alert_ssl_caution_days: number;
 };
 
 type OpenIncident = { id: string; down_notified: boolean };
@@ -125,7 +131,9 @@ function attempt(
     const monitorRows = await client.query<LockedMonitor>(
       `select name, consecutive_failures, last_passed_config_version,
               ssl_host, ssl_issuer, ssl_not_after,
-              ssl_notified_level, ssl_notified_not_after
+              ssl_notified_level, ssl_notified_not_after,
+              alert_failure_threshold, alert_down_enabled,
+              alert_ssl_enabled, alert_ssl_caution_days
        from monitors where id = $1 and tenant_id = $2 for update`,
       [input.monitorId, input.tenantId],
     );
@@ -166,11 +174,13 @@ function attempt(
       ],
     );
 
-    const context = {
+    const context: EventContext = {
       tenantId: input.tenantId,
       monitorId: input.monitorId,
       monitorName: monitor.name,
       occurredAt: result.checkedAt,
+      alertDownEnabled: monitor.alert_down_enabled,
+      alertSslEnabled: monitor.alert_ssl_enabled,
     };
     if (
       result.outcome === "fail" &&
@@ -335,21 +345,30 @@ function nextSsl(
   if (result.outcome === "check_error") return none;
   const { tls } = result;
   if (tls?.notAfter) {
-    const { level } = sslLevel(tls.notAfter, result.checkedAt);
+    const { level: state } = sslLevel(tls.notAfter, result.checkedAt);
+    const { level: notifyLevel } = sslNotifyLevel(
+      tls.notAfter,
+      result.checkedAt,
+      monitor.alert_ssl_caution_days,
+    );
     const update: SslUpdate = {
       host: tls.host,
       issuer: tls.issuer,
       notAfter: tls.notAfter,
-      state: level,
+      state,
       reason: result.tlsReason,
     };
     if (
-      level === "ok" ||
-      (LEVEL_RANK[level] ?? 0) <= reportedRank(monitor, tls.host, tls.notAfter)
+      notifyLevel === "ok" ||
+      (LEVEL_RANK[notifyLevel] ?? 0) <=
+        reportedRank(monitor, tls.host, tls.notAfter)
     ) {
       return { update, event: null };
     }
-    return { update, event: { level, host: tls.host, notAfter: tls.notAfter } };
+    return {
+      update,
+      event: { level: notifyLevel, host: tls.host, notAfter: tls.notAfter },
+    };
   }
   if (tls) {
     // An expired certificate fails the handshake before its dates can be
@@ -440,7 +459,10 @@ function nextState(
     return {
       consecutiveFailures: failures,
       lastPassedConfigVersion: monitor.last_passed_config_version,
-      event: failures >= 2 && !incidentOpen ? "open" : null,
+      event:
+        failures >= monitor.alert_failure_threshold && !incidentOpen
+          ? "open"
+          : null,
     };
   }
   return {

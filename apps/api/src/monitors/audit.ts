@@ -41,6 +41,7 @@ type AuditConfig = Pick<
   | "apiKeyHeaderName"
   | "expectedStatusText"
   | "assertions"
+  | "alerts"
 >;
 
 const value = (input: string | number | boolean | null): AuditValue => ({
@@ -62,6 +63,16 @@ function scalarChange(
           after: after === null ? null : value(after),
         },
       ];
+}
+
+function booleanChange(
+  field: AuditChangeField,
+  before: boolean,
+  after: boolean,
+): AuditChange[] {
+  return before === after
+    ? []
+    : [{ field, before: value(before), after: value(after) }];
 }
 
 // The stored URL has no secrets, but its query may carry tokens: every query
@@ -198,6 +209,26 @@ export function monitorAuditChanges(
       "expectedStatus",
       previous.expectedStatusText,
       next.expectedStatusText,
+    ),
+    ...scalarChange(
+      "alertFailureThreshold",
+      previous.alerts.failureThreshold,
+      next.alerts.failureThreshold,
+    ),
+    ...booleanChange(
+      "alertDownEnabled",
+      previous.alerts.downEnabled,
+      next.alerts.downEnabled,
+    ),
+    ...booleanChange(
+      "alertSslEnabled",
+      previous.alerts.sslEnabled,
+      next.alerts.sslEnabled,
+    ),
+    ...scalarChange(
+      "alertSslCautionDays",
+      previous.alerts.sslCautionDays,
+      next.alerts.sslCautionDays,
     ),
   ];
 

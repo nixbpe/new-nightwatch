@@ -25,6 +25,7 @@ import {
   TIME_ZONE,
 } from "../format";
 import {
+  configChangeValueText,
   configFieldLabel,
   EVENT_KIND_LABELS,
   eventActorText,
@@ -60,9 +61,11 @@ function ChangeLine({
   if (change.kind === "changed") {
     return <>{label}: เปลี่ยน</>;
   }
+  const before = configChangeValueText(change.field, change.before);
+  const after = configChangeValueText(change.field, change.after);
   return (
     <>
-      {label}: ก่อน {valueNode(change.before)} หลัง {valueNode(change.after)}
+      {label}: ก่อน {valueNode(before)} หลัง {valueNode(after)}
     </>
   );
 }

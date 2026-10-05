@@ -149,6 +149,7 @@ export function SelectControl({
   ariaLabel,
   error,
   className,
+  hint,
   children,
   disabled,
   onChange,
@@ -159,30 +160,41 @@ export function SelectControl({
   ariaLabel?: string;
   error: string | undefined;
   className?: string;
+  /** Rendered outside the <label> (like TextControl's hint) so it never joins the accessible name. */
+  hint?: ReactNode;
   disabled?: boolean;
 } & Omit<ComponentProps<"select">, "id" | "className">) {
+  const hintId = `${fieldId(path)}-hint`;
+  const describedBy = [
+    error === undefined ? null : errorId(path),
+    hint === undefined ? null : hintId,
+  ]
+    .filter((id) => id !== null)
+    .join(" ");
   return (
-    <Field
-      label={label}
-      error={error}
-      errorId={errorId(path)}
-      className={className}
-    >
-      <select
-        id={fieldId(path)}
-        aria-label={ariaLabel}
-        aria-invalid={error === undefined ? undefined : true}
-        aria-describedby={error === undefined ? undefined : errorId(path)}
-        aria-disabled={disabled === true ? true : undefined}
-        onChange={(event) => {
-          if (disabled !== true) onChange?.(event);
-        }}
-        className={cn(textInputClass, controlInvalid)}
-        {...props}
-      >
-        {children}
-      </select>
-    </Field>
+    <div className={className}>
+      <Field label={label} error={error} errorId={errorId(path)}>
+        <select
+          id={fieldId(path)}
+          aria-label={ariaLabel}
+          aria-invalid={error === undefined ? undefined : true}
+          aria-describedby={describedBy === "" ? undefined : describedBy}
+          aria-disabled={disabled === true ? true : undefined}
+          onChange={(event) => {
+            if (disabled !== true) onChange?.(event);
+          }}
+          className={cn(textInputClass, controlInvalid)}
+          {...props}
+        >
+          {children}
+        </select>
+      </Field>
+      {hint === undefined ? null : (
+        <p id={hintId} className="mt-1 text-xs text-foreground-secondary">
+          {hint}
+        </p>
+      )}
+    </div>
   );
 }
 

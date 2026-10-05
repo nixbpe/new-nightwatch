@@ -54,8 +54,12 @@ afterAll(async () => {
 const read = (org: TestOrganization, path: string, role: TestRole = "viewer") =>
   ctx.call(org.users[role], "GET", monitorsPath(org.id, path));
 
-async function detailOf(org: TestOrganization, id: string) {
-  const response = await read(org, `/${id}`);
+async function detailOf(
+  org: TestOrganization,
+  id: string,
+  role: TestRole = "viewer",
+) {
+  const response = await read(org, `/${id}`, role);
   expect(response.status).toBe(200);
   return monitorDetailResponseSchema.parse(response.json).monitor;
 }
@@ -226,6 +230,30 @@ describe("health: the seven steps, in List and Detail", () => {
         healthReason: null,
         lastKnownDown: false,
         consecutiveFailures: 0,
+        openIncident: false,
+      },
+    },
+    {
+      name: "6: two consecutive failures keep health up when the threshold is 3",
+      monitor: { alertFailureThreshold: 3, consecutiveFailures: 2 },
+      seed: (id) => results(id, [10], "fail"),
+      expected: {
+        health: "up",
+        healthReason: null,
+        lastKnownDown: false,
+        consecutiveFailures: 2,
+        openIncident: false,
+      },
+    },
+    {
+      name: "7: three consecutive failures are still up without an open incident, even at the threshold (P60-06)",
+      monitor: { alertFailureThreshold: 3, consecutiveFailures: 3 },
+      seed: (id) => results(id, [10], "fail"),
+      expected: {
+        health: "up",
+        healthReason: null,
+        lastKnownDown: false,
+        consecutiveFailures: 3,
         openIncident: false,
       },
     },
@@ -488,6 +516,40 @@ describe("Detail view", () => {
       checks: 0,
       coveragePercent: 0,
     });
+  });
+
+  it("every role sees alerts in Detail; the List item has no alerts field", async () => {
+    const created = await ctx.call(
+      detail.users.owner,
+      "POST",
+      monitorsPath(detail.id),
+      {
+        ...validConfig({
+          name: "Alerts visibility",
+          alerts: {
+            failureThreshold: 3,
+            downEnabled: false,
+            sslEnabled: true,
+            sslCautionDays: 9,
+          },
+        }),
+        clientRequestId: crypto.randomUUID(),
+      },
+    );
+    expect(created.status).toBe(201);
+    const { id } = monitorWriteResponseSchema.parse(created.json).monitor;
+
+    for (const role of TEST_ROLES) {
+      const view = await detailOf(detail, id, role);
+      expect(view.alerts).toEqual({
+        failureThreshold: 3,
+        downEnabled: false,
+        sslEnabled: true,
+        sslCautionDays: 9,
+      });
+    }
+    const item = await listItem(detail, id);
+    expect(item).not.toHaveProperty("alerts");
   });
 });
 

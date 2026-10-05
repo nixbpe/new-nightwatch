@@ -11,6 +11,8 @@ import {
   monitorListQuerySchema,
   monitorRecentEventsQuerySchema,
   monitorResponseTimesQuerySchema,
+  monitorTestCreateSchema,
+  monitorTestEditSchema,
   normalizeMonitorConfig,
   parseExpectedStatus,
   parseExpectedValue,
@@ -156,7 +158,7 @@ describe("checkMonitorUrl", () => {
 });
 
 describe("monitorConfigSchema", () => {
-  it("fills the documented defaults (AC-06)", () => {
+  it("fills omitted monitor configuration defaults, including alert settings", () => {
     expect(monitorConfigSchema.parse(base)).toEqual({
       ...base,
       intervalSeconds: 300,
@@ -168,6 +170,12 @@ describe("monitorConfigSchema", () => {
       expectedStatus: "200-299",
       assertions: [],
       auth: { type: "none" },
+      alerts: {
+        failureThreshold: 2,
+        downEnabled: true,
+        sslEnabled: true,
+        sslCautionDays: 30,
+      },
     });
   });
 
@@ -358,6 +366,100 @@ describe("monitorConfigSchema", () => {
     expect(result.success ? [] : result.error.issues[0]?.message).toContain(
       "received undefined",
     );
+  });
+});
+
+describe("Monitor alert settings validation and defaults", () => {
+  it("monitorTestCreateSchema and monitorTestEditSchema accept and preserve a complete alerts object", () => {
+    const alerts = {
+      failureThreshold: 3,
+      downEnabled: false,
+      sslEnabled: false,
+      sslCautionDays: 8,
+    };
+    const createShape = monitorTestCreateSchema.safeParse({
+      ...base,
+      secrets: [],
+      alerts,
+    });
+    expect(createShape.success).toBe(true);
+    expect(createShape.success && createShape.data.alerts).toEqual(alerts);
+
+    const editShape = monitorTestEditSchema.safeParse({
+      ...base,
+      secrets: [],
+      alerts,
+    });
+    expect(editShape.success).toBe(true);
+    expect(editShape.success && editShape.data.alerts).toEqual(alerts);
+  });
+
+  it("monitorConfigSchema defaults omitted alert fields to 2 failures, both toggles on, and 30 SSL caution days", () => {
+    expect(monitorConfigSchema.parse(base).alerts).toEqual({
+      failureThreshold: 2,
+      downEnabled: true,
+      sslEnabled: true,
+      sslCautionDays: 30,
+    });
+    expect(
+      monitorConfigSchema.parse({ ...base, alerts: { downEnabled: false } })
+        .alerts,
+    ).toEqual({
+      failureThreshold: 2,
+      downEnabled: false,
+      sslEnabled: true,
+      sslCautionDays: 30,
+    });
+  });
+
+  it("monitorEditSchema leaves alerts undefined when omitted", () => {
+    const result = monitorEditSchema.safeParse({
+      ...base,
+      expectedVersion: 1,
+      secrets: [],
+    });
+    expect(result.success && result.data.alerts).toBeUndefined();
+  });
+
+  it("monitorEditSchema rejects partial alerts and reports each missing field", () => {
+    const result = monitorEditSchema.safeParse({
+      ...base,
+      expectedVersion: 1,
+      secrets: [],
+      alerts: { failureThreshold: 3 },
+    });
+    expect(result.success).toBe(false);
+    const paths = result.success
+      ? []
+      : result.error.issues.map((issue) => issue.path.join("."));
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "alerts.downEnabled",
+        "alerts.sslEnabled",
+        "alerts.sslCautionDays",
+      ]),
+    );
+  });
+
+  it("Edit accepts a complete alerts object", () => {
+    const result = monitorEditSchema.safeParse({
+      ...base,
+      expectedVersion: 1,
+      secrets: [],
+      alerts: {
+        failureThreshold: 3,
+        downEnabled: false,
+        sslEnabled: false,
+        sslCautionDays: 8,
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.alerts).toEqual({
+      failureThreshold: 3,
+      downEnabled: false,
+      sslEnabled: false,
+      sslCautionDays: 8,
+    });
   });
 });
 
@@ -699,5 +801,29 @@ describe("monitorIssueReason", () => {
     expect(reasonAt({ url: "ftp://example.com" }, "url")).toBe(
       "blocked_scheme",
     );
+  });
+
+  it("maps out-of-range alert values to out_of_range and wrong types to invalid_format", () => {
+    expect(
+      reasonAt({ alerts: { failureThreshold: 0 } }, "alerts.failureThreshold"),
+    ).toBe("out_of_range");
+    expect(
+      reasonAt({ alerts: { failureThreshold: 4 } }, "alerts.failureThreshold"),
+    ).toBe("out_of_range");
+    expect(
+      reasonAt({ alerts: { sslCautionDays: 7 } }, "alerts.sslCautionDays"),
+    ).toBe("out_of_range");
+    expect(
+      reasonAt({ alerts: { sslCautionDays: 31 } }, "alerts.sslCautionDays"),
+    ).toBe("out_of_range");
+    expect(
+      reasonAt(
+        { alerts: { failureThreshold: "2" } },
+        "alerts.failureThreshold",
+      ),
+    ).toBe("invalid_format");
+    expect(
+      reasonAt({ alerts: { downEnabled: "yes" } }, "alerts.downEnabled"),
+    ).toBe("invalid_format");
   });
 });
