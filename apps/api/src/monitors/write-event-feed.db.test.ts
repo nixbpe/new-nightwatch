@@ -243,7 +243,7 @@ describe("Two Edits racing on one version", () => {
   });
 });
 
-describe("Edit alerts: changes[] and audit before/after (issue #60)", () => {
+describe("Edit alerts: changes[] and audit before/after", () => {
   it("records all four fields in the event feed as values, booleans spelled enabled/disabled", async () => {
     const monitor = await created();
     const response = await edit(org.users.admin, monitor, {

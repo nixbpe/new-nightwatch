@@ -234,7 +234,7 @@ describe("health: the seven steps, in List and Detail", () => {
       },
     },
     {
-      name: "6 (OD-60-02 (a)): two failures stay up at a threshold of 3",
+      name: "6: two consecutive failures keep health up when the threshold is 3",
       monitor: { alertFailureThreshold: 3, consecutiveFailures: 2 },
       seed: (id) => results(id, [10], "fail"),
       expected: {
@@ -246,7 +246,7 @@ describe("health: the seven steps, in List and Detail", () => {
       },
     },
     {
-      name: "7 (OD-60-02 (a)): a third failure at a threshold of 3 is not up",
+      name: "7: three consecutive failures return unknown without an open incident when the threshold is 3",
       monitor: { alertFailureThreshold: 3, consecutiveFailures: 3 },
       seed: (id) => results(id, [10], "fail"),
       expected: {
@@ -518,7 +518,7 @@ describe("Detail view", () => {
     });
   });
 
-  it("every role sees alerts in Detail (issue #60); the List item has no alerts field", async () => {
+  it("every role sees alerts in Detail; the List item has no alerts field", async () => {
     const created = await ctx.call(
       detail.users.owner,
       "POST",

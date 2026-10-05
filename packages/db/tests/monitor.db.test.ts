@@ -664,7 +664,7 @@ describe("monitors config CHECK constraints", () => {
   });
 });
 
-describe("monitors alert settings defaults and bounds (#60)", () => {
+describe("monitors alert settings defaults and bounds", () => {
   async function insertWithAlert(
     column: "alert_failure_threshold" | "alert_ssl_caution_days",
     value: number,
@@ -725,7 +725,7 @@ describe("monitors alert settings defaults and bounds (#60)", () => {
   });
 });
 
-describe("monitors alert settings backfill from migration 0022 (#60)", () => {
+describe("monitors alert settings backfill from migration 0022", () => {
   // Migrates a fresh database only through 0021, inserts a monitor row the
   // way pre-#60 code would, then applies 0022 alone. Postgres serves an
   // ADD COLUMN ... DEFAULT to a pre-existing row through a fast-default

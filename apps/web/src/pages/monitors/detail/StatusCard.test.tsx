@@ -25,8 +25,8 @@ describe("detail labels (TYP-04)", () => {
   });
 });
 
-describe("failure threshold note (issue 60, P60-04)", () => {
-  it("reads the threshold from the record, not a fixed value", () => {
+describe("failure threshold note", () => {
+  it("shows one recorded failure and states that down status starts at the stored threshold of 3 failures", () => {
     const monitor = detail({
       health: "up",
       consecutiveFailures: 1,

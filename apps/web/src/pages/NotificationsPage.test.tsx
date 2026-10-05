@@ -185,7 +185,7 @@ describe("NotificationsPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("computes the caution day count from sslNotAfter and occurredAt instead of a fixed 30 (issue 60)", async () => {
+  it("shows 10 days remaining in the SSL caution title when sslNotAfter is 10 days after occurredAt", async () => {
     fetchNotificationsMock.mockResolvedValue({
       organizationId: ORG_A,
       items: [

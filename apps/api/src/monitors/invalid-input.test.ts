@@ -72,7 +72,7 @@ describe("monitorInvalidInputHook", () => {
     ]);
   });
 
-  it("reports alerts fields by their own path, not the generic request field (issue #60)", () => {
+  it("reports alerts fields by their own path, not the generic request field", () => {
     expect(
       fieldsOf({
         name: "a",

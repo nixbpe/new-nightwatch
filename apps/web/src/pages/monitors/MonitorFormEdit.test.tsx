@@ -166,7 +166,7 @@ describe("Edit save", () => {
     await screen.findByTestId("location");
   });
 
-  it("shows the stored alerts and sends them unchanged, as one complete object, when only another field changes", async () => {
+  it("loads stored alert settings and submits the complete alerts object unchanged when only the monitor name changes", async () => {
     detailMock.mockResolvedValue({
       monitor: detail({
         alerts: {

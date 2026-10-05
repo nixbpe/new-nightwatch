@@ -179,7 +179,7 @@ describe("computeHealth, in the order of the seven steps", () => {
     ).toBe("unknown");
   });
 
-  it("OD-60-02 (a): the up streak reaches alertFailureThreshold - 1 at any threshold", () => {
+  it("keeps health up below the failure threshold and returns unknown at the threshold without an open incident", () => {
     // Threshold 1: no failure is "up", the first failure is already the edge.
     expect(
       computeHealth(

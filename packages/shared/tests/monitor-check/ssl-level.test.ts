@@ -39,7 +39,7 @@ describe("sslNotifyLevel", () => {
     ["0 s left", "expired", 0, 0],
     ["3 days ago", "expired", -3 * DAY, -3],
   ] as const)(
-    "cautionDays=15, %s is %s",
+    "with a 15-day SSL caution window, %s remaining returns level %s",
     (_name, level, offset, daysRemaining) => {
       expect(sslNotifyLevel(at(offset), NOW, 15)).toEqual({
         level,

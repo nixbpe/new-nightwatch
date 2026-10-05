@@ -511,7 +511,7 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     }
   });
 
-  it("threshold 1 opens on the first failure, writing check_failed and incident_opened from the same result (AC-39, OD-60-02)", async () => {
+  it("threshold 1 opens on the first failure, writing check_failed and incident_opened from the same result", async () => {
     const target = await startTarget();
     try {
       const monitor = await seedMonitor(db, { url: `${target.url}/` });
@@ -547,7 +547,7 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     }
   });
 
-  it("threshold 3 opens the incident only at the third consecutive failure (OD-60-02, OD-60-03)", async () => {
+  it("threshold 3 opens the incident only at the third consecutive failure", async () => {
     const target = await startTarget();
     try {
       const monitor = await seedMonitor(db, { url: `${target.url}/` });
@@ -573,7 +573,7 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     }
   });
 
-  it("reducing the failure threshold while a streak is outstanding opens on the next failure under the new threshold (OD-60-06, Concurrency)", async () => {
+  it("lowering the failure threshold from 3 to 2 after two failures opens an incident only on the next failure", async () => {
     const target = await startTarget();
     try {
       const monitor = await seedMonitor(db, { url: `${target.url}/` });
@@ -613,7 +613,7 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     }
   });
 
-  it("reducing the failure threshold while a streak is outstanding still lets the next pass reset it with no incident (OD-60-06, Concurrency)", async () => {
+  it("lowering the failure threshold from 3 to 2 after two failures lets the next pass reset the streak without an incident", async () => {
     const target = await startTarget();
     try {
       const monitor = await seedMonitor(db, { url: `${target.url}/` });
@@ -646,7 +646,7 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     }
   });
 
-  it("increasing the failure threshold while an incident is open keeps it open until a pass (Concurrency)", async () => {
+  it("increasing the failure threshold while an incident is open keeps it open until a pass", async () => {
     const target = await startTarget();
     try {
       const monitor = await seedMonitor(db, { url: `${target.url}/` });

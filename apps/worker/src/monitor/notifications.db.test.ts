@@ -241,7 +241,7 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
     });
   });
 
-  it("a monitor with threshold 3 sends MONITOR_DOWN only at the third consecutive failure (P60-01)", async () => {
+  it("a monitor with threshold 3 sends MONITOR_DOWN only at the third consecutive failure", async () => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
     await updateMonitor(
@@ -263,7 +263,7 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
     { orgEnabled: false, monitorEnabled: true, sends: false },
     { orgEnabled: false, monitorEnabled: false, sends: false },
   ])(
-    "org down toggle $orgEnabled x monitor down toggle $monitorEnabled sends down/recovered: $sends (OD-60-01, P60-02, P60-05)",
+    "creates MONITOR_DOWN and MONITOR_RECOVERED intents: $sends with organization alerts=$orgEnabled and monitor down alerts=$monitorEnabled",
     async ({ orgEnabled, monitorEnabled, sends }) => {
       const monitor = await seedMonitor(db);
       await seedMembers(monitor);
@@ -606,7 +606,7 @@ describe("SSL notifications (AC-36)", () => {
     { orgEnabled: false, monitorEnabled: true, sends: false },
     { orgEnabled: false, monitorEnabled: false, sends: false },
   ])(
-    "org ssl toggle $orgEnabled x monitor ssl toggle $monitorEnabled sends danger: $sends (OD-60-01, P60-03, P60-05)",
+    "creates a MONITOR_SSL_DANGER intent: $sends with organization alerts=$orgEnabled and monitor SSL alerts=$monitorEnabled",
     async ({ orgEnabled, monitorEnabled, sends }) => {
       const monitor = await seedMonitor(db);
       await seedMembers(monitor);
@@ -628,7 +628,7 @@ describe("SSL notifications (AC-36)", () => {
     },
   );
 
-  it("per-monitor SSL toggle off sends nothing but still advances the level, so re-enabling sends only a later, more severe one", async () => {
+  it("records SSL danger without notifying while SSL alerts are off, then notifies only expiry after re-enabling", async () => {
     const monitor = await seedMonitor(db);
     await seedMembers(monitor);
     await updateMonitor(
@@ -660,8 +660,8 @@ describe("SSL notifications (AC-36)", () => {
     expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_EXPIRED"]);
   });
 
-  describe("per-monitor caution days (OD-60-04, OD-60-05, Concurrency)", () => {
-    it("a 14-day caution window sends caution before the fixed 30-day display edge is reached", async () => {
+  describe("per-monitor caution days", () => {
+    it("with a 14-day caution window, displays caution without notifying at 20 days, then notifies caution, danger, and expiry", async () => {
       const monitor = await seedMonitor(db);
       await seedMembers(monitor);
       await updateMonitor(
@@ -696,7 +696,7 @@ describe("SSL notifications (AC-36)", () => {
       ]);
     });
 
-    it("a renewal at a 14-day caution window raises no event until the new certificate is within that window", async () => {
+    it("after certificate renewal, creates no SSL intent at 20 days remaining and creates MONITOR_SSL_CAUTION at 10 days with a 14-day window", async () => {
       const monitor = await seedMonitor(db);
       await seedMembers(monitor);
       await updateMonitor(

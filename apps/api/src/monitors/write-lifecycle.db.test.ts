@@ -1295,7 +1295,7 @@ describe("audit failure (AC-21)", () => {
 // Kept last: the role-denial case below adds "organization access denied" log
 // lines for `org.users.viewer`, and "audit and logs" above finds its denial
 // by scanning `ctx.logRecords()` for the first line from that actor.
-describe("Edit alerts (issue #60)", () => {
+describe("Monitor alert settings on Create and Edit", () => {
   it("defaults alerts on Create when the field is omitted", async () => {
     const monitor = await created();
     expect(monitor.alerts).toEqual({
@@ -1398,7 +1398,7 @@ describe("Edit alerts (issue #60)", () => {
     },
   );
 
-  it("an alerts-only Edit changes version but neither bumps check_config_version nor resets the streak, claim or schedule; health stays up (P60-06)", async () => {
+  it("an alerts-only Edit increments version, preserves check state and scheduling, and uses the new threshold for health", async () => {
     const monitor = await created();
     // Two failures already recorded against config version 1, which also
     // passed once: at the default threshold (2) this monitor would already

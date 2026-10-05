@@ -125,7 +125,7 @@ test.afterAll(async () => {
   }
 });
 
-test("a threshold of 3 opens the incident only at the third failure, and a monitor's own down toggle silences only that monitor (P60-01, P60-02)", async ({
+test("a threshold of 3 opens the incident only at the third failure, and a monitor's own down toggle silences only that monitor", async ({
   page,
 }) => {
   test.setTimeout(8 * 60_000);

@@ -158,7 +158,7 @@ describe("checkMonitorUrl", () => {
 });
 
 describe("monitorConfigSchema", () => {
-  it("fills the documented defaults (AC-06)", () => {
+  it("fills omitted monitor configuration defaults, including alert settings", () => {
     expect(monitorConfigSchema.parse(base)).toEqual({
       ...base,
       intervalSeconds: 300,
@@ -369,8 +369,8 @@ describe("monitorConfigSchema", () => {
   });
 });
 
-describe("alerts (issue #60)", () => {
-  it("Test (create and edit shape) accepts a complete alerts object, like Create (rejected and not used)", () => {
+describe("Monitor alert settings validation and defaults", () => {
+  it("monitorTestCreateSchema and monitorTestEditSchema accept and preserve a complete alerts object", () => {
     const alerts = {
       failureThreshold: 3,
       downEnabled: false,
@@ -394,7 +394,7 @@ describe("alerts (issue #60)", () => {
     expect(editShape.success && editShape.data.alerts).toEqual(alerts);
   });
 
-  it("defaults the whole object and each field on Create and Test (AC-06)", () => {
+  it("monitorConfigSchema defaults omitted alert fields to 2 failures, both toggles on, and 30 SSL caution days", () => {
     expect(monitorConfigSchema.parse(base).alerts).toEqual({
       failureThreshold: 2,
       downEnabled: true,
@@ -412,7 +412,7 @@ describe("alerts (issue #60)", () => {
     });
   });
 
-  it("Edit without alerts leaves it undefined, so the service keeps the stored value", () => {
+  it("monitorEditSchema leaves alerts undefined when omitted", () => {
     const result = monitorEditSchema.safeParse({
       ...base,
       expectedVersion: 1,
@@ -421,7 +421,7 @@ describe("alerts (issue #60)", () => {
     expect(result.success && result.data.alerts).toBeUndefined();
   });
 
-  it("Edit rejects a partial alerts object instead of filling defaults (ครบทั้ง object)", () => {
+  it("monitorEditSchema rejects partial alerts and reports each missing field", () => {
     const result = monitorEditSchema.safeParse({
       ...base,
       expectedVersion: 1,
@@ -803,7 +803,7 @@ describe("monitorIssueReason", () => {
     );
   });
 
-  it("maps alerts range and type issues the same way (issue #60)", () => {
+  it("maps out-of-range alert values to out_of_range and wrong types to invalid_format", () => {
     expect(
       reasonAt({ alerts: { failureThreshold: 0 } }, "alerts.failureThreshold"),
     ).toBe("out_of_range");

@@ -632,7 +632,7 @@ describe("Redesign mockups and notes", () => {
     [true, true],
     [false, false],
   ])(
-    "shows the alert note only while the org setting is on (%s)",
+    "shows the recipient note when organization monitor alerts are on and the suppression note when off (enabled=%s)",
     async (enabled, shown) => {
       vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
         organizationId: A,
@@ -690,7 +690,7 @@ describe("Redesign mockups and notes", () => {
   });
 });
 
-describe("Alerts section controls (issue 60)", () => {
+describe("Alerts section controls", () => {
   beforeEach(() => {
     vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
       organizationId: A,
@@ -728,14 +728,14 @@ describe("Alerts section controls (issue 60)", () => {
     });
   });
 
-  it("describes the threshold select's effect on ล่ม regardless of the down toggle", async () => {
+  it("gives the failure threshold an accessible description that it determines down status even when down alerts are off", async () => {
     await openCreate();
     expect(thresholdSelect()).toHaveAccessibleDescription(
       "ค่านี้ใช้ตัดสินว่ามอนิเตอร์ล่มด้วย แม้ปิด 'แจ้งเมื่อล่มและกลับมาปกติ'",
     );
   });
 
-  it("sends a changed threshold, toggle and caution days as one complete object", async () => {
+  it("updates the down-status note to 3 failures and submits the complete alerts object with the selected values", async () => {
     const user = await openCreate();
     await user.selectOptions(thresholdSelect(), "3");
     // BasicSection reads the same value, not a fixed constant (P60-01).
@@ -758,7 +758,7 @@ describe("Alerts section controls (issue 60)", () => {
     });
   });
 
-  it("disables the caution days field when SSL is off, announces why, and keeps the typed value", async () => {
+  it("makes SSL caution days read-only with an accessible explanation when SSL alerts are off and preserves the value when re-enabled", async () => {
     const user = await openCreate();
     fireEvent.change(daysField(), { target: { value: "12" } });
     await user.click(sslCheckbox());
@@ -772,7 +772,7 @@ describe("Alerts section controls (issue 60)", () => {
     expect(daysField()).toHaveValue("12");
   });
 
-  it("rejects an SSL caution day count outside 8 to 30 beside the field", async () => {
+  it("blocks saving with 40 SSL caution days, marks and focuses the field, and describes the allowed 8-to-30 range", async () => {
     const user = await openCreate();
     fireEvent.change(daysField(), { target: { value: "40" } });
     await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));

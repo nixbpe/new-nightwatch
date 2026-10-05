@@ -454,7 +454,7 @@ describe("Detail alerts card", () => {
     return must(dt.nextElementSibling as HTMLElement | null);
   }
 
-  it("shows the failure threshold, both toggles and the SSL caution days from the record", async () => {
+  it("shows the stored failure threshold, down and SSL alert settings, and SSL caution days", async () => {
     showDetail(
       detail({
         alerts: {
@@ -473,7 +473,7 @@ describe("Detail alerts card", () => {
     expect(within(card).getByText("15")).toBeInTheDocument();
   });
 
-  it("appends the not-https note beside the day count when SSL is not readable", async () => {
+  it("shows the HTTP certificate note without hiding the enabled SSL alert setting", async () => {
     showDetail(
       detail({
         alerts: {
@@ -494,7 +494,7 @@ describe("Detail alerts card", () => {
     expect(within(card).getByText(/เปิด \(ล่วงหน้า/)).toBeInTheDocument();
   });
 
-  it("shows ปิด for the SSL row without a day count when the per-monitor toggle is off", async () => {
+  it("hides the SSL advance-notice text when monitor SSL alerts are off", async () => {
     showDetail(
       detail({
         alerts: {
@@ -511,7 +511,7 @@ describe("Detail alerts card", () => {
   });
 
   it.each(["owner", "admin"] as const)(
-    "shows the org toggle to %s and the off note when it is off",
+    "shows disabled organization monitor alerts and the suppression note to %s",
     async (role) => {
       fetchMeContextMock.mockResolvedValue(context(role));
       fetchOrgAlertsMock.mockResolvedValue({
@@ -535,7 +535,7 @@ describe("Detail alerts card", () => {
   );
 
   it.each(["viewer", "auditor"] as const)(
-    "hides the org row from a %s and never requests it",
+    "hides organization monitor alert settings from %s without requesting them",
     async (role) => {
       fetchMeContextMock.mockResolvedValue(context(role));
       showDetail(detail());
@@ -548,7 +548,7 @@ describe("Detail alerts card", () => {
     },
   );
 
-  it("shows a skeleton while the org setting loads, then its value", async () => {
+  it("shows a loading placeholder for organization monitor alerts, then เปิด when loading succeeds", async () => {
     const pending = deferred<Awaited<ReturnType<typeof fetchOrgAlertsMock>>>();
     fetchOrgAlertsMock.mockReturnValue(pending.promise);
     showDetail(detail());
@@ -568,7 +568,7 @@ describe("Detail alerts card", () => {
     });
   });
 
-  it("shows an error with retry for the org row, never showing เปิด while it fails", async () => {
+  it("shows a load error for organization monitor alerts without เปิด, then shows เปิด after a successful retry", async () => {
     fetchOrgAlertsMock.mockRejectedValueOnce(
       new ApiError("INTERNAL", "boom", 500),
     );
@@ -595,7 +595,7 @@ describe("Detail alerts card", () => {
     });
   });
 
-  it("drops to the denied note and stops polling when a refetch answers PERMISSION_DENIED", async () => {
+  it("replaces the organization monitor alert value with a permission-denied message and stops polling after PERMISSION_DENIED", async () => {
     fetchOrgAlertsMock.mockResolvedValue({
       organizationId: A,
       version: 1,

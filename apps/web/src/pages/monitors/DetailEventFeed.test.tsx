@@ -308,7 +308,7 @@ describe("Event feed rows", () => {
     expect(bare?.textContent).toContain("แก้ไขการตั้งค่า");
   });
 
-  it("labels the four alert fields and spells enabled/disabled as เปิด/ปิด (issue 60)", async () => {
+  it("shows Thai labels and before-and-after values for all four alert settings, with toggles shown as เปิด or ปิด", async () => {
     feedMock.mockResolvedValue(
       feed([
         {
