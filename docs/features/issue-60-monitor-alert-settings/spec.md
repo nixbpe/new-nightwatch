@@ -248,7 +248,7 @@ Migration `0022_monitor_alert_settings.sql` ตาม DB-11, DB-12 Drizzle schem
 - **OUTCOME:** control จริงใน form แทน mockup, ส่วนเกณฑ์ในหน้า Detail, ข้อความ inbox, ป้าย audit log และ event feed
 - **SOURCE:** Contracts → Web, design system, `docs/ref/shell-structure.md`
 - **INVARIANTS:** ไม่แก้ `openapi-types.gen.ts` ด้วยมือ ลบ `MockupFrame` ของ issue 60 ใน `AlertsSection.tsx`
-- **FILES:** `apps/web/src/pages/monitors/form/AlertsSection.tsx`, `MonitorForm.tsx`, `BasicSection.tsx` (บังคับเสมอ ลบการใช้ `DOWN_AFTER_FAILURES`), `apps/web/src/pages/monitors/detail/`, `apps/web/src/pages/NotificationsPage.tsx`, `apps/web/src/pages/audit-log/labels.ts`, tests
+- **FILES:** `apps/web/src/pages/monitors/form/AlertsSection.tsx`, `MonitorForm.tsx`, `BasicSection.tsx` (บังคับเสมอ ลบการใช้ `DOWN_AFTER_FAILURES`), `model.ts` (payload ของ Edit ต้องส่ง `alerts` ครบ object เสมอเมื่อส่ง ไม่ส่งเป็นบาง field), `apps/web/src/pages/monitors/detail/`, `apps/web/src/pages/monitors/DetailActions.test.tsx` (fixture ขาด `alerts` ตั้งแต่ `monitorRecordSchema` เปลี่ยนเป็น required), `apps/web/src/pages/NotificationsPage.tsx`, `apps/web/src/pages/audit-log/labels.ts`, tests
 - **NON-GOALS:** หน้า notification settings ขององค์กร
 - **CONTRACTS:** none
 - **VERIFY:** `bun run --cwd apps/web test`, typecheck ของ web
