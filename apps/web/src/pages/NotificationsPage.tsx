@@ -49,6 +49,20 @@ type MonitorNotificationItem = Extract<
   { category: "monitor" }
 >;
 
+const SSL_CAUTION_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Days left when the caution notification fired, rounded up the same way as
+ * `sslNotifyLevel` (packages/shared/src/monitor-check/ssl-level.ts) so the
+ * count matches the per-monitor `sslCautionDays` threshold that triggered it
+ * (issue 60): the caution edge is no longer a fixed 30 days.
+ */
+function sslDaysRemainingAt(notAfter: string, occurredAt: string): number {
+  const remainingMs =
+    new Date(notAfter).getTime() - new Date(occurredAt).getTime();
+  return Math.ceil(remainingMs / SSL_CAUTION_DAY_MS) + 0;
+}
+
 function itemTitle(item: NotificationItem) {
   if (item.scope === "organization") {
     switch (item.eventType) {
@@ -58,8 +72,10 @@ function itemTitle(item: NotificationItem) {
         return `มอนิเตอร์ ${item.subject.monitorName} ล่ม`;
       case "MONITOR_RECOVERED":
         return `มอนิเตอร์ ${item.subject.monitorName} กลับมาทำงานแล้ว`;
-      case "MONITOR_SSL_CAUTION":
-        return `ใบรับรอง SSL ของ ${item.subject.monitorName} ใกล้หมดอายุ (เหลือไม่เกิน 30 วัน)`;
+      case "MONITOR_SSL_CAUTION": {
+        const days = sslDaysRemainingAt(item.sslNotAfter, item.occurredAt);
+        return `ใบรับรอง SSL ของ ${item.subject.monitorName} ใกล้หมดอายุ (เหลือไม่เกิน ${String(days)} วัน)`;
+      }
       case "MONITOR_SSL_DANGER":
         return `ใบรับรอง SSL ของ ${item.subject.monitorName} ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)`;
       case "MONITOR_SSL_EXPIRED":

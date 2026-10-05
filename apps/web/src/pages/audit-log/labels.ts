@@ -65,6 +65,10 @@ export const CHANGE_FIELD_LABELS: Record<AuditChangeField, string> = {
   expectedStatus: "รหัสสถานะที่ถือว่าปกติ",
   assertions: "เงื่อนไขตรวจสอบ",
   secret: "ค่าลับ",
+  alertFailureThreshold: "แจ้งเมื่อล้มเหลวติดกัน (ครั้ง)",
+  alertDownEnabled: "แจ้งเมื่อล่มและกลับมาปกติ",
+  alertSslEnabled: "แจ้งเมื่อ SSL ใกล้หมดอายุ",
+  alertSslCautionDays: "แจ้งล่วงหน้าก่อน SSL หมดอายุ (วัน)",
 };
 
 const NO_VALUE = "—";
@@ -86,14 +90,12 @@ export function auditValueText(
       const raw = value.value;
       if (raw === null) return NO_VALUE;
       if (typeof raw === "boolean") {
-        return field === "monitorAlertsEnabled" ||
-          field === "settingsChangedEnabled"
-          ? raw
-            ? "เปิด"
-            : "ปิด"
-          : raw
-            ? "ใช่"
-            : "ไม่ใช่";
+        const toggleField =
+          field === "monitorAlertsEnabled" ||
+          field === "settingsChangedEnabled" ||
+          field === "alertDownEnabled" ||
+          field === "alertSslEnabled";
+        return toggleField ? (raw ? "เปิด" : "ปิด") : raw ? "ใช่" : "ไม่ใช่";
       }
       return field === "role" && typeof raw === "string"
         ? roleLabel(raw)

@@ -166,6 +166,45 @@ describe("Edit save", () => {
     await screen.findByTestId("location");
   });
 
+  it("shows the stored alerts and sends them unchanged, as one complete object, when only another field changes", async () => {
+    detailMock.mockResolvedValue({
+      monitor: detail({
+        alerts: {
+          failureThreshold: 3,
+          downEnabled: false,
+          sslEnabled: false,
+          sslCautionDays: 12,
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    renderForm(editPath());
+    const name = await screen.findByDisplayValue("Payments API");
+    expect(screen.getByLabelText("แจ้งเมื่อล้มเหลวติดกัน")).toHaveValue("3");
+    expect(
+      screen.getByRole("checkbox", { name: "แจ้งเมื่อล่มและกลับมาปกติ" }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "แจ้งเมื่อ SSL ใกล้หมดอายุ" }),
+    ).not.toBeChecked();
+    expect(screen.getByLabelText("แจ้งล่วงหน้าก่อนหมดอายุ (วัน)")).toHaveValue(
+      "12",
+    );
+    await user.type(name, " v2");
+    await user.click(saveEdit());
+    await waitFor(() => {
+      expect(updateMock).toHaveBeenCalledTimes(1);
+    });
+    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+      alerts: {
+        failureThreshold: 3,
+        downEnabled: false,
+        sslEnabled: false,
+        sslCautionDays: 12,
+      },
+    });
+  });
+
   it("places a server refusal beside its field on Edit", async () => {
     updateMock.mockRejectedValue(
       new ApiError("MONITOR_INVALID", "invalid", 400, {

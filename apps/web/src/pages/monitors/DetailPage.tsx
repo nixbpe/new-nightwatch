@@ -24,6 +24,7 @@ import {
 } from "../../lib/api/monitors";
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
+import { AlertsCard } from "./detail/AlertsCard";
 import { ChecksHistoryCard } from "./detail/ChecksHistoryCard";
 import { ConfigCard } from "./detail/ConfigCard";
 import { IncidentsCard } from "./detail/IncidentsCard";
@@ -500,6 +501,11 @@ function DetailForMonitor({
         </div>
         <aside className="flex min-w-0 flex-col gap-6">
           <ConfigCard monitor={monitor} />
+          <AlertsCard
+            monitor={monitor}
+            organizationId={organizationId}
+            canWrite={canWrite}
+          />
           <SslCard ssl={monitor.ssl} />
           <LastResponseCard
             canRead={canReadResponse}
