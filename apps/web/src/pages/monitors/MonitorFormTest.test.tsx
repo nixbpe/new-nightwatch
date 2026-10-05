@@ -16,7 +16,9 @@ import {
   createMonitor,
   fetchMonitorChecks,
   fetchMonitorDetail,
+  fetchMonitorEvents,
   fetchMonitorIncidents,
+  fetchMonitorLastResponse,
   fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
@@ -49,7 +51,9 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   createMonitor: vi.fn(),
   fetchMonitorDetail: vi.fn(),
   fetchMonitorChecks: vi.fn(),
+  fetchMonitorEvents: vi.fn(),
   fetchMonitorIncidents: vi.fn(),
+  fetchMonitorLastResponse: vi.fn(),
   fetchMonitorRecentEvents: vi.fn(),
   fetchMonitorResponseTimes: vi.fn(),
   fetchMonitorList: vi.fn(),
@@ -74,6 +78,13 @@ beforeEach(() => {
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
+  // A successful save navigates to the new monitor's Detail page, which
+  // mounts the event feed and last-response cards.
+  vi.mocked(fetchMonitorEvents).mockResolvedValue({
+    events: [],
+    page: { limit: 20, offset: 0, total: 0 },
+  });
+  vi.mocked(fetchMonitorLastResponse).mockResolvedValue({ response: null });
   createMock.mockResolvedValue({ monitor: record() });
 });
 
@@ -727,6 +738,10 @@ describe("Alerts section controls (issue 60)", () => {
   it("sends a changed threshold, toggle and caution days as one complete object", async () => {
     const user = await openCreate();
     await user.selectOptions(thresholdSelect(), "3");
+    // BasicSection reads the same value, not a fixed constant (P60-01).
+    expect(
+      screen.getByText(/ถือว่าล่มเมื่อล้มเหลวติดกัน\s*3\s*ครั้ง/),
+    ).toBeInTheDocument();
     await user.click(downCheckbox());
     fireEvent.change(daysField(), { target: { value: "10" } });
     await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
@@ -749,7 +764,7 @@ describe("Alerts section controls (issue 60)", () => {
     await user.click(sslCheckbox());
     expect(daysField()).toHaveAttribute("aria-readonly", "true");
     expect(daysField()).toHaveAccessibleDescription(
-      'เปิด "แจ้งเมื่อ SSL ใกล้หมดอายุ" ก่อน จึงจะแก้จำนวนวันนี้ได้',
+      "เปิด 'แจ้งเมื่อ SSL ใกล้หมดอายุ' ก่อน จึงจะแก้จำนวนวันนี้ได้",
     );
     expect(daysField()).toHaveValue("12");
     await user.click(sslCheckbox());

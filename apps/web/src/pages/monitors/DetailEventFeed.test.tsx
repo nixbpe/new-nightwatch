@@ -307,6 +307,56 @@ describe("Event feed rows", () => {
     expect(within(bare as HTMLElement).queryByRole("list")).toBeNull();
     expect(bare?.textContent).toContain("แก้ไขการตั้งค่า");
   });
+
+  it("labels the four alert fields and spells enabled/disabled as เปิด/ปิด (issue 60)", async () => {
+    feedMock.mockResolvedValue(
+      feed([
+        {
+          id: "event:alerts",
+          at: AT,
+          kind: "config_changed",
+          actor: { kind: "member", userId: "u1", displayName: "Somchai" },
+          changes: [
+            {
+              field: "alerts.failureThreshold",
+              kind: "value",
+              before: 2,
+              after: 3,
+            },
+            {
+              field: "alerts.downEnabled",
+              kind: "value",
+              before: "enabled",
+              after: "disabled",
+            },
+            {
+              field: "alerts.sslEnabled",
+              kind: "value",
+              before: "disabled",
+              after: "enabled",
+            },
+            {
+              field: "alerts.sslCautionDays",
+              kind: "value",
+              before: 30,
+              after: 10,
+            },
+          ],
+        },
+      ]),
+    );
+    renderDetail();
+    const [withChanges] = await rows(await feedSection());
+    const lines = within(withChanges as HTMLElement)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(lines).toEqual([
+      "แจ้งเมื่อล้มเหลวติดกัน: ก่อน 2 หลัง 3",
+      "แจ้งเมื่อล่มและกลับมาปกติ: ก่อน เปิด หลัง ปิด",
+      "แจ้งเมื่อ SSL ใกล้หมดอายุ: ก่อน ปิด หลัง เปิด",
+      "แจ้งล่วงหน้าก่อน SSL หมดอายุ (วัน): ก่อน 30 หลัง 10",
+    ]);
+  });
 });
 
 describe("Event feed states", () => {

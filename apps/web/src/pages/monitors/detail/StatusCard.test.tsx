@@ -24,3 +24,23 @@ describe("detail labels (TYP-04)", () => {
     }
   });
 });
+
+describe("failure threshold note (issue 60, P60-04)", () => {
+  it("reads the threshold from the record, not a fixed value", () => {
+    const monitor = detail({
+      health: "up",
+      consecutiveFailures: 1,
+      alerts: {
+        failureThreshold: 3,
+        downEnabled: true,
+        sslEnabled: true,
+        sslCautionDays: 30,
+      },
+    });
+    render(<StatusCard monitor={monitor} />);
+    expect(screen.getByText(/ล้มเหลว 1 ครั้ง/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/จะเปลี่ยนเป็นล่มเมื่อล้มเหลวติดกันครบ\s*3\s*ครั้ง/),
+    ).toBeInTheDocument();
+  });
+});

@@ -17,7 +17,7 @@ const CHECKBOX_CARD =
 const FAILURE_THRESHOLD_HINT =
   "ค่านี้ใช้ตัดสินว่ามอนิเตอร์ล่มด้วย แม้ปิด 'แจ้งเมื่อล่มและกลับมาปกติ'";
 const SSL_DAYS_DISABLED_HINT =
-  'เปิด "แจ้งเมื่อ SSL ใกล้หมดอายุ" ก่อน จึงจะแก้จำนวนวันนี้ได้';
+  "เปิด 'แจ้งเมื่อ SSL ใกล้หมดอายุ' ก่อน จึงจะแก้จำนวนวันนี้ได้";
 
 /**
  * Alerts step (issue 60): real controls bound to `values.alerts`, replacing
