@@ -593,6 +593,21 @@ describe("List: response sparkline", () => {
   let id: string;
   let fresh: string;
   let otherId: string;
+  // `seedHourly` truncates the database's now(); the request reads its own now()
+  // later, so the two can sit on different hours. Points are found by hourStart.
+  let seededHour: number;
+  let otherSeededHour: number;
+  const hourOf = async (monitorId: string) => {
+    const result = await ctx.owner.sql.query<{ hour: Date }>(
+      "select max(hour_start) as hour from monitor_check_hourly where monitor_id = $1",
+      [monitorId],
+    );
+    return result.rows[0]!.hour.getTime();
+  };
+  const avgAt = (
+    points: { hourStart: string; avgMs: number | null }[],
+    hour: number,
+  ) => points.find((point) => Date.parse(point.hourStart) === hour)?.avgMs;
 
   beforeAll(async () => {
     org = await ctx.createOrganization("read-spark");
@@ -622,6 +637,8 @@ describe("List: response sparkline", () => {
       responseMsSum: 77,
       responseMsMax: 77,
     });
+    seededHour = await hourOf(id);
+    otherSeededHour = await hourOf(otherId);
   });
 
   it("has 24 consecutive UTC hours ending at the hour of now, empty hours null", async () => {
@@ -633,12 +650,21 @@ describe("List: response sparkline", () => {
     expect(points.map((point) => Date.parse(point.hourStart))).toEqual(
       Array.from({ length: 24 }, (_, index) => last - (23 - index) * HOUR),
     );
-    const avg = points.map((point) => point.avgMs);
-    expect(avg[23]).toBe(150.5);
-    expect(avg[16]).toBe(33.33);
-    expect(avg[0]).toBe(40);
-    expect(avg[20]).toBeNull();
-    expect(avg.filter((value) => value !== null)).toHaveLength(3);
+    // The request may have crossed into the next hour since the seed: the
+    // current-hour point then sits one slot earlier and the oldest one drops out.
+    const shift = (last - seededHour) / HOUR;
+    expect([0, 1]).toContain(shift);
+    expect(avgAt(points, seededHour)).toBe(150.5);
+    expect(avgAt(points, seededHour - 7 * HOUR)).toBe(33.33);
+    expect(avgAt(points, seededHour - 3 * HOUR)).toBeNull();
+    expect(avgAt(points, seededHour - 23 * HOUR)).toBe(
+      shift === 0 ? 40 : undefined,
+    );
+    // The row 24 hours back never enters the window.
+    expect(points.map((point) => point.avgMs)).not.toContain(999);
+    expect(points.filter((point) => point.avgMs !== null)).toHaveLength(
+      3 - shift,
+    );
   });
 
   it("is all null for a monitor without rollups", async () => {
@@ -652,7 +678,9 @@ describe("List: response sparkline", () => {
     const theirs = await list(other);
     expect(mine.monitors.map((item) => item.id)).not.toContain(otherId);
     expect(theirs.monitors.map((item) => item.id)).toEqual([otherId]);
-    expect(theirs.monitors[0]?.responseSparkline[23]?.avgMs).toBe(77);
+    expect(
+      avgAt(theirs.monitors[0]?.responseSparkline ?? [], otherSeededHour),
+    ).toBe(77);
     expect(
       theirs.monitors[0]?.responseSparkline.filter((p) => p.avgMs !== null),
     ).toHaveLength(1);
