@@ -602,7 +602,9 @@ describe("List: response sparkline", () => {
       "select max(hour_start) as hour from monitor_check_hourly where monitor_id = $1",
       [monitorId],
     );
-    return result.rows[0]!.hour.getTime();
+    const hour = result.rows[0]?.hour;
+    if (hour === undefined) throw new Error("no hourly row was seeded");
+    return hour.getTime();
   };
   const avgAt = (
     points: { hourStart: string; avgMs: number | null }[],
