@@ -1350,15 +1350,16 @@ describe("Edit alerts (issue #60)", () => {
       alerts: { failureThreshold: 3 },
     });
     expect(response.status).toBe(400);
-    expect(response.json).toMatchObject({
+    expect(response.json).toEqual({
       error: {
         code: "MONITOR_INVALID",
+        message: "Invalid monitor input",
         details: {
-          fields: expect.arrayContaining([
+          fields: [
             { field: "alerts.downEnabled", reason: "required" },
             { field: "alerts.sslEnabled", reason: "required" },
             { field: "alerts.sslCautionDays", reason: "required" },
-          ]),
+          ],
         },
       },
     });

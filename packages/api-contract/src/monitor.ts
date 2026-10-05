@@ -359,12 +359,14 @@ export type AlertSettings = z.output<typeof alertsFieldsSchema>;
 
 // Create and Test: a field or the whole object may be omitted and still
 // resolve to the default (AC-06 parity with the rest of the config).
-const alertsSchema = z.strictObject({
-  failureThreshold: z.number().int().min(1).max(3).default(2),
-  downEnabled: z.boolean().default(true),
-  sslEnabled: z.boolean().default(true),
-  sslCautionDays: z.number().int().min(8).max(30).default(30),
-}).default(MONITOR_DEFAULT_ALERTS);
+const alertsSchema = z
+  .strictObject({
+    failureThreshold: z.number().int().min(1).max(3).default(2),
+    downEnabled: z.boolean().default(true),
+    sslEnabled: z.boolean().default(true),
+    sslCautionDays: z.number().int().min(8).max(30).default(30),
+  })
+  .default(MONITOR_DEFAULT_ALERTS);
 
 // No `mode` field: basic and advanced mode belong to the UI.
 // Strict: an unknown field (a `secrets` on the plain config) must not be silently ignored.
