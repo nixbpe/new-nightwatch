@@ -241,6 +241,114 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
     });
   });
 
+  it("a monitor with threshold 3 sends MONITOR_DOWN only at the third consecutive failure (P60-01)", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await updateMonitor(
+      db,
+      monitor,
+      "update monitors set alert_failure_threshold = 3 where id = $1",
+      [monitor.monitorId],
+    );
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("fail"));
+    expect(await intentTypes(monitor)).toEqual([]);
+    await record(monitor, httpResult("fail"));
+    expect(await intentTypes(monitor)).toEqual(["MONITOR_DOWN"]);
+  });
+
+  it.each([
+    { orgEnabled: true, monitorEnabled: true, sends: true },
+    { orgEnabled: true, monitorEnabled: false, sends: false },
+    { orgEnabled: false, monitorEnabled: true, sends: false },
+    { orgEnabled: false, monitorEnabled: false, sends: false },
+  ])(
+    "org down toggle $orgEnabled x monitor down toggle $monitorEnabled sends down/recovered: $sends (OD-60-01, P60-02, P60-05)",
+    async ({ orgEnabled, monitorEnabled, sends }) => {
+      const monitor = await seedMonitor(db);
+      await seedMembers(monitor);
+      await db.owner.sql.query(
+        `insert into notification_org_settings (tenant_id, monitor_alerts_enabled)
+         values ($1, $2)`,
+        [monitor.tenantId, orgEnabled],
+      );
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_down_enabled = $2 where id = $1",
+        [monitor.monitorId, monitorEnabled],
+      );
+      await record(monitor, httpResult("fail"));
+      await record(monitor, httpResult("fail"));
+      await record(monitor, httpResult("pass"));
+      expect(await intentTypes(monitor)).toEqual(
+        sends ? ["MONITOR_DOWN", "MONITOR_RECOVERED"] : [],
+      );
+      // Incident and health change the same way regardless of the toggles.
+      const [incident] = await rows<{
+        down_notified: boolean;
+        ended_at: Date | null;
+      }>(
+        db,
+        monitor,
+        "select down_notified, ended_at from monitor_incidents where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(incident?.down_notified).toBe(sends);
+      expect(incident?.ended_at).not.toBeNull();
+    },
+  );
+
+  it("per-monitor down toggle off at open and on at close sends neither down nor recovered", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await updateMonitor(
+      db,
+      monitor,
+      "update monitors set alert_down_enabled = false where id = $1",
+      [monitor.monitorId],
+    );
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("fail"));
+    await updateMonitor(
+      db,
+      monitor,
+      "update monitors set alert_down_enabled = true where id = $1",
+      [monitor.monitorId],
+    );
+    await record(monitor, httpResult("pass"));
+    expect(await intentTypes(monitor)).toEqual([]);
+    const [incident] = await rows<{ down_notified: boolean }>(
+      db,
+      monitor,
+      "select down_notified from monitor_incidents where monitor_id = $1",
+      [monitor.monitorId],
+    );
+    expect(incident?.down_notified).toBe(false);
+  });
+
+  it("per-monitor down toggle on at open and off at close sends down but no recovered", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await record(monitor, httpResult("fail"));
+    await record(monitor, httpResult("fail"));
+    await updateMonitor(
+      db,
+      monitor,
+      "update monitors set alert_down_enabled = false where id = $1",
+      [monitor.monitorId],
+    );
+    await record(monitor, httpResult("pass"));
+    expect(await intentTypes(monitor)).toEqual(["MONITOR_DOWN"]);
+    const [incident] = await rows<{ ended_at: Date | null }>(
+      db,
+      monitor,
+      "select ended_at from monitor_incidents where monitor_id = $1",
+      [monitor.monitorId],
+    );
+    expect(incident?.ended_at).not.toBeNull();
+  });
+
   it("an admin demoted before materialize gets nothing", async () => {
     const monitor = await seedMonitor(db);
     const members = await seedMembers(monitor);
@@ -277,6 +385,8 @@ describe("incident notifications (AC-24, AC-51, AC-52)", () => {
         monitorId: monitor.monitorId,
         monitorName: "Checked monitor",
         occurredAt: new Date(),
+        alertDownEnabled: true,
+        alertSslEnabled: true,
         incidentId: randomUUID(),
         endReason: "paused_by_user",
         downNotified: true,
@@ -488,6 +598,177 @@ describe("SSL notifications (AC-36)", () => {
       "MONITOR_SSL_CAUTION",
       "MONITOR_SSL_CAUTION",
     ]);
+  });
+
+  it.each([
+    { orgEnabled: true, monitorEnabled: true, sends: true },
+    { orgEnabled: true, monitorEnabled: false, sends: false },
+    { orgEnabled: false, monitorEnabled: true, sends: false },
+    { orgEnabled: false, monitorEnabled: false, sends: false },
+  ])(
+    "org ssl toggle $orgEnabled x monitor ssl toggle $monitorEnabled sends danger: $sends (OD-60-01, P60-03, P60-05)",
+    async ({ orgEnabled, monitorEnabled, sends }) => {
+      const monitor = await seedMonitor(db);
+      await seedMembers(monitor);
+      await db.owner.sql.query(
+        `insert into notification_org_settings (tenant_id, monitor_alerts_enabled)
+         values ($1, $2)`,
+        [monitor.tenantId, orgEnabled],
+      );
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_ssl_enabled = $2 where id = $1",
+        [monitor.monitorId, monitorEnabled],
+      );
+      await record(monitor, certResult(notAfter, daysBefore(7)));
+      expect(await intentTypes(monitor)).toEqual(
+        sends ? ["MONITOR_SSL_DANGER"] : [],
+      );
+    },
+  );
+
+  it("per-monitor SSL toggle off sends nothing but still advances the level, so re-enabling sends only a later, more severe one", async () => {
+    const monitor = await seedMonitor(db);
+    await seedMembers(monitor);
+    await updateMonitor(
+      db,
+      monitor,
+      "update monitors set alert_ssl_enabled = false where id = $1",
+      [monitor.monitorId],
+    );
+    await record(monitor, certResult(notAfter, daysBefore(30)));
+    await record(monitor, certResult(notAfter, daysBefore(7)));
+    expect(await intentTypes(monitor)).toEqual([]);
+    const [advanced] = await rows<{ ssl_notified_level: string }>(
+      db,
+      monitor,
+      "select ssl_notified_level from monitors where id = $1",
+      [monitor.monitorId],
+    );
+    expect(advanced?.ssl_notified_level).toBe("danger");
+
+    await updateMonitor(
+      db,
+      monitor,
+      "update monitors set alert_ssl_enabled = true where id = $1",
+      [monitor.monitorId],
+    );
+    await record(monitor, certResult(notAfter, daysBefore(6)));
+    expect(await intentTypes(monitor)).toEqual([]);
+    await record(monitor, expiredResult(daysBefore(0, 1_000)));
+    expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_EXPIRED"]);
+  });
+
+  describe("per-monitor caution days (OD-60-04, OD-60-05, Concurrency)", () => {
+    it("a 14-day caution window sends caution before the fixed 30-day display edge is reached", async () => {
+      const monitor = await seedMonitor(db);
+      await seedMembers(monitor);
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_ssl_caution_days = 14 where id = $1",
+        [monitor.monitorId],
+      );
+      // 20 days remaining: above the 14-day notify edge (no event yet), but
+      // the fixed 30-day display edge (sslLevel, unaffected by this column)
+      // already shows caution.
+      await record(monitor, certResult(notAfter, daysBefore(20)));
+      expect(await intentTypes(monitor)).toEqual([]);
+      const [displayed] = await rows<{ ssl_state: string }>(
+        db,
+        monitor,
+        "select ssl_state from monitors where id = $1",
+        [monitor.monitorId],
+      );
+      expect(displayed?.ssl_state).toBe("caution");
+
+      await record(monitor, certResult(notAfter, daysBefore(14)));
+      await record(monitor, certResult(notAfter, daysBefore(7)));
+      await record(monitor, expiredResult(daysBefore(0, 1_000)));
+      const types = (await intentTypes(monitor)).filter((type) =>
+        type.startsWith("MONITOR_SSL"),
+      );
+      expect(types).toEqual([
+        "MONITOR_SSL_CAUTION",
+        "MONITOR_SSL_DANGER",
+        "MONITOR_SSL_EXPIRED",
+      ]);
+    });
+
+    it("a renewal at a 14-day caution window raises no event until the new certificate is within that window", async () => {
+      const monitor = await seedMonitor(db);
+      await seedMembers(monitor);
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_ssl_caution_days = 14 where id = $1",
+        [monitor.monitorId],
+      );
+      await record(monitor, certResult(notAfter, daysBefore(6)));
+      expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_DANGER"]);
+
+      const renewed = new Date(notAfter.getTime() + 25 * DAY);
+      await record(
+        monitor,
+        certResult(renewed, new Date(renewed.getTime() - 20 * DAY)),
+      );
+      expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_DANGER"]);
+      const [displayed] = await rows<{ ssl_state: string }>(
+        db,
+        monitor,
+        "select ssl_state from monitors where id = $1",
+        [monitor.monitorId],
+      );
+      expect(displayed?.ssl_state).toBe("caution");
+
+      await record(
+        monitor,
+        certResult(renewed, new Date(renewed.getTime() - 10 * DAY)),
+      );
+      expect(await intentTypes(monitor)).toEqual([
+        "MONITOR_SSL_DANGER",
+        "MONITOR_SSL_CAUTION",
+      ]);
+    });
+
+    it("reducing sslCautionDays after caution was already sent for this certificate does not resend", async () => {
+      const monitor = await seedMonitor(db);
+      await seedMembers(monitor);
+      await record(monitor, certResult(notAfter, daysBefore(30)));
+      expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_CAUTION"]);
+
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_ssl_caution_days = 10 where id = $1",
+        [monitor.monitorId],
+      );
+      await record(monitor, certResult(notAfter, daysBefore(9)));
+      expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_CAUTION"]);
+    });
+
+    it("increasing sslCautionDays sends caution once the wider window covers the certificate", async () => {
+      const monitor = await seedMonitor(db);
+      await seedMembers(monitor);
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_ssl_caution_days = 8 where id = $1",
+        [monitor.monitorId],
+      );
+      await record(monitor, certResult(notAfter, daysBefore(15)));
+      expect(await intentTypes(monitor)).toEqual([]);
+
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_ssl_caution_days = 20 where id = $1",
+        [monitor.monitorId],
+      );
+      await record(monitor, certResult(notAfter, daysBefore(14)));
+      expect(await intentTypes(monitor)).toEqual(["MONITOR_SSL_CAUTION"]);
+    });
   });
 });
 
