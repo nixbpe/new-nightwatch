@@ -648,7 +648,7 @@ describe("WorkspacePage overview details", () => {
 
     const portal = within(row("portal"));
     const issuer = portal.getByText("ผู้ออก Let's Encrypt R11");
-    expect(issuer).toHaveClass("break-words");
+    expect(issuer).toHaveClass("[overflow-wrap:anywhere]");
     const expiry = portal.getByText(formatDate(notAfter));
     expect(expiry).toHaveAttribute("datetime", notAfter);
     expect(expiry.parentElement).toHaveTextContent(

@@ -105,7 +105,7 @@ function IssueRow({
           <b className="font-medium text-foreground">{sslDays}</b>
         ) : null}
         {!down && ssl && row.ssl.issuer !== null ? (
-          <span className="min-w-0 break-words text-xs">
+          <span className="min-w-0 text-xs [overflow-wrap:anywhere]">
             ผู้ออก {row.ssl.issuer}
           </span>
         ) : null}

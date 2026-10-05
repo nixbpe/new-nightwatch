@@ -25,8 +25,9 @@ const pool = database.sql;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
+// No space or hyphen: only overflow-wrap can break it inside the 170 px column.
 const LONG_ISSUER =
-  "CN=Nightwatch-Example-Intermediate-Certificate-Authority-Global-Trust-Services-G3-2026";
+  "CNNightwatchExampleIntermediateCertificateAuthorityGlobalTrustServicesG32026";
 
 type Seed = {
   key: "alpha" | "mike" | "zulu";
@@ -110,7 +111,11 @@ async function seedResults() {
   }
 }
 
-/** Hours that fit the partitions `db:partitions` prepares (current month onward). */
+/**
+ * `db:partitions` prepares the previous month through three months ahead. Hours
+ * before the current UTC month start are skipped so the seed never depends on
+ * the previous-month partition; the expected text follows what was seeded.
+ */
 function alphaHours() {
   const now = new Date();
   const currentHour = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS;
@@ -297,10 +302,16 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   await expect(alphaCard.locator("span[aria-hidden='true'] > i")).toHaveCount(
     24,
   );
-  // A monitor without any hourly point says so in words.
-  await expect(cardItems(page).filter({ hasText: names.mike })).toContainText(
-    "ไม่มีข้อมูล",
-  );
+  // A monitor without any hourly point shows the words in the sparkline slot
+  // (a direct child of the content column), no bars and no chart description.
+  const mikeCard = cardItems(page).filter({ hasText: names.mike });
+  await expect(
+    mikeCard.locator("div.flex-1 > span", { hasText: /^ไม่มีข้อมูล$/ }),
+  ).toHaveCount(1);
+  await expect(mikeCard.locator("span[aria-hidden='true'] > i")).toHaveCount(0);
+  await expect(
+    mikeCard.locator(".sr-only", { hasText: "เวลาตอบสนองเฉลี่ย" }),
+  ).toHaveCount(0);
 
   // Reload: the view is remembered, the sort is not.
   await page.reload();
@@ -376,7 +387,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(geometry.columnWidth).toBeLessThanOrEqual(170.5);
       expect(geometry.width).toBeLessThanOrEqual(170.5);
       expect(geometry.overflow).toBeLessThanOrEqual(0);
-      // More than one line: the unbroken issuer name wrapped inside the column.
+      // More than one line: the issuer name, which has no break point, wrapped inside the column.
       expect(geometry.height).toBeGreaterThan(geometry.lineHeight * 1.5);
     }
 
