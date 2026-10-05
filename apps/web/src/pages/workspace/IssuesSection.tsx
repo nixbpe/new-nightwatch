@@ -2,11 +2,11 @@ import { Link } from "react-router";
 
 import { initialsFontClass, initialsOf } from "../../components/shell/initials";
 import { HairlineGrid } from "../../components/ui/hairline-grid";
-import { MockupFrame } from "../../components/ui/mockup-frame";
 import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import {
+  formatDate,
   formatDuration,
   formatTimeOrDate,
   incidentReasonLabel,
@@ -104,6 +104,19 @@ function IssueRow({
         {!down && ssl && sslDays !== null ? (
           <b className="font-medium text-foreground">{sslDays}</b>
         ) : null}
+        {!down && ssl && row.ssl.issuer !== null ? (
+          <span className="min-w-0 break-words text-xs">
+            ผู้ออก {row.ssl.issuer}
+          </span>
+        ) : null}
+        {!down && ssl && row.ssl.notAfter !== null ? (
+          <span className="text-xs">
+            หมดอายุ{" "}
+            <time dateTime={row.ssl.notAfter}>
+              {formatDate(row.ssl.notAfter)}
+            </time>
+          </span>
+        ) : null}
       </span>
     </Link>
   );
@@ -152,16 +165,6 @@ export function IssuesSection({
           ))}
         </HairlineGrid>
       )}
-      <MockupFrame
-        label="ผู้ออกใบรับรองและวันหมดอายุของ SSL"
-        issue={59}
-        className="mt-4"
-      >
-        <p className="text-[13px]">
-          ใบรับรองหมดอายุ <span className="font-mono">-- --- ----</span> ·{" "}
-          ผู้ออกใบรับรองตัวอย่าง
-        </p>
-      </MockupFrame>
     </section>
   );
 }
