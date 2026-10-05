@@ -1,18 +1,23 @@
 # F-000 Technical Spec
 
-Save as `docs/features/F-000-<slug>/spec.md`. Owner: Technical Lead. This spec is the source of truth for implementation and review. Omit any Contracts subsection the change does not touch. Link to the Feature's ACs instead of restating them.
+Save as `docs/features/F-000-<slug>/spec.md`. Owner: Technical Lead. This spec owns technical contracts and Tasks for implementation and review. The Feature owns scope, UI behavior and ACs.
 
-| Field                | Value                                                           |
-| -------------------- | --------------------------------------------------------------- |
-| Feature              | F-000, `acceptanceVersion` F-000-AC-1 (`feature.md`)            |
-| Epic                 | E-000 / None                                                    |
-| Status               | Draft / Approved                                                |
-| Approved by user     | Not yet / date (freezes acceptance)                             |
-| Start authorization  | None / date and issue (approval alone does not start work)      |
-| `COMMIT_MODE`        | none / owned-slice                                              |
-| `STOP_AT`            | review-ready / merge-ready                                      |
+Summarize the technical change in one sentence. For long specs, add links to Contracts, blocking Open decisions, delivery and verification records.
+
+| Field               | Value                                                      |
+| ------------------- | ---------------------------------------------------------- |
+| Feature             | F-000, `acceptanceVersion` F-000-AC-1 (`feature.md`)       |
+| Status              | Draft / Approved                                           |
+| Approved by user    | Not yet / date (freezes acceptance)                        |
+| Start authorization | None / date and issue (approval alone does not start work) |
+| `COMMIT_MODE`       | none / owned-slice                                         |
+| `STOP_AT`           | review-ready / merge-ready                                 |
+
+Set `Status` to Approved only with a date in `Approved by user`.
 
 ## Contracts
+
+Omit untouched subsections. Specify technical details here; link to Feature scope, UI states and ACs. Keep repository conventions in their owning references.
 
 - API: operations, inputs, outputs and errors.
 - Data: tables or columns, RLS policies and grants, migrations.
@@ -23,12 +28,13 @@ Save as `docs/features/F-000-<slug>/spec.md`. Owner: Technical Lead. This spec i
 
 ## Design decisions
 
-- Architecture drivers touched, the choice made and why.
-- Risks and how they are handled.
-- Assumptions.
-- Non-goals.
+- Choices and reasons; rejected alternatives only when they explain a tradeoff.
+- Touched architecture drivers, risks and mitigations, and assumptions.
+- Link to Feature non-goals; add only technical exclusions.
 
 ## Tasks
+
+Map every AC to a Task's `COVERS` or integrated verification. Keep dependencies and shared-file ownership in the table; keep Task details in its block.
 
 Order and ownership:
 
@@ -36,36 +42,41 @@ Order and ownership:
 | ------ | ---------- | --------------------------------- |
 | NODE-1 | None       | software-engineer                 |
 
-One block per Task:
+One block per Task. Keep every field; use links for shared constraints and `None` when no Task-specific constraint applies.
 
 ### NODE-1 Title
 
 - **OWNER:** software-engineer
 - **READY:** condition that makes this Task startable
-- **OUTCOME:** the behavior that exists when done
-- **SOURCE:** this spec's contract sections and the ACs below
-- **INVARIANTS:**
-- **FILES:**
-- **NON-GOALS:**
-- **CONTRACTS:** what sibling Tasks depend on
-- **VERIFY:** focused checks permitted while siblings write
-- **PROOF:** evidence required at handoff
+- **OUTCOME:** one-line behavior delivered by this Task
+- **SOURCE:** links to contract headings and Feature AC IDs
+- **INVARIANTS:** Task-specific constraints or links to shared invariants
+- **FILES:** owned paths; shared-file ownership follows the table
+- **NON-GOALS:** link to shared exclusions; add only Task-specific exclusions
+- **CONTRACTS:** links to contracts sibling Tasks depend on, or None
+- **VERIFY:** focused commands permitted while siblings write
+- **PROOF:** required results and artifacts at handoff, traced to COVERS
 - **COVERS:** AC-01
+
+After delivery, link the delivered PR or commit and label execution settings as historical. Move completed plans to `history.md` when they need preserving. Keep approved contracts and revisions here.
 
 ## Integrated verification
 
-- ACs covered only by integrated verification, with the scenario for each.
-- Gates run once after all writers stop (see `scripts/quality/README.md`).
+- AC IDs covered only at integration, with the scenario for each.
+- Link to applicable gates in `scripts/quality/README.md`; run them after all writers stop.
+- Record actual results and gaps separately, linked to the verified commit or candidate. Delivery does not prove acceptance, runtime verification or a measured outcome.
 
 ## Open decisions
 
-| Decision | Owner |
-| -------- | ----- |
-| …        | …     |
+Keep unresolved technical decisions here; link to open product decisions in the Feature. Write `None` when all are resolved.
+
+| Decision / missing input | Owner | Blocks Task / AC      |
+| ------------------------ | ----- | --------------------- |
+| …                        | …     | NODE-1 / AC-01 / None |
 
 ## Revisions
 
-A change to an approved contract or AC is recorded here and approved again by the user.
+Record changes to an approved contract or AC and obtain user approval before implementation. Link to the changed contract or Feature AC. Update `acceptanceVersion` when ACs change; keep discussion in the linked source.
 
 | Date | Change | Approved by user | `acceptanceVersion` |
 | ---- | ------ | ---------------- | ------------------- |
