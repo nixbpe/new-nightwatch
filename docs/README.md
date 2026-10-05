@@ -15,6 +15,7 @@ This index locates contract sources and code entry points. It defines no additio
 | Pending invitation list, resend, cancel and operator provisioning | [F-006 Feature](features/F-006-pending-invitation-management/feature.md) | [F-006 Spec](features/F-006-pending-invitation-management/spec.md) |
 | Organization audit events and exports | [F-007 Feature](features/F-007-organization-audit-log/feature.md) | [F-007 Spec](features/F-007-organization-audit-log/spec.md) |
 | Monitor event feed and last response, extending F-005 | [Issue #58 Feature](features/issue-58-monitor-event-feed/feature.md) | [Issue #58 Spec](features/issue-58-monitor-event-feed/spec.md) |
+| Per-monitor alert settings, extending F-005 | None (see spec) | [Issue #60 Spec](features/issue-60-monitor-alert-settings/spec.md) |
 | Member-count limit display | [Issue #66 Feature](features/issue-66-member-limit/feature.md) | [Issue #66 Spec](features/issue-66-member-limit/spec.md) |
 
 The [deferred toolchain upgrades](features/tech-stack-upgrade/spec.md) retain their own authorization gates. [Product Direction](product-direction.md), [Project visibility](epics/E-001-project-organization-visibility.md) and [Member governance](epics/E-002-organization-member-governance.md) describe product intent and initiative scope.
