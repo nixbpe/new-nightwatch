@@ -5,25 +5,34 @@ import {
   organizationNotificationSettingsQueryKey,
 } from "../../../lib/api/notifications";
 import { Card } from "../../../components/ui/card";
-import { MockupFrame } from "../../../components/ui/mockup-frame";
 import { SectionHeader } from "../../../components/ui/section-header";
+import { ORG_ALERTS_OFF_MESSAGE } from "../detail/labels";
+import { SelectControl, TextControl, type SectionProps } from "./controls";
 
 const CHECKBOX_CARD =
   "flex items-start gap-3 rounded-md border border-foreground/10 px-4 py-3 text-sm";
 
+// OD-60-02 (a): the threshold always decides "ล่ม", whether or not the down
+// toggle below sends a notification for it (UX-60-01, label text frozen P60-01).
+const FAILURE_THRESHOLD_HINT =
+  "ค่านี้ใช้ตัดสินว่ามอนิเตอร์ล่มด้วย แม้ปิด 'แจ้งเมื่อล่มและกลับมาปกติ'";
+const SSL_DAYS_DISABLED_HINT =
+  'เปิด "แจ้งเมื่อ SSL ใกล้หมดอายุ" ก่อน จึงจะแก้จำนวนวันนี้ได้';
+
 /**
- * Alerts step. Down, recovery and SSL expiry notifications are org
- * notifications gated by the org setting monitorAlertsEnabled (worker
- * notifications.ts), so the note reuses the org settings string and shows only
- * while that setting is on. Unknown, failed or off hides it.
- * The per-monitor toggles and the failure threshold are not in the contract
- * yet, so they are sample controls inside a mockup frame (issue 60): disabled,
- * unnamed and outside the form values.
+ * Alerts step (issue 60): real controls bound to `values.alerts`, replacing
+ * the sample mockup. Down, recovery and SSL expiry notifications are also
+ * gated by the org setting `monitorAlertsEnabled` (worker notifications.ts);
+ * this note mirrors that state without duplicating the per-monitor toggles.
  */
 export function AlertsSection({
   code,
   organizationId,
-}: {
+  values,
+  errors,
+  onChange,
+  disabled,
+}: SectionProps & {
   code: string;
   organizationId: string;
 }) {
@@ -31,6 +40,7 @@ export function AlertsSection({
     queryKey: organizationNotificationSettingsQueryKey(organizationId),
     queryFn: () => fetchOrganizationNotificationSettings(organizationId),
   });
+  const alerts = values.alerts;
   return (
     <Card as="section" aria-labelledby="monitor-form-alerts" padding="md">
       <SectionHeader
@@ -45,30 +55,83 @@ export function AlertsSection({
           ใกล้หมดอายุหรือหมดอายุ
         </p>
       ) : null}
-      <MockupFrame label="ตั้งค่าการแจ้งเตือนต่อมอนิเตอร์" issue={60}>
-        <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            แจ้งเมื่อล้มเหลวติดกัน
-            <select
-              disabled
-              defaultValue="2"
-              className="h-10 max-w-48 rounded-md border border-control-border bg-transparent px-3 font-sans text-sm opacity-60"
-            >
-              <option value="1">1 ครั้ง</option>
-              <option value="2">2 ครั้ง</option>
-              <option value="3">3 ครั้ง</option>
-            </select>
-          </label>
-          <label className={CHECKBOX_CARD}>
-            <input type="checkbox" disabled defaultChecked className="mt-0.5" />
-            <span className="font-medium">แจ้งเมื่อล่มและกลับมาปกติ</span>
-          </label>
-          <label className={CHECKBOX_CARD}>
-            <input type="checkbox" disabled defaultChecked className="mt-0.5" />
-            <span className="font-medium">แจ้งเมื่อ SSL ใกล้หมดอายุ</span>
-          </label>
-        </div>
-      </MockupFrame>
+      {settings.data?.monitorAlertsEnabled === false ? (
+        <p role="status" className="text-sm text-foreground-secondary">
+          {ORG_ALERTS_OFF_MESSAGE}
+        </p>
+      ) : null}
+      <SelectControl
+        path="alerts.failureThreshold"
+        label="แจ้งเมื่อล้มเหลวติดกัน"
+        value={String(alerts.failureThreshold)}
+        error={errors["alerts.failureThreshold"]}
+        disabled={disabled}
+        hint={FAILURE_THRESHOLD_HINT}
+        className="max-w-48"
+        onChange={(event) => {
+          onChange(
+            {
+              alerts: {
+                ...alerts,
+                failureThreshold: Number(event.target.value),
+              },
+            },
+            "alerts.failureThreshold",
+          );
+        }}
+      >
+        <option value="1">1 ครั้ง</option>
+        <option value="2">2 ครั้ง</option>
+        <option value="3">3 ครั้ง</option>
+      </SelectControl>
+      <label className={CHECKBOX_CARD}>
+        <input
+          type="checkbox"
+          checked={alerts.downEnabled}
+          aria-disabled={disabled}
+          className="mt-0.5 h-4 w-4 accent-primary"
+          onChange={(event) => {
+            if (disabled) return;
+            onChange(
+              { alerts: { ...alerts, downEnabled: event.target.checked } },
+              "alerts.downEnabled",
+            );
+          }}
+        />
+        <span className="font-medium">แจ้งเมื่อล่มและกลับมาปกติ</span>
+      </label>
+      <label className={CHECKBOX_CARD}>
+        <input
+          type="checkbox"
+          checked={alerts.sslEnabled}
+          aria-disabled={disabled}
+          className="mt-0.5 h-4 w-4 accent-primary"
+          onChange={(event) => {
+            if (disabled) return;
+            onChange(
+              { alerts: { ...alerts, sslEnabled: event.target.checked } },
+              "alerts.sslEnabled",
+            );
+          }}
+        />
+        <span className="font-medium">แจ้งเมื่อ SSL ใกล้หมดอายุ</span>
+      </label>
+      <TextControl
+        path="alerts.sslCautionDays"
+        label="แจ้งล่วงหน้าก่อนหมดอายุ (วัน)"
+        inputMode="numeric"
+        value={alerts.sslCautionDays}
+        error={errors["alerts.sslCautionDays"]}
+        disabled={disabled || !alerts.sslEnabled}
+        hint={alerts.sslEnabled ? undefined : SSL_DAYS_DISABLED_HINT}
+        className="max-w-40"
+        onChange={(event) => {
+          onChange(
+            { alerts: { ...alerts, sslCautionDays: event.target.value } },
+            "alerts.sslCautionDays",
+          );
+        }}
+      />
     </Card>
   );
 }

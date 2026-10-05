@@ -33,6 +33,12 @@ export function record(overrides: Partial<MonitorRecord> = {}): MonitorRecord {
     version: 3,
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:00.000Z",
+    alerts: {
+      failureThreshold: 2,
+      downEnabled: true,
+      sslEnabled: true,
+      sslCautionDays: 30,
+    },
     ...overrides,
   };
 }

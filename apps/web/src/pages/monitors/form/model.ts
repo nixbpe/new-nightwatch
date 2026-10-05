@@ -1,6 +1,7 @@
 import {
   canonicalSecretSlot,
   MONITOR_BODY_MAX_BYTES,
+  MONITOR_DEFAULT_ALERTS,
   MONITOR_DEFAULT_EXPECTED_STATUS,
   MONITOR_DEFAULT_INTERVAL_SECONDS,
   MONITOR_DEFAULT_TIMEOUT_SECONDS,
@@ -15,6 +16,7 @@ import {
   monitorConfigSchema,
   monitorInvalidErrorResponseSchema,
   monitorIssueReason,
+  type AlertSettings,
   type MonitorConfigInput,
   type MonitorInvalidReason,
   type MonitorRecord,
@@ -60,6 +62,14 @@ export type AssertionRow = {
   ms: string;
 };
 
+/** `sslCautionDays` is text like `timeoutSeconds`, so an empty or non-numeric field has a place to live before validation. */
+export type AlertsValues = {
+  failureThreshold: number;
+  downEnabled: boolean;
+  sslEnabled: boolean;
+  sslCautionDays: string;
+};
+
 export type FormValues = {
   name: string;
   url: string;
@@ -73,6 +83,7 @@ export type FormValues = {
   expectedStatus: string;
   assertions: AssertionRow[];
   auth: MonitorAuth;
+  alerts: AlertsValues;
   /** Stored secret slots whose replacement field is open on Edit; the typed values live in the secret store. */
   replacing: string[];
 };
@@ -114,6 +125,12 @@ export function defaultValues(): FormValues {
     expectedStatus: MONITOR_DEFAULT_EXPECTED_STATUS,
     assertions: [],
     auth: { type: "none" },
+    alerts: {
+      failureThreshold: MONITOR_DEFAULT_ALERTS.failureThreshold,
+      downEnabled: MONITOR_DEFAULT_ALERTS.downEnabled,
+      sslEnabled: MONITOR_DEFAULT_ALERTS.sslEnabled,
+      sslCautionDays: String(MONITOR_DEFAULT_ALERTS.sslCautionDays),
+    },
     replacing: [],
   };
 }
@@ -149,6 +166,12 @@ export function valuesFromRecord(record: MonitorRecord): FormValues {
           : { ms: String(assertion.ms) }),
     })),
     auth: record.auth,
+    alerts: {
+      failureThreshold: record.alerts.failureThreshold,
+      downEnabled: record.alerts.downEnabled,
+      sslEnabled: record.alerts.sslEnabled,
+      sslCautionDays: String(record.alerts.sslCautionDays),
+    },
     replacing: [],
   };
 }
@@ -202,7 +225,13 @@ function numberOf(text: string): number {
   return text.trim() === "" ? Number.NaN : Number(text);
 }
 
-export function configInput(values: FormValues): MonitorConfigInput {
+// `alerts` is narrowed to the complete, non-optional shape (not the wider,
+// per-field-optional `MonitorConfigInput["alerts"]`): every caller below
+// always fills all four fields, which is what Edit requires when it sends
+// `alerts` at all (monitorEditSchema, packages/api-contract/src/monitor.ts).
+export function configInput(
+  values: FormValues,
+): Omit<MonitorConfigInput, "alerts"> & { alerts: AlertSettings } {
   return {
     name: values.name,
     url: values.url,
@@ -237,6 +266,15 @@ export function configInput(values: FormValues): MonitorConfigInput {
           : { kind: assertion.kind, ms: numberOf(assertion.ms) },
     ),
     auth: values.auth,
+    // Always the complete object: Edit treats a partial `alerts` as invalid
+    // (monitorEditSchema, packages/api-contract/src/monitor.ts) to keep a
+    // client that sends only some fields from silently resetting the rest.
+    alerts: {
+      failureThreshold: values.alerts.failureThreshold,
+      downEnabled: values.alerts.downEnabled,
+      sslEnabled: values.alerts.sslEnabled,
+      sslCautionDays: numberOf(values.alerts.sslCautionDays),
+    },
   };
 }
 
@@ -437,6 +475,15 @@ const FIELD_MESSAGES: Record<
   assertions: {
     too_many: `เพิ่มเงื่อนไขได้ไม่เกิน ${String(MONITOR_MAX_ASSERTIONS)} ข้อ`,
   },
+  "alerts.failureThreshold": {
+    out_of_range: "เลือก 1, 2 หรือ 3 ครั้ง",
+    invalid_format: "เลือก 1, 2 หรือ 3 ครั้ง",
+  },
+  "alerts.sslCautionDays": {
+    required: "กรอกจำนวนเต็ม 8 ถึง 30 วัน",
+    invalid_format: "กรอกจำนวนเต็ม 8 ถึง 30 วัน",
+    out_of_range: "กรอกจำนวนเต็ม 8 ถึง 30 วัน",
+  },
 };
 
 export function fieldMessage(
@@ -507,7 +554,7 @@ export const ADVANCED_ONLY_PATH =
   /^(timeoutSeconds|method|expectedStatus|body|auth|headers|queryParams|assertions)(\.|$)/;
 
 const PLACEABLE_PATH =
-  /^(name|url|intervalSeconds|timeoutSeconds|method|expectedStatus|body\.content|headers|queryParams|assertions|auth|auth\.(headerName|token|username|password|apiKey)|headers\.\d+\.(name|value)|queryParams\.\d+\.(name|value)|assertions\.\d+\.(kind|path|expected|text|ms))$/;
+  /^(name|url|intervalSeconds|timeoutSeconds|method|expectedStatus|body\.content|headers|queryParams|assertions|auth|auth\.(headerName|token|username|password|apiKey)|headers\.\d+\.(name|value)|queryParams\.\d+\.(name|value)|assertions\.\d+\.(kind|path|expected|text|ms)|alerts\.(failureThreshold|downEnabled|sslEnabled|sslCautionDays))$/;
 
 /** What a message with no control of its own is about, so the summary points at it. */
 function unplacedMessage(

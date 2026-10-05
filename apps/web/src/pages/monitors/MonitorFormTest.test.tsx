@@ -614,6 +614,8 @@ describe("Redesign mockups and notes", () => {
   });
 
   const ALERT_NOTE = /เจ้าของและผู้ดูแลจะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม/;
+  const ORG_OFF_NOTE =
+    "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ";
 
   it.each([
     [true, true],
@@ -634,12 +636,12 @@ describe("Redesign mockups and notes", () => {
       });
       if (shown) {
         expect(await within(region).findByText(ALERT_NOTE)).toBeInTheDocument();
+        expect(within(region).queryByText(ORG_OFF_NOTE)).toBeNull();
       } else {
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(
+          await within(region).findByText(ORG_OFF_NOTE),
+        ).toBeInTheDocument();
         expect(within(region).queryByText(ALERT_NOTE)).toBeNull();
-      }
-      for (const box of within(region).getAllByRole("checkbox")) {
-        expect(box).toBeDisabled();
       }
     },
   );
@@ -674,5 +676,96 @@ describe("Redesign mockups and notes", () => {
     expect(screen.getByText(/ครั้งต่อวัน/)).toHaveTextContent(
       "ประมาณ 1,440 ครั้งต่อวัน",
     );
+  });
+});
+
+describe("Alerts section controls (issue 60)", () => {
+  beforeEach(() => {
+    vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
+      organizationId: A,
+      version: 1,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+    });
+  });
+
+  const thresholdSelect = () => screen.getByLabelText("แจ้งเมื่อล้มเหลวติดกัน");
+  const downCheckbox = () =>
+    screen.getByRole("checkbox", { name: "แจ้งเมื่อล่มและกลับมาปกติ" });
+  const sslCheckbox = () =>
+    screen.getByRole("checkbox", { name: "แจ้งเมื่อ SSL ใกล้หมดอายุ" });
+  const daysField = () =>
+    screen.getByLabelText("แจ้งล่วงหน้าก่อนหมดอายุ (วัน)");
+
+  it("defaults to 2 failures, both toggles on and 30 days, and sends that object unchanged", async () => {
+    const user = await openCreate();
+    expect(thresholdSelect()).toHaveValue("2");
+    expect(downCheckbox()).toBeChecked();
+    expect(sslCheckbox()).toBeChecked();
+    expect(daysField()).toHaveValue("30");
+    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledTimes(1);
+    });
+    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+      alerts: {
+        failureThreshold: 2,
+        downEnabled: true,
+        sslEnabled: true,
+        sslCautionDays: 30,
+      },
+    });
+  });
+
+  it("describes the threshold select's effect on ล่ม regardless of the down toggle", async () => {
+    await openCreate();
+    expect(thresholdSelect()).toHaveAccessibleDescription(
+      "ค่านี้ใช้ตัดสินว่ามอนิเตอร์ล่มด้วย แม้ปิด 'แจ้งเมื่อล่มและกลับมาปกติ'",
+    );
+  });
+
+  it("sends a changed threshold, toggle and caution days as one complete object", async () => {
+    const user = await openCreate();
+    await user.selectOptions(thresholdSelect(), "3");
+    await user.click(downCheckbox());
+    fireEvent.change(daysField(), { target: { value: "10" } });
+    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledTimes(1);
+    });
+    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+      alerts: {
+        failureThreshold: 3,
+        downEnabled: false,
+        sslEnabled: true,
+        sslCautionDays: 10,
+      },
+    });
+  });
+
+  it("disables the caution days field when SSL is off, announces why, and keeps the typed value", async () => {
+    const user = await openCreate();
+    fireEvent.change(daysField(), { target: { value: "12" } });
+    await user.click(sslCheckbox());
+    expect(daysField()).toHaveAttribute("aria-readonly", "true");
+    expect(daysField()).toHaveAccessibleDescription(
+      'เปิด "แจ้งเมื่อ SSL ใกล้หมดอายุ" ก่อน จึงจะแก้จำนวนวันนี้ได้',
+    );
+    expect(daysField()).toHaveValue("12");
+    await user.click(sslCheckbox());
+    expect(daysField()).not.toHaveAttribute("aria-readonly");
+    expect(daysField()).toHaveValue("12");
+  });
+
+  it("rejects an SSL caution day count outside 8 to 30 beside the field", async () => {
+    const user = await openCreate();
+    fireEvent.change(daysField(), { target: { value: "40" } });
+    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    expect(createMock).not.toHaveBeenCalled();
+    expect(daysField()).toHaveAttribute("aria-invalid", "true");
+    expect(daysField()).toHaveAccessibleDescription(
+      "กรอกจำนวนเต็ม 8 ถึง 30 วัน",
+    );
+    expect(daysField()).toHaveFocus();
   });
 });

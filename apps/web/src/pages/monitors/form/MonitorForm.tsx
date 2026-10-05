@@ -470,6 +470,7 @@ export function MonitorForm({
             </>
           ) : null}
           <AlertsSection
+            {...sectionProps}
             code={mode === "advanced" ? "05" : "02"}
             organizationId={organizationId}
           />

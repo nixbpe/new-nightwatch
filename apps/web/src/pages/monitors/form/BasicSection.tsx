@@ -4,7 +4,7 @@ import { Card } from "../../../components/ui/card";
 import { SectionHeader } from "../../../components/ui/section-header";
 
 import { SegmentedControl } from "../../../components/ui/segmented-control";
-import { DOWN_AFTER_FAILURES, intervalText } from "../detail/labels";
+import { intervalText } from "../detail/labels";
 import { formatNumber } from "../format";
 import { TextControl, type SectionProps } from "./controls";
 
@@ -102,7 +102,7 @@ export function BasicSection({
       <ul className="flex flex-col gap-1 text-sm text-foreground-secondary">
         <li>
           {intervalText(values.intervalSeconds)} ถือว่าล่มเมื่อล้มเหลวติดกัน{" "}
-          {DOWN_AFTER_FAILURES} ครั้ง
+          {values.alerts.failureThreshold} ครั้ง
         </li>
         <li>ถือว่าปกติเมื่อได้รหัส {values.expectedStatus.trim()}</li>
         {advanced ? null : (

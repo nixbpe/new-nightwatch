@@ -21,6 +21,7 @@ import {
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
 } from "../../lib/api/monitors";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   A,
   B,
@@ -38,11 +39,16 @@ import {
   sectionOf,
 } from "./detail-test-support";
 import { formatDateTime, formatTime } from "./format";
+import { deferred } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
 }));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -68,6 +74,7 @@ const fetchEventsMock = vi.mocked(fetchMonitorRecentEvents);
 const fetchFeedMock = vi.mocked(fetchMonitorEvents);
 const fetchLastResponseMock = vi.mocked(fetchMonitorLastResponse);
 const fetchResponseTimesMock = vi.mocked(fetchMonitorResponseTimes);
+const fetchOrgAlertsMock = vi.mocked(fetchOrganizationNotificationSettings);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
@@ -81,6 +88,12 @@ beforeEach(() => {
   });
   fetchLastResponseMock.mockResolvedValue({ response: null });
   fetchResponseTimesMock.mockResolvedValue(noResponseTimes);
+  fetchOrgAlertsMock.mockResolvedValue({
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: true,
+  });
 });
 
 afterEach(() => {
@@ -426,6 +439,187 @@ describe("Detail SSL card", () => {
       "datetime",
       "2027-02-05T00:00:00.000Z",
     );
+  });
+});
+
+describe("Detail alerts card", () => {
+  const alertsCard = async () =>
+    sectionOf(await screen.findByRole("heading", { name: "การแจ้งเตือน" }));
+
+  // Rows "แจ้งเมื่อล่มและกลับมาปกติ" and "แจ้งเมื่อ SSL ใกล้หมดอายุ" can also
+  // read "เปิด"/"ปิด", so the org row's own value is read from its <dd>
+  // specifically rather than a page-wide text match.
+  function orgRowValue(card: HTMLElement): HTMLElement {
+    const dt = within(card).getByText("การแจ้งเตือนระดับองค์กร");
+    return must(dt.nextElementSibling as HTMLElement | null);
+  }
+
+  it("shows the failure threshold, both toggles and the SSL caution days from the record", async () => {
+    showDetail(
+      detail({
+        alerts: {
+          failureThreshold: 3,
+          downEnabled: false,
+          sslEnabled: true,
+          sslCautionDays: 15,
+        },
+      }),
+    );
+    renderDetail();
+    const card = await alertsCard();
+    expect(within(card).getByText("3")).toBeInTheDocument();
+    expect(within(card).getByText("ปิด")).toBeInTheDocument();
+    expect(within(card).getByText(/เปิด \(ล่วงหน้า/)).toBeInTheDocument();
+    expect(within(card).getByText("15")).toBeInTheDocument();
+  });
+
+  it("appends the not-https note beside the day count when SSL is not readable", async () => {
+    showDetail(
+      detail({
+        alerts: {
+          failureThreshold: 2,
+          downEnabled: true,
+          sslEnabled: true,
+          sslCautionDays: 30,
+        },
+        ssl: { ...detail().ssl, state: "not_https" },
+      }),
+    );
+    renderDetail();
+    const card = await alertsCard();
+    expect(
+      within(card).getByText("มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง"),
+    ).toBeInTheDocument();
+    // The toggle's own value still shows: the note is additive, not a replacement.
+    expect(within(card).getByText(/เปิด \(ล่วงหน้า/)).toBeInTheDocument();
+  });
+
+  it("shows ปิด for the SSL row without a day count when the per-monitor toggle is off", async () => {
+    showDetail(
+      detail({
+        alerts: {
+          failureThreshold: 2,
+          downEnabled: true,
+          sslEnabled: false,
+          sslCautionDays: 30,
+        },
+      }),
+    );
+    renderDetail();
+    const card = await alertsCard();
+    expect(within(card).queryByText(/ล่วงหน้า/)).toBeNull();
+  });
+
+  it.each(["owner", "admin"] as const)(
+    "shows the org toggle to %s and the off note when it is off",
+    async (role) => {
+      fetchMeContextMock.mockResolvedValue(context(role));
+      fetchOrgAlertsMock.mockResolvedValue({
+        organizationId: A,
+        version: 1,
+        settingsChangedEnabled: true,
+        monitorAlertsEnabled: false,
+      });
+      showDetail(detail());
+      renderDetail();
+      const card = await alertsCard();
+      await waitFor(() => {
+        expect(orgRowValue(card)).toHaveTextContent("ปิด");
+      });
+      expect(
+        await within(card).findByText(
+          "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ",
+        ),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it.each(["viewer", "auditor"] as const)(
+    "hides the org row from a %s and never requests it",
+    async (role) => {
+      fetchMeContextMock.mockResolvedValue(context(role));
+      showDetail(detail());
+      renderDetail();
+      const card = await alertsCard();
+      expect(within(card).getByText("เกณฑ์ล้มเหลว")).toBeInTheDocument();
+      expect(within(card).queryByText("การแจ้งเตือนระดับองค์กร")).toBeNull();
+      await screen.findByText("ยังไม่มีเหตุการณ์ใน 30 วันล่าสุด");
+      expect(fetchOrgAlertsMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("shows a skeleton while the org setting loads, then its value", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof fetchOrgAlertsMock>>>();
+    fetchOrgAlertsMock.mockReturnValue(pending.promise);
+    showDetail(detail());
+    renderDetail();
+    const card = await alertsCard();
+    expect(
+      within(orgRowValue(card)).getByText("กำลังโหลดการตั้งค่าระดับองค์กร"),
+    ).toBeInTheDocument();
+    pending.resolve({
+      organizationId: A,
+      version: 1,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+    });
+    await waitFor(() => {
+      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+    });
+  });
+
+  it("shows an error with retry for the org row, never showing เปิด while it fails", async () => {
+    fetchOrgAlertsMock.mockRejectedValueOnce(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    showDetail(detail());
+    renderDetail();
+    const card = await alertsCard();
+    await waitFor(() => {
+      expect(
+        within(orgRowValue(card)).getByText("โหลดไม่สำเร็จ"),
+      ).toBeInTheDocument();
+    });
+    expect(orgRowValue(card)).not.toHaveTextContent("เปิด");
+    fetchOrgAlertsMock.mockResolvedValue({
+      organizationId: A,
+      version: 1,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+    });
+    await userEvent
+      .setup({ advanceTimers: vi.advanceTimersByTime })
+      .click(within(card).getByRole("button", { name: "ลองอีกครั้ง" }));
+    await waitFor(() => {
+      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+    });
+  });
+
+  it("drops to the denied note and stops polling when a refetch answers PERMISSION_DENIED", async () => {
+    fetchOrgAlertsMock.mockResolvedValue({
+      organizationId: A,
+      version: 1,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+    });
+    showDetail(detail());
+    const { queryClient } = renderDetail();
+    const card = await alertsCard();
+    await waitFor(() => {
+      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+    });
+    fetchOrgAlertsMock.mockRejectedValue(
+      new ApiError("PERMISSION_DENIED", "denied", 403),
+    );
+    await queryClient.refetchQueries({
+      queryKey: ["tenant", "notification-settings", A],
+    });
+    await waitFor(() => {
+      expect(orgRowValue(card)).toHaveTextContent("ไม่มีสิทธิ์ดูการตั้งค่านี้");
+    });
+    const calls = fetchOrgAlertsMock.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(fetchOrgAlertsMock.mock.calls.length).toBe(calls);
   });
 });
 
@@ -828,6 +1022,7 @@ describe("Detail structure", () => {
       "เหตุการณ์",
       "ประวัติการตรวจ",
       "การตั้งค่า",
+      "การแจ้งเตือน",
       "SSL",
       "การตอบกลับล่าสุด",
     ];

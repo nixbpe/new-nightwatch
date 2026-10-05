@@ -20,7 +20,9 @@ import {
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
 } from "../../lib/api/monitors";
+import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
+  A,
   context,
   detail,
   noChecks,
@@ -36,6 +38,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchOrganizationNotificationSettings: vi.fn(),
 }));
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -67,6 +73,12 @@ beforeEach(() => {
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
   feedMock.mockResolvedValue(feed([]));
   lastResponseMock.mockResolvedValue({ response: null });
+  vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
+    organizationId: A,
+    version: 1,
+    settingsChangedEnabled: true,
+    monitorAlertsEnabled: true,
+  });
 });
 
 afterEach(() => {
