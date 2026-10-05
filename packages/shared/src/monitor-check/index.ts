@@ -1,6 +1,6 @@
 export { buildCheckUrl } from "./check-url";
 export { runCheck, MAX_BODY_BYTES } from "./run-check";
-export { sslLevel, type SslLevel } from "./ssl-level";
+export { sslLevel, sslNotifyLevel, type SslLevel } from "./ssl-level";
 export {
   createRedactor,
   truncateActual,
