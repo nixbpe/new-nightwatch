@@ -984,9 +984,18 @@ export const monitorListItemSchema = z.object({
   url: z.string(),
   status: monitorStatusSchema,
   ...monitorStateSchema.shape,
+  method: monitorMethodSchema,
+  intervalSeconds: z.number().int(),
   lastResponseTimeMs: z.number().int().nullable(),
-  ssl: sslListSchema,
+  ssl: sslListSchema.extend({
+    issuer: z.string().nullable(),
+    notAfter: isoDateTime.nullable(),
+  }),
   uptime: z.object({ h24: uptimeWindowSchema, d30: uptimeWindowSchema }),
+  /** 24 hourly average response times, oldest first; the last is the current UTC hour. */
+  responseSparkline: z
+    .array(z.object({ hourStart: isoDateTime, avgMs: z.number().nullable() }))
+    .length(24),
 });
 
 export const MONITOR_LIST_DEFAULT_LIMIT = 25;
@@ -999,6 +1008,15 @@ export const MONITOR_RESPONSE_POINTS_MAX = 1440;
 export const MONITOR_RESPONSE_RANGES = ["24h", "7d", "30d"] as const;
 
 const pageOffsetSchema = z.coerce.number().int().min(0).default(0);
+
+export const MONITOR_LIST_SORTS = [
+  "problems",
+  "name",
+  "uptime",
+  "response_time",
+  "newest",
+] as const;
+export type MonitorListSort = (typeof MONITOR_LIST_SORTS)[number];
 
 export const monitorListQuerySchema = z.object({
   limit: z.coerce
@@ -1015,6 +1033,7 @@ export const monitorListQuerySchema = z.object({
     .max(MONITOR_Q_MAX_LENGTH)
     .refine(isStorableText)
     .optional(),
+  sort: z.enum(MONITOR_LIST_SORTS).default("problems"),
 });
 export type MonitorListQuery = z.output<typeof monitorListQuerySchema>;
 

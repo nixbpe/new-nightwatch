@@ -20,6 +20,8 @@ import {
   type MonitorIncidentsResponse,
   type MonitorHealthName,
   type MonitorListQuery,
+  type MonitorListSort,
+  type MonitorConfig,
   type MonitorResponseTimesResponse,
   type MonitorListResponse,
   type MonitorRecentEvent,
@@ -118,6 +120,7 @@ type StateRow = {
   id: string;
   name: string;
   url: string;
+  method: MonitorConfig["method"];
   status: "active" | "paused";
   createdAt: Date;
   intervalSeconds: number;
@@ -158,7 +161,7 @@ type StateRow = {
 const HOST_PATTERN = String.raw`(?i)^https?://(\[[^\]]*\]|[^/:?#]+)`;
 
 const STATE_QUERY = `
-  select m.id, m.name, m.url, m.status, m.created_at as "createdAt",
+  select m.id, m.name, m.url, m.method, m.status, m.created_at as "createdAt",
     m.interval_seconds as "intervalSeconds",
     m.check_config_version as "checkConfigVersion",
     m.consecutive_failures as "consecutiveFailures",
@@ -445,6 +448,129 @@ const HEALTH_ORDER: Record<MonitorHealthName, number> = {
   paused: 3,
 };
 
+const SPARKLINE_HOURS = 24;
+
+type SparklinePoint = { hourStart: string; avgMs: number | null };
+
+/**
+ * 24 hourly averages per monitor from the rollup, oldest first, the last point
+ * being the UTC hour of `now`. The hours are computed here (not with
+ * `date_trunc`, which follows the session TimeZone) and the average is divided
+ * in JS because `response_ms_sum` is a bigint.
+ */
+async function loadSparklines(
+  client: PoolClient,
+  organizationId: string,
+  monitorIds: string[],
+  now: Date,
+): Promise<Map<string, SparklinePoint[]>> {
+  const lastHour = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS;
+  const firstHour = lastHour - (SPARKLINE_HOURS - 1) * HOUR_MS;
+  const rows =
+    monitorIds.length === 0
+      ? []
+      : (
+          await client.query<{
+            monitorId: string;
+            hourStart: Date;
+            responseChecks: number;
+            responseMsSum: string;
+          }>(
+            `select t.id as "monitorId", h.hour_start as "hourStart",
+               h.response_checks as "responseChecks",
+               h.response_ms_sum::text as "responseMsSum"
+             from unnest($2::uuid[]) as t(id)
+             cross join lateral (
+               select hour_start, response_checks, response_ms_sum
+               from monitor_check_hourly
+               where monitor_id = t.id and tenant_id = $1
+                 and hour_start >= $3 and hour_start <= $4
+             ) h`,
+            [
+              organizationId,
+              monitorIds,
+              new Date(firstHour),
+              new Date(lastHour),
+            ],
+          )
+        ).rows;
+  const byKey = new Map(
+    rows.map((row) => [
+      `${row.monitorId}|${String(row.hourStart.getTime())}`,
+      row,
+    ]),
+  );
+  return new Map(
+    monitorIds.map((monitorId) => {
+      const points: SparklinePoint[] = [];
+      for (let index = 0; index < SPARKLINE_HOURS; index += 1) {
+        const hour = firstHour + index * HOUR_MS;
+        const row = byKey.get(`${monitorId}|${String(hour)}`);
+        points.push({
+          hourStart: new Date(hour).toISOString(),
+          avgMs:
+            row !== undefined && row.responseChecks > 0
+              ? Math.round(
+                  (Number(row.responseMsSum) / row.responseChecks) * 100,
+                ) / 100
+              : null,
+        });
+      }
+      return [monitorId, points];
+    }),
+  );
+}
+
+type Scored = {
+  row: StateRow;
+  state: ReturnType<typeof healthOf>;
+};
+
+// Every comparator looks at the primary key only. Array.prototype.sort is
+// stable, so ties keep the database order (lower(name), id); `name` is that
+// order unchanged.
+function compareBy(
+  sort: MonitorListSort,
+  uptime: Map<string, UptimeWindows> | null,
+): ((left: Scored, right: Scored) => number) | null {
+  switch (sort) {
+    case "problems":
+      return (left, right) =>
+        HEALTH_ORDER[left.state.health] - HEALTH_ORDER[right.state.health];
+    case "name":
+      return null;
+    case "uptime":
+      return (left, right) =>
+        nullsLast(
+          uptime?.get(left.row.id)?.h24.percent ?? null,
+          uptime?.get(right.row.id)?.h24.percent ?? null,
+          1,
+        );
+    case "response_time":
+      return (left, right) =>
+        nullsLast(
+          left.row.latestResponseTimeMs,
+          right.row.latestResponseTimeMs,
+          -1,
+        );
+    case "newest":
+      return (left, right) =>
+        right.row.createdAt.getTime() - left.row.createdAt.getTime();
+  }
+}
+
+/** `direction` 1 sorts ascending, -1 descending; null goes last either way. */
+function nullsLast(
+  left: number | null,
+  right: number | null,
+  direction: 1 | -1,
+): number {
+  if (left === null || right === null) {
+    return left === right ? 0 : left === null ? 1 : -1;
+  }
+  return direction * (left - right);
+}
+
 export async function listMonitors(
   database: Database,
   identity: ReadIdentity,
@@ -453,7 +579,7 @@ export async function listMonitors(
   return readInTenant(database, identity, async (client, now) => {
     // At most 50 rows per Organization, so health is computed for all of them
     // and the summary never depends on the filters. The database orders by
-    // lower(name), id; the health group sort is stable on top of that.
+    // lower(name), id; the requested sort is stable on top of that.
     const rows = await loadStates(client, identity.organizationId, {
       q: query.q,
     });
@@ -462,21 +588,35 @@ export async function listMonitors(
     const summary = { up: 0, down: 0, unknown: 0, paused: 0 };
     for (const { state } of scored) summary[state.health] += 1;
 
-    const filtered = scored
-      .filter(
-        ({ row, state }) =>
-          row.matches &&
-          (query.health === undefined || state.health === query.health),
-      )
-      .sort(
-        (left, right) =>
-          HEALTH_ORDER[left.state.health] - HEALTH_ORDER[right.state.health],
-      );
+    const filtered = scored.filter(
+      ({ row, state }) =>
+        row.matches &&
+        (query.health === undefined || state.health === query.health),
+    );
+    // Uptime is needed for every row only to sort by it; otherwise just for
+    // the page.
+    let uptime: Map<string, UptimeWindows> | null =
+      query.sort === "uptime"
+        ? await loadUptime(
+            client,
+            identity.organizationId,
+            filtered.map(({ row }) => row),
+            now,
+          )
+        : null;
+    const compare = compareBy(query.sort, uptime);
+    if (compare) filtered.sort(compare);
     const pageRows = filtered.slice(query.offset, query.offset + query.limit);
-    const uptime = await loadUptime(
+    uptime ??= await loadUptime(
       client,
       identity.organizationId,
       pageRows.map(({ row }) => row),
+      now,
+    );
+    const sparklines = await loadSparklines(
+      client,
+      identity.organizationId,
+      pageRows.map(({ row }) => row.id),
       now,
     );
 
@@ -488,21 +628,29 @@ export async function listMonitors(
       },
       monitors: pageRows.map(({ row, state }) => {
         const windows = uptime.get(row.id);
-        if (!windows) throw new Error("uptime missing for a listed monitor");
+        const responseSparkline = sparklines.get(row.id);
+        if (!windows || !responseSparkline) {
+          throw new Error("uptime or sparkline missing for a listed monitor");
+        }
         const ssl = sslOf(row, now);
         return {
           id: row.id,
           name: row.name,
           url: row.url,
+          method: row.method,
           status: row.status,
+          intervalSeconds: row.intervalSeconds,
           ...state,
           lastResponseTimeMs: row.latestResponseTimeMs,
           ssl: {
             level: ssl.level,
             daysRemaining: ssl.daysRemaining,
             host: row.sslHost,
+            issuer: row.sslIssuer,
+            notAfter: row.sslNotAfter?.toISOString() ?? null,
           },
           uptime: { h24: windows.h24, d30: windows.d30 },
+          responseSparkline,
         };
       }),
       page: {

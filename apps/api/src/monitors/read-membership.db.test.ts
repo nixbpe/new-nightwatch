@@ -143,7 +143,7 @@ describe("a member removed between the pre-check and the read transaction", () =
 });
 
 type Identity = { organizationId: string; actorUserId: string };
-const query = { limit: 25, offset: 0 } as const;
+const query = { limit: 25, offset: 0, sort: "problems" } as const;
 
 describe("an owner demoted between the pre-check and the read transaction", () => {
   it("is denied the last response", async () => {

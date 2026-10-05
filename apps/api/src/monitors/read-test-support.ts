@@ -7,6 +7,7 @@ import type { MonitorTestContext } from "./test-support";
 export type SeedMonitor = {
   name?: string;
   url?: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
   status?: "active" | "paused";
   intervalSeconds?: number;
   createdAgoSeconds?: number;
@@ -16,6 +17,7 @@ export type SeedMonitor = {
   alertFailureThreshold?: number;
   lastCheckAgoSeconds?: number | null;
   sslHost?: string | null;
+  sslIssuer?: string | null;
   sslNotAfterInSeconds?: number | null;
   sslState?: string | null;
   sslReason?: string | null;
@@ -32,7 +34,8 @@ export async function seedMonitor(
        (tenant_id, client_request_id, name, url, status, interval_seconds,
         timeout_seconds, check_config_version, consecutive_failures,
         last_passed_config_version, last_check_at, ssl_host, ssl_not_after,
-        ssl_state, ssl_reason, created_at, updated_at, alert_failure_threshold)
+        ssl_state, ssl_reason, created_at, updated_at, alert_failure_threshold,
+        method, ssl_issuer)
      values ($1, gen_random_uuid(), $2, $3, $4, $5, 10, $6, $7, $8,
        case when $9::float8 is null then null
             else now() - make_interval(secs => $9::float8) end,
@@ -42,7 +45,7 @@ export async function seedMonitor(
        $12, $13,
        now() - make_interval(secs => $14::float8),
        now() - make_interval(secs => $14::float8),
-       $15)
+       $15, $16, $17)
      returning id`,
     [
       organizationId,
@@ -62,6 +65,8 @@ export async function seedMonitor(
       options.sslReason ?? null,
       options.createdAgoSeconds ?? 90 * 86400,
       options.alertFailureThreshold ?? 2,
+      options.method ?? "GET",
+      options.sslIssuer ?? null,
     ],
   );
   const row = result.rows[0];
