@@ -511,6 +511,177 @@ describe("state, streak and incidents (AC-13, AC-39, AC-40)", () => {
     }
   });
 
+  it("threshold 1 opens on the first failure, writing check_failed and incident_opened from the same result (AC-39, OD-60-02)", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_failure_threshold = 1 where id = $1",
+        [monitor.monitorId],
+      );
+      const { events, states } = await runSteps(monitor, target, ["fail"]);
+      expect(states).toEqual([
+        { failures: 1, open: true, lastOutcome: "fail" },
+      ]);
+      expect(events.map((event) => event.type)).toEqual(["incident_opened"]);
+      const feed = await rows<{ kind: string }>(
+        db,
+        monitor,
+        "select kind from monitor_events where monitor_id = $1",
+        [monitor.monitorId],
+      );
+      expect(feed).toEqual([{ kind: "check_failed" }]);
+      const [row] = await rows<{ started_at: Date; checked_at: Date }>(
+        db,
+        monitor,
+        `select i.started_at, r.checked_at from monitor_incidents i
+         join monitor_check_results r on r.monitor_id = i.monitor_id
+         where i.monitor_id = $1`,
+        [monitor.monitorId],
+      );
+      expect(row?.started_at.getTime()).toBe(row?.checked_at.getTime());
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("threshold 3 opens the incident only at the third consecutive failure (OD-60-02, OD-60-03)", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_failure_threshold = 3 where id = $1",
+        [monitor.monitorId],
+      );
+      const { events, states } = await runSteps(monitor, target, [
+        "fail",
+        "fail",
+        "fail",
+      ]);
+      expect(states.map((state) => [state.failures, state.open])).toEqual([
+        [1, false],
+        [2, false],
+        [3, true],
+      ]);
+      expect(events.map((event) => event.type)).toEqual(["incident_opened"]);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("reducing the failure threshold while a streak is outstanding opens on the next failure under the new threshold (OD-60-06, Concurrency)", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_failure_threshold = 3 where id = $1",
+        [monitor.monitorId],
+      );
+      const first = await runSteps(monitor, target, ["fail", "fail"]);
+      expect(first.states.map((state) => [state.failures, state.open])).toEqual(
+        [
+          [1, false],
+          [2, false],
+        ],
+      );
+      // The save itself (an Edit, simulated directly) does not open an incident.
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_failure_threshold = 2 where id = $1",
+        [monitor.monitorId],
+      );
+      expect((await countAll(monitor)).incidents).toBe(0);
+
+      const second = await runSteps(
+        monitor,
+        target,
+        ["fail"],
+        Date.now() - 1_800_000,
+      );
+      expect(second.states).toEqual([
+        { failures: 3, open: true, lastOutcome: "fail" },
+      ]);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("reducing the failure threshold while a streak is outstanding still lets the next pass reset it with no incident (OD-60-06, Concurrency)", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_failure_threshold = 3 where id = $1",
+        [monitor.monitorId],
+      );
+      await runSteps(monitor, target, ["fail", "fail"]);
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_failure_threshold = 2 where id = $1",
+        [monitor.monitorId],
+      );
+
+      const { states, events } = await runSteps(
+        monitor,
+        target,
+        ["pass"],
+        Date.now() - 1_800_000,
+      );
+      expect(states).toEqual([
+        { failures: 0, open: false, lastOutcome: "pass" },
+      ]);
+      expect(events).toEqual([]);
+    } finally {
+      await target.close();
+    }
+  });
+
+  it("increasing the failure threshold while an incident is open keeps it open until a pass (Concurrency)", async () => {
+    const target = await startTarget();
+    try {
+      const monitor = await seedMonitor(db, { url: `${target.url}/` });
+      await runSteps(monitor, target, ["fail", "fail"]);
+      const [openedBefore] = await rows<{ open: boolean }>(
+        db,
+        monitor,
+        `select exists(select 1 from monitor_incidents
+                       where monitor_id = $1 and ended_at is null) as open`,
+        [monitor.monitorId],
+      );
+      expect(openedBefore?.open).toBe(true);
+
+      await updateMonitor(
+        db,
+        monitor,
+        "update monitors set alert_failure_threshold = 3 where id = $1",
+        [monitor.monitorId],
+      );
+      const { states, events } = await runSteps(
+        monitor,
+        target,
+        ["fail", "pass"],
+        Date.now() - 1_800_000,
+      );
+      expect(states.map((state) => [state.failures, state.open])).toEqual([
+        [3, true],
+        [0, false],
+      ]);
+      expect(events.map((event) => event.type)).toEqual(["incident_closed"]);
+    } finally {
+      await target.close();
+    }
+  });
+
   it("pass, check_error, fail leaves a streak of 1 and no incident", async () => {
     const target = await startTarget();
     try {
