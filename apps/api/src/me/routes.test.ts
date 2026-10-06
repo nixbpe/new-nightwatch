@@ -35,7 +35,7 @@ type SqlResult = { rows: Record<string, unknown>[] };
 // Canned results; tests assert responses and audits, never the recorded SQL.
 function stubDatabase(
   queryHandler: (text: string, params: unknown[]) => SqlResult,
-  clientHandler?: () => SqlResult,
+  clientHandler?: (text: string, params: unknown[]) => SqlResult,
 ): Database {
   return {
     db: undefined as unknown as Database["db"],
@@ -44,7 +44,8 @@ function stubDatabase(
         Promise.resolve(queryHandler(text, params)),
       connect: () =>
         Promise.resolve({
-          query: () => Promise.resolve(clientHandler?.() ?? { rows: [] }),
+          query: (text: string, params: unknown[]) =>
+            Promise.resolve(clientHandler?.(text, params) ?? { rows: [] }),
           release: () => {},
         }),
     },
@@ -76,7 +77,7 @@ function stubLogger(): LoggerMock {
 
 function makeApp(options: { auth: Auth; database: Database; logger: Logger }) {
   const app = new OpenAPIHono();
-  registerMeRoutes(app, options);
+  registerMeRoutes(app, { ...options, trustedOrigin: "http://localhost:5173" });
   app.onError((err, c) => {
     if (err instanceof AppError) {
       return c.json(
@@ -291,9 +292,10 @@ describe("PATCH /api/me/active-org", () => {
   });
 
   it("switches the active organization and returns the fresh context", async () => {
-    const clientHandler = (): SqlResult => ({
-      rows: [{ organizationId: ORG_A }],
-    });
+    const clientHandler = (text: string): SqlResult =>
+      text.includes("join organization")
+        ? twoMemberships
+        : { rows: [{ organizationId: ORG_A, role: "owner" }] };
     const app = makeApp({
       auth: stubAuth(session),
       database: stubDatabase(contextQueryHandler(ORG_A), clientHandler),
@@ -331,5 +333,48 @@ describe("PATCH /api/me/active-org", () => {
     expect(errorResponseSchema.parse(await res.json()).error.code).toBe(
       "INTERNAL_ERROR",
     );
+  });
+});
+
+describe("POST /api/me/resolve-active-org origin and final-session boundary", () => {
+  it.each([undefined, "https://foreign.example", "null"])(
+    "rejects Origin %s before any auth or SQL access",
+    async (origin) => {
+      const auth = stubAuth(session);
+      const getSession = vi.spyOn(auth, "getSession");
+      const query = vi.fn(() => ({ rows: [] }));
+      const app = makeApp({
+        auth,
+        database: stubDatabase(query),
+        logger: stubLogger(),
+      });
+      const res = await app.request("/api/me/resolve-active-org", {
+        method: "POST",
+        headers: origin ? { origin } : {},
+      });
+      expect(res.status).toBe(403);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe(
+        "ORIGIN_DENIED",
+      );
+      expect(getSession).not.toHaveBeenCalled();
+      expect(query).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    null,
+    { ...session, user: { ...session.user, emailVerified: false } },
+  ])("rejects a non-final or unverified session", async (current) => {
+    const query = vi.fn(() => ({ rows: [] }));
+    const app = makeApp({
+      auth: stubAuth(current),
+      database: stubDatabase(query),
+      logger: stubLogger(),
+    });
+    const res = await app.request("/api/me/resolve-active-org", {
+      method: "POST",
+      headers: { origin: "http://localhost:5173" },
+    });
+    expect(res.status).toBe(current === null ? 401 : 403);
+    expect(query).not.toHaveBeenCalled();
   });
 });

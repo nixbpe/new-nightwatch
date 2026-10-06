@@ -1376,6 +1376,35 @@ describe("TOTP challenge and session boundary", () => {
     ).user;
     expect(verifiedUser.twoFactorEnabled).toBe(true);
 
+    const mfaUserId = await sqlUserId(totp.email);
+    const mirrorId = crypto.randomUUID();
+    await database.sql.query(
+      `insert into session (id, token, user_id, expires_at) values ($1, $1, $2, now() + interval '1 day')`,
+      [mirrorId, mfaUserId],
+    );
+    await database.sql.query(
+      `update "user" set last_active_tenant_id = null where id = $1`,
+      [mfaUserId],
+    );
+    await database.sql.query(
+      `update session set active_organization_id = null where user_id = $1`,
+      [mfaUserId],
+    );
+    const assertSelection = async (selected: string | null) => {
+      const user = await database.sql.query<{
+        last_active_tenant_id: string | null;
+      }>(`select last_active_tenant_id from "user" where id = $1`, [mfaUserId]);
+      expect(user.rows[0]?.last_active_tenant_id).toBe(selected);
+      const mirrors = await database.sql.query<{
+        active_organization_id: string | null;
+      }>(`select active_organization_id from session where user_id = $1`, [
+        mfaUserId,
+      ]);
+      expect(mirrors.rows.length).toBeGreaterThan(0);
+      expect(
+        mirrors.rows.every((row) => row.active_organization_id === selected),
+      ).toBe(true);
+    };
     const signOut = await totp.request("POST", "/api/auth/sign-out");
     expect(signOut.status).toBe(200);
 
@@ -1393,6 +1422,10 @@ describe("TOTP challenge and session boundary", () => {
     expect(pendingSession.json).toBeNull();
     const pendingMe = await pending("GET", "/api/me/context");
     expect(pendingMe.status).toBe(401);
+    expect(
+      (await pending("POST", "/api/me/resolve-active-org", {})).status,
+    ).toBe(401);
+    await assertSelection(null);
 
     // A backup code is not a TOTP: the authenticator endpoint refuses it.
     const wrongEndpoint = await pending(
@@ -1401,6 +1434,7 @@ describe("TOTP challenge and session boundary", () => {
       { code: backupCode },
     );
     expect(wrongEndpoint.status).toBe(401);
+    await assertSelection(null);
     const completed = await pending(
       "POST",
       "/api/auth/two-factor/verify-backup-code",
@@ -1412,6 +1446,18 @@ describe("TOTP challenge and session boundary", () => {
     expect(
       (sessionAfterChallenge.json as { user: { id: string } }).user.id,
     ).toBeTruthy();
+
+    await assertSelection(null); // Raw final auth has no selection side effect.
+    const resolvedBackup = await pending(
+      "POST",
+      "/api/me/resolve-active-org",
+      {},
+    );
+    expect(resolvedBackup.status).toBe(200);
+    expect(
+      meContextResponseSchema.parse(resolvedBackup.json).lastActiveTenantId,
+    ).toBe(ORG_ID);
+    await assertSelection(ORG_ID);
 
     // The backup code is one-time: a fresh challenge reusing it is denied.
     await pending("POST", "/api/auth/sign-out");
@@ -1425,6 +1471,57 @@ describe("TOTP challenge and session boundary", () => {
       { code: backupCode },
     );
     expect(replay.status).toBe(401);
+    await assertSelection(ORG_ID);
+
+    const expired = client();
+    await expired("POST", "/api/auth/sign-in/email", {
+      email: totp.email,
+      password: PASSWORD,
+    });
+    await database.sql.query(
+      `update verification set expires_at = now() - interval '1 minute' where value = $1 and identifier like '2fa-%'`,
+      [mfaUserId],
+    );
+    expect(
+      (
+        await expired("POST", "/api/auth/two-factor/verify-totp", {
+          code: totpCode(secret),
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (await expired("POST", "/api/me/resolve-active-org", {})).status,
+    ).toBe(401);
+    await assertSelection(ORG_ID);
+
+    const trusted = client();
+    await trusted("POST", "/api/auth/sign-in/email", {
+      email: totp.email,
+      password: PASSWORD,
+    });
+    expect(
+      (
+        await trusted("POST", "/api/auth/two-factor/verify-totp", {
+          code: totpCode(secret),
+          trustDevice: true,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await trusted("POST", "/api/me/resolve-active-org", {})).status,
+    ).toBe(200);
+    await assertSelection(ORG_ID);
+    await trusted("POST", "/api/auth/sign-out");
+    const trustedLogin = await trusted("POST", "/api/auth/sign-in/email", {
+      email: totp.email,
+      password: PASSWORD,
+    });
+    expect(trustedLogin.status).toBe(200);
+    expect(trustedLogin.json).not.toHaveProperty("twoFactorRedirect", true);
+    expect(
+      (await trusted("POST", "/api/me/resolve-active-org", {})).status,
+    ).toBe(200);
+    await assertSelection(ORG_ID);
   });
 });
 

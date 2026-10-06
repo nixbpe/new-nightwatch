@@ -137,6 +137,108 @@ function toContext(
   };
 }
 
+function selectOrganization(
+  memberships: MembershipRow[],
+  lastActive: string | null,
+): string | null {
+  const valid = memberships.filter(
+    (row) => normalizeOrganizationRole(row.role) !== null,
+  );
+  return (
+    valid.find((row) => row.organizationId === lastActive)?.organizationId ??
+    valid[0]?.organizationId ??
+    null
+  );
+}
+
+// Discovery is user-bound. Never acquire a second org lock after the user lock.
+// Repeatable-read serialization failures and changed candidates restart the entire lock graph.
+export async function resolveActiveOrganization(
+  database: Database,
+  session: AuthSession,
+): Promise<MeContextResponse> {
+  const client = await database.sql.connect();
+  try {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const discovered = await client.query<MembershipRow>(MEMBERSHIPS_SELECT, [
+        session.user.id,
+      ]);
+      const remembered = await client.query<LastActiveRow>(
+        `select last_active_tenant_id as "lastActiveTenantId" from "user" where id = $1`,
+        [session.user.id],
+      );
+      const candidate = selectOrganization(
+        discovered.rows,
+        remembered.rows[0]?.lastActiveTenantId ?? null,
+      );
+      await client.query("begin isolation level repeatable read");
+      try {
+        if (candidate !== null) {
+          const org = await client.query(
+            "select id from organization where id = $1 for update",
+            [candidate],
+          );
+          if (org.rows.length === 0) {
+            await client.query("rollback");
+            continue;
+          }
+          await client.query(
+            "select pg_advisory_xact_lock(hashtext($1)::bigint)",
+            [`notification-membership:${candidate}`],
+          );
+          await client.query(
+            "select role from member where organization_id = $1 and user_id = $2 for update",
+            [candidate, session.user.id],
+          );
+        }
+        const account = await client.query<LastActiveRow>(
+          `select last_active_tenant_id as "lastActiveTenantId" from "user" where id = $1 for update`,
+          [session.user.id],
+        );
+        const memberships = await client.query<MembershipRow>(
+          MEMBERSHIPS_SELECT,
+          [session.user.id],
+        );
+        const selected = selectOrganization(
+          memberships.rows,
+          account.rows[0]?.lastActiveTenantId ?? null,
+        );
+        if (selected !== candidate) {
+          await client.query("rollback");
+          continue;
+        }
+        await client.query(
+          `update "user" set last_active_tenant_id = $1, updated_at = now() where id = $2 and last_active_tenant_id is distinct from $1::uuid`,
+          [selected, session.user.id],
+        );
+        await client.query(
+          `update session set active_organization_id = $1 where user_id = $2 and active_organization_id is distinct from $1::text`,
+          [selected, session.user.id],
+        );
+        const context = toContext(session, memberships.rows, selected);
+        await client.query("commit");
+        return context;
+      } catch (error) {
+        await rollbackQuietly(client);
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          (error.code === "40001" || error.code === "40P01")
+        )
+          continue;
+        throw error;
+      }
+    }
+    throw new AppError(
+      503,
+      "ACTIVE_ORGANIZATION_RESOLUTION_FAILED",
+      "ไม่สามารถโหลดข้อมูลองค์กรได้ กรุณาลองใหม่",
+    );
+  } finally {
+    client.release();
+  }
+}
+
 export async function getMeContext(
   database: Database,
   session: AuthSession,
@@ -220,12 +322,17 @@ export async function setActiveOrganization(
        where user_id = $2`,
       [organizationId, session.user.id],
     );
+    const memberships = await client.query<MembershipRow>(MEMBERSHIPS_SELECT, [
+      session.user.id,
+    ]);
+    const context = toContext(session, memberships.rows, organizationId);
     await client.query("commit");
     inTransaction = false;
     logger.info(
-      { userId: session.user.id, organizationId },
+      { event: "active_organization_changed" },
       "active organization changed",
     );
+    return context;
   } catch (error) {
     if (inTransaction) {
       await rollbackQuietly(client);
@@ -234,5 +341,4 @@ export async function setActiveOrganization(
   } finally {
     client.release();
   }
-  return getMeContext(database, session);
 }
