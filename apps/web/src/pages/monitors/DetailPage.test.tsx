@@ -40,7 +40,7 @@ import {
   sectionOf,
 } from "./detail-test-support";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
-import { formatDateTime, formatTime } from "./format";
+import { formatDateTime, formatTime, TIME_ZONE } from "./format";
 import { deferred } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -1179,6 +1179,27 @@ function chartTable() {
   ).getByRole("table");
 }
 
+const TOGGLE_TO_TABLE = "ดูข้อมูลกราฟเป็นตาราง";
+const TOGGLE_TO_CHART = "ดูข้อมูลเป็นกราฟ";
+const CHART_NAME = /กราฟเส้นเวลาตอบสนอง/;
+const KEYBOARD_HINT = "เลือกกราฟด้วย Tab แล้วใช้ลูกศรซ้ายขวาเพื่อดูค่าแต่ละจุด";
+const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+
+/** The chart's own polite region; the card's range announcement is another one. */
+function chartLiveRegion() {
+  return must(
+    must(
+      screen.getByRole("group", { name: CHART_NAME }).parentElement,
+    ).querySelector('[aria-live="polite"]'),
+  );
+}
+
+function expectNoStateAttributes(toggle: HTMLElement) {
+  for (const attribute of ["aria-expanded", "aria-controls", "aria-pressed"]) {
+    expect(toggle).not.toHaveAttribute(attribute);
+  }
+}
+
 const T = (time: string) => `2026-09-30T${time}:00.000Z`;
 /** A time `minutes` after the start of the 24 h window that ends at the page's dataAsOf. */
 const inWindow = (minutes: number) =>
@@ -1214,6 +1235,9 @@ describe("Detail response-time chart", () => {
       await within(card).findByText("ยังไม่มีผลการตรวจ"),
     ).toBeInTheDocument();
     expect(within(card).queryByRole("group")).toBeNull();
+    expect(
+      within(card).queryByRole("button", { name: /^ดูข้อมูล/ }),
+    ).toBeNull();
   });
 
   it("tells a monitor with no results in the window from one that was never checked", async () => {
@@ -1243,6 +1267,9 @@ describe("Detail response-time chart", () => {
     ).toBeInTheDocument();
     expect(
       await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: TOGGLE_TO_TABLE }),
     ).toBeInTheDocument();
   });
 
@@ -1352,10 +1379,10 @@ describe("Detail response-time chart", () => {
     expect(
       await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
     ).toBeInTheDocument();
+    expect(within(card).getByText("หน่วย: ms")).toBeInTheDocument();
+    expect(within(card).getByText("ช่วง: 24 ชม.ล่าสุด")).toBeInTheDocument();
     expect(
-      within(card).getByText(
-        /หน่วย: ms ช่วง: 24 ชม.ล่าสุด แหล่ง: ผลการตรวจของ NightWatch/,
-      ),
+      within(card).getByText("แหล่ง: ผลการตรวจของ NightWatch"),
     ).toBeInTheDocument();
     expect(
       within(card).getByText(
@@ -1365,19 +1392,34 @@ describe("Detail response-time chart", () => {
     expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, MONITOR_ID, "24h");
   });
 
-  it("opens the same data as a real table with the keyboard", async () => {
+  it("swaps the chart for the same data as a real table with one toggle that keeps focus", async () => {
     showDetail(detail());
     fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
     const user = userEvent.setup();
     renderDetail();
-    const button = await screen.findByRole("button", {
-      name: "ดูข้อมูลกราฟเป็นตาราง",
-    });
-    expect(button).toHaveAttribute("aria-expanded", "false");
-    button.focus();
+    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
+    const group = await screen.findByRole("group", { name: CHART_NAME });
+    expectNoStateAttributes(toggle);
+    expect(screen.queryByRole("table")).toBeNull();
+    // AC-76: the keyboard hint stays off the accessibility tree and the polite region stays.
+    expect(screen.getByText(KEYBOARD_HINT)).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(chartLiveRegion()).toHaveAttribute("aria-live", "polite");
+    expect(toggle.compareDocumentPosition(group) & FOLLOWING).toBeTruthy();
+
+    toggle.focus();
     await user.keyboard("{Enter}");
-    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAccessibleName(TOGGLE_TO_CHART);
+    expect(toggle).toHaveFocus();
+    expectNoStateAttributes(toggle);
+    // The inactive view is unmounted, not hidden.
+    expect(screen.queryByRole("group", { name: CHART_NAME })).toBeNull();
+    expect(screen.queryByText(KEYBOARD_HINT)).toBeNull();
+    expect(document.querySelector("[data-chart-part]")).toBeNull();
     const table = chartTable();
+    expect(toggle.compareDocumentPosition(table) & FOLLOWING).toBeTruthy();
     expect(table).toHaveAccessibleName(
       /เวลาตอบสนอง หน่วย ms ช่วง 24 ชม.ล่าสุด/,
     );
@@ -1391,10 +1433,13 @@ describe("Detail response-time chart", () => {
     expect(within(table).getByText("ไม่มีข้อมูล")).toBeInTheDocument();
     expect(within(table).getByText("หยุดชั่วคราว")).toBeInTheDocument();
     expect(within(table).getByText("เปลี่ยน URL")).toBeInTheDocument();
+
     await user.keyboard(" ");
-    expect(
-      screen.queryByRole("table", { name: /เวลาตอบสนอง หน่วย/ }),
-    ).toBeNull();
+    expect(toggle).toHaveAccessibleName(TOGGLE_TO_TABLE);
+    expect(toggle).toHaveFocus();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByRole("group", { name: CHART_NAME })).toBeInTheDocument();
+    expect(screen.getByText(KEYBOARD_HINT)).toBeInTheDocument();
   });
 
   it.each([
@@ -1799,9 +1844,10 @@ describe("response-time state and selection", () => {
     await waitFor(() => {
       expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "2", "2"]);
     });
-    expect(screen.getByText(/p50\/p95 ใช้ nearest-rank/)).toHaveTextContent(
+    expect(screen.getByText(/^p50\/p95 จากเวลาที่วัดได้/)).toHaveTextContent(
       "ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล”",
     );
+    expect(screen.queryByText(/nearest-rank/)).toBeNull();
   });
 
   it("hides previous KPIs during rapid selections, ignores late completion, announces latest once and never auto-refetch", async () => {
@@ -1980,6 +2026,383 @@ describe("response-time state and selection", () => {
     expectKpis(["33 ms", "33 ms", "1", "0"]);
     expect(screen.queryByText("888 ms")).toBeNull();
     expect(screen.queryByText("999 ms")).toBeNull();
+  });
+});
+
+const POPULATION =
+  "p50/p95 จากเวลาที่วัดได้และไม่เป็น null รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล” จำนวนการตรวจนับ pass + fail ไม่นับปัญหาฝั่งระบบ ล้มเหลวนับผล fail ไม่ใช่จำนวนเหตุการณ์";
+const UTC_NOTE =
+  " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว";
+const RANGE_TEXT = {
+  "24h": "24 ชม.ล่าสุด",
+  "7d": "7 วันล่าสุด",
+  "30d": "30 วันล่าสุด",
+} as const;
+const CAP_TEXT = "คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ";
+
+function captionElement() {
+  return must(screen.getByText("หน่วย: ms").closest("p"));
+}
+
+/**
+ * The one caption paragraph of AC-75: segments joined by " · ", every segment HEAD showed in the
+ * state still present, and no other paragraph carrying one of them.
+ */
+function expectCaption(
+  range: keyof typeof RANGE_TEXT,
+  options: { window?: { from: string; to: string }; capped?: boolean } = {},
+) {
+  const caption = captionElement();
+  expect(caption).toHaveClass("text-xs", "text-foreground-secondary");
+  const segments = [
+    "หน่วย: ms",
+    `ช่วง: ${RANGE_TEXT[range]}`,
+    "แหล่ง: ผลการตรวจของ NightWatch",
+    `เวลาแสดงตามเขตเวลา ${TIME_ZONE}`,
+    POPULATION,
+  ];
+  const times = Array.from(caption.querySelectorAll("time"));
+  if (options.window === undefined) {
+    expect(times).toHaveLength(0);
+  } else {
+    expect(times.map((time) => time.getAttribute("datetime"))).toEqual([
+      options.window.from,
+      options.window.to,
+    ]);
+    segments.push(
+      `ช่วง scheduled_for: ${must(times[0]).textContent} ถึง ${must(times[1]).textContent} (${TIME_ZONE})${range === "24h" ? "" : UTC_NOTE}`,
+    );
+  }
+  if (options.capped === true) segments.push(CAP_TEXT);
+  expect(Array.from(caption.children).map((part) => part.textContent)).toEqual(
+    segments,
+  );
+  expect(caption.textContent).toBe(segments.join(" · "));
+  const holders = Array.from(document.querySelectorAll("p")).filter((node) =>
+    /หน่วย: ms|scheduled_for|p50\/p95 จาก|คำนวณจากผลตรวจล่าสุด/.test(
+      node.textContent,
+    ),
+  );
+  expect(holders).toEqual([caption]);
+  expect(
+    caption.contains(screen.getByTestId("response-range-announcement")),
+  ).toBe(false);
+}
+
+const points = (count: number) =>
+  Array.from({ length: count }, () => ({
+    at: DATA_AS_OF,
+    responseTimeMs: 20,
+    outcome: "pass" as const,
+  }));
+
+describe("response-time caption (AC-75)", () => {
+  it("shows unit, range, source, time zone and the population before any data arrives", () => {
+    fetchResponseTimesMock.mockReturnValue(
+      deferred<MonitorResponseTimesResponse>().promise,
+    );
+    renderResponseCard();
+    expectCaption("24h");
+  });
+
+  it.each([
+    ["3 results", 3, false],
+    ["1,439 results, one below the cap", 1439, false],
+    ["1,440 results, at the cap", 1440, true],
+  ])(
+    "adds the window bounds for 24 h with %s, and the cap only at 1,440",
+    async (_name, count, capped) => {
+      fetchResponseTimesMock.mockResolvedValue({
+        ...noResponseTimes,
+        points: points(count),
+      });
+      renderResponseCard();
+      await waitFor(() => {
+        expectKpis([
+          "20 ms",
+          "20 ms",
+          String(count).replace(/(\d)(?=(\d{3})$)/, "$1,"),
+          "0",
+        ]);
+      });
+      expectCaption("24h", { window: noResponseTimes.window, capped });
+    },
+  );
+
+  it.each(["7d", "30d"] as const)(
+    "adds the window bounds and the UTC-hour note for %s but never the cap",
+    async (range) => {
+      fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
+        Promise.resolve(
+          requested === "24h" ? noResponseTimes : liveRange(requested),
+        ),
+      );
+      renderResponseCard();
+      await waitFor(() => {
+        expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+      });
+      const user = userEvent.setup();
+      await user.click(
+        screen.getByRole("radio", {
+          name: range === "7d" ? "7 วัน" : "30 วัน",
+        }),
+      );
+      await waitFor(() => {
+        expectKpis(["20 ms", "40 ms", "4", "1"]);
+      });
+      expectCaption(range, { window: liveRange(range).window });
+    },
+  );
+
+  it.each([
+    ["a failed load", new Error("offline")],
+    ["a denied read", new ApiError("MEMBERSHIP_DENIED", "denied", 403)],
+    ["a missing monitor", new ApiError("MONITOR_NOT_FOUND", "not found", 404)],
+  ])(
+    "keeps unit, range, source, time zone and population after %s",
+    async (_name, error) => {
+      fetchResponseTimesMock.mockRejectedValue(error);
+      renderResponseCard();
+      await waitFor(() => {
+        expect(screen.queryByLabelText("กำลังโหลดสรุปเวลาตอบสนอง")).toBeNull();
+      });
+      expectCaption("24h");
+    },
+  );
+
+  it("keeps the bounds and the cap of the last good response while a refetch fails", async () => {
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: points(1440),
+    });
+    const { client } = renderResponseCard();
+    await waitFor(() => {
+      expectKpis(["20 ms", "20 ms", "1,440", "0"]);
+    });
+    fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
+    await act(async () => {
+      await client.refetchQueries({
+        queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+      });
+    });
+    await screen.findByText(/อัปเดตกราฟไม่สำเร็จ/);
+    expectCaption("24h", { window: noResponseTimes.window, capped: true });
+  });
+});
+
+const hourlyRange = (
+  range: "7d" | "30d",
+): Extract<MonitorResponseTimesResponse, { range: "7d" | "30d" }> => ({
+  ...liveRange(range),
+  window: { from: T("05:00"), to: DATA_AS_OF },
+  buckets: [
+    {
+      hourStart: T("05:00"),
+      avgMs: 100,
+      maxMs: 150,
+      checks: 12,
+      responseChecks: 12,
+    },
+    {
+      hourStart: T("06:00"),
+      avgMs: null,
+      maxMs: null,
+      checks: 0,
+      responseChecks: 0,
+    },
+    {
+      hourStart: T("07:00"),
+      avgMs: 300,
+      maxMs: 500,
+      checks: 12,
+      responseChecks: 12,
+    },
+  ],
+});
+
+/** What a screen reader hears, step by step, when the chart is walked with the keyboard. */
+async function chartSteps(
+  user: ReturnType<typeof userEvent.setup>,
+  count: number,
+) {
+  screen.getByRole("group", { name: CHART_NAME }).focus();
+  const region = chartLiveRegion();
+  const steps: string[] = [];
+  for (let step = 0; step < count; step++) {
+    await user.keyboard(step === 0 ? "{Home}" : "{ArrowRight}");
+    steps.push(region.textContent);
+  }
+  return steps;
+}
+
+function tableSteps() {
+  return within(chartTable())
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => {
+      const cells = within(row)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent);
+      return {
+        time: must(within(row).getByRole("rowheader").textContent),
+        cells,
+      };
+    });
+}
+
+/** Every table row names the same time and value (or kind) as the chart step at its position. */
+function expectSameSteps(
+  steps: string[],
+  rows: ReturnType<typeof tableSteps>,
+  hourly: boolean,
+) {
+  expect(rows).toHaveLength(steps.length);
+  rows.forEach((row, index) => {
+    const step = must(steps[index]);
+    expect(step.startsWith(row.time)).toBe(true);
+    const [average, ...rest] = row.cells;
+    const note = must(rest.at(-1));
+    if (average === "–") {
+      expect(step).toContain(note.split(", ")[0]);
+    } else {
+      expect(step).toContain(`${must(average)} ms`);
+      if (hourly) expect(step).toContain(`${must(rest[0])} ms`);
+    }
+  });
+}
+
+describe("response-time view toggle (AC-76, AC-77)", () => {
+  function mockRanges() {
+    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+      Promise.resolve(range === "24h" ? responseTimes24h : hourlyRange(range)),
+    );
+  }
+
+  it("keeps the chosen view across 24 h, 7 d and 30 d and lists the same steps in both views", async () => {
+    mockRanges();
+    const user = userEvent.setup();
+    renderResponseCard();
+    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
+
+    // 24 h: chart first, then the table.
+    const steps24 = await chartSteps(user, 5);
+    await user.click(toggle);
+    expectSameSteps(steps24, tableSteps(), false);
+
+    // The view does not follow the range: 7 d opens in the table the user chose.
+    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    expect(
+      await screen.findByRole("button", { name: TOGGLE_TO_CHART }),
+    ).toBeInTheDocument();
+    expect(chartTable()).toHaveAccessibleName(/7 วันล่าสุด/);
+    expect(screen.queryByRole("group", { name: CHART_NAME })).toBeNull();
+    const rows7 = tableSteps();
+    await user.click(screen.getByRole("button", { name: TOGGLE_TO_CHART }));
+    expectSameSteps(await chartSteps(user, 3), rows7, true);
+
+    // The range does not follow the view: 30 d opens in the chart.
+    await user.click(screen.getByRole("radio", { name: "30 วัน" }));
+    expect(
+      await screen.findByRole("group", { name: /ช่วง 30 วันล่าสุด/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+    const steps30 = await chartSteps(user, 3);
+    await user.click(screen.getByRole("button", { name: TOGGLE_TO_TABLE }));
+    expect(chartTable()).toHaveAccessibleName(/30 วันล่าสุด/);
+    expectSameSteps(steps30, tableSteps(), true);
+    expect(screen.getByRole("radio", { name: "30 วัน" })).toBeChecked();
+
+    // Back to 24 h from the table: the range changes, the view stays.
+    await user.click(screen.getByRole("radio", { name: "24 ชม." }));
+    expect(
+      await screen.findByRole("button", { name: TOGGLE_TO_CHART }),
+    ).toBeInTheDocument();
+    expect(chartTable()).toHaveAccessibleName(/24 ชม.ล่าสุด/);
+  });
+
+  it("keeps the toggle and the range control in place and leaves KPIs, summary, caption and announcement mounted", async () => {
+    mockRanges();
+    const user = userEvent.setup();
+    const { client } = renderResponseCard();
+    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
+    const range = screen.getByRole("radiogroup");
+    const kpis = must(screen.getByText("p50").closest("dl"));
+    const summary = screen.getByText(/^เฉลี่ย 529 ms สูงสุด 1,204 ms/);
+    const caption = captionElement();
+    const announcement = screen.getByTestId("response-range-announcement");
+    const slot = Array.from(must(toggle.parentElement).children).indexOf(
+      toggle,
+    );
+    const swapped = () => screen.getByRole("group", { name: CHART_NAME });
+    expect(range.compareDocumentPosition(toggle) & FOLLOWING).toBeTruthy();
+    expect(toggle.compareDocumentPosition(swapped()) & FOLLOWING).toBeTruthy();
+
+    fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
+    await act(async () => {
+      await client.refetchQueries({
+        queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+      });
+    });
+    const warning = await screen.findByText(/อัปเดตกราฟไม่สำเร็จ/);
+
+    for (const label of [TOGGLE_TO_TABLE, TOGGLE_TO_CHART]) {
+      await user.click(screen.getByRole("button", { name: label }));
+      expect(screen.getByRole("button", { name: /^ดูข้อมูล/ })).toBe(toggle);
+      expect(screen.getByRole("radiogroup")).toBe(range);
+      expect(
+        Array.from(must(toggle.parentElement).children).indexOf(toggle),
+      ).toBe(slot);
+      expect(must(screen.getByText("p50").closest("dl"))).toBe(kpis);
+      expect(screen.getByText(/^เฉลี่ย 529 ms สูงสุด 1,204 ms/)).toBe(summary);
+      expect(captionElement()).toBe(caption);
+      expect(screen.getByTestId("response-range-announcement")).toBe(
+        announcement,
+      );
+      expect(screen.getByText(/อัปเดตกราฟไม่สำเร็จ/)).toBe(warning);
+    }
+  });
+
+  it("announces the range from its own element in the chart view and in the table view", async () => {
+    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+      Promise.resolve(range === "24h" ? noResponseTimes : liveRange(range)),
+    );
+    const user = userEvent.setup();
+    renderResponseCard();
+    const announcement = screen.getByTestId("response-range-announcement");
+    expect(announcement).toHaveAttribute("role", "status");
+    expect(announcement).toHaveAttribute("aria-live", "polite");
+    expect(captionElement().contains(announcement)).toBe(false);
+
+    await user.click(await screen.findByRole("radio", { name: "7 วัน" }));
+    await user.click(
+      await screen.findByRole("button", { name: TOGGLE_TO_TABLE }),
+    );
+    await waitFor(() => {
+      expect(announcement).toHaveTextContent(
+        "7 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+      );
+    });
+    expect(chartTable()).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "30 วัน" }));
+    await waitFor(() => {
+      expect(announcement).toHaveTextContent(
+        "30 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+      );
+    });
+    expect(screen.getByTestId("response-range-announcement")).toBe(
+      announcement,
+    );
+    expect(chartTable()).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: TOGGLE_TO_CHART }));
+    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    await waitFor(() => {
+      expect(announcement).toHaveTextContent(
+        "7 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+      );
+    });
+    expect(screen.getByRole("group", { name: CHART_NAME })).toBeInTheDocument();
   });
 });
 
