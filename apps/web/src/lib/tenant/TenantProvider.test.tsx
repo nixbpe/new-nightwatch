@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import { bindQueryClientIdentity } from "../queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -215,7 +217,7 @@ describe("TenantProvider", () => {
     act(() => {
       void queryClient
         .query({
-          queryKey: ["tenant", "org-b", "scope-check"],
+          queryKey: ["tenant", "notifications", "org-b", "scope-check"],
           queryFn: () =>
             Promise.reject(new ApiError("INBOX_SCOPE_CHANGED", "changed", 409)),
           retry: false,
@@ -875,9 +877,12 @@ describe("TenantProvider", () => {
 
     act(() => {
       const loaderClaim = createContextPublicationClaim();
-      expect(claimContextPublication(queryClient, loaderClaim)).toBe(true);
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, me);
-      expect(publishContextPublication(queryClient, loaderClaim)).toBe(true);
+      expect(
+        claimContextPublication(queryClient, loaderClaim, "bootstrap"),
+      ).toBe(true);
+      expect(publishContextPublication(queryClient, loaderClaim, me)).toBe(
+        true,
+      );
       fireEvent.click(
         screen.getByRole("button", { name: "refresh membership" }),
       );
@@ -897,7 +902,7 @@ describe("TenantProvider", () => {
   it("observes a directory publication between render and subscription", async () => {
     const queryClient = new QueryClient();
     const claim = createContextPublicationClaim();
-    expect(claimContextPublication(queryClient, claim)).toBe(true);
+    expect(claimContextPublication(queryClient, claim, "bootstrap")).toBe(true);
 
     function SnapshotProbe() {
       const publication = useSyncExternalStore(
@@ -911,7 +916,7 @@ describe("TenantProvider", () => {
 
     function LayoutPublisher() {
       useLayoutEffect(() => {
-        publishContextPublication(queryClient, claim);
+        publishContextPublication(queryClient, claim, me);
       }, []);
       return null;
     }
@@ -941,7 +946,10 @@ describe("TenantProvider", () => {
       .mockImplementationOnce(() => stalledRefresh.promise);
     const view = renderProvider(oldClient);
     await screen.findByText("org-b");
-    newClient.setQueryData(ME_CONTEXT_QUERY_KEY, me);
+    bindQueryClientIdentity(newClient, "user-1");
+    const newClientClaim = createContextPublicationClaim();
+    claimContextPublication(newClient, newClientClaim, "bootstrap");
+    publishContextPublication(newClient, newClientClaim, me);
 
     view.rerender(
       <QueryClientProvider client={newClient}>
@@ -959,8 +967,10 @@ describe("TenantProvider", () => {
     });
 
     const oldClaim = createContextPublicationClaim();
-    expect(claimContextPublication(oldClient, oldClaim)).toBe(true);
-    expect(publishContextPublication(oldClient, oldClaim)).toBe(true);
+    expect(claimContextPublication(oldClient, oldClaim, "bootstrap")).toBe(
+      true,
+    );
+    expect(publishContextPublication(oldClient, oldClaim, me)).toBe(true);
 
     expect(screen.getByTestId("active")).toHaveTextContent("none");
   });

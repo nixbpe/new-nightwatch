@@ -18,6 +18,7 @@ export function useUnreadCount() {
     queryKey: [...notificationQueryKey(serverActiveOrgId), "count"],
     queryFn: () => fetchUnreadCount(serverActiveOrgId),
     enabled: me !== undefined,
+    select: (data) => (me === undefined ? undefined : data),
   });
 }
 

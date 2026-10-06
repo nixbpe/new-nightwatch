@@ -4,6 +4,7 @@ import {
   fetchOrganizationNotificationSettings,
   organizationNotificationSettingsQueryKey,
 } from "../../../lib/api/notifications";
+import { useTenant } from "../../../lib/tenant/TenantProvider";
 import { Card } from "../../../components/ui/card";
 import { SectionHeader } from "../../../components/ui/section-header";
 import { ORG_ALERTS_OFF_MESSAGE } from "../detail/labels";
@@ -28,9 +29,17 @@ export function AlertsSection({
   code: string;
   organizationId: string;
 }) {
+  const { me } = useTenant();
+  const admitted =
+    me?.organizations.some(
+      (organization) =>
+        organization.id === organizationId &&
+        (organization.role === "owner" || organization.role === "admin"),
+    ) === true;
   const settings = useQuery({
     queryKey: organizationNotificationSettingsQueryKey(organizationId),
     queryFn: () => fetchOrganizationNotificationSettings(organizationId),
+    enabled: admitted,
   });
   const alerts = values.alerts;
   return (
@@ -40,14 +49,14 @@ export function AlertsSection({
         code={code}
         title="การแจ้งเตือน"
       />
-      {settings.data?.monitorAlertsEnabled === true ? (
+      {admitted && settings.data?.monitorAlertsEnabled === true ? (
         <p className="text-sm text-foreground-secondary">
           เจ้าของและผู้ดูแลจะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม
           กลับมาทำงานหลังจากที่แจ้งว่าล่มแล้ว และเมื่อใบรับรอง SSL
           ใกล้หมดอายุหรือหมดอายุ
         </p>
       ) : null}
-      {settings.data?.monitorAlertsEnabled === false ? (
+      {admitted && settings.data?.monitorAlertsEnabled === false ? (
         <p role="status" className="text-sm text-foreground-secondary">
           {ORG_ALERTS_OFF_MESSAGE}
         </p>

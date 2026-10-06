@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import type {
   AuditExportListResponse,
   AuditExportRecord,
@@ -969,7 +971,13 @@ describe("403 during export (B-2, AC-06, AC-23)", () => {
       defaultOptions: { queries: { retry: false } },
     });
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
-      user: { id: "user-1" },
+      user: {
+        id: "user-1",
+        name: "Tester",
+        email: "test@example.test",
+        emailVerified: true,
+        twoFactorEnabled: false,
+      },
       organizations: [],
       lastActiveTenantId: ORG_A,
     });
@@ -1046,13 +1054,18 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
   const retireScope = (queryClient: QueryClient) => {
     act(() => {
       const claim = createContextPublicationClaim();
-      claimContextPublication(queryClient, claim);
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
-        user: { id: "user-1" },
+      claimContextPublication(queryClient, claim, "bootstrap");
+      publishContextPublication(queryClient, claim, {
+        user: {
+          id: "user-1",
+          name: "Tester",
+          email: "test@example.test",
+          emailVerified: true,
+          twoFactorEnabled: false,
+        },
         organizations: [],
         lastActiveTenantId: OTHER,
       });
-      publishContextPublication(queryClient, claim);
     });
   };
   const seeded = () => {
@@ -1060,7 +1073,13 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
       defaultOptions: { queries: { retry: false } },
     });
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
-      user: { id: "user-1" },
+      user: {
+        id: "user-1",
+        name: "Tester",
+        email: "test@example.test",
+        emailVerified: true,
+        twoFactorEnabled: false,
+      },
       organizations: [],
       lastActiveTenantId: ORG_A,
     });
@@ -1206,7 +1225,13 @@ describe("hash and Organization scope (M-10, AC-07)", () => {
       defaultOptions: { queries: { retry: false } },
     });
     const confirmed = {
-      user: { id: "user-1" },
+      user: {
+        id: "user-1",
+        name: "Tester",
+        email: "test@example.test",
+        emailVerified: true,
+        twoFactorEnabled: false,
+      },
       organizations: [],
       lastActiveTenantId: ORG_A,
     };
@@ -1218,12 +1243,11 @@ describe("hash and Organization scope (M-10, AC-07)", () => {
     await sectionHeading();
     act(() => {
       const claim = createContextPublicationClaim();
-      claimContextPublication(queryClient, claim);
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
+      claimContextPublication(queryClient, claim, "bootstrap");
+      publishContextPublication(queryClient, claim, {
         ...confirmed,
         lastActiveTenantId: "22222222-2222-4222-8222-222222222222",
       });
-      publishContextPublication(queryClient, claim);
     });
     await waitFor(() => {
       expect(

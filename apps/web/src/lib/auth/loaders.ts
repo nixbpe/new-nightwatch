@@ -44,6 +44,7 @@ import {
 import { fetchSessions, SESSIONS_QUERY_KEY } from "../sessions/sessions";
 import {
   claimContextPublication,
+  failContextPublication,
   createContextPublicationClaim,
   hasContextPublicationClaim,
   publishContextPublication,
@@ -439,7 +440,7 @@ export async function organizationMembersLoader({
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
   if (
     isNavigationAborted(request.signal) ||
-    !claimContextPublication(queryClient, claim)
+    !claimContextPublication(queryClient, claim, "bootstrap")
   ) {
     return null;
   }
@@ -485,6 +486,11 @@ export async function organizationMembersLoader({
     return null;
   }
   if (context === undefined) {
+    failContextPublication(
+      queryClient,
+      claim,
+      new Error("Context resolution failed"),
+    );
     if (
       isNavigationAborted(request.signal) ||
       !hasContextPublicationClaim(queryClient, claim)
@@ -530,14 +536,13 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
   if (
     isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
   }
-  publishContextPublication(queryClient, claim);
+  publishContextPublication(queryClient, claim, context);
   const membership = context.organizations.find(
     (organization) => organization.id === organizationId,
   );

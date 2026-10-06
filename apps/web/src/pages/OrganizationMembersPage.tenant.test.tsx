@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../test/guard-network";
+guardUnassignedNetwork();
 import { bindQueryClientIdentity } from "../lib/queryClient";
 import type {
   InvitationCreateResponse,
@@ -95,9 +97,8 @@ function RepublishSameOrganization({
       type="button"
       onClick={() => {
         const claim = createContextPublicationClaim();
-        claimContextPublication(queryClient, claim);
-        queryClient.setQueryData(["me", "context"], { ...context });
-        publishContextPublication(queryClient, claim);
+        claimContextPublication(queryClient, claim, "bootstrap");
+        publishContextPublication(queryClient, claim, { ...context });
       }}
     >
       republish A

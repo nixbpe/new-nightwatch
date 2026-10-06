@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { authClient } from "../auth-client";
 import {
   bindQueryClientIdentity,
+  retireContextPublication,
   createSessionQueryClient,
   peekStagedQueryClient,
   publishActiveQueryClient,
@@ -90,6 +91,7 @@ export function SessionQueryProvider({
     const outgoing = retired;
     setRetired([]);
     for (const client of outgoing) {
+      retireContextPublication(client);
       void client.cancelQueries().then(() => {
         client.clear();
       });

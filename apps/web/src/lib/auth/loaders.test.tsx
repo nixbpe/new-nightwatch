@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import type {
   InvitationResponse,
   MeContextResponse,
@@ -123,6 +125,9 @@ vi.mock("../api/audit-log", async (importOriginal) => {
   return {
     ...original,
     fetchAuditEvents: vi.fn(),
+    fetchAuditExports: vi.fn(() =>
+      Promise.resolve({ exports: [], inProgress: false }),
+    ),
     fetchAuditEvent: vi.fn(),
     fetchAuditActors: vi.fn(),
   };

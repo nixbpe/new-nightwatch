@@ -16,9 +16,14 @@ import {
   ME_CONTEXT_QUERY_KEY,
   updateActiveOrganization,
 } from "../api/me";
-import { isInboxScopeChanged } from "../api/notifications";
 import {
+  isInboxScopeChanged,
+  markAllNotificationsRead,
+} from "../api/notifications";
+import {
+  type ScopeHint,
   claimContextPublication,
+  failContextPublication,
   createContextPublicationClaim,
   getContextPublicationSnapshot,
   hasContextPublicationClaim,
@@ -26,7 +31,11 @@ import {
   subscribeToContextPublication,
 } from "../queryClient";
 
-import { assertContextIdentity, contextQueryOptions } from "./bootstrap";
+import {
+  assertContextIdentity,
+  contextQueryOptions,
+  recoverInboxScope,
+} from "./bootstrap";
 
 type Membership = MeContextResponse["organizations"][number];
 
@@ -36,6 +45,7 @@ export const TENANT_QUERY_PREFIX = ["tenant"] as const;
 type TenantContextValue = {
   me: MeContextResponse | undefined;
   mePending: boolean;
+  membershipInteraction: boolean;
   meError: Error | null;
   retryMe: () => Promise<void>;
   refreshMembershipContext: () => Promise<MeContextResponse | null>;
@@ -57,11 +67,6 @@ export function useTenant(): TenantContextValue {
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [membershipContextUnavailable, setMembershipContextUnavailable] =
-    useState(false);
-  const [membershipRefreshClaim, setMembershipRefreshClaim] = useState<
-    bigint | null
-  >(null);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
   const switchQueue = useRef<Promise<void>>(Promise.resolve());
   const latestSwitchIntent = useRef(0);
@@ -76,40 +81,94 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     ),
   );
 
-  const meQuery = useQuery({
+  useQuery({
     ...contextQueryOptions(queryClient),
     refetchOnMount: false,
+    refetchOnWindowFocus: () =>
+      getContextPublicationSnapshot(queryClient).admission.kind === "confirmed",
+    refetchOnReconnect: () =>
+      getContextPublicationSnapshot(queryClient).admission.kind === "confirmed",
   });
 
   useEffect(() => {
-    const livePublication = getContextPublicationSnapshot(queryClient);
-    if (
-      meQuery.data !== undefined &&
-      (!membershipContextUnavailable ||
-        (publication.publishedClaim !== null &&
-          livePublication.claim === publication.publishedClaim &&
-          livePublication.publishedClaim === publication.publishedClaim))
-    ) {
-      setMembershipContextUnavailable(false);
-      setMembershipRefreshClaim(null);
-    }
-  }, [meQuery.data, membershipContextUnavailable, publication, queryClient]);
-
-  useEffect(() => {
-    const refreshOnScopeChange = (error: unknown) => {
-      if (isInboxScopeChanged(error)) {
-        void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
-      }
+    type Request = {
+      actor: "query" | "mutation";
+      generation: bigint | null;
+      scopeHint: ScopeHint;
+    };
+    const queries = new WeakMap<object, Request>();
+    const mutations = new WeakMap<object, Request>();
+    const capture = (
+      actor: Request["actor"],
+      scopeHint: Request["scopeHint"],
+    ): Request => ({
+      actor,
+      generation: getContextPublicationSnapshot(queryClient).requiredGeneration,
+      scopeHint,
+    });
+    const recover = (error: unknown, request: Request | undefined) => {
+      if (
+        isInboxScopeChanged(error) &&
+        error instanceof Error &&
+        request !== undefined
+      )
+        void recoverInboxScope(queryClient, error, request);
     };
     const stopQueries = queryClient.getQueryCache().subscribe((event) => {
-      if (event.type === "updated" && event.action.type === "error") {
-        refreshOnScopeChange(event.action.error);
+      if (event.type !== "updated") return;
+      const query = queryClient.getQueryCache().get(event.query.queryHash);
+      if (query === undefined || query !== event.query) return;
+      if (event.action.type === "fetch") {
+        const key = query.queryKey;
+        queries.set(
+          event.query,
+          capture(
+            "query",
+            key[0] === "tenant" &&
+              key[1] === "notifications" &&
+              (key[2] === null || typeof key[2] === "string")
+              ? { kind: "known", scope: key[2] }
+              : { kind: "unknown" },
+          ),
+        );
       }
+      if (event.action.type === "error")
+        recover(event.action.error, queries.get(query));
     });
     const stopMutations = queryClient.getMutationCache().subscribe((event) => {
-      if (event.type === "updated" && event.action.type === "error") {
-        refreshOnScopeChange(event.action.error);
+      if (event.type !== "updated") return;
+      if (event.action.type === "pending" && !mutations.has(event.mutation)) {
+        const variables: unknown = event.mutation.state.variables;
+        const commandScope =
+          event.mutation.options.meta?.["notificationOperation"] ===
+            "read-all" &&
+          typeof variables === "object" &&
+          variables !== null &&
+          "expectedOrganizationId" in variables
+            ? variables.expectedOrganizationId
+            : undefined;
+        const scope: unknown =
+          event.mutation.options.mutationFn === markAllNotificationsRead
+            ? variables
+            : commandScope;
+        mutations.set(
+          event.mutation,
+          capture(
+            "mutation",
+            scope === null || typeof scope === "string"
+              ? { kind: "known", scope }
+              : { kind: "unknown" },
+          ),
+        );
       }
+      if (
+        event.action.type === "error" &&
+        queryClient
+          .getMutationCache()
+          .getAll()
+          .some((mutation) => mutation === event.mutation)
+      )
+        recover(event.action.error, mutations.get(event.mutation));
     });
     return () => {
       stopQueries();
@@ -117,17 +176,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  // Required resolver queries block admission; explicit PATCH switches retain
-  // confirmed context until success, including on switch failure.
-  const contextUnavailable = membershipContextUnavailable || meQuery.isFetching;
-  const memberships = contextUnavailable
-    ? undefined
-    : meQuery.isError
-      ? undefined
-      : meQuery.data?.organizations;
-  const lastActiveTenantId = contextUnavailable
-    ? null
-    : (meQuery.data?.lastActiveTenantId ?? null);
+  const admission = publication.admission;
+  const me = admission.kind === "confirmed" ? admission.context : undefined;
+  const memberships = me?.organizations;
+  const lastActiveTenantId = me?.lastActiveTenantId ?? null;
 
   const activeOrg: Membership | null =
     memberships?.find((org) => org.id === lastActiveTenantId) ?? null;
@@ -136,11 +188,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const refreshMembershipContext =
     useCallback(async (): Promise<MeContextResponse | null> => {
       const claim = createContextPublicationClaim();
-      if (!claimContextPublication(queryClient, claim)) {
+      if (!claimContextPublication(queryClient, claim, "membership")) {
         return null;
       }
-      setMembershipContextUnavailable(true);
-      setMembershipRefreshClaim(claim);
       await queryClient.cancelQueries({
         queryKey: ME_CONTEXT_QUERY_KEY,
         exact: true,
@@ -159,16 +209,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         if (!hasContextPublicationClaim(queryClient, claim)) {
           return null;
         }
-        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-        publishContextPublication(queryClient, claim);
-        setMembershipContextUnavailable(false);
+        if (!publishContextPublication(queryClient, claim, updated))
+          return null;
         return updated;
-      } catch {
+      } catch (error) {
+        failContextPublication(queryClient, claim, error);
         return null;
-      } finally {
-        setMembershipRefreshClaim((pending) =>
-          pending === claim ? null : pending,
-        );
       }
     }, [queryClient]);
 
@@ -179,11 +225,21 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     ) {
       return false;
     }
+    const acceptedGeneration =
+      getContextPublicationSnapshot(queryClient).requiredGeneration;
+    const switchAdmissionCurrent = () => {
+      const current = getContextPublicationSnapshot(queryClient);
+      return (
+        current.requiredGeneration === acceptedGeneration &&
+        current.admission.kind === "confirmed"
+      );
+    };
     const intent = ++latestSwitchIntent.current;
     setOrgSwitchPending(true);
     const switchOperation = switchQueue.current.then(async () => {
+      if (!switchAdmissionCurrent()) return false;
       const claim = createContextPublicationClaim();
-      if (!claimContextPublication(queryClient, claim)) {
+      if (!claimContextPublication(queryClient, claim, "switch")) {
         return false;
       }
       try {
@@ -202,9 +258,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           return false;
         }
         queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
-        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-        publishContextPublication(queryClient, claim);
-        setMembershipContextUnavailable(false);
+        if (!publishContextPublication(queryClient, claim, updated))
+          return false;
         return latestSwitchIntent.current === intent;
       } catch {
         return false;
@@ -226,13 +281,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   };
 
   const value: TenantContextValue = {
-    me: contextUnavailable || meQuery.isError ? undefined : meQuery.data,
+    me,
     mePending:
-      meQuery.isPending ||
-      meQuery.isFetching ||
-      (membershipRefreshClaim !== null &&
-        membershipRefreshClaim === publication.claim),
-    meError: meQuery.error,
+      admission.kind === "unresolved" || admission.kind === "confirming",
+    meError: admission.kind === "failed" ? admission.error : null,
+    membershipInteraction:
+      (admission.kind === "confirming" || admission.kind === "failed") &&
+      admission.cause === "membership",
     retryMe,
     refreshMembershipContext,
     activeOrg,

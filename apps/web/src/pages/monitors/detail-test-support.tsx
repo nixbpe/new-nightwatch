@@ -1,3 +1,4 @@
+import { afterEach } from "vitest";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   CheckResultView,
@@ -8,11 +9,11 @@ import type {
   MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import {
-  MemoryRouter,
-  Route,
-  Routes,
+  createMemoryRouter,
+  RouterProvider,
+  Outlet,
   useLocation,
   useNavigate,
 } from "react-router";
@@ -20,6 +21,19 @@ import {
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { DetailPage } from "./DetailPage";
 import { OverviewPage } from "./OverviewPage";
+
+const resources: {
+  router: ReturnType<typeof createMemoryRouter>;
+  queryClient: QueryClient;
+}[] = [];
+afterEach(async () => {
+  cleanup();
+  for (const { router, queryClient } of resources.splice(0)) {
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  }
+});
 
 export const A = "11111111-1111-4111-8111-111111111111";
 export const B = "22222222-2222-4222-8222-222222222222";
@@ -172,16 +186,7 @@ function Harness() {
       >
         open detail
       </button>
-      <Routes>
-        <Route
-          path="/organizations/:organizationId/monitors/:monitorId"
-          element={<DetailPage />}
-        />
-        <Route
-          path="/organizations/:organizationId/monitors"
-          element={<OverviewPage />}
-        />
-      </Routes>
+      <Outlet />
     </>
   );
 }
@@ -195,18 +200,36 @@ export function renderDetail(
     client ??
     new QueryClient({ defaultOptions: { queries: { retry: false } } });
   bindQueryClientIdentity(queryClient, "user-1");
+  const router = createMemoryRouter(
+    [
+      {
+        element: <Harness />,
+        children: [
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId",
+            element: <DetailPage />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors",
+            element: <OverviewPage />,
+          },
+        ],
+      },
+    ],
+    {
+      initialEntries: [
+        `/organizations/${organizationId}/monitors/${monitorId}`,
+      ],
+    },
+  );
+  resources.push({ router, queryClient });
   return {
     queryClient,
+    router,
     ...render(
       <QueryClientProvider client={queryClient}>
         <TenantProvider>
-          <MemoryRouter
-            initialEntries={[
-              `/organizations/${organizationId}/monitors/${monitorId}`,
-            ]}
-          >
-            <Harness />
-          </MemoryRouter>
+          <RouterProvider router={router} />
         </TenantProvider>
       </QueryClientProvider>,
     ),

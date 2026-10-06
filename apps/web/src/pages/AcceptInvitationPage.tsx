@@ -222,7 +222,7 @@ function VerifiedAcceptance({
       if (!isMounted()) return;
       setAccepted(true);
       const claim = createContextPublicationClaim();
-      if (!claimContextPublication(queryClient, claim)) return;
+      if (!claimContextPublication(queryClient, claim, "bootstrap")) return;
       await queryClient.cancelQueries({
         queryKey: ME_CONTEXT_QUERY_KEY,
         exact: true,
@@ -244,8 +244,7 @@ function VerifiedAcceptance({
       if (!isMounted() || !hasContextPublicationClaim(queryClient, claim))
         return;
       queryClient.removeQueries({ queryKey: ["tenant"] });
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-      publishContextPublication(queryClient, claim);
+      publishContextPublication(queryClient, claim, updated);
       void navigate("/workspace", { replace: true });
     } catch (cause) {
       if (!isMounted()) return;

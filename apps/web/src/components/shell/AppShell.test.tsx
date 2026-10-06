@@ -1,10 +1,16 @@
+import { contextQueryOptions } from "../../lib/tenant/bootstrap";
+import {
+  markAllNotificationsRead,
+  openNotification,
+} from "../../lib/api/notifications";
+import { guardUnassignedNetwork } from "../../test/guard-network";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
   NotificationItem,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -15,6 +21,9 @@ import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { InboxScopeChangedError } from "../../lib/api/notifications";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import {
+  retireContextPublication,
+  getContextPublicationSnapshot,
+  publishContextPublication,
   claimContextPublication,
   createContextPublicationClaim,
   hasContextPublicationClaim,
@@ -107,6 +116,7 @@ const fetchMeContextMock = vi.mocked(fetchMeContext);
 const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
 const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 
+guardUnassignedNetwork();
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 const ownerOrg = {
@@ -570,7 +580,7 @@ describe("AppShell", () => {
     await findScope("Org A", "เจ้าของ");
 
     // Another session switches back to Org A after this tab selected B.
-    fetchUnreadCountMock.mockRejectedValue(new InboxScopeChangedError());
+    fetchUnreadCountMock.mockRejectedValueOnce(new InboxScopeChangedError());
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
@@ -707,8 +717,10 @@ describe("AppShell", () => {
     const user = userEvent.setup();
     const { queryClient } = renderShell(<WorkspacePage />);
     await findScope("Org A", "เจ้าของ");
-    const directLoaderClaim = createContextPublicationClaim();
-    expect(claimContextPublication(queryClient, directLoaderClaim)).toBe(true);
+    const stalePatchClaim = createContextPublicationClaim();
+    expect(
+      claimContextPublication(queryClient, stalePatchClaim, "switch"),
+    ).toBe(true);
 
     await user.click(screen.getByRole("button", { name: /Org A/ }));
     const menu = screen.getByRole("menu", { name: "สลับองค์กร" });
@@ -720,7 +732,7 @@ describe("AppShell", () => {
     );
 
     await findScope("Org B", "ผู้ชม");
-    expect(hasContextPublicationClaim(queryClient, directLoaderClaim)).toBe(
+    expect(hasContextPublicationClaim(queryClient, stalePatchClaim)).toBe(
       false,
     );
     expect(screen.getByRole("button", { name: /Org B/ })).toHaveTextContent(
@@ -950,7 +962,7 @@ describe("AppShell", () => {
 
   it("refreshes the context when the server resolves another inbox scope", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    fetchUnreadCountMock.mockRejectedValue(new InboxScopeChangedError());
+    fetchUnreadCountMock.mockRejectedValueOnce(new InboxScopeChangedError());
     renderShell();
     await screen.findByRole("link", { name: "Org A" });
 
@@ -1132,5 +1144,677 @@ describe("AppShell", () => {
     });
     expect(screen.getByText("NightWatch")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /องค์กร:/ })).toBeNull();
+  });
+  it.each(["organization", "account"] as const)(
+    "permanent current %s inbox mismatch stops automatic recovery, drops tenant view and supports explicit retry",
+    async (scope) => {
+      const ctx = meContext(
+        scope === "account" ? [] : [ownerOrg],
+        scope === "account" ? null : ORG_A,
+      );
+      fetchMeContextMock.mockResolvedValue(ctx);
+      fetchUnreadCountMock.mockRejectedValue(new InboxScopeChangedError());
+      const { queryClient, router } = renderShell(
+        <p>Protected tenant content</p>,
+      );
+      await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
+      expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+        "failed",
+      );
+      expect(screen.queryByText("Protected tenant content")).toBeNull();
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      expect(fetchUnreadCountMock).toHaveBeenCalledTimes(2);
+      fetchUnreadCountMock.mockResolvedValue({ unreadCount: 4 });
+      await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
+      await screen.findByText("Protected tenant content");
+      expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+        "confirmed",
+      );
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+      expect(screen.getByRole("link", { name: "การแจ้งเตือน" })).toBeVisible();
+      router.dispose();
+      await queryClient.cancelQueries();
+      queryClient.clear();
+    },
+  );
+  it("concurrent known query and mark-all errors dedupe required recovery; late old-generation error cannot withdraw B", async () => {
+    fetchMeContextMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_A),
+    );
+    const { queryClient, router } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
+    const query = Promise.withResolvers<{ unreadCount: number }>();
+    fetchUnreadCountMock.mockReturnValueOnce(query.promise);
+    const mutation = Promise.withResolvers<never>();
+    markAllNotificationsReadMock.mockReturnValueOnce(mutation.promise);
+    const resolving = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock.mockReturnValueOnce(resolving.promise);
+    const operation = queryClient
+      .getMutationCache()
+      .build(queryClient, { mutationFn: markAllNotificationsRead })
+      .execute(ORG_A)
+      .catch(() => undefined);
+    const request = queryClient
+      .invalidateQueries({ queryKey: ["tenant", "notifications", ORG_A] })
+      .catch(() => undefined);
+    await act(async () => {
+      query.reject(new InboxScopeChangedError());
+      await query.promise.catch(() => undefined);
+    });
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      resolving.resolve(meContext([ownerOrg, viewerOrg], ORG_B));
+      await resolving.promise;
+    });
+    await findScope("Org B", "ผู้ชม");
+    await act(async () => {
+      mutation.reject(new InboxScopeChangedError());
+      await operation;
+      await request;
+    });
+    expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+      "confirmed",
+    );
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    await findScope("Org B", "ผู้ชม");
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it("removed old query completion cannot trigger a resolver or displace confirmed B", async () => {
+    fetchMeContextMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_A),
+    );
+    const { queryClient, router } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
+    const late = Promise.withResolvers<never>();
+    const request = queryClient
+      .query({
+        queryKey: ["tenant", "notifications", ORG_A, "late"],
+        queryFn: () => late.promise,
+        retry: false,
+      })
+      .catch(() => undefined);
+    queryClient.removeQueries({
+      queryKey: ["tenant", "notifications", ORG_A, "late"],
+      exact: true,
+    });
+    act(() => {
+      const claim = createContextPublicationClaim();
+      claimContextPublication(queryClient, claim, "bootstrap");
+      publishContextPublication(
+        queryClient,
+        claim,
+        meContext([ownerOrg, viewerOrg], ORG_B),
+      );
+    });
+    await findScope("Org B", "ผู้ชม");
+    await act(async () => {
+      late.reject(new InboxScopeChangedError());
+      await request;
+    });
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    await findScope("Org B", "ผู้ชม");
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it("unknown open-notification errors recover conservatively without manufacturing repeated-current failure", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const { queryClient, router } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
+    openNotificationMock.mockRejectedValue(new InboxScopeChangedError());
+    for (const id of ["first", "second"]) {
+      await act(async () => {
+        await queryClient
+          .getMutationCache()
+          .build(queryClient, { mutationFn: openNotification })
+          .execute(id)
+          .catch(() => undefined);
+      });
+      await waitFor(() => {
+        expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+          "confirmed",
+        );
+      });
+    }
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+    await findScope("Org A", "เจ้าของ");
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+
+  it("unsupported query scope fails closed immediately without automatic resolver loop and explicit retry restores admission", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const { queryClient, router } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
+    await act(async () => {
+      await queryClient
+        .query({
+          queryKey: ["tenant", "unsupported"],
+          retry: false,
+          queryFn: () => Promise.reject(new InboxScopeChangedError()),
+        })
+        .catch(() => undefined);
+    });
+    await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+      "failed",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
+    await findScope("Org A", "เจ้าของ");
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it("overlapping refetch old error is discarded by real query cancellation and cannot relabel newer same-object request", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const { queryClient, router } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
+    const old = Promise.withResolvers<{ unreadCount: number }>(),
+      fresh = Promise.withResolvers<{ unreadCount: number }>();
+    fetchUnreadCountMock
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(fresh.promise);
+    let first: Promise<void>;
+    act(() => {
+      first = queryClient.invalidateQueries({
+        queryKey: ["tenant", "notifications", ORG_A],
+      });
+    });
+    await waitFor(() => {
+      expect(fetchUnreadCountMock).toHaveBeenCalledTimes(2);
+    });
+    let second: Promise<void>;
+    act(() => {
+      second = queryClient.invalidateQueries({
+        queryKey: ["tenant", "notifications", ORG_A],
+      });
+    });
+    await waitFor(() => {
+      expect(fetchUnreadCountMock).toHaveBeenCalledTimes(3);
+    });
+    await act(async () => {
+      fresh.resolve({ unreadCount: 5 });
+      await fresh.promise;
+    });
+    await act(async () => {
+      old.reject(new InboxScopeChangedError());
+      await old.promise.catch(() => undefined);
+      await Promise.all([first, second]);
+    });
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+      "confirmed",
+    );
+    await findScope("Org A", "เจ้าของ");
+    expect(
+      screen.getByRole("link", { name: "การแจ้งเตือน" }),
+    ).toHaveTextContent("5");
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it("concurrent unattributed open mutations dedupe while required scope recovery is pending", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const { queryClient, router } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
+    const first = Promise.withResolvers<never>(),
+      second = Promise.withResolvers<never>(),
+      fresh = Promise.withResolvers<MeContextResponse>();
+    openNotificationMock
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    fetchMeContextMock.mockReturnValueOnce(fresh.promise);
+    const one = queryClient
+      .getMutationCache()
+      .build(queryClient, { mutationFn: openNotification })
+      .execute("first")
+      .catch(() => undefined);
+    const two = queryClient
+      .getMutationCache()
+      .build(queryClient, { mutationFn: openNotification })
+      .execute("second")
+      .catch(() => undefined);
+    await act(async () => {
+      first.reject(new InboxScopeChangedError());
+      await one;
+    });
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    await act(async () => {
+      second.reject(new InboxScopeChangedError());
+      await two;
+    });
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      fresh.resolve(meContext([ownerOrg], ORG_A));
+      await fresh.promise;
+    });
+    await findScope("Org A", "เจ้าของ");
+    expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+      "confirmed",
+    );
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+
+  it("scope recovery failure cannot be overwritten by late in-flight PATCH", async () => {
+    fetchMeContextMock.mockResolvedValue(
+      meContext([ownerOrg, viewerOrg], ORG_A),
+    );
+    const { queryClient, router } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
+    const patch = Promise.withResolvers<MeContextResponse>(),
+      fresh = Promise.withResolvers<MeContextResponse>();
+    updateActiveOrganizationMock.mockReturnValueOnce(patch.promise);
+    await userEvent.click(screen.getByRole("button", { name: /Org A/ }));
+    await userEvent.click(
+      within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
+        "menuitemradio",
+        { name: /Org B/ },
+      ),
+    );
+    fetchMeContextMock.mockReturnValueOnce(fresh.promise);
+    fetchUnreadCountMock.mockRejectedValueOnce(new InboxScopeChangedError());
+    act(() => {
+      void queryClient.invalidateQueries({
+        queryKey: ["tenant", "notifications", ORG_A],
+      });
+    });
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    await act(async () => {
+      fresh.reject(new Error("Resolver failed"));
+      await fresh.promise.catch(() => undefined);
+    });
+    await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
+    await act(async () => {
+      patch.resolve(meContext([ownerOrg, viewerOrg], ORG_B));
+      await patch.promise;
+    });
+    expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+      "failed",
+    );
+    expect(screen.queryByRole("heading", { name: /Org B/ })).toBeNull();
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it("retired client rejects late mutation scope errors without reviving its publication", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const { queryClient, router } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
+    const late = Promise.withResolvers<never>();
+    markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
+    const operation = queryClient
+      .getMutationCache()
+      .build(queryClient, { mutationFn: markAllNotificationsRead })
+      .execute(ORG_A)
+      .catch(() => undefined);
+    act(() => {
+      retireContextPublication(queryClient);
+    });
+    await act(async () => {
+      late.reject(new InboxScopeChangedError());
+      await operation;
+    });
+    expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+      "retired",
+    );
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("heading", { name: /Org A/ })).toBeNull();
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it.each(["success", "failure"] as const)(
+    "cached account-only notifications are withheld during current required %s, never fall back or keep mutation/link controls",
+    async (outcome) => {
+      fetchMeContextMock.mockResolvedValue(meContext([], null));
+      fetchUnreadCountMock.mockResolvedValue({ unreadCount: 7 });
+      fetchNotificationsMock.mockResolvedValue({
+        items: [
+          {
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            scope: "account",
+            organizationId: null,
+            eventType: "PASSWORD_CHANGED",
+            occurredAt: "2026-09-25T03:00:00.000Z",
+            readAt: null,
+            actor: null,
+            category: null,
+          },
+        ],
+        nextCursor: null,
+        unreadCount: 7,
+      });
+      const { queryClient, router } = renderShell(
+        <p>Current account content</p>,
+      );
+      await screen.findByLabelText("7 รายการยังไม่อ่าน");
+      await userEvent.click(
+        screen.getByRole("button", { name: "การแจ้งเตือน" }),
+      );
+      const panel = screen.getByRole("dialog", { name: "การแจ้งเตือน" });
+      await within(panel).findByRole("button", { name: /รหัสผ่าน/ });
+      expect(
+        within(panel).getByRole("button", {
+          name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+        }),
+      ).toBeEnabled();
+      const required = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock.mockReturnValueOnce(required.promise);
+      act(() => {
+        void queryClient
+          .query({ ...contextQueryOptions(queryClient), staleTime: 0 })
+          .catch(() => undefined);
+      });
+      await waitFor(() => {
+        expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+          "confirming",
+        );
+      });
+      expect(screen.queryByLabelText("7 รายการยังไม่อ่าน")).toBeNull();
+      expect(
+        within(panel).queryByRole("button", { name: /รหัสผ่าน/ }),
+      ).toBeNull();
+      expect(
+        within(panel).getByRole("button", {
+          name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+        }),
+      ).toBeDisabled();
+      expect(
+        within(panel).queryByRole("link", { name: "ดูการแจ้งเตือนทั้งหมด" }),
+      ).toBeNull();
+      expect(screen.queryByText("ยังไม่มีการแจ้งเตือน")).toBeNull();
+      expect(fetchUnreadCountMock).toHaveBeenCalledTimes(1);
+      expect(fetchNotificationsMock).toHaveBeenCalledTimes(1);
+      expect(markAllNotificationsReadMock).not.toHaveBeenCalled();
+      expect(openNotificationMock).not.toHaveBeenCalled();
+      if (outcome === "failure") {
+        await act(async () => {
+          required.reject(new Error("Current resolver unavailable"));
+          await required.promise.catch(() => undefined);
+        });
+        await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
+        expect(screen.queryByLabelText("7 รายการยังไม่อ่าน")).toBeNull();
+        expect(
+          within(panel).queryByRole("button", { name: /รหัสผ่าน/ }),
+        ).toBeNull();
+        expect(screen.queryByText("ยังไม่มีการแจ้งเตือน")).toBeNull();
+        fetchMeContextMock.mockResolvedValueOnce(meContext([], null));
+        await userEvent.click(
+          within(panel).getByRole("button", { name: "ลองใหม่" }),
+        );
+      } else {
+        await act(async () => {
+          required.resolve(meContext([], null));
+          await required.promise;
+        });
+      }
+      await screen.findByLabelText("7 รายการยังไม่อ่าน");
+      await within(panel).findByRole("button", { name: /รหัสผ่าน/ });
+      expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+        "confirmed",
+      );
+      expect(
+        within(panel).getByRole("button", {
+          name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+        }),
+      ).toBeEnabled();
+      router.dispose();
+      await queryClient.cancelQueries();
+      queryClient.clear();
+    },
+  );
+  it.each(["same-scope-generation", "retirement"] as const)(
+    "late popover open after %s cannot invalidate or navigate under updated hook callbacks",
+    async (transition) => {
+      const item: NotificationItem = {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        scope: "account",
+        organizationId: null,
+        eventType: "PASSWORD_CHANGED",
+        occurredAt: "2026-09-25T03:00:00.000Z",
+        readAt: null,
+        actor: null,
+        category: null,
+      };
+      fetchMeContextMock.mockResolvedValue(meContext([], null));
+      fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+      fetchNotificationsMock.mockResolvedValue({
+        items: [item],
+        nextCursor: null,
+        unreadCount: 1,
+      });
+      const late = Promise.withResolvers<NotificationItem>();
+      openNotificationMock.mockReturnValueOnce(late.promise);
+      const { queryClient, router } = renderShell(
+        <p>Current account content</p>,
+      );
+      await screen.findByLabelText("1 รายการยังไม่อ่าน");
+      await userEvent.click(
+        screen.getByRole("button", { name: "การแจ้งเตือน" }),
+      );
+      await userEvent.click(
+        await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+      );
+      expect(openNotificationMock).toHaveBeenCalledTimes(1);
+      if (transition === "retirement") {
+        act(() => {
+          retireContextPublication(queryClient);
+        });
+      } else {
+        await act(async () => {
+          await queryClient.query({
+            ...contextQueryOptions(queryClient),
+            staleTime: 0,
+          });
+        });
+        await screen.findByText("Current account content");
+      }
+      const reads = fetchNotificationsMock.mock.calls.length,
+        counts = fetchUnreadCountMock.mock.calls.length;
+      await act(async () => {
+        late.resolve({ ...item, readAt: "2026-09-25T03:01:00.000Z" });
+        await late.promise;
+      });
+      expect(router.state.location.pathname).toBe("/workspace");
+      expect(fetchNotificationsMock).toHaveBeenCalledTimes(reads);
+      expect(fetchUnreadCountMock).toHaveBeenCalledTimes(counts);
+      router.dispose();
+      await queryClient.cancelQueries();
+      queryClient.clear();
+    },
+  );
+  it("reset and consecutive popover opens keep completion ownership on the latest actual invocation", async () => {
+    const first: NotificationItem = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      scope: "account",
+      organizationId: null,
+      eventType: "PASSWORD_CHANGED",
+      occurredAt: "2026-09-25T03:00:00.000Z",
+      readAt: null,
+      actor: null,
+      category: null,
+    };
+    const second: NotificationItem = {
+      ...first,
+      id: first.id,
+      eventType: first.eventType,
+    };
+    fetchMeContextMock.mockResolvedValue(meContext([], null));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+    fetchNotificationsMock.mockResolvedValue({
+      items: [first],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    const old = Promise.withResolvers<NotificationItem>(),
+      latest = Promise.withResolvers<NotificationItem>();
+    openNotificationMock
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(latest.promise);
+    const { queryClient, router } = renderShell(<p>Current account content</p>);
+    await screen.findByLabelText("1 รายการยังไม่อ่าน");
+    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /มีการเปลี่ยนรหัสผ่าน/,
+      }),
+    );
+    expect(openNotificationMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      old.resolve({ ...first, readAt: "2026-09-25T03:01:00.000Z" });
+      await old.promise;
+    });
+    expect(router.state.location.pathname).toBe("/workspace");
+    await act(async () => {
+      latest.resolve({ ...second, readAt: "2026-09-25T03:01:00.000Z" });
+      await latest.promise;
+    });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/notifications");
+    });
+    expect(router.state.location.state).toMatchObject({
+      notificationId: second.id,
+    });
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it("open remains pending through deferred invalidation and rejects navigation after a required generation wins during that await", async () => {
+    const item: NotificationItem = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      scope: "account",
+      organizationId: null,
+      eventType: "PASSWORD_CHANGED",
+      occurredAt: "2026-09-25T03:00:00.000Z",
+      readAt: null,
+      actor: null,
+      category: null,
+    };
+    fetchMeContextMock.mockResolvedValue(meContext([], null));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+    fetchNotificationsMock.mockResolvedValue({
+      items: [item],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    const opened = Promise.withResolvers<NotificationItem>();
+    openNotificationMock.mockReturnValueOnce(opened.promise);
+    const { queryClient, router } = renderShell(<p>Current account content</p>);
+    await screen.findByLabelText("1 รายการยังไม่อ่าน");
+    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    const row = await screen.findByRole("button", {
+      name: /มีการเปลี่ยนรหัสผ่าน/,
+    });
+    await userEvent.click(row);
+    const refreshing = Promise.withResolvers<{
+      items: NotificationItem[];
+      nextCursor: null;
+      unreadCount: number;
+    }>();
+    fetchNotificationsMock.mockReturnValueOnce(refreshing.promise);
+    await act(async () => {
+      opened.resolve({ ...item, readAt: "2026-09-25T03:01:00.000Z" });
+      await opened.promise;
+    });
+    await waitFor(() => {
+      expect(fetchNotificationsMock).toHaveBeenCalledTimes(2);
+    });
+    await userEvent.click(row);
+    expect(openNotificationMock).toHaveBeenCalledTimes(1);
+    expect(router.state.location.pathname).toBe("/workspace");
+    await act(async () => {
+      await queryClient.query({
+        ...contextQueryOptions(queryClient),
+        staleTime: 0,
+      });
+    });
+    await act(async () => {
+      refreshing.resolve({ items: [item], nextCursor: null, unreadCount: 1 });
+      await refreshing.promise;
+    });
+    expect(router.state.location.pathname).toBe("/workspace");
+    expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+      "confirmed",
+    );
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it("current command mark-all refreshes its real scoped inbox; an old same-scope completion cannot invalidate a newer generation", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([], null));
+    fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+    fetchNotificationsMock.mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      unreadCount: 1,
+    });
+    const { queryClient, router } = renderShell(<p>Current account content</p>);
+    await screen.findByLabelText("1 รายการยังไม่อ่าน");
+    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    const button = screen.getByRole("button", {
+      name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+    });
+    await waitFor(() => {
+      expect(button).toBeEnabled();
+    });
+    markAllNotificationsReadMock.mockResolvedValueOnce({
+      markedCount: 1,
+    });
+    await userEvent.click(button);
+    await waitFor(() => {
+      expect(fetchNotificationsMock).toHaveBeenCalledTimes(2);
+    });
+    expect(markAllNotificationsReadMock.mock.calls[0]?.[0]).toBeNull();
+    const old = Promise.withResolvers<{
+      markedCount: number;
+    }>();
+    markAllNotificationsReadMock.mockReturnValueOnce(old.promise);
+    await userEvent.click(button);
+    await waitFor(() => {
+      expect(markAllNotificationsReadMock).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      await queryClient.query({
+        ...contextQueryOptions(queryClient),
+        staleTime: 0,
+      });
+    });
+    const reads = fetchNotificationsMock.mock.calls.length,
+      counts = fetchUnreadCountMock.mock.calls.length;
+    await act(async () => {
+      old.resolve({ markedCount: 1 });
+      await old.promise;
+    });
+    expect(fetchNotificationsMock).toHaveBeenCalledTimes(reads);
+    expect(fetchUnreadCountMock).toHaveBeenCalledTimes(counts);
+    expect(router.state.location.pathname).toBe("/workspace");
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
   });
 });

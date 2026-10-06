@@ -33,7 +33,7 @@ const DATA_DENSE_ROUTE =
 
 export function AppShell() {
   const { pathname } = useLocation();
-  const { me, mePending, retryMe } = useTenant();
+  const { me, mePending, retryMe, membershipInteraction } = useTenant();
   const isLarge = useMediaQuery("(min-width: 1024px)", true);
   const isDesktop = useMediaQuery("(min-width: 640px)", false);
   const [override, setOverride] = useState<{
@@ -180,7 +180,12 @@ export function AppShell() {
             <div className="flex min-h-full flex-col">
               <div className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
                 <ErrorBoundary landmark={false}>
-                  {mePending ? (
+                  {membershipInteraction &&
+                  /^\/organizations\/[^/]+\/monitors\/(new|[^/]+(?:\/edit)?)$/.test(
+                    pathname,
+                  ) ? (
+                    <Outlet />
+                  ) : mePending ? (
                     <PageState kind="loading" label="กำลังโหลดข้อมูลองค์กร…" />
                   ) : me === undefined ? (
                     <PageState

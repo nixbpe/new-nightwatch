@@ -1,3 +1,4 @@
+import { monitorResponseTimesResponseSchema } from "../../packages/api-contract/src/monitor.ts";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -485,8 +486,41 @@ for (const theme of ["light", "dark"] as const) {
     test("Detail: headings in order, chart table, Delete dialog focus, Pause keeps focus", async ({
       page,
     }) => {
+      await expect
+        .poll(
+          async () => {
+            const reply = await ownerSession.request(
+              "GET",
+              monitorPath(orgA, `/${monitorId}/response-times?range=24h`),
+            );
+            expect(reply.status).toBe(200);
+            const series = monitorResponseTimesResponseSchema.parse(reply.body);
+            return (
+              series.range === "24h" &&
+              series.points.some((point) => point.responseTimeMs !== null)
+            );
+          },
+          { timeout: test.info().timeout },
+        )
+        .toBe(true);
       await signIn(page, people.owner);
+      const seriesResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname ===
+            monitorPath(orgA, `/${monitorId}/response-times`) &&
+          new URL(response.url()).searchParams.get("range") === "24h" &&
+          response.status() === 200,
+      );
       await page.goto(detail());
+      const browserSeries = monitorResponseTimesResponseSchema.parse(
+        await (await seriesResponse).json(),
+      );
+      expect(browserSeries).toMatchObject({
+        range: "24h",
+        points: expect.arrayContaining([
+          expect.objectContaining({ responseTimeMs: expect.any(Number) }),
+        ]),
+      });
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(
         page.getByRole("heading", { level: 1, name: monitorName }),
@@ -547,6 +581,10 @@ for (const theme of ["light", "dark"] as const) {
       const dialog = page.getByRole("dialog", { name: "ยืนยันการลบมอนิเตอร์" });
       await dialog.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
       await expect(page).toHaveURL(new RegExp(`${overview()}$`));
+      await expect
+        .poll(() => page.evaluate(() => window.history.state?.usr))
+        .toBeNull();
+      await expect(page.getByText("ลบมอนิเตอร์แล้ว")).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
     });
   });

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MonitorRecord } from "@nightwatch/api-contract";
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router";
@@ -8,6 +8,7 @@ import { PageState } from "../../components/shell/PageState";
 import { Button } from "../../components/ui/button";
 import { ApiError } from "../../lib/api/client";
 import { fetchMonitorDetail, monitorQueryKeys } from "../../lib/api/monitors";
+import { getContextPublicationSnapshot } from "../../lib/queryClient";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { MonitorForm } from "./form/MonitorForm";
 import { useLeaveOnOrganizationSwitch } from "./useLeaveOnOrganizationSwitch";
@@ -44,6 +45,7 @@ function MonitorFormForOrganization({
   organizationId: string;
   monitorId: string | undefined;
 }) {
+  const queryClient = useQueryClient();
   const { me, mePending, meError, refreshMembershipContext } = useTenant();
   const switched = useLeaveOnOrganizationSwitch(organizationId);
   const organization = me?.organizations.find(
@@ -114,29 +116,45 @@ function MonitorFormForOrganization({
   if (me !== undefined && organization === undefined) return denied;
   if (snapshot !== null) {
     return (
-      <MonitorForm
-        key={generation}
-        organization={organization ?? snapshot.organization}
-        monitorId={monitorId}
-        record={snapshot.record}
-        roleLost={roleLost.current}
-        onReload={async () => {
-          const fresh = await detail.refetch();
-          const next = fresh.data?.monitor;
-          if (next !== undefined) {
-            setSnapshot({ ...snapshot, record: next });
-            setGeneration((current) => current + 1);
-          }
-        }}
-      />
-    );
-  }
-  if (mePending || me === undefined) {
-    return (
-      <Page width="form">
-        {header}
-        <PageState kind="loading" label="กำลังโหลดการตั้งค่า" />
-      </Page>
+      <>
+        {meError !== null ? (
+          <PageState
+            kind="error"
+            message="ไม่สามารถยืนยันสิทธิ์ของคุณได้"
+            retryLabel="ลองอีกครั้ง"
+            onRetry={() => void refreshMembershipContext()}
+          />
+        ) : null}
+        <MonitorForm
+          key={generation}
+          organization={organization ?? snapshot.organization}
+          monitorId={monitorId}
+          record={snapshot.record}
+          roleLost={roleLost.current || me === undefined}
+          onReload={async () => {
+            const before = getContextPublicationSnapshot(queryClient);
+            if (before.admission.kind !== "confirmed" || !canWrite) return;
+            const fresh = await detail.refetch();
+            const current = getContextPublicationSnapshot(queryClient);
+            if (
+              current.admission.kind !== "confirmed" ||
+              current.requiredGeneration !== before.requiredGeneration ||
+              current.publishedClaim !== before.publishedClaim
+            )
+              return;
+            const membership = current.admission.context.organizations.find(
+              (item) => item.id === organizationId,
+            );
+            if (membership?.role !== "owner" && membership?.role !== "admin")
+              return;
+            const next = fresh.data?.monitor;
+            if (next !== undefined) {
+              setSnapshot({ ...snapshot, record: next });
+              setGeneration((current) => current + 1);
+            }
+          }}
+        />
+      </>
     );
   }
   if (meError !== null) {
@@ -149,6 +167,14 @@ function MonitorFormForOrganization({
           retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
+      </Page>
+    );
+  }
+  if (mePending || me === undefined) {
+    return (
+      <Page width="form">
+        {header}
+        <PageState kind="loading" label="กำลังโหลดการตั้งค่า" />
       </Page>
     );
   }

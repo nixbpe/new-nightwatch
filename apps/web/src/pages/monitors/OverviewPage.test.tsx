@@ -1,3 +1,4 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
@@ -5,12 +6,19 @@ import type {
   MonitorRecentEvent,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  MemoryRouter,
-  Route,
-  Routes,
+  createMemoryRouter,
+  RouterProvider,
+  Outlet,
   useLocation,
   useNavigate,
 } from "react-router";
@@ -27,6 +35,8 @@ import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { formatDateTime, formatTimeWithSeconds, TIME_ZONE } from "./format";
 import { MONITOR_LIST_SORTS } from "@nightwatch/api-contract";
 import { OverviewPage } from "./OverviewPage";
+
+guardUnassignedNetwork();
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -164,36 +174,55 @@ function Harness({ children }: { children?: React.ReactNode }) {
       <output data-testid="location">{useLocation().pathname}</output>
       <output data-testid="state">{JSON.stringify(useLocation().state)}</output>
       {children}
-      <Routes>
-        <Route
-          path="/organizations/:organizationId/monitors"
-          element={<OverviewPage />}
-        />
-      </Routes>
+      <Outlet />
     </>
   );
 }
+
+const resources: {
+  router: ReturnType<typeof createMemoryRouter>;
+  queryClient: QueryClient;
+}[] = [];
+afterEach(async () => {
+  cleanup();
+  for (const { router, queryClient } of resources.splice(0)) {
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  }
+});
 
 function renderPage(organizationId = A, state?: unknown) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   bindQueryClientIdentity(queryClient, "user-1");
+  const router = createMemoryRouter(
+    [
+      {
+        element: <Harness />,
+        children: [
+          {
+            path: "/organizations/:organizationId/monitors",
+            element: <OverviewPage />,
+          },
+        ],
+      },
+    ],
+    {
+      initialEntries: [
+        { pathname: `/organizations/${organizationId}/monitors`, state },
+      ],
+    },
+  );
+  resources.push({ router, queryClient });
   return {
     queryClient,
+    router,
     ...render(
       <QueryClientProvider client={queryClient}>
         <TenantProvider>
-          <MemoryRouter
-            initialEntries={[
-              {
-                pathname: `/organizations/${organizationId}/monitors`,
-                state,
-              },
-            ]}
-          >
-            <Harness />
-          </MemoryRouter>
+          <RouterProvider router={router} />
         </TenantProvider>
       </QueryClientProvider>,
     ),

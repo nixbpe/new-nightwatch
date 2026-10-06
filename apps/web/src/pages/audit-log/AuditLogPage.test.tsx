@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -686,7 +688,13 @@ describe("AuditLogPage Organization scope (AC-07)", () => {
       defaultOptions: { queries: { retry: false } },
     });
     const confirmed = {
-      user: { id: "user-1" },
+      user: {
+        id: "user-1",
+        name: "Tester",
+        email: "test@example.test",
+        emailVerified: true,
+        twoFactorEnabled: false,
+      },
       organizations: [],
       lastActiveTenantId: ORG_A,
     };
@@ -703,12 +711,11 @@ describe("AuditLogPage Organization scope (AC-07)", () => {
     // What TenantProvider.switchOrg does after the server confirms: publish B as active.
     act(() => {
       const claim = createContextPublicationClaim();
-      claimContextPublication(queryClient, claim);
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
+      claimContextPublication(queryClient, claim, "bootstrap");
+      publishContextPublication(queryClient, claim, {
         ...confirmed,
         lastActiveTenantId: ORG_B,
       });
-      publishContextPublication(queryClient, claim);
     });
     lateA.resolve(makeList([makeEvent(0)], 1));
     await act(() => Promise.resolve());
@@ -724,7 +731,13 @@ describe("AuditLogPage Organization scope (AC-07)", () => {
       defaultOptions: { queries: { retry: false } },
     });
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, {
-      user: { id: "user-1" },
+      user: {
+        id: "user-1",
+        name: "Tester",
+        email: "test@example.test",
+        emailVerified: true,
+        twoFactorEnabled: false,
+      },
       organizations: [],
       lastActiveTenantId: ORG_B,
     });

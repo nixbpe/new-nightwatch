@@ -128,7 +128,11 @@ test("owner tests a config before saving, sees pass and a failing target, then s
   target.setDelay(4000);
   await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
   await expect(page.getByRole("heading", { name: crudName })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.history.state?.usr))
+    .toBeNull();
   await expect(page.getByText("สร้างมอนิเตอร์แล้ว")).toBeVisible();
+  await expect(page.getByRole("heading", { name: crudName })).toBeFocused();
   await expect(page.getByText("รอตรวจครั้งแรก").first()).toBeVisible();
   target.setDelay(0);
   expect(await monitorCount(orgA)).toBe(before + 1);

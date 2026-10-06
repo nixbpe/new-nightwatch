@@ -1,6 +1,8 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQuery } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { useLayoutEffect } from "react";
 import {
   createMemoryRouter,
@@ -12,7 +14,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RootLayout } from "../../router";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
-import { resetQueryClientRegistry } from "../queryClient";
+import {
+  resetQueryClientRegistry,
+  peekActiveQueryClientIdentity,
+} from "../queryClient";
 import { requireAnonLoader, workspaceLoader } from "./loaders";
 
 type SessionUser = {
@@ -229,7 +234,10 @@ describe("per-identity cache lifecycle across logout → login", () => {
     });
     render(<RouterProvider router={router} />);
 
-    expect(await screen.findByTestId("view")).toHaveTextContent("User A");
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("User A");
+      expect(peekActiveQueryClientIdentity()).toBe("user-a");
+    });
     expect(fetchLog).toEqual(["user-a"]);
     const commitsBeforeFreshB = commitLog.length;
 
@@ -275,7 +283,10 @@ describe("per-identity cache lifecycle across logout → login", () => {
       initialEntries: ["/workspace"],
     });
     render(<RouterProvider router={router} />);
-    expect(await screen.findByTestId("view")).toHaveTextContent("User A");
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("User A");
+      expect(peekActiveQueryClientIdentity()).toBe("user-a");
+    });
     const sameIdentityRequest = new Request(
       "http://localhost/workspace?tab=same-user",
     );

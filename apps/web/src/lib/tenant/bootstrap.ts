@@ -4,10 +4,13 @@ import type { QueryClient } from "@tanstack/react-query";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import {
   claimContextPublication,
+  failContextPublication,
   createContextPublicationClaim,
   hasContextPublicationClaim,
   getQueryClientIdentity,
   publishContextPublication,
+  getContextPublicationSnapshot,
+  type ScopeHint,
 } from "../queryClient";
 
 export function assertContextIdentity(
@@ -32,7 +35,7 @@ export function contextQueryOptions(queryClient: QueryClient) {
     retry: false,
     queryFn: async ({ signal }: { signal: AbortSignal }) => {
       const claim = createContextPublicationClaim();
-      claimContextPublication(queryClient, claim);
+      claimContextPublication(queryClient, claim, "bootstrap");
       const previous =
         queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
       try {
@@ -62,9 +65,13 @@ export function contextQueryOptions(queryClient: QueryClient) {
           }
           queryClient.removeQueries({ queryKey: ["tenant"] });
         }
-        publishContextPublication(queryClient, claim);
+        if (!publishContextPublication(queryClient, claim, context)) {
+          throw new Error("Context publication superseded");
+        }
+        signal.throwIfAborted();
         return context;
       } catch (error) {
+        failContextPublication(queryClient, claim, error);
         if (!signal.aborted && hasContextPublicationClaim(queryClient, claim)) {
           await queryClient.cancelQueries({ queryKey: ["tenant"] });
           if (hasContextPublicationClaim(queryClient, claim)) {
@@ -75,4 +82,57 @@ export function contextQueryOptions(queryClient: QueryClient) {
       }
     },
   };
+}
+
+export async function recoverInboxScope(
+  queryClient: QueryClient,
+  error: Error,
+  request: {
+    actor: "query" | "mutation";
+    generation: bigint | null;
+    scopeHint: ScopeHint;
+  },
+): Promise<void> {
+  const publication = getContextPublicationSnapshot(queryClient);
+  if (
+    publication.requiredGeneration !== request.generation ||
+    publication.admission.kind !== "confirmed"
+  )
+    return;
+  const admission = publication.admission;
+  const currentScope = admission.context.organizations.some(
+    (org) => org.id === admission.context.lastActiveTenantId,
+  )
+    ? admission.context.lastActiveTenantId
+    : null;
+  if (
+    request.scopeHint.kind === "known" &&
+    request.scopeHint.scope !== currentScope
+  )
+    return;
+  const repeated =
+    request.scopeHint.kind === "known" &&
+    admission.scopeRecovery.kind === "recovered" &&
+    admission.scopeRecovery.scope === request.scopeHint.scope;
+  const claim = createContextPublicationClaim();
+  if (
+    !claimContextPublication(queryClient, claim, {
+      kind: "scope-recovery",
+      scopeHint: request.scopeHint,
+    })
+  )
+    return;
+  if (
+    repeated ||
+    (request.actor === "query" && request.scopeHint.kind === "unknown")
+  ) {
+    failContextPublication(queryClient, claim, error);
+    await queryClient.cancelQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+    if (!hasContextPublicationClaim(queryClient, claim)) return;
+    await queryClient.cancelQueries({ queryKey: ["tenant"] });
+    if (hasContextPublicationClaim(queryClient, claim))
+      queryClient.removeQueries({ queryKey: ["tenant"] });
+  } else {
+    await queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+  }
 }

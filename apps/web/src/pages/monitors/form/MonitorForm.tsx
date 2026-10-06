@@ -100,8 +100,11 @@ export function MonitorForm({
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { refreshMembershipContext } = useTenant();
+  const { me, refreshMembershipContext } = useTenant();
   const organizationId = organization.id;
+  const confirmedOrganization = me?.organizations.find(
+    (item) => item.id === organizationId,
+  );
 
   // Pinned when the form opens: a refetch must not change what a save is checked against.
   const [initial] = useState(() => ({
@@ -373,13 +376,25 @@ export function MonitorForm({
             ? undefined
             : "เพิ่มเว็บไซต์หรือ API เพื่อให้ NightWatch ตรวจสถานะเป็นระยะและแจ้งเมื่อล่มหรือ SSL ใกล้หมดอายุ"
         }
-        scope={{
-          mark: organization.name,
-          label: organization.name,
-          tag: ROLE_LABELS[organization.role] ?? organization.role,
-        }}
+        scope={
+          confirmedOrganization === undefined
+            ? undefined
+            : {
+                mark: confirmedOrganization.name,
+                label: confirmedOrganization.name,
+                tag:
+                  ROLE_LABELS[confirmedOrganization.role] ??
+                  confirmedOrganization.role,
+              }
+        }
         title={
-          initial.title === null ? "เพิ่มมอนิเตอร์" : `แก้ไข ${initial.title}`
+          confirmedOrganization === undefined
+            ? editing
+              ? "แก้ไขมอนิเตอร์"
+              : "เพิ่มมอนิเตอร์"
+            : initial.title === null
+              ? "เพิ่มมอนิเตอร์"
+              : `แก้ไข ${initial.title}`
         }
         titleRef={headingRef}
         titleTabIndex={-1}
@@ -484,8 +499,9 @@ export function MonitorForm({
                     type="button"
                     variant="secondary"
                     size="sm"
+                    disabled={controlsOff}
                     onClick={() => {
-                      void onReload();
+                      if (!controlsOff) void onReload();
                     }}
                   >
                     โหลดค่าล่าสุด
