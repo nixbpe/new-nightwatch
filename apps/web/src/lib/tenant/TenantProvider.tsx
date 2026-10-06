@@ -26,6 +26,7 @@ import {
   failContextPublication,
   createContextPublicationClaim,
   getContextPublicationSnapshot,
+  getQueryClientIdentity,
   hasContextPublicationClaim,
   publishContextPublication,
   subscribeToContextPublication,
@@ -35,6 +36,7 @@ import {
   assertContextIdentity,
   contextQueryOptions,
   recoverInboxScope,
+  type InboxScopeRequest,
 } from "./bootstrap";
 
 type Membership = MeContextResponse["organizations"][number];
@@ -91,22 +93,25 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    type Request = {
-      actor: "query" | "mutation";
-      generation: bigint | null;
-      scopeHint: ScopeHint;
-    };
-    const queries = new WeakMap<object, Request>();
-    const mutations = new WeakMap<object, Request>();
+    const queries = new WeakMap<object, InboxScopeRequest>();
+    const mutations = new WeakMap<object, InboxScopeRequest>();
     const capture = (
-      actor: Request["actor"],
-      scopeHint: Request["scopeHint"],
-    ): Request => ({
-      actor,
-      generation: getContextPublicationSnapshot(queryClient).requiredGeneration,
-      scopeHint,
-    });
-    const recover = (error: unknown, request: Request | undefined) => {
+      actor: InboxScopeRequest["actor"],
+      scopeHint: ScopeHint,
+    ): InboxScopeRequest => {
+      const publication = getContextPublicationSnapshot(queryClient);
+      return {
+        actor,
+        requiredGeneration: publication.requiredGeneration,
+        publishedClaim: publication.publishedClaim,
+        identity: getQueryClientIdentity(queryClient),
+        scopeHint,
+      };
+    };
+    const recover = (
+      error: unknown,
+      request: InboxScopeRequest | undefined,
+    ) => {
       if (
         isInboxScopeChanged(error) &&
         error instanceof Error &&

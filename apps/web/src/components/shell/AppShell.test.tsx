@@ -1765,6 +1765,197 @@ describe("AppShell", () => {
     await queryClient.cancelQueries();
     queryClient.clear();
   });
+  it.each(["open", "read-all"] as const)(
+    "R03 current-owned native %s scope error still resolves and publishes the server scope",
+    async (operation) => {
+      const item: NotificationItem = {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        scope: "account",
+        organizationId: null,
+        eventType: "PASSWORD_CHANGED",
+        occurredAt: "2026-09-25T03:00:00.000Z",
+        readAt: null,
+        actor: null,
+        category: null,
+      };
+      fetchMeContextMock
+        .mockResolvedValueOnce(meContext([ownerOrg, viewerOrg], ORG_A))
+        .mockResolvedValue(meContext([ownerOrg, viewerOrg], ORG_B));
+      fetchNotificationsMock.mockResolvedValue({
+        items: [item],
+        nextCursor: null,
+        unreadCount: 1,
+      });
+      fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+      const late = Promise.withResolvers<never>();
+      if (operation === "open")
+        openNotificationMock.mockReturnValueOnce(late.promise);
+      else markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
+      const { queryClient, router } = renderShell(<WorkspacePage />);
+      await findScope("Org A", "เจ้าของ");
+      const origin = getContextPublicationSnapshot(queryClient);
+      await userEvent.click(
+        screen.getByRole("button", { name: "การแจ้งเตือน" }),
+      );
+      await userEvent.click(
+        await screen.findByRole("button", {
+          name:
+            operation === "open"
+              ? /มีการเปลี่ยนรหัสผ่าน/
+              : "ทำเครื่องหมายว่าอ่านทั้งหมด",
+        }),
+      );
+      await waitFor(() => {
+        expect(
+          operation === "open"
+            ? openNotificationMock
+            : markAllNotificationsReadMock,
+        ).toHaveBeenCalledTimes(1);
+      });
+      if (operation === "read-all")
+        expect(markAllNotificationsReadMock.mock.calls[0]?.[0]).toBe(ORG_A);
+      const key = ["tenant", "r03-outgoing", operation] as const;
+      queryClient.setQueryData(key, "outgoing-cache");
+      await act(async () => {
+        late.reject(new InboxScopeChangedError());
+        await late.promise.catch(() => undefined);
+      });
+      await findScope("Org B", "ผู้ชม");
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      expect(
+        getContextPublicationSnapshot(queryClient).publishedClaim,
+      ).not.toBe(origin.publishedClaim);
+      expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
+        "confirmed",
+      );
+      expect(queryClient.getQueryData(key)).toBeUndefined();
+      expect(router.state.location.pathname).toBe("/workspace");
+      router.dispose();
+      await queryClient.cancelQueries();
+      queryClient.clear();
+    },
+  );
+  it.each(["open", "read-all"] as const)(
+    "R03 late native %s scope error cannot withdraw a superseding same-generation publication",
+    async (operation) => {
+      const item: NotificationItem = {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        scope: "account",
+        organizationId: null,
+        eventType: "PASSWORD_CHANGED",
+        occurredAt: "2026-09-25T03:00:00.000Z",
+        readAt: null,
+        actor: null,
+        category: null,
+      };
+      fetchMeContextMock.mockResolvedValue(
+        meContext([ownerOrg, viewerOrg], ORG_A),
+      );
+      fetchNotificationsMock.mockResolvedValue({
+        items: [item],
+        nextCursor: null,
+        unreadCount: 1,
+      });
+      fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
+      const late = Promise.withResolvers<never>();
+      if (operation === "open")
+        openNotificationMock.mockReturnValueOnce(late.promise);
+      else markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
+      const { queryClient, router } = renderShell(<WorkspacePage />);
+      await findScope("Org A", "เจ้าของ");
+      const origin = getContextPublicationSnapshot(queryClient);
+      await userEvent.click(
+        screen.getByRole("button", { name: "การแจ้งเตือน" }),
+      );
+      await userEvent.click(
+        await screen.findByRole("button", {
+          name:
+            operation === "open"
+              ? /มีการเปลี่ยนรหัสผ่าน/
+              : "ทำเครื่องหมายว่าอ่านทั้งหมด",
+        }),
+      );
+      await waitFor(() => {
+        expect(
+          operation === "open"
+            ? openNotificationMock
+            : markAllNotificationsReadMock,
+        ).toHaveBeenCalledTimes(1);
+      });
+      const mutation = queryClient
+        .getMutationCache()
+        .getAll()
+        .find((value) => value.state.status === "pending");
+      expect(mutation).toBeDefined();
+      for (const scope of operation === "open" ? [ORG_B] : [ORG_B, ORG_A]) {
+        updateActiveOrganizationMock.mockResolvedValueOnce(
+          meContext([ownerOrg, viewerOrg], scope),
+        );
+        await userEvent.click(
+          screen.getByRole("button", {
+            name: scope === ORG_B ? /Org A/ : /Org B/,
+          }),
+        );
+        await userEvent.click(
+          within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
+            "menuitemradio",
+            { name: scope === ORG_B ? /Org B/ : /Org A/ },
+          ),
+        );
+        await findScope(
+          scope === ORG_B ? "Org B" : "Org A",
+          scope === ORG_B ? "ผู้ชม" : "เจ้าของ",
+        );
+      }
+      const current = getContextPublicationSnapshot(queryClient);
+      expect(current.requiredGeneration).toBe(origin.requiredGeneration);
+      expect(current.publishedClaim).not.toBe(origin.publishedClaim);
+      const key = ["tenant", "r03-current", operation] as const;
+      queryClient.setQueryData(key, "current-cache");
+      const pending = Promise.withResolvers<string>();
+      const request = queryClient
+        .query({ queryKey: key, staleTime: 0, queryFn: () => pending.promise })
+        .catch(() => "cancelled");
+      const query = queryClient
+        .getQueryCache()
+        .find({ queryKey: key, exact: true });
+      await waitFor(() => {
+        expect(query?.state.fetchStatus).toBe("fetching");
+      });
+      const resolverCalls = fetchMeContextMock.mock.calls.length;
+      const cancel = vi.spyOn(queryClient, "cancelQueries"),
+        remove = vi.spyOn(queryClient, "removeQueries"),
+        invalidate = vi.spyOn(queryClient, "invalidateQueries");
+      await act(async () => {
+        late.reject(new InboxScopeChangedError());
+        await late.promise.catch(() => undefined);
+      });
+      await waitFor(() => {
+        expect(mutation?.state.status).toBe("error");
+      });
+      expect(getContextPublicationSnapshot(queryClient)).toBe(current);
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(resolverCalls);
+      expect(
+        queryClient.getQueryCache().find({ queryKey: key, exact: true }),
+      ).toBe(query);
+      expect(query?.state.fetchStatus).toBe("fetching");
+      expect(queryClient.getQueryData(key)).toBe("current-cache");
+      expect(cancel).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+      expect(invalidate).not.toHaveBeenCalled();
+      expect(router.state.location.pathname).toBe("/workspace");
+      cancel.mockRestore();
+      remove.mockRestore();
+      invalidate.mockRestore();
+      await act(async () => {
+        pending.resolve("current-response");
+        expect(await request).toBe("current-response");
+      });
+      router.dispose();
+      await queryClient.cancelQueries();
+      queryClient.clear();
+    },
+  );
   it("current command mark-all refreshes its real scoped inbox; an old same-scope completion cannot invalidate a newer generation", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([], null));
     fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });

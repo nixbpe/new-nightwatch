@@ -11,6 +11,7 @@ import {
   publishContextPublication,
   getContextPublicationSnapshot,
   type ScopeHint,
+  type ContextPublicationSnapshot,
 } from "../queryClient";
 
 export function assertContextIdentity(
@@ -84,18 +85,24 @@ export function contextQueryOptions(queryClient: QueryClient) {
   };
 }
 
+export type InboxScopeRequest = Readonly<
+  Pick<ContextPublicationSnapshot, "requiredGeneration" | "publishedClaim"> & {
+    actor: "query" | "mutation";
+    identity: ReturnType<typeof getQueryClientIdentity>;
+    scopeHint: Readonly<ScopeHint>;
+  }
+>;
+
 export async function recoverInboxScope(
   queryClient: QueryClient,
   error: Error,
-  request: {
-    actor: "query" | "mutation";
-    generation: bigint | null;
-    scopeHint: ScopeHint;
-  },
+  request: InboxScopeRequest,
 ): Promise<void> {
   const publication = getContextPublicationSnapshot(queryClient);
   if (
-    publication.requiredGeneration !== request.generation ||
+    publication.requiredGeneration !== request.requiredGeneration ||
+    publication.publishedClaim !== request.publishedClaim ||
+    getQueryClientIdentity(queryClient) !== request.identity ||
     publication.admission.kind !== "confirmed"
   )
     return;
