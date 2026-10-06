@@ -252,7 +252,6 @@ export function ageSeries(
   );
 }
 
-/** Explicit raw samples for response-times boundary and population fixtures. */
 export async function seedResponseSamples(
   ctx: MonitorTestContext,
   organizationId: string,

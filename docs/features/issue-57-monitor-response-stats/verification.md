@@ -104,3 +104,25 @@ Plan JSON records in-memory sorts and bound partition pruning. Synthetic organiz
 - Required wire metadata and max721 remain a coordinated API/Web candidate. Rolling deployment and old browser-bundle compatibility require a separate release plan. Query cost evidence remains local diagnostic data.
 
 Prove It Works shaped the real raw→API→browser checks and honest manual gap. Sequence Work into Verifiable Units shaped fixture repair/check/commit order and serial DB execution. Fix Root Causes shaped the isolated target fixture instead of changing expected counts. Type System Discipline shaped the unknown Proxy boundary without casts. Model the Domain kept actual response parsing in the discriminated schema and range/role tables. Decision trail is `/tmp/nightwatch-issue57-run/decisions.tsv`; parent owns independent review, no nested agents or self-approval.
+
+## Comment and test cleanup checkpoint
+
+Cleanup against `2449df9b2901e70671627249bcf467f556d14df6` removes 7 comment lines and replaces 21 test titles in 6 files. The reviewed source delta has SHA256 `8e7d34c6f8d7d7086705165860f66897b7060f7e06f4158f23e5fb9ea61ffaf5`. No assertions, fixtures, scenarios, skips, contracts or generated output changed. Static redundancy review found no equivalent same-layer survivor that preserves every trigger and assertion, so no tests were deleted.
+
+Fresh focused Web results are 147→147 pass; focused DB results are 82→82 pass; E2E discovery remains 20→20. Final independent static review found Blocker 0, Major 0, Minor 0 and Nit 0. These results cover the source delta before the checkpoint commit, not gates executed on a later head SHA.
+
+| Cleanup gate | Author-produced result | Artifact under `/tmp/nightwatch-issue57-run/` |
+| --- | --- | --- |
+| validate | observed pass; test tasks 7 successful, 5 cached | `cleanup-validate.log` |
+| integration | observed pass; forced serial, 0 cached; API684 pass/2 existing skips, DB132 pass, Worker149 pass | `cleanup-integration.log` |
+| coverage | observed pass; `COVERAGE_GATE=1`, forced serial, 0 cached; API lines94.86/branches88.53%, Web lines94.00/branches88.21% | `cleanup-coverage.log` |
+| build | observed pass; 3 successful, 1 cached | `cleanup-build.log` |
+| security | observed pass; audit, Git-history secrets scan and SAST; 0 findings | `cleanup-security.log` |
+| e2e | observed pass; real isolated browser run, 20 pass, 0 skipped/unexpected/flaky | `cleanup-e2e.log`, `cleanup-e2e.json` |
+
+Current 1440×900 after screenshots show fixture p50/p95/checks/failed = 20/40/4/1:
+
+- 7d: [light](screenshots/57-kpi-7d-light.png), [dark](screenshots/57-kpi-7d-dark.png).
+- 30d: [light](screenshots/57-kpi-30d-light.png), [dark](screenshots/57-kpi-30d-dark.png).
+
+The screenshots are current after evidence, not historical baseline images or screen-reader proof. AC-71 and the dependent manual portion of AC-74 remain not verified. Other manual/browser gaps listed above remain open. Owned E2E databases and Redis keys remaining are 0; task-owned Compose services are stopped. PR publication remains blocked by the required manual proof.

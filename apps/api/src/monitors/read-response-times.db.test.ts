@@ -134,7 +134,6 @@ describe("24 h", () => {
 
   it("caps the points at 1,440 and keeps the newest", async () => {
     const id = await seedMonitor(ctx, org.id, { intervalSeconds: 60 });
-    // All 1,500 checks are inside 24 h; only the newest 1,440 survive.
     await seedResults(ctx, org.id, id, ageSeries(1500, 30, 30), {
       intervalSeconds: 60,
     });

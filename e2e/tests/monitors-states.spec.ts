@@ -89,7 +89,7 @@ test.afterAll(async () => {
   }
 });
 
-test.describe("AC-01 leaf in the sidebar and the command palette", () => {
+test.describe("leaf in the sidebar and the command palette", () => {
   for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
     test(`${role}: leaf is present, active on every sub-route, found by the palette`, async ({
       page,
@@ -118,7 +118,7 @@ test.describe("AC-01 leaf in the sidebar and the command palette", () => {
   }
 });
 
-test.describe("AC-04 Overview states", () => {
+test.describe("Overview states", () => {
   test("first-run empty, filtered empty, loading, error with retry, stale warning", async ({
     page,
   }) => {
@@ -180,7 +180,7 @@ test.describe("AC-04 Overview states", () => {
   });
 });
 
-test.describe("AC-06, AC-07, AC-09, AC-10 create form", () => {
+test.describe("create form", () => {
   test("defaults, mode switch keeps values, validation beside the field, one monitor on a double click", async ({
     page,
   }) => {
@@ -285,8 +285,8 @@ test.describe("AC-06, AC-07, AC-09, AC-10 create form", () => {
   });
 });
 
-test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
-  test("a concurrent edit shows the conflict and keeps typed values (AC-18)", async ({
+test.describe("edit, change and races", () => {
+  test("a concurrent edit shows the conflict and keeps typed values", async ({
     browser,
   }) => {
     const first = await browser.newContext();
@@ -322,7 +322,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
     ]);
   });
 
-  test("an id of another Organization reads as not found on Detail and Edit (AC-18, AC-48)", async ({
+  test("an id of another Organization reads as not found on Detail and Edit", async ({
     page,
   }) => {
     await signIn(page, owner);
@@ -337,7 +337,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
     await expect(page.getByText(`foreign-${run}`)).toHaveCount(0);
   });
 
-  test("editing the URL shows unknown until the new configuration has a result (AC-40)", async ({
+  test("editing the URL shows unknown until the new configuration has a result", async ({
     page,
   }) => {
     test.setTimeout(3 * 60_000);
@@ -367,7 +367,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
     });
   });
 
-  test("deleting a monitor that another session deleted goes to Overview with the notice (AC-50)", async ({
+  test("deleting a monitor that another session deleted goes to Overview with the notice", async ({
     page,
   }) => {
     const created = await ownerSession.request("POST", monitorPath(orgA), {
@@ -390,7 +390,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
     await expect(page.getByText("มอนิเตอร์นี้ถูกลบแล้ว")).toBeVisible();
   });
 
-  test("a Detail left open shows not found after the monitor is deleted elsewhere (AC-50)", async ({
+  test("a Detail left open shows not found after the monitor is deleted elsewhere", async ({
     page,
   }) => {
     const created = await ownerSession.request("POST", monitorPath(orgA), {
@@ -411,7 +411,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
   });
 });
 
-test("AC-11 the Test limit shows the wait from the server and disables the button", async ({
+test("the Test limit shows the wait from the server and disables the button", async ({
   page,
 }) => {
   const org = await createOrganization(pool, `E2E Rate ${run}`);
@@ -446,7 +446,7 @@ test("AC-11 the Test limit shows the wait from the server and disables the butto
   await pool.query("delete from organization where id = $1", [org]);
 });
 
-test.describe("AC-25, AC-26, AC-44, AC-47 secrets in the browser", () => {
+test.describe("secrets in the browser", () => {
   test("Edit shows set slots, refuses an empty replace, warns on a type change and blocks a new origin", async ({
     page,
   }) => {
@@ -500,7 +500,7 @@ test.describe("AC-25, AC-26, AC-44, AC-47 secrets in the browser", () => {
     ).toBeDisabled();
   });
 
-  test("query and body fields carry the permanent warning (AC-47)", async ({
+  test("query and body fields carry the permanent warning", async ({
     page,
   }) => {
     await signIn(page, owner);
@@ -514,7 +514,7 @@ test.describe("AC-25, AC-26, AC-44, AC-47 secrets in the browser", () => {
   });
 });
 
-test("AC-54 a first failing result reads as one failure, not as down", async ({
+test("a first failing result reads as one failure, not as down", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -532,7 +532,7 @@ test("AC-54 a first failing result reads as one failure, not as down", async ({
   await expect(page.getByText("ไม่ทราบสถานะ", { exact: true })).toBeVisible();
 });
 
-test("AC-31 an Organization at 50 monitors shows the reason and the API refuses a 51st", async ({
+test("an Organization at 50 monitors shows the reason and the API refuses a 51st", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -574,7 +574,7 @@ test("AC-31 an Organization at 50 monitors shows the reason and the API refuses 
   await pool.query("delete from organization where id = $1", [org]);
 });
 
-test("#57 known raw samples reach all ranges, keyboard table and both themes", async ({
+test("known raw samples reach all ranges, keyboard table and both themes", async ({
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
@@ -827,7 +827,7 @@ test("#57 known raw samples reach all ranges, keyboard table and both themes", a
   await shot(page, "57-denied-dark");
 });
 
-test("#57 pending real tenant A response cannot enter tenant B after confirmed switch", async ({
+test("pending real tenant A response cannot enter tenant B after confirmed switch", async ({
   page,
 }) => {
   const ids = [randomUUID(), randomUUID()];

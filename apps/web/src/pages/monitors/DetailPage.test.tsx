@@ -1567,7 +1567,7 @@ describe("Detail redesign behaviours", () => {
     ).toHaveTextContent("ไม่มีข้อมูล");
   });
 
-  it("shows live four KPIs instead of the #57 sample on 7 d", async () => {
+  it("shows four live KPIs without a percentile sample on 7 d", async () => {
     showDetail(detail());
     fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
       Promise.resolve(
@@ -1626,7 +1626,6 @@ describe("Detail redesign behaviours", () => {
     const frames = Array.from(
       document.querySelectorAll('[data-slot="mockup-frame"]'),
     );
-    // The #56 sample remains; #57 and #58 are live.
     expect(
       frames.map(
         (frame) =>
@@ -1705,7 +1704,7 @@ function expectKpis(values: string[]) {
   ).toEqual(values);
 }
 
-describe("#57 response-time state and selection", () => {
+describe("response-time state and selection", () => {
   it.each(["7 วัน", "30 วัน"])(
     "shows the same literal four KPI values for %s, full bounds and keyboard table",
     async (label) => {
@@ -2017,7 +2016,7 @@ it("announces an empty latest selection once after failed load and retry, withou
 });
 
 it.each(["owner", "admin", "viewer", "auditor"] as const)(
-  "allows %s to read actual response KPIs without write controls",
+  "allows %s to read actual response KPIs",
   async (role) => {
     fetchMeContextMock.mockResolvedValue(context(role));
     showDetail(detail());

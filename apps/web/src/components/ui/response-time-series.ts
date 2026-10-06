@@ -499,12 +499,9 @@ export const RANGE_LABELS: Record<ChartRange, string> = {
 };
 
 export type RangeStats = {
-  /** Recorded pass and fail results in the selected population. */
   checks: number;
-  /** Nearest-rank percentile of measured results; null when none were measured. */
   p50Ms: number | null;
   p95Ms: number | null;
-  /** Results with outcome `fail`; `check_error` is NightWatch-side and not counted. */
   failed: number;
 };
 
@@ -515,7 +512,6 @@ function percentile(sorted: readonly number[], p: number): number | null {
   return sorted[rank - 1] ?? null;
 }
 
-/** Capped 24 h points and uncapped long-range summaries share the same KPI definitions. */
 export function rangeStats(response: MonitorResponseTimesResponse): RangeStats {
   if (response.range !== "24h") {
     return response.summary;
