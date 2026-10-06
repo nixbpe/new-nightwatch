@@ -45,6 +45,7 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 - COL-05 Danger fill with On danger text (light `#ffffff` at 6.29:1, dark `#2a0a12` at 6.78:1) is allowed only for the confirm button inside a confirmation dialog. Inline two-step confirms use the Danger outline button: Surface background, 1 px Danger border, Danger text (light `#be123c` on `#ffffff` at 6.29:1, dark `#fb7185` on `#0e0f12` at 7.12:1) and a Danger tint on hover. The wording and the stated consequence stay required, so color is never the only destructive cue.
 - COL-06 An alert banner for a down or failed state may use a Danger border and Danger at 10% (dark) / 6% (light) as fill, with an icon and a written state. Badges and status pills stay neutral (COL-01).
 - COL-07 `primary-glow` is the glow for a live-data indicator (a pulsing dot, a streaming card's edge), the use LAY-04 allows; it never replaces the focus ring (A11Y-01), never fills or outlines a resting control or card, and is never reused as a solid text, fill or border color.
+- COL-08 A monitor's severity badge may also carry `primary-glow` while the monitor has an active incident (its current health is down); the badge keeps its neutral fill and text label (COL-01, COL-02), and the glow stops the moment the incident ends, pauses, or the badge shows a resolved or historical state.
 
 ## Typography
 
@@ -62,7 +63,7 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 - LAY-01 Spacing follows a 4 px rhythm (8 / 16 / 24 / 32 px).
 - LAY-02 Layouts reflow to narrow screens and 200% text without losing actions or labels. The page never scrolls sideways; only a table, a tab strip or a step indicator may scroll horizontally inside its own container, and it never shows a vertical scrollbar of its own.
 - LAY-03 Targets are at least 24 × 24 px. Controls are 40 px high; the large size and touch-first surfaces use 44 px.
-- LAY-04 Shadows only on floating overlays (menus, popovers, command palette, modal dialogs). Glow only for a live-data indicator or alongside the focus ring.
+- LAY-04 Shadows only on floating overlays (menus, popovers, command palette, modal dialogs). Glow only for a live-data indicator, alongside the focus ring, or on a monitor's severity badge while its incident is active (COL-08).
 - LAY-05 Corners are 4 px; full radius only for badges, tags, counters and avatars; chart and strip marks use 0–1 px. Avatars (people) are circular; organization marks, icons and step indicators (system) use 4 px.
 - LAY-06 A small size of 32 px is allowed for row actions in tables, segmented controls and filter chips. Forms and page actions keep 40 px, and every target stays at least 24 × 24 px (LAY-03).
 - LAY-07 A modal dialog sits over a scrim (Canvas at 60% in dark, Text at 35% in light) and carries one shadow per theme: `0 24px 64px` at black 40% (dark) and at Text 16% (light).
@@ -87,7 +88,7 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 
 ## Motion
 
-**Principle.** New transitions are additive: existing interactions keep their current timing. An ambient or "live" treatment marks at most one element per view, and only data that is currently fresh; a stale or failed refresh drops the treatment rather than leaving it on old data (CMP-01). Every rule below collapses under reduced motion to a steady resting state, never to nothing, per the Accessibility principle above.
+**Principle.** New transitions are additive: existing interactions keep their current timing. An ambient or "live" treatment marks at most one element per view, and only data that is currently fresh; a stale or failed refresh drops the treatment rather than leaving it on old data (CMP-01). The one documented exception is COL-08: a monitor's severity badge may glow alongside a live-data indicator already on the same view, since both describe the same active incident rather than two unrelated live elements. Every rule below collapses under reduced motion to a steady resting state, never to nothing, per the Accessibility principle above.
 
 - MOT-01 A live-data indicator (a pulsing dot, or a sweeping highlight along a streaming card's top hairline) breathes on a 2200 ms ease-in-out half-cycle (4400 ms dim-to-bright-to-dim), using `primary-glow`; reduced motion holds the resting glow state with no animation.
 
