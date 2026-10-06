@@ -79,9 +79,7 @@ const columns: DataTableColumn<Incident>[] = [
 export function IncidentsCard({
   organizationId,
   monitorId,
-  code,
 }: {
-  code?: string;
   organizationId: string;
   monitorId: string;
 }) {
@@ -94,11 +92,15 @@ export function IncidentsCard({
     placeholderData: keepPreviousData,
   });
   const data = incidents.data;
+  // One page needs no pager (AC-86); `hasPrevious` keeps the way back when the total shrinks while on a later page.
+  const hasPrevious = data !== undefined && data.page.offset > 0;
+  const hasNext =
+    data !== undefined &&
+    data.page.offset + data.incidents.length < data.page.total;
   return (
     <section aria-labelledby="detail-incidents" className="flex flex-col gap-4">
       <SectionHeader
         id="detail-incidents"
-        code={code}
         title="เหตุการณ์"
         meta={<>เวลาแสดงตามเขตเวลา {TIME_ZONE}</>}
       />
@@ -139,28 +141,28 @@ export function IncidentsCard({
               rows={data.incidents}
               rowKey={(row) => row.id}
             />
-            <DataTablePagination
-              ariaLabel="หน้าเหตุการณ์"
-              summary={
-                <>
-                  แสดง {data.page.offset + 1}–
-                  {data.page.offset + data.incidents.length} จาก{" "}
-                  {data.page.total}
-                </>
-              }
-              previousLabel="ก่อนหน้า"
-              nextLabel="ถัดไป"
-              hasPrevious={data.page.offset > 0}
-              hasNext={
-                data.page.offset + data.incidents.length < data.page.total
-              }
-              onPrevious={() => {
-                setOffset(Math.max(0, offset - MONITOR_HISTORY_PAGE_SIZE));
-              }}
-              onNext={() => {
-                setOffset(offset + MONITOR_HISTORY_PAGE_SIZE);
-              }}
-            />
+            {hasPrevious || hasNext ? (
+              <DataTablePagination
+                ariaLabel="หน้าเหตุการณ์"
+                summary={
+                  <>
+                    แสดง {data.page.offset + 1}–
+                    {data.page.offset + data.incidents.length} จาก{" "}
+                    {data.page.total}
+                  </>
+                }
+                previousLabel="ก่อนหน้า"
+                nextLabel="ถัดไป"
+                hasPrevious={hasPrevious}
+                hasNext={hasNext}
+                onPrevious={() => {
+                  setOffset(Math.max(0, offset - MONITOR_HISTORY_PAGE_SIZE));
+                }}
+                onNext={() => {
+                  setOffset(offset + MONITOR_HISTORY_PAGE_SIZE);
+                }}
+              />
+            ) : null}
           </>
         ) : null}
         {data !== undefined && incidents.isError ? (

@@ -1,5 +1,6 @@
 import type {
   Monitor,
+  MonitorListResponse,
   MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -205,7 +206,6 @@ describe("Detail health and special states", () => {
     expect(await screen.findAllByText("รอตรวจครั้งแรก")).not.toHaveLength(0);
     expect(screen.getAllByText("ไม่ทราบสถานะ").length).toBeGreaterThan(0);
     expect(screen.getAllByText("ยังไม่มีข้อมูล")).toHaveLength(4);
-    expect(screen.getByText("ยังไม่มีผลการตรวจ")).toBeInTheDocument();
     expect(
       await screen.findByText("ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล"),
     ).toBeInTheDocument();
@@ -251,7 +251,6 @@ describe("Detail health and special states", () => {
     expect(
       (await screen.findAllByText("ตรวจไม่ได้ (ปัญหาฝั่งระบบ)")).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByText("ตรวจไม่ได้")).toBeInTheDocument();
     expect(screen.queryByText("ปกติ")).toBeNull();
     expect(screen.queryByText("ล่ม")).toBeNull();
   });
@@ -620,126 +619,16 @@ describe("Detail alerts card", () => {
   });
 });
 
-describe("Detail assertions", () => {
-  it("words every row as ผ่าน, ไม่ผ่าน or ไม่ได้ประเมิน and labels a cut value", async () => {
+describe("Detail last result (AC-84)", () => {
+  it("has no last-result card, its table, its cause line or its prefix label", async () => {
     showDetail(
       detail({
         health: "down",
-        assertions: [
-          { kind: "jsonPathEquals", path: "$.status", expected: "ok" },
-          { kind: "bodyContains", text: "ready" },
-          { kind: "responseTimeBelow", ms: 800 },
-        ],
-        lastResult: {
-          ...baseResult,
-          outcome: "fail",
-          httpStatus: 503,
-          responseTimeMs: 1204,
-          failureReason: "http_status",
-          assertions: [
-            {
-              kind: "jsonPathEquals",
-              expected: '"ok"',
-              actual: '"degraded and a very long value"',
-              actualType: "string",
-              actualTruncated: true,
-              status: "fail",
-              reason: "value_mismatch",
-            },
-            {
-              kind: "bodyContains",
-              expected: "ready",
-              actual: null,
-              actualType: null,
-              actualTruncated: false,
-              status: "pass",
-              reason: null,
-            },
-            {
-              kind: "responseTimeBelow",
-              expected: "800",
-              actual: null,
-              actualType: null,
-              actualTruncated: false,
-              status: "not_evaluated",
-              reason: "no_response",
-            },
-          ],
-        },
-      }),
-    );
-    renderDetail();
-    const table = await screen.findByRole("table", {
-      name: "ผลการตรวจล่าสุดต่อเงื่อนไข",
-    });
-    const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(4);
-    expect(rows[0]).toHaveTextContent("รหัสสถานะ");
-    expect(rows[0]).toHaveTextContent("503");
-    expect(rows[0]).toHaveTextContent("ไม่ผ่าน");
-    expect(rows[1]).toHaveTextContent("JSONPath เท่ากับ $.status");
-    expect(rows[1]).toHaveTextContent("ตัดแล้ว");
-    expect(rows[1]).toHaveTextContent("ไม่ผ่าน");
-    expect(rows[2]).toHaveTextContent("ผ่าน");
-    expect(rows[2]).not.toHaveTextContent("ไม่ผ่าน");
-    expect(rows[3]).toHaveTextContent("ไม่ได้ประเมิน");
-    expect(rows[3]).toHaveTextContent("800 ms");
-    expect(within(table).getAllByText("ตัดแล้ว")).toHaveLength(1);
-  });
-
-  it("shows the status row as not evaluated when there was no response", async () => {
-    showDetail(
-      detail({
-        health: "down",
-        lastResult: {
-          ...baseResult,
-          outcome: "fail",
-          httpStatus: null,
-          responseTimeMs: null,
-          failureReason: "tls_invalid",
-          tlsReason: "expired",
-        },
-      }),
-    );
-    renderDetail();
-    const table = await screen.findByRole("table", {
-      name: "ผลการตรวจล่าสุดต่อเงื่อนไข",
-    });
-    expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
-      "ไม่ได้ประเมิน",
-    );
-    expect(
-      screen.getByText("สาเหตุ ใบรับรองไม่ถูกต้อง: หมดอายุ"),
-    ).toBeInTheDocument();
-  });
-
-  it("words a TLS handshake failure as a failed secure connection, not an invalid certificate", async () => {
-    showDetail(
-      detail({
-        health: "down",
-        lastResult: {
-          ...baseResult,
-          outcome: "fail",
-          httpStatus: null,
-          responseTimeMs: null,
-          failureReason: "tls_invalid",
-          tlsReason: "handshake_failed",
-        },
-      }),
-    );
-    renderDetail();
-    expect(
-      await screen.findByText("สาเหตุ เชื่อมต่อแบบปลอดภัยไม่สำเร็จ"),
-    ).toBeInTheDocument();
-  });
-
-  it("shows the actual type of a type mismatch and the prefix label", async () => {
-    showDetail(
-      detail({
         assertions: [{ kind: "jsonPathEquals", path: "$.id", expected: "1" }],
         lastResult: {
           ...baseResult,
           outcome: "fail",
+          httpStatus: 503,
           failureReason: "assertion_failed",
           evaluatedFromPrefix: true,
           configVersion: 1,
@@ -758,15 +647,18 @@ describe("Detail assertions", () => {
       }),
     );
     renderDetail();
-    const table = await screen.findByRole("table", {
-      name: "ผลการตรวจล่าสุดต่อเงื่อนไข",
-    });
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    await screen.findByText("ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล");
     expect(
-      within(table).getByText(/ชนิดข้อมูลไม่ตรง \(ค่าจริงเป็น string\)/),
-    ).toBeInTheDocument();
+      screen.queryByRole("heading", { name: /ผลการตรวจล่าสุด/ }),
+    ).toBeNull();
     expect(
-      screen.getByText("ประเมินจากส่วนต้นของ response"),
-    ).toBeInTheDocument();
+      screen.queryByRole("table", { name: "ผลการตรวจล่าสุดต่อเงื่อนไข" }),
+    ).toBeNull();
+    expect(screen.queryByText(/ชนิดข้อมูลไม่ตรง/)).toBeNull();
+    expect(screen.queryByText("ประเมินจากส่วนต้นของ response")).toBeNull();
+    expect(screen.queryByText(/^สาเหตุ /)).toBeNull();
+    expect(screen.queryByText("HTTP 503")).toBeNull();
   });
 });
 
@@ -942,6 +834,184 @@ describe("Detail loading, failure and refetch", () => {
   });
 });
 
+describe("Detail data freshness (AC-81, AC-87)", () => {
+  const GLOW = "shadow-[0_0_10px_3px_var(--primary-glow)]";
+  const STALE = /อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ/;
+  const downWithIncident = () =>
+    detail({
+      health: "down",
+      consecutiveFailures: 3,
+      openIncident: {
+        startedAt: "2026-09-30T07:20:00.000Z",
+        reason: "http_status",
+      },
+    });
+
+  async function dataAsOfDot() {
+    const section = sectionOf(
+      await screen.findByRole("heading", { name: "สถานะปัจจุบัน" }),
+    );
+    return must(within(section).getByText(/^ข้อมูล ณ/).previousElementSibling);
+  }
+
+  function headerBadge() {
+    // The status line follows the title; the scope row above it has its own role pill.
+    const status = must(
+      screen.getByRole("heading", { level: 1 }).nextElementSibling,
+    );
+    const pill = must(status.querySelector("[data-slot=status-pill]"));
+    return { pill, wrapper: must(pill.parentElement) };
+  }
+
+  it("pulses the data-as-of dot while fresh, goes neutral after a failed refresh and pulses again after recovery", async () => {
+    showDetail(detail());
+    renderDetail();
+    const fresh = await dataAsOfDot();
+    expect(fresh).toHaveAttribute("aria-hidden", "true");
+    expect(fresh).toHaveClass("live-pulse");
+    expect(fresh).toHaveClass("bg-primary");
+    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+
+    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
+    expect(await screen.findByText(STALE)).toBeInTheDocument();
+    const stale = await dataAsOfDot();
+    expect(stale).toHaveClass("bg-foreground-secondary");
+    expect(stale).not.toHaveClass("live-pulse");
+    expect(stale).not.toHaveClass("bg-primary");
+    expect(document.querySelector(".live-pulse")).toBeNull();
+
+    showDetail(detail());
+    await waitFor(() => {
+      expect(screen.queryByText(STALE)).toBeNull();
+    });
+    const recovered = await dataAsOfDot();
+    expect(recovered).toHaveClass("live-pulse");
+    expect(recovered).toHaveClass("bg-primary");
+  });
+
+  it("glows the badge while an incident is active, drops the glow on a failed refresh and brings it back on recovery", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    const { pill, wrapper } = headerBadge();
+    expect(pill).toHaveTextContent("ล่ม");
+    expect(wrapper).toHaveClass("rounded-full");
+    expect(wrapper).toHaveClass(GLOW);
+    // Static glow: the dot is still the only live-pulse, and the badge keeps its neutral look (COL-01).
+    expect(wrapper.className).not.toMatch(/live-pulse|animate/);
+    expect(pill.className).not.toMatch(/glow|shadow/);
+    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    const pillClass = pill.className;
+
+    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
+    expect(await screen.findByText(STALE)).toBeInTheDocument();
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    expect(headerBadge().pill).toHaveTextContent("ล่ม");
+    expect(headerBadge().pill.className).toBe(pillClass);
+    expect(document.querySelector(".live-pulse")).toBeNull();
+
+    showDetail(downWithIncident());
+    await waitFor(() => {
+      expect(headerBadge().wrapper).toHaveClass(GLOW);
+    });
+    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+  });
+
+  it.each([
+    ["the incident ends", () => detail({ health: "up", openIncident: null })],
+    [
+      "the monitor is paused",
+      () => detail({ status: "paused", health: "paused" }),
+    ],
+  ])("drops the badge glow when %s", async (_name, next) => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    showDetail(next());
+    await waitFor(() => {
+      expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    });
+    // The data is fresh again, so the dot keeps pulsing: no glow is not a stale state.
+    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+  });
+
+  it("does not glow a down monitor that has no open incident", async () => {
+    showDetail(detail({ health: "down", openIncident: null }));
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().pill).toHaveTextContent("ล่ม");
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+  });
+
+  it("leaves the Overview pills of the same down monitor without a glow", async () => {
+    const hour = Date.UTC(2026, 8, 30, 7);
+    fetchListMock.mockResolvedValue({
+      summary: { up: 0, down: 1, unknown: 0, paused: 0, total: 1, limit: 50 },
+      monitors: [
+        {
+          id: MONITOR_ID,
+          name: "Payments API",
+          url: "https://api.acme.example/health",
+          method: "GET",
+          intervalSeconds: 300,
+          status: "active",
+          health: "down",
+          healthReason: null,
+          lastKnownDown: false,
+          consecutiveFailures: 3,
+          lastCheckAt: "2026-09-30T07:30:00.000Z",
+          openIncident: {
+            startedAt: "2026-09-30T07:20:00.000Z",
+            reason: "http_status",
+          },
+          lastResponseTimeMs: 182,
+          responseSparkline: Array.from({ length: 24 }, (_, index) => ({
+            hourStart: new Date(hour - (23 - index) * 3_600_000).toISOString(),
+            avgMs: null,
+          })),
+          ssl: {
+            level: "ok",
+            daysRemaining: 128,
+            host: "api.acme.example",
+            issuer: null,
+            notAfter: null,
+          },
+          uptime: {
+            h24: { percent: 100, checks: 288, coveragePercent: 100 },
+            d30: { percent: 99.9, checks: 8640, coveragePercent: 100 },
+          },
+        },
+      ],
+      page: { limit: 25, offset: 0, total: 1 },
+      dataAsOf: DATA_AS_OF,
+    } satisfies MonitorListResponse);
+    showDetail(downWithIncident());
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    await user.click(
+      screen.getByRole("link", { name: "กลับไปรายการมอนิเตอร์" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        new RegExp(`^/organizations/${A}/monitors$`),
+      );
+    });
+    await screen.findAllByText("Payments API");
+    const pills = Array.from(
+      document.querySelectorAll("[data-slot=status-pill]"),
+    ).filter((pill) => pill.textContent === "ล่ม");
+    // The table and the cards both draw the pill.
+    expect(pills.length).toBeGreaterThan(0);
+    expect(document.querySelector('[class*="primary-glow"]')).toBeNull();
+    expect(document.querySelector('[class*="shadow-["]')).toBeNull();
+  });
+});
+
 describe("Detail structure", () => {
   it("orders the section headings as h2 under one h1", async () => {
     showDetail(detail());
@@ -951,7 +1021,6 @@ describe("Detail structure", () => {
     const names = [
       "เวลาตอบสนอง",
       "สถานะปัจจุบัน",
-      "ผลการตรวจล่าสุดและ Assertions",
       "ฟีดเหตุการณ์",
       "เหตุการณ์",
       "การตั้งค่า",
@@ -961,9 +1030,10 @@ describe("Detail structure", () => {
     ];
     const headings = screen.getAllByRole("heading", { level: 2 });
     expect(headings).toHaveLength(names.length);
-    // The section code (01, 02) is aria-hidden, so the accessible name excludes it.
+    // AC-75: no section code in front of any title, hidden or not.
     names.forEach((name, index) => {
       expect(headings[index]).toHaveAccessibleName(name);
+      expect(headings[index]).toHaveTextContent(new RegExp(`^${name}$`));
     });
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });

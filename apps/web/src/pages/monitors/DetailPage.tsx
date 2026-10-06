@@ -23,6 +23,7 @@ import {
   pauseMonitor,
   resumeMonitor,
 } from "../../lib/api/monitors";
+import { cn } from "@/lib/utils";
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { AlertsCard } from "./detail/AlertsCard";
@@ -30,7 +31,6 @@ import { ConfigCard } from "./detail/ConfigCard";
 import { IncidentsCard } from "./detail/IncidentsCard";
 import { IntervalText } from "./detail/IntervalText";
 import { LastResponseCard } from "./detail/LastResponseCard";
-import { LastResultCard } from "./detail/LastResultCard";
 import { MonitorEventsCard } from "./detail/MonitorEventsCard";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { SslCard } from "./detail/SslCard";
@@ -421,9 +421,18 @@ function DetailForMonitor({
   const line = statusLine(monitor);
   const bannerShown =
     monitor.health === "down" && monitor.openIncident !== null;
+  // COL-08: a static glow while the incident is active and the data is fresh; a failed refresh drops it (Motion principle).
+  const badgeGlow = bannerShown && !detail.isError;
   const status = (
     <>
-      <HealthPill health={monitor.health} />
+      <span
+        className={cn(
+          "inline-flex rounded-full",
+          badgeGlow && "shadow-[0_0_10px_3px_var(--primary-glow)]",
+        )}
+      >
+        <HealthPill health={monitor.health} />
+      </span>
       {line === null || bannerShown ? null : <span>{line}</span>}
       <span className="break-all">
         <span className="font-mono">{monitor.method}</span>{" "}
@@ -472,23 +481,19 @@ function DetailForMonitor({
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-8">
           <ResponseTimeCard
-            code="01"
             organizationId={organizationId}
             monitorId={monitorId}
             lastCheckAt={monitor.lastCheckAt}
             intervalSeconds={monitor.intervalSeconds}
             createdAt={monitor.createdAt}
           />
-          <StatusCard monitor={monitor} code="02" />
-          <LastResultCard monitor={monitor} code="03" />
+          <StatusCard monitor={monitor} fresh={!detail.isError} />
           <MonitorEventsCard
-            code="04"
             organizationId={organizationId}
             monitorId={monitorId}
             headers={monitor.headers}
           />
           <IncidentsCard
-            code="05"
             organizationId={organizationId}
             monitorId={monitorId}
           />
