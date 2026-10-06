@@ -1724,7 +1724,9 @@ describe("#57 response-time state and selection", () => {
         ),
       );
       renderResponseCard();
-      await waitFor(() => expectKpis(["20 ms", "40 ms", "4", "1"]));
+      await waitFor(() => {
+        expectKpis(["20 ms", "40 ms", "4", "1"]);
+      });
       const user = userEvent.setup();
       const option = screen.getByRole("radio", { name: label });
       option.focus();
@@ -1771,7 +1773,9 @@ describe("#57 response-time state and selection", () => {
       })),
     });
     renderResponseCard();
-    await waitFor(() => expectKpis(["0 ms", "0 ms", "0", "0"]));
+    await waitFor(() => {
+      expectKpis(["0 ms", "0 ms", "0", "0"]);
+    });
     expect(
       screen.getByText("คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ"),
     ).toBeInTheDocument();
@@ -1789,7 +1793,9 @@ describe("#57 response-time state and selection", () => {
       ],
     });
     renderResponseCard();
-    await waitFor(() => expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "2", "2"]));
+    await waitFor(() => {
+      expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "2", "2"]);
+    });
     expect(screen.getByText(/p50\/p95 ใช้ nearest-rank/)).toHaveTextContent(
       "ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล”",
     );
@@ -1806,7 +1812,9 @@ describe("#57 response-time state and selection", () => {
           : thirty.promise,
     );
     renderResponseCard();
-    await waitFor(() => expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]));
+    await waitFor(() => {
+      expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+    });
     const user = userEvent.setup();
     await user.click(screen.getByRole("radio", { name: "7 วัน" }));
     expect(
@@ -1817,23 +1825,29 @@ describe("#57 response-time state and selection", () => {
     const announcement = screen.getByTestId("response-range-announcement");
     const changes: string[] = [];
     const observer = new MutationObserver(() => {
-      changes.push(announcement.textContent ?? "");
+      changes.push(announcement.textContent);
     });
     observer.observe(announcement, {
       childList: true,
       subtree: true,
       characterData: true,
     });
-    await act(async () => {
+    await act(() => {
       thirty.resolve(liveRange("30d"));
+      return Promise.resolve();
     });
-    await waitFor(() => expectKpis(["20 ms", "40 ms", "4", "1"]));
-    await act(async () => {
+    await waitFor(() => {
+      expectKpis(["20 ms", "40 ms", "4", "1"]);
+    });
+    await act(() => {
       seven.resolve(liveRange("7d", 700));
+      return Promise.resolve();
     });
     expectKpis(["20 ms", "40 ms", "4", "1"]);
     fetchResponseTimesMock.mockResolvedValue(liveRange("30d", 30));
-    await waitFor(() => expectKpis(["30 ms", "40 ms", "4", "1"]));
+    await waitFor(() => {
+      expectKpis(["30 ms", "40 ms", "4", "1"]);
+    });
     expect(changes).toEqual([
       "30 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
     ]);
@@ -1848,7 +1862,9 @@ describe("#57 response-time state and selection", () => {
       points: [{ at: DATA_AS_OF, responseTimeMs: 10, outcome: "pass" }],
     });
     const { client } = renderResponseCard();
-    await waitFor(() => expectKpis(["10 ms", "10 ms", "1", "0"]));
+    await waitFor(() => {
+      expectKpis(["10 ms", "10 ms", "1", "0"]);
+    });
     fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
     await act(async () => {
       await client.refetchQueries({
@@ -1869,7 +1885,9 @@ describe("#57 response-time state and selection", () => {
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    await waitFor(() => expectKpis(["40 ms", "40 ms", "1", "0"]));
+    await waitFor(() => {
+      expectKpis(["40 ms", "40 ms", "1", "0"]);
+    });
     expect(screen.queryByText(/อัปเดตกราฟไม่สำเร็จ/)).toBeNull();
     expect(
       screen.getByTestId("response-range-announcement"),
@@ -1884,7 +1902,9 @@ describe("#57 response-time state and selection", () => {
         points: [{ at: DATA_AS_OF, responseTimeMs: 987, outcome: "pass" }],
       });
       const { client } = renderResponseCard();
-      await waitFor(() => expectKpis(["987 ms", "987 ms", "1", "0"]));
+      await waitFor(() => {
+        expectKpis(["987 ms", "987 ms", "1", "0"]);
+      });
       fetchResponseTimesMock.mockRejectedValue(
         new ApiError(code, "denied", code === "MONITOR_NOT_FOUND" ? 404 : 403),
       );
@@ -1920,12 +1940,15 @@ describe("#57 response-time state and selection", () => {
     );
     const { client, rerender, view } = renderResponseCard();
     rerender(view(B));
-    await waitFor(() => expectKpis(["22 ms", "22 ms", "1", "0"]));
-    await act(async () => {
+    await waitFor(() => {
+      expectKpis(["22 ms", "22 ms", "1", "0"]);
+    });
+    await act(() => {
       pending.resolve({
         ...noResponseTimes,
         points: [{ at: DATA_AS_OF, responseTimeMs: 999, outcome: "pass" }],
       });
+      return Promise.resolve();
     });
     expectKpis(["22 ms", "22 ms", "1", "0"]);
     const oldIdentity = deferred<MonitorResponseTimesResponse>();
@@ -1941,7 +1964,9 @@ describe("#57 response-time state and selection", () => {
       points: [{ at: DATA_AS_OF, responseTimeMs: 33, outcome: "pass" }],
     });
     rerender(view(B, newIdentity));
-    await waitFor(() => expectKpis(["33 ms", "33 ms", "1", "0"]));
+    await waitFor(() => {
+      expectKpis(["33 ms", "33 ms", "1", "0"]);
+    });
     await act(async () => {
       oldIdentity.resolve({
         ...noResponseTimes,
@@ -1962,7 +1987,9 @@ it("announces an empty latest selection once after failed load and retry, withou
       : Promise.reject(new Error("offline")),
   );
   renderResponseCard();
-  await waitFor(() => expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]));
+  await waitFor(() => {
+    expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+  });
   const user = userEvent.setup();
   const radio = screen.getByRole("radio", { name: "7 วัน" });
   await user.click(radio);
@@ -1980,7 +2007,9 @@ it("announces an empty latest selection once after failed load and retry, withou
   const retry = screen.getByRole("button", { name: "ลองอีกครั้ง" });
   retry.focus();
   await user.keyboard("{Enter}");
-  await waitFor(() => expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]));
+  await waitFor(() => {
+    expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+  });
   expect(screen.getByText(/^ไม่มีผลใน/)).toHaveTextContent("ไม่มีผลใน 7 วัน");
   expect(screen.getByTestId("response-range-announcement")).toHaveTextContent(
     "7 วันล่าสุด p50 ไม่มีข้อมูล p95 ไม่มีข้อมูล จำนวนการตรวจ 0 ล้มเหลว 0",
