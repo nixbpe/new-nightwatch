@@ -26,6 +26,8 @@ import {
   subscribeToContextPublication,
 } from "../queryClient";
 
+import { assertContextIdentity, contextQueryOptions } from "./bootstrap";
+
 type Membership = MeContextResponse["organizations"][number];
 
 // Switching organization clears this whole prefix so an in-flight response for the old tenant can't repopulate the new view.
@@ -55,7 +57,6 @@ export function useTenant(): TenantContextValue {
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [membershipContextUnavailable, setMembershipContextUnavailable] =
     useState(false);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
@@ -73,8 +74,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   );
 
   const meQuery = useQuery({
-    queryKey: ME_CONTEXT_QUERY_KEY,
-    queryFn: fetchMeContext,
+    ...contextQueryOptions(queryClient),
+    refetchOnMount: false,
   });
 
   useEffect(() => {
@@ -114,33 +115,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const memberships = membershipContextUnavailable
     ? undefined
-    : meQuery.data?.organizations;
+    : meQuery.isError
+      ? undefined
+      : meQuery.data?.organizations;
   const lastActiveTenantId = membershipContextUnavailable
     ? null
     : (meQuery.data?.lastActiveTenantId ?? null);
 
-  // A refreshed server mirror (another session switched org) supersedes this tab's local choice,
-  // otherwise the header and notifications would show different tenants.
-  const [mirrorSeen, setMirrorSeen] = useState(lastActiveTenantId);
-  if (mirrorSeen !== lastActiveTenantId) {
-    setMirrorSeen(lastActiveTenantId);
-    setSelectedOrgId(null);
-  }
-
-  // Precedence is load-bearing: in-memory choice, then persisted last-active membership, then the first.
   const activeOrg: Membership | null =
-    memberships === undefined || memberships.length === 0
-      ? null
-      : (memberships.find((org) => org.id === selectedOrgId) ??
-        memberships.find((org) => org.id === lastActiveTenantId) ??
-        memberships[0] ??
-        null);
-
-  // Inbox scope uses only the server-confirmed org; the UI fallback must never widen notification visibility.
-  const serverActiveOrgId =
-    memberships?.some((org) => org.id === lastActiveTenantId) === true
-      ? lastActiveTenantId
-      : null;
+    memberships?.find((org) => org.id === lastActiveTenantId) ?? null;
+  const serverActiveOrgId = activeOrg?.id ?? null;
 
   const refreshMembershipContext =
     useCallback(async (): Promise<MeContextResponse | null> => {
@@ -163,11 +147,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       try {
         const updated = await fetchMeContext();
+        assertContextIdentity(queryClient, updated);
         if (!hasContextPublicationClaim(queryClient, claim)) {
           return null;
         }
         queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-        setSelectedOrgId(null);
+        publishContextPublication(queryClient, claim);
         setMembershipContextUnavailable(false);
         return updated;
       } catch {
@@ -190,7 +175,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         return false;
       }
       try {
+        await queryClient.cancelQueries({
+          queryKey: ME_CONTEXT_QUERY_KEY,
+          exact: true,
+        });
+        if (!hasContextPublicationClaim(queryClient, claim)) return false;
         const updated = await updateActiveOrganization({ organizationId });
+        assertContextIdentity(queryClient, updated);
         if (!hasContextPublicationClaim(queryClient, claim)) {
           return false;
         }
@@ -202,7 +193,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
         publishContextPublication(queryClient, claim);
         setMembershipContextUnavailable(false);
-        setSelectedOrgId(organizationId);
         return latestSwitchIntent.current === intent;
       } catch {
         return false;
@@ -224,7 +214,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   };
 
   const value: TenantContextValue = {
-    me: membershipContextUnavailable ? undefined : meQuery.data,
+    me:
+      membershipContextUnavailable || meQuery.isError
+        ? undefined
+        : meQuery.data,
     mePending: meQuery.isPending,
     meError: meQuery.error,
     retryMe,

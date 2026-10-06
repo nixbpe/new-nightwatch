@@ -16,6 +16,25 @@ type ClientSlot = {
 let active: ClientSlot | null = null;
 let staged: ClientSlot | null = null;
 
+const clientIdentities = new WeakMap<QueryClient, ResolvedIdentity>();
+
+export function bindQueryClientIdentity(
+  client: QueryClient,
+  identity: ResolvedIdentity,
+): void {
+  const previous = clientIdentities.get(client);
+  if (previous !== undefined && previous !== identity) {
+    throw new Error("Query client identity cannot change");
+  }
+  clientIdentities.set(client, identity);
+}
+
+export function getQueryClientIdentity(
+  client: QueryClient,
+): ResolvedIdentity | undefined {
+  return clientIdentities.get(client);
+}
+
 let contextPublicationOrdinal = 0n;
 
 export type ContextPublicationSnapshot = {
@@ -122,8 +141,10 @@ export function publishTenantScope(queryClient: QueryClient): bigint {
   return claim;
 }
 
-export function createSessionQueryClient(): QueryClient {
-  return new QueryClient({
+export function createSessionQueryClient(
+  identity?: ResolvedIdentity,
+): QueryClient {
+  const client = new QueryClient({
     defaultOptions: {
       queries: {
         staleTime: 30_000,
@@ -133,6 +154,8 @@ export function createSessionQueryClient(): QueryClient {
       },
     },
   });
+  if (identity !== undefined) bindQueryClientIdentity(client, identity);
+  return client;
 }
 
 export function peekActiveQueryClientIdentity(): ResolvedIdentity | undefined {
@@ -149,7 +172,7 @@ export function resolveQueryClientForIdentity(
   if (staged !== null && staged.identity === identity) {
     return staged.client;
   }
-  staged = { identity, client: createSessionQueryClient() };
+  staged = { identity, client: createSessionQueryClient(identity) };
   return staged.client;
 }
 
@@ -163,6 +186,7 @@ export function publishActiveQueryClient(
   identity: ResolvedIdentity,
   client: QueryClient,
 ): void {
+  bindQueryClientIdentity(client, identity);
   active = { identity, client };
   if (staged !== null && staged.identity !== identity) {
     staged = null;

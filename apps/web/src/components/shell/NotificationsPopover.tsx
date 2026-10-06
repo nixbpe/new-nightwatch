@@ -16,13 +16,13 @@ import { usePopover } from "./usePopover";
 
 export function NotificationsPopover() {
   const popover = usePopover();
-  const { serverActiveOrgId, activeOrg } = useTenant();
+  const { me, serverActiveOrgId, activeOrg } = useTenant();
   const navigate = useNavigate();
   const client = useQueryClient();
   const list = useQuery({
     queryKey: notificationQueryKey(serverActiveOrgId),
     queryFn: () => fetchNotifications(serverActiveOrgId),
-    enabled: popover.open,
+    enabled: popover.open && me !== undefined,
   });
   const count = useUnreadCount();
   const all = useMutation({
@@ -61,6 +61,7 @@ export function NotificationsPopover() {
         aria-label="การแจ้งเตือน"
         aria-haspopup="dialog"
         aria-expanded={popover.open}
+        disabled={me === undefined}
         onClick={() => {
           open.reset();
           all.reset();

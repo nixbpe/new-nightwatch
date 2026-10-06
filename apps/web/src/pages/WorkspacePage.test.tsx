@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../lib/queryClient";
 import type {
   MeContextResponse,
   OrganizationMemberListResponse,
@@ -219,6 +220,7 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/workspace"]}>
@@ -241,6 +243,7 @@ function renderDeniedMembershipPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   queryClient.setQueryData(memberListQueryKey(ORG_A, 50, 0), staleMemberPage);
   render(
     <QueryClientProvider client={queryClient}>
@@ -571,6 +574,7 @@ describe("WorkspacePage denied list", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    bindQueryClientIdentity(queryClient, "user-1");
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/workspace"]}>
@@ -767,6 +771,7 @@ describe("WorkspacePage overview details", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    bindQueryClientIdentity(queryClient, "user-1");
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/workspace"]}>

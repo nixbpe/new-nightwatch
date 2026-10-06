@@ -9,8 +9,14 @@ import { request } from "./client";
 
 export const ME_CONTEXT_QUERY_KEY = ["me", "context"] as const;
 
-export function fetchMeContext(): Promise<MeContextResponse> {
-  return request("/api/me/context", meContextResponseSchema);
+// Verified bootstrap: never reuse a read-only context as tenant admission.
+export function fetchMeContext(options?: {
+  signal?: AbortSignal;
+}): Promise<MeContextResponse> {
+  return request("/api/me/resolve-active-org", meContextResponseSchema, {
+    method: "POST",
+    signal: options?.signal,
+  });
 }
 
 // Only a resolved success may publish the new tenant; callers keep the previous selection on failure.

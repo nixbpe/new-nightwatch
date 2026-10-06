@@ -5,7 +5,8 @@ import { initialsOf } from "../../components/shell/initials";
 import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert, Field, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
+import { ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
+import { contextQueryOptions } from "../../lib/tenant/bootstrap";
 import { authClient, authErrorMessage } from "../../lib/auth-client";
 import { Card, CardFooter } from "../../components/ui/card";
 import { SectionHeader } from "../../components/ui/section-header";
@@ -28,8 +29,8 @@ function validateName(value: string): string | null {
 export function ProfilePage() {
   const queryClient = useQueryClient();
   const meQuery = useQuery({
-    queryKey: ME_CONTEXT_QUERY_KEY,
-    queryFn: fetchMeContext,
+    ...contextQueryOptions(queryClient),
+    refetchOnMount: false,
   });
 
   if (meQuery.isPending) {

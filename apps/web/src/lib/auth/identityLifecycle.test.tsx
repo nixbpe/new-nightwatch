@@ -259,7 +259,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     expect(commitLog.slice(commitsBeforeFreshB)).not.toContain("User B");
   });
 
-  it("same-identity navigation reuses the rendered client's loader prefetch", async () => {
+  it("same-identity navigation resolves afresh into the rendered identity client", async () => {
     const fetchLog: string[] = [];
     transport.mockImplementation(() => {
       const user = sessionStore.getFresh()?.user;
@@ -288,7 +288,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     });
 
     expect(result).toBeNull();
-    expect(fetchLog).toEqual(["user-a"]);
+    expect(fetchLog).toEqual(["user-a", "user-a"]);
     expect(screen.getByTestId("view")).toHaveTextContent("User A");
   });
 });

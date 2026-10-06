@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   CheckResultView,
   MeContextResponse,
@@ -193,6 +194,7 @@ export function renderDetail(
   const queryClient =
     client ??
     new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  bindQueryClientIdentity(queryClient, "user-1");
   return {
     queryClient,
     ...render(

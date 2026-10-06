@@ -1,9 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
-import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../../lib/api/me";
+import { contextQueryOptions } from "../../lib/tenant/bootstrap";
 import { MfaCard } from "./MfaCard";
 import { PasswordCard } from "./PasswordCard";
 import { Card } from "../../components/ui/card";
@@ -11,9 +11,10 @@ import { MockupFrame } from "../../components/ui/mockup-frame";
 
 // The server's twoFactorEnabled flag is the only source of the card's enabled state.
 export function SecurityPage() {
+  const queryClient = useQueryClient();
   const meQuery = useQuery({
-    queryKey: ME_CONTEXT_QUERY_KEY,
-    queryFn: fetchMeContext,
+    ...contextQueryOptions(queryClient),
+    refetchOnMount: false,
   });
 
   if (meQuery.isPending) {

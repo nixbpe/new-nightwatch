@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
   MonitorListResponse,
@@ -177,6 +178,7 @@ function renderPage(organizationId = A, state?: unknown) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   return {
     queryClient,
     ...render(

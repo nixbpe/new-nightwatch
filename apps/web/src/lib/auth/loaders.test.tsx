@@ -363,6 +363,18 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
 
   it("stages organization notification settings before its protected route commits", async () => {
     sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "Acme",
+          slug: "acme",
+          role: "admin",
+        },
+      ],
+      lastActiveTenantId: "11111111-1111-4111-8111-111111111111",
+    });
     fetchOrganizationNotificationSettingsMock.mockResolvedValue({
       organizationId: "11111111-1111-4111-8111-111111111111",
       settingsChangedEnabled: true,
@@ -453,7 +465,7 @@ describe("workspaceLoader overview prefetch", () => {
     ).toEqual(overviewList);
   });
 
-  it("falls back to the first membership and still renders when the prefetch fails", async () => {
+  it("does not prefetch a tenant without server-confirmed selection", async () => {
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockResolvedValue({
       ...meContext,
@@ -467,10 +479,7 @@ describe("workspaceLoader overview prefetch", () => {
     expect(
       await screen.findByText("protected-area", {}, { timeout: 4000 }),
     ).toBeInTheDocument();
-    expect(fetchMonitorListMock).toHaveBeenCalledWith(
-      otherId,
-      OVERVIEW_LIST_PARAMS,
-    );
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
 
   it("requests no list without a membership", async () => {
@@ -749,7 +758,9 @@ describe("monitorDetailLoader", () => {
     fetchMonitorDetailMock.mockRejectedValue(new Error("404"));
     renderAt([route], path);
 
-    expect(await screen.findByText("detail-area")).toBeInTheDocument();
+    expect(
+      await screen.findByText("detail-area", {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
   });
 
   it("sends an anonymous visitor to sign in with a return path", async () => {
@@ -1598,4 +1609,143 @@ describe("verifyEmailLoader (anonymous-reachable resend hub)", () => {
     expect(fetchInvitationMock).not.toHaveBeenCalled();
     expect(peekStagedQueryClient()).toBeNull();
   });
+});
+
+describe("verified bootstrap barrier", () => {
+  afterEach(() => {
+    sessionState.data = null;
+    resetQueryClientRegistry();
+    fetchMeContextMock.mockReset();
+    fetchMonitorListMock.mockReset();
+    fetchNotificationsMock.mockReset();
+    fetchOrganizationMembersMock.mockReset();
+  });
+
+  it("keeps parallel tenant and inbox loaders idle until one identity-bound resolution completes", async () => {
+    sessionState.data = { user: VERIFIED };
+    const resolution = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock.mockImplementationOnce(() => resolution.promise);
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const request = new Request("http://localhost/workspace");
+    const args = {
+      request,
+      url: new URL(request.url),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    };
+    fetchMonitorListMock.mockResolvedValue({
+      summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+      monitors: [],
+      page: { limit: 50, offset: 0, total: 0 },
+      dataAsOf: "2026-09-30T07:32:05.000Z",
+    });
+    fetchNotificationsMock.mockResolvedValue({
+      organizationId,
+      items: [],
+      nextCursor: null,
+      unreadCount: 0,
+    });
+    const loading = Promise.all([
+      workspaceLoader(args),
+      notificationsLoader(args),
+    ]);
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
+    expect(fetchNotificationsMock).not.toHaveBeenCalled();
+    resolution.resolve({
+      ...meContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+      lastActiveTenantId: organizationId,
+    });
+    await loading;
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    expect(fetchMonitorListMock).toHaveBeenCalledWith(
+      organizationId,
+      OVERVIEW_LIST_PARAMS,
+    );
+    expect(fetchNotificationsMock).toHaveBeenCalledWith(organizationId);
+  });
+
+  it("does not use a cached tenant context or account-only inbox when fresh resolution fails", async () => {
+    sessionState.data = { user: VERIFIED };
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    client.setQueryData(ME_CONTEXT_QUERY_KEY, {
+      ...meContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+      lastActiveTenantId: organizationId,
+    });
+    client.setQueryData(["tenant", organizationId, "retired"], { old: true });
+    fetchMeContextMock.mockRejectedValueOnce(new Error("unavailable"));
+    const request = new Request("http://localhost/notifications");
+    await notificationsLoader({
+      request,
+      url: new URL(request.url),
+      pattern: "/notifications",
+      params: {},
+      context: {},
+    });
+    expect(fetchNotificationsMock).not.toHaveBeenCalled();
+    expect(
+      client.getQueryData(["tenant", organizationId, "retired"]),
+    ).toBeUndefined();
+    expect(client.getQueryState(ME_CONTEXT_QUERY_KEY)?.status).toBe("error");
+  });
+});
+
+describe("bootstrap response identity", () => {
+  afterEach(() => {
+    sessionState.data = null;
+    resetQueryClientRegistry();
+    fetchMeContextMock.mockReset();
+    fetchMonitorListMock.mockReset();
+    fetchNotificationsMock.mockReset();
+    fetchOrganizationMembersMock.mockReset();
+  });
+
+  it.each([workspaceLoader, organizationMembersLoader])(
+    "rejects a deferred B response after the loader verified A without publishing or tenant prefetch (%s)",
+    async (loader) => {
+      sessionState.data = { user: VERIFIED };
+      const response = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock.mockReturnValueOnce(response.promise);
+      const request = new Request("http://localhost/workspace");
+      const loading = loader({
+        request,
+        url: new URL(request.url),
+        pattern: "/workspace",
+        params: { organizationId: "11111111-1111-4111-8111-111111111111" },
+        context: {},
+      });
+      await vi.waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+      });
+      response.resolve({
+        ...meContext,
+        user: { ...meContext.user, id: "user-b" },
+        organizations: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "Foreign",
+            slug: "foreign",
+            role: "owner",
+          },
+        ],
+        lastActiveTenantId: "11111111-1111-4111-8111-111111111111",
+      });
+      await loading;
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      expect(client.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();
+      expect(fetchMonitorListMock).not.toHaveBeenCalled();
+      expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
+      expect(client.getQueriesData({ queryKey: ["tenant"] })).toEqual([]);
+    },
+  );
 });

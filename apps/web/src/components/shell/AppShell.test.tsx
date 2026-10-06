@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
   NotificationItem,
@@ -149,6 +150,7 @@ function renderShell(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   const router = createMemoryRouter(
     [
       {
@@ -704,10 +706,9 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     const { queryClient } = renderShell(<WorkspacePage />);
+    await findScope("Org A", "เจ้าของ");
     const directLoaderClaim = createContextPublicationClaim();
     expect(claimContextPublication(queryClient, directLoaderClaim)).toBe(true);
-
-    await findScope("Org A", "เจ้าของ");
 
     await user.click(screen.getByRole("button", { name: /Org A/ }));
     const menu = screen.getByRole("menu", { name: "สลับองค์กร" });

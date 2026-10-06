@@ -9,7 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";
 import { acceptInvitation, fetchInvitation } from "../lib/api/invitations";
-import { fetchMeContext, updateActiveOrganization } from "../lib/api/me";
+import {
+  fetchMeContext,
+  ME_CONTEXT_QUERY_KEY,
+  updateActiveOrganization,
+} from "../lib/api/me";
+import {
+  resolveQueryClientForIdentity,
+  resetQueryClientRegistry,
+} from "../lib/queryClient";
 import { readInvitation, rememberInvitation } from "../lib/auth/continuation";
 import { requireAnonLoader } from "../lib/auth/loaders";
 import { RootLayout } from "../router";
@@ -170,6 +178,7 @@ describe("AcceptInvitationPage", () => {
     fetchMeContextMock.mockReset();
     updateActiveOrganizationMock.mockReset();
     sessionStorage.clear();
+    resetQueryClientRegistry();
   });
 
   it("signup from invitation continues to verification", async () => {
@@ -235,6 +244,8 @@ describe("AcceptInvitationPage", () => {
       screen.getByRole("heading", { name: "ยอมรับคำเชิญ" }),
     ).toBeInTheDocument();
 
+    const client = resolveQueryClientForIdentity("user-1");
+    client.setQueryData(["tenant", "old-org", "retired"], { old: true });
     await user.click(screen.getByRole("button", { name: "เข้าร่วมองค์กร" }));
     expect(readInvitation()).toBe("inv-123");
     expect(screen.queryByTestId("location")).toBeNull();
@@ -247,6 +258,9 @@ describe("AcceptInvitationPage", () => {
       "/workspace",
     );
     expect(readInvitation()).toBeNull();
+    expect(
+      client.getQueryData(["tenant", "old-org", "retired"]),
+    ).toBeUndefined();
     expect(acceptInvitationMock).toHaveBeenCalledTimes(1);
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
     expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
@@ -296,6 +310,48 @@ describe("AcceptInvitationPage", () => {
     ).toBeInTheDocument();
     expect(acceptInvitationMock).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["resolve", "switch"] as const)(
+    "refuses a foreign identity's late invitation %s response",
+    async (phase) => {
+      sessionStore.set({
+        user: { id: "user-1", email: "new@example.com", emailVerified: true },
+      });
+      fetchInvitationMock.mockResolvedValue(invitation);
+      acceptInvitationMock.mockResolvedValue({ organizationId: ORG });
+      const completion = Promise.withResolvers<MeContextResponse>();
+      if (phase === "resolve")
+        fetchMeContextMock.mockReturnValueOnce(completion.promise);
+      else fetchMeContextMock.mockResolvedValueOnce(context);
+      updateActiveOrganizationMock.mockReturnValueOnce(completion.promise);
+      renderPage();
+      const client = resolveQueryClientForIdentity("user-1");
+      client.setQueryData(ME_CONTEXT_QUERY_KEY, context);
+      await userEvent.click(
+        await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }),
+      );
+      await waitFor(() => {
+        if (phase === "switch")
+          expect(updateActiveOrganizationMock).toHaveBeenCalledTimes(1);
+        else expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+      });
+      await act(async () => {
+        completion.resolve({
+          ...context,
+          user: { ...context.user, id: "user-b" },
+          lastActiveTenantId: ORG,
+        });
+        await completion.promise;
+      });
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "เลือกองค์กรไม่สำเร็จ",
+      );
+      expect(client.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(context);
+      expect(screen.queryByTestId("location")).toBeNull();
+      if (phase === "resolve")
+        expect(updateActiveOrganizationMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not publish A completion or erase B continuation after navigation", async () => {
     const acceptance = Promise.withResolvers<{ organizationId: string }>();

@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
   OrganizationMemberListResponse,
@@ -134,6 +135,7 @@ async function renderAs(
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, ME);
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={queryClient}>

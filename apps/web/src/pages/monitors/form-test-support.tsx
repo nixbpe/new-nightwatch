@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type { MonitorRecord } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
@@ -75,6 +76,7 @@ export function renderForm(path: string, client?: QueryClient, strict = false) {
   const queryClient =
     client ??
     new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  bindQueryClientIdentity(queryClient, "user-1");
   return {
     queryClient,
     ...render(

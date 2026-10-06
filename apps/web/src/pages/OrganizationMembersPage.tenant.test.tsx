@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../lib/queryClient";
 import type {
   InvitationCreateResponse,
   MeContextResponse,
@@ -141,6 +142,7 @@ it("keeps an A invitation pending and its draft through a confirmed same-org pub
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={queryClient}>
@@ -187,6 +189,7 @@ it("keeps a bookmarked B draft when A is republished without a switch", async ()
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={queryClient}>
@@ -234,6 +237,7 @@ it("keeps a bookmarked B invitation draft through confirmed A to B publication a
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={queryClient}>
@@ -289,6 +293,7 @@ it("retains A on denied B, then rejects old A completion after confirmed B then 
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -356,6 +361,7 @@ it("retires an A invitation on real tenant publication while navigation still ho
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -472,6 +478,7 @@ it.each([
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    bindQueryClientIdentity(queryClient, "user-1");
     const user = userEvent.setup();
     render(
       <QueryClientProvider client={queryClient}>
@@ -580,6 +587,7 @@ it.each([
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    bindQueryClientIdentity(queryClient, "user-1");
     const user = userEvent.setup();
     render(
       <QueryClientProvider client={queryClient}>

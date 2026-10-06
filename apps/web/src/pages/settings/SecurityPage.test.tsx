@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
@@ -66,14 +67,12 @@ function resetAuthMocks() {
 }
 
 function renderPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  bindQueryClientIdentity(queryClient, "user-1");
   return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({
-          defaultOptions: { queries: { retry: false } },
-        })
-      }
-    >
+    <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/settings/security"]}>
         <Routes>
           <Route path="/settings/security" element={<SecurityPage />} />

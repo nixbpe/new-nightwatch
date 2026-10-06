@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -120,6 +121,7 @@ function Probe() {
 }
 
 function renderProvider(queryClient = new QueryClient()) {
+  bindQueryClientIdentity(queryClient, "user-1");
   return render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -150,13 +152,16 @@ describe("TenantProvider", () => {
     fetchMeContextMock.mockResolvedValue({ ...me, lastActiveTenantId: null });
     renderProvider();
 
-    expect(await screen.findByText("org-a")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+    );
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
     expect(screen.getByTestId("server-active")).toHaveTextContent(
       "server:none",
     );
   });
 
-  it("switches from a navigation fallback so the server can establish its active organization", async () => {
+  it("allows an explicit membership switch without a usable fallback", async () => {
     const personalOnly = { ...me, lastActiveTenantId: null };
     fetchMeContextMock.mockResolvedValue(personalOnly);
     updateActiveOrganizationMock.mockResolvedValue({
@@ -164,7 +169,9 @@ describe("TenantProvider", () => {
       lastActiveTenantId: "org-a",
     });
     renderProvider();
-    await screen.findByText("org-a");
+    await waitFor(() =>
+      expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
 
@@ -834,6 +841,44 @@ describe("TenantProvider", () => {
       "server:none",
     );
   });
+
+  it.each(["switch", "refresh"] as const)(
+    "rejects a foreign identity's late %s response without publishing it",
+    async (operation) => {
+      const completion = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock
+        .mockResolvedValueOnce(me)
+        .mockReturnValueOnce(completion.promise);
+      updateActiveOrganizationMock.mockReturnValueOnce(completion.promise);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      renderProvider(queryClient);
+      await screen.findByText("org-b");
+      await userEvent.click(
+        screen.getByRole("button", {
+          name: operation === "switch" ? "switch-a" : "refresh membership",
+        }),
+      );
+      await waitFor(() => {
+        if (operation === "switch")
+          expect(updateActiveOrganizationMock).toHaveBeenCalledTimes(1);
+        else expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      });
+      await act(async () => {
+        completion.resolve({
+          ...me,
+          user: { ...me.user, id: "user-b" },
+          lastActiveTenantId: "org-a",
+        });
+        await completion.promise;
+      });
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(me);
+      expect(screen.getByTestId("active")).toHaveTextContent(
+        operation === "switch" ? "org-b" : "none",
+      );
+    },
+  );
 
   it("a failed context load exposes the error and retryMe recovers", async () => {
     // A failed /me lookup is an explicit, retryable error, never a perpetual pending state.
