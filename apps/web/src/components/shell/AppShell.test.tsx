@@ -1132,4 +1132,25 @@ describe("AppShell", () => {
     expect(screen.getByText("NightWatch")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /องค์กร:/ })).toBeNull();
   });
+
+  it("gives the workspace route a deeper canvas and hairline texture, not the dot grain", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderShell();
+    await screen.findByRole("link", { name: "Org A" });
+
+    const main = document.querySelector("#main-content");
+    expect(main).toHaveClass("bg-canvas-deep", "grid-line");
+    expect(main).not.toHaveClass("canvas-grain");
+  });
+
+  it("keeps the dot grain on other data-dense routes", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderShell(<p>เนื้อหาหน้า</p>, "/notifications");
+    await screen.findByRole("link", { name: "Org A" });
+
+    const main = document.querySelector("#main-content");
+    expect(main).toHaveClass("canvas-grain");
+    expect(main).not.toHaveClass("bg-canvas-deep");
+    expect(main).not.toHaveClass("grid-line");
+  });
 });

@@ -8,7 +8,7 @@ The reference canvas is [Claude Design](https://claude.ai/artifact/2Rc9dSWEvHwrM
 
 ## Tokens
 
-Ten semantic roles, the same in both themes. Every color in the product comes from this table, its derived levels below, or a rule that states its exact value (On danger in COL-05, the modal shadow in LAY-07).
+Ten semantic roles, the same in both themes. Every color in the product comes from this table, its derived levels below, or a rule that states its exact value (On danger in COL-05, the modal shadow in LAY-07, canvas-deep in LAY-08).
 
 | Role             | Light     | Dark      | Use                                                              |
 | ---------------- | --------- | --------- | ---------------------------------------------------------------- |
@@ -28,6 +28,10 @@ Divider is Text at 10% opacity in both themes. Derived levels are opacities of a
 - Inset levels: Text at 4% (inset), 5% (hover) and 8% (active) over Canvas or Surface; tint fills only, never borders.
 - Strong edge: Text at 20%, for pill, tag, avatar, system mark (monitor initial tile, read-notification dot, status dot, no-data strip cell) and dashed mockup-frame (CMP-06) edges only; essential controls keep Control boundary (COL-04).
 - Primary tint: Primary at 12% (dark) and 8% (light), only behind the active navigation row and a selected filter chip. Primary text on it measures 8.17:1 (dark) and 4.52:1 (light, over Canvas), so it meets COL-03.
+- Primary glow: Primary at 35% (dark) and 18% (light), only as the glow of a live-data indicator, never a fill or border (COL-07).
+- Grid-line: Text at 3.5%, a 1 px hairline texture every 32 px, an alternative to the canvas grain above, Canvas only (LAY-09).
+
+`canvas-deep` (LAY-08) is optional and the one exact, non-derived addition to the ten roles above: a deeper Canvas for a data-dense or live page section, dark `#07080a`, light unchanged (same as Canvas; no deeper light variant).
 
 Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mono for monospace; the faces ship with the product, never from a runtime font CDN. Corners 4 px, controls 40 px high (44 px for the large size, 32 px for the small size per LAY-06), focus ring a 2 px Primary outline offset 2 px from the control, spacing on a 4 px grid.
 
@@ -40,6 +44,7 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 - COL-04 Divider is a translucent hairline for separators and card edges; it never outlines essential controls or carries meaning alone.
 - COL-05 Danger fill with On danger text (light `#ffffff` at 6.29:1, dark `#2a0a12` at 6.78:1) is allowed only for the confirm button inside a confirmation dialog. Inline two-step confirms use the Danger outline button: Surface background, 1 px Danger border, Danger text (light `#be123c` on `#ffffff` at 6.29:1, dark `#fb7185` on `#0e0f12` at 7.12:1) and a Danger tint on hover. The wording and the stated consequence stay required, so color is never the only destructive cue.
 - COL-06 An alert banner for a down or failed state may use a Danger border and Danger at 10% (dark) / 6% (light) as fill, with an icon and a written state. Badges and status pills stay neutral (COL-01).
+- COL-07 `primary-glow` is the glow for a live-data indicator (a pulsing dot, a streaming card's edge), the use LAY-04 allows; it never replaces the focus ring (A11Y-01), never fills or outlines a resting control or card, and is never reused as a solid text, fill or border color.
 
 ## Typography
 
@@ -61,6 +66,8 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 - LAY-05 Corners are 4 px; full radius only for badges, tags, counters and avatars; chart and strip marks use 0–1 px. Avatars (people) are circular; organization marks, icons and step indicators (system) use 4 px.
 - LAY-06 A small size of 32 px is allowed for row actions in tables, segmented controls and filter chips. Forms and page actions keep 40 px, and every target stays at least 24 × 24 px (LAY-03).
 - LAY-07 A modal dialog sits over a scrim (Canvas at 60% in dark, Text at 35% in light) and carries one shadow per theme: `0 24px 64px` at black 40% (dark) and at Text 16% (light).
+- LAY-08 `canvas-deep` is an optional, deeper Canvas (dark `#07080a`; light unchanged) for a data-dense or live page section (for example the workspace overview); ordinary pages keep Canvas, and `canvas-deep` never applies to Surface.
+- LAY-09 The `grid-line` hairline texture is an alternative to the canvas grain, Canvas only, never Surface, and never both textures on the same view.
 
 ## Components
 
@@ -77,6 +84,12 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 **Principle.** Everything works by keyboard with visible focus, logical order and meaningful names, and nothing relies on hover, placeholders or color alone. Motion is brief, respects reduced-motion and never hides essential content. Before accepting a design, review both themes on desktop, keyboard and focus, and the relevant error, empty and permission states. Narrow layouts and enlarged text follow LAY-02 in implementation and are checked only when a user reports a problem or asks for it.
 
 - A11Y-01 The focus indicator stays visible against adjacent surfaces, including primary buttons, with an offset from the fill; a glow never replaces it.
+
+## Motion
+
+**Principle.** New transitions are additive: existing interactions keep their current timing. An ambient or "live" treatment marks at most one element per view, and only data that is currently fresh; a stale or failed refresh drops the treatment rather than leaving it on old data (CMP-01). Every rule below collapses under reduced motion to a steady resting state, never to nothing, per the Accessibility principle above.
+
+- MOT-01 A live-data indicator (a pulsing dot, or a sweeping highlight along a streaming card's top hairline) breathes on a 2200 ms ease-in-out half-cycle (4400 ms dim-to-bright-to-dim), using `primary-glow`; reduced motion holds the resting glow state with no animation.
 
 ## Evidence surfaces
 

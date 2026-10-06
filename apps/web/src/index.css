@@ -90,10 +90,13 @@
  * NightWatch design tokens (docs/design-system.md): semantic roles only.
  * Default follows prefers-color-scheme; an explicit choice (the account
  * menu's theme toggle, src/lib/theme.ts) sets data-theme on <html> and
- * overrides it — same token values either way, no new colors introduced.
+ * overrides it — same token values either way.
  * After the ten roles each block adds the derived values the doc defines:
  * On danger (COL-05), Primary tint (Tokens), Danger tint (COL-06), the
- * modal scrim and shadow (LAY-07).
+ * modal scrim and shadow (LAY-07), and the futuristic addition primary-glow
+ * (Tokens, COL-07). canvas-deep (LAY-08) is the one exact, non-derived
+ * addition: dark #07080a, light unchanged. grid-line (LAY-09, below) is a
+ * utility, not a themed variable.
  *
  * shadcn/ui CSS variables are mapped onto the same NightWatch tokens
  * (components.json cssVariables: true) — one source of truth for both
@@ -117,6 +120,8 @@
   --scrim: color-mix(in srgb, var(--foreground) 35%, transparent);
   --modal-shadow: 0 24px 64px
     color-mix(in srgb, var(--foreground) 16%, transparent);
+  --canvas-deep: var(--background);
+  --primary-glow: color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -137,6 +142,8 @@
     --danger-tint: color-mix(in srgb, var(--danger) 10%, transparent);
     --scrim: color-mix(in srgb, var(--background) 60%, transparent);
     --modal-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
+    --canvas-deep: #07080a;
+    --primary-glow: color-mix(in srgb, var(--primary) 35%, transparent);
   }
 }
 
@@ -161,6 +168,8 @@
   --scrim: color-mix(in srgb, var(--foreground) 35%, transparent);
   --modal-shadow: 0 24px 64px
     color-mix(in srgb, var(--foreground) 16%, transparent);
+  --canvas-deep: var(--background);
+  --primary-glow: color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 :root[data-theme="dark"] {
@@ -180,6 +189,8 @@
   --danger-tint: color-mix(in srgb, var(--danger) 10%, transparent);
   --scrim: color-mix(in srgb, var(--background) 60%, transparent);
   --modal-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
+  --canvas-deep: #07080a;
+  --primary-glow: color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
 @theme inline {
@@ -198,6 +209,10 @@
   --color-danger-tint: var(--danger-tint);
   --color-scrim: var(--scrim);
   --shadow-modal: var(--modal-shadow);
+  --color-canvas-deep: var(--canvas-deep);
+  /* primary-glow (COL-07) has no --color-* mapping: it is a glow, never a
+     Tailwind fill/border/text utility; `live-pulse` reads it directly as
+     `var(--primary-glow)`. */
   /* shadcn/ui semantic roles -> NightWatch tokens */
   --color-card: var(--surface);
   --color-card-foreground: var(--foreground);
@@ -286,6 +301,25 @@ body {
   animation: backdrop-enter 120ms ease-out;
 }
 
+/* A live-data indicator breathes continuously (docs/design-system.md,
+   Motion MOT-01); use on at most one element per view. The reduced-motion
+   rule above forces one iteration, and `forwards` is what makes that single
+   iteration land on, and hold, the glow end state instead of reverting to
+   the element's unanimated (no-glow) style. */
+@keyframes live-pulse {
+  from {
+    opacity: 0.5;
+    box-shadow: 0 0 0 0 var(--primary-glow);
+  }
+  to {
+    opacity: 1;
+    box-shadow: 0 0 10px 3px var(--primary-glow);
+  }
+}
+@utility live-pulse {
+  animation: live-pulse 2200ms ease-in-out infinite alternate forwards;
+}
+
 /* Canvas grain for data-dense views (docs/design-system.md, Layout): 1 px
    dots at Text 4% on a 24 px grid, on Canvas only, never on Surface. */
 @utility canvas-grain {
@@ -294,4 +328,25 @@ body {
     transparent 1px
   );
   background-size: 24px 24px;
+}
+
+/* Grid-line texture (docs/design-system.md, Layout LAY-09): a 1 px hairline
+   texture every 32 px, an alternative to the canvas grain above, Canvas only,
+   never combined with canvas-grain on the same view. */
+@utility grid-line {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in oklab, var(--color-foreground) 3.5%, transparent) 0px,
+      color-mix(in oklab, var(--color-foreground) 3.5%, transparent) 1px,
+      transparent 1px,
+      transparent 32px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--color-foreground) 3.5%, transparent) 0px,
+      color-mix(in oklab, var(--color-foreground) 3.5%, transparent) 1px,
+      transparent 1px,
+      transparent 32px
+    );
 }

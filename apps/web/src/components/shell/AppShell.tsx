@@ -25,9 +25,12 @@ const FOCUSABLE_DRAWER_SELECTOR = [
 // The header toggle overrides the breakpoint default only until the breakpoint changes, so no stale override remains.
 // `main` is the containing block of absolute descendants (sr-only text, visually hidden inputs); without it they
 // sit in the initial containing block at their scrolled position and make the document taller than h-dvh.
-// Grain belongs to data-dense views only (overview, monitor list, inbox), never to forms or detail pages.
+// Grain belongs to data-dense views only (monitor list, inbox), never to forms or detail pages.
 const DATA_DENSE_ROUTE =
-  /^\/(workspace|notifications)(\/|$)|^\/organizations\/[^/]+\/monitors\/?$/;
+  /^\/notifications(\/|$)|^\/organizations\/[^/]+\/monitors\/?$/;
+// Workspace gets a deeper canvas and a hairline texture instead of the dot grain
+// (docs/design-system.md, Layout LAY-08/LAY-09).
+const WORKSPACE_ROUTE = /^\/workspace(\/|$)/;
 
 export function AppShell() {
   const { pathname } = useLocation();
@@ -171,7 +174,11 @@ export function AppShell() {
             id="main-content"
             tabIndex={-1}
             className={`relative flex-1 overflow-y-auto focus:outline-none ${
-              DATA_DENSE_ROUTE.test(pathname) ? "canvas-grain" : ""
+              WORKSPACE_ROUTE.test(pathname)
+                ? "bg-canvas-deep grid-line"
+                : DATA_DENSE_ROUTE.test(pathname)
+                  ? "canvas-grain"
+                  : ""
             }`}
           >
             <div className="flex min-h-full flex-col">
