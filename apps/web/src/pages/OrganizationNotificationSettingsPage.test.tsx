@@ -1,8 +1,9 @@
 import { bindQueryClientIdentity } from "../lib/queryClient";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Link, MemoryRouter, Route, Routes } from "react-router";
+import { Link, createMemoryRouter, RouterProvider } from "react-router";
+import { AppShell } from "../components/shell/AppShell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/client";
@@ -24,8 +25,29 @@ vi.mock("../lib/api/notifications", async (importOriginal) => {
     ...original,
     fetchOrganizationNotificationSettings: vi.fn(),
     updateOrganizationNotificationSettings: vi.fn(),
+    fetchUnreadCount: vi.fn(() => Promise.resolve({ unreadCount: 0 })),
   };
 });
+vi.mock("../lib/api/monitors", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchMonitorList: vi.fn(() =>
+    Promise.resolve({
+      summary: { total: 0 },
+      monitors: [],
+      page: { limit: 50, offset: 0, total: 0 },
+      dataAsOf: "2026-10-06T00:00:00.000Z",
+    }),
+  ),
+}));
+vi.mock("better-auth/react", () => ({
+  createAuthClient: () => ({
+    useSession: () => ({
+      data: { user: { name: "Test", email: "test@nightwatch.invalid" } },
+      isPending: false,
+    }),
+  }),
+}));
+
 vi.mock("../lib/api/me", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return { ...original, fetchMeContext: vi.fn() };
@@ -35,7 +57,12 @@ const fetchSettingsMock = vi.mocked(fetchOrganizationNotificationSettings);
 const updateSettingsMock = vi.mocked(updateOrganizationNotificationSettings);
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 
-function renderPage(extra: React.ReactNode = null) {
+function renderPage(
+  extra: React.ReactNode = null,
+  bootstrap?: ReturnType<
+    typeof Promise.withResolvers<Awaited<ReturnType<typeof fetchMeContext>>>
+  >,
+) {
   // Memberships include ORG_A only; ORG_B stays unknown.
   fetchMeContextMock.mockResolvedValue({
     user: {
@@ -48,31 +75,38 @@ function renderPage(extra: React.ReactNode = null) {
     organizations: [{ id: ORG_A, name: "Org A", slug: "org-a", role: "owner" }],
     lastActiveTenantId: ORG_A,
   });
+  if (bootstrap !== undefined)
+    fetchMeContextMock.mockReturnValueOnce(bootstrap.promise);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   bindQueryClientIdentity(queryClient, "user-1");
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider>
-        <MemoryRouter
-          initialEntries={[`/organizations/${ORG_A}/notification-settings`]}
-        >
-          <Routes>
-            <Route
-              path="/organizations/:organizationId/notification-settings"
-              element={
-                <>
-                  {extra}
-                  <OrganizationNotificationSettingsPage />
-                </>
-              }
-            />
-          </Routes>
-        </MemoryRouter>
-      </TenantProvider>
-    </QueryClientProvider>,
+  const router = createMemoryRouter(
+    [
+      {
+        element: (
+          <QueryClientProvider client={queryClient}>
+            <TenantProvider>
+              <AppShell />
+            </TenantProvider>
+          </QueryClientProvider>
+        ),
+        children: [
+          {
+            path: "/organizations/:organizationId/notification-settings",
+            element: (
+              <>
+                {extra}
+                <OrganizationNotificationSettingsPage />
+              </>
+            ),
+          },
+        ],
+      },
+    ],
+    { initialEntries: [`/organizations/${ORG_A}/notification-settings`] },
   );
+  return render(<RouterProvider router={router} />);
 }
 
 afterEach(() => {
@@ -82,6 +116,38 @@ afterEach(() => {
 });
 
 describe("OrganizationNotificationSettingsPage", () => {
+  it("does not request settings before the shell's deferred verified bootstrap", async () => {
+    const bootstrap =
+      Promise.withResolvers<Awaited<ReturnType<typeof fetchMeContext>>>();
+    renderPage(null, bootstrap);
+    expect(
+      await screen.findByText("กำลังโหลดข้อมูลองค์กร…"),
+    ).toBeInTheDocument();
+    expect(fetchSettingsMock).not.toHaveBeenCalled();
+    bootstrap.resolve({
+      user: {
+        id: "user-1",
+        name: "Test",
+        email: "test@nightwatch.invalid",
+        emailVerified: true,
+        twoFactorEnabled: false,
+      },
+      organizations: [
+        { id: ORG_A, name: "Org A", slug: "org-a", role: "owner" },
+      ],
+      lastActiveTenantId: ORG_A,
+    });
+    fetchSettingsMock.mockResolvedValue({
+      organizationId: ORG_A,
+      settingsChangedEnabled: true,
+      monitorAlertsEnabled: true,
+      version: 1,
+    });
+    expect(
+      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+    ).toBeInTheDocument();
+    expect(fetchSettingsMock).toHaveBeenCalledWith(ORG_A);
+  });
   it("names the route organization in the page scope line", async () => {
     fetchSettingsMock.mockResolvedValue({
       organizationId: ORG_A,
@@ -90,7 +156,9 @@ describe("OrganizationNotificationSettingsPage", () => {
       version: 1,
     });
     renderPage();
-    expect(await screen.findByText("Org A")).toBeInTheDocument();
+    expect(
+      await within(screen.getByRole("main")).findByText("Org A"),
+    ).toBeInTheDocument();
     expect(screen.getByText("ตั้งค่าองค์กร")).toBeInTheDocument();
     // The slug is the unique identifier; names may repeat.
     expect(screen.getByText("org-a")).toBeInTheDocument();

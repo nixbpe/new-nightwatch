@@ -36,6 +36,13 @@ export function contextQueryOptions(queryClient: QueryClient) {
       const previous =
         queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
       try {
+        // A required fresh bootstrap retires in-flight tenant work immediately,
+        // before a delayed resolver can confirm (or reject) its cached scope.
+        await queryClient.cancelQueries({ queryKey: ["tenant"] });
+        signal.throwIfAborted();
+        if (!hasContextPublicationClaim(queryClient, claim)) {
+          throw new Error("Context publication superseded");
+        }
         const context = await fetchMeContext({ signal });
         assertContextIdentity(queryClient, context);
         signal.throwIfAborted();

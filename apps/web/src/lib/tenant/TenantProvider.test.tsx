@@ -139,6 +139,116 @@ describe("TenantProvider", () => {
     resetQueryClientRegistry();
   });
 
+  it("withdraws warm cached scope during required bootstrap and recovers after failure/retry", async () => {
+    const resolver = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockReturnValueOnce(resolver.promise);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderProvider(queryClient);
+    await screen.findByText("org-b");
+    act(() => {
+      void queryClient
+        .query({
+          queryKey: ["tenant", "org-b", "scope-check"],
+          queryFn: () =>
+            Promise.reject(new ApiError("INBOX_SCOPE_CHANGED", "changed", 409)),
+          retry: false,
+        })
+        .catch(() => undefined);
+    });
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
+    expect(screen.getByTestId("pending")).toHaveTextContent("true");
+    await act(async () => {
+      resolver.reject(new Error("resolver unavailable"));
+      await resolver.promise.catch(() => undefined);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+    );
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
+    fetchMeContextMock.mockResolvedValueOnce({
+      ...me,
+      lastActiveTenantId: "org-a",
+    });
+    await userEvent.click(screen.getByRole("button", { name: "retry" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-a"),
+    );
+  });
+
+  it.each(["success", "superseded"] as const)(
+    "warm-cache required bootstrap %s retires old tenant work and publishes only current scope",
+    async (outcome) => {
+      const resolver = Promise.withResolvers<MeContextResponse>();
+      const lateTenant = Promise.withResolvers<string>();
+      fetchMeContextMock
+        .mockResolvedValueOnce(me)
+        .mockReturnValueOnce(resolver.promise);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      renderProvider(queryClient);
+      await screen.findByText("org-b");
+      let tenantSignal: AbortSignal | undefined;
+      const tenantRequest = queryClient
+        .query({
+          queryKey: ["tenant", "org-b", "deferred"],
+          queryFn: ({ signal }) => {
+            tenantSignal = signal;
+            return lateTenant.promise;
+          },
+        })
+        .catch(() => undefined);
+      act(() => {
+        void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+      });
+      await waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+      expect(screen.getByTestId("pending")).toHaveTextContent("true");
+      expect(tenantSignal?.aborted).toBe(true);
+      if (outcome === "superseded") {
+        fetchMeContextMock.mockResolvedValueOnce({
+          ...me,
+          organizations: [],
+          lastActiveTenantId: null,
+        });
+        await userEvent.click(
+          screen.getByRole("button", { name: "refresh membership" }),
+        );
+        await waitFor(() =>
+          expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+        );
+      }
+      await act(async () => {
+        resolver.resolve({ ...me, lastActiveTenantId: "org-a" });
+        lateTenant.resolve("late old org");
+        await resolver.promise;
+        await tenantRequest;
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+      );
+      expect(screen.getByTestId("active")).toHaveTextContent(
+        outcome === "success" ? "org-a" : "none",
+      );
+      expect(
+        queryClient.getQueryData(["tenant", "org-b", "deferred"]),
+      ).toBeUndefined();
+      expect(
+        queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
+          ?.lastActiveTenantId,
+      ).toBe(outcome === "success" ? "org-a" : null);
+    },
+  );
+
   it("prefers lastActiveTenantId over the first membership", async () => {
     fetchMeContextMock.mockResolvedValue(me);
     renderProvider();

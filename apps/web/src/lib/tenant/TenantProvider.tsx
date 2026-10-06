@@ -59,6 +59,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [membershipContextUnavailable, setMembershipContextUnavailable] =
     useState(false);
+  const [membershipRefreshPending, setMembershipRefreshPending] =
+    useState(false);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
   const switchQueue = useRef<Promise<void>>(Promise.resolve());
   const latestSwitchIntent = useRef(0);
@@ -88,6 +90,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           livePublication.publishedClaim === publication.publishedClaim))
     ) {
       setMembershipContextUnavailable(false);
+      setMembershipRefreshPending(false);
     }
   }, [meQuery.data, membershipContextUnavailable, publication, queryClient]);
 
@@ -113,12 +116,15 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  const memberships = membershipContextUnavailable
+  // Required resolver queries block admission; explicit PATCH switches retain
+  // confirmed context until success, including on switch failure.
+  const contextUnavailable = membershipContextUnavailable || meQuery.isFetching;
+  const memberships = contextUnavailable
     ? undefined
     : meQuery.isError
       ? undefined
       : meQuery.data?.organizations;
-  const lastActiveTenantId = membershipContextUnavailable
+  const lastActiveTenantId = contextUnavailable
     ? null
     : (meQuery.data?.lastActiveTenantId ?? null);
 
@@ -133,6 +139,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         return null;
       }
       setMembershipContextUnavailable(true);
+      setMembershipRefreshPending(true);
       await queryClient.cancelQueries({
         queryKey: ME_CONTEXT_QUERY_KEY,
         exact: true,
@@ -157,6 +164,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         return updated;
       } catch {
         return null;
+      } finally {
+        if (hasContextPublicationClaim(queryClient, claim)) {
+          setMembershipRefreshPending(false);
+        }
       }
     }, [queryClient]);
 
@@ -214,11 +225,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   };
 
   const value: TenantContextValue = {
-    me:
-      membershipContextUnavailable || meQuery.isError
-        ? undefined
-        : meQuery.data,
-    mePending: meQuery.isPending,
+    me: contextUnavailable || meQuery.isError ? undefined : meQuery.data,
+    mePending:
+      meQuery.isPending || meQuery.isFetching || membershipRefreshPending,
     meError: meQuery.error,
     retryMe,
     refreshMembershipContext,

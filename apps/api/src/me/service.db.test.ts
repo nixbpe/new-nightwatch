@@ -1,7 +1,15 @@
 import { fileURLToPath } from "node:url";
 import { createDatabase, runMigrations } from "@nightwatch/db";
 import { createLogger } from "@nightwatch/shared";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { AuthSession } from "../auth";
 import { requireIntegrationDatabaseUrls } from "../testing/db-integration";
@@ -11,8 +19,11 @@ import {
   resolveActiveOrganization,
   setActiveOrganization,
 } from "./service";
-import type { PoolClient } from "pg";
-import { leaveOrganization } from "../organization-notifications/members";
+import type { PoolClient, QueryResult } from "pg";
+import {
+  leaveOrganization,
+  revokeOrganizationMember,
+} from "../organization-notifications/members";
 
 const urls = requireIntegrationDatabaseUrls();
 const database = createDatabase(urls.runtimeUrl);
@@ -145,7 +156,103 @@ async function waitForBlocked(blocker: PoolClient) {
   throw new Error("resolver never reached the lock barrier");
 }
 
+// The resolver uses pg's Promise overloads only. These typed views retain the
+// real objects while giving scheduling spies the same understood contract.
+function promiseQueries(client: PoolClient): {
+  query: (text: string, values?: unknown[]) => Promise<QueryResult>;
+} {
+  return client;
+}
+const promiseConnections: { connect: () => Promise<PoolClient> } = database.sql;
+
 describe("resolver state and lock convergence", () => {
+  it("returns safe failure after exactly five real candidate changes without overwriting the winning switch", async () => {
+    const client = await database.sql.connect();
+    const realQuery = client.query.bind(client);
+    let attempts = 0;
+    let winning = orgIds[1];
+    const querySpy = vi
+      .spyOn(promiseQueries(client), "query")
+      .mockImplementation(async (config, values) => {
+        if (config === "begin isolation level repeatable read") {
+          attempts++;
+          winning = attempts % 2 === 1 ? orgIds[1] : orgIds[0];
+          await setActiveOrganization(database, logger, session, winning);
+        }
+        return realQuery(config, values);
+      });
+    const connectionSpy = vi
+      .spyOn(promiseConnections, "connect")
+      .mockImplementationOnce(() => Promise.resolve(client));
+    try {
+      await expect(
+        resolveActiveOrganization(database, session),
+      ).rejects.toMatchObject({
+        statusCode: 503,
+        code: "ACTIVE_ORGANIZATION_RESOLUTION_FAILED",
+      });
+      // Resolver releases this client. Restore its promise-only scheduling spy
+      // before Pool.query can reuse it with the callback overload.
+      querySpy.mockRestore();
+      connectionSpy.mockRestore();
+      expect(attempts).toBe(5);
+      await assertMirrors(winning);
+      expect(
+        (await getMeContext(database, session)).organizations.map(
+          (org) => org.id,
+        ),
+      ).toEqual(orgIds);
+    } finally {
+      querySpy.mockRestore();
+      connectionSpy.mockRestore();
+    }
+  });
+  it("re-discovers a membership inserted after zero-candidate discovery before admitting tenant use", async () => {
+    await owner.sql.query("delete from member where user_id = $1", [userId]);
+    const client = await database.sql.connect();
+    const realQuery = client.query.bind(client);
+    let attempts = 0;
+    const querySpy = vi
+      .spyOn(promiseQueries(client), "query")
+      .mockImplementation(async (config, values) => {
+        if (
+          config === "begin isolation level repeatable read" &&
+          ++attempts === 1
+        ) {
+          // Concurrent fixture insertion is real SQL, not a mocked discovery result.
+          await owner.sql.query(
+            `insert into member (id, user_id, organization_id, role, created_at) values ($1, $2, $3, 'viewer', '2026-01-01')`,
+            [crypto.randomUUID(), userId, orgIds[1]],
+          );
+        }
+        return realQuery(config, values);
+      });
+    const connectionSpy = vi
+      .spyOn(promiseConnections, "connect")
+      .mockImplementationOnce(() => Promise.resolve(client));
+    try {
+      expect(
+        (await resolveActiveOrganization(database, session)).lastActiveTenantId,
+      ).toBe(orgIds[1]);
+      querySpy.mockRestore();
+      connectionSpy.mockRestore();
+      expect(attempts).toBe(2);
+      await assertMirrors(orgIds[1]);
+      await expect(
+        setActiveOrganization(database, logger, session, orgIds[0]),
+      ).rejects.toMatchObject({ code: "MEMBERSHIP_DENIED" });
+    } finally {
+      querySpy.mockRestore();
+      connectionSpy.mockRestore();
+      for (const organizationId of orgIds) {
+        await owner.sql.query(
+          `insert into member (id, user_id, organization_id, role, created_at) values ($1, $2, $3, 'viewer', '2026-01-01') on conflict do nothing`,
+          [crypto.randomUUID(), userId, organizationId],
+        );
+      }
+    }
+  });
+
   it("retains valid selection and repairs every session, including a newly inserted session", async () => {
     await setActiveOrganization(database, logger, session, orgIds[1]);
     const newSession = crypto.randomUUID();
@@ -364,6 +471,100 @@ describe("resolver state and lock convergence", () => {
         );
     }
   });
+  for (const action of ["leave", "revoke"] as const) {
+    for (const ordering of ["removal-first", "resolver-first"] as const) {
+      for (const remaining of [true, false]) {
+        it(`${action} ${ordering} with remaining membership ${String(remaining)} preserves mirrors and denies removed scope`, async () => {
+          const actor = crypto.randomUUID();
+          await owner.sql.query(
+            'insert into "user" (id, name, email, email_verified) values ($1, $2, $3, true)',
+            [actor, "Race actor", `${actor}@nightwatch.invalid`],
+          );
+          await owner.sql.query(
+            "insert into member (id, user_id, organization_id, role) values ($1, $2, $3, 'owner')",
+            [crypto.randomUUID(), actor, orgIds[0]],
+          );
+          const target = await owner.sql.query<{ id: string }>(
+            "select id from member where user_id = $1 and organization_id = $2",
+            [userId, orgIds[0]],
+          );
+          const memberId = target.rows[0]?.id;
+          if (memberId === undefined)
+            throw new Error("Race target fixture missing");
+          if (!remaining)
+            await owner.sql.query(
+              "delete from member where user_id = $1 and organization_id = $2",
+              [userId, orgIds[1]],
+            );
+          const remove = () =>
+            action === "leave"
+              ? leaveOrganization(database, {
+                  organizationId: orgIds[0],
+                  actorUserId: userId,
+                })
+              : revokeOrganizationMember(database, {
+                  organizationId: orgIds[0],
+                  actorUserId: actor,
+                  memberId,
+                });
+          const client = await database.sql.connect();
+          const realQuery = client.query.bind(client);
+          let removed = false;
+          const querySpy = vi
+            .spyOn(promiseQueries(client), "query")
+            .mockImplementation(async (config, values) => {
+              if (
+                !removed &&
+                ordering === "removal-first" &&
+                config === "begin isolation level repeatable read"
+              ) {
+                removed = true;
+                await remove();
+              }
+              const result = await realQuery(config, values);
+              if (
+                !removed &&
+                ordering === "resolver-first" &&
+                config === "commit"
+              ) {
+                removed = true;
+                await remove();
+              }
+              return result;
+            });
+          const connectionSpy = vi
+            .spyOn(promiseConnections, "connect")
+            .mockImplementationOnce(() => Promise.resolve(client));
+          try {
+            await resolveActiveOrganization(database, session);
+            querySpy.mockRestore();
+            connectionSpy.mockRestore();
+            expect(removed).toBe(true);
+            if (ordering === "resolver-first") await assertMirrors(null);
+            const fresh = await resolveActiveOrganization(database, session);
+            expect(fresh.lastActiveTenantId).toBe(remaining ? orgIds[1] : null);
+            await assertMirrors(remaining ? orgIds[1] : null);
+            expect(
+              fresh.organizations.some((org) => org.id === orgIds[0]),
+            ).toBe(false);
+            await expect(
+              setActiveOrganization(database, logger, session, orgIds[0]),
+            ).rejects.toMatchObject({ code: "MEMBERSHIP_DENIED" });
+          } finally {
+            querySpy.mockRestore();
+            connectionSpy.mockRestore();
+            await owner.sql.query('delete from "user" where id = $1', [actor]);
+            for (const organizationId of orgIds)
+              await owner.sql.query(
+                `insert into member (id, user_id, organization_id, role, created_at) values ($1, $2, $3, 'viewer', '2026-01-01') on conflict do nothing`,
+                [crypto.randomUUID(), userId, organizationId],
+              );
+          }
+        });
+      }
+    }
+  }
+
   it("runs as a non-owner NOBYPASSRLS role", async () => {
     const roles = await database.sql.query(
       `select rolsuper, rolbypassrls from pg_roles where rolname = current_user`,
