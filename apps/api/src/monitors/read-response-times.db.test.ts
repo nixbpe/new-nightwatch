@@ -369,14 +369,16 @@ function atClock(
                   return connection.query(text, values);
                 };
               const value: unknown = Reflect.get(connection, key);
-              return typeof value === "function"
-                ? value.bind(connection)
-                : value;
+              const boundValue: unknown =
+                typeof value === "function" ? value.bind(connection) : value;
+              return boundValue;
             },
           });
         };
       const value: unknown = Reflect.get(target, property);
-      return typeof value === "function" ? value.bind(target) : value;
+      const boundValue: unknown =
+        typeof value === "function" ? value.bind(target) : value;
+      return boundValue;
     },
   });
   return { ...ctx.runtime, sql };

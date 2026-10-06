@@ -233,14 +233,18 @@ describe("response-times authorized before removal", () => {
                       return result;
                     };
                   const value: unknown = Reflect.get(connection, property);
-                  return typeof value === "function"
-                    ? value.bind(connection)
-                    : value;
+                  const boundValue: unknown =
+                    typeof value === "function"
+                      ? value.bind(connection)
+                      : value;
+                  return boundValue;
                 },
               });
             };
           const value: unknown = Reflect.get(target, key);
-          return typeof value === "function" ? value.bind(target) : value;
+          const boundValue: unknown =
+            typeof value === "function" ? value.bind(target) : value;
+          return boundValue;
         },
       });
       const identity = {
