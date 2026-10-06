@@ -1,6 +1,6 @@
 # Issue #57 execution evidence
 
-OWNER: software-engineer, NODE-F005-57V. Author-produced evidence สำหรับ F-005-AC-2 AC-63 ถึง AC-74. `ready=false` เพราะ manual screen-reader proof ยังไม่ครบ. ไม่ใช่ independent acceptance หรือ release approval.
+OWNER: software-engineer, NODE-F005-57V. Author-produced evidence สำหรับ F-005-AC-2 AC-63 ถึง AC-74. Manual screen-reader proof ยังไม่ครบ; ผู้ใช้อนุญาต bypass AC-71 และ AC-74 เพื่อเปิด PR ตาม [PR publication exception](#pr-publication-exception). ไม่ใช่ independent acceptance หรือ release approval.
 
 ## Source state
 
@@ -105,6 +105,12 @@ Plan JSON records in-memory sorts and bound partition pruning. Synthetic organiz
 
 Prove It Works shaped the real raw→API→browser checks and honest manual gap. Sequence Work into Verifiable Units shaped fixture repair/check/commit order and serial DB execution. Fix Root Causes shaped the isolated target fixture instead of changing expected counts. Type System Discipline shaped the unknown Proxy boundary without casts. Model the Domain kept actual response parsing in the discriminated schema and range/role tables. Decision trail is `/tmp/nightwatch-issue57-run/decisions.tsv`; parent owns independent review, no nested agents or self-approval.
 
+## PR publication exception
+
+ผู้ใช้สั่งใน session นี้: `bypass AC-71 และ AC-74 ได้เลย จากนั้นเปิด PR` ข้อยกเว้นนี้อนุญาตการเปิด PR ของ issue #57 โดยไม่รอหลักฐานที่ยังขาดในสอง criteria นี้ ไม่แก้ frozen definitions, ไม่แทน `not verified` ด้วย `observed pass` และไม่อนุญาต merge, deploy หรือ release.
+
+AC-71 และ AC-74 ยังคง `not verified` ในส่วนที่ระบุด้านบน. Automated evidence ที่ตรวจแล้วคงเดิม. Manual screen-reader/chart review, historical baseline screenshots และ manual/browser scenarios ที่ยังไม่ตรวจต้องปรากฏเป็นข้อจำกัดใน PR. Local quality gates, security checks และ independent source review ยังต้องผ่านก่อน publication; PR CI ต้องรายงานตามผลจริง.
+
 ## Comment and test cleanup checkpoint
 
 Cleanup against `2449df9b2901e70671627249bcf467f556d14df6` removes 7 comment lines and replaces 21 test titles in 6 files. The reviewed source delta has SHA256 `8e7d34c6f8d7d7086705165860f66897b7060f7e06f4158f23e5fb9ea61ffaf5`. No assertions, fixtures, scenarios, skips, contracts or generated output changed. Static redundancy review found no equivalent same-layer survivor that preserves every trigger and assertion, so no tests were deleted.
@@ -125,4 +131,4 @@ Current 1440×900 after screenshots show fixture p50/p95/checks/failed = 20/40/4
 - 7d: [light](screenshots/57-kpi-7d-light.png), [dark](screenshots/57-kpi-7d-dark.png).
 - 30d: [light](screenshots/57-kpi-30d-light.png), [dark](screenshots/57-kpi-30d-dark.png).
 
-The screenshots are current after evidence, not historical baseline images or screen-reader proof. AC-71 and the dependent manual portion of AC-74 remain not verified. Other manual/browser gaps listed above remain open. Owned E2E databases and Redis keys remaining are 0; task-owned Compose services are stopped. PR publication remains blocked by the required manual proof.
+The screenshots are current after evidence, not historical baseline images or screen-reader proof. AC-71 and the dependent manual portion of AC-74 remain not verified. Other manual/browser gaps listed above remain open. Owned E2E databases and Redis keys remaining are 0; task-owned Compose services are stopped. The user subsequently authorized the PR publication exception below.
