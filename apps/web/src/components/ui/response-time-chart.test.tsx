@@ -292,19 +292,6 @@ describe("series gaps, pauses and averages", () => {
     );
     expect(summaryText(summary)).not.toContain("เฉลี่ย 200");
   });
-
-  it("says in the legend that hours with only system-side errors read as no data, for 7 d and 30 d only", () => {
-    const note = /ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้/;
-    const { unmount } = render(<ResponseTimeChart {...props24h()} />);
-    expect(screen.queryByText(note)).toBeNull();
-    unmount();
-    render(
-      <ResponseTimeChart
-        {...props24h({ range: "7d", buckets: [empty("01:00", "02:00")] })}
-      />,
-    );
-    expect(screen.getByText(note)).toBeInTheDocument();
-  });
 });
 
 describe("24 h window", () => {
@@ -893,30 +880,18 @@ describe("ResponseTimeChart memo inputs", () => {
   });
 });
 
-describe("ResponseTimeChart clamped window caption", () => {
-  const window = { from: T("08:00"), to: T("12:00") };
-  const caption = "ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์";
-
-  it("explains a window start clamped to the creation time", () => {
-    render(
+describe("ResponseTimeChart data notes", () => {
+  it("leaves the creation-clamp and system-error-hours notes to the card, which shows them in the table view too", () => {
+    const { container } = render(
       <ResponseTimeChart
-        {...props24h()}
-        window={window}
+        {...props24h({ range: "7d", buckets: [empty("09:00", "10:00")] })}
+        window={{ from: T("08:00"), to: T("12:00") }}
         createdAt={T("10:00")}
       />,
     );
-    expect(screen.getByText(caption)).toBeInTheDocument();
-  });
-
-  it("stays silent when the monitor is older than the window", () => {
-    render(
-      <ResponseTimeChart
-        {...props24h()}
-        window={window}
-        createdAt={T("07:00")}
-      />,
-    );
-    expect(screen.queryByText(caption)).not.toBeInTheDocument();
+    expect(container.querySelector("svg")).not.toBeNull();
+    expect(screen.queryByText(/ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์/)).toBeNull();
+    expect(screen.queryByText(/ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้/)).toBeNull();
   });
 });
 

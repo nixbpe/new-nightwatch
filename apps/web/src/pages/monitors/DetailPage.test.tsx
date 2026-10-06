@@ -1194,6 +1194,24 @@ function chartLiveRegion() {
   );
 }
 
+/** Looks past accessibility: a table that is only hidden would still be in the DOM. */
+function expectNoTableInDom() {
+  expect(screen.queryByRole("table", { hidden: true })).toBeNull();
+  expect(
+    screen.queryByRole("region", {
+      name: "ข้อมูลกราฟเวลาตอบสนอง",
+      hidden: true,
+    }),
+  ).toBeNull();
+}
+
+function expectNoChartInDom() {
+  expect(
+    screen.queryByRole("group", { name: CHART_NAME, hidden: true }),
+  ).toBeNull();
+  expect(document.querySelector("[data-chart-part]")).toBeNull();
+}
+
 function expectNoStateAttributes(toggle: HTMLElement) {
   for (const attribute of ["aria-expanded", "aria-controls", "aria-pressed"]) {
     expect(toggle).not.toHaveAttribute(attribute);
@@ -1400,7 +1418,7 @@ describe("Detail response-time chart", () => {
     const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
     const group = await screen.findByRole("group", { name: CHART_NAME });
     expectNoStateAttributes(toggle);
-    expect(screen.queryByRole("table")).toBeNull();
+    expectNoTableInDom();
     // AC-76: the keyboard hint stays off the accessibility tree and the polite region stays.
     expect(screen.getByText(KEYBOARD_HINT)).toHaveAttribute(
       "aria-hidden",
@@ -1437,7 +1455,7 @@ describe("Detail response-time chart", () => {
     await user.keyboard(" ");
     expect(toggle).toHaveAccessibleName(TOGGLE_TO_TABLE);
     expect(toggle).toHaveFocus();
-    expect(screen.queryByRole("table")).toBeNull();
+    expectNoTableInDom();
     expect(screen.getByRole("group", { name: CHART_NAME })).toBeInTheDocument();
     expect(screen.getByText(KEYBOARD_HINT)).toBeInTheDocument();
   });
@@ -1725,7 +1743,7 @@ function liveRange(
     ],
   };
 }
-function renderResponseCard() {
+function renderResponseCard(createdAt = "2026-09-01T00:00:00.000Z") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -1739,7 +1757,7 @@ function renderResponseCard() {
         monitorId={MONITOR_ID}
         lastCheckAt={DATA_AS_OF}
         intervalSeconds={300}
-        createdAt="2026-09-01T00:00:00.000Z"
+        createdAt={createdAt}
       />
     </QueryClientProvider>
   );
@@ -2305,7 +2323,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     expect(
       await screen.findByRole("group", { name: /ช่วง 30 วันล่าสุด/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("table")).toBeNull();
+    expectNoTableInDom();
     const steps30 = await chartSteps(user, 3);
     await user.click(screen.getByRole("button", { name: TOGGLE_TO_TABLE }));
     expect(chartTable()).toHaveAccessibleName(/30 วันล่าสุด/);
@@ -2404,6 +2422,66 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     });
     expect(screen.getByRole("group", { name: CHART_NAME })).toBeInTheDocument();
   });
+});
+
+describe("response-time data notes in both views", () => {
+  const CLAMP = "ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์";
+  const HOURLY =
+    "ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้ (ปัญหาฝั่งระบบ) แสดงเป็นไม่มีข้อมูล เพราะไม่อยู่ในสรุปรายชั่วโมง";
+  const OLD = "2026-09-01T00:00:00.000Z";
+  const young24h: MonitorResponseTimesResponse = {
+    ...noResponseTimes,
+    points: [
+      { at: inWindow(1330), responseTimeMs: 100, outcome: "pass" },
+      { at: inWindow(1435), responseTimeMs: 120, outcome: "pass" },
+    ],
+  };
+
+  it.each([
+    ["24h", "an old monitor", OLD, false, false],
+    ["24h", "a monitor created 2 h ago", inWindow(1320), true, false],
+    ["7d", "an old monitor", OLD, false, true],
+    ["30d", "an old monitor", OLD, false, true],
+    ["7d", "a monitor created inside the window", T("06:00"), true, true],
+  ] as const)(
+    "shows each note once, with the same copy, in the chart and the table for %s of %s",
+    async (range, _monitor, createdAt, clamped, hourly) => {
+      fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
+        Promise.resolve(
+          requested === "24h" ? young24h : hourlyRange(requested),
+        ),
+      );
+      const user = userEvent.setup();
+      renderResponseCard(createdAt);
+      if (range !== "24h") {
+        await user.click(
+          await screen.findByRole("radio", {
+            name: range === "7d" ? "7 วัน" : "30 วัน",
+          }),
+        );
+      }
+      const toggle = await screen.findByRole("button", {
+        name: TOGGLE_TO_TABLE,
+      });
+      const chartRoot = must(
+        screen.getByRole("group", { name: CHART_NAME }).parentElement,
+      );
+      const clampNotes = screen.queryAllByText(CLAMP);
+      const hourlyNotes = screen.queryAllByText(HOURLY);
+      expect(clampNotes).toHaveLength(clamped ? 1 : 0);
+      expect(hourlyNotes).toHaveLength(hourly ? 1 : 0);
+      // The chart component no longer owns them, so the swap cannot take them away.
+      for (const note of [...clampNotes, ...hourlyNotes]) {
+        expect(chartRoot.contains(note)).toBe(false);
+      }
+
+      await user.click(toggle);
+      expectNoChartInDom();
+      expect(chartTable()).toBeInTheDocument();
+      expect(screen.queryAllByText(CLAMP)).toEqual(clampNotes);
+      expect(screen.queryAllByText(HOURLY)).toEqual(hourlyNotes);
+    },
+  );
 });
 
 it("announces an empty latest selection once after failed load and retry, without moving focus", async () => {

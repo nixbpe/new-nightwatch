@@ -9,7 +9,9 @@ import { HairlineGrid } from "../../../components/ui/hairline-grid";
 import { ResponseTimeTable } from "../../../components/ui/response-time-table";
 import {
   buildSeries,
+  chartWindow,
   hasChecks,
+  HOURLY_CHECK_ERROR_NOTE,
   pausedThroughout,
   rangeStats,
   RANGE_LABELS,
@@ -170,6 +172,12 @@ export function ResponseTimeCard({
   }, [range, organizationId, monitorId, data, query.isFetching, query.isError]);
 
   const paused = chartProps !== undefined && pausedThroughout(chartProps);
+  // The chart and the table both draw this window, so both views carry its notes.
+  const window = chartProps === undefined ? undefined : chartWindow(chartProps);
+  const windowClamped =
+    window !== undefined &&
+    chartProps?.window !== undefined &&
+    window.from > Date.parse(chartProps.window.from);
   let body;
   if (denied || notFound) {
     body = (
@@ -197,6 +205,16 @@ export function ResponseTimeCard({
           </Suspense>
         ) : (
           <ResponseTimeTable range={range} series={series} />
+        )}
+        {windowClamped ? (
+          <p className="text-xs text-foreground-secondary">
+            ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์
+          </p>
+        ) : null}
+        {range === "24h" ? null : (
+          <p className="text-xs text-foreground-secondary">
+            {HOURLY_CHECK_ERROR_NOTE}
+          </p>
         )}
         <p className="text-sm">
           {paused && !hasChecks(series)

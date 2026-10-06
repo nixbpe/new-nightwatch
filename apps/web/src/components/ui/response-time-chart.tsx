@@ -15,7 +15,6 @@ import {
   axisTicks,
   buildSeries,
   chartWindow,
-  HOURLY_CHECK_ERROR_NOTE,
   describeEntry,
   RANGE_LABELS,
   type ResponseTimeChartProps,
@@ -116,10 +115,6 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
   const right = width - MARGIN.right;
   const bottom = HEIGHT - MARGIN.bottom;
   const window = chartWindow(props);
-  const windowClamped =
-    window !== undefined &&
-    dataWindow !== undefined &&
-    window.from > Date.parse(dataWindow.from);
   let from = window?.from ?? first?.at ?? 0;
   let to = window?.to ?? last?.end ?? 1;
   for (const pause of props.pauses) {
@@ -511,16 +506,6 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
           </span>
         ) : null}
       </p>
-      {windowClamped ? (
-        <p className="text-xs text-foreground-secondary">
-          ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์
-        </p>
-      ) : null}
-      {range === "24h" ? null : (
-        <p className="text-xs text-foreground-secondary">
-          {HOURLY_CHECK_ERROR_NOTE}
-        </p>
-      )}
     </div>
   );
 }
