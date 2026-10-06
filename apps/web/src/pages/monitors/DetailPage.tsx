@@ -10,6 +10,7 @@ import { PageState } from "../../components/shell/PageState";
 import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { Notice } from "../../components/ui/notice";
 import { ApiError } from "../../lib/api/client";
@@ -25,7 +26,6 @@ import {
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { AlertsCard } from "./detail/AlertsCard";
-import { ChecksHistoryCard } from "./detail/ChecksHistoryCard";
 import { ConfigCard } from "./detail/ConfigCard";
 import { IncidentsCard } from "./detail/IncidentsCard";
 import { IntervalText } from "./detail/IntervalText";
@@ -492,13 +492,17 @@ function DetailForMonitor({
             organizationId={organizationId}
             monitorId={monitorId}
           />
-          <ChecksHistoryCard
-            code="06"
-            organizationId={organizationId}
-            monitorId={monitorId}
-          />
         </div>
         <aside className="flex min-w-0 flex-col gap-6">
+          <Card className="p-4">
+            <Link
+              to={`${overviewPath}/${monitorId}/checks`}
+              className="inline-flex min-h-6 items-center gap-1.5 self-start rounded-[4px] text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              ดูประวัติการตรวจ
+              <span aria-hidden="true">→</span>
+            </Link>
+          </Card>
           <ConfigCard monitor={monitor} />
           <AlertsCard
             monitor={monitor}

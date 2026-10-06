@@ -1,7 +1,5 @@
 import type {
-  CheckResultView,
   Monitor,
-  MonitorChecksResponse,
   MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -772,91 +770,28 @@ describe("Detail assertions", () => {
   });
 });
 
-function check(overrides: Partial<CheckResultView> = {}): CheckResultView {
-  return { ...baseResult, ...overrides };
-}
-
-describe("Detail check history", () => {
-  it("shows each check with its assertions and marks a URL change", async () => {
+describe("Detail checks history link", () => {
+  it("links to the checks history page and shows neither its table nor its pagination", async () => {
     showDetail(detail());
-    const checks: MonitorChecksResponse = {
-      checks: [
-        check({
-          scheduledFor: "2026-09-30T07:30:00.000Z",
-          checkedAt: "2026-09-30T07:30:00.000Z",
-          url: "https://new.acme.example/health",
-          outcome: "fail",
-          failureReason: "assertion_failed",
-          assertions: [
-            {
-              kind: "bodyContains",
-              expected: "ok",
-              actual: null,
-              actualType: null,
-              actualTruncated: false,
-              status: "fail",
-              reason: "text_not_found",
-            },
-          ],
-        }),
-        check({
-          scheduledFor: "2026-09-30T07:25:00.000Z",
-          checkedAt: "2026-09-30T07:25:00.000Z",
-          url: "https://api.acme.example/health",
-        }),
-      ],
-      page: { limit: 20, offset: 0, total: 2 },
-      urlChanges: [
-        {
-          at: "2026-09-30T07:28:00.000Z",
-          url: "https://new.acme.example/health",
-        },
-      ],
-    };
-    fetchChecksMock.mockResolvedValue(checks);
-    const user = userEvent.setup();
     renderDetail();
-    const region = await screen.findByRole("region", {
-      name: "ตารางประวัติการตรวจ",
-    });
-    // Only the history rows: the assertion tables inside them have rows of their own.
-    const rows = Array.from(
-      region.querySelectorAll<HTMLElement>(":scope > table > tbody > tr"),
-    );
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent("เปลี่ยน URL");
-    expect(rows[0]).toHaveTextContent("https://new.acme.example/health");
-    expect(rows[0]).toHaveTextContent("ล้มเหลว");
-    expect(rows[0]).toHaveTextContent("ไม่ผ่าน 1/1");
-    expect(rows[1]).not.toHaveTextContent("เปลี่ยน URL");
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    // The arrow is aria-hidden, so the accessible name is the label alone.
     expect(
-      screen.getByText(/เปลี่ยน URL เมื่อ/, { selector: "li" }),
-    ).toHaveTextContent(formatDateTime("2026-09-30T07:28:00.000Z"));
-
-    await user.click(within(must(rows[0])).getByText("ไม่ผ่าน 1/1"));
-    expect(within(must(rows[0])).getByText("เนื้อหามีข้อความ")).toBeVisible();
-  });
-
-  it("keeps a failing history inside its card", async () => {
-    showDetail(detail());
-    fetchChecksMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    renderDetail();
-    expect(
-      await screen.findByText("โหลดประวัติการตรวจไม่สำเร็จ"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Payments API",
+      screen.getByRole("link", { name: "ดูประวัติการตรวจ" }),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
     );
-    fetchChecksMock.mockResolvedValue(noChecks);
-    const card = sectionOf(
-      screen.getByRole("heading", { name: "ประวัติการตรวจ" }),
-    );
-    await userEvent
-      .setup()
-      .click(within(card).getByRole("button", { name: "ลองอีกครั้ง" }));
     expect(
-      await within(card).findByText("ยังไม่มีผลการตรวจ"),
-    ).toBeInTheDocument();
+      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "หน้าประวัติการตรวจ" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "ประวัติการตรวจ" }),
+    ).toBeNull();
+    expect(fetchChecksMock).not.toHaveBeenCalled();
   });
 });
 
@@ -1019,7 +954,6 @@ describe("Detail structure", () => {
       "ผลการตรวจล่าสุดและ Assertions",
       "ฟีดเหตุการณ์",
       "เหตุการณ์",
-      "ประวัติการตรวจ",
       "การตั้งค่า",
       "การแจ้งเตือน",
       "SSL",

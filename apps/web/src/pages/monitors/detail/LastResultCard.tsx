@@ -1,13 +1,7 @@
 import type { Monitor } from "@nightwatch/api-contract";
 
 import { SectionHeader } from "../../../components/ui/section-header";
-import {
-  formatNumber,
-  formatTimeOrDate,
-  incidentReasonLabel,
-  Time,
-  TIME_ZONE,
-} from "../format";
+import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
 import {
   AssertionTable,
   assertionRowFromResult,
@@ -15,19 +9,9 @@ import {
 } from "./AssertionTable";
 import {
   EVALUATED_FROM_PREFIX_TEXT,
+  failureText,
   OUTCOME_LABELS,
-  tlsFailureText,
 } from "./labels";
-
-export function failureText(
-  result: NonNullable<Monitor["lastResult"]>,
-): string | null {
-  if (result.failureReason === null) return null;
-  if (result.failureReason === "tls_invalid") {
-    return tlsFailureText(result.tlsReason);
-  }
-  return incidentReasonLabel(result.failureReason);
-}
 
 // The status code is not an assertion in the payload, so its row is derived from the result.
 function statusRow(
