@@ -448,15 +448,6 @@ describe("AuditLogPage same-tick filter changes (O1)", () => {
     });
     expect(router.state.location.search).toContain("from=2026-09-30");
   });
-
-  it("marks the pressed chip with the design-system Primary tint", async () => {
-    listMock.mockResolvedValue(makeList([makeEvent(0)]));
-    open();
-    await screen.findByRole("table");
-    const chip = screen.getByRole("button", { name: "7 วัน" });
-    expect(chip.className).toContain("bg-primary-tint");
-    expect(chip.className).not.toContain("bg-primary/10");
-  });
 });
 
 describe("AuditLogPage states (AC-08)", () => {

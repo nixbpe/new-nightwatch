@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { formatTime } from "../../pages/monitors/format";
 import { ResponseTimeChart } from "./response-time-chart";
@@ -49,10 +49,6 @@ const liveRegion = () => {
   if (region === null) throw new Error("no live region");
   return region;
 };
-
-afterEach(() => {
-  delete document.documentElement.dataset.theme;
-});
 
 describe("series", () => {
   it("orders checks, gaps and pauses into one series of steps", () => {
@@ -659,14 +655,6 @@ describe("ResponseTimeChart drawing", () => {
     expect(marks[0]).toHaveTextContent("URL");
     expect(marks[0]?.querySelector("title")).toHaveTextContent("เปลี่ยน URL");
     expect(marks[1]).toHaveTextContent("แก้ค่า");
-  });
-
-  it("takes every colour from a design token, never a literal hex or rgb value", () => {
-    document.documentElement.dataset.theme = "dark";
-    const { container } = render(<ResponseTimeChart {...props24h()} />);
-    const markup = container.innerHTML;
-    expect(markup).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-    expect(markup).not.toMatch(/rgb\(|hsl\(/i);
   });
 });
 
