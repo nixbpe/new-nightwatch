@@ -476,7 +476,6 @@ function DetailForMonitor({
             organizationId={organizationId}
             monitorId={monitorId}
             lastCheckAt={monitor.lastCheckAt}
-            dataAsOf={monitor.dataAsOf}
             intervalSeconds={monitor.intervalSeconds}
             createdAt={monitor.createdAt}
           />

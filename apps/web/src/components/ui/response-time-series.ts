@@ -43,35 +43,13 @@ export type ResponseTimeChartProps = {
 };
 
 const HOUR_MS = 3_600_000;
-const RANGE_MS: Record<ChartRange, number> = {
-  "24h": 24 * HOUR_MS,
-  "7d": 7 * 24 * HOUR_MS,
-  "30d": 30 * 24 * HOUR_MS,
-};
-
 /** Maps the API's two shapes (24 h points and gaps, 7 d and 30 d hourly buckets) to chart props. */
 export function toChartProps(
   response: MonitorResponseTimesResponse,
-  context: { dataAsOf: string; intervalSeconds: number; createdAt?: string },
+  context: { intervalSeconds: number; createdAt?: string },
 ): ResponseTimeChartProps {
   const { range, pauses, configChanges } = response;
-  const end = Date.parse(context.dataAsOf);
-  // A 24 h read starts exactly at now minus 24 h. An hourly read starts at the next whole hour, and its
-  // first bucket says which hour that was, so the window takes it from the response itself: the
-  // Detail read and this read can straddle an hour boundary.
-  const start = end - RANGE_MS[range];
-  const firstBucket =
-    response.range === "24h" ? undefined : response.buckets[0];
-  const from =
-    range === "24h"
-      ? start
-      : firstBucket === undefined
-        ? Math.ceil(start / HOUR_MS) * HOUR_MS
-        : Date.parse(firstBucket.hourStart);
-  const window = {
-    from: new Date(from).toISOString(),
-    to: context.dataAsOf,
-  };
+  const window = response.window;
   const { intervalSeconds, createdAt } = context;
   if (response.range === "24h") {
     const points: ChartBucket[] = response.points.map((point) => ({
@@ -106,7 +84,9 @@ export function toChartProps(
     range,
     buckets: response.buckets.map((bucket) => ({
       at: bucket.hourStart,
-      endAt: new Date(Date.parse(bucket.hourStart) + HOUR_MS).toISOString(),
+      endAt: new Date(
+        Math.min(Date.parse(bucket.hourStart) + HOUR_MS, Date.parse(window.to)),
+      ).toISOString(),
       avgMs: bucket.avgMs,
       maxMs: bucket.maxMs,
       checks: bucket.checks,
@@ -353,7 +333,7 @@ export function buildSeries(props: ResponseTimeChartProps): SeriesEntry[] {
 
 /**
  * True when pauses leave no part of the window uncovered. The window comes from
- * the Detail read and the pauses from a later read, so a sliver at either edge
+ * the response metadata, so a sliver at either edge
  * (under twice the interval) does not count as uncovered; a stretch between
  * two pauses is never tolerated.
  */
@@ -419,7 +399,7 @@ export function describeEntry(range: ChartRange, entry: SeriesEntry): string {
       return `${time} ตรวจไม่ได้ (ปัญหาฝั่งระบบ)`;
     case "value": {
       const value = entry.avgMs ?? 0;
-      return entry.end > entry.at
+      return range !== "24h"
         ? `${time} เวลาตอบสนองเฉลี่ย ${ms(value)} สูงสุด ${ms(entry.maxMs ?? value)}`
         : `${time} เวลาตอบสนอง ${ms(value)}`;
     }
@@ -446,7 +426,7 @@ export function summarize(series: readonly SeriesEntry[]): SeriesSummary {
     (entry) => entry.kind === "value" && entry.avgMs !== null,
   );
   const weightOf = (entry: SeriesEntry) =>
-    entry.end > entry.at ? entry.responseChecks : 1;
+    entry.responseChecks ?? (entry.end > entry.at ? null : 1);
   const weighted = values.every((entry) => weightOf(entry) !== null);
   let sum = 0;
   let weight = 0;
@@ -519,13 +499,10 @@ export const RANGE_LABELS: Record<ChartRange, string> = {
 };
 
 export type RangeStats = {
-  /** Results in the range. */
   checks: number;
-  /** Null for 7d and 30d: hourly averages cannot give percentiles (issue #57). */
   p50Ms: number | null;
   p95Ms: number | null;
-  /** Results with outcome `fail`; `check_error` is NightWatch-side and not counted. Null for 7d and 30d. */
-  failed: number | null;
+  failed: number;
 };
 
 /** Nearest-rank percentile of an ascending list. */
@@ -535,15 +512,9 @@ function percentile(sorted: readonly number[], p: number): number | null {
   return sorted[rank - 1] ?? null;
 }
 
-/** KPI figures for the range. Only the 24 h read carries per-check results, so only it backs p50, p95 and failed. */
 export function rangeStats(response: MonitorResponseTimesResponse): RangeStats {
   if (response.range !== "24h") {
-    return {
-      checks: response.buckets.reduce((sum, bucket) => sum + bucket.checks, 0),
-      p50Ms: null,
-      p95Ms: null,
-      failed: null,
-    };
+    return response.summary;
   }
   const times = response.points
     .flatMap((point) =>
@@ -551,7 +522,8 @@ export function rangeStats(response: MonitorResponseTimesResponse): RangeStats {
     )
     .sort((a, b) => a - b);
   return {
-    checks: response.points.length,
+    checks: response.points.filter((point) => point.outcome !== "check_error")
+      .length,
     p50Ms: percentile(times, 50),
     p95Ms: percentile(times, 95),
     failed: response.points.filter((point) => point.outcome === "fail").length,

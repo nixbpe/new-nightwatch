@@ -84,6 +84,8 @@ describe("series", () => {
     const { buckets } = toChartProps(
       {
         range: "24h",
+        dataAsOf: T("08:00"),
+        window: { from: "2026-09-29T08:00:00.000Z", to: T("08:00") },
         unit: "ms",
         points: [
           { at: T("07:00"), responseTimeMs: null, outcome: "check_error" },
@@ -93,7 +95,7 @@ describe("series", () => {
         pauses: [],
         configChanges: [],
       },
-      { dataAsOf: T("08:00"), intervalSeconds: 300 },
+      { intervalSeconds: 300 },
     );
     const series = buildSeries({
       range: "24h",
@@ -373,6 +375,9 @@ describe("7 d and 30 d as the API shapes them", () => {
     overrides: Partial<{ pauses: { from: string; to: string }[] }> = {},
   ) => ({
     range: "7d" as const,
+    dataAsOf,
+    window: { from: new Date(start).toISOString(), to: dataAsOf },
+    summary: { p50Ms: null, p95Ms: null, checks: 0, failed: 0 },
     unit: "ms" as const,
     buckets: hours.map((hour) => ({
       hourStart: new Date(hour).toISOString(),
@@ -385,7 +390,7 @@ describe("7 d and 30 d as the API shapes them", () => {
     configChanges: [],
     ...overrides,
   });
-  const context = { dataAsOf, intervalSeconds: 900 };
+  const context = { intervalSeconds: 900 };
 
   it("reads a monitor paused for the whole window as one pause, with the current hour inside it", () => {
     // The pause started before the window and is still going: it ends at the read time.
@@ -415,14 +420,16 @@ describe("7 d and 30 d as the API shapes them", () => {
     );
   });
 
-  it("takes the window start from the first bucket when the two reads straddle an hour boundary", () => {
+  it("takes both window bounds from the response when reads straddle an hour boundary", () => {
     // The Detail read saw 07:59:59 (its own estimate of the start is 08:00) but this read ran after
     // 08:00, so its first bucket is 09:00 and the pause covers exactly that.
-    const read = "2026-09-30T07:59:59.000Z";
     const firstHour = "2026-09-23T09:00:00.000Z";
     const props = toChartProps(
       {
         range: "7d",
+        dataAsOf: "2026-09-30T08:00:02.000Z",
+        window: { from: firstHour, to: "2026-09-30T08:00:02.000Z" },
+        summary: { p50Ms: null, p95Ms: null, checks: 0, failed: 0 },
         unit: "ms",
         buckets: [
           {
@@ -436,9 +443,12 @@ describe("7 d and 30 d as the API shapes them", () => {
         pauses: [{ from: firstHour, to: "2026-09-30T08:00:02.000Z" }],
         configChanges: [],
       },
-      { dataAsOf: read, intervalSeconds: 900 },
+      { intervalSeconds: 900 },
     );
-    expect(props.window?.from).toBe(firstHour);
+    expect(props.window).toEqual({
+      from: firstHour,
+      to: "2026-09-30T08:00:02.000Z",
+    });
     expect(pausedThroughout(props)).toBe(true);
   });
 

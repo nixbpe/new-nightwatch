@@ -251,3 +251,27 @@ export function ageSeries(
     (_, index) => firstSeconds + index * stepSeconds,
   );
 }
+
+export async function seedResponseSamples(
+  ctx: MonitorTestContext,
+  organizationId: string,
+  monitorId: string,
+  samples: {
+    scheduledFor: string;
+    checkedAt?: string;
+    outcome: "pass" | "fail" | "check_error";
+    responseTimeMs: number | null;
+  }[],
+): Promise<void> {
+  await ctx.owner.sql.query(
+    `insert into monitor_check_results
+      (monitor_id, tenant_id, scheduled_for, checked_at, outcome, response_time_ms,
+       failure_reason, assertions, url_masked, check_config_version, interval_seconds)
+     select $1, $2, s."scheduledFor"::timestamptz,
+       coalesce(s."checkedAt", s."scheduledFor")::timestamptz, s.outcome, s."responseTimeMs",
+       case s.outcome when 'fail' then 'http_status' when 'check_error' then 'executor_error' end,
+       '[]'::jsonb, 'https://fixture.example/health', 1, 60
+     from jsonb_to_recordset($3::jsonb) as s("scheduledFor" text, "checkedAt" text, outcome text, "responseTimeMs" integer)`,
+    [monitorId, organizationId, JSON.stringify(samples)],
+  );
+}

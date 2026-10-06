@@ -1059,65 +1059,118 @@ export async function getResponseTimes(
 ): Promise<MonitorResponseTimesResponse> {
   return readInTenant(database, identity, async (client, now) => {
     const monitorId = parseMonitorId(rawMonitorId);
-    const found = await client.query<{ status: "active" | "paused" }>(
-      "select status from monitors where id = $1 and tenant_id = $2",
-      [monitorId, identity.organizationId],
-    );
-    const monitor = found.rows[0];
-    if (!monitor) monitorNotFound();
-
     const start = windowStart(range, now);
-    const pauseEvents = await loadPauseEvents(
-      client,
-      identity.organizationId,
-      [monitorId],
-      start,
+    type Sample = {
+      checkedAt: string;
+      responseTimeMs: number | null;
+      outcome: "pass" | "fail" | "check_error";
+      intervalSeconds: number;
+    };
+    const result = await client.query<{
+      status: "active" | "paused";
+      events: {
+        kind: "paused" | "resumed" | "config_changed";
+        at: string;
+        url: string | null;
+        afterBoundary: boolean;
+      }[];
+      points: Sample[];
+      summary: {
+        p50Ms: number | null;
+        p95Ms: number | null;
+        checks: number;
+        failed: number;
+      };
+      buckets: {
+        hourStart: string;
+        avgMs: number | null;
+        maxMs: number | null;
+        checks: number;
+        responseChecks: number;
+      }[];
+    }>(
+      `with response_monitor as (
+         select status from monitors where id = $1 and tenant_id = $2
+       ), scoped as materialized (
+         select scheduled_for, checked_at, response_time_ms, outcome, interval_seconds
+         from monitor_check_results
+         where monitor_id = $1 and tenant_id = $2
+           and scheduled_for >= $3 and scheduled_for <= $4
+           and exists (select 1 from response_monitor)
+         order by scheduled_for desc
+         limit $5
+       ), stats as (
+         select percentile_disc(ARRAY[0.50,0.95]) within group (order by response_time_ms)
+                  filter (where response_time_ms is not null) as percentiles,
+           count(*) filter (where outcome in ('pass', 'fail')) as checks,
+           count(*) filter (where outcome = 'fail') as failed
+         from scoped
+       ), hourly as (
+         select date_trunc('hour', scheduled_for at time zone 'UTC') at time zone 'UTC' as hour,
+           count(*) as checks, count(response_time_ms) as response_checks,
+           round(avg(response_time_ms), 2) as avg_ms, max(response_time_ms) as max_ms
+         from scoped where outcome in ('pass', 'fail') group by 1
+       )
+       select m.status,
+         coalesce((select jsonb_agg(jsonb_build_object('kind', kind, 'at', occurred_at, 'url', url_masked, 'afterBoundary', occurred_at > $4)
+           order by occurred_at, id) from monitor_events
+           where monitor_id = $1 and tenant_id = $2 and occurred_at >= $3
+             and (kind in ('paused', 'resumed') or (kind = 'config_changed' and occurred_at <= $4))), '[]'::jsonb) as events,
+         case when $5::integer is not null then coalesce((select jsonb_agg(jsonb_build_object(
+           'checkedAt', checked_at, 'responseTimeMs', response_time_ms, 'outcome', outcome,
+           'intervalSeconds', interval_seconds) order by scheduled_for) from scoped), '[]'::jsonb)
+           else '[]'::jsonb end as points,
+         jsonb_build_object('p50Ms', stats.percentiles[1], 'p95Ms', stats.percentiles[2],
+           'checks', stats.checks, 'failed', stats.failed) as summary,
+         coalesce((select jsonb_agg(jsonb_build_object('hourStart', hour, 'avgMs', avg_ms,
+           'maxMs', max_ms, 'checks', checks, 'responseChecks', response_checks) order by hour)
+           from hourly), '[]'::jsonb) as buckets
+       from response_monitor m cross join stats`,
+      [
+        monitorId,
+        identity.organizationId,
+        start,
+        now,
+        range === "24h" ? MONITOR_RESPONSE_POINTS_MAX : null,
+      ],
     );
-    const pauses = derivePauses(
-      pauseEvents.get(monitorId) ?? [],
-      monitor.status,
-      start,
-      now,
+    const snapshot = result.rows[0];
+    if (!snapshot) monitorNotFound();
+    // Compare event bounds in SQL, before Date truncates PostgreSQL microseconds.
+    const transitions = snapshot.events.filter(
+      (event) => event.kind === "paused" || event.kind === "resumed",
     );
-    const changes = await client.query<{ at: Date; url: string | null }>(
-      `select occurred_at as at, url_masked as url from monitor_events
-       where monitor_id = $1 and tenant_id = $2 and kind = 'config_changed'
-         and occurred_at >= $3
-       order by occurred_at, id`,
-      [monitorId, identity.organizationId, start],
-    );
+    let statusAtT = snapshot.status;
+    for (const event of [...transitions].reverse()) {
+      if (event.afterBoundary)
+        statusAtT = event.kind === "paused" ? "active" : "paused";
+    }
+    const pauseEvents = transitions
+      .filter((event) => !event.afterBoundary)
+      .map((event): PauseEvent => ({
+        kind: event.kind === "paused" ? "paused" : "resumed",
+        at: new Date(event.at),
+      }));
+    const pauses = derivePauses(pauseEvents, statusAtT, start, now);
     const common = {
+      dataAsOf: now.toISOString(),
+      window: { from: start.toISOString(), to: now.toISOString() },
       unit: "ms" as const,
       pauses: pauses.map(toIsoInterval),
-      configChanges: changes.rows.map((change) => ({
-        at: change.at.toISOString(),
-        urlChanged: change.url !== null,
-        ...(change.url === null ? {} : { url: change.url }),
-      })),
+      configChanges: snapshot.events
+        .filter((event) => event.kind === "config_changed")
+        .map((change) => ({
+          at: new Date(change.at).toISOString(),
+          urlChanged: change.url !== null,
+          ...(change.url === null ? {} : { url: change.url }),
+        })),
     };
 
     if (range === "24h") {
-      // Same boundary as the 24 h uptime window; newest MONITOR_RESPONSE_POINTS_MAX rows.
-      const rows = await client.query<{
-        checkedAt: Date;
-        responseTimeMs: number | null;
-        outcome: "pass" | "fail" | "check_error";
-        intervalSeconds: number;
-      }>(
-        `select checked_at as "checkedAt", response_time_ms as "responseTimeMs",
-           outcome, interval_seconds as "intervalSeconds"
-         from monitor_check_results
-         where monitor_id = $1 and tenant_id = $2 and scheduled_for >= $3
-         order by scheduled_for desc
-         limit $4`,
-        [
-          monitorId,
-          identity.organizationId,
-          start,
-          MONITOR_RESPONSE_POINTS_MAX,
-        ],
-      );
-      const ordered = rows.rows.reverse();
+      const ordered = snapshot.points.map((row) => ({
+        ...row,
+        checkedAt: new Date(row.checkedAt),
+      }));
       const gaps = computeGaps(
         ordered
           .filter((row) => row.outcome !== "check_error")
@@ -1139,40 +1192,21 @@ export async function getResponseTimes(
       };
     }
 
-    const rows = await client.query<{
-      hourStart: Date;
-      checks: number;
-      responseChecks: number;
-      responseMsSum: string;
-      responseMsMax: number | null;
-    }>(
-      `select hour_start as "hourStart", checks, response_checks as "responseChecks",
-         response_ms_sum::text as "responseMsSum",
-         response_ms_max as "responseMsMax"
-       from monitor_check_hourly
-       where monitor_id = $1 and tenant_id = $2 and hour_start >= $3
-         and hour_start < $4`,
-      [monitorId, identity.organizationId, start, now],
-    );
     const byHour = new Map(
-      rows.rows.map((row) => [row.hourStart.getTime(), row]),
+      snapshot.buckets.map((row) => [new Date(row.hourStart).getTime(), row]),
     );
     const buckets = [];
-    for (let hour = start.getTime(); hour < now.getTime(); hour += HOUR_MS) {
+    for (let hour = start.getTime(); hour <= now.getTime(); hour += HOUR_MS) {
       const row = byHour.get(hour);
-      const measured = row !== undefined && row.responseChecks > 0;
       buckets.push({
         hourStart: new Date(hour).toISOString(),
-        avgMs: measured
-          ? Math.round((Number(row.responseMsSum) / row.responseChecks) * 100) /
-            100
-          : null,
-        maxMs: measured ? row.responseMsMax : null,
+        avgMs: row?.avgMs ?? null,
+        maxMs: row?.maxMs ?? null,
         checks: row?.checks ?? 0,
         responseChecks: row?.responseChecks ?? 0,
       });
     }
-    return { range, buckets, ...common };
+    return { range, buckets, summary: snapshot.summary, ...common };
   });
 }
 

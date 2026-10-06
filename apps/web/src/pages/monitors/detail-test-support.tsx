@@ -72,6 +72,11 @@ export const noResponseTimes: Extract<
   { range: "24h" }
 > = {
   range: "24h",
+  dataAsOf: DATA_AS_OF,
+  window: {
+    from: new Date(Date.parse(DATA_AS_OF) - 86400_000).toISOString(),
+    to: DATA_AS_OF,
+  },
   unit: "ms",
   points: [],
   gaps: [],

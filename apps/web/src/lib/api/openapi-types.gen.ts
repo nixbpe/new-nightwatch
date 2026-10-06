@@ -4383,6 +4383,14 @@ export interface paths {
                                 /** Format: date-time */
                                 to: string;
                             }[];
+                            /** Format: date-time */
+                            dataAsOf: string;
+                            window: {
+                                /** Format: date-time */
+                                from: string;
+                                /** Format: date-time */
+                                to: string;
+                            };
                             /** @enum {string} */
                             unit: "ms";
                             pauses: {
@@ -4400,6 +4408,12 @@ export interface paths {
                         } | {
                             /** @enum {string} */
                             range: "7d" | "30d";
+                            summary: {
+                                p50Ms: number | null;
+                                p95Ms: number | null;
+                                checks: number;
+                                failed: number;
+                            };
                             buckets: {
                                 /** Format: date-time */
                                 hourStart: string;
@@ -4408,6 +4422,14 @@ export interface paths {
                                 checks: number;
                                 responseChecks: number;
                             }[];
+                            /** Format: date-time */
+                            dataAsOf: string;
+                            window: {
+                                /** Format: date-time */
+                                from: string;
+                                /** Format: date-time */
+                                to: string;
+                            };
                             /** @enum {string} */
                             unit: "ms";
                             pauses: {

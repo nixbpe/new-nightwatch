@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
+import { monitorResponseTimesResponseSchema } from "../../packages/api-contract/src/monitor.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
@@ -88,7 +89,7 @@ test.afterAll(async () => {
   }
 });
 
-test.describe("AC-01 leaf in the sidebar and the command palette", () => {
+test.describe("leaf in the sidebar and the command palette", () => {
   for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
     test(`${role}: leaf is present, active on every sub-route, found by the palette`, async ({
       page,
@@ -117,7 +118,7 @@ test.describe("AC-01 leaf in the sidebar and the command palette", () => {
   }
 });
 
-test.describe("AC-04 Overview states", () => {
+test.describe("Overview states", () => {
   test("first-run empty, filtered empty, loading, error with retry, stale warning", async ({
     page,
   }) => {
@@ -179,7 +180,7 @@ test.describe("AC-04 Overview states", () => {
   });
 });
 
-test.describe("AC-06, AC-07, AC-09, AC-10 create form", () => {
+test.describe("create form", () => {
   test("defaults, mode switch keeps values, validation beside the field, one monitor on a double click", async ({
     page,
   }) => {
@@ -232,24 +233,31 @@ test.describe("AC-06, AC-07, AC-09, AC-10 create form", () => {
   test("a forbidden address is refused beside the URL field without any connection", async ({
     page,
   }) => {
-    await signIn(page, owner);
-    await page.goto(`${overview()}/new`);
-    const before = target.hits.length;
-    await page.getByLabel("ชื่อมอนิเตอร์").fill(`forbidden-${run}`);
-    await page
-      .getByLabel("URL", { exact: true })
-      .fill(`http://localhost:${String(target.port)}/health`);
-    await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
-    await expect(page.getByText("ที่อยู่นี้ไม่อนุญาตให้ตรวจสอบ")).toBeVisible();
-    await expect(page.getByLabel("URL", { exact: true })).toHaveValue(
-      `http://localhost:${String(target.port)}/health`,
-    );
-    const count = await pool.query(
-      "select count(*)::int n from monitors where tenant_id = $1 and name = $2",
-      [orgA, `forbidden-${run}`],
-    );
-    expect(count.rows[0].n).toBe(0);
-    expect(target.hits.length).toBe(before);
+    const isolatedTarget = await startMonitorTarget();
+    try {
+      await signIn(page, owner);
+      await page.goto(`${overview()}/new`);
+      const before = isolatedTarget.hits.length;
+      await page.getByLabel("ชื่อมอนิเตอร์").fill(`forbidden-${run}`);
+      await page
+        .getByLabel("URL", { exact: true })
+        .fill(`http://localhost:${String(isolatedTarget.port)}/health`);
+      await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
+      await expect(
+        page.getByText("ที่อยู่นี้ไม่อนุญาตให้ตรวจสอบ"),
+      ).toBeVisible();
+      await expect(page.getByLabel("URL", { exact: true })).toHaveValue(
+        `http://localhost:${String(isolatedTarget.port)}/health`,
+      );
+      const count = await pool.query(
+        "select count(*)::int n from monitors where tenant_id = $1 and name = $2",
+        [orgA, `forbidden-${run}`],
+      );
+      expect(count.rows[0].n).toBe(0);
+      expect(isolatedTarget.hits.length).toBe(before);
+    } finally {
+      await isolatedTarget.close();
+    }
   });
 
   test("timeout and unresolvable host show their own messages, apart from the target's result", async ({
@@ -277,8 +285,8 @@ test.describe("AC-06, AC-07, AC-09, AC-10 create form", () => {
   });
 });
 
-test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
-  test("a concurrent edit shows the conflict and keeps typed values (AC-18)", async ({
+test.describe("edit, change and races", () => {
+  test("a concurrent edit shows the conflict and keeps typed values", async ({
     browser,
   }) => {
     const first = await browser.newContext();
@@ -314,7 +322,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
     ]);
   });
 
-  test("an id of another Organization reads as not found on Detail and Edit (AC-18, AC-48)", async ({
+  test("an id of another Organization reads as not found on Detail and Edit", async ({
     page,
   }) => {
     await signIn(page, owner);
@@ -329,7 +337,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
     await expect(page.getByText(`foreign-${run}`)).toHaveCount(0);
   });
 
-  test("editing the URL shows unknown until the new configuration has a result (AC-40)", async ({
+  test("editing the URL shows unknown until the new configuration has a result", async ({
     page,
   }) => {
     test.setTimeout(3 * 60_000);
@@ -359,7 +367,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
     });
   });
 
-  test("deleting a monitor that another session deleted goes to Overview with the notice (AC-50)", async ({
+  test("deleting a monitor that another session deleted goes to Overview with the notice", async ({
     page,
   }) => {
     const created = await ownerSession.request("POST", monitorPath(orgA), {
@@ -382,7 +390,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
     await expect(page.getByText("มอนิเตอร์นี้ถูกลบแล้ว")).toBeVisible();
   });
 
-  test("a Detail left open shows not found after the monitor is deleted elsewhere (AC-50)", async ({
+  test("a Detail left open shows not found after the monitor is deleted elsewhere", async ({
     page,
   }) => {
     const created = await ownerSession.request("POST", monitorPath(orgA), {
@@ -403,7 +411,7 @@ test.describe("AC-18, AC-40, AC-50 edit, change and races", () => {
   });
 });
 
-test("AC-11 the Test limit shows the wait from the server and disables the button", async ({
+test("the Test limit shows the wait from the server and disables the button", async ({
   page,
 }) => {
   const org = await createOrganization(pool, `E2E Rate ${run}`);
@@ -438,7 +446,7 @@ test("AC-11 the Test limit shows the wait from the server and disables the butto
   await pool.query("delete from organization where id = $1", [org]);
 });
 
-test.describe("AC-25, AC-26, AC-44, AC-47 secrets in the browser", () => {
+test.describe("secrets in the browser", () => {
   test("Edit shows set slots, refuses an empty replace, warns on a type change and blocks a new origin", async ({
     page,
   }) => {
@@ -492,7 +500,7 @@ test.describe("AC-25, AC-26, AC-44, AC-47 secrets in the browser", () => {
     ).toBeDisabled();
   });
 
-  test("query and body fields carry the permanent warning (AC-47)", async ({
+  test("query and body fields carry the permanent warning", async ({
     page,
   }) => {
     await signIn(page, owner);
@@ -506,7 +514,7 @@ test.describe("AC-25, AC-26, AC-44, AC-47 secrets in the browser", () => {
   });
 });
 
-test("AC-54 a first failing result reads as one failure, not as down", async ({
+test("a first failing result reads as one failure, not as down", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -524,7 +532,7 @@ test("AC-54 a first failing result reads as one failure, not as down", async ({
   await expect(page.getByText("ไม่ทราบสถานะ", { exact: true })).toBeVisible();
 });
 
-test("AC-31 an Organization at 50 monitors shows the reason and the API refuses a 51st", async ({
+test("an Organization at 50 monitors shows the reason and the API refuses a 51st", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -564,4 +572,315 @@ test("AC-31 an Organization at 50 monitors shows the reason and the API refuses 
   );
   expect(kept.rows[0]).toEqual({ n: 50, active: 50 });
   await pool.query("delete from organization where id = $1", [org]);
+});
+
+test("known raw samples reach all ranges, keyboard table and both themes", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  await testInfo.attach("57-owned-services", {
+    body: JSON.stringify({
+      database: new URL(databaseOwnerUrl).pathname.slice(1),
+      redisPrefix: process.env.REDIS_KEY_PREFIX,
+      cleanupOwner: "scripts/e2e.mjs finally, 57V",
+    }),
+    contentType: "application/json",
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const id = randomUUID();
+  await pool.query(
+    `insert into monitors
+      (id, tenant_id, name, url, client_request_id, interval_seconds, created_at)
+     values ($1, $2, 'issue57-known', 'https://fixture.example', $3, 60,
+       now() - interval '31 days')`,
+    [id, orgA, randomUUID()],
+  );
+  const path = `${overview()}/${id}`;
+  const card = page.locator('section[aria-labelledby="detail-response-times"]');
+  const stateShots = async (name: string) => {
+    for (const theme of ["สว่าง", "มืด"]) {
+      await page.getByRole("button", { name: "เมนูบัญชีผู้ใช้" }).click();
+      await page
+        .getByRole("group", { name: "ธีม", exact: true })
+        .getByRole("button", { name: theme, exact: true })
+        .click();
+      await page.keyboard.press("Escape");
+      await card
+        .getByRole("heading", { name: "เวลาตอบสนอง", exact: true })
+        .scrollIntoViewIfNeeded();
+      await shot(page, `57-${name}-${theme === "สว่าง" ? "light" : "dark"}`);
+    }
+  };
+  await signIn(page, owner);
+  await page.goto(path);
+  await expect(card.locator("dd")).toHaveText([
+    "ไม่มีข้อมูล",
+    "ไม่มีข้อมูล",
+    "0",
+    "0",
+  ]);
+  await stateShots("empty-before");
+  await pool.query(
+    `insert into monitor_check_results
+      (monitor_id, tenant_id, scheduled_for, checked_at, outcome, response_time_ms,
+       failure_reason, url_masked, check_config_version, interval_seconds)
+     select $1, $2, now() - n * interval '1 minute', now() - n * interval '1 minute',
+       case when n = 2 then 'fail' else 'pass' end, n * 10,
+       case when n = 2 then 'http_status' end, 'https://fixture.example', 1, 60
+     from generate_series(1, 4) n`,
+    [id, orgA],
+  );
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((value) => {
+      localStorage.setItem("nightwatch-theme", value);
+    }, theme);
+    await page.reload();
+    for (const label of ["24 ชม.", "7 วัน", "30 วัน"]) {
+      const radio = card.getByRole("radio", { name: label, exact: true });
+      await radio.focus();
+      await page.keyboard.press("Space");
+      await expect(card.locator("dd")).toHaveText(["20 ms", "40 ms", "4", "1"]);
+      await expect(radio).toBeFocused();
+      if (label !== "24 ชม.") {
+        await expect(card.getByRole("status")).toContainText(
+          "p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+        );
+        await expect(card.getByRole("status")).toHaveAttribute(
+          "aria-live",
+          "polite",
+        );
+        await expect(
+          card.getByText(/ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC/),
+        ).toBeVisible();
+      }
+      await expect(
+        card.getByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+      ).toBeVisible();
+      await shot(
+        page,
+        `57-kpi-${label === "24 ชม." ? "24h" : label === "7 วัน" ? "7d" : "30d"}-${theme}`,
+      );
+      const table = card.getByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" });
+      await table.focus();
+      await page.keyboard.press("Enter");
+      await expect(card.getByRole("table")).toBeVisible();
+      await expect(table).toBeFocused();
+      await shot(
+        page,
+        `57-known-${label === "24 ชม." ? "24h" : label === "7 วัน" ? "7d" : "30d"}-${theme}`,
+      );
+      await page.keyboard.press("Enter");
+      await expect(card.getByRole("table")).toHaveCount(0);
+    }
+  }
+  for (const role of ["owner", "admin", "viewer", "auditor"] as const) {
+    const session = await signInApi(people[role]);
+    for (const range of ["24h", "7d", "30d"]) {
+      const reply = await session.request(
+        "GET",
+        monitorPath(orgA, `/${id}/response-times?range=${range}`),
+      );
+      expect(reply.status).toBe(200);
+      const response = monitorResponseTimesResponseSchema.parse(reply.body);
+      expect(response.window.to).toBe(response.dataAsOf);
+      if (response.range === "24h") {
+        expect(response.points.map((point) => point.responseTimeMs)).toEqual([
+          40, 30, 20, 10,
+        ]);
+      } else {
+        expect(response.summary).toEqual({
+          p50Ms: 20,
+          p95Ms: 40,
+          checks: 4,
+          failed: 1,
+        });
+      }
+      await testInfo.attach(`57-api-${role}-${range}`, {
+        body: JSON.stringify(response),
+        contentType: "application/json",
+      });
+    }
+    await page.context().clearCookies();
+    await signIn(page, people[role]);
+    await page.goto(path);
+    await expect(card.locator("dd")).toHaveText(["20 ms", "40 ms", "4", "1"]);
+  }
+  await expect(card.getByRole("link", { name: /issue #57/ })).toHaveCount(0);
+  await pool.query(
+    "update monitor_check_results set response_time_ms = null, outcome = 'fail', failure_reason = 'timeout' where monitor_id = $1",
+    [id],
+  );
+  await page.reload();
+  await expect(card.locator("dd")).toHaveText([
+    "ไม่มีข้อมูล",
+    "ไม่มีข้อมูล",
+    "4",
+    "4",
+  ]);
+  await expect(
+    card.getByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+  ).toBeVisible();
+  await stateShots("timeout");
+  await pool.query(
+    "update monitor_check_results set outcome = 'check_error', response_time_ms = 0, failure_reason = 'executor_error' where monitor_id = $1",
+    [id],
+  );
+  await page.reload();
+  await expect(card.locator("dd")).toHaveText(["0 ms", "0 ms", "0", "0"]);
+  await stateShots("check-error");
+  const responseUrl = new RegExp(
+    `/api/organizations/${orgA}/monitors/${id}/response-times`,
+  );
+  await page.route(responseUrl, (route) => route.abort());
+  await page.reload();
+  await expect(card.getByText("โหลดกราฟเวลาตอบสนองไม่สำเร็จ")).toBeVisible();
+  await expect(card.locator("dd")).toHaveCount(0);
+  await stateShots("error");
+  await page.unroute(responseUrl);
+  await card.getByRole("button", { name: "ลองอีกครั้ง" }).click();
+  await expect(card.locator("dd")).toHaveText(["0 ms", "0 ms", "0", "0"]);
+  await pool.query("delete from monitor_check_results where monitor_id = $1", [
+    id,
+  ]);
+  await pool.query(
+    `insert into monitor_check_results
+      (monitor_id, tenant_id, scheduled_for, checked_at, outcome, response_time_ms,
+       url_masked, check_config_version, interval_seconds)
+     select $1, $2, now() - n * interval '1 second', now() - n * interval '1 second',
+       'pass', 10, 'https://fixture.example', 1, 60
+     from generate_series(1, 1441) n`,
+    [id, orgA],
+  );
+  await page.reload();
+  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1,440", "0"]);
+  await expect(
+    card.getByText("คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ"),
+  ).toBeVisible();
+  await shot(page, "57-cap-dark");
+  await card.getByRole("radio", { name: "7 วัน", exact: true }).click();
+  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1,441", "0"]);
+  await page.route(responseUrl, (route) => route.abort());
+  await expect(card.getByText(/อัปเดตกราฟไม่สำเร็จ/)).toBeVisible({
+    timeout: 45_000,
+  });
+  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1,441", "0"]);
+  await expect(
+    card.getByText(/อัปเดตกราฟไม่สำเร็จ/).locator("time"),
+  ).toHaveAttribute("datetime", /T/);
+  await stateShots("stale");
+  await page.unroute(responseUrl);
+  await card.getByRole("button", { name: "ลองอีกครั้ง" }).click();
+  await expect(card.getByText(/อัปเดตกราฟไม่สำเร็จ/)).toHaveCount(0);
+  await pool.query(
+    `insert into monitor_check_results (monitor_id, tenant_id, scheduled_for, checked_at,
+      outcome, response_time_ms, url_masked, check_config_version, interval_seconds)
+     values ($1, $2, now() - interval '8 days', now() - interval '8 days',
+       'pass', 99, 'https://fixture.example', 1, 60)`,
+    [id, orgA],
+  );
+  let release: () => void = () => {};
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const delayedUrl = new RegExp(
+    `/api/organizations/${orgA}/monitors/${id}/response-times.*range=30d`,
+  );
+  await page.route(delayedUrl, async (route) => {
+    const actual = await route.fetch();
+    await delayed;
+    await route.fulfill({ response: actual });
+  });
+  await card.getByRole("radio", { name: "30 วัน", exact: true }).click();
+  await expect(card.getByLabel("กำลังโหลดสรุปเวลาตอบสนอง")).toBeVisible();
+  await card.getByRole("radio", { name: "7 วัน", exact: true }).click();
+  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1,441", "0"]);
+  const lateCompletion = page.waitForResponse((response) =>
+    delayedUrl.test(response.url()),
+  );
+  release();
+  await lateCompletion;
+  await expect(
+    card.getByRole("radio", { name: "7 วัน", exact: true }),
+  ).toBeChecked();
+  await expect(card.getByRole("status")).toContainText("7 วันล่าสุด");
+  await page.unroute(delayedUrl);
+  await pool.query(
+    "delete from member where organization_id = $1 and user_id = $2",
+    [orgA, people.auditor.userId],
+  );
+  const denial = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/organizations/${orgA}`) &&
+      response.status() === 403,
+    { timeout: 45_000 },
+  );
+  await card.getByRole("radio", { name: "30 วัน", exact: true }).click();
+  await denial;
+  await expect(
+    page
+      .getByText(
+        /คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้|คุณไม่มีสิทธิ์เข้าถึงองค์กรนี้/,
+      )
+      .first(),
+  ).toBeVisible();
+  await expect(card.locator("dd")).toHaveCount(0);
+  await shot(page, "57-denied-dark");
+});
+
+test("pending real tenant A response cannot enter tenant B after confirmed switch", async ({
+  page,
+}) => {
+  const ids = [randomUUID(), randomUUID()];
+  for (const [index, org] of [orgA, orgOther].entries()) {
+    await pool.query(
+      `insert into monitors (id, tenant_id, name, url, client_request_id, interval_seconds)
+       values ($1, $2, $3, 'https://fixture.example', $4, 60)`,
+      [ids[index], org, `tenant-known-${index}`, randomUUID()],
+    );
+    await pool.query(
+      `insert into monitor_check_results (monitor_id, tenant_id, scheduled_for, checked_at,
+        outcome, response_time_ms, url_masked, check_config_version, interval_seconds)
+       values ($1, $2, now() - interval '1 minute', now() - interval '1 minute',
+         'pass', $3, 'https://fixture.example', 1, 60)`,
+      [ids[index], org, index === 0 ? 10 : 999],
+    );
+  }
+  await signIn(page, owner);
+  await page.goto(`${overview()}/${ids[0]}`);
+  const card = page.locator('section[aria-labelledby="detail-response-times"]');
+  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1", "0"]);
+  let release: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let observed: () => void = () => {};
+  const fetched = new Promise<void>((resolve) => {
+    observed = resolve;
+  });
+  const responseUrl = new RegExp(
+    `/api/organizations/${orgA}/monitors/${ids[0]}/response-times.*range=7d`,
+  );
+  await page.route(responseUrl, async (route) => {
+    const actual = await route.fetch();
+    observed();
+    await pending;
+    await route.fulfill({ response: actual });
+  });
+  await card.getByRole("radio", { name: "7 วัน", exact: true }).click();
+  await fetched;
+  await page.getByRole("button", { name: /E2E States A/ }).click();
+  await page.getByRole("menuitemradio", { name: /E2E States Other/ }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/organizations/${orgOther}/monitors$`),
+  );
+  await page.getByRole("link", { name: "tenant-known-1" }).click();
+  await expect(card.locator("dd")).toHaveText(["999 ms", "999 ms", "1", "0"]);
+  const completed = page.waitForResponse((response) =>
+    responseUrl.test(response.url()),
+  );
+  release();
+  await completed;
+  await expect(card.locator("dd")).toHaveText(["999 ms", "999 ms", "1", "0"]);
+  await expect(card.getByText("10 ms", { exact: true })).toHaveCount(0);
+  await shot(page, "57-tenant-switch");
 });

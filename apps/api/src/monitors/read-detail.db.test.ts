@@ -280,7 +280,7 @@ describe("health: the seven steps, in List and Detail", () => {
   });
 });
 
-describe("Resume (AC-19)", () => {
+describe("Resume", () => {
   it("is unknown until a result newer than the Resume exists, even after a fresh pass", async () => {
     const created = await ctx.call(
       detail.users.owner,
@@ -326,7 +326,7 @@ describe("Resume (AC-19)", () => {
   });
 });
 
-describe("Resume compares database times (AC-19)", () => {
+describe("Resume compares database times", () => {
   async function resumedMonitor() {
     const created = await ctx.call(
       detail.users.owner,
@@ -833,7 +833,15 @@ describe("Incidents", () => {
 describe("Detail, Checks and Incidents: access", () => {
   let id: string;
   let foreign: string;
-  const suffixes = ["", "/checks", "/incidents", "/response-times", "/events"];
+  const suffixes = [
+    "",
+    "/checks",
+    "/incidents",
+    "/response-times",
+    "/response-times?range=7d",
+    "/response-times?range=30d",
+    "/events",
+  ];
 
   beforeAll(async () => {
     id = await seedMonitor(ctx, access.id, {

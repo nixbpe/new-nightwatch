@@ -1276,6 +1276,8 @@ export type MonitorLastResponseResponse = z.infer<
 
 const interval = z.object({ from: isoDateTime, to: isoDateTime });
 const responseTimesCommon = {
+  dataAsOf: isoDateTime,
+  window: interval,
   unit: z.literal("ms"),
   pauses: z.array(interval),
   configChanges: z.array(
@@ -1305,6 +1307,12 @@ export const monitorResponseTimesResponseSchema = z.discriminatedUnion(
     }),
     z.object({
       range: z.enum(["7d", "30d"]),
+      summary: z.object({
+        p50Ms: z.number().int().nullable(),
+        p95Ms: z.number().int().nullable(),
+        checks: z.number().int().min(0),
+        failed: z.number().int().min(0),
+      }),
       buckets: z
         .array(
           z.object({
@@ -1316,7 +1324,7 @@ export const monitorResponseTimesResponseSchema = z.discriminatedUnion(
             responseChecks: z.number().int().min(0),
           }),
         )
-        .max(720),
+        .max(721),
       ...responseTimesCommon,
     }),
   ],
