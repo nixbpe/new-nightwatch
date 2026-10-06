@@ -833,7 +833,15 @@ describe("Incidents", () => {
 describe("Detail, Checks and Incidents: access", () => {
   let id: string;
   let foreign: string;
-  const suffixes = ["", "/checks", "/incidents", "/response-times", "/events"];
+  const suffixes = [
+    "",
+    "/checks",
+    "/incidents",
+    "/response-times",
+    "/response-times?range=7d",
+    "/response-times?range=30d",
+    "/events",
+  ];
 
   beforeAll(async () => {
     id = await seedMonitor(ctx, access.id, {

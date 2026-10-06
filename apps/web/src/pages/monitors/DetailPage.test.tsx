@@ -1181,6 +1181,8 @@ const inWindow = (minutes: number) =>
 
 const responseTimes24h: MonitorResponseTimesResponse = {
   range: "24h",
+  dataAsOf: DATA_AS_OF,
+  window: { from: inWindow(0), to: DATA_AS_OF },
   unit: "ms",
   points: [
     { at: inWindow(3), responseTimeMs: 182, outcome: "pass" },
@@ -1250,6 +1252,9 @@ describe("Detail response-time chart", () => {
           ? noResponseTimes
           : {
               range,
+              dataAsOf: DATA_AS_OF,
+              window: { from: new Date(start).toISOString(), to: DATA_AS_OF },
+              summary: { p50Ms: null, p95Ms: null, checks: 0, failed: 0 },
               unit: "ms",
               buckets: Array.from(
                 { length: Math.ceil((asOf - start) / hour) },
@@ -1398,6 +1403,9 @@ describe("Detail response-time chart", () => {
             ? responseTimes24h
             : {
                 range: requested,
+                dataAsOf: DATA_AS_OF,
+                window: { from: T("05:00"), to: DATA_AS_OF },
+                summary: { p50Ms: 100, p95Ms: 500, checks: 24, failed: 0 },
                 unit: "ms",
                 buckets: [
                   {
@@ -1564,6 +1572,9 @@ describe("Detail redesign behaviours", () => {
           ? noResponseTimes
           : {
               range,
+              dataAsOf: DATA_AS_OF,
+              window: { from: "2026-09-30T06:00:00.000Z", to: DATA_AS_OF },
+              summary: { p50Ms: 100, p95Ms: 150, checks: 12, failed: 0 },
               unit: "ms",
               buckets: [
                 {

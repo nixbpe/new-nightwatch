@@ -84,6 +84,8 @@ describe("series", () => {
     const { buckets } = toChartProps(
       {
         range: "24h",
+        dataAsOf: T("08:00"),
+        window: { from: "2026-09-29T08:00:00.000Z", to: T("08:00") },
         unit: "ms",
         points: [
           { at: T("07:00"), responseTimeMs: null, outcome: "check_error" },
@@ -373,6 +375,9 @@ describe("7 d and 30 d as the API shapes them", () => {
     overrides: Partial<{ pauses: { from: string; to: string }[] }> = {},
   ) => ({
     range: "7d" as const,
+    dataAsOf,
+    window: { from: new Date(start).toISOString(), to: dataAsOf },
+    summary: { p50Ms: null, p95Ms: null, checks: 0, failed: 0 },
     unit: "ms" as const,
     buckets: hours.map((hour) => ({
       hourStart: new Date(hour).toISOString(),
@@ -423,6 +428,9 @@ describe("7 d and 30 d as the API shapes them", () => {
     const props = toChartProps(
       {
         range: "7d",
+        dataAsOf: "2026-09-30T08:00:02.000Z",
+        window: { from: firstHour, to: "2026-09-30T08:00:02.000Z" },
+        summary: { p50Ms: null, p95Ms: null, checks: 0, failed: 0 },
         unit: "ms",
         buckets: [
           {

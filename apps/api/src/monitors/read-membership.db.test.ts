@@ -178,3 +178,95 @@ describe("an owner demoted between the pre-check and the read transaction", () =
     expect(JSON.stringify(body)).not.toContain(org.users.admin);
   });
 });
+
+describe("response-times authorized before removal", () => {
+  it("finishes under the organization lock, then denies the next long-range read", async () => {
+    const org = await ctx.createOrganization("response-before-removal");
+    const id = await seedMonitor(ctx, org.id);
+    const writer = await ctx.owner.sql.connect();
+    let removal: Promise<void> | undefined;
+    try {
+      await writer.query("begin");
+      const pid = (
+        await writer.query<{ pid: number }>("select pg_backend_pid() as pid")
+      ).rows[0]?.pid;
+      const sql = new Proxy(ctx.runtime.sql, {
+        get(target, key) {
+          if (key === "connect")
+            return async () => {
+              const client = await target.connect();
+              return new Proxy(client, {
+                get(connection, property) {
+                  if (property === "query")
+                    return async (text: string, values?: unknown[]) => {
+                      const result = await connection.query(text, values);
+                      if (text === "select now() as now") {
+                        removal = (async () => {
+                          await writer.query(
+                            "select id from organization where id = $1 for update",
+                            [org.id],
+                          );
+                          await writer.query(
+                            "delete from member where organization_id = $1 and user_id = $2",
+                            [org.id, org.users.viewer],
+                          );
+                          await writer.query("commit");
+                        })();
+                        let blocked = false;
+                        for (let attempt = 0; attempt < 100; attempt++) {
+                          const locks = await ctx.owner.sql.query<{
+                            blocked: boolean;
+                          }>(
+                            "select exists (select 1 from pg_locks where pid = $1 and not granted) as blocked",
+                            [pid],
+                          );
+                          if (locks.rows[0]?.blocked) {
+                            blocked = true;
+                            break;
+                          }
+                          await new Promise((resolve) =>
+                            setTimeout(resolve, 5),
+                          );
+                        }
+                        expect(blocked).toBe(true);
+                      }
+                      return result;
+                    };
+                  const value: unknown = Reflect.get(connection, property);
+                  return typeof value === "function"
+                    ? value.bind(connection)
+                    : value;
+                },
+              });
+            };
+          const value: unknown = Reflect.get(target, key);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const identity = {
+        organizationId: org.id,
+        actorUserId: org.users.viewer,
+      };
+      const response = await getResponseTimes(
+        { ...ctx.runtime, sql },
+        identity,
+        id,
+        "30d",
+      );
+      if (response.range === "24h") throw new Error("long shape expected");
+      expect(response.summary).toEqual({
+        p50Ms: null,
+        p95Ms: null,
+        checks: 0,
+        failed: 0,
+      });
+      await removal;
+      await expect(
+        getResponseTimes(ctx.runtime, identity, id, "30d"),
+      ).rejects.toMatchObject({ statusCode: 403, code: "MEMBERSHIP_DENIED" });
+    } finally {
+      await writer.query("rollback");
+      writer.release();
+    }
+  });
+});
