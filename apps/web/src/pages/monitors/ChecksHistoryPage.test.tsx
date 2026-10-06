@@ -616,6 +616,118 @@ describe("Checks history URL changes", () => {
   });
 });
 
+// Wording of a saved result that the Detail last-result card used to show alone (AC-84).
+describe("Checks history saved-result wording", () => {
+  const reasonCell = (row: HTMLElement) =>
+    must(within(row).getAllByRole("cell")[5]);
+
+  it("words the cause of a TLS failure by its reason, and a handshake failure apart from an invalid certificate", async () => {
+    fetchChecksMock.mockResolvedValue({
+      checks: [
+        result(0, {
+          outcome: "fail",
+          httpStatus: null,
+          responseTimeMs: null,
+          failureReason: "tls_invalid",
+          tlsReason: "expired",
+        }),
+        result(1, {
+          outcome: "fail",
+          httpStatus: null,
+          responseTimeMs: null,
+          failureReason: "tls_invalid",
+          tlsReason: "handshake_failed",
+        }),
+        result(2),
+      ],
+      page: { limit: 50, offset: 0, total: 3 },
+      urlChanges: [],
+    });
+    renderChecks();
+    await screen.findByRole("region", { name: "ตารางประวัติการตรวจ" });
+    expect(
+      screen.getByRole("columnheader", { name: "สาเหตุ" }),
+    ).toBeInTheDocument();
+    const rows = historyRows();
+    expect(reasonCell(must(rows[0])).textContent).toBe(
+      "ใบรับรองไม่ถูกต้อง: หมดอายุ",
+    );
+    expect(reasonCell(must(rows[1])).textContent).toBe(
+      "เชื่อมต่อแบบปลอดภัยไม่สำเร็จ",
+    );
+    expect(reasonCell(must(rows[2])).textContent).toBe("–");
+  });
+
+  it("words a not-evaluated assertion, and a type mismatch with the type that came back", async () => {
+    fetchChecksMock.mockResolvedValue({
+      checks: [
+        result(0, {
+          outcome: "fail",
+          httpStatus: null,
+          responseTimeMs: null,
+          failureReason: "tls_invalid",
+          tlsReason: "expired",
+          assertions: [
+            {
+              kind: "responseTimeBelow",
+              expected: "800",
+              actual: null,
+              actualType: null,
+              actualTruncated: false,
+              status: "not_evaluated",
+              reason: "no_response",
+            },
+          ],
+        }),
+        result(1, {
+          outcome: "fail",
+          failureReason: "assertion_failed",
+          assertions: [
+            {
+              kind: "jsonPathEquals",
+              expected: "1",
+              actual: '"1"',
+              actualType: "string",
+              actualTruncated: false,
+              status: "fail",
+              reason: "type_mismatch",
+            },
+          ],
+        }),
+      ],
+      page: { limit: 50, offset: 0, total: 2 },
+      urlChanges: [],
+    });
+    const user = userEvent.setup();
+    renderChecks();
+    await screen.findByRole("region", { name: "ตารางประวัติการตรวจ" });
+    const [skipped, mismatch] = historyRows().map(must);
+
+    // Nothing was evaluated, so the row says so rather than "ผ่าน" or "ไม่ผ่าน".
+    expect(skipped).toHaveTextContent("ไม่ได้ประเมิน 1/1");
+    await user.click(within(must(skipped)).getByText("ไม่ได้ประเมิน 1/1"));
+    const skippedRow = must(
+      within(
+        within(must(skipped)).getByRole("table", {
+          name: /Assertions ของผลตรวจ/,
+        }),
+      ).getAllByRole("row")[1],
+    );
+    expect(skippedRow).toHaveTextContent("เวลาตอบสนองน้อยกว่า");
+    expect(skippedRow).toHaveTextContent("800 ms");
+    expect(skippedRow).toHaveTextContent("ไม่ได้ประเมิน");
+    expect(skippedRow).toHaveTextContent("(ไม่มี response)");
+    expect(skippedRow).not.toHaveTextContent("ไม่ผ่าน");
+
+    await user.click(within(must(mismatch)).getByText("ไม่ผ่าน 1/1"));
+    expect(
+      within(must(mismatch)).getByText(
+        /ชนิดข้อมูลไม่ตรง \(ค่าจริงเป็น string\)/,
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("Checks history focus and announcements", () => {
   it("keeps focus on the button and announces each load once in one live region that stays mounted", async () => {
     fetchChecksMock
