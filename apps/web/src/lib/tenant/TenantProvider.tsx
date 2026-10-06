@@ -59,8 +59,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [membershipContextUnavailable, setMembershipContextUnavailable] =
     useState(false);
-  const [membershipRefreshPending, setMembershipRefreshPending] =
-    useState(false);
+  const [membershipRefreshClaim, setMembershipRefreshClaim] = useState<
+    bigint | null
+  >(null);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
   const switchQueue = useRef<Promise<void>>(Promise.resolve());
   const latestSwitchIntent = useRef(0);
@@ -90,7 +91,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           livePublication.publishedClaim === publication.publishedClaim))
     ) {
       setMembershipContextUnavailable(false);
-      setMembershipRefreshPending(false);
+      setMembershipRefreshClaim(null);
     }
   }, [meQuery.data, membershipContextUnavailable, publication, queryClient]);
 
@@ -139,7 +140,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         return null;
       }
       setMembershipContextUnavailable(true);
-      setMembershipRefreshPending(true);
+      setMembershipRefreshClaim(claim);
       await queryClient.cancelQueries({
         queryKey: ME_CONTEXT_QUERY_KEY,
         exact: true,
@@ -165,9 +166,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       } catch {
         return null;
       } finally {
-        if (hasContextPublicationClaim(queryClient, claim)) {
-          setMembershipRefreshPending(false);
-        }
+        setMembershipRefreshClaim((pending) =>
+          pending === claim ? null : pending,
+        );
       }
     }, [queryClient]);
 
@@ -227,7 +228,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const value: TenantContextValue = {
     me: contextUnavailable || meQuery.isError ? undefined : meQuery.data,
     mePending:
-      meQuery.isPending || meQuery.isFetching || membershipRefreshPending,
+      meQuery.isPending ||
+      meQuery.isFetching ||
+      (membershipRefreshClaim !== null &&
+        membershipRefreshClaim === publication.claim),
     meError: meQuery.error,
     retryMe,
     refreshMembershipContext,

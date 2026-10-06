@@ -147,18 +147,28 @@ async function waitForBlocked(blocker: PoolClient) {
     "select pg_backend_pid() as pid",
   );
   for (let poll = 0; poll < 1000; poll += 1) {
-    const waiters = await owner.sql.query(
-      `select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))`,
+    const waiters = await owner.sql.query<{
+      pid: number;
+      wait_event_type: string;
+    }>(
+      `select pid, wait_event_type from pg_stat_activity where $1 = any(pg_blocking_pids(pid))`,
       [pid.rows[0]?.pid],
     );
-    if (waiters.rows.length > 0) return;
+    if (waiters.rows.length > 0) {
+      expect(waiters.rows[0]?.wait_event_type).toBe("Lock");
+      return {
+        blockerPid: pid.rows[0]?.pid,
+        waiterPid: waiters.rows[0]?.pid,
+        waitEventType: waiters.rows[0]?.wait_event_type,
+      };
+    }
   }
   throw new Error("resolver never reached the lock barrier");
 }
 
 // The resolver uses pg's Promise overloads only. These typed views retain the
 // real objects while giving scheduling spies the same understood contract.
-function promiseQueries(client: PoolClient): {
+function promiseQueries(client: Pick<PoolClient, "query">): {
   query: (text: string, values?: unknown[]) => Promise<QueryResult>;
 } {
   return client;
@@ -563,6 +573,198 @@ describe("resolver state and lock convergence", () => {
         });
       }
     }
+  }
+
+  for (const action of ["leave", "revoke"] as const) {
+    for (const winner of ["resolver", "removal"] as const) {
+      for (const remaining of [true, false]) {
+        it(`overlapping runtime ${action}, ${winner} wins org lock, remaining ${String(remaining)}`, async () => {
+          const actor = crypto.randomUUID();
+          await owner.sql.query(
+            'insert into "user" (id, name, email, email_verified) values ($1, $2, $3, true)',
+            [actor, "Overlap actor", `${actor}@nightwatch.invalid`],
+          );
+          await owner.sql.query(
+            "insert into member (id, user_id, organization_id, role) values ($1, $2, $3, 'owner')",
+            [crypto.randomUUID(), actor, orgIds[0]],
+          );
+          const target = await owner.sql.query<{ id: string }>(
+            "select id from member where user_id = $1 and organization_id = $2",
+            [userId, orgIds[0]],
+          );
+          const memberId = target.rows[0]?.id;
+          if (memberId === undefined) throw new Error("Overlap target missing");
+          if (!remaining)
+            await owner.sql.query(
+              "delete from member where user_id = $1 and organization_id = $2",
+              [userId, orgIds[1]],
+            );
+          const remove = () =>
+            action === "leave"
+              ? leaveOrganization(database, {
+                  organizationId: orgIds[0],
+                  actorUserId: userId,
+                })
+              : revokeOrganizationMember(database, {
+                  organizationId: orgIds[0],
+                  actorUserId: actor,
+                  memberId,
+                });
+          const client = await database.sql.connect();
+          const realQuery = client.query.bind(client);
+          const held = Promise.withResolvers<boolean>();
+          const release = Promise.withResolvers<boolean>();
+          let paused = false;
+          const querySpy = vi
+            .spyOn(promiseQueries(client), "query")
+            .mockImplementation(async (text, values) => {
+              const result = await realQuery(text, values);
+              if (
+                !paused &&
+                text === "select id from organization where id = $1 for update"
+              ) {
+                paused = true;
+                held.resolve(true);
+                await release.promise;
+              }
+              return result;
+            });
+          const preflight =
+            winner === "removal" ? await database.sql.connect() : null;
+          const connectionSpy = vi.spyOn(promiseConnections, "connect");
+          if (preflight !== null)
+            connectionSpy.mockResolvedValueOnce(preflight);
+          connectionSpy.mockResolvedValueOnce(client);
+          const first =
+            winner === "resolver"
+              ? resolveActiveOrganization(database, session)
+              : remove();
+          void first.catch(held.reject);
+          const watchdog = setTimeout(() => {
+            held.reject(new Error("Runtime winner never acquired its lock"));
+          }, 5000);
+          let second: Promise<unknown> | undefined;
+          try {
+            await held.promise;
+            second =
+              winner === "resolver"
+                ? remove()
+                : resolveActiveOrganization(database, session);
+            void second.catch(() => undefined);
+            const overlap = await waitForBlocked(client);
+            console.info("runtime lock overlap", {
+              action,
+              winner,
+              remaining,
+              ...overlap,
+            });
+            release.resolve(true);
+            await Promise.all([first, second]);
+            querySpy.mockRestore();
+            connectionSpy.mockRestore();
+            if (winner === "resolver") await assertMirrors(null);
+            const fresh = await resolveActiveOrganization(database, session);
+            expect(fresh.lastActiveTenantId).toBe(remaining ? orgIds[1] : null);
+            await assertMirrors(remaining ? orgIds[1] : null);
+            expect(
+              fresh.organizations.some((org) => org.id === orgIds[0]),
+            ).toBe(false);
+            await expect(
+              setActiveOrganization(database, logger, session, orgIds[0]),
+            ).rejects.toMatchObject({ code: "MEMBERSHIP_DENIED" });
+          } finally {
+            release.resolve(true);
+            await Promise.allSettled([
+              first,
+              ...(second === undefined ? [] : [second]),
+            ]);
+            querySpy.mockRestore();
+            connectionSpy.mockRestore();
+            clearTimeout(watchdog);
+            await owner.sql.query('delete from "user" where id = $1', [actor]);
+            for (const organizationId of orgIds)
+              await owner.sql.query(
+                `insert into member (id, user_id, organization_id, role, created_at) values ($1, $2, $3, 'viewer', '2026-01-01') on conflict do nothing`,
+                [crypto.randomUUID(), userId, organizationId],
+              );
+          }
+        });
+      }
+    }
+  }
+
+  for (const winner of ["resolver", "switch"] as const) {
+    it(`overlapping runtime switch with ${winner} holding the account lock`, async () => {
+      const client = await database.sql.connect();
+      const realQuery = client.query.bind(client);
+      const held = Promise.withResolvers<boolean>();
+      const release = Promise.withResolvers<boolean>();
+      let paused = false;
+      const querySpy = vi
+        .spyOn(promiseQueries(client), "query")
+        .mockImplementation(async (text, values) => {
+          const result = await realQuery(text, values);
+          const lock =
+            winner === "resolver"
+              ? text.includes('from "user" where id = $1 for update')
+              : text.includes('update "user"');
+          if (!paused && lock) {
+            paused = true;
+            held.resolve(true);
+            await release.promise;
+          }
+          return result;
+        });
+      const connectionSpy = vi
+        .spyOn(promiseConnections, "connect")
+        .mockImplementationOnce(() => Promise.resolve(client));
+      const change = () =>
+        setActiveOrganization(database, logger, session, orgIds[1]);
+      const first =
+        winner === "resolver"
+          ? resolveActiveOrganization(database, session)
+          : change();
+      void first.catch(held.reject);
+      const watchdog = setTimeout(() => {
+        held.reject(new Error("Runtime winner never acquired account lock"));
+      }, 5000);
+      let second: Promise<unknown> | undefined;
+      try {
+        await held.promise;
+        second =
+          winner === "resolver"
+            ? change()
+            : resolveActiveOrganization(database, session);
+        void second.catch(() => undefined);
+        console.info("runtime switch lock overlap", {
+          winner,
+          ...(await waitForBlocked(client)),
+        });
+        release.resolve(true);
+        await Promise.all([first, second]);
+        querySpy.mockRestore();
+        connectionSpy.mockRestore();
+        await assertMirrors(orgIds[1]);
+        expect(
+          (await resolveActiveOrganization(database, session))
+            .lastActiveTenantId,
+        ).toBe(orgIds[1]);
+        expect(
+          (await getMeContext(database, session)).organizations.map(
+            (org) => org.id,
+          ),
+        ).toEqual(orgIds);
+      } finally {
+        release.resolve(true);
+        await Promise.allSettled([
+          first,
+          ...(second === undefined ? [] : [second]),
+        ]);
+        querySpy.mockRestore();
+        connectionSpy.mockRestore();
+        clearTimeout(watchdog);
+      }
+    });
   }
 
   it("runs as a non-owner NOBYPASSRLS role", async () => {

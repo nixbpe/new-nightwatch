@@ -139,6 +139,69 @@ describe("TenantProvider", () => {
     resetQueryClientRegistry();
   });
 
+  it.each(["failure", "success"] as const)(
+    "retires manual refresh pending when a shared resolver supersedes it with %s",
+    async (outcome) => {
+      const manual = Promise.withResolvers<MeContextResponse>();
+      const shared = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock
+        .mockResolvedValueOnce(me)
+        .mockReturnValueOnce(manual.promise)
+        .mockReturnValueOnce(shared.promise);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      renderProvider(queryClient);
+      await screen.findByText("org-b");
+      await userEvent.click(
+        screen.getByRole("button", { name: "refresh membership" }),
+      );
+      await waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      });
+      act(() => {
+        void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+      });
+      await waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+      });
+      await act(async () => {
+        if (outcome === "failure")
+          shared.reject(new Error("shared resolver failed"));
+        else shared.resolve({ ...me, lastActiveTenantId: "org-a" });
+        await shared.promise.catch(() => undefined);
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId("pending")).toHaveTextContent("false");
+      });
+      if (outcome === "failure")
+        expect(screen.getByTestId("error")).toHaveTextContent(
+          "shared resolver failed",
+        );
+      expect(screen.getByTestId("active")).toHaveTextContent(
+        outcome === "failure" ? "none" : "org-a",
+      );
+      await act(async () => {
+        manual.resolve(me);
+        await manual.promise;
+      });
+      expect(screen.getByTestId("pending")).toHaveTextContent("false");
+      expect(screen.getByTestId("active")).toHaveTextContent(
+        outcome === "failure" ? "none" : "org-a",
+      );
+      if (outcome === "failure") {
+        fetchMeContextMock.mockResolvedValueOnce({
+          ...me,
+          lastActiveTenantId: "org-a",
+        });
+        await userEvent.click(screen.getByRole("button", { name: "retry" }));
+        await waitFor(() => {
+          expect(screen.getByTestId("active")).toHaveTextContent("org-a");
+        });
+      }
+    },
+  );
+
   it("withdraws warm cached scope during required bootstrap and recovers after failure/retry", async () => {
     const resolver = Promise.withResolvers<MeContextResponse>();
     fetchMeContextMock

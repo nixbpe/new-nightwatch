@@ -233,6 +233,71 @@ test("warm-cache scope change withdraws tenant and inbox use until deferred reso
   });
 });
 
+test("superseded manual refresh cannot keep warm shell pending after navigation resolver failure", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto(`/organizations/${identity.organizationId}/members`);
+  await expect(
+    page.getByRole("button", { name: "ออกจากองค์กร", exact: true }),
+  ).toBeVisible();
+  const manualStarted = Promise.withResolvers<void>();
+  const releaseManual = Promise.withResolvers<void>();
+  const manualCompleted = Promise.withResolvers<void>();
+  let requests = 0;
+  await page.route("**/api/me/resolve-active-org", async (route) => {
+    requests++;
+    if (requests === 1) {
+      const response = await route.fetch();
+      manualStarted.resolve();
+      await releaseManual.promise;
+      await route.fulfill({ response });
+      manualCompleted.resolve();
+    } else
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { code: "INTERNAL_ERROR", message: "Unavailable" },
+        }),
+      });
+  });
+  try {
+    await page
+      .getByRole("button", { name: "ออกจากองค์กร", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "ยืนยันการออกจากองค์กร", exact: true })
+      .click();
+    await manualStarted.promise;
+    await expect(page.getByText("กำลังโหลดข้อมูลองค์กร…")).toBeVisible();
+    await page.getByRole("link", { name: "ภาพรวม", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText(
+      "โหลดข้อมูลองค์กรไม่สำเร็จ",
+    );
+    await expect(page.getByText("กำลังโหลดข้อมูลองค์กร…")).not.toBeVisible();
+    releaseManual.resolve();
+    await manualCompleted.promise;
+    await expect(page.getByRole("alert")).toContainText(
+      "โหลดข้อมูลองค์กรไม่สำเร็จ",
+    );
+    await expect(
+      page.getByRole("button", { name: "การแจ้งเตือน", exact: true }),
+    ).toBeDisabled();
+    await page.unroute("**/api/me/resolve-active-org");
+    await page.getByRole("button", { name: "ลองใหม่", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "ภาพรวม", exact: true }),
+    ).toBeVisible();
+    expect(await selection()).toEqual({
+      last_active_tenant_id: identity.organizationId,
+      mirrors_match: true,
+    });
+  } finally {
+    releaseManual.resolve();
+  }
+});
+
 test("no membership admits account settings and account-only notifications without tenant requests", async ({
   page,
 }) => {
