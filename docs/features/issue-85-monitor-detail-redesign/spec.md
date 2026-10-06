@@ -1,6 +1,6 @@
 # Issue #85 Monitor Detail Redesign Technical Spec
 
-Owner: Technical Lead. Canonical Technical Spec ของ issue #85 สำหรับ `F-005-S10`; requirements และ AC-75 ถึง AC-87 อยู่ใน [Issue #85 Feature](feature.md#acceptance-matrix-85-delta), #57 delta อยู่ใน [#57 Spec](../issue-57-monitor-response-stats/spec.md), baseline อยู่ใน [F-005 Spec](../F-005-uptime-monitor/spec.md) ไม่สร้าง Feature ID ใหม่
+Owner: Technical Lead. Canonical Technical Spec ของ issue #85 สำหรับ `F-005-S10`; requirements และ AC-75 ถึง AC-90 อยู่ใน [Issue #85 Feature](feature.md#acceptance-matrix-85-delta), #57 delta อยู่ใน [#57 Spec](../issue-57-monitor-response-stats/spec.md), baseline อยู่ใน [F-005 Spec](../F-005-uptime-monitor/spec.md) ไม่สร้าง Feature ID ใหม่
 
 ## Issue #85 delta
 
@@ -11,12 +11,12 @@ Owner: Technical Lead. Canonical Technical Spec ของ issue #85 สำหร
 | Feature | F-005, Story `F-005-S10`, `acceptanceVersion` F-005-AC-3 ([Feature](feature.md#acceptance-matrix-85-delta), frozen, AC-75 ถึง AC-90) |
 | Status | Approved |
 | Approved by user | 2026-10-06, ผู้ใช้อนุมัติ Spec ทั้งฉบับรวมข้อความ UI ที่เสนอ 3 ข้อ; freeze F-005-AC-3 (AC-75 ถึง AC-90) |
-| Start authorization | None (OD-85-02 ปิดแล้ว 2026-10-06; ผู้ใช้ยังไม่ให้ start authorization) |
-| `COMMIT_MODE` | none (กำหนดเมื่อได้รับ start authorization) |
-| `STOP_AT` | review-ready (เป็น merge-ready เมื่อผู้ใช้สั่ง implement และ verify จนครบ) |
+| Start authorization | 2026-10-07, `/implement-issue` (ยืนยัน spec issue #85, `docs/features/issue-85-monitor-detail-redesign/spec.md`) |
+| `COMMIT_MODE` | owned-slice |
+| `STOP_AT` | merge-ready |
 | Delivery | Not implemented |
 
-ผู้ใช้อนุมัติ scope ของ Feature และยืนยัน PD-85-01/PD-85-04 เมื่อ 2026-10-06 และ freeze AC-75 ถึง AC-87 แล้ว วันเดียวกันผู้ใช้เลือกทางเลือก (a) ของ OD-85-01, OD-85-03, OD-85-04 และ OD-85-05 Product Owner แก้ AC-75, AC-83, UI flow table และ Feature Revisions ตามผลนั้น และแก้ Motion principle ใน `docs/design-system.md` ให้ระบุ COL-08 เป็นข้อยกเว้น `acceptanceVersion` คง `F-005-AC-3` Technical design TD-85-01 ถึง TD-85-09, contracts, Tasks และข้อความ UI ที่เสนอ 3 ข้อได้รับอนุมัติจากผู้ใช้ 2026-10-06 Acceptance matrix `F-005-AC-3` เฉพาะ AC-75 ถึง AC-90 เป็น `frozen`: technical rows AC-88 ถึง AC-90 ย้ายจาก Spec เข้า [Feature matrix](feature.md#acceptance-matrix-85-delta) โดยไม่เปลี่ยน criteria การอนุมัติ Spec ไม่อนุญาต implementation start หรือ release ด้วยตัวเอง ผู้ใช้ตัดสิน OD-85-02 แล้ว 2026-10-06 (บันทึกใน [Revisions](#revisions-85)) แต่ยังไม่ให้ start authorization
+ผู้ใช้อนุมัติ scope ของ Feature และยืนยัน PD-85-01/PD-85-04 เมื่อ 2026-10-06 และ freeze AC-75 ถึง AC-87 แล้ว วันเดียวกันผู้ใช้เลือกทางเลือก (a) ของ OD-85-01, OD-85-03, OD-85-04 และ OD-85-05 Product Owner แก้ AC-75, AC-83, UI flow table และ Feature Revisions ตามผลนั้น และแก้ Motion principle ใน `docs/design-system.md` ให้ระบุ COL-08 เป็นข้อยกเว้น `acceptanceVersion` คง `F-005-AC-3` Technical design TD-85-01 ถึง TD-85-09, contracts, Tasks และข้อความ UI ที่เสนอ 3 ข้อได้รับอนุมัติจากผู้ใช้ 2026-10-06 Acceptance matrix `F-005-AC-3` เฉพาะ AC-75 ถึง AC-90 เป็น `frozen`: technical rows AC-88 ถึง AC-90 ย้ายจาก Spec เข้า [Feature matrix](feature.md#acceptance-matrix-85-delta) โดยไม่เปลี่ยน criteria การอนุมัติ Spec ไม่อนุญาต implementation start หรือ release ด้วยตัวเอง ผู้ใช้ตัดสิน OD-85-02 แล้ว 2026-10-06 (บันทึกใน [Revisions](#revisions-85)) `/implement-issue` ที่ยืนยัน spec นี้โดยตรงเมื่อ 2026-10-07 authorizes scope-now Tasks ตามกติกาของตัวเอง overriding `Start authorization: None` และ `COMMIT_MODE: none` เดิม
 
 อ่าน [Contracts](#contracts-85), [Design decisions](#design-decisions-85), [Technical acceptance rows](#technical-acceptance-rows-85), [Tasks](#tasks-85), [verification](#integrated-verification-85) และ [Open decisions](#open-decisions-85) สำหรับ delta นี้เท่านั้น
 
