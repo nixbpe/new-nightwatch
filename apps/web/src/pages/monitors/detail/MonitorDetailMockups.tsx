@@ -1,7 +1,4 @@
-import { HairlineGrid } from "../../../components/ui/hairline-grid";
 import { MockupFrame } from "../../../components/ui/mockup-frame";
-import type { ChartRange } from "../../../components/ui/response-time-series";
-import { RANGE_LABELS } from "../../../components/ui/response-time-series";
 
 // Designed elements with no backing data yet (CMP-06). Everything here is sample
 // data: neutral colours, no status tone, no live region, no claim of freshness (CMP-05).
@@ -52,32 +49,6 @@ export function UptimeStripMockup() {
           </span>
         ))}
       </p>
-    </MockupFrame>
-  );
-}
-
-/** Issue #57: percentiles and failed counts for 7d and 30d need server-side aggregation. */
-export function PercentilesMockup({ range }: { range: ChartRange }) {
-  const cells = [
-    ["p50", "000 ms"],
-    ["p95", "000 ms"],
-    ["ล้มเหลว", "00"],
-  ] as const;
-  return (
-    <MockupFrame
-      label={`p50 p95 และจำนวนครั้งที่ล้มเหลว ${RANGE_LABELS[range]}`}
-      issue={57}
-    >
-      <HairlineGrid as="dl" className="grid-cols-3">
-        {cells.map(([label, value]) => (
-          <div key={label} className="px-4 py-3">
-            <dt className="text-xs text-foreground-secondary">{label}</dt>
-            <dd className="mt-1 font-mono text-xl font-medium text-foreground">
-              {value}
-            </dd>
-          </div>
-        ))}
-      </HairlineGrid>
     </MockupFrame>
   );
 }

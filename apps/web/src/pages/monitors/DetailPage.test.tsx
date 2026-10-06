@@ -4,7 +4,8 @@ import type {
   MonitorChecksResponse,
   MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,6 +21,7 @@ import {
   fetchMonitorList,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
+  monitorQueryKeys,
 } from "../../lib/api/monitors";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
@@ -38,6 +40,7 @@ import {
   renderDetail,
   sectionOf,
 } from "./detail-test-support";
+import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { formatDateTime, formatTime } from "./format";
 import { deferred } from "./form-test-support";
 
@@ -1538,7 +1541,7 @@ describe("Detail redesign behaviours", () => {
     expect(kpi("p95")).toHaveTextContent("300 ms");
   });
 
-  it("reads ยังไม่มีข้อมูล for p50 and p95 when no point has a response time", async () => {
+  it("reads ไม่มีข้อมูล for p50 and p95 when no point has a response time", async () => {
     showDetail(detail());
     fetchResponseTimesMock.mockResolvedValue({
       ...noResponseTimes,
@@ -1557,14 +1560,14 @@ describe("Detail redesign behaviours", () => {
     await waitFor(() => {
       expect(
         must(within(card).getByText("p50").nextElementSibling),
-      ).toHaveTextContent("ยังไม่มีข้อมูล");
+      ).toHaveTextContent("ไม่มีข้อมูล");
     });
     expect(
       must(within(card).getByText("p95").nextElementSibling),
-    ).toHaveTextContent("ยังไม่มีข้อมูล");
+    ).toHaveTextContent("ไม่มีข้อมูล");
   });
 
-  it("swaps the percentile KPIs for a labelled sample on 7 d", async () => {
+  it("shows live four KPIs instead of the #57 sample on 7 d", async () => {
     showDetail(detail());
     fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
       Promise.resolve(
@@ -1597,22 +1600,23 @@ describe("Detail redesign behaviours", () => {
     const card = sectionOf(
       await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
     );
-    const sample = await within(card).findByRole("group", {
-      name: /^ตัวอย่าง: p50 p95/,
-    });
-    expect(sample).toHaveAttribute("data-slot", "mockup-frame");
-    expect(within(sample).getByRole("link", { name: /issue/ })).toHaveAttribute(
-      "href",
-      expect.stringMatching(/\/issues\/57$/),
+    await waitFor(() =>
+      expect(
+        must(within(card).getByText("p50").nextElementSibling),
+      ).toHaveTextContent("100 ms"),
     );
-    const liveKpis = Array.from(card.querySelectorAll("dt")).filter(
-      (dt) => dt.closest('[data-slot="mockup-frame"]') === null,
-    );
-    expect(liveKpis.map((dt) => dt.textContent)).toEqual(["จำนวนการตรวจ"]);
-    expect(within(card).getByText("จำนวนการตรวจ")).toBeInTheDocument();
     expect(
-      within(card).getByText("จำนวนการตรวจ").nextElementSibling,
+      must(within(card).getByText("p95").nextElementSibling),
+    ).toHaveTextContent("150 ms");
+    expect(
+      must(within(card).getByText("จำนวนการตรวจ").nextElementSibling),
     ).toHaveTextContent("12");
+    expect(
+      must(within(card).getByText("ล้มเหลว").nextElementSibling),
+    ).toHaveTextContent("0");
+    expect(
+      within(card).queryByRole("group", { name: /^ตัวอย่าง: p50 p95/ }),
+    ).toBeNull();
   });
 
   it("frames every sample region with its issue link", async () => {
@@ -1622,7 +1626,7 @@ describe("Detail redesign behaviours", () => {
     const frames = Array.from(
       document.querySelectorAll('[data-slot="mockup-frame"]'),
     );
-    // Only the #56 sample shows by default (#57 appears on the 7d and 30d ranges); the #58 regions are live.
+    // The #56 sample remains; #57 and #58 are live.
     expect(
       frames.map(
         (frame) =>
@@ -1643,3 +1647,368 @@ describe("Detail redesign behaviours", () => {
     }
   });
 });
+
+function liveRange(
+  range: "7d" | "30d",
+  p50Ms = 20,
+): Extract<MonitorResponseTimesResponse, { range: "7d" | "30d" }> {
+  return {
+    unit: "ms",
+    dataAsOf: DATA_AS_OF,
+    pauses: [],
+    configChanges: [],
+    range,
+    window: {
+      from:
+        range === "7d"
+          ? "2026-09-23T08:00:00.000Z"
+          : "2026-08-31T08:00:00.000Z",
+      to: DATA_AS_OF,
+    },
+    summary: { p50Ms, p95Ms: 40, checks: 4, failed: 1 },
+    buckets: [
+      {
+        hourStart: "2026-09-30T07:00:00.000Z",
+        avgMs: 25,
+        maxMs: 40,
+        checks: 4,
+        responseChecks: 4,
+      },
+    ],
+  };
+}
+function renderResponseCard() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = (organizationId = A, queryClient = client) => (
+    <QueryClientProvider
+      client={queryClient}
+      key={queryClient === client ? "original" : "new-identity"}
+    >
+      <ResponseTimeCard
+        organizationId={organizationId}
+        monitorId={MONITOR_ID}
+        lastCheckAt={DATA_AS_OF}
+        intervalSeconds={300}
+        createdAt="2026-09-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>
+  );
+  return { client, view, ...render(view()) };
+}
+function expectKpis(values: string[]) {
+  expect(
+    ["p50", "p95", "จำนวนการตรวจ", "ล้มเหลว"].map(
+      (label) => must(screen.getByText(label).nextElementSibling).textContent,
+    ),
+  ).toEqual(values);
+}
+
+describe("#57 response-time state and selection", () => {
+  it.each(["7 วัน", "30 วัน"])(
+    "shows the same literal four KPI values for %s, full bounds and keyboard table",
+    async (label) => {
+      fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+        Promise.resolve(
+          range === "24h"
+            ? {
+                ...noResponseTimes,
+                points: [10, 20, 30, 40].map((responseTimeMs, i) => ({
+                  at: DATA_AS_OF,
+                  responseTimeMs,
+                  outcome: i === 1 ? "fail" : "pass",
+                })),
+              }
+            : liveRange(range),
+        ),
+      );
+      renderResponseCard();
+      await waitFor(() => expectKpis(["20 ms", "40 ms", "4", "1"]));
+      const user = userEvent.setup();
+      const option = screen.getByRole("radio", { name: label });
+      option.focus();
+      await user.keyboard(" ");
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("response-range-announcement"),
+        ).toHaveTextContent(
+          label === "7 วัน"
+            ? "7 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1"
+            : "30 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+        ),
+      );
+      expectKpis(["20 ms", "40 ms", "4", "1"]);
+      expect(option).toHaveFocus();
+      expect(
+        screen.getByText(/ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC/),
+      ).toBeInTheDocument();
+      expect(
+        document.querySelector(
+          label === "7 วัน"
+            ? 'time[datetime="2026-09-23T08:00:00.000Z"]'
+            : 'time[datetime="2026-08-31T08:00:00.000Z"]',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /issue #57/ })).toBeNull();
+      const table = screen.getByRole("button", {
+        name: "ดูข้อมูลกราฟเป็นตาราง",
+      });
+      table.focus();
+      await user.keyboard("{Enter}");
+      expect(screen.getByRole("table")).toBeInTheDocument();
+      expect(table).toHaveFocus();
+    },
+  );
+
+  it("shows cap from points, not checks, and keeps measured system-error percentile", async () => {
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: Array.from({ length: 1440 }, () => ({
+        at: DATA_AS_OF,
+        outcome: "check_error",
+        responseTimeMs: 0,
+      })),
+    });
+    renderResponseCard();
+    await waitFor(() => expectKpis(["0 ms", "0 ms", "0", "0"]));
+    expect(
+      screen.getByText("คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/ตรวจไม่ได้ \(ปัญหาฝั่งระบบ\)/),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps timeout counts real while empty percentiles remain explicit", async () => {
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: [
+        { at: DATA_AS_OF, responseTimeMs: null, outcome: "fail" },
+        { at: DATA_AS_OF, responseTimeMs: null, outcome: "fail" },
+      ],
+    });
+    renderResponseCard();
+    await waitFor(() => expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "2", "2"]));
+    expect(screen.getByText(/p50\/p95 ใช้ nearest-rank/)).toHaveTextContent(
+      "ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล”",
+    );
+  });
+
+  it("hides previous KPIs during rapid selections, ignores late completion, announces latest once and never auto-refetch", async () => {
+    const seven = deferred<MonitorResponseTimesResponse>();
+    const thirty = deferred<MonitorResponseTimesResponse>();
+    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+      range === "24h"
+        ? Promise.resolve(noResponseTimes)
+        : range === "7d"
+          ? seven.promise
+          : thirty.promise,
+    );
+    renderResponseCard();
+    await waitFor(() => expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    expect(
+      screen.getByLabelText("กำลังโหลดสรุปเวลาตอบสนอง"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("p50")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "30 วัน" }));
+    const announcement = screen.getByTestId("response-range-announcement");
+    const changes: string[] = [];
+    const observer = new MutationObserver(() => {
+      changes.push(announcement.textContent ?? "");
+    });
+    observer.observe(announcement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    await act(async () => {
+      thirty.resolve(liveRange("30d"));
+    });
+    await waitFor(() => expectKpis(["20 ms", "40 ms", "4", "1"]));
+    await act(async () => {
+      seven.resolve(liveRange("7d", 700));
+    });
+    expectKpis(["20 ms", "40 ms", "4", "1"]);
+    fetchResponseTimesMock.mockResolvedValue(liveRange("30d", 30));
+    await waitFor(() => expectKpis(["30 ms", "40 ms", "4", "1"]));
+    expect(changes).toEqual([
+      "30 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+    ]);
+    observer.disconnect();
+    expect(screen.getByRole("radio", { name: "30 วัน" })).toHaveFocus();
+  });
+
+  it("keeps only same-key data on refetch error with its response timestamp and working retry", async () => {
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      dataAsOf: "2026-09-30T07:31:01.123Z",
+      points: [{ at: DATA_AS_OF, responseTimeMs: 10, outcome: "pass" }],
+    });
+    const { client } = renderResponseCard();
+    await waitFor(() => expectKpis(["10 ms", "10 ms", "1", "0"]));
+    fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
+    await act(async () => {
+      await client.refetchQueries({
+        queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+      });
+    });
+    expectKpis(["10 ms", "10 ms", "1", "0"]);
+    const warning = await screen.findByText(/อัปเดตกราฟไม่สำเร็จ/);
+    expect(warning).toHaveTextContent("ข้อมูล ณ");
+    expect(warning.querySelector("time")).toHaveAttribute(
+      "datetime",
+      "2026-09-30T07:31:01.123Z",
+    );
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: [{ at: DATA_AS_OF, responseTimeMs: 40, outcome: "pass" }],
+    });
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    await waitFor(() => expectKpis(["40 ms", "40 ms", "1", "0"]));
+    expect(screen.queryByText(/อัปเดตกราฟไม่สำเร็จ/)).toBeNull();
+    expect(
+      screen.getByTestId("response-range-announcement"),
+    ).toBeEmptyDOMElement();
+  });
+
+  it.each(["MEMBERSHIP_DENIED", "PERMISSION_DENIED", "MONITOR_NOT_FOUND"])(
+    "prioritizes %s over stale success",
+    async (code) => {
+      fetchResponseTimesMock.mockResolvedValue({
+        ...noResponseTimes,
+        points: [{ at: DATA_AS_OF, responseTimeMs: 987, outcome: "pass" }],
+      });
+      const { client } = renderResponseCard();
+      await waitFor(() => expectKpis(["987 ms", "987 ms", "1", "0"]));
+      fetchResponseTimesMock.mockRejectedValue(
+        new ApiError(code, "denied", code === "MONITOR_NOT_FOUND" ? 404 : 403),
+      );
+      await act(async () => {
+        await client.refetchQueries({
+          queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+        });
+      });
+      expect(
+        await screen.findByText(
+          code === "MONITOR_NOT_FOUND"
+            ? "ไม่พบมอนิเตอร์นี้"
+            : "คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("p50")).toBeNull();
+      expect(screen.queryByText("987 ms")).toBeNull();
+      expect(
+        screen.queryByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+      ).toBeNull();
+    },
+  );
+
+  it("does not expose old pending results after organization or identity-cache changes", async () => {
+    const pending = deferred<MonitorResponseTimesResponse>();
+    fetchResponseTimesMock.mockImplementation((org) =>
+      org === A
+        ? pending.promise
+        : Promise.resolve({
+            ...noResponseTimes,
+            points: [{ at: DATA_AS_OF, responseTimeMs: 22, outcome: "pass" }],
+          }),
+    );
+    const { client, rerender, view } = renderResponseCard();
+    rerender(view(B));
+    await waitFor(() => expectKpis(["22 ms", "22 ms", "1", "0"]));
+    await act(async () => {
+      pending.resolve({
+        ...noResponseTimes,
+        points: [{ at: DATA_AS_OF, responseTimeMs: 999, outcome: "pass" }],
+      });
+    });
+    expectKpis(["22 ms", "22 ms", "1", "0"]);
+    const oldIdentity = deferred<MonitorResponseTimesResponse>();
+    fetchResponseTimesMock.mockReturnValue(oldIdentity.promise);
+    const retiredRequest = client.refetchQueries({
+      queryKey: monitorQueryKeys.responseTimes(B, MONITOR_ID, "24h"),
+    });
+    const newIdentity = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: [{ at: DATA_AS_OF, responseTimeMs: 33, outcome: "pass" }],
+    });
+    rerender(view(B, newIdentity));
+    await waitFor(() => expectKpis(["33 ms", "33 ms", "1", "0"]));
+    await act(async () => {
+      oldIdentity.resolve({
+        ...noResponseTimes,
+        points: [{ at: DATA_AS_OF, responseTimeMs: 888, outcome: "pass" }],
+      });
+      await retiredRequest;
+    });
+    expectKpis(["33 ms", "33 ms", "1", "0"]);
+    expect(screen.queryByText("888 ms")).toBeNull();
+    expect(screen.queryByText("999 ms")).toBeNull();
+  });
+});
+
+it("announces an empty latest selection once after failed load and retry, without moving focus", async () => {
+  fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+    range === "24h"
+      ? Promise.resolve(noResponseTimes)
+      : Promise.reject(new Error("offline")),
+  );
+  renderResponseCard();
+  await waitFor(() => expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]));
+  const user = userEvent.setup();
+  const radio = screen.getByRole("radio", { name: "7 วัน" });
+  await user.click(radio);
+  await screen.findByText("โหลดกราฟเวลาตอบสนองไม่สำเร็จ");
+  expect(screen.queryByText("p50")).toBeNull();
+  expect(
+    screen.getByTestId("response-range-announcement"),
+  ).toBeEmptyDOMElement();
+  expect(radio).toHaveFocus();
+  fetchResponseTimesMock.mockResolvedValue({
+    ...liveRange("7d"),
+    buckets: [],
+    summary: { p50Ms: null, p95Ms: null, checks: 0, failed: 0 },
+  });
+  const retry = screen.getByRole("button", { name: "ลองอีกครั้ง" });
+  retry.focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]));
+  expect(screen.getByText(/^ไม่มีผลใน/)).toHaveTextContent("ไม่มีผลใน 7 วัน");
+  expect(screen.getByTestId("response-range-announcement")).toHaveTextContent(
+    "7 วันล่าสุด p50 ไม่มีข้อมูล p95 ไม่มีข้อมูล จำนวนการตรวจ 0 ล้มเหลว 0",
+  );
+});
+
+it.each(["owner", "admin", "viewer", "auditor"] as const)(
+  "allows %s to read actual response KPIs without write controls",
+  async (role) => {
+    fetchMeContextMock.mockResolvedValue(context(role));
+    showDetail(detail());
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: [{ at: DATA_AS_OF, responseTimeMs: 20, outcome: "fail" }],
+    });
+    renderDetail();
+    const card = sectionOf(
+      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    );
+    await waitFor(() =>
+      expect(
+        must(within(card).getByText("p50").nextElementSibling),
+      ).toHaveTextContent("20 ms"),
+    );
+    expect(
+      must(within(card).getByText("ล้มเหลว").nextElementSibling),
+    ).toHaveTextContent("1");
+    if (role === "viewer" || role === "auditor")
+      expect(screen.queryByRole("button", { name: "แก้ไข" })).toBeNull();
+  },
+);
