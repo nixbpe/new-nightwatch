@@ -1,0 +1,59 @@
+{
+  "skills": ["../.claude/skills"],
+  "subagents": {
+    "agentScanDirs": [".claude/agents"],
+    "agentOverrides": {
+      "software-engineer": {
+        "model": "openai-codex/gpt-6.1-sol",
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash",
+          "write",
+          "edit",
+          "contact_supervisor"
+        ],
+        "inheritProjectContext": true,
+        "skills": ["build"]
+      },
+      "code-reviewer": {
+        "model": "openai-codex/gpt-6.1-sol",
+        "tools": ["read", "grep", "find", "ls", "contact_supervisor"],
+        "inheritProjectContext": true,
+        "skills": ["code-review-and-quality"]
+      },
+      "product-owner": {
+        "model": "openai-codex/gpt-6.1-sol",
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash",
+          "write",
+          "edit",
+          "contact_supervisor"
+        ],
+        "inheritProjectContext": true,
+        "skills": ["requirements"]
+      },
+      "tech-lead": {
+        "model": "openai-codex/gpt-6.1-sol",
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash",
+          "write",
+          "edit",
+          "contact_supervisor"
+        ],
+        "inheritProjectContext": true,
+        "skills": ["technical-spec"]
+      }
+    }
+  }
+}
