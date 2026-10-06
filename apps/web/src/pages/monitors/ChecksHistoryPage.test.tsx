@@ -422,7 +422,7 @@ describe("Checks history offset drift", () => {
     );
   });
 
-  it("announces k = 0 as it is when a chunk holds only rows already shown, and keeps the button", async () => {
+  it("announces k = 0 without a row range when a chunk holds only rows already shown, and keeps the button", async () => {
     // 50 results arrived after the first chunk, so the chunk at offset 50 is the first chunk again.
     fetchChecksMock
       .mockResolvedValueOnce(chunk(span(0, 50), 0, 120))
@@ -431,9 +431,7 @@ describe("Checks history offset drift", () => {
     renderChecks();
     await user.click(await loadMoreButton());
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent(
-        "โหลดเพิ่ม 0 แถว (แถวที่ 51–50 จาก 170)",
-      );
+      expect(screen.getByRole("status").textContent).toBe("โหลดเพิ่ม 0 แถว");
     });
     expect(historyRows()).toHaveLength(50);
     expect(screen.getByText("แสดง 1–50 จาก 170")).toBeInTheDocument();

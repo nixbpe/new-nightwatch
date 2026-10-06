@@ -411,8 +411,11 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
         return;
       }
       const latest = result.data.pages.at(-1)?.page.total ?? 0;
+      // With k = 0 the range would read "51–50", which names no row.
       setAnnouncement(
-        `โหลดเพิ่ม ${String(added)} แถว (แถวที่ ${String(now - added + 1)}–${String(now)} จาก ${String(latest)})`,
+        added === 0
+          ? "โหลดเพิ่ม 0 แถว"
+          : `โหลดเพิ่ม ${String(added)} แถว (แถวที่ ${String(now - added + 1)}–${String(now)} จาก ${String(latest)})`,
       );
     } finally {
       pressed.current = false;
