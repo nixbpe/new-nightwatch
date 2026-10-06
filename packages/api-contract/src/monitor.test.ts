@@ -619,7 +619,11 @@ describe("normalizeMonitorConfig", () => {
 
 describe("read query schemas", () => {
   it("apply the documented defaults to strings from the URL", () => {
-    expect(monitorListQuerySchema.parse({})).toEqual({ limit: 25, offset: 0 });
+    expect(monitorListQuerySchema.parse({})).toEqual({
+      limit: 25,
+      offset: 0,
+      sort: "problems",
+    });
     expect(monitorHistoryQuerySchema.parse({})).toEqual({
       limit: 20,
       offset: 0,
@@ -632,7 +636,7 @@ describe("read query schemas", () => {
         offset: "3",
         health: "down",
       }),
-    ).toEqual({ limit: 50, offset: 3, health: "down" });
+    ).toEqual({ limit: 50, offset: 3, health: "down", sort: "problems" });
   });
 
   it("trim q and bound every number", () => {
@@ -649,6 +653,8 @@ describe("read query schemas", () => {
       { limit: "1.5" },
       { offset: "-1" },
       { health: "healthy" },
+      { sort: "oldest" },
+      { sort: "" },
     ]) {
       expect(monitorListQuerySchema.safeParse(bad).success).toBe(false);
     }

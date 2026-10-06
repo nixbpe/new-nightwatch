@@ -1,4 +1,5 @@
 import {
+  monitorDetailResponseSchema,
   monitorListResponseSchema,
   monitorRecentEventsResponseSchema,
 } from "@nightwatch/api-contract";
@@ -7,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ageSeries,
   rollupFromResults,
+  seedHourly,
   seedIncident,
   seedMonitor,
   seedResults,
@@ -154,6 +156,8 @@ describe("List: order and summary", () => {
       "?limit=0",
       "?limit=51",
       "?offset=-1",
+      "?sort=oldest",
+      "?sort=",
       "?health=healthy",
       "?q=%00",
       `?q=${"x".repeat(201)}`,
@@ -272,7 +276,10 @@ describe("List: SSL level", () => {
       level,
       daysRemaining: days,
       host: "ssl.example",
+      issuer: null,
+      notAfter: item?.ssl.notAfter,
     });
+    expect(item?.ssl.notAfter).not.toBeNull();
   });
 
   it("reports an unreadable certificate as recorded although an old expiry is kept", async () => {
@@ -288,7 +295,10 @@ describe("List: SSL level", () => {
       level: "unreadable",
       daysRemaining: null,
       host: "ssl.example",
+      issuer: null,
+      notAfter: item?.ssl.notAfter,
     });
+    expect(item?.ssl.notAfter).not.toBeNull();
   });
 
   it("reports an expired handshake without a date as expired with no days", async () => {
@@ -303,6 +313,8 @@ describe("List: SSL level", () => {
       level: "expired",
       daysRemaining: null,
       host: "ssl.example",
+      issuer: null,
+      notAfter: null,
     });
   });
 
@@ -315,7 +327,13 @@ describe("List: SSL level", () => {
     for (const [name, state, level] of cases) {
       const id = await seedMonitor(ctx, sslOrg.id, { name, sslState: state });
       const item = (await list(sslOrg)).monitors.find((m) => m.id === id);
-      expect(item?.ssl).toEqual({ level, daysRemaining: null, host: null });
+      expect(item?.ssl).toEqual({
+        level,
+        daysRemaining: null,
+        host: null,
+        issuer: null,
+        notAfter: null,
+      });
     }
   });
 });
@@ -344,6 +362,354 @@ describe("List: uptime", () => {
       checks: 0,
       coveragePercent: 0,
     });
+  });
+});
+
+// ---- sort (#59) -------------------------------------------------------------
+
+/**
+ * Six monitors with distinct values per sort key, a null on both the uptime and
+ * response keys, and a tie on each key. Names are read back in the expected
+ * orders below.
+ *
+ *   name      created  uptime h24  last response
+ *   Alpha     50 d     100         100
+ *   bravo     40 d      50         900
+ *   Charlie   10 d     null        null
+ *   delta      1 d     100         500
+ *   echo      30 d     null        null
+ *   foxtrot   30 d     100         500   (created_at equal to echo)
+ */
+async function seedSortOrganization(label: string) {
+  const org = await ctx.createOrganization(label);
+  const DAY = 86_400;
+  const make = (name: string, createdDays: number, urlHost = name) =>
+    seedMonitor(ctx, org.id, {
+      name,
+      url: `https://${urlHost.toLowerCase()}.sort.test/x`,
+      createdAgoSeconds: createdDays * DAY,
+    });
+  const ids = {
+    Alpha: await make("Alpha", 50),
+    bravo: await make("bravo", 40),
+    Charlie: await make("Charlie", 10),
+    delta: await make("delta", 1),
+    echo: await make("echo", 30),
+    foxtrot: await make("foxtrot", 30),
+  };
+  await ctx.owner.sql.query(
+    "update monitors set created_at = (select created_at from monitors where id = $1) where id = $2",
+    [ids.echo, ids.foxtrot],
+  );
+  await seedResults(ctx, org.id, ids.Alpha, [10, 310], { responseTimeMs: 100 });
+  await seedResults(ctx, org.id, ids.bravo, [310], { responseTimeMs: 50 });
+  await seedResults(ctx, org.id, ids.bravo, [10], {
+    outcome: "fail",
+    responseTimeMs: 900,
+  });
+  await seedResults(ctx, org.id, ids.delta, [10, 310], { responseTimeMs: 500 });
+  await seedResults(ctx, org.id, ids.foxtrot, [10, 310], {
+    responseTimeMs: 500,
+  });
+  return { org, ids };
+}
+
+const SORT_ORDERS = {
+  name: ["Alpha", "bravo", "Charlie", "delta", "echo", "foxtrot"],
+  uptime: ["bravo", "Alpha", "delta", "foxtrot", "Charlie", "echo"],
+  response_time: ["bravo", "delta", "foxtrot", "Alpha", "Charlie", "echo"],
+  newest: ["delta", "Charlie", "echo", "foxtrot", "bravo", "Alpha"],
+} as const;
+
+describe("List: sort", () => {
+  let sorted: Awaited<ReturnType<typeof seedSortOrganization>>;
+  const namesOf = (body: Awaited<ReturnType<typeof list>>) =>
+    body.monitors.map((item) => item.name);
+
+  beforeAll(async () => {
+    sorted = await seedSortOrganization("read-sort");
+  });
+
+  it.each(Object.entries(SORT_ORDERS))(
+    "sort=%s orders by the key, nulls last, ties by name then id",
+    async (sort, expected) => {
+      const body = await list(sorted.org, `?sort=${sort}`);
+      expect(namesOf(body)).toEqual(expected);
+    },
+  );
+
+  it("sorts by the 24 h uptime percent the item reports", async () => {
+    const body = await list(sorted.org, "?sort=uptime");
+    expect(body.monitors.map((item) => item.uptime.h24.percent)).toEqual([
+      50,
+      100,
+      100,
+      100,
+      null,
+      null,
+    ]);
+  });
+
+  it("sorts by the last response time the item reports", async () => {
+    const body = await list(sorted.org, "?sort=response_time");
+    expect(body.monitors.map((item) => item.lastResponseTimeMs)).toEqual([
+      900,
+      500,
+      500,
+      100,
+      null,
+      null,
+    ]);
+  });
+
+  it("answers problems for no sort and for sort=problems, health groups first", async () => {
+    const none = await list(sorted.org);
+    const problems = await list(sorted.org, "?sort=problems");
+    expect(problems.monitors).toEqual(none.monitors);
+    const rank = { down: 0, unknown: 1, up: 2, paused: 3 } as const;
+    const ranks = none.monitors.map((item) => rank[item.health]);
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+  });
+
+  it("leaves the summary unchanged by sort", async () => {
+    const base = await list(sorted.org);
+    for (const sort of Object.keys(SORT_ORDERS)) {
+      expect((await list(sorted.org, `?sort=${sort}`)).summary).toEqual(
+        base.summary,
+      );
+    }
+  });
+
+  it.each(["problems", ...Object.keys(SORT_ORDERS)])(
+    "sort=%s pages without a repeated or missing row",
+    async (sort) => {
+      const whole = namesOf(await list(sorted.org, `?sort=${sort}`));
+      const pages = [
+        ...namesOf(await list(sorted.org, `?sort=${sort}&limit=2&offset=0`)),
+        ...namesOf(await list(sorted.org, `?sort=${sort}&limit=2&offset=2`)),
+        ...namesOf(await list(sorted.org, `?sort=${sort}&limit=2&offset=4`)),
+      ];
+      expect(pages).toEqual(whole);
+      expect(new Set(pages).size).toBe(6);
+    },
+  );
+
+  it("combines sort with q and health", async () => {
+    // "l" matches Alpha, Charlie and delta by name; no host contains it.
+    expect(namesOf(await list(sorted.org, "?sort=response_time&q=l"))).toEqual([
+      "delta",
+      "Alpha",
+      "Charlie",
+    ]);
+    const all = await list(sorted.org, "?sort=newest");
+    for (const health of new Set(all.monitors.map((item) => item.health))) {
+      const only = await list(sorted.org, `?sort=newest&health=${health}`);
+      expect(namesOf(only)).toEqual(
+        all.monitors
+          .filter((item) => item.health === health)
+          .map((i) => i.name),
+      );
+      expect(only.page.total).toBe(only.monitors.length);
+    }
+  });
+
+  it("does not mix another Organization's monitors into the order", async () => {
+    const other = await seedSortOrganization("read-sort-other");
+    const body = await list(other.org, "?sort=uptime");
+    expect(body.monitors.map((item) => item.id)).not.toContain(
+      sorted.ids.Alpha,
+    );
+    expect(namesOf(body)).toEqual(SORT_ORDERS.uptime);
+  });
+
+  it("moves page 2 to the new order when a key changes between the two requests", async () => {
+    const race = await seedSortOrganization("read-sort-race");
+    const first = await list(race.org, "?sort=response_time&limit=2&offset=0");
+    expect(namesOf(first)).toEqual(["bravo", "delta"]);
+    // A newer slow result for Alpha lands between the two requests.
+    await seedResults(ctx, race.org.id, race.ids.Alpha, [1], {
+      responseTimeMs: 2000,
+    });
+    const second = await list(race.org, "?sort=response_time&limit=2&offset=2");
+    expect(namesOf(second)).toEqual(["delta", "foxtrot"]);
+    expect(namesOf(await list(race.org, "?sort=response_time"))).toEqual([
+      "Alpha",
+      "bravo",
+      "delta",
+      "foxtrot",
+      "Charlie",
+      "echo",
+    ]);
+  });
+});
+
+describe("List: configuration and certificate fields", () => {
+  it("matches Detail for a non-default method, interval and issuer", async () => {
+    const org = await ctx.createOrganization("read-fields");
+    const id = await seedMonitor(ctx, org.id, {
+      name: "configured",
+      method: "POST",
+      intervalSeconds: 900,
+      sslHost: "ssl.example",
+      sslIssuer: "Example Issuing CA",
+      sslNotAfterInSeconds: 10 * 86_400,
+      sslState: "ok",
+    });
+    const plain = await seedMonitor(ctx, org.id, { name: "plain" });
+    const body = await list(org);
+    const item = body.monitors.find((candidate) => candidate.id === id);
+    expect(item).toMatchObject({
+      method: "POST",
+      intervalSeconds: 900,
+      ssl: { issuer: "Example Issuing CA" },
+    });
+    const detailResponse = await ctx.call(
+      org.users.viewer,
+      "GET",
+      monitorsPath(org.id, `/${id}`),
+    );
+    expect(detailResponse.status).toBe(200);
+    const detail = monitorDetailResponseSchema.parse(
+      detailResponse.json,
+    ).monitor;
+    expect(item?.method).toBe(detail.method);
+    expect(item?.intervalSeconds).toBe(detail.intervalSeconds);
+    expect(item?.ssl.issuer).toBe(detail.ssl.issuer);
+    expect(item?.ssl.notAfter).toBe(detail.ssl.notAfter);
+    expect(item?.ssl.notAfter).not.toBeNull();
+    const plainItem = body.monitors.find((candidate) => candidate.id === plain);
+    expect(plainItem).toMatchObject({
+      method: "GET",
+      intervalSeconds: 300,
+      ssl: { issuer: null, notAfter: null },
+    });
+  });
+});
+
+describe("List: response sparkline", () => {
+  const HOUR = 3_600_000;
+  let org: TestOrganization;
+  let other: TestOrganization;
+  let id: string;
+  let fresh: string;
+  let otherId: string;
+  // `seedHourly` truncates the database's now(); the request reads its own now()
+  // later, so the two can sit on different hours. Points are found by hourStart.
+  let seededHour: number;
+  let otherSeededHour: number;
+  const hourOf = async (monitorId: string) => {
+    const result = await ctx.owner.sql.query<{ hour: Date }>(
+      "select max(hour_start) as hour from monitor_check_hourly where monitor_id = $1",
+      [monitorId],
+    );
+    const hour = result.rows[0]?.hour;
+    if (hour === undefined) throw new Error("no hourly row was seeded");
+    return hour.getTime();
+  };
+  const avgAt = (
+    points: { hourStart: string; avgMs: number | null }[],
+    hour: number,
+  ) => points.find((point) => Date.parse(point.hourStart) === hour)?.avgMs;
+
+  beforeAll(async () => {
+    org = await ctx.createOrganization("read-spark");
+    other = await ctx.createOrganization("read-spark-other");
+    id = await seedMonitor(ctx, org.id, { name: "spark" });
+    fresh = await seedMonitor(ctx, org.id, { name: "brand new" });
+    const hour = (hoursAgo: number[], responseChecks: number, sum: number) =>
+      seedHourly(ctx, org.id, id, hoursAgo, {
+        checks: responseChecks,
+        passed: responseChecks,
+        coveredSeconds: 300,
+        responseChecks,
+        responseMsSum: sum,
+        responseMsMax: responseChecks === 0 ? null : sum,
+      });
+    await hour([0], 2, 301); // the current hour: 150.5
+    await hour([7], 3, 100); // 33.33
+    await hour([23], 1, 40); // the oldest point
+    await hour([24], 1, 999); // outside the window
+    await hour([3], 0, 0); // an hour without a measured response
+    otherId = await seedMonitor(ctx, other.id, { name: "elsewhere" });
+    await seedHourly(ctx, other.id, otherId, [0], {
+      checks: 1,
+      passed: 1,
+      coveredSeconds: 300,
+      responseChecks: 1,
+      responseMsSum: 77,
+      responseMsMax: 77,
+    });
+    seededHour = await hourOf(id);
+    otherSeededHour = await hourOf(otherId);
+  });
+
+  it("has 24 consecutive UTC hours ending at the hour of now, empty hours null", async () => {
+    const body = await list(org);
+    const item = body.monitors.find((candidate) => candidate.id === id);
+    const points = item?.responseSparkline ?? [];
+    expect(points).toHaveLength(24);
+    const last = Math.floor(Date.parse(body.dataAsOf) / HOUR) * HOUR;
+    expect(points.map((point) => Date.parse(point.hourStart))).toEqual(
+      Array.from({ length: 24 }, (_, index) => last - (23 - index) * HOUR),
+    );
+    // The request may have crossed into the next hour since the seed: the
+    // current-hour point then sits one slot earlier and the oldest one drops out.
+    const shift = (last - seededHour) / HOUR;
+    expect([0, 1]).toContain(shift);
+    expect(avgAt(points, seededHour)).toBe(150.5);
+    expect(avgAt(points, seededHour - 7 * HOUR)).toBe(33.33);
+    expect(avgAt(points, seededHour - 3 * HOUR)).toBeNull();
+    expect(avgAt(points, seededHour - 23 * HOUR)).toBe(
+      shift === 0 ? 40 : undefined,
+    );
+    // The row 24 hours back never enters the window.
+    expect(points.map((point) => point.avgMs)).not.toContain(999);
+    expect(points.filter((point) => point.avgMs !== null)).toHaveLength(
+      3 - shift,
+    );
+  });
+
+  it("is all null for a monitor without rollups", async () => {
+    const item = (await list(org)).monitors.find((m) => m.id === fresh);
+    expect(item?.responseSparkline).toHaveLength(24);
+    expect(item?.responseSparkline.every((p) => p.avgMs === null)).toBe(true);
+  });
+
+  it("shows each Organization only its own rollups", async () => {
+    const mine = await list(org);
+    const theirs = await list(other);
+    expect(mine.monitors.map((item) => item.id)).not.toContain(otherId);
+    expect(theirs.monitors.map((item) => item.id)).toEqual([otherId]);
+    expect(
+      avgAt(theirs.monitors[0]?.responseSparkline ?? [], otherSeededHour),
+    ).toBe(77);
+    expect(
+      theirs.monitors[0]?.responseSparkline.filter((p) => p.avgMs !== null),
+    ).toHaveLength(1);
+    const values = mine.monitors.flatMap((item) =>
+      item.responseSparkline.map((p) => p.avgMs),
+    );
+    expect(values).not.toContain(77);
+  });
+
+  it("answers every role the same new fields", async () => {
+    const reference = (await list(org)).monitors;
+    for (const role of TEST_ROLES) {
+      const response = await ctx.call(
+        org.users[role],
+        "GET",
+        monitorsPath(org.id, "?sort=name"),
+      );
+      expect(response.status, role).toBe(200);
+      const items = monitorListResponseSchema.parse(response.json).monitors;
+      expect(
+        items.map((item) => [item.id, item.method, item.responseSparkline]),
+      ).toEqual(
+        [...reference]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((item) => [item.id, item.method, item.responseSparkline]),
+      );
+    }
   });
 });
 

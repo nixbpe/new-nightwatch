@@ -1,14 +1,9 @@
 import type { Monitor } from "@nightwatch/api-contract";
 
 import { Card, CardHeader } from "../../../components/ui/card";
+import { formatDate } from "../format";
 import { SslLabel } from "../SslLabel";
 import { tlsReasonLabel } from "./labels";
-
-const dateFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
 
 export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
   const reason = tlsReasonLabel(ssl.reason);
@@ -66,7 +61,7 @@ export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
                 <dt className="text-foreground-secondary">หมดอายุ</dt>
                 <dd>
                   <time dateTime={ssl.notAfter} className="font-mono">
-                    {dateFormat.format(new Date(ssl.notAfter))}
+                    {formatDate(ssl.notAfter)}
                   </time>
                 </dd>
               </>

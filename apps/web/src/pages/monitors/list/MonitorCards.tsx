@@ -8,11 +8,48 @@ import {
 import { HairlineGrid } from "../../../components/ui/hairline-grid";
 import { cn } from "../../../lib/utils";
 import { formatNumber, formatTimeOrDate, Time, TIME_ZONE } from "../format";
+import { IntervalText } from "../detail/IntervalText";
 import { HealthPill } from "../HealthPill";
 import { NO_DATA, StatusDetail, Uptime } from "../MonitorTable";
 import { SslLabel } from "../SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
+
+// 24 hourly averages; a null hour is an empty slot, never a zero-height bar.
+// Heights scale to this monitor's own maximum. The chart is hidden from assistive
+// technology and the sr-only sentence carries the unit, window, source and gaps (CMP-05).
+function Sparkline({ points }: { points: Row["responseSparkline"] }) {
+  const values = points.map((point) => point.avgMs);
+  const known = values.filter((value): value is number => value !== null);
+  if (known.length === 0) {
+    return <span className="text-xs text-foreground-secondary">{NO_DATA}</span>;
+  }
+  const max = Math.max(...known);
+  const missing = values.length - known.length;
+  return (
+    <>
+      <span aria-hidden="true" className="mt-1 flex h-7 items-end gap-0.5">
+        {values.map((value, index) =>
+          value === null ? (
+            <i key={index} data-empty="true" className="flex-1" />
+          ) : (
+            <i
+              key={index}
+              className="flex-1 rounded-[1px] bg-foreground-secondary/60"
+              style={{
+                height: `${String(max === 0 ? 8 : Math.max(8, (value / max) * 100))}%`,
+              }}
+            />
+          ),
+        )}
+      </span>
+      <span className="sr-only">
+        เวลาตอบสนองเฉลี่ยรายชั่วโมงจากผลตรวจของมอนิเตอร์นี้ 24 ชม. ล่าสุด สูงสุด{" "}
+        {formatNumber(max)} ms ไม่มีข้อมูล {missing} ชั่วโมง
+      </span>
+    </>
+  );
+}
 
 // Cards view of the same list page as the table: two columns on a hairline grid.
 // The name stays its own link so its accessible name is the monitor name.
@@ -54,10 +91,15 @@ export function MonitorCards({
                 </Link>
                 <HealthPill health={row.health} />
               </div>
-              <span className="break-all font-mono text-xs text-foreground-secondary">
-                {row.url}
+              <div className="flex items-baseline gap-x-1.5 font-mono text-xs text-foreground-secondary">
+                <span className="shrink-0">{row.method}</span>
+                <span className="min-w-0 break-all">{row.url}</span>
+              </div>
+              <span className="inline-flex h-[22px] w-fit items-center rounded-full border border-foreground/20 px-2.5 text-xs text-foreground-secondary">
+                <IntervalText seconds={row.intervalSeconds} />
               </span>
               <StatusDetail row={row} />
+              <Sparkline points={row.responseSparkline} />
               <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 text-xs text-foreground-secondary">
                 <SslLabel
                   level={row.ssl.level}

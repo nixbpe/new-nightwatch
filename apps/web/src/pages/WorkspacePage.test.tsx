@@ -22,6 +22,8 @@ import {
 } from "../lib/api/monitors";
 import { TenantProvider } from "../lib/tenant/TenantProvider";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
+import { SslCard } from "./monitors/detail/SslCard";
+import { formatDate } from "./monitors/format";
 import { WorkspacePage } from "./WorkspacePage";
 import type { MonitorRow } from "./workspace/rows";
 
@@ -109,6 +111,8 @@ function monitorItem(
     id,
     name,
     url: `https://${name}.example.com/health`,
+    method: "GET",
+    intervalSeconds: 300,
     status: "active",
     health: "up",
     healthReason: null,
@@ -117,7 +121,17 @@ function monitorItem(
     lastCheckAt: "2026-10-02T05:00:00.000Z",
     openIncident: null,
     lastResponseTimeMs: 120,
-    ssl: { level: "ok", daysRemaining: 90, host: `${name}.example.com` },
+    responseSparkline: Array.from({ length: 24 }, (_, hour) => ({
+      hourStart: new Date(Date.UTC(2026, 9, 1, 6 + hour)).toISOString(),
+      avgMs: null,
+    })),
+    ssl: {
+      level: "ok",
+      daysRemaining: 90,
+      host: `${name}.example.com`,
+      issuer: null,
+      notAfter: null,
+    },
     uptime: { h24: okUptime, d30: okUptime },
     ...overrides,
   } as MonitorRow;
@@ -140,6 +154,8 @@ function monitorList(total = 3): MonitorListResponse {
           level: "caution",
           daysRemaining: 12,
           host: "portal.example.com",
+          issuer: "Let's Encrypt R11",
+          notAfter: "2026-10-14T05:00:00.000Z",
         },
       }),
     ],
@@ -434,22 +450,25 @@ describe("WorkspacePage overview content", () => {
     ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/new`);
   });
 
-  it("marks every sample region as an example with its issue link", async () => {
+  it("marks every remaining sample region as an example with its issue link", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
 
     await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" });
     const samples = screen.getAllByRole("group", { name: /^ตัวอย่าง: / });
-    expect(samples).toHaveLength(3);
+    expect(samples).toHaveLength(2);
     const issues = samples.map((sample) =>
       within(sample)
         .getByRole("link", { name: /ดู issue #/ })
         .getAttribute("href"),
     );
     expect(issues.map((href) => /(\d+)$/.exec(href ?? "")?.[1])).toEqual(
-      expect.arrayContaining(["56", "59", "63"]),
+      expect.arrayContaining(["56", "63"]),
     );
-    expect(screen.queryByText(/\d{1,2} ต\.ค\. \d{4}/)).toBeNull();
+    // Only the real expiry line carries a date; no sample region does.
+    for (const sample of samples) {
+      expect(within(sample).queryByText(/\d{1,2} ต\.ค\. \d{4}/)).toBeNull();
+    }
     for (const sample of samples) {
       expect(
         within(sample).getByText("ตัวอย่าง · ยังไม่เชื่อมข้อมูลจริง"),
@@ -585,6 +604,100 @@ describe("WorkspacePage overview details", () => {
     sessionState.data = null;
   });
 
+  it("shows issuer and expiry on SSL warning rows only when present, never on a down row", async () => {
+    const notAfter = "2026-10-14T05:00:00.000Z";
+    const ssl = (level: "caution" | "danger" | "expired", extra = {}) => ({
+      level,
+      daysRemaining: 12,
+      host: "h.example.com",
+      issuer: null,
+      notAfter: null,
+      ...extra,
+    });
+    const list = monitorList(5);
+    list.monitors = [
+      monitorItem(MONITOR_A, "api-payments", {
+        health: "down",
+        openIncident: {
+          startedAt: "2026-10-02T04:00:00.000Z",
+          reason: "dns_not_found",
+        },
+        ssl: ssl("danger", { issuer: "Down CA", notAfter }),
+      }),
+      monitorItem(MONITOR_B, "portal", {
+        ssl: ssl("caution", { issuer: "Let's Encrypt R11", notAfter }),
+      }),
+      monitorItem("55555555-5555-4555-8555-555555555555", "bare", {
+        ssl: ssl("expired"),
+      }),
+      monitorItem("66666666-6666-4666-8666-666666666666", "issuer-only", {
+        ssl: ssl("danger", { issuer: "Only CA" }),
+      }),
+      monitorItem("77777777-7777-4777-8777-777777777777", "date-only", {
+        ssl: ssl("caution", { notAfter }),
+      }),
+    ];
+    fetchMonitorListMock.mockResolvedValue(list);
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderPage();
+    const issues = (
+      await screen.findByRole("heading", { name: "ต้องดูตอนนี้" })
+    ).closest("section") as HTMLElement;
+    const row = (name: string) =>
+      within(issues).getByText(name).closest("a") as HTMLElement;
+
+    const portal = within(row("portal"));
+    const issuer = portal.getByText("ผู้ออก Let's Encrypt R11");
+    expect(issuer).toHaveClass("[overflow-wrap:anywhere]");
+    const expiry = portal.getByText(formatDate(notAfter));
+    expect(expiry).toHaveAttribute("datetime", notAfter);
+    expect(expiry.parentElement).toHaveTextContent(
+      `หมดอายุ ${formatDate(notAfter)}`,
+    );
+    expect(expiry.closest(".font-mono")).toBeNull();
+
+    expect(within(row("bare")).queryByText(/ผู้ออก|หมดอายุ \d/)).toBeNull();
+    const issuerOnly = within(row("issuer-only"));
+    expect(issuerOnly.getByText("ผู้ออก Only CA")).toBeInTheDocument();
+    expect(issuerOnly.queryByText(/หมดอายุ \d/)).toBeNull();
+    const dateOnly = within(row("date-only"));
+    expect(dateOnly.queryByText(/ผู้ออก/)).toBeNull();
+    expect(dateOnly.getByText(formatDate(notAfter))).toBeInTheDocument();
+
+    const down = within(row("api-payments"));
+    expect(down.queryByText(/Down CA/)).toBeNull();
+    expect(down.queryByText(formatDate(notAfter))).toBeNull();
+    expect(down.getByText("หมดอายุใน 12 วัน")).toBeInTheDocument();
+  });
+
+  it("writes the expiry date exactly as the monitor detail SSL card does", async () => {
+    fetchMonitorListMock.mockResolvedValue(monitorList());
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderPage();
+    const issues = (
+      await screen.findByRole("heading", { name: "ต้องดูตอนนี้" })
+    ).closest("section") as HTMLElement;
+    const workspaceDate = issues.querySelector(
+      'time[datetime="2026-10-14T05:00:00.000Z"]',
+    )?.textContent;
+    const card = render(
+      <SslCard
+        ssl={{
+          state: "caution",
+          daysRemaining: 12,
+          host: "portal.example.com",
+          issuer: "Let's Encrypt R11",
+          notAfter: "2026-10-14T05:00:00.000Z",
+          reason: null,
+        }}
+      />,
+    );
+    expect(workspaceDate).toBeTruthy();
+    expect(card.container.querySelector("time")?.textContent).toBe(
+      workspaceDate,
+    );
+  });
+
   it("limit reached disables add with its reason", async () => {
     fetchMonitorListMock.mockResolvedValue(monitorList(50));
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
@@ -603,6 +716,8 @@ describe("WorkspacePage overview details", () => {
           level: "expired",
           daysRemaining: -2,
           host: "legacy.example.com",
+          issuer: null,
+          notAfter: null,
         },
       }),
     );

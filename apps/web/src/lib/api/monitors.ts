@@ -20,6 +20,7 @@ import {
   type MonitorIncidentsResponse,
   type MonitorLastResponseResponse,
   type MonitorListResponse,
+  type MonitorListSort,
   type MonitorResponseTimesResponse,
   type MonitorTestResponse,
   type MonitorWriteResponse,
@@ -64,6 +65,8 @@ export type MonitorListParams = {
   offset: number;
   health?: MonitorHealthName;
   q?: string;
+  // Omitted for the default order so the key matches the loader and nav counts.
+  sort?: MonitorListSort;
 };
 
 // Every key sits under TENANT_QUERY_PREFIX so switching Organization cancels and removes it.
@@ -81,6 +84,7 @@ export const monitorQueryKeys = {
         offset: params.offset,
         health: params.health,
         q: params.q,
+        ...(params.sort === undefined ? {} : { sort: params.sort }),
       },
     ] as const,
   recentEvents: (organizationId: string) =>
@@ -174,6 +178,7 @@ export function fetchMonitorList(
         offset: params.offset,
         ...(params.health === undefined ? {} : { health: params.health }),
         ...(params.q === undefined || params.q === "" ? {} : { q: params.q }),
+        ...(params.sort === undefined ? {} : { sort: params.sort }),
       },
     },
   );

@@ -23,6 +23,11 @@ const dateTimeFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
   minute: "2-digit",
   hour12: false,
 });
+const dateFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
 const numberFormat = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
@@ -33,6 +38,11 @@ export function formatTime(iso: string): string {
 
 export function formatTimeWithSeconds(iso: string): string {
   return timeWithSecondsFormat.format(new Date(iso));
+}
+
+/** Day, short month and year, for dates such as a certificate expiry. */
+export function formatDate(iso: string): string {
+  return dateFormat.format(new Date(iso));
 }
 
 export function formatDateTime(iso: string): string {

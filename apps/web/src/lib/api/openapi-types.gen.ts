@@ -2316,6 +2316,7 @@ export interface paths {
                     offset?: number | null;
                     health?: "up" | "down" | "unknown" | "paused";
                     q?: string;
+                    sort?: "problems" | "name" | "uptime" | "response_time" | "newest";
                 };
                 header?: never;
                 path: {
@@ -2361,12 +2362,18 @@ export interface paths {
                                     startedAt: string;
                                     reason: string;
                                 } | null;
+                                /** @enum {string} */
+                                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                                intervalSeconds: number;
                                 lastResponseTimeMs: number | null;
                                 ssl: {
                                     /** @enum {string} */
                                     level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
                                     daysRemaining: number | null;
                                     host: string | null;
+                                    issuer: string | null;
+                                    /** Format: date-time */
+                                    notAfter: string | null;
                                 };
                                 uptime: {
                                     h24: {
@@ -2380,6 +2387,11 @@ export interface paths {
                                         coveragePercent: number;
                                     };
                                 };
+                                responseSparkline: {
+                                    /** Format: date-time */
+                                    hourStart: string;
+                                    avgMs: number | null;
+                                }[];
                             }[];
                             page: {
                                 limit: number;

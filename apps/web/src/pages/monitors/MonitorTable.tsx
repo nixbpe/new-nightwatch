@@ -16,6 +16,7 @@ import {
   Time,
   TIME_ZONE,
 } from "./format";
+import { IntervalText } from "./detail/IntervalText";
 import { SslLabel } from "./SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
@@ -122,6 +123,21 @@ export function MonitorTable({
       cell: (row) => (
         <span title={row.url} className="block max-w-[160px] truncate">
           {row.url}
+        </span>
+      ),
+    },
+    {
+      key: "method",
+      header: "เมธอด",
+      mono: true,
+      cell: (row) => row.method,
+    },
+    {
+      key: "interval",
+      header: "รอบตรวจ",
+      cell: (row) => (
+        <span className="whitespace-nowrap">
+          <IntervalText seconds={row.intervalSeconds} />
         </span>
       ),
     },

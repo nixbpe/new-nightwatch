@@ -20,9 +20,11 @@ import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import {
   fetchMonitorList,
   fetchMonitorRecentEvents,
+  monitorQueryKeys,
 } from "../../lib/api/monitors";
 import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { formatDateTime, formatTimeWithSeconds, TIME_ZONE } from "./format";
+import { MONITOR_LIST_SORTS } from "@nightwatch/api-contract";
 import { OverviewPage } from "./OverviewPage";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -67,6 +69,15 @@ function context(
 
 type Item = MonitorListResponse["monitors"][number];
 
+// 24 hourly points ending at the current UTC hour of DATA_AS_OF; null marks an hour without data.
+function sparkline(values: (number | null)[] = []): Item["responseSparkline"] {
+  const end = Date.UTC(2026, 8, 30, 7);
+  return Array.from({ length: 24 }, (_, index) => ({
+    hourStart: new Date(end - (23 - index) * 3_600_000).toISOString(),
+    avgMs: values[index] ?? null,
+  }));
+}
+
 let nextId = 0;
 function item(overrides: Partial<Item> = {}): Item {
   nextId += 1;
@@ -74,6 +85,8 @@ function item(overrides: Partial<Item> = {}): Item {
     id: `00000000-0000-4000-8000-${String(nextId).padStart(12, "0")}`,
     name: `Monitor ${String(nextId)}`,
     url: `https://m${String(nextId)}.example.test/health`,
+    method: "GET",
+    intervalSeconds: 300,
     status: "active",
     health: "up",
     healthReason: null,
@@ -82,7 +95,14 @@ function item(overrides: Partial<Item> = {}): Item {
     lastCheckAt: "2026-09-30T07:30:00.000Z",
     openIncident: null,
     lastResponseTimeMs: 182,
-    ssl: { level: "ok", daysRemaining: 128, host: "m.example.test" },
+    responseSparkline: sparkline(),
+    ssl: {
+      level: "ok",
+      daysRemaining: 128,
+      host: "m.example.test",
+      issuer: null,
+      notAfter: null,
+    },
     uptime: {
       h24: { percent: 100, checks: 288, coveragePercent: 100 },
       d30: { percent: 99.9, checks: 8640, coveragePercent: 100 },
@@ -207,9 +227,7 @@ describe("Overview view toggle", () => {
     renderPage();
     await screen.findByRole("link", { name: "Web" });
     expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("group", { name: "ตัวอย่าง: การเรียงลำดับรายการ" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /^ตัวอย่าง: / })).toBeNull();
 
     await user.click(screen.getByRole("radio", { name: "การ์ด" }));
     expect(screen.queryByRole("table")).toBeNull();
@@ -219,19 +237,11 @@ describe("Overview view toggle", () => {
     expect(screen.getByText("ตอบสนอง")).toBeInTheDocument();
     expect(screen.getByText(`(${TIME_ZONE})`)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Web" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("group", {
-        name: "ตัวอย่าง: เมธอด ช่วงเวลาตรวจ และกราฟ 24 แท่งบนการ์ด",
-      }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /^ตัวอย่าง: / })).toBeNull();
 
     await user.click(screen.getByRole("radio", { name: "ตาราง" }));
     expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("group", {
-        name: "ตัวอย่าง: เมธอด ช่วงเวลาตรวจ และกราฟ 24 แท่งบนการ์ด",
-      }),
-    ).toBeNull();
+    expect(screen.queryByRole("group", { name: /^ตัวอย่าง: / })).toBeNull();
   });
 
   it("names the status chip group and keeps counts out of the chip names", async () => {
@@ -281,6 +291,260 @@ describe("Overview view toggle", () => {
     await screen.findByRole("link", { name: "Web" });
     expect(screen.getByRole("table")).toBeInTheDocument();
     getItem.mockRestore();
+  });
+});
+
+const SORT_LABELS = [
+  "ปัญหาก่อน",
+  "ชื่อ A-Z",
+  "ความพร้อมใช้งานต่ำสุด",
+  "ตอบกลับช้าสุด",
+  "เพิ่มล่าสุด",
+];
+
+describe("Overview sort", () => {
+  it("offers five options in order, defaulting to problems without sending sort", async () => {
+    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    const select = screen.getByRole("combobox", { name: "เรียงตาม" });
+    expect(
+      within(select)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(SORT_LABELS);
+    expect(select).toHaveValue("problems");
+    expect(fetchListMock.mock.calls[0]?.[1].sort).toBeUndefined();
+  });
+
+  it("caches the default order under the loader and nav counts key", async () => {
+    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    const { queryClient } = renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    expect(
+      queryClient.getQueryData(
+        monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
+      ),
+    ).toBeDefined();
+  });
+
+  it("sends each sort under its own key, returns to the first page and announces it", async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 25 }, (_, index) =>
+      item({ name: `Row${String(index)}` }),
+    );
+    fetchListMock.mockImplementation((_org, params) =>
+      Promise.resolve(
+        list(params.offset === 0 ? many : [item({ name: "Last" })], {
+          total: 26,
+          pageTotal: 26,
+          offset: params.offset,
+        }),
+      ),
+    );
+    const { queryClient } = renderPage();
+    await screen.findByRole("link", { name: "Row0" });
+    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    await screen.findByRole("link", { name: "Last" });
+
+    const select = screen.getByRole("combobox", { name: "เรียงตาม" });
+    const sorted = MONITOR_LIST_SORTS.filter((value) => value !== "problems");
+    for (const value of sorted) {
+      await user.selectOptions(select, value);
+      await screen.findByRole("link", { name: "Row0" });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("status", { name: "ผลการกรอง" }),
+        ).toHaveTextContent(
+          `เรียงตาม ${SORT_LABELS[MONITOR_LIST_SORTS.indexOf(value)] ?? ""} · พบ 26 จาก 26`,
+        );
+      });
+      expect(fetchListMock).toHaveBeenLastCalledWith(A, {
+        limit: 25,
+        offset: 0,
+        health: undefined,
+        q: undefined,
+        sort: value,
+      });
+      expect(
+        queryClient.getQueryData(
+          monitorQueryKeys.list(A, { limit: 25, offset: 0, sort: value }),
+        ),
+      ).toBeDefined();
+    }
+    const keys = sorted.map((value) =>
+      JSON.stringify(
+        monitorQueryKeys.list(A, { limit: 25, offset: 0, sort: value }),
+      ),
+    );
+    expect(new Set(keys).size).toBe(sorted.length);
+
+    await user.selectOptions(select, "problems");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("status", { name: "ผลการกรอง" }),
+      ).toHaveTextContent("เรียงตาม ปัญหาก่อน · พบ 26 จาก 26");
+    });
+  });
+
+  it("keeps the sort when filters are cleared and forgets it on a new mount", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    const first = renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "เรียงตาม" }),
+      "newest",
+    );
+    await user.click(screen.getByRole("button", { name: "ล่ม" }));
+    await user.click(
+      await screen.findByRole("button", { name: "ล้างตัวกรอง" }),
+    );
+    expect(screen.getByRole("combobox", { name: "เรียงตาม" })).toHaveValue(
+      "newest",
+    );
+    expect(window.localStorage.getItem("nightwatch:monitors-sort")).toBeNull();
+    first.unmount();
+
+    renderPage();
+    await screen.findByRole("link", { name: "Web" });
+    expect(screen.getByRole("combobox", { name: "เรียงตาม" })).toHaveValue(
+      "problems",
+    );
+  });
+
+  it("does not let an older sort response replace the newer one", async () => {
+    const user = userEvent.setup();
+    const resolvers: Record<string, (value: MonitorListResponse) => void> = {};
+    fetchListMock.mockImplementation((_org, params) => {
+      if (params.sort === undefined) {
+        return Promise.resolve(list([item({ name: "Initial" })]));
+      }
+      return new Promise((resolve) => {
+        resolvers[params.sort ?? ""] = resolve;
+      });
+    });
+    renderPage();
+    await screen.findByRole("link", { name: "Initial" });
+    const select = screen.getByRole("combobox", { name: "เรียงตาม" });
+
+    await user.selectOptions(select, "name");
+    await user.selectOptions(select, "newest");
+    await waitFor(() => {
+      expect(resolvers["newest"]).toBeDefined();
+    });
+    expect(screen.getByRole("link", { name: "Initial" })).toBeInTheDocument();
+
+    await act(async () => {
+      resolvers["newest"]?.(list([item({ name: "NewestResult" })]));
+      await Promise.resolve();
+    });
+    await screen.findByRole("link", { name: "NewestResult" });
+    await act(async () => {
+      resolvers["name"]?.(list([item({ name: "NameResult" })]));
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByRole("link", { name: "NewestResult" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "NameResult" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "เรียงตาม" })).toHaveValue(
+      "newest",
+    );
+  });
+});
+
+describe("Overview method, interval and sparkline", () => {
+  it("shows method, URL and interval on cards and as table columns", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("nightwatch:monitors-view", "cards");
+    fetchListMock.mockResolvedValue(
+      list([
+        item({
+          name: "Api",
+          url: "https://api.example.test/v1",
+          method: "POST",
+          intervalSeconds: 900,
+        }),
+      ]),
+    );
+    renderPage();
+    await screen.findByRole("link", { name: "Api" });
+    const card = screen.getByRole("link", { name: "Api" }).closest("li");
+    const cardScope = within(card as HTMLElement);
+    expect(cardScope.getByText("POST")).toBeInTheDocument();
+    expect(cardScope.getByText("https://api.example.test/v1")).toHaveClass(
+      "break-all",
+    );
+    expect(cardScope.getByText("15", { selector: "span" })).toHaveClass(
+      "font-mono",
+    );
+    expect(cardScope.getByText(/^ทุก/)).toHaveTextContent("ทุก 15 นาที");
+
+    await user.click(screen.getByRole("radio", { name: "ตาราง" }));
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent);
+    expect(headers).toEqual([
+      `สถานะ (${TIME_ZONE})`,
+      "ชื่อ",
+      "URL",
+      "เมธอด",
+      "รอบตรวจ",
+      "24 ชม.",
+      "30 วัน",
+      "ตอบสนอง",
+      "SSL",
+      `ตรวจล่าสุด (${TIME_ZONE})`,
+    ]);
+    const row = within(rowOf("Api"));
+    expect(row.getByText("POST")).toHaveClass("font-mono");
+    expect(row.getByText(/^ทุก/)).toHaveTextContent("ทุก 15 นาที");
+    expect(row.getByText("15")).toHaveClass("font-mono");
+  });
+
+  it("draws 24 bars with empty slots for null hours and describes the chart", async () => {
+    window.localStorage.setItem("nightwatch:monitors-view", "cards");
+    const values: (number | null)[] = Array.from({ length: 24 }, () => null);
+    values[22] = 1500;
+    values[23] = 750;
+    values[5] = 0;
+    fetchListMock.mockResolvedValue(
+      list([item({ name: "Spark", responseSparkline: sparkline(values) })]),
+    );
+    renderPage();
+    await screen.findByRole("link", { name: "Spark" });
+    const text = screen.getByText(/เวลาตอบสนองเฉลี่ยรายชั่วโมง/);
+    expect(text).toHaveClass("sr-only");
+    expect(text).toHaveTextContent(
+      "เวลาตอบสนองเฉลี่ยรายชั่วโมงจากผลตรวจของมอนิเตอร์นี้ 24 ชม. ล่าสุด สูงสุด 1,500 ms ไม่มีข้อมูล 21 ชั่วโมง",
+    );
+    const chart = text.previousElementSibling as HTMLElement;
+    expect(chart).toHaveAttribute("aria-hidden", "true");
+    const slots = Array.from(chart.children) as HTMLElement[];
+    expect(slots).toHaveLength(24);
+    const empty = slots.filter((slot) => slot.dataset["empty"] === "true");
+    expect(empty).toHaveLength(21);
+    expect(slots[23]?.style.height).toBe("50%");
+    expect(slots[22]?.style.height).toBe("100%");
+    // A zero average is a low bar, not an empty slot.
+    expect(slots[5]?.dataset["empty"]).toBeUndefined();
+    expect(slots[5]?.style.height).toBe("8%");
+  });
+
+  it("writes no-data text for a monitor without any hourly average", async () => {
+    window.localStorage.setItem("nightwatch:monitors-view", "cards");
+    fetchListMock.mockResolvedValue(list([item({ name: "Empty" })]));
+    renderPage();
+    await screen.findByRole("link", { name: "Empty" });
+    const card = screen.getByRole("link", { name: "Empty" }).closest("li");
+    expect(
+      within(card as HTMLElement).getAllByText("ไม่มีข้อมูล").length,
+    ).toBeGreaterThan(0);
+    expect(card?.querySelector('[aria-hidden="true"] i')).toBeNull();
+    expect(
+      within(card as HTMLElement).queryByText(/เวลาตอบสนองเฉลี่ยรายชั่วโมง/),
+    ).toBeNull();
   });
 });
 
@@ -582,52 +846,112 @@ describe("Overview success", () => {
   it("words every SSL level with its tone", async () => {
     const levels: [Item["ssl"], string, string][] = [
       [
-        { level: "ok", daysRemaining: 128, host: "h" },
+        {
+          level: "ok",
+          daysRemaining: 128,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
         "เหลือ 128 วัน",
         "text-foreground",
       ],
       [
-        { level: "caution", daysRemaining: 21, host: "h" },
+        {
+          level: "caution",
+          daysRemaining: 21,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
         "ใกล้หมดอายุ เหลือ 21 วัน",
         "text-caution",
       ],
       [
-        { level: "caution", daysRemaining: 30, host: "h" },
+        {
+          level: "caution",
+          daysRemaining: 30,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
         "ใกล้หมดอายุ เหลือ 30 วัน",
         "text-caution",
       ],
       [
-        { level: "danger", daysRemaining: 7, host: "h" },
+        {
+          level: "danger",
+          daysRemaining: 7,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
         "หมดอายุใน 7 วัน",
         "text-danger",
       ],
       [
-        { level: "danger", daysRemaining: 5, host: "h" },
+        {
+          level: "danger",
+          daysRemaining: 5,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
         "หมดอายุใน 5 วัน",
         "text-danger",
       ],
       [
-        { level: "expired", daysRemaining: -2, host: "h" },
+        {
+          level: "expired",
+          daysRemaining: -2,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
         "หมดอายุแล้ว เมื่อ 2 วันก่อน",
         "text-danger",
       ],
       [
-        { level: "expired", daysRemaining: null, host: "h" },
+        {
+          level: "expired",
+          daysRemaining: null,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
         "หมดอายุแล้ว",
         "text-danger",
       ],
       [
-        { level: "not_https", daysRemaining: null, host: null },
+        {
+          level: "not_https",
+          daysRemaining: null,
+          host: null,
+          issuer: null,
+          notAfter: null,
+        },
         "ไม่ใช้ HTTPS",
         "text-foreground-secondary",
       ],
       [
-        { level: "unreadable", daysRemaining: null, host: "h" },
+        {
+          level: "unreadable",
+          daysRemaining: null,
+          host: "h",
+          issuer: null,
+          notAfter: null,
+        },
         "อ่านใบรับรองไม่ได้",
         "text-foreground",
       ],
       [
-        { level: "no_data", daysRemaining: null, host: null },
+        {
+          level: "no_data",
+          daysRemaining: null,
+          host: null,
+          issuer: null,
+          notAfter: null,
+        },
         "ยังไม่มีข้อมูล",
         "text-foreground",
       ],
