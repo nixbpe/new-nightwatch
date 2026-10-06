@@ -150,12 +150,18 @@ async function waitForBlocked(blocker: PoolClient) {
     const waiters = await owner.sql.query<{
       pid: number;
       wait_event_type: string;
+      blockers: number[];
     }>(
-      `select pid, wait_event_type from pg_stat_activity where $1 = any(pg_blocking_pids(pid))`,
+      // Activity metadata is a snapshot; pg_blocking_pids is live. Require
+      // both observations for the same returned waiter before releasing it.
+      `select pid, wait_event_type, pg_blocking_pids(pid) as blockers
+       from pg_stat_activity
+       where $1 = any(pg_blocking_pids(pid)) and wait_event_type = 'Lock'`,
       [pid.rows[0]?.pid],
     );
     if (waiters.rows.length > 0) {
       expect(waiters.rows[0]?.wait_event_type).toBe("Lock");
+      expect(waiters.rows[0]?.blockers).toContain(pid.rows[0]?.pid);
       return {
         blockerPid: pid.rows[0]?.pid,
         waiterPid: waiters.rows[0]?.pid,
