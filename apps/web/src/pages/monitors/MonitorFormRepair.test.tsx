@@ -260,7 +260,7 @@ describe("a route Organization that is not the server-active one", () => {
     });
   });
 
-  it("does not read Organization A's detail after the user switched away before the save landed", async () => {
+  it("does not read origin organization detail after switching away before save completes", async () => {
     meMock.mockResolvedValue(threeOrgs(B));
     vi.mocked(updateActiveOrganization).mockResolvedValue(threeOrgs(C));
     const pending = deferred<{ monitor: ReturnType<typeof record> }>();

@@ -63,7 +63,6 @@ function renderPage(
     typeof Promise.withResolvers<Awaited<ReturnType<typeof fetchMeContext>>>
   >,
 ) {
-  // Memberships include ORG_A only; ORG_B stays unknown.
   fetchMeContextMock.mockResolvedValue({
     user: {
       id: "user-1",
@@ -160,7 +159,6 @@ describe("OrganizationNotificationSettingsPage", () => {
       await within(screen.getByRole("main")).findByText("Org A"),
     ).toBeInTheDocument();
     expect(screen.getByText("ตั้งค่าองค์กร")).toBeInTheDocument();
-    // The slug is the unique identifier; names may repeat.
     expect(screen.getByText("org-a")).toBeInTheDocument();
   });
 

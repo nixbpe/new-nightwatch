@@ -4,7 +4,6 @@ import { QueryClient } from "@tanstack/react-query";
 import { ME_CONTEXT_QUERY_KEY } from "./api/me";
 import { isInboxScopeChanged } from "./api/notifications";
 
-// `undefined` (not yet resolved) is distinct from null (resolved anonymous).
 export type ResolvedIdentity = string | null;
 
 type ClientSlot = {
@@ -247,7 +246,6 @@ export function hasContextPublicationClaim(
   return contextPublicationStore(queryClient).snapshot.claim === claim;
 }
 
-// A server-confirmed organization scope retires every older context publisher.
 export function publishTenantScope(queryClient: QueryClient): bigint {
   const claim = createContextPublicationClaim();
   claimContextPublication(queryClient, claim, "switch");

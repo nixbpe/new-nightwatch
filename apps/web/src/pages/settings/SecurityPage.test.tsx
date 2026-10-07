@@ -119,7 +119,7 @@ guardUnassignedNetwork();
 describe("SecurityPage enrollment", () => {
   beforeEach(resetAuthMocks);
 
-  it("keeps failed no-data context stable through StrictMode mount until actual page retry", async () => {
+  it("keeps failed context stable during StrictMode mount and retries only on page action", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -154,8 +154,7 @@ describe("SecurityPage enrollment", () => {
     await queryClient.cancelQueries();
     queryClient.clear();
   });
-  it("reports pending after enable alone — never claims enabled before first-code verification", async () => {
-    // The server keeps twoFactorEnabled=false until verifyTotp succeeds.
+  it("shows pending enrollment until the first TOTP code is verified", async () => {
     await enroll();
 
     expect(screen.getByText("กำลังตั้งค่า")).toBeInTheDocument();

@@ -1419,7 +1419,7 @@ describe("Overview Organization switch", () => {
     expect(screen.getByText("BetaMonitor")).toBeInTheDocument();
   });
 
-  it("does not show Organization A rows on B while B is still loading", async () => {
+  it("hides origin organization rows while the destination organization loads", async () => {
     const user = userEvent.setup();
     const pendingB = Promise.withResolvers<MonitorListResponse>();
     fetchListMock.mockImplementation((organizationId) =>

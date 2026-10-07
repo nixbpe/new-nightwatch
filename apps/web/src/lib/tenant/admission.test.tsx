@@ -163,7 +163,7 @@ function Flash() {
   );
 }
 const consume = consumeMonitorFlash;
-it("flash consumption settles null once with same node and focus; explicit same URL and fresh bookmark remain required", async () => {
+it("consumes flash state once without replacing the node or focus and resolves explicit revalidation and fresh bookmarks", async () => {
   const c = client();
   let loads = 0;
   const loader = async () => {
@@ -227,7 +227,7 @@ it("flash consumption settles null once with same node and focus; explicit same 
   fresh.dispose();
 });
 it.each(["save", "test"] as const)(
-  "real form %s refusal keeps draft node, withdraws scope and disables operations during delayed resolver; viewer retains refusal",
+  "keeps the form draft and disables operations during resolution after %s refusal, retaining refusal for viewers",
   async (operation) => {
     const c = client();
     const router = createMemoryRouter(
@@ -292,7 +292,7 @@ it.each(["save", "test"] as const)(
     router.dispose();
   },
 );
-it("real form failed required resolver retains disabled interaction and presents bootstrap error/retry", async () => {
+it("keeps form interaction disabled after required resolver failure and offers bootstrap retry", async () => {
   const c = client();
   const router = createMemoryRouter(
     [
@@ -357,7 +357,7 @@ it("real form failed required resolver retains disabled interaction and presents
   router.dispose();
 });
 it.each(["pause", "dialog"] as const)(
-  "real Detail %s refusal drops protected cards and tenant observers during delay/failure then preserves message after viewer retry",
+  "withdraws Detail cards and observers after %s refusal and preserves the message after viewer retry",
   async (action) => {
     const c = client();
     const router = createMemoryRouter(
@@ -454,7 +454,7 @@ function Operations() {
   );
 }
 it.each(["success", "failure"] as const)(
-  "required B %s wins late manual A and failed PATCH preserves confirmed selection",
+  "preserves required %s selection against late manual refresh and failed PATCH",
   async (outcome) => {
     const c = client();
     render(
@@ -511,7 +511,7 @@ it.each(["success", "failure"] as const)(
     );
   },
 );
-it("removed membership destroys real local form snapshot after required result", async () => {
+it("destroys the local form snapshot when required resolution confirms membership removal", async () => {
   const c = client();
   const router = createMemoryRouter(
     [
@@ -559,7 +559,7 @@ it("removed membership destroys real local form snapshot after required result",
   expect(screen.queryByDisplayValue("local draft")).toBeNull();
   router.dispose();
 });
-it("required refresh supersedes BOTH queued PATCH intents accepted before withdrawal; queued old intent cannot steal required admission", async () => {
+it("supersedes both queued PATCH intents during required refresh and prevents old intents from reopening admission", async () => {
   const c = client();
   render(
     <QueryClientProvider client={c}>
@@ -609,7 +609,7 @@ it("required refresh supersedes BOTH queued PATCH intents accepted before withdr
   expect(screen.getByTestId("pending")).toHaveTextContent("false");
 });
 it.each(["success", "failure"] as const)(
-  "same-org required %s retires running and queued PATCH; success permits a new intent only",
+  "retires running and queued PATCH during same-organization required %s and permits only new intents after success",
   async (outcome) => {
     const c = client();
     render(
@@ -663,7 +663,7 @@ it.each(["success", "failure"] as const)(
     }
   },
 );
-it("same generation queued PATCH success then failure retains successful confirmed selection", async () => {
+it("retains the successful selection when the next queued PATCH fails in the same generation", async () => {
   const c = client();
   render(
     <QueryClientProvider client={c}>
@@ -696,7 +696,7 @@ it("same generation queued PATCH success then failure retains successful confirm
   expect(screen.getByTestId("pending")).toHaveTextContent("false");
 });
 it.each(["user-b", null] as const)(
-  "real session A to %s retires publication before late manual/PATCH and queued intent completion",
+  "retires publication on session change to %s before late refresh, PATCH and queued completions",
   async (nextIdentity) => {
     sessionState.data = { user: { id: "user-1" } };
     const old = resolveQueryClientForIdentity("user-1");
@@ -754,7 +754,7 @@ it.each(["user-b", null] as const)(
     expect(vi.mocked(updateActiveOrganization)).toHaveBeenCalledTimes(1);
   },
 );
-it("adopted staged A mismatching first resolved B retires even without previous active registry entry", async () => {
+it("retires the adopted staged client when its identity differs from first resolution without an active registry entry", async () => {
   const old = resolveQueryClientForIdentity("user-1");
   sessionState.data = { user: { id: "user-b" } };
   vi.mocked(fetchMeContext).mockResolvedValue({
@@ -775,7 +775,7 @@ it("adopted staged A mismatching first resolved B retires even without previous 
   await screen.findByText(B);
   expect(old.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();
 });
-it("semantic command refuses explicit revalidation, later consumes once, and cannot clear a newer-location notice", async () => {
+it("rejects flash consumption during explicit revalidation and consumes once without clearing a newer notice", async () => {
   const c = client();
   let loads = 0;
   const loader = async () => {
@@ -824,7 +824,7 @@ it("semantic command refuses explicit revalidation, later consumes once, and can
   expect(loads).toBe(3);
   router.dispose();
 });
-it("INBOX_SCOPE_CHANGED required decision racing state consumption wins; failure cannot clear flash or reopen scope and retry consumes once", async () => {
+it("keeps INBOX_SCOPE_CHANGED resolution ahead of flash consumption and consumes once after failure and retry", async () => {
   const c = client();
   const router = createMemoryRouter(
     [{ path: "/flash", element: <Operations /> }],
@@ -933,7 +933,7 @@ it("scope replacement destroys local form snapshot before old values can reopen"
   expect(screen.queryByDisplayValue("local draft")).toBeNull();
   router.dispose();
 });
-it("real form identity replacement destroys input and local draft with SessionQueryProvider keyed boundary", async () => {
+it("destroys form input and local draft when SessionQueryProvider replaces identity", async () => {
   sessionState.data = { user: { id: "user-1" } };
   const router = createMemoryRouter(
     [
@@ -1027,7 +1027,7 @@ it("flash consumed state stays one-time on back and a fresh document router", as
   expect(screen.queryByText("created notice")).toBeNull();
   fresh.dispose();
 });
-it("concurrent duplicate semantic consumption before router null commit remains once", async () => {
+it("consumes concurrent duplicate flash commands once before the router commits null state", async () => {
   const c = client();
   const loader = async () => {
     await c.query({
@@ -1063,7 +1063,7 @@ it("concurrent duplicate semantic consumption before router null commit remains 
   expect(commits).toBe(1);
   router.dispose();
 });
-it("edit snapshot has only local draft and generic heading during required delay and failure, restores confirmed metadata after viewer retry", async () => {
+it("keeps only the edit draft and generic heading during resolution delay and failure, restoring metadata after viewer retry", async () => {
   const c = client();
   const router = createMemoryRouter(
     [
@@ -1184,7 +1184,7 @@ it.each(["create", "edit"] as const)(
     c.clear();
   },
 );
-it("retained conflict draft blocks settings invalidation/focus and reload control while resolver is delayed or failed, resumes after role-authorized confirmation", async () => {
+it("blocks conflict reload, settings invalidation and focus during resolver delay or failure until role-authorized confirmation", async () => {
   const c = client();
   const router = createMemoryRouter(
     [

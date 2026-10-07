@@ -32,7 +32,6 @@ const session: AuthSession = {
 
 type SqlResult = { rows: Record<string, unknown>[] };
 
-// Canned results; tests assert responses and audits, never the recorded SQL.
 function stubDatabase(
   queryHandler: (text: string, params: unknown[]) => SqlResult,
   clientHandler?: (text: string, params: unknown[]) => SqlResult,

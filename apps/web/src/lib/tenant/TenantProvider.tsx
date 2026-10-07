@@ -95,7 +95,6 @@ function sourceCurrent(source: SelfLeaveSource): boolean {
 
 type Membership = MeContextResponse["organizations"][number];
 
-// Switching organization clears this whole prefix so an in-flight response for the old tenant can't repopulate the new view.
 export const TENANT_QUERY_PREFIX = ["tenant"] as const;
 
 type TenantContextValue = {

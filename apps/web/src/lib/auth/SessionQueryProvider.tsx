@@ -64,7 +64,6 @@ export function SessionQueryProvider({
       bindQueryClientIdentity(boundary.client, identity);
       setBoundary({ ...boundary, identity });
     } else {
-      // Also covers the hydration mismatch: the adopted client belongs to another identity (loader/session race).
       setRetired([...retired, boundary.client]);
       setBoundary({
         identity,

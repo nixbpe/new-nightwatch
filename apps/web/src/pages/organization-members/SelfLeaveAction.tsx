@@ -102,7 +102,6 @@ export function SelfLeaveRouteBoundary({ children }: { children: ReactNode }) {
 
 const LEAVE_ATTRIBUTE = "data-self-leave";
 
-/** Navigation state that asks the destination page to focus its heading. */
 const SELF_LEFT_STATE = { selfLeft: true } as const;
 
 /**

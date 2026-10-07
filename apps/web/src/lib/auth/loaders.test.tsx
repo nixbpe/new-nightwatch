@@ -244,7 +244,7 @@ describe("requireAnonLoader (anonymous-only gate)", () => {
     expect(screen.queryByText("anon-area")).toBeNull();
   });
 
-  it("resumes the remembered return — query and hash included — and consumes it exactly once", async () => {
+  it("resumes the remembered return with query and hash and consumes it once", async () => {
     sessionState.data = { user: VERIFIED };
     rememberReturnTo("/settings/security?tab=sessions#current");
     const first = renderAt([anonOnly], "/anon-only");
@@ -415,12 +415,10 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
   });
 
   it("a failed prefetch does not become a router-level error", async () => {
-    // The in-tree query surfaces the error with its retry UI instead.
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockRejectedValue(new Error("api down"));
     renderAt([protectedWorkspace], "/workspace");
 
-    // The session client retries once, so the loader waits out a backoff.
     expect(
       await screen.findByText("protected-area", undefined, { timeout: 3000 }),
     ).toBeInTheDocument();
@@ -480,7 +478,6 @@ describe("workspaceLoader overview prefetch", () => {
     fetchMonitorListMock.mockRejectedValue(new Error("boom"));
     renderAt([protectedWorkspace], "/workspace");
 
-    // The identity client retries a failed query once (1 s) before the loader settles.
     expect(
       await screen.findByText("protected-area", {}, { timeout: 4000 }),
     ).toBeInTheDocument();
@@ -559,7 +556,7 @@ describe("audit log loaders", () => {
     ["a reversed", "?range=custom&from=2026-10-02&to=2026-10-01", false],
     ["a valid", "?range=custom&from=2026-10-01&to=2026-10-02", true],
   ])(
-    "%s custom range: list prefetch sent is %s (AC-11)",
+    "%s custom range: list prefetch sent is %s",
     async (_name, search, sent) => {
       sessionState.data = { user: VERIFIED };
       as("owner");
@@ -1221,7 +1218,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     ).toEqual(cachedMembers);
   });
 
-  it("keeps B's fresh context and directory when older A resolves after B", async () => {
+  it("preserves the latest context and directory when an older loader resolves last", async () => {
     sessionState.data = { user: VERIFIED };
     const staleA: MeContextResponse = {
       ...cachedOwnerContext,
@@ -1314,7 +1311,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     expect(fetchOrganizationMembersMock).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps B's tenant cache when delayed A resolves its session after B", async () => {
+  it("preserves the destination tenant cache when an older loader resolves its session late", async () => {
     const organizationA = "11111111-1111-4111-8111-111111111111";
     const organizationB = "22222222-2222-4222-8222-222222222222";
     const staleContextA: MeContextResponse = {
@@ -1435,7 +1432,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
   });
 
-  it("keeps the unavailable state when newer B fails before older A resolves", async () => {
+  it("keeps membership unavailable when the newer loader fails before an older one resolves", async () => {
     sessionState.data = { user: VERIFIED };
     const oldRequest = Promise.withResolvers<MeContextResponse>();
     const newRequest = Promise.withResolvers<MeContextResponse>();
@@ -1480,7 +1477,7 @@ describe("organizationMembersLoader (fresh membership gate)", () => {
     expect(fetchOrganizationMembersMock).not.toHaveBeenCalled();
   });
 
-  it("keeps the fresh no-A decision when an older context query resolves stale A", async () => {
+  it("preserves fresh membership removal when an older query returns stale membership", async () => {
     sessionState.data = { user: VERIFIED };
     const staleA: MeContextResponse = {
       ...cachedOwnerContext,
@@ -1605,7 +1602,7 @@ describe("verifyEmailLoader (anonymous-reachable resend hub)", () => {
     expect(await screen.findByText("verify-area")).toBeInTheDocument();
   });
 
-  it("stages nothing for signed-in visitors — they never run the preview query", async () => {
+  it("does not query invitation previews for signed-in visitors", async () => {
     sessionState.data = { user: UNVERIFIED };
     rememberInvitation("inv-5");
     renderAt([verifyEmail], "/verify-email");
@@ -1716,7 +1713,7 @@ describe("bootstrap response identity", () => {
   });
 
   it.each([workspaceLoader, organizationMembersLoader])(
-    "rejects a deferred B response after the loader verified A without publishing or tenant prefetch (%s)",
+    "rejects a deferred foreign-identity response without publication or tenant prefetch (%s)",
     async (loader) => {
       sessionState.data = { user: VERIFIED };
       const response = Promise.withResolvers<MeContextResponse>();

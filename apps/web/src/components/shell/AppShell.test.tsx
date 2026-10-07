@@ -617,7 +617,6 @@ describe("AppShell", () => {
     renderShell(<WorkspacePage />);
     await findScope("Org A", "เจ้าของ");
 
-    // Another session switches back to Org A after this tab selected B.
     fetchUnreadCountMock.mockRejectedValueOnce(new InboxScopeChangedError());
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
@@ -689,7 +688,7 @@ describe("AppShell", () => {
       `/organizations/${ORG_B}/audit-log`,
     ],
   ] as const)(
-    "switching to an organization where the role is %s moves the audit log %s to its list without filters (OD-14)",
+    "switching to an organization where the role is %s moves the audit log %s to its list without filters",
     async (role, _page, from, to) => {
       const other = { ...viewerOrg, role };
       fetchMeContextMock.mockResolvedValue(meContext([ownerOrg, other], ORG_A));
@@ -719,7 +718,7 @@ describe("AppShell", () => {
     `/organizations/${ORG_A}/audit-log?range=30d`,
     `/organizations/${ORG_A}/audit-log/evt-1`,
   ])(
-    "switching to an organization where the role is viewer sends %s to /workspace (OD-14)",
+    "switching to an organization where the role is viewer sends %s to /workspace",
     async (from) => {
       fetchMeContextMock.mockResolvedValue(
         meContext([ownerOrg, viewerOrg], ORG_A),
@@ -836,7 +835,7 @@ describe("AppShell", () => {
     ["auditor", true],
     ["viewer", false],
   ] as const)(
-    "shows the audit log leaf in the sidebar and ⌘K to a %s: %s (AC-01)",
+    "shows the audit log leaf in the sidebar and ⌘K to a %s: %s",
     async (role, visible) => {
       fetchMeContextMock.mockResolvedValue(
         meContext([{ ...ownerOrg, role }], ORG_A),
@@ -1184,7 +1183,7 @@ describe("AppShell", () => {
     expect(screen.queryByRole("button", { name: /องค์กร:/ })).toBeNull();
   });
   it.each(["organization", "account"] as const)(
-    "permanent current %s inbox mismatch stops automatic recovery, drops tenant view and supports explicit retry",
+    "stops automatic recovery after repeated %s inbox mismatch and offers explicit retry",
     async (scope) => {
       const ctx = meContext(
         scope === "account" ? [] : [ownerOrg],
@@ -1215,7 +1214,7 @@ describe("AppShell", () => {
       queryClient.clear();
     },
   );
-  it("concurrent known query and mark-all errors dedupe required recovery; late old-generation error cannot withdraw B", async () => {
+  it("deduplicates concurrent query and mark-all recovery and ignores retired generation errors", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
@@ -1264,7 +1263,7 @@ describe("AppShell", () => {
     await queryClient.cancelQueries();
     queryClient.clear();
   });
-  it("removed old query completion cannot trigger a resolver or displace confirmed B", async () => {
+  it("ignores removed query completions without resolving or displacing the confirmed organization", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
@@ -1353,7 +1352,7 @@ describe("AppShell", () => {
     await queryClient.cancelQueries();
     queryClient.clear();
   });
-  it("overlapping refetch old error is discarded by real query cancellation and cannot relabel newer same-object request", async () => {
+  it("ignores cancelled refetch errors without relabeling the newer request", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const { queryClient, router } = renderShell(<WorkspacePage />);
     await findScope("Org A", "เจ้าของ");
@@ -1522,7 +1521,7 @@ describe("AppShell", () => {
     queryClient.clear();
   });
   it.each(["success", "failure"] as const)(
-    "cached account-only notifications are withheld during current required %s, never fall back or keep mutation/link controls",
+    "withholds cached account-only notifications and actions during required %s resolution",
     async (outcome) => {
       fetchMeContextMock.mockResolvedValue(meContext([], null));
       fetchUnreadCountMock.mockResolvedValue({ unreadCount: 7 });
@@ -1681,7 +1680,7 @@ describe("AppShell", () => {
       queryClient.clear();
     },
   );
-  it("reset and consecutive popover opens keep completion ownership on the latest actual invocation", async () => {
+  it("keeps completion ownership on the latest popover open after reset and consecutive requests", async () => {
     const first: NotificationItem = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       scope: "account",
@@ -1742,7 +1741,7 @@ describe("AppShell", () => {
     await queryClient.cancelQueries();
     queryClient.clear();
   });
-  it("open remains pending through deferred invalidation and rejects navigation after a required generation wins during that await", async () => {
+  it("keeps open pending during invalidation and rejects navigation when required resolution supersedes it", async () => {
     const item: NotificationItem = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       scope: "account",
@@ -1804,7 +1803,7 @@ describe("AppShell", () => {
     queryClient.clear();
   });
   it.each(["open", "read-all"] as const)(
-    "R03 current-owned native %s scope error still resolves and publishes the server scope",
+    "resolves and publishes server scope after a current native %s scope error",
     async (operation) => {
       const item: NotificationItem = {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -1874,7 +1873,7 @@ describe("AppShell", () => {
     },
   );
   it.each(["open", "read-all"] as const)(
-    "R03 late native %s scope error cannot withdraw a superseding same-generation publication",
+    "ignores late native %s scope errors after a newer same-generation publication",
     async (operation) => {
       const item: NotificationItem = {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -1994,7 +1993,7 @@ describe("AppShell", () => {
       queryClient.clear();
     },
   );
-  it("current command mark-all refreshes its real scoped inbox; an old same-scope completion cannot invalidate a newer generation", async () => {
+  it("refreshes the current mark-all inbox and ignores old same-scope completions after generation change", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([], null));
     fetchUnreadCountMock.mockResolvedValue({ unreadCount: 1 });
     fetchNotificationsMock.mockResolvedValue({
@@ -2046,7 +2045,7 @@ describe("AppShell", () => {
     await queryClient.cancelQueries();
     queryClient.clear();
   });
-  it("actual SessionQueryProvider identity swap retires handed-off self-leave", async () => {
+  it("retires handed-off self-leave when SessionQueryProvider changes identity", async () => {
     resetQueryClientRegistry();
     const originalSession = sessionState.data;
     const oldResolver = Promise.withResolvers<MeContextResponse>();
@@ -2278,7 +2277,7 @@ describe("AppShell", () => {
     return resolver;
   }
   for (const destination of ["B", "workspace"] as const)
-    it(`self-leave settlement disconnects real A before ${destination}, StrictMode delivers/focuses once`, async () => {
+    it(`self-leave disconnects the origin organization before ${destination} and focuses once in StrictMode`, async () => {
       const focus = vi.spyOn(HTMLElement.prototype, "focus");
       const view = await startSelfLeave(true);
       const navigation = vi.spyOn(view.router, "navigate");
@@ -2311,7 +2310,7 @@ describe("AppShell", () => {
       await view.queryClient.cancelQueries();
       view.queryClient.clear();
     });
-  it("self-leave settlement preserves LAST_OWNER through real shell failure and resolver-only retry with fresh entry focus", async () => {
+  it("preserves LAST_OWNER through resolver failure and resolver-only retry with fresh entry focus", async () => {
     const view = await startSelfLeave();
     vi.mocked(leaveOrganization).mockRejectedValueOnce(
       new ApiError("LAST_OWNER", "last owner", 400),
@@ -2342,7 +2341,7 @@ describe("AppShell", () => {
     await view.queryClient.cancelQueries();
     view.queryClient.clear();
   });
-  it("self-leave settlement rejects foreign same-scope publication during own accepted publication before delivery", async () => {
+  it("rejects foreign same-scope publication before self-leave delivers its accepted result", async () => {
     const view = await startSelfLeave();
     const resolver = await confirmDeferred(view);
     let replaced = false;
@@ -2456,7 +2455,7 @@ describe("AppShell", () => {
     });
 
   for (const pending of ["navigation", "revalidation"] as const)
-    it(`self-leave settlement retires on LIVE pending ${pending} while rendered A location remains`, async () => {
+    it(`retires self-leave during pending ${pending} while the origin route remains rendered`, async () => {
       const blocked = Promise.withResolvers<null>();
       let memberLoads = 0;
       const view = await startSelfLeave(
@@ -2496,7 +2495,7 @@ describe("AppShell", () => {
       await view.queryClient.cancelQueries();
       view.queryClient.clear();
     });
-  it("self-leave settlement ErrorBoundary fallback aborts owned request while provider remains mounted", async () => {
+  it("aborts self-leave on ErrorBoundary fallback while the provider stays mounted", async () => {
     const errors = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -2542,7 +2541,7 @@ describe("AppShell", () => {
     view.queryClient.clear();
     errors.mockRestore();
   });
-  it("self-leave settlement aborted before handoff starts no resolver after real A unmount", async () => {
+  it("starts no resolver after the self-leave origin unmounts before handoff", async () => {
     const view = await startSelfLeave();
     const deletion =
       Promise.withResolvers<Awaited<ReturnType<typeof leaveOrganization>>>();
@@ -2575,7 +2574,7 @@ describe("AppShell", () => {
     view.queryClient.clear();
   });
 
-  it("self-leave settlement navigates from real withdrawn A when DELETE failed but resolver confirms removal", async () => {
+  it("navigates after failed DELETE when the resolver confirms removal from the withdrawn organization", async () => {
     const view = await startSelfLeave();
     vi.mocked(leaveOrganization).mockRejectedValueOnce(
       new ApiError("INTERNAL_ERROR", "transport failed", 500),
@@ -2598,7 +2597,7 @@ describe("AppShell", () => {
     await view.queryClient.cancelQueries();
     view.queryClient.clear();
   });
-  it("self-leave settlement successful DELETE with retained A announces failure and focuses new entry", async () => {
+  it("announces failure and focuses the new entry when successful DELETE leaves membership intact", async () => {
     const view = await startSelfLeave();
     const resolver = await confirmDeferred(view);
     await act(async () => {
@@ -2623,7 +2622,7 @@ describe("AppShell", () => {
     await view.queryClient.cancelQueries();
     view.queryClient.clear();
   });
-  it("self-leave settlement retired origin stays retired while same-path revalidation creates a fresh entry origin", async () => {
+  it("keeps the old self-leave origin retired when same-path revalidation creates a new entry", async () => {
     const blocked = Promise.withResolvers<null>();
     let loads = 0;
     let reload: () => Promise<unknown> = () => Promise.resolve(undefined);

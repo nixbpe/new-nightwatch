@@ -171,7 +171,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     resetQueryClientRegistry();
   });
 
-  it("user B never receives user A's cached data, and each loader prefetch lands in that identity's own client", async () => {
+  it("isolates account caches and loader prefetches by identity", async () => {
     // Logs which identity each fetch served; a cache leak would surface A's payload without a new fetch.
     const fetchLog: string[] = [];
     transport.mockImplementation(() => {
@@ -217,7 +217,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     expect(commitLog.slice(commitsBeforeB)).not.toContain("User A");
   });
 
-  it("document-resyncs when a fresh loader resolves B while the committed provider still serves A", async () => {
+  it("reloads the document when a fresh loader identity differs from the committed provider", async () => {
     const fetchLog: string[] = [];
     transport.mockImplementation(() => {
       const user = sessionStore.getFresh()?.user;

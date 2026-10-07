@@ -135,7 +135,7 @@ function TenantView() {
   );
 }
 
-it("keeps an A invitation pending and its draft through a confirmed same-org publication", async () => {
+it("keeps the invitation pending and its draft after same-organization publication", async () => {
   const post = Promise.withResolvers<InvitationCreateResponse>();
   vi.mocked(createInvitation).mockReturnValue(post.promise);
   vi.mocked(fetchMeContext).mockResolvedValue(context);
@@ -182,7 +182,7 @@ it("keeps an A invitation pending and its draft through a confirmed same-org pub
   expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
 });
 
-it("keeps a bookmarked B draft when A is republished without a switch", async () => {
+it("keeps a bookmarked organization draft when another active organization is republished", async () => {
   vi.mocked(fetchMeContext).mockResolvedValue(context);
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
     Promise.resolve({ ...aList, organizationId: id }),
@@ -209,7 +209,7 @@ it("keeps a bookmarked B draft when A is republished without a switch", async ()
   expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
 });
 
-it("keeps a bookmarked B invitation draft through confirmed A to B publication and settled navigation", async () => {
+it("keeps the bookmarked invitation draft when its organization becomes active and navigation settles", async () => {
   vi.mocked(fetchMeContext).mockResolvedValue(context);
   vi.mocked(updateActiveOrganization).mockResolvedValue({
     ...context,
@@ -281,7 +281,7 @@ it("keeps a bookmarked B invitation draft through confirmed A to B publication a
   expect(screen.getByLabelText("บทบาท")).toHaveValue("admin");
 });
 
-it("retains A on denied B, then rejects old A completion after confirmed B then A", async () => {
+it("retains the origin after denied switch and rejects its old completion after switching away and back", async () => {
   const post = Promise.withResolvers<InvitationCreateResponse>();
   vi.mocked(createInvitation).mockReturnValue(post.promise);
   vi.mocked(fetchMeContext).mockResolvedValue(context);
@@ -338,7 +338,7 @@ it("retains A on denied B, then rejects old A completion after confirmed B then 
 
 afterEach(() => vi.resetAllMocks());
 
-it("retires an A invitation on real tenant publication while navigation still holds A", async () => {
+it("retires the invitation after confirmed tenant change while the origin route remains rendered", async () => {
   const post = Promise.withResolvers<InvitationCreateResponse>();
   vi.mocked(createInvitation).mockImplementation(() => post.promise);
   vi.mocked(fetchMeContext).mockResolvedValue(context);
@@ -436,7 +436,7 @@ it.each([
     () => Promise.reject(new ApiError("PERMISSION_DENIED", "denied", 403)),
   ],
 ])(
-  "keeps B untouched by a late A cancel that %s after a confirmed switch",
+  "ignores late origin invitation cancel %s responses after a confirmed organization switch",
   async (_label, outcome) => {
     const row = (id: string, email: string) => ({
       organizationId: id,
@@ -545,7 +545,7 @@ it.each([
     () => Promise.reject(new ApiError("PERMISSION_DENIED", "denied", 403)),
   ],
 ])(
-  "keeps B untouched by a late A resend that %s after a confirmed switch",
+  "ignores late origin invitation resend %s responses after a confirmed organization switch",
   async (_label, outcome) => {
     const row = (id: string, email: string) => ({
       organizationId: id,

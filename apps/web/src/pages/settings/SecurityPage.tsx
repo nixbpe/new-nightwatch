@@ -9,7 +9,6 @@ import { PasswordCard } from "./PasswordCard";
 import { Card } from "../../components/ui/card";
 import { MockupFrame } from "../../components/ui/mockup-frame";
 
-// The server's twoFactorEnabled flag is the only source of the card's enabled state.
 export function SecurityPage() {
   const queryClient = useQueryClient();
   const meQuery = useQuery({
@@ -49,7 +48,6 @@ export function SecurityPage() {
     );
   }
 
-  // Refetching the shared me/context query also updates the shell's account block, which reads the same cache.
   const refreshStatus = async (): Promise<boolean | undefined> => {
     const refreshed = await meQuery.refetch();
     return refreshed.data?.user.twoFactorEnabled;

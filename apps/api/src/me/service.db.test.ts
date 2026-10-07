@@ -141,7 +141,6 @@ async function assertMirrors(selected: string | null) {
   ).toBe(true);
 }
 
-// PostgreSQL lock graph is the barrier; no timing delay establishes ordering.
 async function waitForBlocked(blocker: PoolClient) {
   const pid = await blocker.query<{ pid: number }>(
     "select pg_backend_pid() as pid",
@@ -235,7 +234,6 @@ describe("resolver state and lock convergence", () => {
           config === "begin isolation level repeatable read" &&
           ++attempts === 1
         ) {
-          // Concurrent fixture insertion is real SQL, not a mocked discovery result.
           await owner.sql.query(
             `insert into member (id, user_id, organization_id, role, created_at) values ($1, $2, $3, 'viewer', '2026-01-01')`,
             [crypto.randomUUID(), userId, orgIds[1]],

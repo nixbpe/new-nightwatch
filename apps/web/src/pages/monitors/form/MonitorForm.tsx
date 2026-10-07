@@ -106,7 +106,6 @@ export function MonitorForm({
     (item) => item.id === organizationId,
   );
 
-  // Pinned when the form opens: a refetch must not change what a save is checked against.
   const [initial] = useState(() => ({
     values: record === undefined ? defaultValues() : valuesFromRecord(record),
     base: record === undefined ? null : editBaseFromRecord(record),

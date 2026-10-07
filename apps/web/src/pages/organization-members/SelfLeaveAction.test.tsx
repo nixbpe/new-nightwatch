@@ -294,7 +294,7 @@ it("blocks a second confirm, cancel and Escape while the DELETE is pending", asy
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
 });
 
-it("explains LAST_OWNER, refreshes the server-confirmed context, stays on A and returns focus to the entry", async () => {
+it("explains LAST_OWNER, refreshes context, retains the organization and returns focus to the entry", async () => {
   vi.mocked(leaveOrganization).mockRejectedValue(
     new ApiError("LAST_OWNER", "last", 400),
   );
@@ -371,7 +371,7 @@ it("offers a retry of the context refresh, not of the DELETE, when the refresh f
 });
 
 it.each(["success", "LAST_OWNER"] as const)(
-  "keeps B untouched by a late A %s response after switching to B",
+  "ignores late origin self-leave %s responses after a confirmed organization switch",
   async (outcome) => {
     const pending =
       Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
@@ -435,7 +435,7 @@ it("keeps the LAST_OWNER explanation when the refresh fails and is retried", asy
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
 });
 
-it("applies a late A leave to A when the switch to B is denied", async () => {
+it("applies the late leave result to the origin when the organization switch is denied", async () => {
   const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
   vi.mocked(leaveOrganization).mockReturnValue(pending.promise);
   vi.mocked(updateActiveOrganization).mockRejectedValue(
@@ -460,7 +460,7 @@ it("applies a late A leave to A when the switch to B is denied", async () => {
   );
 });
 
-it("uses account destination when resolver returns B membership but no confirmed active selection", async () => {
+it("uses the account destination when the resolver returns membership without confirmed active selection", async () => {
   const user = await renderAs("viewer");
   await user.click(entry());
   vi.mocked(fetchMeContext).mockResolvedValueOnce(contextWith([ORG_B], null));
@@ -470,7 +470,7 @@ it("uses account destination when resolver returns B membership but no confirmed
   );
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
 });
-it("uses exact resolver C destination rather than a disagreeing DELETE B hint", async () => {
+it("uses the resolver destination when the DELETE hint names a different organization", async () => {
   const C = "33333333-3333-4333-8333-333333333333";
   const orgC = { ...ORG_B, id: C, name: "Gamma", slug: "gamma" };
   const user = await renderAs("viewer");

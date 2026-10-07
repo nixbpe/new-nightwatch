@@ -67,8 +67,6 @@ function MonitorFormForOrganization({
     retry: false,
   });
 
-  // What the form opened with. It outlives the membership refresh that follows a
-  // refusal (which empties `me` and the tenant queries), so typed values survive (AC-49).
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const record = detail.data?.monitor;
   if (snapshot === null && canWrite && (!editing || record !== undefined)) {
@@ -112,7 +110,6 @@ function MonitorFormForOrganization({
       </Page>
     );
   }
-  // Removed from the Organization: nothing typed stays on screen.
   if (me !== undefined && organization === undefined) return denied;
   if (snapshot !== null) {
     return (

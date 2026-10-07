@@ -103,7 +103,6 @@ async function gateVerifiedSession(
   return session;
 }
 
-// Fail closed: errors stay in the shared query for the shell's retry state.
 async function prefetchMeContext(
   userId: string,
 ): Promise<MeContextResponse | undefined> {
@@ -446,8 +445,6 @@ export async function organizationMembersLoader({
   }
   const previousContext =
     queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
-  // A prior context or member query may have started before this membership
-  // gate. Cancel it before the direct request can publish.
   if (
     isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
@@ -471,8 +468,6 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  // A bookmarked tenant route needs a fresh server membership decision, not a
-  // static context cache that could predate a revocation or role change.
   const context = await fetchMeContext()
     .then((fresh) => {
       assertContextIdentity(queryClient, fresh);

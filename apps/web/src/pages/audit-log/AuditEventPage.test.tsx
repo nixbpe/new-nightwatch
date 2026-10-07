@@ -76,7 +76,7 @@ afterEach(() => {
   localStorage.removeItem(PREFERENCES_KEY);
 });
 
-describe("AuditEventPage (AC-12, AC-18)", () => {
+describe("AuditEventPage", () => {
   it("shows time with zone, id, actor and role at the time, action code, category and focuses the h1", async () => {
     open(makeDetail());
     const title = await screen.findByRole("heading", {
@@ -179,7 +179,7 @@ describe("AuditEventPage (AC-12, AC-18)", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows a former member target without a name or link (OD-10)", async () => {
+  it("shows a former member target without a name or link", async () => {
     open(
       makeDetail({
         category: "member",
@@ -225,7 +225,7 @@ describe("AuditEventPage (AC-12, AC-18)", () => {
   });
 });
 
-describe("AuditEventPage changes (AC-14)", () => {
+describe("AuditEventPage changes", () => {
   const rowsOf = () =>
     within(screen.getByRole("table")).getAllByRole("row").slice(1);
 
@@ -407,7 +407,7 @@ describe("AuditEventPage export event (a-1, a-2)", () => {
   });
 });
 
-describe("AuditEventPage states and navigation (AC-13, AC-06, AC-18)", () => {
+describe("AuditEventPage states and navigation", () => {
   it("shows the shared not-found copy and a back link on a 404", async () => {
     open(new ApiError("AUDIT_EVENT_NOT_FOUND", "x", 404));
     expect(

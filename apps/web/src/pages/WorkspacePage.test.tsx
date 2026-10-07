@@ -353,7 +353,7 @@ describe("WorkspacePage context states", () => {
       expected: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
     },
   ])(
-    "does not republish denied A before retry confirms $name",
+    "withholds the denied organization until retry confirms $name",
     async ({ error, retryContext, expected }) => {
       fetchMeContextMock
         .mockResolvedValueOnce(meContext([ownerOrg], ORG_A))

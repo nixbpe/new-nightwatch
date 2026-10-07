@@ -355,7 +355,7 @@ describe("AcceptInvitationPage", () => {
     },
   );
 
-  it("does not publish A completion or erase B continuation after navigation", async () => {
+  it("ignores the previous invitation completion and preserves the destination continuation after navigation", async () => {
     const acceptance = Promise.withResolvers<{ organizationId: string }>();
     fetchInvitationMock.mockResolvedValue(invitation);
     acceptInvitationMock.mockReturnValue(acceptance.promise);

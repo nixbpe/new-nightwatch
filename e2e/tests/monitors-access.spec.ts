@@ -96,7 +96,7 @@ test.afterAll(async () => {
 const overview = () => `/organizations/${orgA}/monitors`;
 const detail = () => `${overview()}/${monitorId}`;
 
-test.describe("role x screen table (AC-02, AC-03)", () => {
+test.describe("monitor permissions by role and screen", () => {
   for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
     test(`${role}: Overview, Detail, new and edit screens`, async ({
       page,
@@ -176,7 +176,7 @@ test.describe("role x screen table (AC-02, AC-03)", () => {
   });
 });
 
-test.describe("two sessions change the role (AC-49)", () => {
+test.describe("monitor role changes across signed-in sessions", () => {
   test("form, Detail and dialog refuse after a demotion and keep typed values", async ({
     browser,
   }) => {
@@ -365,7 +365,7 @@ async function tabTo(page: Page, name: string | RegExp, max = 60) {
 }
 
 for (const theme of ["light", "dark"] as const) {
-  test.describe(`keyboard and screen structure, ${theme} theme (AC-20 to AC-23)`, () => {
+  test.describe(`monitor keyboard navigation and screen structure in the ${theme} theme`, () => {
     test.beforeEach(async ({ context }) => {
       await context.addInitScript((value) => {
         localStorage.setItem("nightwatch-theme", value);

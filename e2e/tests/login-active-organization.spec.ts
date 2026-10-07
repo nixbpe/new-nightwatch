@@ -6,7 +6,6 @@ import { createDatabase } from "../../packages/db/src/index.ts";
 import { resetFixture } from "../../apps/api/src/operator/provision-e2e-fixture";
 import { resolveDevEnv } from "../../scripts/dev-env.mjs";
 
-// Enrollment and final login proof must never persist secrets or cookies.
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
 const { env } = resolveDevEnv();
@@ -216,7 +215,6 @@ test("warm-cache scope change withdraws tenant and inbox use until deferred reso
     )
       scopeRequests++;
   });
-  // Assertions hold while the response is still under this test's barrier.
   expect(scopeRequests).toBe(0);
   releaseResolver.resolve();
   await expect(page.getByRole("main").getByRole("alert")).toContainText(
@@ -368,7 +366,6 @@ for (const action of ["switch", "leave", "revoke"] as const) {
           await expect
             .poll(async () => (await selection())?.last_active_tenant_id)
             .toBe(actorIdentity.organizationId);
-          // The context's replacement is usable only after the scope-change resolver.
           await expect(
             page.getByRole("heading", { name: "ภาพรวม", exact: true }),
           ).toBeVisible();

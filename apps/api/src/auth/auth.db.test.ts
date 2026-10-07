@@ -767,7 +767,7 @@ describe("verification continuation and explicit acceptance", () => {
   });
 });
 
-describe("concurrent acceptance race (QA-9 / SEC-005)", () => {
+describe("concurrent acceptance race", () => {
   it("accepts once under concurrency and cannot restore membership after owner removal", async () => {
     const owner = await signInOwner();
     const invite = await owner(
@@ -1427,7 +1427,6 @@ describe("TOTP challenge and session boundary", () => {
     ).toBe(401);
     await assertSelection(null);
 
-    // A backup code is not a TOTP: the authenticator endpoint refuses it.
     const wrongEndpoint = await pending(
       "POST",
       "/api/auth/two-factor/verify-totp",
@@ -1447,7 +1446,7 @@ describe("TOTP challenge and session boundary", () => {
       (sessionAfterChallenge.json as { user: { id: string } }).user.id,
     ).toBeTruthy();
 
-    await assertSelection(null); // Raw final auth has no selection side effect.
+    await assertSelection(null);
     const resolvedBackup = await pending(
       "POST",
       "/api/me/resolve-active-org",
@@ -1459,7 +1458,6 @@ describe("TOTP challenge and session boundary", () => {
     ).toBe(ORG_ID);
     await assertSelection(ORG_ID);
 
-    // The backup code is one-time: a fresh challenge reusing it is denied.
     await pending("POST", "/api/auth/sign-out");
     await pending("POST", "/api/auth/sign-in/email", {
       email: userEmail("totp"),

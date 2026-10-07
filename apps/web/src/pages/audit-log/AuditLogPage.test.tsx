@@ -90,7 +90,7 @@ afterEach(() => {
   localStorage.removeItem(PREFERENCES_KEY);
 });
 
-describe("AuditLogPage table (AC-02, AC-09, AC-17)", () => {
+describe("AuditLogPage table", () => {
   it("shows time in the preference zone with seconds, the zone name, actor role and no result column", async () => {
     listMock.mockResolvedValue(
       makeList([
@@ -169,7 +169,7 @@ describe("AuditLogPage table (AC-02, AC-09, AC-17)", () => {
     );
   });
 
-  it("shows the later of 365 days back and the recording start as the retained date (AC-09)", async () => {
+  it("shows the later of 365 days back and the recording start as the retained date", async () => {
     // Recording began 40 days before the load, so the log is retained from there, not from 365 days back.
     listMock.mockResolvedValue(
       makeList([makeEvent(0)], 1, {
@@ -210,7 +210,7 @@ describe("AuditLogPage table (AC-02, AC-09, AC-17)", () => {
   });
 });
 
-describe("AuditLogPage paging and filters (AC-02, AC-10)", () => {
+describe("AuditLogPage paging and filters", () => {
   const page1 = () =>
     makeList(
       Array.from({ length: 50 }, (_, i) => makeEvent(i)),
@@ -333,7 +333,7 @@ describe("AuditLogPage paging and filters (AC-02, AC-10)", () => {
   });
 });
 
-describe("AuditLogPage custom range (AC-11)", () => {
+describe("AuditLogPage custom range", () => {
   it("shows an error beside the field, keeps the values and sends no request for a reversed range", async () => {
     open("?range=custom&from=2026-10-02&to=2026-10-01");
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -461,7 +461,7 @@ describe("AuditLogPage same-tick filter changes (O1)", () => {
   });
 });
 
-describe("AuditLogPage states (AC-08)", () => {
+describe("AuditLogPage states", () => {
   const NO_DATA = /ยังไม่มีบันทึกกิจกรรมในช่วงที่เก็บไว้ \(ถึง 2025-10-03\)/;
   const NO_MATCH =
     /ไม่พบบันทึกที่ตรงกับตัวกรองนี้ ลองขยายช่วงเวลาหรือล้างตัวกรอง/;
@@ -622,7 +622,7 @@ describe("AuditLogPage states (AC-08)", () => {
   });
 });
 
-describe("AuditLogPage authorization (AC-05, AC-06)", () => {
+describe("AuditLogPage authorization", () => {
   it("makes no request for a viewer and renders only the denied card, focused", async () => {
     open("", undefined, "viewer");
     const heading = await screen.findByRole("heading", {
@@ -679,8 +679,8 @@ describe("AuditLogPage authorization (AC-05, AC-06)", () => {
   // by AuditExport.test.tsx's "does not render the button..." case.
 });
 
-describe("AuditLogPage Organization scope (AC-07)", () => {
-  it("drops A's rows and ignores A's late response once the active Organization moves to B", async () => {
+describe("AuditLogPage Organization scope", () => {
+  it("drops origin rows and ignores their late response after the active organization changes", async () => {
     const lateA = Promise.withResolvers<ReturnType<typeof makeList>>();
     listMock.mockReturnValue(lateA.promise);
     setTenant("owner", "owner");
@@ -708,7 +708,6 @@ describe("AuditLogPage Organization scope (AC-07)", () => {
       expect(listMock).toHaveBeenCalledTimes(1);
     });
 
-    // What TenantProvider.switchOrg does after the server confirms: publish B as active.
     act(() => {
       const claim = createContextPublicationClaim();
       claimContextPublication(queryClient, claim, "bootstrap");
@@ -750,7 +749,7 @@ describe("AuditLogPage Organization scope (AC-07)", () => {
   });
 });
 
-describe("AuditLogPage return from detail (AC-18, spec API)", () => {
+describe("AuditLogPage return from detail", () => {
   it("comes back to the same snapshot, page and row after opening an event", async () => {
     const user = userEvent.setup();
     const pageTwo = [makeEvent(60), makeEvent(61)];
@@ -806,7 +805,7 @@ describe("AuditLogPage return from detail (AC-18, spec API)", () => {
   });
 });
 
-describe("AuditLogPage focus (AC-18)", () => {
+describe("AuditLogPage focus", () => {
   it("returns focus to the row link the user came from", async () => {
     const events = [makeEvent(0), makeEvent(1)];
     listMock.mockResolvedValue(makeList(events));

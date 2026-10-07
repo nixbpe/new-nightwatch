@@ -315,7 +315,6 @@ export async function setActiveOrganization(
        where id = $2`,
       [organizationId, session.user.id],
     );
-    // Selection is account-global, so every session mirror moves with it.
     await client.query(
       `update session
        set active_organization_id = $1

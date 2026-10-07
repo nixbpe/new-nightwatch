@@ -71,7 +71,7 @@ describe("ProfilePage", () => {
     fetchMeContextMock.mockImplementation(() => Promise.resolve(meContext()));
   });
 
-  it("keeps failed no-data context stable through StrictMode mount until actual page retry", async () => {
+  it("keeps failed context stable during StrictMode mount and retries only on page action", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });

@@ -94,7 +94,6 @@ export function NotificationsPopover() {
       });
     },
   });
-  // A failed count must not read as zero; the loaded list carries the same unread count.
   const unreadCount =
     me === undefined
       ? undefined
@@ -222,7 +221,6 @@ export function NotificationsPopover() {
               <NotificationRows
                 items={list.data.items.slice(0, 5)}
                 onOpen={(id) => {
-                  // One open at a time, so a slow earlier open can't navigate away from the latest selection.
                   const admission =
                     getContextPublicationSnapshot(client).admission;
                   if (

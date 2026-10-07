@@ -113,7 +113,6 @@ let tenant: TenantStub = {
   switchOrg: () => Promise.resolve(false),
 };
 
-// The page reads the signed-in user id from the confirmed context.
 vi.mock("../lib/tenant/TenantProvider", () => ({
   useTenant: () => ({
     ...tenant,
@@ -199,7 +198,7 @@ describe("OrganizationMembersPage", () => {
   // needs one outcome to exercise the behavior unique to it, which is
   // outcome-independent: the draft survives a background member-list
   // refetch and pagination while the create is still pending.
-  it("keeps the A invitation mounted across refetch and pagination", async () => {
+  it("keeps the organization invitation mounted across refetch and pagination", async () => {
     const post = Promise.withResolvers<InvitationCreateResponse>();
     const nextPage = Promise.withResolvers<OrganizationMemberListResponse>();
     const refreshedPage =
@@ -569,7 +568,7 @@ describe("OrganizationMembersPage", () => {
     expect(await screen.findByText("Ada")).toBeInTheDocument();
   });
 
-  it("unmounts a pending invitation when fresh permission denies A", async () => {
+  it("unmounts a pending invitation when fresh permission denies its organization", async () => {
     const post = Promise.withResolvers<InvitationCreateResponse>();
     vi.mocked(createInvitation).mockReturnValue(post.promise);
     vi.mocked(fetchOrganizationMembers)
@@ -677,7 +676,7 @@ describe("OrganizationMembersPage", () => {
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });
 
-  it("keeps a delayed A page and its offset out of confirmed B scope", async () => {
+  it("keeps a delayed origin member page and offset out of the confirmed destination scope", async () => {
     const pendingInvitation = Promise.withResolvers<InvitationCreateResponse>();
     vi.mocked(createInvitation).mockReturnValue(pendingInvitation.promise);
     let resolveASecondPage!: (value: OrganizationMemberListResponse) => void;
@@ -803,7 +802,7 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByText("B-only")).toBeInTheDocument();
   });
 
-  it("keeps A scope, route, list, and offset when an A to B switch is denied", async () => {
+  it("keeps the origin scope, route, list and offset when an organization switch is denied", async () => {
     const aSecondPage: OrganizationMemberListResponse = {
       ...response,
       members: [{ ...firstMember, name: "A-second" }],
@@ -879,7 +878,7 @@ describe("OrganizationMembersPage", () => {
     expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeEnabled();
   });
 
-  it("keeps revoked A restricted until a fresh context confirms B", async () => {
+  it("keeps revoked organization access restricted until fresh context confirms a replacement", async () => {
     const bPage: OrganizationMemberListResponse = {
       organizationId: organizationBId,
       members: [
@@ -1274,7 +1273,7 @@ describe("OrganizationMembersPage", () => {
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
 
-  it("retires revoked A scope after the next list denial and routes to confirmed B", async () => {
+  it("retires revoked scope after the next list denial and routes to the confirmed replacement", async () => {
     const bPage: OrganizationMemberListResponse = {
       organizationId: organizationBId,
       members: [

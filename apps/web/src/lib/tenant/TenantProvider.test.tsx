@@ -1064,7 +1064,6 @@ describe("TenantProvider", () => {
   );
 
   it("a failed context load exposes the error and retryMe recovers", async () => {
-    // A failed /me lookup is an explicit, retryable error, never a perpetual pending state.
     fetchMeContextMock.mockRejectedValueOnce(new Error("server exploded"));
     fetchMeContextMock.mockResolvedValue(me);
     renderProvider(

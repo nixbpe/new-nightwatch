@@ -669,7 +669,7 @@ describe("Focus stays in the form when a pressed button goes away", () => {
   });
 });
 
-describe("Edit: origin change (AC-44)", () => {
+describe("Edit: origin change", () => {
   const changeUrl = (value: string) => {
     fireEvent.change(screen.getByLabelText("URL"), { target: { value } });
   };
@@ -1030,7 +1030,7 @@ describe("Server refusals of secret entries are placed beside the slot's field",
   });
 });
 
-describe("Secret hygiene (AC-25)", () => {
+describe("Secret hygiene", () => {
   type Rendered = ReturnType<typeof renderForm>;
 
   // Saves and tests call the API functions directly, never useMutation, so the

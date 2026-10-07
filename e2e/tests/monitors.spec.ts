@@ -330,7 +330,7 @@ test("a target that goes down and comes back reaches the inbox once each", async
   ).toEqual({ MONITOR_DOWN: 1, MONITOR_RECOVERED: 1 });
 });
 
-test("a notification of a deleted monitor stays and its link reads as not found (AC-19, AC-52)", async ({
+test("a notification of a deleted monitor stays and its link reads as not found", async ({
   page,
 }) => {
   const flap = await pool.query<{ id: string }>(
@@ -358,9 +358,7 @@ test("a notification of a deleted monitor stays and its link reads as not found 
   await expect(page.getByText("ไม่พบมอนิเตอร์นี้")).toBeVisible();
 });
 
-test("Resume shows unknown until a new result arrives (AC-19)", async ({
-  page,
-}) => {
+test("Resume shows unknown until a new result arrives", async ({ page }) => {
   test.setTimeout(3 * 60_000);
   const session = await signInApi(owner);
   const created = await session.request("POST", monitorPath(orgA), {

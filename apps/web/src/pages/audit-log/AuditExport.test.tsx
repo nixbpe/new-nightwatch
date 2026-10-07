@@ -125,7 +125,7 @@ afterEach(() => {
   localStorage.removeItem(PREFERENCES_KEY);
 });
 
-describe("export button (AC-05, AC-16, M-2, N-2)", () => {
+describe("export button", () => {
   it.each(["auditor", "viewer"] as const)(
     "does not render the button or the section and never asks for the exports of a %s",
     async (role) => {
@@ -212,7 +212,7 @@ describe("export button (AC-05, AC-16, M-2, N-2)", () => {
   });
 });
 
-describe("export dialog (M-3, M-4)", () => {
+describe("export dialog", () => {
   it("starts on the first format, shows the snapshot and the scope note, and scrolls inside", async () => {
     const user = userEvent.setup();
     open({ search: "?categories=member" });
@@ -415,7 +415,7 @@ describe("export dialog (M-3, M-4)", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("aborts a request that takes more than 15 s and gives Cancel and Escape back (N-4)", async () => {
+  it("aborts a request that takes more than 15 s and gives Cancel and Escape back", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({
       advanceTimers: (ms) => vi.advanceTimersByTime(ms),
@@ -446,7 +446,7 @@ describe("export dialog (M-3, M-4)", () => {
   });
 });
 
-describe("after the request is accepted (M-1, M-5, N-1)", () => {
+describe("after the request is accepted", () => {
   it("shows กำลังสร้างไฟล์… before the refetch lands, then the notice with working links", async () => {
     const user = userEvent.setup();
     const view = open();
@@ -514,7 +514,7 @@ describe("after the request is accepted (M-1, M-5, N-1)", () => {
   });
 });
 
-describe("my exports section (M-8, M-6, M-9, N-3)", () => {
+describe("my exports section", () => {
   it("is a captioned table with one live region and rows with their own button names", async () => {
     open({
       rows: [
@@ -832,7 +832,7 @@ describe("my exports section (M-8, M-6, M-9, N-3)", () => {
   });
 });
 
-describe("download (M-7)", () => {
+describe("download", () => {
   const ready = makeRecord({
     status: "ready",
     expiresAt: "2026-10-04T07:07:30.000Z",
@@ -935,7 +935,7 @@ describe("download (M-7)", () => {
   });
 });
 
-describe("403 during export (B-2, AC-06, AC-23)", () => {
+describe("403 during export", () => {
   const notice = () =>
     screen.findByText(
       "สิทธิ์ส่งออกของคุณเปลี่ยนแล้ว คุณยังดูบันทึกกิจกรรมได้ แต่ส่งออกและดาวน์โหลดไฟล์ไม่ได้",
@@ -1085,7 +1085,6 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
     });
     return queryClient;
   };
-  // A server that ignores the abort and answers 201 later must still change nothing.
   const lateCreated = () => {
     const late = Promise.withResolvers<{ export: AuditExportRecord }>();
     let signal: AbortSignal | undefined;
@@ -1199,7 +1198,7 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
   });
 });
 
-describe("hash and Organization scope (M-10, AC-07)", () => {
+describe("hash and Organization scope", () => {
   it("focuses the section heading when opened with #my-exports", async () => {
     open({
       hash: "#my-exports",
@@ -1220,7 +1219,7 @@ describe("hash and Organization scope (M-10, AC-07)", () => {
     expect(document.body).toHaveFocus();
   });
 
-  it("leaves no export row of A on screen once the active Organization moves to B", async () => {
+  it("removes origin export rows after the active organization changes", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
