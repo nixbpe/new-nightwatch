@@ -16,6 +16,7 @@ import {
   TIME_ZONE,
 } from "../format";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
+import { cn } from "@/lib/utils";
 import { UptimeStripMockup } from "./MonitorDetailMockups";
 
 export const NO_DATA = "ยังไม่มีข้อมูล";
@@ -133,12 +134,13 @@ export function DownBanner({
   );
 }
 
+/** `fresh` is false while the last refresh failed: the dot drops its pulse and its colour (MOT-01, CMP-01). */
 export function StatusCard({
   monitor,
-  code,
+  fresh,
 }: {
   monitor: Monitor;
-  code?: string;
+  fresh: boolean;
 }) {
   const { health, healthReason, consecutiveFailures } = monitor;
   const failing =
@@ -148,15 +150,23 @@ export function StatusCard({
     <section aria-labelledby="detail-status" className="flex flex-col gap-4">
       <SectionHeader
         id="detail-status"
-        code={code}
         title="สถานะปัจจุบัน"
         meta={
-          <span>
-            ข้อมูล ณ{" "}
-            <span className="font-mono">
-              <Time iso={monitor.dataAsOf} format={formatTimeWithSeconds} />
-            </span>{" "}
-            ({TIME_ZONE})
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-[6px] shrink-0 rounded-full",
+                fresh ? "live-pulse bg-primary" : "bg-foreground-secondary",
+              )}
+            />
+            <span>
+              ข้อมูล ณ{" "}
+              <span className="font-mono">
+                <Time iso={monitor.dataAsOf} format={formatTimeWithSeconds} />
+              </span>{" "}
+              ({TIME_ZONE})
+            </span>
           </span>
         }
       />

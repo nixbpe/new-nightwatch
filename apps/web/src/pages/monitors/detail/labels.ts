@@ -37,6 +37,16 @@ export function tlsFailureText(reason: string | null): string {
   return label === null ? "ใบรับรองไม่ถูกต้อง" : `ใบรับรองไม่ถูกต้อง: ${label}`;
 }
 
+export function failureText(
+  result: NonNullable<Monitor["lastResult"]>,
+): string | null {
+  if (result.failureReason === null) return null;
+  if (result.failureReason === "tls_invalid") {
+    return tlsFailureText(result.tlsReason);
+  }
+  return incidentReasonLabel(result.failureReason);
+}
+
 /** A truncated body was evaluated from its start (AC-33). */
 export const EVALUATED_FROM_PREFIX_TEXT = "ประเมินจากส่วนต้นของ response";
 

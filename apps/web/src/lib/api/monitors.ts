@@ -56,6 +56,8 @@ export const OVERVIEW_LIST_PARAMS = {
   offset: 0,
 };
 export const MONITOR_HISTORY_PAGE_SIZE = MONITOR_HISTORY_DEFAULT_LIMIT;
+// Rows per "load more" on the checks history page: the contract maximum of `limit`.
+export const MONITOR_CHECKS_CHUNK_SIZE = 50;
 export const MONITOR_RECENT_EVENTS_LIMIT = MONITOR_RECENT_EVENTS_DEFAULT;
 // The Overview and its recent-events card refetch on this interval without announcing it.
 export const MONITOR_REFETCH_INTERVAL_MS = 30_000;
@@ -102,18 +104,14 @@ export const monitorQueryKeys = {
       "detail",
       monitorId,
     ] as const,
-  checks: (
-    organizationId: string,
-    monitorId: string,
-    page: { limit: number; offset: number },
-  ) =>
+  // `useInfiniteQuery` of the checks history page: its own shape, never shared with a single-page query.
+  checksHistory: (organizationId: string, monitorId: string) =>
     [
       ...TENANT_QUERY_PREFIX,
       "monitors",
       organizationId,
-      "checks",
+      "checks-history",
       monitorId,
-      page,
     ] as const,
   incidents: (
     organizationId: string,

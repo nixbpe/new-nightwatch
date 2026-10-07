@@ -50,6 +50,16 @@ const liveRegion = () => {
   return region;
 };
 
+/** The legend is the paragraph that holds the glyph of the always-shown pause entry. */
+const legend = () => must(screen.getByText("▦").parentElement?.parentElement);
+const legendEntries = () =>
+  Array.from(legend().children).map((entry) => entry.textContent);
+
+function must<Value>(value: Value | null | undefined): Value {
+  if (value === null || value === undefined) throw new Error("missing value");
+  return value;
+}
+
 describe("series", () => {
   it("orders checks, gaps and pauses into one series of steps", () => {
     const series = buildSeries(props24h());
@@ -230,8 +240,14 @@ describe("series gaps, pauses and averages", () => {
     expect(
       container.querySelectorAll('[data-chart-part="check-error"]'),
     ).toHaveLength(1);
-    expect(screen.getByText(/× ตรวจแล้ว ไม่มีเวลาตอบสนอง/)).toBeInTheDocument();
-    expect(screen.getByText(/○ ตรวจไม่ได้/)).toBeInTheDocument();
+    expect(legendEntries()).toEqual([
+      "— เวลาตอบสนอง (แกนตั้ง: ms)",
+      "✕ ไม่ตอบสนอง",
+      "▦ หยุดชั่วคราว",
+      "▤ ไม่มีข้อมูล",
+      "┊ เปลี่ยนค่า",
+      "○ ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
+    ]);
   });
 
   it("weights the overall average by responseChecks, not by checks", () => {
@@ -275,19 +291,6 @@ describe("series gaps, pauses and averages", () => {
       "ค่าเฉลี่ยรายชั่วโมง 100 ms ถึง 300 ms สูงสุด 500 ms",
     );
     expect(summaryText(summary)).not.toContain("เฉลี่ย 200");
-  });
-
-  it("says in the legend that hours with only system-side errors read as no data, for 7 d and 30 d only", () => {
-    const note = /ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้/;
-    const { unmount } = render(<ResponseTimeChart {...props24h()} />);
-    expect(screen.queryByText(note)).toBeNull();
-    unmount();
-    render(
-      <ResponseTimeChart
-        {...props24h({ range: "7d", buckets: [empty("01:00", "02:00")] })}
-      />,
-    );
-    expect(screen.getByText(note)).toBeInTheDocument();
   });
 });
 
@@ -633,8 +636,9 @@ describe("ResponseTimeChart drawing", () => {
     expect(
       container.querySelectorAll('[data-chart-part="pause"]'),
     ).toHaveLength(1);
-    expect(screen.getByText("แถบลาย: ไม่มีข้อมูล")).toBeInTheDocument();
-    expect(screen.getByText("แถบเทา: หยุดชั่วคราว")).toBeInTheDocument();
+    expect(legendEntries()).toEqual(
+      expect.arrayContaining(["▤ ไม่มีข้อมูล", "▦ หยุดชั่วคราว"]),
+    );
   });
 
   it("marks a URL change and another config change differently", () => {
@@ -655,6 +659,131 @@ describe("ResponseTimeChart drawing", () => {
     expect(marks[0]).toHaveTextContent("URL");
     expect(marks[0]?.querySelector("title")).toHaveTextContent("เปลี่ยน URL");
     expect(marks[1]).toHaveTextContent("แก้ค่า");
+  });
+});
+
+describe("ResponseTimeChart legend (AC-78)", () => {
+  const noResponse = point("07:05", null);
+  const checkError = { ...point("07:10", null), checkError: true };
+
+  it("lists the always-shown entries in canvas order with canvas wording", () => {
+    render(<ResponseTimeChart {...props24h()} />);
+    expect(legendEntries()).toEqual([
+      "— เวลาตอบสนอง (แกนตั้ง: ms)",
+      "▦ หยุดชั่วคราว",
+      "▤ ไม่มีข้อมูล",
+      "┊ เปลี่ยนค่า",
+    ]);
+  });
+
+  it("adds ✕ only for a check without a response time and ○ only for a system-side error", () => {
+    const { unmount } = render(
+      <ResponseTimeChart
+        {...props24h({ buckets: [point("07:00", 182), noResponse] })}
+      />,
+    );
+    expect(legendEntries()).toContain("✕ ไม่ตอบสนอง");
+    expect(legendEntries().join()).not.toContain("○");
+    unmount();
+    render(
+      <ResponseTimeChart
+        {...props24h({ buckets: [point("07:00", 182), checkError] })}
+      />,
+    );
+    expect(legendEntries()).toContain("○ ตรวจไม่ได้ (ปัญหาฝั่งระบบ)");
+    expect(legendEntries().join()).not.toContain("✕");
+  });
+
+  it("names every kind the chart draws, keeps each glyph out of the accessible text and colours only ✕ as danger", () => {
+    const gap = {
+      at: T("07:12"),
+      endAt: T("07:25"),
+      avgMs: null,
+      maxMs: null,
+      checks: 0,
+    };
+    const { container } = render(
+      <ResponseTimeChart
+        {...props24h({
+          buckets: [point("07:00", 182), noResponse, checkError, gap],
+        })}
+      />,
+    );
+    for (const part of ["pause", "gap", "no-response", "check-error"]) {
+      expect(
+        container.querySelectorAll(`[data-chart-part="${part}"]`).length,
+      ).toBeGreaterThan(0);
+    }
+    const glyphs = Array.from(legend().querySelectorAll("span > span"));
+    expect(glyphs.map((glyph) => glyph.textContent)).toEqual([
+      "—",
+      "✕",
+      "▦",
+      "▤",
+      "┊",
+      "○",
+    ]);
+    for (const glyph of glyphs) {
+      expect(glyph).toHaveAttribute("aria-hidden", "true");
+      expect(glyph.classList.contains("text-danger")).toBe(
+        glyph.textContent === "✕",
+      );
+    }
+    const spoken = legend().cloneNode(true) as HTMLElement;
+    for (const glyph of spoken.querySelectorAll('[aria-hidden="true"]')) {
+      glyph.remove();
+    }
+    expect(
+      Array.from(spoken.children).map((entry) => entry.textContent.trim()),
+    ).toEqual([
+      "เวลาตอบสนอง (แกนตั้ง: ms)",
+      "ไม่ตอบสนอง",
+      "หยุดชั่วคราว",
+      "ไม่มีข้อมูล",
+      "เปลี่ยนค่า",
+      "ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
+    ]);
+  });
+});
+
+describe("ResponseTimeChart hint and live region (AC-76)", () => {
+  it("keeps the on-screen keyboard hint hidden from screen readers and a polite atomic live region", () => {
+    render(<ResponseTimeChart {...props24h()} />);
+    const hint = screen.getByText(
+      "เลือกกราฟด้วย Tab แล้วใช้ลูกศรซ้ายขวาเพื่อดูค่าแต่ละจุด",
+    );
+    expect(hint).toHaveAttribute("aria-hidden", "true");
+    expect(liveRegion()).toHaveAttribute("aria-live", "polite");
+    expect(liveRegion()).toHaveAttribute("aria-atomic", "true");
+  });
+});
+
+describe("ResponseTimeChart vertical axis (AC-78)", () => {
+  const ticks = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("svg text"))
+      .map((node) => node.textContent)
+      .filter((text) => /^[\d,]+$/.test(text));
+
+  it("scales its gridline numbers with the data and keeps the ms label", () => {
+    const low = render(
+      <ResponseTimeChart
+        {...props24h({ buckets: [point("07:00", 40), point("07:05", 80)] })}
+      />,
+    );
+    expect(ticks(low.container)).toEqual(["0", "20", "40", "60", "80"]);
+    expect(low.container.querySelector("svg")).toHaveTextContent("ms");
+    low.unmount();
+    const high = render(
+      <ResponseTimeChart
+        {...props24h({ buckets: [point("07:00", 182), point("07:05", 1204)] })}
+      />,
+    );
+    expect(ticks(high.container)).toEqual(["0", "500", "1,000"]);
+    expect(
+      Array.from(high.container.querySelectorAll("svg text")).some(
+        (node) => node.textContent === "ms",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -751,30 +880,18 @@ describe("ResponseTimeChart memo inputs", () => {
   });
 });
 
-describe("ResponseTimeChart clamped window caption", () => {
-  const window = { from: T("08:00"), to: T("12:00") };
-  const caption = "ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์";
-
-  it("explains a window start clamped to the creation time", () => {
-    render(
+describe("ResponseTimeChart data notes", () => {
+  it("leaves the creation-clamp and system-error-hours notes to the card, which shows them in the table view too", () => {
+    const { container } = render(
       <ResponseTimeChart
-        {...props24h()}
-        window={window}
+        {...props24h({ range: "7d", buckets: [empty("09:00", "10:00")] })}
+        window={{ from: T("08:00"), to: T("12:00") }}
         createdAt={T("10:00")}
       />,
     );
-    expect(screen.getByText(caption)).toBeInTheDocument();
-  });
-
-  it("stays silent when the monitor is older than the window", () => {
-    render(
-      <ResponseTimeChart
-        {...props24h()}
-        window={window}
-        createdAt={T("07:00")}
-      />,
-    );
-    expect(screen.queryByText(caption)).not.toBeInTheDocument();
+    expect(container.querySelector("svg")).not.toBeNull();
+    expect(screen.queryByText(/ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์/)).toBeNull();
+    expect(screen.queryByText(/ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้/)).toBeNull();
   });
 });
 

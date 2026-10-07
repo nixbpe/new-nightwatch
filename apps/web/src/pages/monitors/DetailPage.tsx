@@ -10,6 +10,7 @@ import { PageState } from "../../components/shell/PageState";
 import { Skeleton } from "../../components/shell/Skeleton";
 import { Alert } from "../../components/ui";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import { Notice } from "../../components/ui/notice";
 import { ApiError } from "../../lib/api/client";
@@ -22,15 +23,14 @@ import {
   pauseMonitor,
   resumeMonitor,
 } from "../../lib/api/monitors";
+import { cn } from "@/lib/utils";
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { AlertsCard } from "./detail/AlertsCard";
-import { ChecksHistoryCard } from "./detail/ChecksHistoryCard";
 import { ConfigCard } from "./detail/ConfigCard";
 import { IncidentsCard } from "./detail/IncidentsCard";
 import { IntervalText } from "./detail/IntervalText";
 import { LastResponseCard } from "./detail/LastResponseCard";
-import { LastResultCard } from "./detail/LastResultCard";
 import { MonitorEventsCard } from "./detail/MonitorEventsCard";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { SslCard } from "./detail/SslCard";
@@ -44,6 +44,7 @@ import {
   TIME_ZONE,
 } from "./format";
 import { HealthPill } from "./HealthPill";
+import { useDataFresh } from "./useDataFresh";
 import { useLeaveOnOrganizationSwitch } from "./useLeaveOnOrganizationSwitch";
 
 const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนแล้ว";
@@ -147,6 +148,7 @@ function DetailForMonitor({
         : MONITOR_REFETCH_INTERVAL_MS,
   });
 
+  const fresh = useDataFresh(detail);
   const notFound = isNotFound(detail.error);
   const denied = isDenied(detail.error);
   useEffect(() => {
@@ -421,9 +423,15 @@ function DetailForMonitor({
   const line = statusLine(monitor);
   const bannerShown =
     monitor.health === "down" && monitor.openIncident !== null;
+  // COL-08: a static glow in the badge's own Danger role while the incident is active and the data is fresh (`useDataFresh`).
+  const badgeGlow = bannerShown && fresh;
   const status = (
     <>
-      <HealthPill health={monitor.health} />
+      <span
+        className={cn("inline-flex rounded-full", badgeGlow && "glow-danger")}
+      >
+        <HealthPill health={monitor.health} />
+      </span>
       {line === null || bannerShown ? null : <span>{line}</span>}
       <span className="break-all">
         <span className="font-mono">{monitor.method}</span>{" "}
@@ -472,33 +480,33 @@ function DetailForMonitor({
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-8">
           <ResponseTimeCard
-            code="01"
             organizationId={organizationId}
             monitorId={monitorId}
             lastCheckAt={monitor.lastCheckAt}
             intervalSeconds={monitor.intervalSeconds}
             createdAt={monitor.createdAt}
           />
-          <StatusCard monitor={monitor} code="02" />
-          <LastResultCard monitor={monitor} code="03" />
+          <StatusCard monitor={monitor} fresh={fresh} />
           <MonitorEventsCard
-            code="04"
             organizationId={organizationId}
             monitorId={monitorId}
             headers={monitor.headers}
           />
           <IncidentsCard
-            code="05"
-            organizationId={organizationId}
-            monitorId={monitorId}
-          />
-          <ChecksHistoryCard
-            code="06"
             organizationId={organizationId}
             monitorId={monitorId}
           />
         </div>
         <aside className="flex min-w-0 flex-col gap-6">
+          <Card className="p-4">
+            <Link
+              to={`${overviewPath}/${monitorId}/checks`}
+              className="inline-flex min-h-6 items-center gap-1.5 self-start rounded-[4px] text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              ดูประวัติการตรวจ
+              <span aria-hidden="true">→</span>
+            </Link>
+          </Card>
           <ConfigCard monitor={monitor} />
           <AlertsCard
             monitor={monitor}
