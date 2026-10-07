@@ -53,7 +53,7 @@ import {
   noResponseTimes,
   NOW,
 } from "./detail-test-support";
-import { formatDateTime } from "./format";
+import { formatDateTime, TIME_ZONE } from "./format";
 import { deferred } from "./form-test-support";
 
 // The interval is read when a fetch starts or ends. It is long by default so that a refresh never takes a response a test queued for a load more; a test that exercises the interval shortens it just before the step it checks.
@@ -637,9 +637,12 @@ describe("Checks history URL changes", () => {
     expect(must(rows[0])).toHaveTextContent("ล้มเหลว");
     expect(must(rows[0])).toHaveTextContent("ไม่ผ่าน 1/1");
     expect(must(rows[1])).not.toHaveTextContent("เปลี่ยน URL");
+    // The list sits outside the table, so its time names the time zone itself (Typography principle).
     expect(
       screen.getByText(/เปลี่ยน URL เมื่อ/, { selector: "li" }),
-    ).toHaveTextContent(formatDateTime(changedAt));
+    ).toHaveTextContent(
+      `เปลี่ยน URL เมื่อ ${formatDateTime(changedAt)} (${TIME_ZONE}) เป็น https://new.acme.example/health`,
+    );
     await user.click(within(must(rows[0])).getByText("ไม่ผ่าน 1/1"));
     expect(within(must(rows[0])).getByText("เนื้อหามีข้อความ")).toBeVisible();
   });
