@@ -9,7 +9,9 @@ import { HairlineGrid } from "../../../components/ui/hairline-grid";
 import { ResponseTimeTable } from "../../../components/ui/response-time-table";
 import {
   buildSeries,
+  chartWindow,
   hasChecks,
+  HOURLY_CHECK_ERROR_NOTE,
   pausedThroughout,
   rangeStats,
   RANGE_LABELS,
@@ -81,6 +83,9 @@ function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.code === "MONITOR_NOT_FOUND";
 }
 
+// Caption segments read as one paragraph, the way the design canvas sets them.
+const SEPARATOR = " · ";
+
 const boundFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
   year: "numeric",
   month: "short",
@@ -88,7 +93,6 @@ const boundFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
-  fractionalSecondDigits: 3,
   hour12: false,
 });
 const formatBound = (iso: string) => boundFormat.format(new Date(iso));
@@ -100,9 +104,7 @@ export function ResponseTimeCard({
   lastCheckAt,
   intervalSeconds,
   createdAt,
-  code,
 }: {
-  code?: string;
   organizationId: string;
   monitorId: string;
   lastCheckAt: string | null;
@@ -110,7 +112,7 @@ export function ResponseTimeCard({
   createdAt: string;
 }) {
   const [range, setRange] = useState<ChartRange>("24h");
-  const [tableOpen, setTableOpen] = useState(false);
+  const [view, setView] = useState<"chart" | "table">("chart");
   const [announcement, setAnnouncement] = useState<{
     organizationId: string;
     monitorId: string;
@@ -169,6 +171,12 @@ export function ResponseTimeCard({
   }, [range, organizationId, monitorId, data, query.isFetching, query.isError]);
 
   const paused = chartProps !== undefined && pausedThroughout(chartProps);
+  // The chart and the table both draw this window, so both views carry its notes.
+  const window = chartProps === undefined ? undefined : chartWindow(chartProps);
+  const windowClamped =
+    window !== undefined &&
+    chartProps?.window !== undefined &&
+    window.from > Date.parse(chartProps.window.from);
   let body;
   if (denied || notFound) {
     body = (
@@ -179,33 +187,39 @@ export function ResponseTimeCard({
   } else if (chartProps !== undefined && (hasChecks(series) || paused)) {
     body = (
       <>
-        <Suspense fallback={<ChartLoading />}>
-          <ResponseTimeChart {...chartProps} />
-        </Suspense>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="self-start"
+          onClick={() => {
+            setView((current) => (current === "chart" ? "table" : "chart"));
+          }}
+        >
+          {view === "chart" ? "ดูข้อมูลกราฟเป็นตาราง" : "ดูข้อมูลเป็นกราฟ"}
+        </Button>
+        {view === "chart" ? (
+          <Suspense fallback={<ChartLoading />}>
+            <ResponseTimeChart {...chartProps} />
+          </Suspense>
+        ) : (
+          <ResponseTimeTable range={range} series={series} />
+        )}
+        {windowClamped ? (
+          <p className="text-xs text-foreground-secondary">
+            ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์
+          </p>
+        ) : null}
+        {range === "24h" ? null : (
+          <p className="text-xs text-foreground-secondary">
+            {HOURLY_CHECK_ERROR_NOTE}
+          </p>
+        )}
         <p className="text-sm">
           {paused && !hasChecks(series)
             ? "หยุดชั่วคราวตลอดช่วง ไม่มีการตรวจ"
             : summaryText(summarize(series))}
         </p>
-        <div className="flex flex-col items-start gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            aria-expanded={tableOpen}
-            aria-controls="response-time-table"
-            onClick={() => {
-              setTableOpen((open) => !open);
-            }}
-          >
-            ดูข้อมูลกราฟเป็นตาราง
-          </Button>
-          <div id="response-time-table" className="w-full">
-            {tableOpen ? (
-              <ResponseTimeTable range={range} series={series} />
-            ) : null}
-          </div>
-        </div>
       </>
     );
   } else if (chartProps !== undefined) {
@@ -248,7 +262,6 @@ export function ResponseTimeCard({
     >
       <SectionHeader
         id="detail-response-times"
-        code={code}
         title="เวลาตอบสนอง"
         meta={
           <SegmentedControl
@@ -263,10 +276,6 @@ export function ResponseTimeCard({
           />
         }
       />
-      <p className="text-xs text-foreground-secondary">
-        หน่วย: ms ช่วง: {RANGE_LABELS[range]} แหล่ง: ผลการตรวจของ NightWatch
-        เวลาแสดงตามเขตเวลา {TIME_ZONE}
-      </p>
       <p
         role="status"
         aria-live="polite"
@@ -282,27 +291,39 @@ export function ResponseTimeCard({
           : ""}
       </p>
       <p className="text-xs text-foreground-secondary">
-        p50/p95 ใช้ nearest-rank จากเวลาที่วัดได้และไม่เป็น null
-        รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง
-        “ไม่มีข้อมูล” จำนวนการตรวจนับ pass + fail ไม่นับปัญหาฝั่งระบบ
-        ล้มเหลวนับผล fail ไม่ใช่จำนวนเหตุการณ์
+        <span>หน่วย: ms</span>
+        {SEPARATOR}
+        <span>ช่วง: {RANGE_LABELS[range]}</span>
+        {SEPARATOR}
+        <span>แหล่ง: ผลการตรวจของ NightWatch</span>
+        {SEPARATOR}
+        <span>
+          p50/p95 จากเวลาที่วัดได้และไม่เป็น null
+          รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง
+          “ไม่มีข้อมูล” จำนวนการตรวจนับ pass + fail ไม่นับปัญหาฝั่งระบบ
+          ล้มเหลวนับผล fail ไม่ใช่จำนวนเหตุการณ์
+        </span>
+        {data === undefined ? null : (
+          <>
+            {SEPARATOR}
+            <span>
+              ช่วงข้อมูล: <Time iso={data.window.from} format={formatBound} />{" "}
+              ถึง <Time iso={data.window.to} format={formatBound} /> (
+              {TIME_ZONE})
+              {range === "24h"
+                ? null
+                : " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว"}
+            </span>
+          </>
+        )}
+        {data?.range === "24h" &&
+        data.points.length === MONITOR_RESPONSE_POINTS_MAX ? (
+          <>
+            {SEPARATOR}
+            <span>คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ</span>
+          </>
+        ) : null}
       </p>
-      {data === undefined ? null : (
-        <p className="text-xs text-foreground-secondary">
-          ช่วง scheduled_for:{" "}
-          <Time iso={data.window.from} format={formatBound} /> ถึง{" "}
-          <Time iso={data.window.to} format={formatBound} /> ({TIME_ZONE})
-          {range === "24h"
-            ? null
-            : " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว"}
-        </p>
-      )}
-      {data?.range === "24h" &&
-      data.points.length === MONITOR_RESPONSE_POINTS_MAX ? (
-        <p className="text-xs text-foreground-secondary">
-          คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ
-        </p>
-      ) : null}
       {stats === undefined ? (
         denied || notFound || query.isError ? null : (
           <div

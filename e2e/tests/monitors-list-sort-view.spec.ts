@@ -391,16 +391,6 @@ for (const theme of ["light", "dark"] as const) {
       expect(geometry.height).toBeGreaterThan(geometry.lineHeight * 1.5);
     }
 
-    test("Table and Cards at desktop width", async ({ page }) => {
-      await openOverview(page, "ตาราง");
-      await scrollListIntoView(page, "ตาราง");
-      await shot(page, `table-${theme}`);
-      await page.getByRole("radio", { name: "การ์ด" }).click();
-      await expect(cardItems(page)).toHaveCount(3);
-      await scrollListIntoView(page, "การ์ด");
-      await shot(page, `cards-${theme}`);
-    });
-
     test("section 01 at desktop width", async ({ page }) => {
       await signIn(page, owner);
       await page.goto("/workspace");

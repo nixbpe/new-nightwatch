@@ -15,7 +15,6 @@ import {
   axisTicks,
   buildSeries,
   chartWindow,
-  HOURLY_CHECK_ERROR_NOTE,
   describeEntry,
   RANGE_LABELS,
   type ResponseTimeChartProps,
@@ -116,10 +115,6 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
   const right = width - MARGIN.right;
   const bottom = HEIGHT - MARGIN.bottom;
   const window = chartWindow(props);
-  const windowClamped =
-    window !== undefined &&
-    dataWindow !== undefined &&
-    window.from > Date.parse(dataWindow.from);
   let from = window?.from ?? first?.at ?? 0;
   let to = window?.to ?? last?.end ?? 1;
   for (const pause of props.pauses) {
@@ -485,27 +480,32 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
         <span key={live.count}>{live.text}</span>
       </p>
       <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-secondary">
-        <span>เส้น: เวลาตอบสนอง</span>
-        <span>แถบเทา: หยุดชั่วคราว</span>
-        <span>แถบลาย: ไม่มีข้อมูล</span>
-        <span>เส้นประ: เปลี่ยน URL หรือแก้ค่า</span>
+        <span>
+          <span aria-hidden="true">—</span> เวลาตอบสนอง (แกนตั้ง: ms)
+        </span>
         {series.some((entry) => entry.kind === "no-response") ? (
-          <span>× ตรวจแล้ว ไม่มีเวลาตอบสนอง (เช่น หมดเวลา)</span>
+          <span>
+            <span aria-hidden="true" className="text-danger">
+              ✕
+            </span>{" "}
+            ไม่ตอบสนอง
+          </span>
         ) : null}
+        <span>
+          <span aria-hidden="true">▦</span> หยุดชั่วคราว
+        </span>
+        <span>
+          <span aria-hidden="true">▤</span> ไม่มีข้อมูล
+        </span>
+        <span>
+          <span aria-hidden="true">┊</span> เปลี่ยนค่า
+        </span>
         {series.some((entry) => entry.kind === "check-error") ? (
-          <span>○ ตรวจไม่ได้ (ปัญหาฝั่งระบบ)</span>
+          <span>
+            <span aria-hidden="true">○</span> ตรวจไม่ได้ (ปัญหาฝั่งระบบ)
+          </span>
         ) : null}
       </p>
-      {windowClamped ? (
-        <p className="text-xs text-foreground-secondary">
-          ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์
-        </p>
-      ) : null}
-      {range === "24h" ? null : (
-        <p className="text-xs text-foreground-secondary">
-          {HOURLY_CHECK_ERROR_NOTE}
-        </p>
-      )}
     </div>
   );
 }

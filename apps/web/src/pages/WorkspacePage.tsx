@@ -190,12 +190,23 @@ function OrganizationOverview({
                   มอนิเตอร์{" "}
                   <span className="font-mono">{data.summary.total}</span>
                 </span>
-                <span>
-                  ข้อมูล ณ{" "}
-                  <span className="font-mono">
-                    <Time iso={data.dataAsOf} format={formatTimeWithSeconds} />
-                  </span>{" "}
-                  (<span className="font-mono">{TIME_ZONE}</span>)
+                <span className="inline-flex items-center gap-1.5">
+                  {list.isError ? null : (
+                    <span
+                      aria-hidden="true"
+                      className="live-pulse size-[6px] shrink-0 rounded-full bg-primary"
+                    />
+                  )}
+                  <span>
+                    ข้อมูล ณ{" "}
+                    <span className="font-mono">
+                      <Time
+                        iso={data.dataAsOf}
+                        format={formatTimeWithSeconds}
+                      />
+                    </span>{" "}
+                    (<span className="font-mono">{TIME_ZONE}</span>)
+                  </span>
                 </span>
               </>
             )}

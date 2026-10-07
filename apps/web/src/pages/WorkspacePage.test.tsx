@@ -433,9 +433,17 @@ describe("WorkspacePage overview content", () => {
       await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" }),
     ).toBeInTheDocument();
     expect(screen.getByText("// overview")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 1, name: "ภาพรวม" }),
-    ).toBeInTheDocument();
+    const heading = screen.getByRole("heading", {
+      level: 1,
+      name: "ภาพรวม",
+    });
+    expect(heading).toBeInTheDocument();
+    // A fresh, successfully loaded list shows the live indicator beside "ข้อมูล ณ".
+    const header = heading.closest("header");
+    expect(header).not.toBeNull();
+    const liveDot = (header as HTMLElement).querySelector(".live-pulse");
+    expect(liveDot).toBeInTheDocument();
+    expect(liveDot).toHaveAttribute("aria-hidden", "true");
     const stats = screen.getByRole("region", { name: "สรุปสถานะ" });
     expect(within(stats).getAllByRole("link")).toHaveLength(4);
     const issues = screen
@@ -796,5 +804,11 @@ describe("WorkspacePage overview details", () => {
       await screen.findByText(/อัปเดตข้อมูลไม่สำเร็จ/),
     ).toBeInTheDocument();
     expect(screen.getAllByText("portal").length).toBeGreaterThan(0);
+    // A failed background refetch keeps the cached (now stale) data on screen,
+    // so the live indicator must not keep pulsing beside it (CMP-01, MOT-01).
+    const heading = screen.getByRole("heading", { level: 1, name: "ภาพรวม" });
+    const header = heading.closest("header");
+    expect(header).not.toBeNull();
+    expect((header as HTMLElement).querySelector(".live-pulse")).toBeNull();
   });
 });

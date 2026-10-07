@@ -1,12 +1,15 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
 import type {
-  CheckResultView,
   Monitor,
-  MonitorChecksResponse,
+  MonitorListResponse,
   MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,7 +46,7 @@ import {
   sectionOf,
 } from "./detail-test-support";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
-import { formatDateTime, formatTime } from "./format";
+import { formatDateTime, formatTime, TIME_ZONE } from "./format";
 import { deferred } from "./form-test-support";
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
@@ -102,6 +105,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  onlineManager.setOnline(true);
   vi.useRealTimers();
   vi.resetAllMocks();
 });
@@ -209,7 +213,6 @@ describe("Detail health and special states", () => {
     expect(await screen.findAllByText("รอตรวจครั้งแรก")).not.toHaveLength(0);
     expect(screen.getAllByText("ไม่ทราบสถานะ").length).toBeGreaterThan(0);
     expect(screen.getAllByText("ยังไม่มีข้อมูล")).toHaveLength(4);
-    expect(screen.getByText("ยังไม่มีผลการตรวจ")).toBeInTheDocument();
     expect(
       await screen.findByText("ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล"),
     ).toBeInTheDocument();
@@ -255,7 +258,6 @@ describe("Detail health and special states", () => {
     expect(
       (await screen.findAllByText("ตรวจไม่ได้ (ปัญหาฝั่งระบบ)")).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByText("ตรวจไม่ได้")).toBeInTheDocument();
     expect(screen.queryByText("ปกติ")).toBeNull();
     expect(screen.queryByText("ล่ม")).toBeNull();
   });
@@ -624,126 +626,16 @@ describe("Detail alerts card", () => {
   });
 });
 
-describe("Detail assertions", () => {
-  it("words every row as ผ่าน, ไม่ผ่าน or ไม่ได้ประเมิน and labels a cut value", async () => {
+describe("Detail last result (AC-84)", () => {
+  it("has no last-result card, its table, its cause line or its prefix label", async () => {
     showDetail(
       detail({
         health: "down",
-        assertions: [
-          { kind: "jsonPathEquals", path: "$.status", expected: "ok" },
-          { kind: "bodyContains", text: "ready" },
-          { kind: "responseTimeBelow", ms: 800 },
-        ],
-        lastResult: {
-          ...baseResult,
-          outcome: "fail",
-          httpStatus: 503,
-          responseTimeMs: 1204,
-          failureReason: "http_status",
-          assertions: [
-            {
-              kind: "jsonPathEquals",
-              expected: '"ok"',
-              actual: '"degraded and a very long value"',
-              actualType: "string",
-              actualTruncated: true,
-              status: "fail",
-              reason: "value_mismatch",
-            },
-            {
-              kind: "bodyContains",
-              expected: "ready",
-              actual: null,
-              actualType: null,
-              actualTruncated: false,
-              status: "pass",
-              reason: null,
-            },
-            {
-              kind: "responseTimeBelow",
-              expected: "800",
-              actual: null,
-              actualType: null,
-              actualTruncated: false,
-              status: "not_evaluated",
-              reason: "no_response",
-            },
-          ],
-        },
-      }),
-    );
-    renderDetail();
-    const table = await screen.findByRole("table", {
-      name: "ผลการตรวจล่าสุดต่อเงื่อนไข",
-    });
-    const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(4);
-    expect(rows[0]).toHaveTextContent("รหัสสถานะ");
-    expect(rows[0]).toHaveTextContent("503");
-    expect(rows[0]).toHaveTextContent("ไม่ผ่าน");
-    expect(rows[1]).toHaveTextContent("JSONPath เท่ากับ $.status");
-    expect(rows[1]).toHaveTextContent("ตัดแล้ว");
-    expect(rows[1]).toHaveTextContent("ไม่ผ่าน");
-    expect(rows[2]).toHaveTextContent("ผ่าน");
-    expect(rows[2]).not.toHaveTextContent("ไม่ผ่าน");
-    expect(rows[3]).toHaveTextContent("ไม่ได้ประเมิน");
-    expect(rows[3]).toHaveTextContent("800 ms");
-    expect(within(table).getAllByText("ตัดแล้ว")).toHaveLength(1);
-  });
-
-  it("shows the status row as not evaluated when there was no response", async () => {
-    showDetail(
-      detail({
-        health: "down",
-        lastResult: {
-          ...baseResult,
-          outcome: "fail",
-          httpStatus: null,
-          responseTimeMs: null,
-          failureReason: "tls_invalid",
-          tlsReason: "expired",
-        },
-      }),
-    );
-    renderDetail();
-    const table = await screen.findByRole("table", {
-      name: "ผลการตรวจล่าสุดต่อเงื่อนไข",
-    });
-    expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
-      "ไม่ได้ประเมิน",
-    );
-    expect(
-      screen.getByText("สาเหตุ ใบรับรองไม่ถูกต้อง: หมดอายุ"),
-    ).toBeInTheDocument();
-  });
-
-  it("words a TLS handshake failure as a failed secure connection, not an invalid certificate", async () => {
-    showDetail(
-      detail({
-        health: "down",
-        lastResult: {
-          ...baseResult,
-          outcome: "fail",
-          httpStatus: null,
-          responseTimeMs: null,
-          failureReason: "tls_invalid",
-          tlsReason: "handshake_failed",
-        },
-      }),
-    );
-    renderDetail();
-    expect(
-      await screen.findByText("สาเหตุ เชื่อมต่อแบบปลอดภัยไม่สำเร็จ"),
-    ).toBeInTheDocument();
-  });
-
-  it("shows the actual type of a type mismatch and the prefix label", async () => {
-    showDetail(
-      detail({
         assertions: [{ kind: "jsonPathEquals", path: "$.id", expected: "1" }],
         lastResult: {
           ...baseResult,
           outcome: "fail",
+          httpStatus: 503,
           failureReason: "assertion_failed",
           evaluatedFromPrefix: true,
           configVersion: 1,
@@ -762,103 +654,43 @@ describe("Detail assertions", () => {
       }),
     );
     renderDetail();
-    const table = await screen.findByRole("table", {
-      name: "ผลการตรวจล่าสุดต่อเงื่อนไข",
-    });
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    await screen.findByText("ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล");
     expect(
-      within(table).getByText(/ชนิดข้อมูลไม่ตรง \(ค่าจริงเป็น string\)/),
-    ).toBeInTheDocument();
+      screen.queryByRole("heading", { name: /ผลการตรวจล่าสุด/ }),
+    ).toBeNull();
     expect(
-      screen.getByText("ประเมินจากส่วนต้นของ response"),
-    ).toBeInTheDocument();
+      screen.queryByRole("table", { name: "ผลการตรวจล่าสุดต่อเงื่อนไข" }),
+    ).toBeNull();
+    expect(screen.queryByText(/ชนิดข้อมูลไม่ตรง/)).toBeNull();
+    expect(screen.queryByText("ประเมินจากส่วนต้นของ response")).toBeNull();
+    expect(screen.queryByText(/^สาเหตุ /)).toBeNull();
+    expect(screen.queryByText("HTTP 503")).toBeNull();
   });
 });
 
-function check(overrides: Partial<CheckResultView> = {}): CheckResultView {
-  return { ...baseResult, ...overrides };
-}
-
-describe("Detail check history", () => {
-  it("shows each check with its assertions and marks a URL change", async () => {
+describe("Detail checks history link", () => {
+  it("links to the checks history page and shows neither its table nor its pagination", async () => {
     showDetail(detail());
-    const checks: MonitorChecksResponse = {
-      checks: [
-        check({
-          scheduledFor: "2026-09-30T07:30:00.000Z",
-          checkedAt: "2026-09-30T07:30:00.000Z",
-          url: "https://new.acme.example/health",
-          outcome: "fail",
-          failureReason: "assertion_failed",
-          assertions: [
-            {
-              kind: "bodyContains",
-              expected: "ok",
-              actual: null,
-              actualType: null,
-              actualTruncated: false,
-              status: "fail",
-              reason: "text_not_found",
-            },
-          ],
-        }),
-        check({
-          scheduledFor: "2026-09-30T07:25:00.000Z",
-          checkedAt: "2026-09-30T07:25:00.000Z",
-          url: "https://api.acme.example/health",
-        }),
-      ],
-      page: { limit: 20, offset: 0, total: 2 },
-      urlChanges: [
-        {
-          at: "2026-09-30T07:28:00.000Z",
-          url: "https://new.acme.example/health",
-        },
-      ],
-    };
-    fetchChecksMock.mockResolvedValue(checks);
-    const user = userEvent.setup();
     renderDetail();
-    const region = await screen.findByRole("region", {
-      name: "ตารางประวัติการตรวจ",
-    });
-    // Only the history rows: the assertion tables inside them have rows of their own.
-    const rows = Array.from(
-      region.querySelectorAll<HTMLElement>(":scope > table > tbody > tr"),
-    );
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent("เปลี่ยน URL");
-    expect(rows[0]).toHaveTextContent("https://new.acme.example/health");
-    expect(rows[0]).toHaveTextContent("ล้มเหลว");
-    expect(rows[0]).toHaveTextContent("ไม่ผ่าน 1/1");
-    expect(rows[1]).not.toHaveTextContent("เปลี่ยน URL");
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    // The arrow is aria-hidden, so the accessible name is the label alone.
     expect(
-      screen.getByText(/เปลี่ยน URL เมื่อ/, { selector: "li" }),
-    ).toHaveTextContent(formatDateTime("2026-09-30T07:28:00.000Z"));
-
-    await user.click(within(must(rows[0])).getByText("ไม่ผ่าน 1/1"));
-    expect(within(must(rows[0])).getByText("เนื้อหามีข้อความ")).toBeVisible();
-  });
-
-  it("keeps a failing history inside its card", async () => {
-    showDetail(detail());
-    fetchChecksMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    renderDetail();
-    expect(
-      await screen.findByText("โหลดประวัติการตรวจไม่สำเร็จ"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Payments API",
+      screen.getByRole("link", { name: "ดูประวัติการตรวจ" }),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
     );
-    fetchChecksMock.mockResolvedValue(noChecks);
-    const card = sectionOf(
-      screen.getByRole("heading", { name: "ประวัติการตรวจ" }),
-    );
-    await userEvent
-      .setup()
-      .click(within(card).getByRole("button", { name: "ลองอีกครั้ง" }));
     expect(
-      await within(card).findByText("ยังไม่มีผลการตรวจ"),
-    ).toBeInTheDocument();
+      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "หน้าประวัติการตรวจ" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "ประวัติการตรวจ" }),
+    ).toBeNull();
+    expect(fetchChecksMock).not.toHaveBeenCalled();
   });
 });
 
@@ -1011,6 +843,369 @@ describe("Detail loading, failure and refetch", () => {
   });
 });
 
+describe("Detail data freshness (AC-81, AC-87)", () => {
+  const GLOW = "glow-danger";
+  const STALE = /อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ/;
+  const downWithIncident = () =>
+    detail({
+      health: "down",
+      consecutiveFailures: 3,
+      openIncident: {
+        startedAt: "2026-09-30T07:20:00.000Z",
+        reason: "http_status",
+      },
+    });
+
+  async function dataAsOfDot() {
+    const section = sectionOf(
+      await screen.findByRole("heading", { name: "สถานะปัจจุบัน" }),
+    );
+    return must(within(section).getByText(/^ข้อมูล ณ/).previousElementSibling);
+  }
+
+  function headerBadge() {
+    // The status line follows the title; the scope row above it has its own role pill.
+    const status = must(
+      screen.getByRole("heading", { level: 1 }).nextElementSibling,
+    );
+    const pill = must(status.querySelector("[data-slot=status-pill]"));
+    return { pill, wrapper: must(pill.parentElement) };
+  }
+
+  it("pulses the data-as-of dot while fresh, goes neutral after a failed refresh and pulses again after recovery", async () => {
+    showDetail(detail());
+    renderDetail();
+    const fresh = await dataAsOfDot();
+    expect(fresh).toHaveAttribute("aria-hidden", "true");
+    expect(fresh).toHaveClass("live-pulse");
+    expect(fresh).toHaveClass("bg-primary");
+    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+
+    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
+    expect(await screen.findByText(STALE)).toBeInTheDocument();
+    const stale = await dataAsOfDot();
+    expect(stale).toHaveClass("bg-foreground-secondary");
+    expect(stale).not.toHaveClass("live-pulse");
+    expect(stale).not.toHaveClass("bg-primary");
+    expect(document.querySelector(".live-pulse")).toBeNull();
+
+    showDetail(detail());
+    await waitFor(() => {
+      expect(screen.queryByText(STALE)).toBeNull();
+    });
+    const recovered = await dataAsOfDot();
+    expect(recovered).toHaveClass("live-pulse");
+    expect(recovered).toHaveClass("bg-primary");
+  });
+
+  it("glows the badge while an incident is active, drops the glow on a failed refresh and brings it back on recovery", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    const { pill, wrapper } = headerBadge();
+    expect(pill).toHaveTextContent("ล่ม");
+    expect(wrapper).toHaveClass("rounded-full");
+    expect(wrapper).toHaveClass(GLOW);
+    // Static glow: the dot is still the only live-pulse, and the badge keeps its neutral look (COL-01).
+    expect(wrapper.className).not.toMatch(/live-pulse|animate/);
+    expect(pill.className).not.toMatch(/glow|shadow/);
+    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    const pillClass = pill.className;
+
+    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
+    expect(await screen.findByText(STALE)).toBeInTheDocument();
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    expect(headerBadge().pill).toHaveTextContent("ล่ม");
+    expect(headerBadge().pill.className).toBe(pillClass);
+    expect(document.querySelector(".live-pulse")).toBeNull();
+
+    showDetail(downWithIncident());
+    await waitFor(() => {
+      expect(headerBadge().wrapper).toHaveClass(GLOW);
+    });
+    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+  });
+
+  // Offline, TanStack pauses the refetch (`fetchStatus: "paused"`) without an error: the data no longer refreshes, so it is not fresh (CMP-01).
+  it("drops the pulse of the dot while the refresh is paused offline and brings it back when it resumes", async () => {
+    showDetail(detail());
+    renderDetail();
+    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(document.querySelector(".live-pulse")).toBeNull();
+    });
+    const paused = await dataAsOfDot();
+    expect(paused).toHaveClass("bg-foreground-secondary");
+    expect(paused).not.toHaveClass("bg-primary");
+    // No new copy: a pause is not a failed refresh.
+    expect(screen.queryByText(STALE)).toBeNull();
+
+    // Time passes while it is paused, so the response that follows is stamped after the pause began.
+    vi.setSystemTime(NOW.getTime() + 1_000);
+    onlineManager.setOnline(true);
+    await waitFor(() => {
+      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    });
+    expect(await dataAsOfDot()).toHaveClass("bg-primary");
+  });
+
+  it("drops the badge glow while the refresh is paused offline and brings it back when it resumes", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    });
+    expect(headerBadge().pill).toHaveTextContent("ล่ม");
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(screen.queryByText(STALE)).toBeNull();
+
+    vi.setSystemTime(NOW.getTime() + 1_000);
+    onlineManager.setOnline(true);
+    await waitFor(() => {
+      expect(headerBadge().wrapper).toHaveClass(GLOW);
+    });
+    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+  });
+
+  // After a pause the query keeps the snapshot from before it, so a resumed fetch that has not succeeded yet must not make the cues fresh (Codex 4202249500). The clock moves on during the pause; the poll interval is mocked at 60 ms, so data counts as fresh for 120 ms.
+  const PAUSE_MS = 10 * 60_000;
+
+  it("keeps the dot and the glow off while the resumed fetch is pending, then restores both when it succeeds", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(document.querySelector(".live-pulse")).toBeNull();
+    });
+    vi.setSystemTime(NOW.getTime() + PAUSE_MS);
+    const resumed = deferred<{ monitor: Monitor }>();
+    fetchDetailMock.mockReturnValue(resumed.promise);
+    const calls = fetchDetailMock.mock.calls.length;
+    onlineManager.setOnline(true);
+    await waitFor(() => {
+      expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
+    });
+    // The fetch is in flight and `data` is still the snapshot from before the pause.
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+
+    await act(async () => {
+      resumed.resolve({ monitor: downWithIncident() });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+  });
+
+  it("stays not fresh when the resumed fetch fails", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(document.querySelector(".live-pulse")).toBeNull();
+    });
+    vi.setSystemTime(NOW.getTime() + PAUSE_MS);
+    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
+    onlineManager.setOnline(true);
+    expect(await screen.findByText(STALE)).toBeInTheDocument();
+    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+  });
+
+  it("keeps the dot and the glow off after a short pause while the resumed fetch is pending, however recent the snapshot is", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(document.querySelector(".live-pulse")).toBeNull();
+    });
+    // No time passes: the snapshot is still within the age limit when the query resumes (Codex 4202350103).
+    const resumed = deferred<{ monitor: Monitor }>();
+    fetchDetailMock.mockReturnValue(resumed.promise);
+    const calls = fetchDetailMock.mock.calls.length;
+    onlineManager.setOnline(true);
+    await waitFor(() => {
+      expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
+    });
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+
+    vi.setSystemTime(NOW.getTime() + 1_000);
+    await act(async () => {
+      resumed.resolve({ monitor: downWithIncident() });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+  });
+
+  it("keeps the dot and the glow on while a routine poll is in flight", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    const poll = deferred<{ monitor: Monitor }>();
+    fetchDetailMock.mockReturnValue(poll.promise);
+    const calls = fetchDetailMock.mock.calls.length;
+    await waitFor(() => {
+      expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
+    });
+    // Pending, no pause and no error: nothing flickers.
+    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    await act(async () => {
+      poll.resolve({ monitor: downWithIncident() });
+      await Promise.resolve();
+    });
+    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+  });
+
+  it("opens from a cached snapshot older than the limit with the dot and the glow off until the refetch succeeds", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      monitorQueryKeys.detail(A, MONITOR_ID),
+      { monitor: downWithIncident() },
+      { updatedAt: NOW.getTime() - PAUSE_MS },
+    );
+    const refetch = deferred<{ monitor: Monitor }>();
+    fetchDetailMock.mockReturnValue(refetch.promise);
+    renderDetail(A, MONITOR_ID, queryClient);
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    expect(fetchDetailMock).toHaveBeenCalled();
+
+    await act(async () => {
+      refetch.resolve({ monitor: downWithIncident() });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+  });
+
+  it.each([
+    ["the incident ends", () => detail({ health: "up", openIncident: null })],
+    [
+      "the monitor is paused",
+      () => detail({ status: "paused", health: "paused" }),
+    ],
+  ])("drops the badge glow when %s", async (_name, next) => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    showDetail(next());
+    await waitFor(() => {
+      expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    });
+    // The data is fresh again, so the dot keeps pulsing: no glow is not a stale state.
+    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+  });
+
+  it("does not glow a down monitor that has no open incident", async () => {
+    showDetail(detail({ health: "down", openIncident: null }));
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().pill).toHaveTextContent("ล่ม");
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+  });
+
+  it("leaves the Overview pills of the same down monitor without a glow", async () => {
+    const hour = Date.UTC(2026, 8, 30, 7);
+    fetchListMock.mockResolvedValue({
+      summary: { up: 0, down: 1, unknown: 0, paused: 0, total: 1, limit: 50 },
+      monitors: [
+        {
+          id: MONITOR_ID,
+          name: "Payments API",
+          url: "https://api.acme.example/health",
+          method: "GET",
+          intervalSeconds: 300,
+          status: "active",
+          health: "down",
+          healthReason: null,
+          lastKnownDown: false,
+          consecutiveFailures: 3,
+          lastCheckAt: "2026-09-30T07:30:00.000Z",
+          openIncident: {
+            startedAt: "2026-09-30T07:20:00.000Z",
+            reason: "http_status",
+          },
+          lastResponseTimeMs: 182,
+          responseSparkline: Array.from({ length: 24 }, (_, index) => ({
+            hourStart: new Date(hour - (23 - index) * 3_600_000).toISOString(),
+            avgMs: null,
+          })),
+          ssl: {
+            level: "ok",
+            daysRemaining: 128,
+            host: "api.acme.example",
+            issuer: null,
+            notAfter: null,
+          },
+          uptime: {
+            h24: { percent: 100, checks: 288, coveragePercent: 100 },
+            d30: { percent: 99.9, checks: 8640, coveragePercent: 100 },
+          },
+        },
+      ],
+      page: { limit: 25, offset: 0, total: 1 },
+      dataAsOf: DATA_AS_OF,
+    } satisfies MonitorListResponse);
+    showDetail(downWithIncident());
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    await user.click(
+      screen.getByRole("link", { name: "กลับไปรายการมอนิเตอร์" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        new RegExp(`^/organizations/${A}/monitors$`),
+      );
+    });
+    await screen.findAllByText("Payments API");
+    const pills = Array.from(
+      document.querySelectorAll("[data-slot=status-pill]"),
+    ).filter((pill) => pill.textContent === "ล่ม");
+    // The table and the cards both draw the pill.
+    expect(pills.length).toBeGreaterThan(0);
+    expect(document.querySelector('[class*="glow-"]')).toBeNull();
+    expect(document.querySelector('[class*="shadow-["]')).toBeNull();
+  });
+});
+
 describe("Detail structure", () => {
   it("orders the section headings as h2 under one h1", async () => {
     showDetail(detail());
@@ -1020,10 +1215,8 @@ describe("Detail structure", () => {
     const names = [
       "เวลาตอบสนอง",
       "สถานะปัจจุบัน",
-      "ผลการตรวจล่าสุดและ Assertions",
       "ฟีดเหตุการณ์",
       "เหตุการณ์",
-      "ประวัติการตรวจ",
       "การตั้งค่า",
       "การแจ้งเตือน",
       "SSL",
@@ -1031,9 +1224,10 @@ describe("Detail structure", () => {
     ];
     const headings = screen.getAllByRole("heading", { level: 2 });
     expect(headings).toHaveLength(names.length);
-    // The section code (01, 02) is aria-hidden, so the accessible name excludes it.
+    // AC-75: no section code in front of any title, hidden or not.
     names.forEach((name, index) => {
       expect(headings[index]).toHaveAccessibleName(name);
+      expect(headings[index]).toHaveTextContent(new RegExp(`^${name}$`));
     });
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
@@ -1179,6 +1373,45 @@ function chartTable() {
   ).getByRole("table");
 }
 
+const TOGGLE_TO_TABLE = "ดูข้อมูลกราฟเป็นตาราง";
+const TOGGLE_TO_CHART = "ดูข้อมูลเป็นกราฟ";
+const CHART_NAME = /กราฟเส้นเวลาตอบสนอง/;
+const KEYBOARD_HINT = "เลือกกราฟด้วย Tab แล้วใช้ลูกศรซ้ายขวาเพื่อดูค่าแต่ละจุด";
+const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+
+/** The chart's own polite region; the card's range announcement is another one. */
+function chartLiveRegion() {
+  return must(
+    must(
+      screen.getByRole("group", { name: CHART_NAME }).parentElement,
+    ).querySelector('[aria-live="polite"]'),
+  );
+}
+
+/** Looks past accessibility: a table that is only hidden would still be in the DOM. */
+function expectNoTableInDom() {
+  expect(screen.queryByRole("table", { hidden: true })).toBeNull();
+  expect(
+    screen.queryByRole("region", {
+      name: "ข้อมูลกราฟเวลาตอบสนอง",
+      hidden: true,
+    }),
+  ).toBeNull();
+}
+
+function expectNoChartInDom() {
+  expect(
+    screen.queryByRole("group", { name: CHART_NAME, hidden: true }),
+  ).toBeNull();
+  expect(document.querySelector("[data-chart-part]")).toBeNull();
+}
+
+function expectNoStateAttributes(toggle: HTMLElement) {
+  for (const attribute of ["aria-expanded", "aria-controls", "aria-pressed"]) {
+    expect(toggle).not.toHaveAttribute(attribute);
+  }
+}
+
 const T = (time: string) => `2026-09-30T${time}:00.000Z`;
 /** A time `minutes` after the start of the 24 h window that ends at the page's dataAsOf. */
 const inWindow = (minutes: number) =>
@@ -1214,6 +1447,9 @@ describe("Detail response-time chart", () => {
       await within(card).findByText("ยังไม่มีผลการตรวจ"),
     ).toBeInTheDocument();
     expect(within(card).queryByRole("group")).toBeNull();
+    expect(
+      within(card).queryByRole("button", { name: /^ดูข้อมูล/ }),
+    ).toBeNull();
   });
 
   it("tells a monitor with no results in the window from one that was never checked", async () => {
@@ -1243,6 +1479,9 @@ describe("Detail response-time chart", () => {
     ).toBeInTheDocument();
     expect(
       await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: TOGGLE_TO_TABLE }),
     ).toBeInTheDocument();
   });
 
@@ -1352,10 +1591,10 @@ describe("Detail response-time chart", () => {
     expect(
       await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
     ).toBeInTheDocument();
+    expect(within(card).getByText("หน่วย: ms")).toBeInTheDocument();
+    expect(within(card).getByText("ช่วง: 24 ชม.ล่าสุด")).toBeInTheDocument();
     expect(
-      within(card).getByText(
-        /หน่วย: ms ช่วง: 24 ชม.ล่าสุด แหล่ง: ผลการตรวจของ NightWatch/,
-      ),
+      within(card).getByText("แหล่ง: ผลการตรวจของ NightWatch"),
     ).toBeInTheDocument();
     expect(
       within(card).getByText(
@@ -1365,19 +1604,34 @@ describe("Detail response-time chart", () => {
     expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, MONITOR_ID, "24h");
   });
 
-  it("opens the same data as a real table with the keyboard", async () => {
+  it("swaps the chart for the same data as a real table with one toggle that keeps focus", async () => {
     showDetail(detail());
     fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
     const user = userEvent.setup();
     renderDetail();
-    const button = await screen.findByRole("button", {
-      name: "ดูข้อมูลกราฟเป็นตาราง",
-    });
-    expect(button).toHaveAttribute("aria-expanded", "false");
-    button.focus();
+    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
+    const group = await screen.findByRole("group", { name: CHART_NAME });
+    expectNoStateAttributes(toggle);
+    expectNoTableInDom();
+    // AC-76: the keyboard hint stays off the accessibility tree and the polite region stays.
+    expect(screen.getByText(KEYBOARD_HINT)).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(chartLiveRegion()).toHaveAttribute("aria-live", "polite");
+    expect(toggle.compareDocumentPosition(group) & FOLLOWING).toBeTruthy();
+
+    toggle.focus();
     await user.keyboard("{Enter}");
-    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAccessibleName(TOGGLE_TO_CHART);
+    expect(toggle).toHaveFocus();
+    expectNoStateAttributes(toggle);
+    // The inactive view is unmounted, not hidden.
+    expect(screen.queryByRole("group", { name: CHART_NAME })).toBeNull();
+    expect(screen.queryByText(KEYBOARD_HINT)).toBeNull();
+    expect(document.querySelector("[data-chart-part]")).toBeNull();
     const table = chartTable();
+    expect(toggle.compareDocumentPosition(table) & FOLLOWING).toBeTruthy();
     expect(table).toHaveAccessibleName(
       /เวลาตอบสนอง หน่วย ms ช่วง 24 ชม.ล่าสุด/,
     );
@@ -1391,10 +1645,13 @@ describe("Detail response-time chart", () => {
     expect(within(table).getByText("ไม่มีข้อมูล")).toBeInTheDocument();
     expect(within(table).getByText("หยุดชั่วคราว")).toBeInTheDocument();
     expect(within(table).getByText("เปลี่ยน URL")).toBeInTheDocument();
+
     await user.keyboard(" ");
-    expect(
-      screen.queryByRole("table", { name: /เวลาตอบสนอง หน่วย/ }),
-    ).toBeNull();
+    expect(toggle).toHaveAccessibleName(TOGGLE_TO_TABLE);
+    expect(toggle).toHaveFocus();
+    expectNoTableInDom();
+    expect(screen.getByRole("group", { name: CHART_NAME })).toBeInTheDocument();
+    expect(screen.getByText(KEYBOARD_HINT)).toBeInTheDocument();
   });
 
   it.each([
@@ -1680,7 +1937,7 @@ function liveRange(
     ],
   };
 }
-function renderResponseCard() {
+function renderResponseCard(createdAt = "2026-09-01T00:00:00.000Z") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -1694,7 +1951,7 @@ function renderResponseCard() {
         monitorId={MONITOR_ID}
         lastCheckAt={DATA_AS_OF}
         intervalSeconds={300}
-        createdAt="2026-09-01T00:00:00.000Z"
+        createdAt={createdAt}
       />
     </QueryClientProvider>
   );
@@ -1799,9 +2056,10 @@ describe("response-time state and selection", () => {
     await waitFor(() => {
       expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "2", "2"]);
     });
-    expect(screen.getByText(/p50\/p95 ใช้ nearest-rank/)).toHaveTextContent(
+    expect(screen.getByText(/^p50\/p95 จากเวลาที่วัดได้/)).toHaveTextContent(
       "ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล”",
     );
+    expect(screen.queryByText(/nearest-rank/)).toBeNull();
   });
 
   it("hides previous KPIs during rapid selections, ignores late completion, announces latest once and never auto-refetch", async () => {
@@ -1981,6 +2239,442 @@ describe("response-time state and selection", () => {
     expect(screen.queryByText("888 ms")).toBeNull();
     expect(screen.queryByText("999 ms")).toBeNull();
   });
+});
+
+const POPULATION =
+  "p50/p95 จากเวลาที่วัดได้และไม่เป็น null รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล” จำนวนการตรวจนับ pass + fail ไม่นับปัญหาฝั่งระบบ ล้มเหลวนับผล fail ไม่ใช่จำนวนเหตุการณ์";
+const UTC_NOTE =
+  " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว";
+const RANGE_TEXT = {
+  "24h": "24 ชม.ล่าสุด",
+  "7d": "7 วันล่าสุด",
+  "30d": "30 วันล่าสุด",
+} as const;
+const CAP_TEXT = "คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ";
+
+function captionElement() {
+  return must(screen.getByText("หน่วย: ms").closest("p"));
+}
+
+/**
+ * The one caption paragraph of AC-75: segments joined by " · ", every segment HEAD showed in the
+ * state still present, and no other paragraph carrying one of them.
+ */
+function expectCaption(
+  range: keyof typeof RANGE_TEXT,
+  options: { window?: { from: string; to: string }; capped?: boolean } = {},
+) {
+  const caption = captionElement();
+  expect(caption).toHaveClass("text-xs", "text-foreground-secondary");
+  const segments = [
+    "หน่วย: ms",
+    `ช่วง: ${RANGE_TEXT[range]}`,
+    "แหล่ง: ผลการตรวจของ NightWatch",
+    POPULATION,
+  ];
+  const times = Array.from(caption.querySelectorAll("time"));
+  if (options.window === undefined) {
+    expect(times).toHaveLength(0);
+  } else {
+    expect(times.map((time) => time.getAttribute("datetime"))).toEqual([
+      options.window.from,
+      options.window.to,
+    ]);
+    segments.push(
+      `ช่วงข้อมูล: ${must(times[0]).textContent} ถึง ${must(times[1]).textContent} (${TIME_ZONE})${range === "24h" ? "" : UTC_NOTE}`,
+    );
+  }
+  if (options.capped === true) segments.push(CAP_TEXT);
+  expect(Array.from(caption.children).map((part) => part.textContent)).toEqual(
+    segments,
+  );
+  expect(caption.textContent).toBe(segments.join(" · "));
+  const holders = Array.from(document.querySelectorAll("p")).filter((node) =>
+    /หน่วย: ms|ช่วงข้อมูล:|p50\/p95 จาก|คำนวณจากผลตรวจล่าสุด/.test(
+      node.textContent,
+    ),
+  );
+  expect(holders).toEqual([caption]);
+  expect(
+    caption.contains(screen.getByTestId("response-range-announcement")),
+  ).toBe(false);
+}
+
+const points = (count: number) =>
+  Array.from({ length: count }, () => ({
+    at: DATA_AS_OF,
+    responseTimeMs: 20,
+    outcome: "pass" as const,
+  }));
+
+describe("response-time caption (AC-75)", () => {
+  it("shows unit, range, source, time zone and the population before any data arrives", () => {
+    fetchResponseTimesMock.mockReturnValue(
+      deferred<MonitorResponseTimesResponse>().promise,
+    );
+    renderResponseCard();
+    expectCaption("24h");
+  });
+
+  it.each([
+    ["3 results", 3, false],
+    ["1,439 results, one below the cap", 1439, false],
+    ["1,440 results, at the cap", 1440, true],
+  ])(
+    "adds the window bounds for 24 h with %s, and the cap only at 1,440",
+    async (_name, count, capped) => {
+      fetchResponseTimesMock.mockResolvedValue({
+        ...noResponseTimes,
+        points: points(count),
+      });
+      renderResponseCard();
+      await waitFor(() => {
+        expectKpis([
+          "20 ms",
+          "20 ms",
+          String(count).replace(/(\d)(?=(\d{3})$)/, "$1,"),
+          "0",
+        ]);
+      });
+      expectCaption("24h", { window: noResponseTimes.window, capped });
+    },
+  );
+
+  it.each(["7d", "30d"] as const)(
+    "adds the window bounds and the UTC-hour note for %s but never the cap",
+    async (range) => {
+      fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
+        Promise.resolve(
+          requested === "24h" ? noResponseTimes : liveRange(requested),
+        ),
+      );
+      renderResponseCard();
+      await waitFor(() => {
+        expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+      });
+      const user = userEvent.setup();
+      await user.click(
+        screen.getByRole("radio", {
+          name: range === "7d" ? "7 วัน" : "30 วัน",
+        }),
+      );
+      await waitFor(() => {
+        expectKpis(["20 ms", "40 ms", "4", "1"]);
+      });
+      expectCaption(range, { window: liveRange(range).window });
+    },
+  );
+
+  it.each([
+    ["a failed load", new Error("offline")],
+    ["a denied read", new ApiError("MEMBERSHIP_DENIED", "denied", 403)],
+    ["a missing monitor", new ApiError("MONITOR_NOT_FOUND", "not found", 404)],
+  ])(
+    "keeps unit, range, source, time zone and population after %s",
+    async (_name, error) => {
+      fetchResponseTimesMock.mockRejectedValue(error);
+      renderResponseCard();
+      await waitFor(() => {
+        expect(screen.queryByLabelText("กำลังโหลดสรุปเวลาตอบสนอง")).toBeNull();
+      });
+      expectCaption("24h");
+    },
+  );
+
+  it("keeps the bounds and the cap of the last good response while a refetch fails", async () => {
+    fetchResponseTimesMock.mockResolvedValue({
+      ...noResponseTimes,
+      points: points(1440),
+    });
+    const { client } = renderResponseCard();
+    await waitFor(() => {
+      expectKpis(["20 ms", "20 ms", "1,440", "0"]);
+    });
+    fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
+    await act(async () => {
+      await client.refetchQueries({
+        queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+      });
+    });
+    await screen.findByText(/อัปเดตกราฟไม่สำเร็จ/);
+    expectCaption("24h", { window: noResponseTimes.window, capped: true });
+  });
+});
+
+const hourlyRange = (
+  range: "7d" | "30d",
+): Extract<MonitorResponseTimesResponse, { range: "7d" | "30d" }> => ({
+  ...liveRange(range),
+  window: { from: T("05:00"), to: DATA_AS_OF },
+  buckets: [
+    {
+      hourStart: T("05:00"),
+      avgMs: 100,
+      maxMs: 150,
+      checks: 12,
+      responseChecks: 12,
+    },
+    {
+      hourStart: T("06:00"),
+      avgMs: null,
+      maxMs: null,
+      checks: 0,
+      responseChecks: 0,
+    },
+    {
+      hourStart: T("07:00"),
+      avgMs: 300,
+      maxMs: 500,
+      checks: 12,
+      responseChecks: 12,
+    },
+  ],
+});
+
+/** What a screen reader hears, step by step, when the chart is walked with the keyboard. */
+async function chartSteps(
+  user: ReturnType<typeof userEvent.setup>,
+  count: number,
+) {
+  screen.getByRole("group", { name: CHART_NAME }).focus();
+  const region = chartLiveRegion();
+  const steps: string[] = [];
+  for (let step = 0; step < count; step++) {
+    await user.keyboard(step === 0 ? "{Home}" : "{ArrowRight}");
+    steps.push(region.textContent);
+  }
+  return steps;
+}
+
+function tableSteps() {
+  return within(chartTable())
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => {
+      const cells = within(row)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent);
+      return {
+        time: must(within(row).getByRole("rowheader").textContent),
+        cells,
+      };
+    });
+}
+
+/** Every table row names the same time and value (or kind) as the chart step at its position. */
+function expectSameSteps(
+  steps: string[],
+  rows: ReturnType<typeof tableSteps>,
+  hourly: boolean,
+) {
+  expect(rows).toHaveLength(steps.length);
+  rows.forEach((row, index) => {
+    const step = must(steps[index]);
+    expect(step.startsWith(row.time)).toBe(true);
+    const [average, ...rest] = row.cells;
+    const note = must(rest.at(-1));
+    if (average === "–") {
+      expect(step).toContain(note.split(", ")[0]);
+    } else {
+      expect(step).toContain(`${must(average)} ms`);
+      if (hourly) expect(step).toContain(`${must(rest[0])} ms`);
+    }
+  });
+}
+
+describe("response-time view toggle (AC-76, AC-77)", () => {
+  function mockRanges() {
+    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+      Promise.resolve(range === "24h" ? responseTimes24h : hourlyRange(range)),
+    );
+  }
+
+  it("keeps the chosen view across 24 h, 7 d and 30 d and lists the same steps in both views", async () => {
+    mockRanges();
+    const user = userEvent.setup();
+    renderResponseCard();
+    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
+
+    // 24 h: chart first, then the table.
+    const steps24 = await chartSteps(user, 5);
+    await user.click(toggle);
+    expectSameSteps(steps24, tableSteps(), false);
+
+    // The view does not follow the range: 7 d opens in the table the user chose.
+    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    expect(
+      await screen.findByRole("button", { name: TOGGLE_TO_CHART }),
+    ).toBeInTheDocument();
+    expect(chartTable()).toHaveAccessibleName(/7 วันล่าสุด/);
+    expect(screen.queryByRole("group", { name: CHART_NAME })).toBeNull();
+    const rows7 = tableSteps();
+    await user.click(screen.getByRole("button", { name: TOGGLE_TO_CHART }));
+    expectSameSteps(await chartSteps(user, 3), rows7, true);
+
+    // The range does not follow the view: 30 d opens in the chart.
+    await user.click(screen.getByRole("radio", { name: "30 วัน" }));
+    expect(
+      await screen.findByRole("group", { name: /ช่วง 30 วันล่าสุด/ }),
+    ).toBeInTheDocument();
+    expectNoTableInDom();
+    const steps30 = await chartSteps(user, 3);
+    await user.click(screen.getByRole("button", { name: TOGGLE_TO_TABLE }));
+    expect(chartTable()).toHaveAccessibleName(/30 วันล่าสุด/);
+    expectSameSteps(steps30, tableSteps(), true);
+    expect(screen.getByRole("radio", { name: "30 วัน" })).toBeChecked();
+
+    // Back to 24 h from the table: the range changes, the view stays.
+    await user.click(screen.getByRole("radio", { name: "24 ชม." }));
+    expect(
+      await screen.findByRole("button", { name: TOGGLE_TO_CHART }),
+    ).toBeInTheDocument();
+    expect(chartTable()).toHaveAccessibleName(/24 ชม.ล่าสุด/);
+  });
+
+  it("keeps the toggle and the range control in place and leaves KPIs, summary, caption and announcement mounted", async () => {
+    mockRanges();
+    const user = userEvent.setup();
+    const { client } = renderResponseCard();
+    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
+    const range = screen.getByRole("radiogroup");
+    const kpis = must(screen.getByText("p50").closest("dl"));
+    const summary = screen.getByText(/^เฉลี่ย 529 ms สูงสุด 1,204 ms/);
+    const caption = captionElement();
+    const announcement = screen.getByTestId("response-range-announcement");
+    const slot = Array.from(must(toggle.parentElement).children).indexOf(
+      toggle,
+    );
+    const swapped = () => screen.getByRole("group", { name: CHART_NAME });
+    expect(range.compareDocumentPosition(toggle) & FOLLOWING).toBeTruthy();
+    expect(toggle.compareDocumentPosition(swapped()) & FOLLOWING).toBeTruthy();
+
+    fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
+    await act(async () => {
+      await client.refetchQueries({
+        queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+      });
+    });
+    const warning = await screen.findByText(/อัปเดตกราฟไม่สำเร็จ/);
+
+    for (const label of [TOGGLE_TO_TABLE, TOGGLE_TO_CHART]) {
+      await user.click(screen.getByRole("button", { name: label }));
+      expect(screen.getByRole("button", { name: /^ดูข้อมูล/ })).toBe(toggle);
+      expect(screen.getByRole("radiogroup")).toBe(range);
+      expect(
+        Array.from(must(toggle.parentElement).children).indexOf(toggle),
+      ).toBe(slot);
+      expect(must(screen.getByText("p50").closest("dl"))).toBe(kpis);
+      expect(screen.getByText(/^เฉลี่ย 529 ms สูงสุด 1,204 ms/)).toBe(summary);
+      expect(captionElement()).toBe(caption);
+      expect(screen.getByTestId("response-range-announcement")).toBe(
+        announcement,
+      );
+      expect(screen.getByText(/อัปเดตกราฟไม่สำเร็จ/)).toBe(warning);
+    }
+  });
+
+  it("announces the range from its own element in the chart view and in the table view", async () => {
+    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+      Promise.resolve(range === "24h" ? noResponseTimes : liveRange(range)),
+    );
+    const user = userEvent.setup();
+    renderResponseCard();
+    const announcement = screen.getByTestId("response-range-announcement");
+    expect(announcement).toHaveAttribute("role", "status");
+    expect(announcement).toHaveAttribute("aria-live", "polite");
+    expect(captionElement().contains(announcement)).toBe(false);
+
+    await user.click(await screen.findByRole("radio", { name: "7 วัน" }));
+    await user.click(
+      await screen.findByRole("button", { name: TOGGLE_TO_TABLE }),
+    );
+    await waitFor(() => {
+      expect(announcement).toHaveTextContent(
+        "7 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+      );
+    });
+    expect(chartTable()).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "30 วัน" }));
+    await waitFor(() => {
+      expect(announcement).toHaveTextContent(
+        "30 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+      );
+    });
+    expect(screen.getByTestId("response-range-announcement")).toBe(
+      announcement,
+    );
+    expect(chartTable()).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: TOGGLE_TO_CHART }));
+    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    await waitFor(() => {
+      expect(announcement).toHaveTextContent(
+        "7 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
+      );
+    });
+    expect(screen.getByRole("group", { name: CHART_NAME })).toBeInTheDocument();
+  });
+});
+
+describe("response-time data notes in both views", () => {
+  const CLAMP = "ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์";
+  const HOURLY =
+    "ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้ (ปัญหาฝั่งระบบ) แสดงเป็นไม่มีข้อมูล เพราะไม่อยู่ในสรุปรายชั่วโมง";
+  const OLD = "2026-09-01T00:00:00.000Z";
+  const young24h: MonitorResponseTimesResponse = {
+    ...noResponseTimes,
+    points: [
+      { at: inWindow(1330), responseTimeMs: 100, outcome: "pass" },
+      { at: inWindow(1435), responseTimeMs: 120, outcome: "pass" },
+    ],
+  };
+
+  it.each([
+    ["24h", "an old monitor", OLD, false, false],
+    ["24h", "a monitor created 2 h ago", inWindow(1320), true, false],
+    ["7d", "an old monitor", OLD, false, true],
+    ["30d", "an old monitor", OLD, false, true],
+    ["7d", "a monitor created inside the window", T("06:00"), true, true],
+  ] as const)(
+    "shows each note once, with the same copy, in the chart and the table for %s of %s",
+    async (range, _monitor, createdAt, clamped, hourly) => {
+      fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
+        Promise.resolve(
+          requested === "24h" ? young24h : hourlyRange(requested),
+        ),
+      );
+      const user = userEvent.setup();
+      renderResponseCard(createdAt);
+      if (range !== "24h") {
+        await user.click(
+          await screen.findByRole("radio", {
+            name: range === "7d" ? "7 วัน" : "30 วัน",
+          }),
+        );
+      }
+      const toggle = await screen.findByRole("button", {
+        name: TOGGLE_TO_TABLE,
+      });
+      const chartRoot = must(
+        screen.getByRole("group", { name: CHART_NAME }).parentElement,
+      );
+      const clampNotes = screen.queryAllByText(CLAMP);
+      const hourlyNotes = screen.queryAllByText(HOURLY);
+      expect(clampNotes).toHaveLength(clamped ? 1 : 0);
+      expect(hourlyNotes).toHaveLength(hourly ? 1 : 0);
+      // The chart component no longer owns them, so the swap cannot take them away.
+      for (const note of [...clampNotes, ...hourlyNotes]) {
+        expect(chartRoot.contains(note)).toBe(false);
+      }
+
+      await user.click(toggle);
+      expectNoChartInDom();
+      expect(chartTable()).toBeInTheDocument();
+      expect(screen.queryAllByText(CLAMP)).toEqual(clampNotes);
+      expect(screen.queryAllByText(HOURLY)).toEqual(hourlyNotes);
+    },
+  );
 });
 
 it("announces an empty latest selection once after failed load and retry, without moving focus", async () => {

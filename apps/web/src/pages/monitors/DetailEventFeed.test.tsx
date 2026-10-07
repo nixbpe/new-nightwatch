@@ -4,6 +4,7 @@ import type {
   LastResponse,
   MonitorEvent,
   MonitorEventsResponse,
+  MonitorIncidentsResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -444,6 +445,169 @@ describe("Event feed states", () => {
         expect.any(String),
         { limit: 20, offset: 20 },
       );
+    });
+  });
+});
+
+function eventRows(count: number): MonitorEvent[] {
+  return Array.from({ length: count }, (_, index): MonitorEvent => ({
+    id: `event:${String(index)}`,
+    at: AT,
+    kind: "paused",
+    actor: { kind: "member_hidden" },
+  }));
+}
+
+function incidentRows(count: number): MonitorIncidentsResponse["incidents"] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    startedAt: AT,
+    endedAt: AT,
+    durationSeconds: 60,
+    startReason: "http_status",
+    startHttpStatus: 503,
+    endReason: "recovered" as const,
+  }));
+}
+
+// AC-86: the pager shows only when there is another page to reach or a page to return from.
+describe("Pagination threshold of the feed and the incidents", () => {
+  const cases = [
+    [1, 1, false],
+    [20, 20, false],
+    [21, 20, true],
+  ] as const;
+
+  async function incidentsSection() {
+    return sectionOf(
+      await screen.findByRole("heading", { level: 2, name: "เหตุการณ์" }),
+    );
+  }
+
+  it.each(cases)(
+    "feed with a total of %i (%i rows on the page) shows its pager: %s",
+    async (total, rowCount, pager) => {
+      feedMock.mockResolvedValue(feed(eventRows(rowCount), total));
+      renderDetail();
+      const section = await feedSection();
+      expect(await rows(section)).toHaveLength(rowCount);
+      const nav = within(section).queryByRole("navigation", {
+        name: "หน้าฟีดเหตุการณ์",
+      });
+      if (pager) {
+        expect(nav).toHaveTextContent(
+          `แสดง 1–${String(rowCount)} จาก ${String(total)}`,
+        );
+        expect(
+          within(section).getByRole("button", { name: "ถัดไป" }),
+        ).toBeEnabled();
+      } else {
+        expect(nav).toBeNull();
+        expect(
+          within(section).queryByRole("button", { name: "ถัดไป" }),
+        ).toBeNull();
+      }
+    },
+  );
+
+  it.each(cases)(
+    "incidents with a total of %i (%i rows on the page) shows its pager: %s",
+    async (total, rowCount, pager) => {
+      vi.mocked(fetchMonitorIncidents).mockResolvedValue({
+        incidents: incidentRows(rowCount),
+        page: { limit: 20, offset: 0, total },
+      });
+      renderDetail();
+      const section = await incidentsSection();
+      await within(section).findByRole("region", { name: "ตารางเหตุการณ์" });
+      const nav = within(section).queryByRole("navigation", {
+        name: "หน้าเหตุการณ์",
+      });
+      if (pager) {
+        expect(nav).toHaveTextContent(
+          `แสดง 1–${String(rowCount)} จาก ${String(total)}`,
+        );
+      } else {
+        expect(nav).toBeNull();
+      }
+    },
+  );
+
+  it("keeps the way back on a later page after the total shrank to one page, then hides the pager at offset 0", async () => {
+    let shrunk = false;
+    feedMock.mockImplementation((_org, _monitor, page) =>
+      Promise.resolve(
+        page.offset === 20
+          ? // The rows beyond the first page went away while the reader was on page 2.
+            { events: [], page: { limit: 20, offset: 20, total: 15 } }
+          : page.offset === 0 && shrunk
+            ? feed(eventRows(15), 15)
+            : feed(eventRows(20), 45),
+      ),
+    );
+    renderDetail();
+    const section = await feedSection();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(
+      await within(section).findByRole("button", { name: "ถัดไป" }),
+    );
+
+    const nav = await within(section).findByRole("navigation", {
+      name: "หน้าฟีดเหตุการณ์",
+    });
+    const previous = within(nav).getByRole("button", { name: "ก่อนหน้า" });
+    expect(previous).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+
+    shrunk = true;
+    await user.click(previous);
+    expect(await rows(section)).toHaveLength(15);
+    await waitFor(() => {
+      expect(
+        within(section).queryByRole("navigation", { name: "หน้าฟีดเหตุการณ์" }),
+      ).toBeNull();
+    });
+  });
+
+  it("keeps the way back on a later page of the incidents after the total shrank", async () => {
+    let shrunk = false;
+    vi.mocked(fetchMonitorIncidents).mockImplementation(
+      (_org, _monitor, page) =>
+        Promise.resolve(
+          page.offset === 20
+            ? { incidents: [], page: { limit: 20, offset: 20, total: 15 } }
+            : shrunk
+              ? {
+                  incidents: incidentRows(15),
+                  page: { limit: 20, offset: 0, total: 15 },
+                }
+              : {
+                  incidents: incidentRows(20),
+                  page: { limit: 20, offset: 0, total: 45 },
+                },
+        ),
+    );
+    renderDetail();
+    const section = await incidentsSection();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(
+      await within(section).findByRole("button", { name: "ถัดไป" }),
+    );
+
+    const nav = await within(section).findByRole("navigation", {
+      name: "หน้าเหตุการณ์",
+    });
+    const previous = within(nav).getByRole("button", { name: "ก่อนหน้า" });
+    expect(previous).toBeEnabled();
+    expect(within(nav).getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+
+    shrunk = true;
+    await user.click(previous);
+    await within(section).findByRole("region", { name: "ตารางเหตุการณ์" });
+    await waitFor(() => {
+      expect(
+        within(section).queryByRole("navigation", { name: "หน้าเหตุการณ์" }),
+      ).toBeNull();
     });
   });
 });

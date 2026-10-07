@@ -40,6 +40,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { AuditEventPage } from "./pages/audit-log/AuditEventPage";
 import { AuditLogPage } from "./pages/audit-log/AuditLogPage";
+import { ChecksHistoryPage } from "./pages/monitors/ChecksHistoryPage";
 import { DetailPage } from "./pages/monitors/DetailPage";
 import { MonitorFormPage } from "./pages/monitors/MonitorFormPage";
 import { OverviewPage } from "./pages/monitors/OverviewPage";
@@ -164,6 +165,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/monitors/:monitorId",
             loader: monitorDetailLoader,
             element: <DetailPage />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId/checks",
+            loader: monitorDetailLoader,
+            element: <ChecksHistoryPage />,
           },
           {
             path: "/notifications",
