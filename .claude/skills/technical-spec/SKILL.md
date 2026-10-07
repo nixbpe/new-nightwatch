@@ -1,50 +1,35 @@
 ---
 name: technical-spec
-description: Write a Feature's technical contracts and Tasks after scope approval. User approval of the spec freezes acceptance but does not start implementation.
-argument-hint: "<Feature, e.g. F-002>"
+description: Define shared technical contracts and bounded Tasks when a request needs a design. Keep the code index free of behavior rules and preserve accepted scope.
+argument-hint: "<Feature or issue>"
 ---
 
 # Technical Spec
 
 ## What this is for
 
-Turn approved Feature requirements into contracts, design decisions, and Tasks. The approved spec governs implementation and review through `VERIFY`, `PROOF`, `Covers`, and mapped `AC-<NN>` rows.
+Resolve cross-cutting contracts or a requested design. Routine work with settled criteria can use the request or issue directly.
 
 ## Steps
 
-1. Require user-approved Feature scope and a `draft` Acceptance matrix with behavior rows. Resolve unclear UI behavior with its assigned owner.
-2. Copy file:`docs/templates/spec.md` to `docs/features/<Feature>/spec.md`.
-3. Define API, data and RLS, job, and other touched contracts. Check Architecture drivers below and add applicable technical acceptance rows.
-4. Outline owned Tasks and dependencies. Map every AC to a Task or integrated verification.
-5. Record open decisions and request user approval. Freeze acceptance on approval. Do not dispatch without separate start authorization.
+1. Use the request or issue as the source. Identify touched contracts and unresolved decisions.
+2. Define only changed API, data/RLS, job, Web, authorization and concurrency contracts. Read their owning repository references.
+3. Record detailed design and verification in the assigned issue or handoff. Update only capability names and source-file links in file:`docs/features.md`, following file:`docs/templates/feature.md`. Do not create separate Feature or spec files.
+4. When implementation is requested, name owned Tasks, prerequisites and focused proof. Map source requirements to verification.
+5. Ask for decisions that change scope or accepted contracts. An explicit implementation request supplies start authorization; design-only approval does not authorize implementation or release.
 
 ## Rules
 
-Link to Feature ACs instead of restating them. Keep repository conventions in their owning documents. Include only contracts or decisions other work depends on.
+Link source criteria instead of copying them. Keep repository conventions in their owning references. Include only decisions other work depends on.
 
 ## Acceptance freeze
 
-Keep criteria in the Feature's Acceptance matrix, using `AC-01`, `AC-02` across the Feature. Use file:`docs/templates/feature.md` for its structure.
+Preserve accepted criteria and existing IDs or `acceptanceVersion` when the assignment uses them. Historical matrices remain available in Git. New work does not require a separate matrix or version ceremony.
 
-The requirements writer supplies `draft` behavior rows. During spec drafting, add only touched technical categories:
-
-- Concurrency, with races and accepted outcomes.
-- Security, with disclosure limits, log redaction, and fresh-auth boundaries.
-- Verification, with a scenario or command proving each item.
-
-On user approval, set `acceptanceVersion: <Feature-id>-AC-<n>` and `status: frozen`. Record the approval date in the spec. Before approval, criteria can change without a version bump. Freeze never authorizes release.
-
-After freeze:
-
-- Review findings must name a missed AC, an already-approved architecture or security rule, or a non-blocking follow-up. Reviewers never add criteria.
-- For a new criterion, obtain a proposed AC from the requirements owner and blocker or follow-up classification from the technical coordinator. Require user approval, bump `acceptanceVersion` from `-AC-1` to `-AC-2`, update Revisions, re-approve the spec, and replan affected work.
-- Return approved contract changes to the user before implementation and record them under Revisions.
-- Never change criteria silently.
+- Review findings cite a missed source requirement, an existing architecture or security rule, or a non-blocking follow-up. Reviewers never add criteria.
+- Obtain user approval for changed scope or accepted contracts and record that decision at the source. Never change criteria silently.
+- Approval does not authorize publication, deployment or release.
 
 ## Architecture drivers
 
-Check only touched qualities against approved requirements and constraints. Required DB/RLS and security checks are never optional.
-
-- Runtime: latency, load per window, availability as permitted downtime, and disaster recovery with RTO/RPO.
-- Protection: authentication, authorization, encryption, OWASP, privacy and GDPR, audit identity and before/after values, erasure conflicts, and applicable AML or digital-services taxation rules.
-- Operability: read-only health, metrics, alerts, topology, cache refresh, feature toggles, maintenance ownership, flexibility, W3C accessibility, internationalization, and RTL.
+Check only touched qualities against the source requirements. Required DB/RLS and security checks are never optional. Define race outcomes, disclosure limits, log redaction and fresh-auth boundaries where affected. Do not invent latency, availability or recovery targets.

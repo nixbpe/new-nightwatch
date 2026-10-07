@@ -6,19 +6,9 @@ This index locates contract sources and code entry points. It defines no additio
 
 ## Feature contracts
 
-`feature.md` owns scope, user flows and acceptance. `spec.md` owns technical contracts and revisions. Delivery, acceptance approval and measured product outcomes are separate records.
+[Feature code index](features.md) maps capability names to source files without Feature or issue IDs. Detailed criteria and design belong to the current request or issue. Inspect API contracts, migrations and tests through the code entry points below when changing behavior.
 
-| Scope | Requirements | Technical contract |
-| --- | --- | --- |
-| Organization member directory, invitations, roles, revoke and self-leave | [F-004 Feature](features/F-004-organization-member-management/feature.md) | [F-004 Spec](features/F-004-organization-member-management/spec.md) |
-| Uptime monitor baseline | [F-005 Feature](features/F-005-uptime-monitor/feature.md) | [F-005 Spec](features/F-005-uptime-monitor/spec.md) |
-| Pending invitation list, resend, cancel and operator provisioning | [F-006 Feature](features/F-006-pending-invitation-management/feature.md) | [F-006 Spec](features/F-006-pending-invitation-management/spec.md) |
-| Organization audit events and exports | [F-007 Feature](features/F-007-organization-audit-log/feature.md) | [F-007 Spec](features/F-007-organization-audit-log/spec.md) |
-| Monitor event feed and last response, extending F-005 | [Issue #58 Feature](features/issue-58-monitor-event-feed/feature.md) | [Issue #58 Spec](features/issue-58-monitor-event-feed/spec.md) |
-| Per-monitor alert settings, extending F-005 | None (see spec) | [Issue #60 Spec](features/issue-60-monitor-alert-settings/spec.md) |
-| Member-count limit display | [Issue #66 Feature](features/issue-66-member-limit/feature.md) | [Issue #66 Spec](features/issue-66-member-limit/spec.md) |
-
-The [deferred toolchain upgrades](features/tech-stack-upgrade/spec.md) retain their own authorization gates. [Product Direction](product-direction.md), [Project visibility](epics/E-001-project-organization-visibility.md) and [Member governance](epics/E-002-organization-member-governance.md) describe product intent and initiative scope.
+[Product Direction](product-direction.md), [Project visibility](epics/E-001-project-organization-visibility.md) and [Member governance](epics/E-002-organization-member-governance.md) describe product intent and initiative scope. Historical approvals do not authorize new implementation or release.
 
 ## Code entry points
 
@@ -41,9 +31,7 @@ The [deferred toolchain upgrades](features/tech-stack-upgrade/spec.md) retain th
 
 ## Evidence and delivery history
 
-- [F-005 verification](features/F-005-uptime-monitor/verification.md) records author evidence and unverified paths.
-- [F-005 delivery history](features/F-005-uptime-monitor/history.md) and [F-007 delivery history](features/F-007-organization-audit-log/history.md) preserve completed task plans and historical verification instructions. They are read for delivery investigations, not used as new implementation authority.
-- [F-004 task specifications](features/F-004-organization-member-management/specs/) preserve delivered node contracts under their recorded acceptance versions.
+Historical logs and screenshots remain under `docs/features/`. Removed planning and verification prose remains in Git history. Read it only when the assignment needs that history.
 
 ## Large generated and evidence files
 

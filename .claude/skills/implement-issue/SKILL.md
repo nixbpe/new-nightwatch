@@ -1,33 +1,31 @@
 ---
 name: implement-issue
-description: Implement one approved issue or Technical Spec and open an unmerged PR after local and PR verification.
-argument-hint: "<issue URL or number | path to spec.md>"
+description: Implement one explicitly requested issue or capability change and open an unmerged PR after local and PR verification.
+argument-hint: "<issue URL or number | capability and requested change>"
 disable-model-invocation: true
 ---
 
-Require one issue URL or number, or one Technical Spec path. Follow repository instructions and role permissions. Run through an authorized coordinator when implementation, delegation, or acceptance exceeds your role. Do not create an agent for each criterion.
+Follow repository instructions and role permissions. Run through an authorized coordinator when implementation, delegation or acceptance exceeds your role. Do not create an agent for each criterion.
 
-## Spec file as the source
+## Source
 
-Treat an existing `spec.md` path under `docs/features/` as the source. Otherwise use the issue.
+Use one issue or an explicitly requested capability change. Use file:`docs/features.md` only to locate source files. The index does not authorize implementation.
 
-- Require `Status` Approved and a date in `Approved by user`. Never choose among matching specs or approve one yourself.
-- Preserve the approved contracts. Return contract changes to the user before implementation.
-- The explicit path authorizes starting scope-now Tasks, overriding `Start authorization: None` and `COMMIT_MODE: none` as below. Never start deferred work or work blocked by an open decision.
-- Follow Task order. Open one PR unless the spec requires separate PRs or merge gates. In that case, finish the first merge-ready PR, report the next, and stop.
-- Name the branch for the spec folder. Write `Closes: none` in the PR body and cite the spec path and delivered Task IDs.
+- Preserve existing contracts. Return scope or contract changes to the user before implementation.
+- Never start Deferred work or work blocked by an open decision without explicit authorization for it.
+- Follow dependencies from the assignment. Open one PR unless the assignment requires separate PRs or merge gates. In that case, finish the first merge-ready PR, report the next, and stop.
+- Name the branch for the issue or capability. For a request without an issue, write `Closes: none` and cite the requested change.
 
 ## Authorization
 
-Apply these permissions only to this source:
+These permissions apply only to an explicit invocation of this command and only to the named source:
 
-- For an issue, the command authorizes its scope, approval of the resulting Technical Spec, and implementation. Write the spec from accepted criteria. Stop for decisions the issue does not settle.
-- For a spec path, use its existing approval.
+- The command authorizes implementation of the requested scope. Use its accepted criteria directly; do not require a separate spec file. Stop for decisions the source does not settle.
 - Override `COMMIT_MODE: none` with `COMMIT_MODE: owned-slice`. Set `STOP_AT: merge-ready`.
-- If on the default branch, create a branch named for the issue or spec folder. Relay scoped commit permissions to assigned owners. Name one integration owner with sole authority to push the current working branch and open one PR; this overrides worker publication prohibitions only for that owner and this source. Other owners retain only their scoped commit permissions.
+- If on the default branch, create a branch named for the issue or capability. Relay scoped commit permissions to assigned owners. Name one integration owner with sole authority to push the current working branch and open one PR; this overrides worker publication prohibitions only for that owner and this source. Other owners retain only their scoped commit permissions.
 - Never merge or start dependent follow-up work.
 
-Implement the source's behavior, tests, runtime smoke checks, accessibility, and required `PROOF`.
+Implement the source's behavior, tests, runtime smoke checks, accessibility and required `PROOF`.
 
 After writers stop:
 
@@ -36,6 +34,6 @@ After writers stop:
 3. Push and open the PR only after required local checks pass. Otherwise report the blocker without claiming completion.
 4. Wait for required PR CI and review conditions to pass before reporting merge-ready.
 
-Use the repository's PR template. Include the issue or spec source, delivered scope, risks, per-criterion proof, and gate results on the head SHA. Keep detailed worker handoffs outside the PR body.
+Use the repository's PR template. Include the source, delivered scope, risks, per-criterion proof and gate results on the head SHA. Keep detailed worker handoffs outside the PR body.
 
-Return the PR URL, commit SHA, delivered behavior, review and verification results, CI state, and confirmation that the PR is unmerged and dependent work has not started.
+Return the PR URL, commit SHA, delivered behavior, review and verification results, CI state and confirmation that the PR is unmerged and dependent work has not started.

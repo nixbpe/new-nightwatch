@@ -1,6 +1,6 @@
 ---
 name: build
-description: Implement one assigned slice or run no-edit evidence against a bound candidate; use auto only for an approved full plan.
+description: Implement one assigned slice or run no-edit evidence against a bound candidate; use auto only for an explicitly authorized full plan.
 argument-hint: "[NODE-<id> | auto]"
 ---
 
@@ -52,10 +52,10 @@ Execute the next accepted pending task using Implementation assignment. If none 
 
 ## Autonomous plan
 
-1. Require `SOURCE` to identify one user-approved Technical Spec at `docs/features/<Feature>/spec.md`. Stop on an absent, unresolved, or ambiguous source.
-2. Require a clean baseline outside `tasks/plan.md`, `tasks/todo.md`, and the approved spec. Never absorb unrelated work.
-3. If needed, derive `tasks/plan.md` from that spec. Do not call an undefined planning skill.
-4. Present the plan once and require explicit approval.
+1. Require `SOURCE` to identify an explicitly authorized plan in the request, issue or handoff. A code index is not an implementation plan. Stop on an absent, unresolved, or ambiguous source.
+2. Record the baseline and separate unrelated work. Never absorb it into the plan.
+3. Keep the ordered slices and proof in the handoff. Do not create a separate planning file for routine work.
+4. Present the plan once. Require approval for new scope or unresolved product decisions; do not request approval again for already authorized work.
 5. Execute one behavioral slice at a time. Plan approval does not authorize commits; keep the `COMMIT_MODE: owned-slice` gate.
 6. Stop for ambiguous requirements, failed gates without a bounded fix, or irreversible work needing sign-off.
 7. Report completed tasks, proof, commits, skipped checks, and blockers.

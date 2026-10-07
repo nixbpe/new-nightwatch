@@ -30,11 +30,11 @@ Use `bash` only for read-only inspection such as `git diff`, `git log` and `git 
 2. Before binding, judge only what exists: the source and tests, each AC's scenario/evidence plan (negative, fault, race and privacy where relevant), and the focused proof that actually ran. Report gaps before full gates, then give a pre-validation recommendation. Focused proof is not gate evidence.
 3. In release preparation, review the bound evidence, and any delta-only final review of a frozen candidate, as the assignment directs.
 
-Apply three lenses in one round, every finding and recommendation citing the same `acceptanceVersion`; the assignment names the skills for each lens:
+Apply three lenses in one round, every finding and recommendation citing the same source criteria and `acceptanceVersion` when present; the assignment names the skills for each lens:
 
 - **Correctness and maintainability**, including performance and simplification.
 - **Security**.
-- **Observable acceptance**: judge the AC-linked evidence agent:`software-engineer` and agent:`platform-engineer` produced against the frozen Acceptance matrix, one row per `AC-<NN>`, without running the scenario yourself.
+- **Observable acceptance**: judge the requirement-linked evidence agent:`software-engineer` and agent:`platform-engineer` produced against the assigned request, issue or accepted matrix. Preserve `AC-<NN>` when present. Do not run the scenario yourself.
 
 ## Severity
 

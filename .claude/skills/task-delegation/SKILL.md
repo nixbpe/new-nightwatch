@@ -11,13 +11,9 @@ Coordinate work within repository role permissions. Delegate only when separate 
 
 ## 1. Split the work into Tasks
 
-Keep the breakdown in the approved Technical Spec. Create no other planning files and delegate no top-level planning.
+Use the current request, issue or named spec as the source. Keep routine assignments in the handoff; no separate planning file is required. Keep cross-cutting contracts and dependencies in a Technical Spec when needed.
 
-Each Task declares:
-
-- `OWNER`, `READY`, `OUTCOME`, and `SOURCE`.
-- `INVARIANTS`, `FILES`, and `NON-GOALS`.
-- Sibling `CONTRACTS`, permitted `VERIFY`, and required `PROOF`.
+Each Task names its owner, outcome, source, owned files and verification. Include prerequisites, invariants, non-goals and sibling contracts only when they affect the assignment.
 
 Split by behavior, failure or permission boundary, and application versus platform ownership. Give one owner the complete behavior, callers, errors, and regression proof. Do not create an agent per AC.
 
@@ -30,7 +26,7 @@ Choose registered roles by outcome and permissions. Separate application behavio
 For each assignment:
 
 - Name the role for model routing. Include criteria, contracts, binding, sibling ownership, `COMMIT_MODE`, and the procedure skills to load. Workers do not select additional skills themselves.
-- Point `SOURCE` to the approved spec path, relevant headings, and AC IDs. Send the assigned Task and shared invariants, not the whole Feature or raw logs. Require the owner to trace named contracts and consumers before editing.
+- Point `SOURCE` to the request, issue criteria or relevant spec headings and AC IDs. Send the assigned Task and shared invariants, not the whole Feature or raw logs. Require the owner to trace named contracts and consumers before editing.
 - Dispatch independent Tasks together only with disjoint ownership. Send repeated assignments to one worker separately.
 - For software implementation, use `/build NODE-<id>`, never `/build auto` or bare `auto`/`all`. While siblings write, `VERIFY` replaces full-suite and build steps.
 - Supply the assigned implementation and handoff procedures. Include security checks for authentication, input, organization data, or credentials; debugging for failures; and release procedures only for authorized release work. Static reviewers do not run code.
@@ -42,7 +38,7 @@ Set commit authority from the user's authorization:
 
 Commit permission does not authorize push, PR creation, deploy, force-push, or history rewrite. Ask about commits only when the user wants them.
 
-Require a short handoff with `OWNER`, `CHANGED FILES`, `PROOF`, `BLOCKER`, and a details link. Proof includes per-criterion results and scanner coverage. Open details only for unresolved claims. Track Task, owner, state, candidate triple, open finding IDs, and blockers.
+Require a short handoff with `OWNER`, `CHANGED FILES`, `PROOF`, and any `BLOCKER`. Add a details link only when a separate artifact exists. Proof includes per-criterion results and scanner coverage. Open details only for unresolved claims. Track Task, owner, state, candidate triple, open finding IDs, and blockers.
 
 ## 3. Wait without polling
 

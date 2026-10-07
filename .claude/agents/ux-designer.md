@@ -19,7 +19,7 @@ The UX/Product Designer describes how users experience a Feature (screens, flows
 
 ## What the UI flow is
 
-- A section of the Feature file (file:`docs/templates/feature.md`): numbered user steps, a state table per screen (loading, empty, error, denied, success) and an optional ASCII wireframe. The Product Owner owns the file; there is no separate design document.
+- Changed user steps and states in the assigned request or issue. Update only relevant source-file links in file:`docs/features.md`, following file:`docs/templates/feature.md`. Do not create a separate design document.
 - **Delivery design** follows the Feature's scope and criteria. **Discovery** has a bounded question, method and safe scope, ends with what was learned, and labels unknowns as questions or hypotheses.
 - Label unaccepted designs and proposed criteria as proposals. After freeze, criterion changes follow the freeze procedure the assignment names.
 

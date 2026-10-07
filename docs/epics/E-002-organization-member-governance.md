@@ -24,9 +24,9 @@
 
 | Feature | Summary | Status |
 | ------- | ------- | ------ |
-| `F-004`, `docs/features/F-004-organization-member-management/feature.md` | จัดการสมาชิกของ Organization ที่เลือกผ่านรายชื่อ คำเชิญ role การถอน และการออกด้วยตนเอง โดยคง isolation และ last-owner invariant | Selected; `delivery_status: Refining`, `acceptanceVersion: F-004-AC-3` frozen |
-| `F-006`, `docs/features/F-006-pending-invitation-management/feature.md` | ดู ส่งซ้ำ และยกเลิกคำเชิญที่ยังไม่ตอบรับของ Organization ที่เลือก | Selected; `delivery_status: Refining`, scope approved 2026-10-01, `acceptanceVersion: F-006-AC-1` frozen (2026-10-01) |
-| `F-007`, `docs/features/F-007-organization-audit-log/feature.md` | บันทึกกิจกรรมที่สำเร็จของ Organization ที่เลือก ให้ `owner`/`admin`/`auditor` อ่าน และ `owner`/`admin` ส่งออก | Selected; `delivery_status: Refining`, scope approved 2026-10-02, `acceptanceVersion: F-007-AC-2` frozen (2026-10-03) |
+| [F-004](../features.md) | จัดการสมาชิกของ Organization ที่เลือกผ่านรายชื่อ คำเชิญ role การถอน และการออกด้วยตนเอง โดยคง isolation และ last-owner invariant | Selected; `delivery_status: Refining`, `acceptanceVersion: F-004-AC-3` frozen |
+| [F-006](../features.md) | ดู ส่งซ้ำ และยกเลิกคำเชิญที่ยังไม่ตอบรับของ Organization ที่เลือก | Selected; `delivery_status: Refining`, scope approved 2026-10-01, `acceptanceVersion: F-006-AC-1` frozen (2026-10-01) |
+| [F-007](../features.md) | บันทึกกิจกรรมที่สำเร็จของ Organization ที่เลือก ให้ `owner`/`admin`/`auditor` อ่าน และ `owner`/`admin` ส่งออก | Selected; `delivery_status: Refining`, scope approved 2026-10-02, `acceptanceVersion: F-007-AC-2` frozen (2026-10-03) |
 
 สถานะ frozen ของ acceptance ไม่อนุญาตให้เริ่ม implementation หรือ release
 
@@ -54,8 +54,8 @@
 | ------ | -------------------- |
 | `docs/product-direction.md`, `DIR-001/v3` Scope and trust | หนึ่งลูกค้าเป็นหนึ่ง Organization และเป็น isolation boundary |
 | `docs/product-direction.md`, `DIR-001/v3` S2, S3 | Access governance เป็นความสามารถที่อาจมีภายหลัง; Direction ไม่อนุญาตการเก็บ credentials หรือ sensitive evidence |
-| `docs/features/F-006-pending-invitation-management/feature.md`, scope approval 2026-10-01 และ `F-006-AC-1` draft | การดู ส่งซ้ำ และยกเลิกคำเชิญที่ยังไม่ตอบรับเป็นสัญญาของ Feature ที่เลือก |
-| `docs/features/F-004-organization-member-management/feature.md`, scope approval 2026-09-27 และ `F-004-AC-3` frozen (2026-10-03) | ขอบเขตห้า operation, pagination, member hard cap, permission, owner invariant, การพ้นสมาชิก และการสลับ scope เป็นสัญญาของ Feature ที่เลือก ไม่ได้ถูกนิยาม AC ซ้ำใน Epic |
+| [F-006](../features.md), scope approval 2026-10-01 และ `F-006-AC-1` draft | การดู ส่งซ้ำ และยกเลิกคำเชิญที่ยังไม่ตอบรับเป็นสัญญาของ Feature ที่เลือก |
+| [F-004](../features.md), scope approval 2026-09-27 และ `F-004-AC-3` frozen (2026-10-03) | ขอบเขตห้า operation, pagination, member hard cap, permission, owner invariant, การพ้นสมาชิก และการสลับ scope เป็นสัญญาของ Feature ที่เลือก ไม่ได้ถูกนิยาม AC ซ้ำใน Epic |
 
 ## Readiness
 
