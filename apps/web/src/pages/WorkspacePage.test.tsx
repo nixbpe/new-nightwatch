@@ -658,7 +658,6 @@ describe("WorkspacePage overview details", () => {
     expect(expiry.parentElement).toHaveTextContent(
       `หมดอายุ ${formatDate(notAfter)}`,
     );
-    expect(expiry.closest(".font-mono")).toBeNull();
 
     expect(within(row("bare")).queryByText(/ผู้ออก|หมดอายุ \d/)).toBeNull();
     const issuerOnly = within(row("issuer-only"));

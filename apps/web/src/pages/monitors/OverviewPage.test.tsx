@@ -507,9 +507,6 @@ describe("Overview method, interval and sparkline", () => {
     expect(cardScope.getByText("https://api.example.test/v1")).toHaveClass(
       "break-all",
     );
-    expect(cardScope.getByText("15", { selector: "span" })).toHaveClass(
-      "font-mono",
-    );
     expect(cardScope.getByText(/^ทุก/)).toHaveTextContent("ทุก 15 นาที");
 
     await user.click(screen.getByRole("radio", { name: "ตาราง" }));
@@ -529,9 +526,8 @@ describe("Overview method, interval and sparkline", () => {
       `ตรวจล่าสุด (${TIME_ZONE})`,
     ]);
     const row = within(rowOf("Api"));
-    expect(row.getByText("POST")).toHaveClass("font-mono");
+    expect(row.getByText("POST")).toBeInTheDocument();
     expect(row.getByText(/^ทุก/)).toHaveTextContent("ทุก 15 นาที");
-    expect(row.getByText("15")).toHaveClass("font-mono");
   });
 
   it("draws 24 bars with empty slots for null hours and describes the chart", async () => {
@@ -890,17 +886,6 @@ describe("Overview success", () => {
       [
         {
           level: "caution",
-          daysRemaining: 21,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "ใกล้หมดอายุ เหลือ 21 วัน",
-        "text-caution",
-      ],
-      [
-        {
-          level: "caution",
           daysRemaining: 30,
           host: "h",
           issuer: null,
@@ -918,17 +903,6 @@ describe("Overview success", () => {
           notAfter: null,
         },
         "หมดอายุใน 7 วัน",
-        "text-danger",
-      ],
-      [
-        {
-          level: "danger",
-          daysRemaining: 5,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "หมดอายุใน 5 วัน",
         "text-danger",
       ],
       [

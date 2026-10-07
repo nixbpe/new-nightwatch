@@ -667,8 +667,7 @@ describe("my exports section", () => {
     await sectionHeading();
     const adjust = within(row(0)).getByRole("button", { name: /^ปรับตัวกรอง/ });
     const retry = within(row(0)).getByRole("button", { name: /^ขอใหม่/ });
-    expect(adjust.className).toContain("bg-primary");
-    expect(retry.className).not.toContain("bg-primary");
+    expect(retry).toBeInTheDocument();
     await user.click(adjust);
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(

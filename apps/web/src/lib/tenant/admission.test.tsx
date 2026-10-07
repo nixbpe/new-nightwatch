@@ -151,6 +151,28 @@ function Boundary() {
     </TenantProvider>
   );
 }
+function renderCreateForm(c: QueryClient) {
+  const router = createMemoryRouter(
+    [
+      {
+        element: <Boundary />,
+        children: [
+          {
+            path: "/organizations/:organizationId/monitors/new",
+            element: <MonitorFormPage mode="create" />,
+          },
+        ],
+      },
+    ],
+    { initialEntries: [`/organizations/${A}/monitors/new`] },
+  );
+  render(
+    <QueryClientProvider client={c}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  return router;
+}
 function Flash() {
   const { notice, heading } = useFlashNotice();
   return (
@@ -230,25 +252,7 @@ it.each(["save", "test"] as const)(
   "keeps the form draft and disables operations during resolution after %s refusal, retaining refusal for viewers",
   async (operation) => {
     const c = client();
-    const router = createMemoryRouter(
-      [
-        {
-          element: <Boundary />,
-          children: [
-            {
-              path: "/organizations/:organizationId/monitors/new",
-              element: <MonitorFormPage mode="create" />,
-            },
-          ],
-        },
-      ],
-      { initialEntries: [`/organizations/${A}/monitors/new`] },
-    );
-    render(
-      <QueryClientProvider client={c}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    );
+    const router = renderCreateForm(c);
     const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
     fireEvent.change(input, { target: { value: "local draft" } });
     fireEvent.change(screen.getByLabelText("URL"), {
@@ -294,25 +298,7 @@ it.each(["save", "test"] as const)(
 );
 it("keeps form interaction disabled after required resolver failure and offers bootstrap retry", async () => {
   const c = client();
-  const router = createMemoryRouter(
-    [
-      {
-        element: <Boundary />,
-        children: [
-          {
-            path: "/organizations/:organizationId/monitors/new",
-            element: <MonitorFormPage mode="create" />,
-          },
-        ],
-      },
-    ],
-    { initialEntries: [`/organizations/${A}/monitors/new`] },
-  );
-  render(
-    <QueryClientProvider client={c}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
+  const router = renderCreateForm(c);
   const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
   fireEvent.change(input, { target: { value: "local draft" } });
   fireEvent.change(screen.getByLabelText("URL"), {
@@ -513,25 +499,7 @@ it.each(["success", "failure"] as const)(
 );
 it("destroys the local form snapshot when required resolution confirms membership removal", async () => {
   const c = client();
-  const router = createMemoryRouter(
-    [
-      {
-        element: <Boundary />,
-        children: [
-          {
-            path: "/organizations/:organizationId/monitors/new",
-            element: <MonitorFormPage mode="create" />,
-          },
-        ],
-      },
-    ],
-    { initialEntries: [`/organizations/${A}/monitors/new`] },
-  );
-  render(
-    <QueryClientProvider client={c}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
+  const router = renderCreateForm(c);
   const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
   fireEvent.change(input, { target: { value: "local draft" } });
   fireEvent.change(screen.getByLabelText("URL"), {

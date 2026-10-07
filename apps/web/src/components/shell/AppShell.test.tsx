@@ -241,6 +241,13 @@ function renderShell(
   };
 }
 
+async function disposeShell(view: ReturnType<typeof renderShell>) {
+  view.unmount();
+  view.router.dispose();
+  await view.queryClient.cancelQueries();
+  view.queryClient.clear();
+}
+
 function mockMobileViewport(): void {
   vi.spyOn(window, "matchMedia").mockImplementation(
     (query): MediaQueryList =>
@@ -2305,10 +2312,7 @@ describe("AppShell", () => {
         focus.mock.contexts.filter((node) => node === heading),
       ).toHaveLength(1);
       expect(leaveOrganization).toHaveBeenCalledTimes(1);
-      view.unmount();
-      view.router.dispose();
-      await view.queryClient.cancelQueries();
-      view.queryClient.clear();
+      await disposeShell(view);
     });
   it("preserves LAST_OWNER through resolver failure and resolver-only retry with fresh entry focus", async () => {
     const view = await startSelfLeave();
@@ -2336,10 +2340,7 @@ describe("AppShell", () => {
     expect(view.outgoing.isConnected).toBe(false);
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
     expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
-    view.unmount();
-    view.router.dispose();
-    await view.queryClient.cancelQueries();
-    view.queryClient.clear();
+    await disposeShell(view);
   });
   it("rejects foreign same-scope publication before self-leave delivers its accepted result", async () => {
     const view = await startSelfLeave();
@@ -2372,10 +2373,7 @@ describe("AppShell", () => {
     );
     expect(view.router.state.location.state).toBeNull();
     stop();
-    view.unmount();
-    view.router.dispose();
-    await view.queryClient.cancelQueries();
-    view.queryClient.clear();
+    await disposeShell(view);
   });
   for (const retirement of [
     "client",
@@ -2448,10 +2446,7 @@ describe("AppShell", () => {
         ).toBe("failed");
       expect(signal?.aborted).toBe(true);
       expect(screen.queryByRole("button", { name: "ลองอีกครั้ง" })).toBeNull();
-      view.unmount();
-      view.router.dispose();
-      await view.queryClient.cancelQueries();
-      view.queryClient.clear();
+      await disposeShell(view);
     });
 
   for (const pending of ["navigation", "revalidation"] as const)
@@ -2490,10 +2485,7 @@ describe("AppShell", () => {
         blocked.resolve(null);
         await blocked.promise;
       });
-      view.unmount();
-      view.router.dispose();
-      await view.queryClient.cancelQueries();
-      view.queryClient.clear();
+      await disposeShell(view);
     });
   it("aborts self-leave on ErrorBoundary fallback while the provider stays mounted", async () => {
     const errors = vi
@@ -2535,10 +2527,7 @@ describe("AppShell", () => {
     expect(view.router.state.location.pathname).toBe(
       `/organizations/${ORG_A}/members`,
     );
-    view.unmount();
-    view.router.dispose();
-    await view.queryClient.cancelQueries();
-    view.queryClient.clear();
+    await disposeShell(view);
     errors.mockRestore();
   });
   it("starts no resolver after the self-leave origin unmounts before handoff", async () => {
@@ -2568,10 +2557,7 @@ describe("AppShell", () => {
     expect(fetchMeContextMock).toHaveBeenCalledTimes(calls);
     expect(view.router.state.location.pathname).toBe("/workspace");
     expect(screen.queryByText(/ออกจากองค์กรไม่สำเร็จ/)).toBeNull();
-    view.unmount();
-    view.router.dispose();
-    await view.queryClient.cancelQueries();
-    view.queryClient.clear();
+    await disposeShell(view);
   });
 
   it("navigates after failed DELETE when the resolver confirms removal from the withdrawn organization", async () => {
@@ -2592,10 +2578,7 @@ describe("AppShell", () => {
     expect(screen.queryByText(/ออกจากองค์กรไม่สำเร็จ/)).toBeNull();
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole("heading", { level: 1 })).toHaveFocus();
-    view.unmount();
-    view.router.dispose();
-    await view.queryClient.cancelQueries();
-    view.queryClient.clear();
+    await disposeShell(view);
   });
   it("announces failure and focuses the new entry when successful DELETE leaves membership intact", async () => {
     const view = await startSelfLeave();
@@ -2617,10 +2600,7 @@ describe("AppShell", () => {
     expect(view.router.state.location.pathname).toBe(
       `/organizations/${ORG_A}/members`,
     );
-    view.unmount();
-    view.router.dispose();
-    await view.queryClient.cancelQueries();
-    view.queryClient.clear();
+    await disposeShell(view);
   });
   it("keeps the old self-leave origin retired when same-path revalidation creates a new entry", async () => {
     const blocked = Promise.withResolvers<null>();
@@ -2673,9 +2653,6 @@ describe("AppShell", () => {
       );
     });
     expect(leaveOrganization).toHaveBeenCalledTimes(2);
-    view.unmount();
-    view.router.dispose();
-    await view.queryClient.cancelQueries();
-    view.queryClient.clear();
+    await disposeShell(view);
   });
 });
