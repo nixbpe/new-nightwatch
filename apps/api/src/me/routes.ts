@@ -5,12 +5,13 @@ import {
   meContextResponseSchema,
 } from "@nightwatch/api-contract";
 import type { Database } from "@nightwatch/db";
-import { createLogger, type Logger } from "@nightwatch/shared";
+import { AppError, createLogger, type Logger } from "@nightwatch/shared";
 
 import type { Auth } from "../auth";
 import {
   getMeContext,
   requireVerifiedSession,
+  resolveActiveOrganization,
   setActiveOrganization,
 } from "./service";
 
@@ -68,9 +69,43 @@ const activeOrgRoute = createRoute({
   },
 });
 
+const resolveActiveOrgRoute = createRoute({
+  method: "post",
+  path: "/api/me/resolve-active-org",
+  tags: ["me"],
+  summary:
+    "Resolve account-global active organization after verified authentication",
+  description:
+    "No selection input. Credentialed browser and native callers must send the configured trusted Origin.",
+  responses: {
+    200: {
+      description:
+        "Resolved context, or account-only admission when no membership exists",
+      content: { "application/json": { schema: meContextResponseSchema } },
+    },
+    401: {
+      description: "No final authenticated session",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    403: {
+      description: "Email not verified or missing, null or foreign Origin",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    503: {
+      description: "Resolution could not converge, retry required",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+  },
+});
+
 export function registerMeRoutes(
   app: OpenAPIHono,
-  deps: { auth: Auth; database: Database; logger?: Logger },
+  deps: {
+    auth: Auth;
+    database: Database;
+    trustedOrigin: string;
+    logger?: Logger;
+  },
 ): void {
   const logger = deps.logger ?? createLogger({ level: "silent", name: "me" });
 
@@ -79,6 +114,14 @@ export function registerMeRoutes(
     return getMeContext(deps.database, session).then((body) =>
       c.json(body, 200),
     );
+  });
+
+  app.openapi(resolveActiveOrgRoute, async (c) => {
+    if (c.req.header("origin") !== deps.trustedOrigin) {
+      throw new AppError(403, "ORIGIN_DENIED", "ไม่อนุญาตคำขอจากแหล่งที่มานี้");
+    }
+    const session = await requireVerifiedSession(deps.auth, c.req.raw.headers);
+    return c.json(await resolveActiveOrganization(deps.database, session), 200);
   });
 
   app.openapi(activeOrgRoute, async (c) => {

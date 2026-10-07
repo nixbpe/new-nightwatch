@@ -1,5 +1,9 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -16,24 +20,97 @@ import {
   ME_CONTEXT_QUERY_KEY,
   updateActiveOrganization,
 } from "../api/me";
-import { isInboxScopeChanged } from "../api/notifications";
 import {
+  isInboxScopeChanged,
+  markAllNotificationsRead,
+} from "../api/notifications";
+import {
+  type ScopeHint,
   claimContextPublication,
+  failContextPublication,
   createContextPublicationClaim,
   getContextPublicationSnapshot,
+  getQueryClientIdentity,
   hasContextPublicationClaim,
   publishContextPublication,
   subscribeToContextPublication,
 } from "../queryClient";
 
+import {
+  assertContextIdentity,
+  contextQueryOptions,
+  contextScopeChanged,
+  discardUnconfirmedTenantQueries,
+  recoverInboxScope,
+  type InboxScopeRequest,
+} from "./bootstrap";
+
+import {
+  selfLeaveDestination,
+  type SelfLeaveInput,
+  type SelfLeaveOrigin,
+  type SelfLeaveView,
+} from "./selfLeave";
+
+type ConfirmationBinding = Readonly<{
+  client: QueryClient;
+  identity: ReturnType<typeof getQueryClientIdentity>;
+  claim: bigint;
+  requiredGeneration: bigint;
+}>;
+type SelfLeaveSource = SelfLeaveInput & { controller: AbortController };
+type SelfLeaveRecord =
+  | { kind: "idle" }
+  | {
+      kind: "confirming" | "refresh-failed";
+      source: SelfLeaveSource;
+      binding: ConfirmationBinding;
+    }
+  | {
+      kind: "ready";
+      source: SelfLeaveSource;
+      binding: ConfirmationBinding;
+      destination: string | null;
+    }
+  | {
+      kind: "not-left";
+      source: SelfLeaveSource;
+      binding: ConfirmationBinding;
+      notice: "last-owner" | "other";
+    };
+type ConfirmationOutcome =
+  | {
+      kind: "confirmed";
+      binding: ConfirmationBinding;
+      context: MeContextResponse;
+    }
+  | { kind: "failed"; binding: ConfirmationBinding }
+  | { kind: "superseded" };
+
+function sourceCurrent(source: SelfLeaveSource): boolean {
+  return (
+    !source.controller.signal.aborted &&
+    !source.origin.signal.aborted &&
+    source.origin.isCurrent()
+  );
+}
+
 type Membership = MeContextResponse["organizations"][number];
 
-// Switching organization clears this whole prefix so an in-flight response for the old tenant can't repopulate the new view.
 export const TENANT_QUERY_PREFIX = ["tenant"] as const;
 
 type TenantContextValue = {
+  selfLeave: SelfLeaveView;
+  settleSelfLeave: (input: SelfLeaveInput) => Promise<void>;
+  retrySelfLeave: (origin: SelfLeaveOrigin) => Promise<void>;
+  deliverSelfLeave: (
+    origin: SelfLeaveOrigin,
+    navigate: (organizationId: string | null) => void,
+  ) => boolean;
+  consumeSelfLeaveNotice: (organizationId: string) => void;
   me: MeContextResponse | undefined;
   mePending: boolean;
+  membershipInteraction: boolean;
   meError: Error | null;
   retryMe: () => Promise<void>;
   refreshMembershipContext: () => Promise<MeContextResponse | null>;
@@ -55,9 +132,46 @@ export function useTenant(): TenantContextValue {
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [membershipContextUnavailable, setMembershipContextUnavailable] =
-    useState(false);
+  const selfLeaveRecord = useRef<SelfLeaveRecord>({ kind: "idle" });
+  const [renderedSelfLeave, renderSelfLeave] = useState<SelfLeaveRecord>(
+    selfLeaveRecord.current,
+  );
+  const setSelfLeave = useCallback((record: SelfLeaveRecord) => {
+    selfLeaveRecord.current = record;
+    renderSelfLeave(record);
+  }, []);
+  const bindingCurrent = useCallback(
+    (binding: ConfirmationBinding) => {
+      const current = getContextPublicationSnapshot(queryClient);
+      return (
+        binding.client === queryClient &&
+        getQueryClientIdentity(queryClient) === binding.identity &&
+        current.claim === binding.claim &&
+        current.requiredGeneration === binding.requiredGeneration &&
+        current.admission.kind !== "retired"
+      );
+    },
+    [queryClient],
+  );
+  useEffect(() => {
+    const retire = () => {
+      const record = selfLeaveRecord.current;
+      if (
+        record.kind !== "idle" &&
+        (!bindingCurrent(record.binding) || !sourceCurrent(record.source))
+      ) {
+        record.source.controller.abort();
+        setSelfLeave({ kind: "idle" });
+      }
+    };
+    const stop = subscribeToContextPublication(queryClient, retire);
+    return () => {
+      stop();
+      const record = selfLeaveRecord.current;
+      if (record.kind !== "idle") record.source.controller.abort();
+      selfLeaveRecord.current = { kind: "idle" };
+    };
+  }, [queryClient, bindingCurrent, setSelfLeave]);
   const [orgSwitchPending, setOrgSwitchPending] = useState(false);
   const switchQueue = useRef<Promise<void>>(Promise.resolve());
   const latestSwitchIntent = useRef(0);
@@ -72,39 +186,97 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     ),
   );
 
-  const meQuery = useQuery({
-    queryKey: ME_CONTEXT_QUERY_KEY,
-    queryFn: fetchMeContext,
+  useQuery({
+    ...contextQueryOptions(queryClient),
+    refetchOnMount: false,
+    refetchOnWindowFocus: () =>
+      getContextPublicationSnapshot(queryClient).admission.kind === "confirmed",
+    refetchOnReconnect: () =>
+      getContextPublicationSnapshot(queryClient).admission.kind === "confirmed",
   });
 
   useEffect(() => {
-    const livePublication = getContextPublicationSnapshot(queryClient);
-    if (
-      meQuery.data !== undefined &&
-      (!membershipContextUnavailable ||
-        (publication.publishedClaim !== null &&
-          livePublication.claim === publication.publishedClaim &&
-          livePublication.publishedClaim === publication.publishedClaim))
-    ) {
-      setMembershipContextUnavailable(false);
-    }
-  }, [meQuery.data, membershipContextUnavailable, publication, queryClient]);
-
-  useEffect(() => {
-    const refreshOnScopeChange = (error: unknown) => {
-      if (isInboxScopeChanged(error)) {
-        void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
-      }
+    const queries = new WeakMap<object, InboxScopeRequest>();
+    const mutations = new WeakMap<object, InboxScopeRequest>();
+    const capture = (
+      actor: InboxScopeRequest["actor"],
+      scopeHint: ScopeHint,
+    ): InboxScopeRequest => {
+      const publication = getContextPublicationSnapshot(queryClient);
+      return {
+        actor,
+        requiredGeneration: publication.requiredGeneration,
+        publishedClaim: publication.publishedClaim,
+        identity: getQueryClientIdentity(queryClient),
+        scopeHint,
+      };
+    };
+    const recover = (
+      error: unknown,
+      request: InboxScopeRequest | undefined,
+    ) => {
+      if (
+        isInboxScopeChanged(error) &&
+        error instanceof Error &&
+        request !== undefined
+      )
+        void recoverInboxScope(queryClient, error, request);
     };
     const stopQueries = queryClient.getQueryCache().subscribe((event) => {
-      if (event.type === "updated" && event.action.type === "error") {
-        refreshOnScopeChange(event.action.error);
+      if (event.type !== "updated") return;
+      const query = queryClient.getQueryCache().get(event.query.queryHash);
+      if (query === undefined || query !== event.query) return;
+      if (event.action.type === "fetch") {
+        const key = query.queryKey;
+        queries.set(
+          event.query,
+          capture(
+            "query",
+            key[0] === "tenant" &&
+              key[1] === "notifications" &&
+              (key[2] === null || typeof key[2] === "string")
+              ? { kind: "known", scope: key[2] }
+              : { kind: "unknown" },
+          ),
+        );
       }
+      if (event.action.type === "error")
+        recover(event.action.error, queries.get(query));
     });
     const stopMutations = queryClient.getMutationCache().subscribe((event) => {
-      if (event.type === "updated" && event.action.type === "error") {
-        refreshOnScopeChange(event.action.error);
+      if (event.type !== "updated") return;
+      if (event.action.type === "pending" && !mutations.has(event.mutation)) {
+        const variables: unknown = event.mutation.state.variables;
+        const commandScope =
+          event.mutation.options.meta?.["notificationOperation"] ===
+            "read-all" &&
+          typeof variables === "object" &&
+          variables !== null &&
+          "expectedOrganizationId" in variables
+            ? variables.expectedOrganizationId
+            : undefined;
+        const scope: unknown =
+          event.mutation.options.mutationFn === markAllNotificationsRead
+            ? variables
+            : commandScope;
+        mutations.set(
+          event.mutation,
+          capture(
+            "mutation",
+            scope === null || typeof scope === "string"
+              ? { kind: "known", scope }
+              : { kind: "unknown" },
+          ),
+        );
       }
+      if (
+        event.action.type === "error" &&
+        queryClient
+          .getMutationCache()
+          .getAll()
+          .some((mutation) => mutation === event.mutation)
+      )
+        recover(event.action.error, mutations.get(event.mutation));
     });
     return () => {
       stopQueries();
@@ -112,68 +284,196 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  const memberships = membershipContextUnavailable
-    ? undefined
-    : meQuery.data?.organizations;
-  const lastActiveTenantId = membershipContextUnavailable
-    ? null
-    : (meQuery.data?.lastActiveTenantId ?? null);
+  const admission = publication.admission;
+  const me = admission.kind === "confirmed" ? admission.context : undefined;
+  const memberships = me?.organizations;
+  const lastActiveTenantId = me?.lastActiveTenantId ?? null;
 
-  // A refreshed server mirror (another session switched org) supersedes this tab's local choice,
-  // otherwise the header and notifications would show different tenants.
-  const [mirrorSeen, setMirrorSeen] = useState(lastActiveTenantId);
-  if (mirrorSeen !== lastActiveTenantId) {
-    setMirrorSeen(lastActiveTenantId);
-    setSelectedOrgId(null);
-  }
-
-  // Precedence is load-bearing: in-memory choice, then persisted last-active membership, then the first.
   const activeOrg: Membership | null =
-    memberships === undefined || memberships.length === 0
-      ? null
-      : (memberships.find((org) => org.id === selectedOrgId) ??
-        memberships.find((org) => org.id === lastActiveTenantId) ??
-        memberships[0] ??
-        null);
+    memberships?.find((org) => org.id === lastActiveTenantId) ?? null;
+  const serverActiveOrgId = activeOrg?.id ?? null;
 
-  // Inbox scope uses only the server-confirmed org; the UI fallback must never widen notification visibility.
-  const serverActiveOrgId =
-    memberships?.some((org) => org.id === lastActiveTenantId) === true
-      ? lastActiveTenantId
-      : null;
-
-  const refreshMembershipContext =
-    useCallback(async (): Promise<MeContextResponse | null> => {
+  const confirmMembership = useCallback(
+    async (source?: SelfLeaveSource): Promise<ConfirmationOutcome> => {
+      const previous =
+        queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
       const claim = createContextPublicationClaim();
-      if (!claimContextPublication(queryClient, claim)) {
-        return null;
-      }
-      setMembershipContextUnavailable(true);
+      const binding: ConfirmationBinding = {
+        client: queryClient,
+        identity: getQueryClientIdentity(queryClient),
+        claim,
+        requiredGeneration: claim,
+      };
+      if (source !== undefined)
+        setSelfLeave({ kind: "confirming", source, binding });
+      const owns = () =>
+        bindingCurrent(binding) &&
+        (source === undefined ||
+          (selfLeaveRecord.current.kind !== "idle" &&
+            selfLeaveRecord.current.source === source &&
+            sourceCurrent(source)));
+      if (!claimContextPublication(queryClient, claim, "membership"))
+        return { kind: "superseded" };
       await queryClient.cancelQueries({
         queryKey: ME_CONTEXT_QUERY_KEY,
         exact: true,
       });
-      if (!hasContextPublicationClaim(queryClient, claim)) {
-        return null;
-      }
+      if (!owns()) return { kind: "superseded" };
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
-      if (!hasContextPublicationClaim(queryClient, claim)) {
-        return null;
-      }
-      queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+      if (!owns()) return { kind: "superseded" };
+      // Self-leave retires its origin immediately; ordinary confirmation retains private observers.
+      if (source !== undefined)
+        queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       try {
-        const updated = await fetchMeContext();
-        if (!hasContextPublicationClaim(queryClient, claim)) {
-          return null;
+        const context = await fetchMeContext(
+          source === undefined
+            ? undefined
+            : { signal: source.controller.signal },
+        );
+        if (!owns()) return { kind: "superseded" };
+        if (source !== undefined && context.user.id !== binding.identity) {
+          failContextPublication(
+            queryClient,
+            claim,
+            new Error("Context identity does not match the verified session"),
+          );
+          source.controller.abort();
+          setSelfLeave({ kind: "idle" });
+          return { kind: "superseded" };
         }
-        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-        setSelectedOrgId(null);
-        setMembershipContextUnavailable(false);
-        return updated;
-      } catch {
-        return null;
+        assertContextIdentity(queryClient, context);
+        if (contextScopeChanged(previous, context)) {
+          queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+        }
+        if (!publishContextPublication(queryClient, claim, context) || !owns())
+          return { kind: "superseded" };
+        return { kind: "confirmed", binding, context };
+      } catch (error) {
+        if (!owns()) return { kind: "superseded" };
+        failContextPublication(queryClient, claim, error);
+        discardUnconfirmedTenantQueries(queryClient);
+        return owns() ? { kind: "failed", binding } : { kind: "superseded" };
       }
-    }, [queryClient]);
+    },
+    [queryClient, bindingCurrent, setSelfLeave],
+  );
+  const refreshMembershipContext =
+    useCallback(async (): Promise<MeContextResponse | null> => {
+      const outcome = await confirmMembership();
+      return outcome.kind === "confirmed" ? outcome.context : null;
+    }, [confirmMembership]);
+  const settleSelfLeave = async (input: SelfLeaveInput): Promise<void> => {
+    if (input.origin.signal.aborted || !input.origin.isCurrent()) return;
+    const previous = selfLeaveRecord.current;
+    if (previous.kind !== "idle" && previous.kind !== "refresh-failed") return;
+    if (previous.kind !== "idle") previous.source.controller.abort();
+    const source: SelfLeaveSource = {
+      ...input,
+      controller: new AbortController(),
+    };
+    const retire = () => {
+      source.controller.abort();
+      const record = selfLeaveRecord.current;
+      if (record.kind !== "idle" && record.source === source)
+        setSelfLeave({ kind: "idle" });
+    };
+    input.origin.signal.addEventListener("abort", retire, { once: true });
+    source.controller.signal.addEventListener(
+      "abort",
+      () => {
+        input.origin.signal.removeEventListener("abort", retire);
+      },
+      { once: true },
+    );
+    const outcome = await confirmMembership(source);
+    if (outcome.kind === "superseded" || !sourceCurrent(source)) {
+      retire();
+      return;
+    }
+    if (outcome.kind === "failed") {
+      setSelfLeave({
+        kind: "refresh-failed",
+        source,
+        binding: outcome.binding,
+      });
+    } else if (
+      outcome.context.organizations.some(
+        (organization) => organization.id === input.organizationId,
+      )
+    ) {
+      setSelfLeave({
+        kind: "not-left",
+        source,
+        binding: outcome.binding,
+        notice: input.attempt === "last-owner" ? "last-owner" : "other",
+      });
+    } else {
+      setSelfLeave({
+        kind: "ready",
+        source,
+        binding: outcome.binding,
+        destination: selfLeaveDestination(outcome.context),
+      });
+    }
+  };
+  const retrySelfLeave = async (origin: SelfLeaveOrigin): Promise<void> => {
+    const record = selfLeaveRecord.current;
+    if (
+      record.kind !== "refresh-failed" ||
+      record.source.origin !== origin ||
+      !bindingCurrent(record.binding) ||
+      !sourceCurrent(record.source)
+    )
+      return;
+    await settleSelfLeave(record.source);
+  };
+  const deliverSelfLeave = (
+    origin: SelfLeaveOrigin,
+    navigate: (organizationId: string | null) => void,
+  ): boolean => {
+    const record = selfLeaveRecord.current;
+    const current = getContextPublicationSnapshot(queryClient);
+    if (
+      record.kind !== "ready" ||
+      record.source.origin !== origin ||
+      !sourceCurrent(record.source) ||
+      !bindingCurrent(record.binding) ||
+      current.admission.kind !== "confirmed" ||
+      current.publishedClaim !== record.binding.claim
+    )
+      return false;
+    record.source.controller.abort();
+    setSelfLeave({ kind: "idle" });
+    navigate(record.destination);
+    return true;
+  };
+  const consumeSelfLeaveNotice = (organizationId: string) => {
+    const record = selfLeaveRecord.current;
+    if (
+      record.kind === "not-left" &&
+      record.source.organizationId === organizationId &&
+      bindingCurrent(record.binding) &&
+      sourceCurrent(record.source)
+    ) {
+      record.source.controller.abort();
+      setSelfLeave({ kind: "idle" });
+    }
+  };
+  const selfLeave: SelfLeaveView =
+    renderedSelfLeave.kind === "idle" ||
+    !bindingCurrent(renderedSelfLeave.binding) ||
+    !sourceCurrent(renderedSelfLeave.source)
+      ? { kind: "idle" }
+      : renderedSelfLeave.kind === "not-left"
+        ? {
+            kind: "not-left",
+            organizationId: renderedSelfLeave.source.organizationId,
+            notice: renderedSelfLeave.notice,
+          }
+        : {
+            kind: renderedSelfLeave.kind,
+            organizationId: renderedSelfLeave.source.organizationId,
+          };
 
   const switchOrg = async (organizationId: string): Promise<boolean> => {
     if (
@@ -182,15 +482,31 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     ) {
       return false;
     }
+    const acceptedGeneration =
+      getContextPublicationSnapshot(queryClient).requiredGeneration;
+    const switchAdmissionCurrent = () => {
+      const current = getContextPublicationSnapshot(queryClient);
+      return (
+        current.requiredGeneration === acceptedGeneration &&
+        current.admission.kind === "confirmed"
+      );
+    };
     const intent = ++latestSwitchIntent.current;
     setOrgSwitchPending(true);
     const switchOperation = switchQueue.current.then(async () => {
+      if (!switchAdmissionCurrent()) return false;
       const claim = createContextPublicationClaim();
-      if (!claimContextPublication(queryClient, claim)) {
+      if (!claimContextPublication(queryClient, claim, "switch")) {
         return false;
       }
       try {
+        await queryClient.cancelQueries({
+          queryKey: ME_CONTEXT_QUERY_KEY,
+          exact: true,
+        });
+        if (!hasContextPublicationClaim(queryClient, claim)) return false;
         const updated = await updateActiveOrganization({ organizationId });
+        assertContextIdentity(queryClient, updated);
         if (!hasContextPublicationClaim(queryClient, claim)) {
           return false;
         }
@@ -199,10 +515,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           return false;
         }
         queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
-        queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
-        publishContextPublication(queryClient, claim);
-        setMembershipContextUnavailable(false);
-        setSelectedOrgId(organizationId);
+        if (!publishContextPublication(queryClient, claim, updated))
+          return false;
         return latestSwitchIntent.current === intent;
       } catch {
         return false;
@@ -220,13 +534,27 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   };
 
   const retryMe = async (): Promise<void> => {
+    const record = selfLeaveRecord.current;
+    if (record.kind === "refresh-failed") {
+      await retrySelfLeave(record.source.origin);
+      return;
+    }
     await refreshMembershipContext();
   };
 
   const value: TenantContextValue = {
-    me: membershipContextUnavailable ? undefined : meQuery.data,
-    mePending: meQuery.isPending,
-    meError: meQuery.error,
+    selfLeave,
+    settleSelfLeave,
+    retrySelfLeave,
+    deliverSelfLeave,
+    consumeSelfLeaveNotice,
+    me,
+    mePending:
+      admission.kind === "unresolved" || admission.kind === "confirming",
+    meError: admission.kind === "failed" ? admission.error : null,
+    membershipInteraction:
+      (admission.kind === "confirming" || admission.kind === "failed") &&
+      admission.cause === "membership",
     retryMe,
     refreshMembershipContext,
     activeOrg,

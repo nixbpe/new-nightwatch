@@ -106,6 +106,7 @@ function retryAfterOf(error: ApiError): number | null {
  * status region that exists from the first render.
  */
 export function TestPanel({
+  presented = true,
   payload,
   secretsChanged,
   onRun,
@@ -117,6 +118,8 @@ export function TestPanel({
   saving,
   onPendingChange,
 }: {
+  /** Presentation may withdraw while the request/state owner stays mounted. */
+  presented?: boolean;
   /** What a result is compared with to tell it is stale; it holds no secret value. */
   payload: TestPayload;
   /** A secret was typed, replaced or dropped since the last test started. */
@@ -137,6 +140,13 @@ export function TestPanel({
 }) {
   const [state, setState] = useState<State>({ kind: "idle" });
   const inFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [now, setNow] = useState(() => Date.now());
 
   const rateLimitedUntil = state.kind === "rateLimited" ? state.until : null;
@@ -157,7 +167,7 @@ export function TestPanel({
   const held = running || waiting || saving || blockedReason !== null;
 
   async function run() {
-    if (inFlight.current || held) return;
+    if (!presented || inFlight.current || held) return;
     if (!validate()) return;
     inFlight.current = true;
     const sent = payload;
@@ -166,8 +176,10 @@ export function TestPanel({
     onPendingChange(true);
     try {
       const response = await send();
+      if (!mounted.current) return;
       setState({ kind: "result", result: response.result, sent });
     } catch (error) {
+      if (!mounted.current) return;
       if (
         error instanceof ApiError &&
         error.code === "MONITOR_TEST_RATE_LIMITED"
@@ -183,7 +195,7 @@ export function TestPanel({
       }
     } finally {
       inFlight.current = false;
-      onPendingChange(false);
+      if (mounted.current) onPendingChange(false);
     }
   }
 
@@ -204,6 +216,7 @@ export function TestPanel({
       ? Math.max(1, Math.ceil((state.until - now) / 1000))
       : 0;
 
+  if (!presented) return null;
   return (
     <Card as="section" aria-labelledby="monitor-form-test-title" padding="md">
       <CardHeader
@@ -213,6 +226,7 @@ export function TestPanel({
       />
       <div>
         <Button
+          id="monitor-form-test-button"
           type="button"
           variant="secondary"
           aria-disabled={held}

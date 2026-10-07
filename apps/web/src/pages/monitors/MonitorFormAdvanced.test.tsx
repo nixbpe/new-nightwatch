@@ -1,3 +1,6 @@
+import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +34,13 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createMonitor: vi.fn(),
   fetchMonitorDetail: vi.fn(),
+  fetchMonitorChecks: vi.fn(() => Promise.resolve(noChecks)),
+  fetchMonitorIncidents: vi.fn(() => Promise.resolve(noIncidents)),
+  fetchMonitorResponseTimes: vi.fn(() => Promise.resolve(noResponseTimes)),
+  fetchMonitorEvents: vi.fn(() =>
+    Promise.resolve({ events: [], page: { limit: 20, offset: 0, total: 0 } }),
+  ),
+  fetchMonitorLastResponse: vi.fn(() => Promise.resolve({ response: null })),
   fetchMonitorList: vi.fn(),
 }));
 

@@ -29,8 +29,15 @@ import {
   readInvitation,
   rememberInvitation,
 } from "../lib/auth/continuation";
+import { assertContextIdentity } from "../lib/tenant/bootstrap";
 import { ApiError } from "../lib/api/client";
 import { ROLE_LABELS } from "../lib/roles";
+import {
+  claimContextPublication,
+  createContextPublicationClaim,
+  hasContextPublicationClaim,
+  publishContextPublication,
+} from "../lib/queryClient";
 
 function invitationProblemMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -214,15 +221,30 @@ function VerifiedAcceptance({
       if (readInvitation() === invitationId) clearInvitation();
       if (!isMounted()) return;
       setAccepted(true);
+      const claim = createContextPublicationClaim();
+      if (!claimContextPublication(queryClient, claim, "bootstrap")) return;
+      await queryClient.cancelQueries({
+        queryKey: ME_CONTEXT_QUERY_KEY,
+        exact: true,
+      });
+      if (!isMounted() || !hasContextPublicationClaim(queryClient, claim))
+        return;
       const context = await fetchMeContext();
-      if (!isMounted()) return;
+      assertContextIdentity(queryClient, context);
+      if (!isMounted() || !hasContextPublicationClaim(queryClient, claim))
+        return;
       if (!context.organizations.some((org) => org.id === organizationId)) {
         throw new Error("Accepted membership is missing from context");
       }
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
       const updated = await updateActiveOrganization({ organizationId });
-      if (!isMounted()) return;
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, updated);
+      assertContextIdentity(queryClient, updated);
+      if (!isMounted() || !hasContextPublicationClaim(queryClient, claim))
+        return;
+      await queryClient.cancelQueries({ queryKey: ["tenant"] });
+      if (!isMounted() || !hasContextPublicationClaim(queryClient, claim))
+        return;
+      queryClient.removeQueries({ queryKey: ["tenant"] });
+      publishContextPublication(queryClient, claim, updated);
       void navigate("/workspace", { replace: true });
     } catch (cause) {
       if (!isMounted()) return;

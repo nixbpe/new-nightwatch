@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
   OrganizationMemberListResponse,
@@ -172,6 +173,7 @@ async function renderAs(role: OrganizationRole) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, ME);
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={queryClient}>
@@ -400,7 +402,7 @@ it("shows no success when an owner demotes themselves and loses list access", as
 });
 
 it.each(["success", "LAST_OWNER"] as const)(
-  "keeps B role, action and notice untouched by a late A %s response",
+  "keeps destination role, action and notice unchanged after a late origin %s response",
   async (outcome) => {
     const pending =
       Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
@@ -495,7 +497,7 @@ it("ignores Escape while a confirmed change is pending", async () => {
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
-it("does not leave pagination disabled when a confirmed switch retires A while staying on A", async () => {
+it("reenables pagination after a confirmed switch retires the origin operation while its route remains", async () => {
   const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
   vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) => {
@@ -530,7 +532,7 @@ it("does not leave pagination disabled when a confirmed switch retires A while s
   ).toEqual([]);
 });
 
-it("keeps A pending, and its result, when the switch to B is denied", async () => {
+it("keeps the origin role change pending and applies its result when the organization switch is denied", async () => {
   const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
   vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
   vi.mocked(updateActiveOrganization).mockRejectedValue(new Error("denied"));

@@ -414,7 +414,12 @@ export function createApp(deps: AppDeps): OpenAPIHono {
     );
     app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
     registerOnboardingRoutes(app, { database, auth });
-    registerMeRoutes(app, { auth, database, logger: deps.logger });
+    registerMeRoutes(app, {
+      auth,
+      database,
+      trustedOrigin: deps.authEnv.CORS_ORIGIN,
+      logger: deps.logger,
+    });
     registerNotificationInboxRoutes(app, {
       auth,
       authEnv: deps.authEnv,

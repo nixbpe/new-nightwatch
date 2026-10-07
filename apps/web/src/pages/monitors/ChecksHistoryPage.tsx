@@ -249,7 +249,11 @@ function ChecksHistoryForMonitor({
   const detail = useQuery({
     queryKey: monitorQueryKeys.detail(organizationId, monitorId),
     queryFn: () => fetchMonitorDetail(organizationId, monitorId),
-    enabled: isMember && !switchedOrganization,
+    enabled: (query) =>
+      isMember && !switchedOrganization && !isDenied(query.state.error),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const detailGone = isNotFound(detail.error) || isDenied(detail.error);
 
@@ -268,7 +272,19 @@ function ChecksHistoryForMonitor({
         ? next
         : undefined;
     },
-    enabled: isMember && !switchedOrganization && !detailGone,
+    enabled: (query) =>
+      isMember &&
+      !switchedOrganization &&
+      !detailGone &&
+      !(isDenied(query.state.error) && query.state.data === undefined),
+    retry: false,
+    staleTime: (query) =>
+      query.state.fetchMeta?.fetchMore !== undefined &&
+      query.state.status === "error"
+        ? "static"
+        : (query.state.data?.pages.length ?? 0) > 1
+          ? Infinity
+          : 0,
     // Chunks are dropped on leaving the page, so it always reopens on the first chunk.
     gcTime: 0,
     refetchInterval: (query) =>
@@ -287,7 +303,13 @@ function ChecksHistoryForMonitor({
       setRefreshing(false);
     });
   }, [denied, readRefresh, refreshMembershipContext]);
-  const monitor = notFound || denied ? undefined : detail.data?.monitor;
+  useEffect(() => {
+    if (!denied && !refreshing && readRefresh === "started")
+      setReadRefresh("idle");
+  }, [denied, refreshing, readRefresh]);
+  const loadMoreDenied = checks.isFetchNextPageError && !detailGone;
+  const readDenied = denied && !loadMoreDenied;
+  const monitor = notFound || readDenied ? undefined : detail.data?.monitor;
 
   const header = (title: ReactNode = "มอนิเตอร์") => (
     <>
@@ -300,7 +322,7 @@ function ChecksHistoryForMonitor({
       </Link>
       <PageHeader
         scope={
-          organization === undefined || denied
+          organization === undefined || readDenied
             ? undefined
             : {
                 mark: organization.name,
@@ -340,7 +362,7 @@ function ChecksHistoryForMonitor({
       </Page>
     );
   }
-  if (organization === undefined || denied) {
+  if (organization === undefined || readDenied) {
     // No name or scope row: a non-member learns nothing about this Organization.
     return (
       <Page>
@@ -348,6 +370,21 @@ function ChecksHistoryForMonitor({
         <PageState
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
+          action={
+            organization === undefined ? undefined : (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  void (isDenied(detail.error)
+                    ? detail.refetch()
+                    : checks.refetch());
+                }}
+              >
+                ลองอีกครั้ง
+              </Button>
+            )
+          }
         />
       </Page>
     );

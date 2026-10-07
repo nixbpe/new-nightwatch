@@ -226,6 +226,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/resolve-active-org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve account-global active organization after verified authentication
+         * @description No selection input. Credentialed browser and native callers must send the configured trusted Origin.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resolved context, or account-only admission when no membership exists */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            user: {
+                                id: string;
+                                name: string;
+                                /** Format: email */
+                                email: string;
+                                emailVerified: boolean;
+                                twoFactorEnabled: boolean;
+                            };
+                            organizations: {
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                                slug: string;
+                                /** @enum {string} */
+                                role: "owner" | "admin" | "viewer" | "auditor";
+                            }[];
+                            /** Format: uuid */
+                            lastActiveTenantId: string | null;
+                        };
+                    };
+                };
+                /** @description No final authenticated session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email not verified or missing, null or foreign Origin */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Resolution could not converge, retry required */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                code: string;
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me/active-org": {
         parameters: {
             query?: never;

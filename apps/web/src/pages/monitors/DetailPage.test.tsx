@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import type {
   Monitor,
   MonitorListResponse,
@@ -780,9 +782,11 @@ describe("Detail loading, failure and refetch", () => {
   it("shows a loading state with no data while pending", async () => {
     fetchDetailMock.mockReturnValue(new Promise(() => undefined));
     renderDetail();
-    expect(
-      await screen.findByRole("status", { name: "กำลังโหลดมอนิเตอร์" }),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("status", { name: "กำลังโหลดมอนิเตอร์" }),
+      ).toBeInTheDocument();
+    });
     expect(screen.queryByText("Payments API")).toBeNull();
   });
 

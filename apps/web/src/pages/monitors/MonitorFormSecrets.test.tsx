@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import type { MonitorTestResult } from "@nightwatch/api-contract";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -44,6 +46,10 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   createMonitor: vi.fn(),
   updateMonitor: vi.fn(),
   fetchMonitorDetail: vi.fn(),
+  fetchMonitorLastResponse: vi.fn(() => Promise.resolve({ response: null })),
+  fetchMonitorEvents: vi.fn(() =>
+    Promise.resolve({ events: [], page: { limit: 20, offset: 0, total: 0 } }),
+  ),
   fetchMonitorChecks: vi.fn(),
   fetchMonitorIncidents: vi.fn(),
   fetchMonitorRecentEvents: vi.fn(),
@@ -663,7 +669,7 @@ describe("Focus stays in the form when a pressed button goes away", () => {
   });
 });
 
-describe("Edit: origin change (AC-44)", () => {
+describe("Edit: origin change", () => {
   const changeUrl = (value: string) => {
     fireEvent.change(screen.getByLabelText("URL"), { target: { value } });
   };
@@ -1024,7 +1030,7 @@ describe("Server refusals of secret entries are placed beside the slot's field",
   });
 });
 
-describe("Secret hygiene (AC-25)", () => {
+describe("Secret hygiene", () => {
   type Rendered = ReturnType<typeof renderForm>;
 
   // Saves and tests call the API functions directly, never useMutation, so the

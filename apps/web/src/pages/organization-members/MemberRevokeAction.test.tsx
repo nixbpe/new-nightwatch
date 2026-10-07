@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
   OrganizationMemberListResponse,
@@ -158,6 +159,7 @@ async function renderAs(role: OrganizationRole) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, ME);
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={queryClient}>
@@ -373,7 +375,7 @@ it("refreshes context and redirects when the server denies the actor's revoke", 
   expect(screen.queryByText(/ออกจากองค์กรแล้ว/)).toBeNull();
 });
 
-it("applies a late A result to A when the switch to B is denied", async () => {
+it("applies the late revoke result to the origin when the organization switch is denied", async () => {
   const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
   vi.mocked(revokeOrganizationMember).mockReturnValue(pending.promise);
   vi.mocked(updateActiveOrganization).mockRejectedValue(
@@ -398,7 +400,7 @@ it("applies a late A result to A when the switch to B is denied", async () => {
 });
 
 it.each(["success", "LAST_OWNER"] as const)(
-  "keeps B untouched by a late A %s response after switching to B",
+  "ignores late origin revoke %s responses after a confirmed organization switch",
   async (outcome) => {
     const pending =
       Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();

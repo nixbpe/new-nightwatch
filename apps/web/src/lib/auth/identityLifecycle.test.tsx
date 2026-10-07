@@ -1,6 +1,8 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { useQuery } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { useLayoutEffect } from "react";
 import {
   createMemoryRouter,
@@ -12,7 +14,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RootLayout } from "../../router";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
-import { resetQueryClientRegistry } from "../queryClient";
+import {
+  resetQueryClientRegistry,
+  peekActiveQueryClientIdentity,
+} from "../queryClient";
 import { requireAnonLoader, workspaceLoader } from "./loaders";
 
 type SessionUser = {
@@ -166,7 +171,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     resetQueryClientRegistry();
   });
 
-  it("user B never receives user A's cached data, and each loader prefetch lands in that identity's own client", async () => {
+  it("isolates account caches and loader prefetches by identity", async () => {
     // Logs which identity each fetch served; a cache leak would surface A's payload without a new fetch.
     const fetchLog: string[] = [];
     transport.mockImplementation(() => {
@@ -212,7 +217,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     expect(commitLog.slice(commitsBeforeB)).not.toContain("User A");
   });
 
-  it("document-resyncs when a fresh loader resolves B while the committed provider still serves A", async () => {
+  it("reloads the document when a fresh loader identity differs from the committed provider", async () => {
     const fetchLog: string[] = [];
     transport.mockImplementation(() => {
       const user = sessionStore.getFresh()?.user;
@@ -229,7 +234,10 @@ describe("per-identity cache lifecycle across logout → login", () => {
     });
     render(<RouterProvider router={router} />);
 
-    expect(await screen.findByTestId("view")).toHaveTextContent("User A");
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("User A");
+      expect(peekActiveQueryClientIdentity()).toBe("user-a");
+    });
     expect(fetchLog).toEqual(["user-a"]);
     const commitsBeforeFreshB = commitLog.length;
 
@@ -259,7 +267,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     expect(commitLog.slice(commitsBeforeFreshB)).not.toContain("User B");
   });
 
-  it("same-identity navigation reuses the rendered client's loader prefetch", async () => {
+  it("same-identity navigation resolves afresh into the rendered identity client", async () => {
     const fetchLog: string[] = [];
     transport.mockImplementation(() => {
       const user = sessionStore.getFresh()?.user;
@@ -275,7 +283,10 @@ describe("per-identity cache lifecycle across logout → login", () => {
       initialEntries: ["/workspace"],
     });
     render(<RouterProvider router={router} />);
-    expect(await screen.findByTestId("view")).toHaveTextContent("User A");
+    await waitFor(() => {
+      expect(screen.getByTestId("view")).toHaveTextContent("User A");
+      expect(peekActiveQueryClientIdentity()).toBe("user-a");
+    });
     const sameIdentityRequest = new Request(
       "http://localhost/workspace?tab=same-user",
     );
@@ -288,7 +299,7 @@ describe("per-identity cache lifecycle across logout → login", () => {
     });
 
     expect(result).toBeNull();
-    expect(fetchLog).toEqual(["user-a"]);
+    expect(fetchLog).toEqual(["user-a", "user-a"]);
     expect(screen.getByTestId("view")).toHaveTextContent("User A");
   });
 });
