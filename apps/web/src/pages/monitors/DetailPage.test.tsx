@@ -938,6 +938,8 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     // No new copy: a pause is not a failed refresh.
     expect(screen.queryByText(STALE)).toBeNull();
 
+    // Time passes while it is paused, so the response that follows is stamped after the pause began.
+    vi.setSystemTime(NOW.getTime() + 1_000);
     onlineManager.setOnline(true);
     await waitFor(() => {
       expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
@@ -959,6 +961,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     expect(document.querySelector(".live-pulse")).toBeNull();
     expect(screen.queryByText(STALE)).toBeNull();
 
+    vi.setSystemTime(NOW.getTime() + 1_000);
     onlineManager.setOnline(true);
     await waitFor(() => {
       expect(headerBadge().wrapper).toHaveClass(GLOW);
@@ -1018,6 +1021,62 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
     expect(document.querySelector(".live-pulse")).toBeNull();
     expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+  });
+
+  it("keeps the dot and the glow off after a short pause while the resumed fetch is pending, however recent the snapshot is", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(document.querySelector(".live-pulse")).toBeNull();
+    });
+    // No time passes: the snapshot is still within the age limit when the query resumes (Codex 4202350103).
+    const resumed = deferred<{ monitor: Monitor }>();
+    fetchDetailMock.mockReturnValue(resumed.promise);
+    const calls = fetchDetailMock.mock.calls.length;
+    onlineManager.setOnline(true);
+    await waitFor(() => {
+      expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
+    });
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+
+    vi.setSystemTime(NOW.getTime() + 1_000);
+    await act(async () => {
+      resumed.resolve({ monitor: downWithIncident() });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+  });
+
+  it("keeps the dot and the glow on while a routine poll is in flight", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    const poll = deferred<{ monitor: Monitor }>();
+    fetchDetailMock.mockReturnValue(poll.promise);
+    const calls = fetchDetailMock.mock.calls.length;
+    await waitFor(() => {
+      expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
+    });
+    // Pending, no pause and no error: nothing flickers.
+    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    await act(async () => {
+      poll.resolve({ monitor: downWithIncident() });
+      await Promise.resolve();
+    });
+    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
   });
 
   it("opens from a cached snapshot older than the limit with the dot and the glow off until the refetch succeeds", async () => {

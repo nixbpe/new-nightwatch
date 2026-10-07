@@ -86,3 +86,142 @@ describe("useDataFresh", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+// A pause leaves the snapshot from before it as `data`, and the query reports `fetching` again as soon as it is online (Codex 4202350103). Until a success lands after the pause the data is not fresh, however short the pause was.
+describe("useDataFresh after a pause", () => {
+  type Input = Parameters<typeof useDataFresh>[0];
+  const setup = (initial: Input = state()) =>
+    renderHook(({ input }) => useDataFresh(input), {
+      initialProps: { input: initial },
+    });
+  const moveOn = (ms: number) => {
+    act(() => {
+      vi.advanceTimersByTime(ms);
+    });
+  };
+
+  it.each([
+    ["short (under the age limit)", 5_000],
+    ["long (over the age limit)", LIMIT_MS + 30_000],
+  ])(
+    "keeps a %s pause stale after it resumes until a success lands",
+    (_name, pauseMs) => {
+      const { result, rerender } = setup();
+      const snapshot = Date.now();
+      rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
+      expect(result.current).toBe(false);
+      moveOn(pauseMs);
+      // Online again: `fetching`, no longer paused, `data` still the snapshot.
+      rerender({ input: state({ dataUpdatedAt: snapshot }) });
+      expect(result.current).toBe(false);
+      moveOn(1_000);
+      rerender({ input: state({ dataUpdatedAt: Date.now() }) });
+      expect(result.current).toBe(true);
+    },
+  );
+
+  it("stays stale through a failed fetch and a second pause until the final success", () => {
+    const { result, rerender } = setup();
+    const snapshot = Date.now();
+    rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
+    moveOn(3_000);
+    rerender({ input: state({ dataUpdatedAt: snapshot }) });
+    expect(result.current).toBe(false);
+    moveOn(3_000);
+    rerender({ input: state({ isError: true, dataUpdatedAt: snapshot }) });
+    expect(result.current).toBe(false);
+    moveOn(3_000);
+    rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
+    expect(result.current).toBe(false);
+    moveOn(3_000);
+    // Resumed again, retrying: not an error any more, still no success.
+    rerender({ input: state({ dataUpdatedAt: snapshot }) });
+    expect(result.current).toBe(false);
+    moveOn(1_000);
+    rerender({ input: state({ dataUpdatedAt: Date.now() }) });
+    expect(result.current).toBe(true);
+  });
+
+  it("keeps the first pause through several toggles with no success in between", () => {
+    const { result, rerender } = setup();
+    const snapshot = Date.now();
+    for (let toggle = 0; toggle < 3; toggle += 1) {
+      rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
+      expect(result.current).toBe(false);
+      moveOn(4_000);
+      rerender({ input: state({ dataUpdatedAt: snapshot }) });
+      expect(result.current).toBe(false);
+      moveOn(4_000);
+    }
+    // The snapshot itself never clears it, however long the toggling went on.
+    expect(result.current).toBe(false);
+    // `pausedAt` is the first pause: a success stamped after it, even before the later pauses, clears it.
+    rerender({ input: state({ dataUpdatedAt: snapshot + 1_000 }) });
+    expect(result.current).toBe(true);
+  });
+
+  it("clears on a success from a fetch started before the pause but landing after it began", () => {
+    // Intended: `dataUpdatedAt > pausedAt` is the rule, so a response that lands after the pause began counts as data newer than the pause.
+    const { result, rerender } = setup();
+    const snapshot = Date.now();
+    moveOn(2_000);
+    rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
+    expect(result.current).toBe(false);
+    moveOn(1_000);
+    // The response lands, stamped after the pause began, and the query is no longer paused.
+    rerender({ input: state({ dataUpdatedAt: Date.now() }) });
+    expect(result.current).toBe(true);
+  });
+
+  it("does not flicker while a routine poll is in flight with no pause", () => {
+    const { result, rerender } = setup();
+    const seen: boolean[] = [];
+    for (let poll = 0; poll < 5; poll += 1) {
+      moveOn(MONITOR_REFETCH_INTERVAL_MS / 2);
+      // The poll is in flight: same data, no pause, no error.
+      rerender({
+        input: state({
+          dataUpdatedAt: Date.now() - MONITOR_REFETCH_INTERVAL_MS / 2,
+        }),
+      });
+      seen.push(result.current);
+      moveOn(MONITOR_REFETCH_INTERVAL_MS / 2);
+      rerender({ input: state({ dataUpdatedAt: Date.now() }) });
+      seen.push(result.current);
+    }
+    expect(seen.every(Boolean)).toBe(true);
+  });
+
+  it("returns to fresh after a failed refetch once new data arrives", () => {
+    const { result, rerender } = setup();
+    const snapshot = Date.now();
+    rerender({ input: state({ isError: true, dataUpdatedAt: snapshot }) });
+    expect(result.current).toBe(false);
+    moveOn(1_000);
+    rerender({ input: state({ dataUpdatedAt: Date.now() }) });
+    expect(result.current).toBe(true);
+  });
+
+  it("clears its timer and updates nothing when unmounted during a pending resumed fetch", () => {
+    const errors = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const { rerender, unmount } = setup();
+    const snapshot = Date.now();
+    rerender({ input: state({ isPaused: true, dataUpdatedAt: snapshot }) });
+    rerender({ input: state({ dataUpdatedAt: snapshot }) });
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    moveOn(LIMIT_MS * 2);
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("forgets the pause on a remount, so freshness falls back to the age rule", () => {
+    // Accepted: a remount during a pending resumed fetch loses the pause history.
+    const { unmount } = setup(state({ isPaused: true }));
+    unmount();
+    const { result } = setup(state());
+    expect(result.current).toBe(true);
+  });
+});
