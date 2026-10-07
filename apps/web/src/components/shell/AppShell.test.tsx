@@ -5,7 +5,13 @@ import {
   openNotification,
 } from "../../lib/api/notifications";
 import { guardUnassignedNetwork } from "../../test/guard-network";
-import { bindQueryClientIdentity } from "../../lib/queryClient";
+import {
+  bindQueryClientIdentity,
+  peekActiveQueryClientIdentity,
+  resolveQueryClientForIdentity,
+  resetQueryClientRegistry,
+} from "../../lib/queryClient";
+import { SessionQueryProvider } from "../../lib/auth/SessionQueryProvider";
 import type {
   MeContextResponse,
   NotificationItem,
@@ -18,7 +24,11 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
-import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import {
+  fetchMeContext,
+  updateActiveOrganization,
+  ME_CONTEXT_QUERY_KEY,
+} from "../../lib/api/me";
 import { InboxScopeChangedError } from "../../lib/api/notifications";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import {
@@ -68,7 +78,9 @@ const {
   markAllNotificationsReadMock: vi.fn(),
   openNotificationMock: vi.fn(),
   sessionState: {
-    data: { user: { email: "napat@example.com", name: "นภัส วงศ์สกุล" } },
+    data: {
+      user: { id: "user-1", email: "napat@example.com", name: "นภัส วงศ์สกุล" },
+    },
     isPending: false,
   },
   signOutMock: vi.fn(),
@@ -2033,6 +2045,161 @@ describe("AppShell", () => {
     router.dispose();
     await queryClient.cancelQueries();
     queryClient.clear();
+  });
+  it("actual SessionQueryProvider identity swap retires handed-off self-leave", async () => {
+    resetQueryClientRegistry();
+    const originalSession = sessionState.data;
+    const oldResolver = Promise.withResolvers<MeContextResponse>();
+    const user = userEvent.setup();
+    let changeIdentity = () => {};
+    const initial = meContext([ownerOrg, viewerOrg], ORG_A);
+    fetchMeContextMock.mockResolvedValue(initial);
+    fetchOrganizationMembersMock.mockResolvedValue({
+      organizationId: ORG_A,
+      members: [
+        {
+          id: "member-1",
+          userId: "user-1",
+          name: "Member",
+          email: "member@example.test",
+          role: "owner",
+        },
+      ],
+      page: { limit: 50, offset: 0, total: 1 },
+      memberLimit: 1000,
+    });
+    vi.mocked(leaveOrganization).mockResolvedValue({
+      member: {
+        id: "member-1",
+        userId: "user-1",
+        organizationId: ORG_A,
+        role: "owner",
+      },
+    });
+    function SessionHost() {
+      const [identity, setIdentity] = useState("user-1");
+      changeIdentity = () => {
+        setIdentity("user-2");
+      };
+      sessionState.data =
+        identity === "user-1"
+          ? originalSession
+          : {
+              user: {
+                id: identity,
+                email: "session-b@example.test",
+                name: "Session B",
+              },
+            };
+      return (
+        <SessionQueryProvider
+          onResolvedIdentityChange={() => {
+            void router.revalidate();
+          }}
+        >
+          <TenantProvider>
+            <AppShell />
+          </TenantProvider>
+        </SessionQueryProvider>
+      );
+    }
+    const router = createMemoryRouter(
+      [
+        {
+          element: <SessionHost />,
+          children: [
+            {
+              path: "/organizations/:organizationId/members",
+              element: <OrganizationMembersPage />,
+            },
+            { path: "/workspace", element: <WorkspacePage /> },
+          ],
+        },
+      ],
+      { initialEntries: [`/organizations/${ORG_A}/members`] },
+    );
+    const view = render(<RouterProvider router={router} />);
+    try {
+      await screen.findByRole("button", { name: "ออกจากองค์กร" });
+      await waitFor(() => {
+        expect(peekActiveQueryClientIdentity()).toBe("user-1");
+      });
+      const oldClient = resolveQueryClientForIdentity("user-1");
+      const outgoing = screen.getByRole("heading", { name: "สมาชิก" });
+      await user.click(screen.getByRole("button", { name: "ออกจากองค์กร" }));
+      fetchMeContextMock.mockReturnValueOnce(oldResolver.promise);
+      await user.click(
+        screen.getByRole("button", { name: "ยืนยันการออกจากองค์กร" }),
+      );
+      await waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      });
+      expect(getContextPublicationSnapshot(oldClient).admission.kind).toBe(
+        "confirming",
+      );
+      expect(outgoing.isConnected).toBe(false);
+      const signal = fetchMeContextMock.mock.calls[1]?.[0]?.signal;
+      expect(signal?.aborted).toBe(false);
+      const current = {
+        ...meContext([{ ...viewerOrg, name: "Current B" }], ORG_B),
+        user: {
+          ...initial.user,
+          id: "user-2",
+          name: "Session B",
+          email: "session-b@example.test",
+        },
+      };
+      fetchMeContextMock.mockResolvedValue(current);
+      act(() => {
+        changeIdentity();
+      });
+      await screen.findByText("Current B", { exact: true });
+      await waitFor(() => {
+        expect(peekActiveQueryClientIdentity()).toBe("user-2");
+      });
+      const currentClient = resolveQueryClientForIdentity("user-2");
+      expect(currentClient).not.toBe(oldClient);
+      expect(getContextPublicationSnapshot(oldClient).admission.kind).toBe(
+        "retired",
+      );
+      expect(signal?.aborted).toBe(true);
+      await waitFor(() => {
+        expect(oldClient.getQueryCache().getAll()).toHaveLength(0);
+      });
+      const confirmedB = getContextPublicationSnapshot(currentClient);
+      const retiredA = getContextPublicationSnapshot(oldClient);
+      await act(async () => {
+        oldResolver.resolve(meContext([viewerOrg], ORG_B));
+        await oldResolver.promise;
+      });
+      expect(getContextPublicationSnapshot(currentClient)).toBe(confirmedB);
+      expect(getContextPublicationSnapshot(oldClient)).toBe(retiredA);
+      expect(oldClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();
+      expect(currentClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(current);
+      expect(router.state.location.pathname).toBe(
+        `/organizations/${ORG_A}/members`,
+      );
+      expect(screen.getByText("Current B", { exact: true })).toBeVisible();
+      expect(screen.queryByRole("button", { name: "ลองอีกครั้ง" })).toBeNull();
+      expect(
+        screen.queryByText(
+          /ออกจากองค์กรไม่สำเร็จ|ยังไม่ได้ออกจากองค์กร|ไม่สามารถยืนยันสถานะการเป็นสมาชิกได้|โหลดข้อมูลองค์กรไม่สำเร็จ/,
+        ),
+      ).toBeNull();
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+      expect(leaveOrganization).toHaveBeenCalledTimes(1);
+    } finally {
+      view.unmount();
+      router.dispose();
+      const identity = peekActiveQueryClientIdentity();
+      if (identity !== undefined) {
+        const currentClient = resolveQueryClientForIdentity(identity);
+        await currentClient.cancelQueries();
+        currentClient.clear();
+      }
+      resetQueryClientRegistry();
+      sessionState.data = originalSession;
+    }
   });
   async function startSelfLeave(
     strict = false,

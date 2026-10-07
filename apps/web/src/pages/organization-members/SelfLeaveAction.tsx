@@ -130,7 +130,6 @@ type Phase = "idle" | "leaving";
  * Self-leave flow for one Organization's member page. It works for every role
  * because it needs neither the member list nor a member row. Success is
  * decided by the server-confirmed context, never by the DELETE response.
- * The page guards DELETE completion, then hands settlement to the provider.
  * Cancel and Escape send no request, and a failed DELETE is never replayed.
  */
 export function useSelfLeave({
