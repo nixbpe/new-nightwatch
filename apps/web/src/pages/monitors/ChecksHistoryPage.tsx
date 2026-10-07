@@ -476,7 +476,8 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
                 {accumulated.urlChanges.map((change) => (
                   <li key={`${change.at} ${change.url}`}>
                     เปลี่ยน URL เมื่อ{" "}
-                    <Time iso={change.at} format={formatDateTime} /> เป็น{" "}
+                    <Time iso={change.at} format={formatDateTime} /> (
+                    {TIME_ZONE}) เป็น{" "}
                     <span className="font-mono break-all">{change.url}</span>
                   </li>
                 ))}
