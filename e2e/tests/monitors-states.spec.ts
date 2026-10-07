@@ -660,17 +660,25 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
         page,
         `57-kpi-${label === "24 ชม." ? "24h" : label === "7 วัน" ? "7d" : "30d"}-${theme}`,
       );
-      const table = card.getByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" });
-      await table.focus();
+      // The one button changes its name with the view, so each name is queried again after a press.
+      await card.getByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" }).focus();
       await page.keyboard.press("Enter");
       await expect(card.getByRole("table")).toBeVisible();
-      await expect(table).toBeFocused();
+      const backToChart = card.getByRole("button", {
+        name: "ดูข้อมูลเป็นกราฟ",
+      });
+      await expect(backToChart).toBeFocused();
+      // The view does not change the range.
+      await expect(radio).toBeChecked();
       await shot(
         page,
         `57-known-${label === "24 ชม." ? "24h" : label === "7 วัน" ? "7d" : "30d"}-${theme}`,
       );
       await page.keyboard.press("Enter");
       await expect(card.getByRole("table")).toHaveCount(0);
+      await expect(
+        card.getByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" }),
+      ).toBeFocused();
     }
   }
   for (const role of ["owner", "admin", "viewer", "auditor"] as const) {
@@ -883,4 +891,80 @@ test("pending real tenant A response cannot enter tenant B after confirmed switc
   await expect(card.locator("dd")).toHaveText(["999 ms", "999 ms", "1", "0"]);
   await expect(card.getByText("10 ms", { exact: true })).toHaveCount(0);
   await shot(page, "57-tenant-switch");
+});
+
+test("Detail links to the checks history and back by client navigation (AC-79)", async ({
+  page,
+}) => {
+  const id = randomUUID();
+  await pool.query(
+    `insert into monitors (id, tenant_id, name, url, client_request_id, interval_seconds)
+     values ($1, $2, 'issue85-history', 'https://fixture.example', $3, 60)`,
+    [id, orgA, randomUUID()],
+  );
+  await pool.query(
+    `insert into monitor_check_results
+      (monitor_id, tenant_id, scheduled_for, checked_at, outcome, response_time_ms,
+       url_masked, check_config_version, interval_seconds)
+     select $1, $2, now() - n * interval '1 minute', now() - n * interval '1 minute',
+       'pass', n * 10, 'https://fixture.example', 1, 60
+     from generate_series(1, 3) n`,
+    [id, orgA],
+  );
+  // The previous test switched this owner to another Organization; the sidebar leaf points at the active one.
+  await pool.query(
+    'update "user" set last_active_tenant_id = $1 where id = $2',
+    [orgA, owner.userId],
+  );
+  await signIn(page, owner);
+  await page.goto(`${overview()}/${id}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "issue85-history" }),
+  ).toBeVisible();
+  // Detail holds no history table of its own.
+  await expect(
+    page.getByRole("region", { name: "ตารางประวัติการตรวจ" }),
+  ).toHaveCount(0);
+  // A document load after this point means a link reloaded the page instead of navigating on the client.
+  let documentLoads = 0;
+  page.on("load", () => {
+    documentLoads += 1;
+  });
+
+  await page.getByRole("link", { name: /ดูประวัติการตรวจ/ }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/organizations/${orgA}/monitors/${id}/checks$`),
+  );
+  await expect(
+    page.getByRole("region", { name: "ตารางประวัติการตรวจ" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "ตารางประวัติการตรวจ" }).getByRole("row"),
+  ).toHaveCount(4);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "issue85-history" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "เมนูหลัก" })
+      .getByRole("link", { name: "ตรวจสถานะบริการ" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page
+      .getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" })
+      .locator('[aria-current="page"]'),
+  ).toHaveText("ตรวจสถานะบริการ");
+  await shot(page, "85-checks-history");
+
+  await page.getByRole("link", { name: "กลับไปหน้ามอนิเตอร์" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/organizations/${orgA}/monitors/${id}$`),
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: "issue85-history" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /ดูประวัติการตรวจ/ }),
+  ).toBeVisible();
+  expect(documentLoads).toBe(0);
 });
