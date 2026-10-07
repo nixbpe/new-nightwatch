@@ -38,6 +38,13 @@ const WORKSPACE_ROUTE = /^\/workspace(\/|$)/;
 export function AppShell() {
   const { pathname } = useLocation();
   const { me, mePending, retryMe, membershipInteraction } = useTenant();
+  const privateRoute =
+    /^(?:\/organizations\/[^/]+\/monitors\/(?:new|[^/]+\/(?:edit|checks)))$/.test(
+      pathname,
+    );
+  const admittedPrivateRoute = useRef<string | null>(null);
+  if (!privateRoute) admittedPrivateRoute.current = null;
+  else if (me !== undefined) admittedPrivateRoute.current = pathname;
   const isLarge = useMediaQuery("(min-width: 1024px)", true);
   const isDesktop = useMediaQuery("(min-width: 640px)", false);
   const [override, setOverride] = useState<{
@@ -189,10 +196,12 @@ export function AppShell() {
               <div className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
                 <ErrorBoundary landmark={false}>
                   <SelfLeaveRouteBoundary>
-                    {membershipInteraction &&
-                    /^\/organizations\/[^/]+\/monitors\/(new|[^/]+(?:\/edit)?)$/.test(
-                      pathname,
-                    ) ? (
+                    {(privateRoute &&
+                      admittedPrivateRoute.current === pathname) ||
+                    (membershipInteraction &&
+                      /^\/organizations\/[^/]+\/monitors\/[^/]+$/.test(
+                        pathname,
+                      )) ? (
                       <Outlet />
                     ) : mePending ? (
                       <PageState

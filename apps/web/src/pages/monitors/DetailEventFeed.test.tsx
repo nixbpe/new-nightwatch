@@ -399,7 +399,7 @@ describe("Event feed states", () => {
   });
 
   it("keeps the rows and warns when a refetch fails after data arrived", async () => {
-    feedMock.mockResolvedValueOnce(
+    feedMock.mockResolvedValue(
       feed([
         {
           id: "event:1",
@@ -412,6 +412,10 @@ describe("Event feed states", () => {
     const { queryClient } = renderDetail();
     const section = await feedSection();
     await rows(section);
+    await waitFor(() => {
+      expect(feedMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(await rows(section)).toHaveLength(1);
     feedMock.mockRejectedValue(new ApiError("INTERNAL", "boom", 500));
     await queryClient.refetchQueries({ queryKey: ["tenant", "monitors"] });
     expect(

@@ -28,6 +28,35 @@ export function assertContextIdentity(
   }
 }
 
+export function contextScopeChanged(
+  previous: MeContextResponse | undefined,
+  context: MeContextResponse,
+): boolean {
+  return (
+    previous !== undefined &&
+    (previous.user.id !== context.user.id ||
+      previous.lastActiveTenantId !== context.lastActiveTenantId ||
+      JSON.stringify(previous.organizations) !==
+        JSON.stringify(context.organizations))
+  );
+}
+
+// A mounted history observer owns its private chunks while its page withdraws presentation.
+// Other failed-admission caches retain the existing retirement semantics.
+export function discardUnconfirmedTenantQueries(
+  queryClient: QueryClient,
+): void {
+  queryClient.removeQueries({
+    queryKey: ["tenant"],
+    predicate: (query) =>
+      !(
+        query.queryKey[1] === "monitors" &&
+        query.queryKey[3] === "checks-history" &&
+        query.getObserversCount() > 0
+      ),
+  });
+}
+
 // One query per identity deduplicates parallel loaders. Every new navigation
 // resolves afresh; static cached context cannot grant tenant admission.
 export function contextQueryOptions(queryClient: QueryClient) {
@@ -52,11 +81,7 @@ export function contextQueryOptions(queryClient: QueryClient) {
         if (!hasContextPublicationClaim(queryClient, claim)) {
           throw new Error("Context publication superseded");
         }
-        const changed =
-          previous !== undefined &&
-          (previous.lastActiveTenantId !== context.lastActiveTenantId ||
-            JSON.stringify(previous.organizations) !==
-              JSON.stringify(context.organizations));
+        const changed = contextScopeChanged(previous, context);
         if (changed) {
           await queryClient.cancelQueries({ queryKey: ["tenant"] });
           signal.throwIfAborted();
@@ -74,9 +99,8 @@ export function contextQueryOptions(queryClient: QueryClient) {
         failContextPublication(queryClient, claim, error);
         if (!signal.aborted && hasContextPublicationClaim(queryClient, claim)) {
           await queryClient.cancelQueries({ queryKey: ["tenant"] });
-          if (hasContextPublicationClaim(queryClient, claim)) {
-            queryClient.removeQueries({ queryKey: ["tenant"] });
-          }
+          if (hasContextPublicationClaim(queryClient, claim))
+            discardUnconfirmedTenantQueries(queryClient);
         }
         throw error;
       }

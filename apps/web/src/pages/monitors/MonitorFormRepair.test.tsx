@@ -350,8 +350,11 @@ describe("inputs keep the focus while the form is busy or locked", () => {
     await waitFor(() => {
       expect(saveCreate()).toHaveAttribute("aria-disabled", "true");
     });
-    expect(url).toHaveFocus();
-    expect(url).toHaveValue("https://api.acme.example/health");
+    expect(url.isConnected).toBe(false);
+    expect(screen.getByLabelText("URL")).toHaveFocus();
+    expect(screen.getByLabelText("URL")).toHaveValue(
+      "https://api.acme.example/health",
+    );
   });
 
   it("ignores the interval control while pending without moving the focus", async () => {
@@ -376,9 +379,16 @@ describe("after MEMBERSHIP_DENIED", () => {
     await openCreate(user);
     meMock.mockRejectedValue(new Error("offline"));
     await user.click(saveCreate());
-    await waitFor(() => {
-      expect(saveCreate()).toHaveAttribute("aria-disabled", "true");
-    });
+    await screen.findByText("ไม่สามารถยืนยันสิทธิ์ของคุณได้");
+    expect(
+      screen.queryByRole("button", { name: "บันทึกมอนิเตอร์" }),
+    ).toBeNull();
+    expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+    expect(createMock).toHaveBeenCalledTimes(1);
+    meMock.mockResolvedValue(context("viewer"));
+    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    await screen.findByLabelText("ชื่อมอนิเตอร์");
+    expect(saveCreate()).toHaveAttribute("aria-disabled", "true");
     await user.click(saveCreate());
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("Payments API");

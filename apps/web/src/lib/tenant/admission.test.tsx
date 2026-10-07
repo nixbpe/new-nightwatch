@@ -42,6 +42,8 @@ import { ApiError } from "../api/client";
 import {
   createMonitor,
   testMonitorDraft,
+  testMonitorEdit,
+  monitorQueryKeys,
   updateMonitor,
   fetchMonitorDetail,
   fetchMonitorChecks,
@@ -53,6 +55,7 @@ import {
   fetchMonitorLastResponse,
   fetchMonitorEvents,
 } from "../api/monitors";
+import { ChecksHistoryPage } from "../../pages/monitors/ChecksHistoryPage";
 import { MonitorFormPage } from "../../pages/monitors/MonitorFormPage";
 import { DetailPage } from "../../pages/monitors/DetailPage";
 import {
@@ -62,6 +65,7 @@ import {
   B,
   MONITOR_ID,
   detail,
+  baseResult,
   noChecks,
   noIncidents,
   noResponseTimes,
@@ -91,6 +95,7 @@ vi.mock("../api/monitors", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   createMonitor: vi.fn(),
   testMonitorDraft: vi.fn(),
+  testMonitorEdit: vi.fn(),
   updateMonitor: vi.fn(),
   fetchMonitorDetail: vi.fn(),
   fetchMonitorChecks: vi.fn(),
@@ -119,6 +124,7 @@ afterEach(() => {
 });
 beforeEach(() => {
   vi.resetAllMocks();
+  sessionState.data = { user: { id: "user-1" } };
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchMonitorDetail).mockResolvedValue({ monitor: detail() });
   vi.mocked(fetchMonitorLastResponse).mockResolvedValue({ response: null });
@@ -276,12 +282,12 @@ it.each(["save", "test"] as const)(
         "confirming",
       );
     });
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
-    expect(input).toHaveValue("local draft");
-    expect(screen.queryByText("Acme")).toBeNull();
+    expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }),
-    ).toHaveAttribute("aria-disabled", "true");
+      screen.queryByRole("button", { name: "บันทึกมอนิเตอร์" }),
+    ).toBeNull();
+    expect(input.isConnected).toBe(false);
+    expect(screen.queryByText("Acme")).toBeNull();
     const viewer = context("viewer");
     await act(async () => {
       delayed.resolve(viewer);
@@ -290,8 +296,7 @@ it.each(["save", "test"] as const)(
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
     });
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
-    expect(input).toHaveValue("local draft");
+    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("local draft");
     expect(screen.getByRole("alert")).toBeVisible();
     router.dispose();
   },
@@ -318,10 +323,9 @@ it("keeps form interaction disabled after required resolver failure and offers b
     await delayed.promise.catch(() => undefined);
   });
   expect(getContextPublicationSnapshot(c).admission.kind).toBe("failed");
-  expect(input).toHaveValue("local draft");
-  expect(
-    screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }),
-  ).toHaveAttribute("aria-disabled", "true");
+  expect(input.isConnected).toBe(false);
+  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  expect(screen.queryByRole("button", { name: "บันทึกมอนิเตอร์" })).toBeNull();
   await screen.findByText("ไม่สามารถยืนยันสิทธิ์ของคุณได้");
   expect(screen.getByRole("button", { name: "ลองอีกครั้ง" })).toBeVisible();
   const retry = Promise.withResolvers<MeContextResponse>();
@@ -330,7 +334,7 @@ it("keeps form interaction disabled after required resolver failure and offers b
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
+  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
   await act(async () => {
     retry.resolve(context("viewer"));
     await retry.promise;
@@ -338,8 +342,7 @@ it("keeps form interaction disabled after required resolver failure and offers b
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
   });
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
-  expect(input).toHaveValue("local draft");
+  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("local draft");
   router.dispose();
 });
 it.each(["pause", "dialog"] as const)(
@@ -1069,8 +1072,8 @@ it("keeps only the edit draft and generic heading during resolution delay and fa
     screen.queryByRole("heading", { name: "แก้ไข Payments API" }),
   ).toBeNull();
   expect(screen.queryByText("Acme")).toBeNull();
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
-  expect(input).toHaveValue("edited local draft");
+  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  expect(input.isConnected).toBe(false);
   await act(async () => {
     pending.reject(new Error("Current resolver failed"));
     await pending.promise.catch(() => undefined);
@@ -1081,8 +1084,9 @@ it("keeps only the edit draft and generic heading during resolution delay and fa
   vi.mocked(fetchMeContext).mockResolvedValueOnce(context("viewer"));
   fireEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
   await screen.findByRole("heading", { name: "แก้ไข Payments API" });
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
-  expect(input).toHaveValue("edited local draft");
+  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+    "edited local draft",
+  );
   expect(
     screen.getByRole("button", { name: "บันทึกการแก้ไข" }),
   ).toHaveAttribute("aria-disabled", "true");
@@ -1210,10 +1214,10 @@ it("blocks conflict reload, settings invalidation and focus during resolver dela
   });
   expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
   expect(fetchMeContext).toHaveBeenCalledTimes(2);
-  fireEvent.click(screen.getByRole("button", { name: "โหลดค่าล่าสุด" }));
+  expect(screen.queryByRole("button", { name: "โหลดค่าล่าสุด" })).toBeNull();
   expect(fetchMonitorDetail).not.toHaveBeenCalled();
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
-  expect(input).toHaveValue("conflict draft");
+  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  expect(input.isConnected).toBe(false);
   await act(async () => {
     pending.reject(new Error("Membership unresolved"));
     await pending.promise.catch(() => undefined);
@@ -1231,7 +1235,7 @@ it("blocks conflict reload, settings invalidation and focus during resolver dela
   });
   expect(fetchMeContext).toHaveBeenCalledTimes(2);
   expect(screen.queryByText(ORG_ALERTS_OFF_MESSAGE)).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "โหลดค่าล่าสุด" }));
+  expect(screen.queryByRole("button", { name: "โหลดค่าล่าสุด" })).toBeNull();
   expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
   expect(fetchMonitorDetail).not.toHaveBeenCalled();
   vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
@@ -1239,7 +1243,7 @@ it("blocks conflict reload, settings invalidation and focus during resolver dela
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
   });
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
+  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("conflict draft");
   await waitFor(() => {
     expect(fetchMonitorDetail).toHaveBeenCalledTimes(1);
   });
@@ -1366,14 +1370,637 @@ it("viewer confirmation preserves disabled edit draft/refusal and never restores
   });
   expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
   expect(screen.queryByText(ORG_ALERTS_OFF_MESSAGE)).toBeNull();
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toBe(input);
-  expect(input).toHaveValue("viewer keeps local draft");
+  expect(input.isConnected).toBe(false);
+  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+    "viewer keeps local draft",
+  );
   expect(
     screen.getByRole("button", { name: "บันทึกการแก้ไข" }),
   ).toHaveAttribute("aria-disabled", "true");
   expect(screen.getByRole("alert")).toHaveTextContent(
     "สิทธิ์ของคุณเปลี่ยนแล้ว",
   );
+  router.dispose();
+  await c.cancelQueries();
+  c.clear();
+});
+
+function renderPrivateRoute(c: QueryClient, page: "edit" | "checks") {
+  const router = createMemoryRouter(
+    [
+      {
+        element: (
+          <TenantProvider>
+            <MembershipRefreshProbe />
+            <AppShell />
+          </TenantProvider>
+        ),
+        children: [
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId/" + page,
+            element:
+              page === "edit" ? (
+                <MonitorFormPage mode="edit" />
+              ) : (
+                <ChecksHistoryPage />
+              ),
+          },
+        ],
+      },
+    ],
+    { initialEntries: [`/organizations/${A}/monitors/${MONITOR_ID}/${page}`] },
+  );
+  render(
+    <QueryClientProvider client={c}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  return router;
+}
+function assertPrivatePresentationWithdrawn() {
+  expect(screen.queryByLabelText("URL")).toBeNull();
+  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  expect(
+    screen.queryByDisplayValue("https://protected.example/request"),
+  ).toBeNull();
+  for (const original of [
+    "protected header",
+    "protected query",
+    "protected body",
+    "protected assertion",
+  ]) {
+    expect(screen.queryByDisplayValue(original)).toBeNull();
+  }
+  expect(screen.queryByLabelText("Token")).toBeNull();
+  expect(screen.queryByRole("button", { name: "แทนที่ Token" })).toBeNull();
+  expect(screen.queryByText(/ตั้งค่าแล้ว/)).toBeNull();
+  expect(screen.queryByText("การทดสอบผ่าน")).toBeNull();
+  expect(screen.queryByText("Acme")).toBeNull();
+}
+for (const operation of ["save", "test"] as const) {
+  it.each(["owner", "admin", "viewer", "auditor"] as const)(
+    `CR88-01 withdraws untouched rich configuration after ${operation} refusal and restores private draft only for confirmed %s`,
+    async (role) => {
+      const c = client();
+      vi.mocked(fetchMonitorDetail).mockResolvedValue({
+        monitor: detail({
+          url: "https://protected.example/request",
+          method: "POST",
+          headers: [
+            { name: "X-Original", value: "protected header", secret: false },
+          ],
+          queryParams: [{ name: "original", value: "protected query" }],
+          body: { type: "text", content: "protected body" },
+          assertions: [{ kind: "bodyContains", text: "protected assertion" }],
+          auth: { type: "bearer" },
+          secretSlots: [{ slot: "auth.token", configured: true }],
+        }),
+      });
+      const router = renderPrivateRoute(c, "edit");
+      const name = await screen.findByLabelText("ชื่อมอนิเตอร์");
+      fireEvent.change(name, { target: { value: "one edited field" } });
+      expect(screen.getByLabelText("URL")).toHaveValue(
+        "https://protected.example/request",
+      );
+      const pending = Promise.withResolvers<MeContextResponse>();
+      vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+      vi.mocked(updateMonitor).mockRejectedValue(
+        new ApiError("PERMISSION_DENIED", "Denied", 403),
+      );
+      vi.mocked(testMonitorEdit).mockRejectedValue(
+        new ApiError("PERMISSION_DENIED", "Denied", 403),
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: operation === "save" ? "บันทึกการแก้ไข" : "ทดสอบการตั้งค่า",
+        }),
+      );
+      await waitFor(() => {
+        expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+          "confirming",
+        );
+      });
+      assertPrivatePresentationWithdrawn();
+      const reads = vi.mocked(fetchMonitorDetail).mock.calls.length;
+      const settings = vi.mocked(fetchOrganizationNotificationSettings).mock
+        .calls.length;
+      await act(async () => {
+        await c.invalidateQueries({ queryKey: ["tenant"] });
+      });
+      expect(fetchMonitorDetail).toHaveBeenCalledTimes(reads);
+      expect(fetchOrganizationNotificationSettings).toHaveBeenCalledTimes(
+        settings,
+      );
+      await act(async () => {
+        pending.reject(new Error("confirmation failed"));
+        await pending.promise.catch(() => undefined);
+      });
+      assertPrivatePresentationWithdrawn();
+      vi.mocked(fetchMeContext).mockResolvedValueOnce(context(role));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "ลองอีกครั้ง" }),
+      );
+      const restored = await screen.findByLabelText("ชื่อมอนิเตอร์");
+      expect(restored).toHaveValue("one edited field");
+      expect(screen.getByLabelText("URL")).toHaveValue(
+        "https://protected.example/request",
+      );
+      expect(screen.getByDisplayValue("protected header")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("protected query")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("protected body")).toBeInTheDocument();
+      expect(
+        screen.getByDisplayValue("protected assertion"),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText(/ตั้งค่าแล้ว/).length).toBeGreaterThan(0);
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "สิทธิ์ของคุณเปลี่ยนแล้ว",
+      );
+      if (role === "viewer" || role === "auditor") {
+        expect(
+          screen.getByRole("button", { name: "บันทึกการแก้ไข" }),
+        ).toHaveAttribute("aria-disabled", "true");
+        expect(
+          screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
+        ).toHaveAttribute("aria-disabled", "true");
+        expect(fetchOrganizationNotificationSettings).toHaveBeenCalledTimes(
+          settings,
+        );
+      }
+      expect(updateMonitor).toHaveBeenCalledTimes(operation === "save" ? 1 : 0);
+      expect(testMonitorEdit).toHaveBeenCalledTimes(
+        operation === "test" ? 1 : 0,
+      );
+      router.dispose();
+      await c.cancelQueries();
+      c.clear();
+    },
+  );
+}
+
+function historyChunk(offset: number) {
+  return {
+    checks: [
+      {
+        ...baseResult,
+        scheduledFor: new Date(
+          Date.parse(baseResult.scheduledFor) - offset * 60000,
+        ).toISOString(),
+        checkedAt: new Date(
+          Date.parse(baseResult.checkedAt) - offset * 60000,
+        ).toISOString(),
+      },
+    ],
+    page: { limit: 50, offset, total: 4 },
+    urlChanges: [],
+  };
+}
+it.each(["membership", "focus"] as const)(
+  "EG88-01 preserves privately loaded chunks across native shell %s pending/failure and same-member retry without offset zero reload",
+  async (cause) => {
+    const c = client();
+    vi.mocked(fetchMonitorChecks).mockImplementation((_org, _id, page) =>
+      Promise.resolve(historyChunk(page.offset)),
+    );
+    const router = renderPrivateRoute(c, "checks");
+    await screen.findByText("แสดง 1–1 จาก 4");
+    fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+    await screen.findByText("แสดง 1–2 จาก 4");
+    const key = monitorQueryKeys.checksHistory(A, MONITOR_ID),
+      before = c.getQueryData(key);
+    const detailReads = vi.mocked(fetchMonitorDetail).mock.calls.length;
+    const checkReads = vi.mocked(fetchMonitorChecks).mock.calls.length;
+    const pending = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+    if (cause === "membership")
+      fireEvent.click(
+        screen.getByRole("button", { name: "refresh membership" }),
+      );
+    else
+      act(() => {
+        focusManager.setFocused(false);
+        focusManager.setFocused(true);
+        focusManager.setFocused(undefined);
+      });
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    expect(
+      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
+    ).toBeNull();
+    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(c.getQueryData(key)).toEqual(before);
+    expect(fetchMonitorDetail).toHaveBeenCalledTimes(detailReads);
+    expect(fetchMonitorChecks).toHaveBeenCalledTimes(checkReads);
+    await act(async () => {
+      pending.reject(new Error("resolve failed"));
+      await pending.promise.catch(() => undefined);
+    });
+    expect(
+      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
+    ).toBeNull();
+    const calls = vi.mocked(fetchMonitorChecks).mock.calls.length;
+    fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
+    await screen.findByText("แสดง 1–2 จาก 4");
+    expect(c.getQueryData(key)).toEqual(before);
+    expect(fetchMonitorChecks).toHaveBeenCalledTimes(calls);
+    router.dispose();
+    await c.cancelQueries();
+    c.clear();
+  },
+);
+it("EG88-01 load-more 403 confirms once, retains chunks and error, then requires manual load-more retry", async () => {
+  const c = client();
+  vi.mocked(fetchMonitorChecks)
+    .mockResolvedValueOnce(historyChunk(0))
+    .mockResolvedValueOnce(historyChunk(1))
+    .mockRejectedValueOnce(new ApiError("MEMBERSHIP_DENIED", "Denied", 403))
+    .mockResolvedValue(historyChunk(2));
+  const router = renderPrivateRoute(c, "checks");
+  await screen.findByText("แสดง 1–1 จาก 4");
+  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+  await screen.findByText("แสดง 1–2 จาก 4");
+  const pending = Promise.withResolvers<MeContextResponse>();
+  vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+  await waitFor(() => {
+    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
+  });
+  expect(
+    screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
+  ).toBeNull();
+  await act(async () => {
+    pending.resolve(context());
+    await pending.promise;
+  });
+  await screen.findByText("แสดง 1–2 จาก 4");
+  await screen.findByText("โหลดประวัติการตรวจไม่สำเร็จ");
+  expect(fetchMeContext).toHaveBeenCalledTimes(2);
+  expect(fetchMonitorChecks).toHaveBeenCalledTimes(3);
+  act(() => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    focusManager.setFocused(undefined);
+    onlineManager.setOnline(false);
+    onlineManager.setOnline(true);
+  });
+  await waitFor(() => {
+    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
+  });
+  expect(fetchMonitorChecks).toHaveBeenCalledTimes(3);
+  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+  await screen.findByText("แสดง 1–3 จาก 4");
+  expect(vi.mocked(fetchMonitorChecks).mock.calls.at(-1)?.[2]?.offset).toBe(2);
+  router.dispose();
+  await c.cancelQueries();
+  c.clear();
+});
+
+it("CR88-01 privately retains replacement secret, mode and pending TestPanel ownership across failed confirmation", async () => {
+  const c = client();
+  vi.mocked(fetchMonitorDetail).mockResolvedValue({
+    monitor: detail({
+      auth: { type: "bearer" },
+      secretSlots: [{ slot: "auth.token", configured: true }],
+    }),
+  });
+  const router = renderPrivateRoute(c, "edit");
+  await screen.findByRole("button", { name: "แทนที่ Token" });
+  fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
+  fireEvent.change(screen.getByLabelText("Token"), {
+    target: { value: "public-test-replacement" },
+  });
+  const testing =
+    Promise.withResolvers<Awaited<ReturnType<typeof testMonitorEdit>>>();
+  vi.mocked(testMonitorEdit).mockReturnValueOnce(testing.promise);
+  fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
+  await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+  const pending = Promise.withResolvers<MeContextResponse>();
+  vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  await waitFor(() => {
+    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
+  });
+  assertPrivatePresentationWithdrawn();
+  expect(screen.queryByLabelText("Token")).toBeNull();
+  expect(screen.queryByRole("button", { name: "กำลังทดสอบ…" })).toBeNull();
+  await act(async () => {
+    pending.reject(new Error("confirmation failed"));
+    await pending.promise.catch(() => undefined);
+  });
+  vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
+  fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
+  await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+  expect(screen.getByLabelText("Token")).toHaveValue("public-test-replacement");
+  expect(
+    screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "ขั้นสูง" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "กำลังทดสอบ…" }));
+  expect(testMonitorEdit).toHaveBeenCalledTimes(1);
+  const hideAgain = Promise.withResolvers<MeContextResponse>();
+  vi.mocked(fetchMeContext).mockReturnValueOnce(hideAgain.promise);
+  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  await waitFor(() => {
+    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
+  });
+  await act(async () => {
+    testing.resolve({
+      result: {
+        checkedAt: baseResult.checkedAt,
+        outcome: "pass",
+        httpStatus: 200,
+        responseTimeMs: 20,
+        failureReason: null,
+        tlsReason: null,
+        assertions: [],
+        url: "https://protected.example/test-result",
+        evaluatedFromPrefix: false,
+        ssl: {
+          level: "no_data",
+          daysRemaining: null,
+          host: null,
+          issuer: null,
+          notAfter: null,
+        },
+      },
+    });
+    await testing.promise;
+  });
+  assertPrivatePresentationWithdrawn();
+  expect(
+    screen.queryByText("https://protected.example/test-result"),
+  ).toBeNull();
+  await act(async () => {
+    hideAgain.resolve(context());
+    await hideAgain.promise;
+  });
+  await screen.findByText("การทดสอบผ่าน");
+  expect(
+    screen.getByText("https://protected.example/test-result"),
+  ).toBeInTheDocument();
+  const key = monitorQueryKeys.detail(A, MONITOR_ID);
+  vi.mocked(fetchMeContext).mockResolvedValueOnce(context("owner", []));
+  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  await screen.findByText("คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้");
+  expect(screen.queryByLabelText("Token")).toBeNull();
+  expect(c.getQueryData(key)).toBeUndefined();
+  vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
+  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  await screen.findByRole("button", { name: "แทนที่ Token" });
+  fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
+  expect(screen.getByLabelText("Token")).toHaveValue("");
+  expect(screen.queryByText("การทดสอบผ่าน")).toBeNull();
+  router.dispose();
+  await c.cancelQueries();
+  c.clear();
+});
+it.each(["save", "test"] as const)(
+  "CR88-01 %s membership refusal withdraws private edit presentation and keyboard retry restores focus without losing typed secret",
+  async (operation) => {
+    const c = client();
+    vi.mocked(fetchMonitorDetail).mockResolvedValue({
+      monitor: detail({
+        auth: { type: "bearer" },
+        secretSlots: [{ slot: "auth.token", configured: true }],
+      }),
+    });
+    const router = renderPrivateRoute(c, "edit");
+    await screen.findByRole("button", { name: "แทนที่ Token" });
+    fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
+    fireEvent.change(screen.getByLabelText("Token"), {
+      target: { value: "public-test-replacement" },
+    });
+    const pending = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+    vi.mocked(updateMonitor).mockRejectedValue(
+      new ApiError("MEMBERSHIP_DENIED", "Denied", 403),
+    );
+    vi.mocked(testMonitorEdit).mockRejectedValue(
+      new ApiError("MEMBERSHIP_DENIED", "Denied", 403),
+    );
+    const button = screen.getByRole("button", {
+      name: operation === "save" ? "บันทึกการแก้ไข" : "ทดสอบการตั้งค่า",
+    });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    assertPrivatePresentationWithdrawn();
+    await act(async () => {
+      pending.reject(new Error("offline"));
+      await pending.promise.catch(() => undefined);
+    });
+    vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
+    const retry = await screen.findByRole("button", { name: "ลองอีกครั้ง" });
+    retry.focus();
+    fireEvent.keyDown(retry, { key: "Enter" });
+    fireEvent.click(retry);
+    const restored = await screen.findByRole("button", {
+      name: operation === "save" ? "บันทึกการแก้ไข" : "ทดสอบการตั้งค่า",
+    });
+    expect(restored).toHaveFocus();
+    expect(screen.getByLabelText("Token")).toHaveValue(
+      "public-test-replacement",
+    );
+    expect(restored).toHaveAttribute("aria-disabled", "false");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
+    );
+    router.dispose();
+    await c.cancelQueries();
+    c.clear();
+  },
+);
+it.each(["role", "removal", "scope"] as const)(
+  "EG88-01 evicts private history before publishing changed %s context",
+  async (change) => {
+    const c = client();
+    vi.mocked(fetchMonitorChecks).mockImplementation((_org, _id, page) =>
+      Promise.resolve(historyChunk(page.offset)),
+    );
+    const router = renderPrivateRoute(c, "checks");
+    await screen.findByText("แสดง 1–1 จาก 4");
+    fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+    await screen.findByText("แสดง 1–2 จาก 4");
+    const key = monitorQueryKeys.checksHistory(A, MONITOR_ID),
+      original = c.getQueryCache().find({ queryKey: key });
+    const pending = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    const updated =
+      change === "role"
+        ? context("viewer")
+        : change === "removal"
+          ? context("owner", [])
+          : { ...context(), lastActiveTenantId: B };
+    await act(async () => {
+      pending.resolve(updated);
+      await pending.promise;
+    });
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
+    });
+    expect(c.getQueryCache().find({ queryKey: key })).not.toBe(original);
+    expect(screen.queryByText("แสดง 1–2 จาก 4")).toBeNull();
+    if (change === "role") await screen.findByText("แสดง 1–1 จาก 4");
+    else expect(c.getQueryData(key)).toBeUndefined();
+    router.dispose();
+    await c.cancelQueries();
+    c.clear();
+  },
+);
+it("EG88-01 a failed load-more network request stays manual through native context focus and reconnect", async () => {
+  const c = client();
+  vi.mocked(fetchMonitorChecks)
+    .mockResolvedValueOnce(historyChunk(0))
+    .mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0))
+    .mockResolvedValue(historyChunk(1));
+  const router = renderPrivateRoute(c, "checks");
+  await screen.findByText("แสดง 1–1 จาก 4");
+  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+  await screen.findByText("โหลดประวัติการตรวจไม่สำเร็จ");
+  act(() => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    focusManager.setFocused(undefined);
+  });
+  await waitFor(() => {
+    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
+  });
+  act(() => {
+    onlineManager.setOnline(false);
+    onlineManager.setOnline(true);
+  });
+  await waitFor(() => {
+    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
+  });
+  expect(fetchMonitorChecks).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("แสดง 1–1 จาก 4")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+  await screen.findByText("แสดง 1–2 จาก 4");
+  expect(fetchMonitorChecks).toHaveBeenCalledTimes(3);
+  router.dispose();
+  await c.cancelQueries();
+  c.clear();
+});
+it("EG88-01 first-read denial confirms finitely then needs explicit data retry", async () => {
+  const c = client();
+  vi.mocked(fetchMonitorChecks)
+    .mockRejectedValueOnce(new ApiError("MEMBERSHIP_DENIED", "Denied", 403))
+    .mockResolvedValue(historyChunk(0));
+  const router = renderPrivateRoute(c, "checks");
+  await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้");
+  expect(fetchMeContext).toHaveBeenCalledTimes(2);
+  expect(fetchMonitorChecks).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+  await screen.findByText("แสดง 1–1 จาก 4");
+  expect(fetchMeContext).toHaveBeenCalledTimes(2);
+  expect(fetchMonitorChecks).toHaveBeenCalledTimes(2);
+  router.dispose();
+  await c.cancelQueries();
+  c.clear();
+});
+it("EG88-01 native SessionQueryProvider identity replacement ignores a late old check response", async () => {
+  sessionState.data = { user: { id: "user-1" } };
+  const late =
+    Promise.withResolvers<Awaited<ReturnType<typeof fetchMonitorChecks>>>();
+  vi.mocked(fetchMonitorChecks).mockReturnValueOnce(late.promise);
+  const router = createMemoryRouter(
+    [
+      {
+        element: <Boundary />,
+        children: [
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId/checks",
+            element: <ChecksHistoryPage />,
+          },
+        ],
+      },
+    ],
+    { initialEntries: [`/organizations/${A}/monitors/${MONITOR_ID}/checks`] },
+  );
+  const tree = render(
+    <SessionQueryProvider>
+      <RouterProvider router={router} />
+    </SessionQueryProvider>,
+  );
+  await waitFor(() => {
+    expect(fetchMonitorChecks).toHaveBeenCalledTimes(1);
+  });
+  const old = resolveQueryClientForIdentity("user-1"),
+    key = monitorQueryKeys.checksHistory(A, MONITOR_ID);
+  sessionState.data = { user: { id: "user-b" } };
+  vi.mocked(fetchMeContext).mockResolvedValue({
+    ...context(),
+    user: { ...context().user, id: "user-b" },
+  });
+  vi.mocked(fetchMonitorChecks).mockResolvedValue(historyChunk(10));
+  tree.rerender(
+    <SessionQueryProvider>
+      <RouterProvider router={router} />
+    </SessionQueryProvider>,
+  );
+  await screen.findByText("แสดง 1–1 จาก 4");
+  const fresh = resolveQueryClientForIdentity("user-b");
+  expect(fresh).not.toBe(old);
+  const accepted = fresh.getQueryData(key);
+  await act(async () => {
+    late.resolve(historyChunk(0));
+    await late.promise;
+  });
+  expect(old.getQueryData(key)).toBeUndefined();
+  expect(fresh.getQueryData(key)).toEqual(accepted);
+  expect(getContextPublicationSnapshot(old).admission.kind).toBe("retired");
+  router.dispose();
+  tree.unmount();
+  await fresh.cancelQueries();
+  fresh.clear();
+});
+
+it("CR88-01 preserves private TestPanel rate-limit refusal across withdrawn presentation", async () => {
+  const c = client(),
+    router = renderPrivateRoute(c, "edit");
+  await screen.findByLabelText("ชื่อมอนิเตอร์");
+  vi.mocked(testMonitorEdit).mockRejectedValueOnce(
+    new ApiError("MONITOR_TEST_RATE_LIMITED", "rate", 429, {
+      retryAfterSeconds: 60,
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
+  await screen.findByText("ทดสอบบ่อยเกินไป");
+  const pending = Promise.withResolvers<MeContextResponse>();
+  vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  await waitFor(() => {
+    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
+  });
+  expect(screen.queryByText("ทดสอบบ่อยเกินไป")).toBeNull();
+  assertPrivatePresentationWithdrawn();
+  await act(async () => {
+    pending.reject(new Error("offline"));
+    await pending.promise.catch(() => undefined);
+  });
+  vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
+  fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
+  await screen.findByText("ทดสอบบ่อยเกินไป");
+  expect(
+    screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
+  ).toHaveAttribute("aria-disabled", "true");
+  fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
+  expect(testMonitorEdit).toHaveBeenCalledTimes(1);
   router.dispose();
   await c.cancelQueries();
   c.clear();

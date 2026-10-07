@@ -39,6 +39,8 @@ import {
 import {
   assertContextIdentity,
   contextQueryOptions,
+  contextScopeChanged,
+  discardUnconfirmedTenantQueries,
   recoverInboxScope,
   type InboxScopeRequest,
 } from "./bootstrap";
@@ -293,6 +295,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const confirmMembership = useCallback(
     async (source?: SelfLeaveSource): Promise<ConfirmationOutcome> => {
+      const previous =
+        queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
       const claim = createContextPublicationClaim();
       const binding: ConfirmationBinding = {
         client: queryClient,
@@ -317,7 +321,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       if (!owns()) return { kind: "superseded" };
       await queryClient.cancelQueries({ queryKey: TENANT_QUERY_PREFIX });
       if (!owns()) return { kind: "superseded" };
-      queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+      // Self-leave retires its origin immediately; ordinary confirmation retains private observers.
+      if (source !== undefined)
+        queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
       try {
         const context = await fetchMeContext(
           source === undefined
@@ -336,12 +342,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           return { kind: "superseded" };
         }
         assertContextIdentity(queryClient, context);
+        if (contextScopeChanged(previous, context)) {
+          queryClient.removeQueries({ queryKey: TENANT_QUERY_PREFIX });
+        }
         if (!publishContextPublication(queryClient, claim, context) || !owns())
           return { kind: "superseded" };
         return { kind: "confirmed", binding, context };
       } catch (error) {
         if (!owns()) return { kind: "superseded" };
         failContextPublication(queryClient, claim, error);
+        discardUnconfirmedTenantQueries(queryClient);
         return owns() ? { kind: "failed", binding } : { kind: "superseded" };
       }
     },
