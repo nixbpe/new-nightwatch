@@ -421,8 +421,10 @@ function DetailForMonitor({
   const line = statusLine(monitor);
   const bannerShown =
     monitor.health === "down" && monitor.openIncident !== null;
-  // COL-08: a static glow while the incident is active and the data is fresh; a failed refresh drops it (Motion principle).
-  const badgeGlow = bannerShown && !detail.isError;
+  // The data is fresh only while it keeps refreshing: a failed refetch and a query paused offline (`isPaused`, no error) both drop the live cues (CMP-01, Motion principle).
+  const fresh = !detail.isError && !detail.isPaused;
+  // COL-08: a static glow while the incident is active and the data is fresh.
+  const badgeGlow = bannerShown && fresh;
   const status = (
     <>
       <span
@@ -487,7 +489,7 @@ function DetailForMonitor({
             intervalSeconds={monitor.intervalSeconds}
             createdAt={monitor.createdAt}
           />
-          <StatusCard monitor={monitor} fresh={!detail.isError} />
+          <StatusCard monitor={monitor} fresh={fresh} />
           <MonitorEventsCard
             organizationId={organizationId}
             monitorId={monitorId}

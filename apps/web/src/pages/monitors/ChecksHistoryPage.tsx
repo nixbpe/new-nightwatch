@@ -82,28 +82,41 @@ function markUrlChanges(checks: Check[], urlChanges: UrlChange[]): Row[] {
 }
 
 /**
- * Chunks are read at a moving offset, so a newer result pushes rows down and
- * the next chunk repeats them: the first copy wins and the order stays newest
- * first (`scheduledFor` is the primary key of a result).
+ * Chunks are read at a moving offset, so results that arrive after the first
+ * chunk push rows down and shift what the next chunk holds. The first chunk is
+ * taken whole. A later chunk adds only rows strictly older than the last row
+ * accumulated: that drops the rows it repeats and, when more results arrived
+ * than rows are loaded, the rows newer than the first chunk, so the order stays
+ * newest first (`scheduledFor` is the primary key of a result). A later chunk
+ * adds only URL changes not newer than the newest row loaded.
  */
 function accumulate(pages: MonitorChecksResponse[]) {
-  const scheduled = new Set<string>();
   const changed = new Set<string>();
   const checks: Check[] = [];
   const urlChanges: UrlChange[] = [];
-  for (const page of pages) {
+  pages.forEach((page, index) => {
+    const newest = checks[0];
+    const newestAt =
+      newest === undefined ? Infinity : Date.parse(newest.scheduledFor);
     for (const check of page.checks) {
-      if (scheduled.has(check.scheduledFor)) continue;
-      scheduled.add(check.scheduledFor);
+      const last = checks.at(-1);
+      if (
+        index > 0 &&
+        last !== undefined &&
+        Date.parse(check.scheduledFor) >= Date.parse(last.scheduledFor)
+      ) {
+        continue;
+      }
       checks.push(check);
     }
     for (const change of page.urlChanges) {
+      if (index > 0 && Date.parse(change.at) > newestAt) continue;
       const key = `${change.at} ${change.url}`;
       if (changed.has(key)) continue;
       changed.add(key);
       urlChanges.push(change);
     }
-  }
+  });
   return { checks, urlChanges };
 }
 

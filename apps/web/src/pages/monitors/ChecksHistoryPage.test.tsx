@@ -422,6 +422,86 @@ describe("Checks history offset drift", () => {
     );
   });
 
+  it("shows no result newer than the first chunk when more of them arrived than rows are loaded, and skips none of the older ones", async () => {
+    // 100 results (numbers -100 to -1, newer than result 0) arrived after the first chunk. The chunk at offset 50 holds only newer rows, the one at offset 100 repeats rows 0 to 49, and the older rows follow at offset 150.
+    fetchChecksMock
+      .mockResolvedValueOnce(chunk(span(0, 50), 0, 120))
+      .mockResolvedValueOnce(chunk(span(-50, 0), 50, 220))
+      .mockResolvedValueOnce(chunk(span(0, 50), 100, 220))
+      .mockResolvedValueOnce(chunk(span(50, 100), 150, 220));
+    const user = userEvent.setup();
+    renderChecks();
+    const timesOf = () =>
+      historyRows().map((row) => must(row.querySelector("time")).dateTime);
+
+    await user.click(await loadMoreButton());
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe("โหลดเพิ่ม 0 แถว");
+    });
+    // Newer rows are left out: the order stays newest first and the count stays honest.
+    expect(timesOf()).toEqual(span(0, 50).map(scheduled));
+    expect(screen.getByText("แสดง 1–50 จาก 220")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+    await waitFor(() => {
+      expect(fetchChecksMock).toHaveBeenCalledTimes(3);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe("โหลดเพิ่ม 0 แถว");
+    });
+    expect(timesOf()).toEqual(span(0, 50).map(scheduled));
+    expect(
+      screen.getByRole("button", { name: "โหลดเพิ่ม" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe(
+        "โหลดเพิ่ม 50 แถว (แถวที่ 51–100 จาก 220)",
+      );
+    });
+    // Contiguous and newest first: results 0 to 99 once each, none skipped.
+    expect(timesOf()).toEqual(span(0, 100).map(scheduled));
+    expect(fetchChecksMock.mock.calls.map((call) => call[2])).toEqual([
+      { limit: 50, offset: 0 },
+      { limit: 50, offset: 50 },
+      { limit: 50, offset: 100 },
+      { limit: 50, offset: 150 },
+    ]);
+  });
+
+  it("lists no URL change newer than the newest row loaded, even when a later chunk returns one", async () => {
+    const at = (i: number) => new Date(Date.parse(scheduled(i)) - 60_000);
+    const first = {
+      at: at(49).toISOString(),
+      url: "https://first.acme.example/health",
+    };
+    const deeper = {
+      at: at(55).toISOString(),
+      url: "https://deeper.acme.example/health",
+    };
+    // After result 0 was loaded: it is not part of the list this page opened with.
+    const newer = {
+      at: new Date(Date.parse(scheduled(-5)) + 60_000).toISOString(),
+      url: "https://newer.acme.example/health",
+    };
+    fetchChecksMock
+      .mockResolvedValueOnce(chunk(span(0, 50), 0, 60, [first]))
+      .mockResolvedValueOnce(
+        chunk(span(50, 60), 50, 60, [first, deeper, newer]),
+      );
+    const user = userEvent.setup();
+    renderChecks();
+    await user.click(await loadMoreButton());
+    await screen.findByText("แสดงครบ 60 รายการ");
+    const listed = screen.getAllByText(/เปลี่ยน URL เมื่อ/, { selector: "li" });
+    expect(listed).toHaveLength(2);
+    expect(listed.map((item) => item.textContent).join(" ")).toContain(
+      "https://deeper.acme.example/health",
+    );
+    expect(screen.queryByText("https://newer.acme.example/health")).toBeNull();
+  });
+
   it("announces k = 0 without a row range when a chunk holds only rows already shown, and keeps the button", async () => {
     // 50 results arrived after the first chunk, so the chunk at offset 50 is the first chunk again.
     fetchChecksMock

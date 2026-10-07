@@ -3,7 +3,11 @@ import type {
   MonitorListResponse,
   MonitorResponseTimesResponse,
 } from "@nightwatch/api-contract";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -99,6 +103,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  onlineManager.setOnline(true);
   vi.useRealTimers();
   vi.resetAllMocks();
 });
@@ -911,6 +916,50 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     expect(document.querySelector(".live-pulse")).toBeNull();
 
     showDetail(downWithIncident());
+    await waitFor(() => {
+      expect(headerBadge().wrapper).toHaveClass(GLOW);
+    });
+    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+  });
+
+  // Offline, TanStack pauses the refetch (`fetchStatus: "paused"`) without an error: the data no longer refreshes, so it is not fresh (CMP-01).
+  it("drops the pulse of the dot while the refresh is paused offline and brings it back when it resumes", async () => {
+    showDetail(detail());
+    renderDetail();
+    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(document.querySelector(".live-pulse")).toBeNull();
+    });
+    const paused = await dataAsOfDot();
+    expect(paused).toHaveClass("bg-foreground-secondary");
+    expect(paused).not.toHaveClass("bg-primary");
+    // No new copy: a pause is not a failed refresh.
+    expect(screen.queryByText(STALE)).toBeNull();
+
+    onlineManager.setOnline(true);
+    await waitFor(() => {
+      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    });
+    expect(await dataAsOfDot()).toHaveClass("bg-primary");
+  });
+
+  it("drops the badge glow while the refresh is paused offline and brings it back when it resumes", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    });
+    expect(headerBadge().pill).toHaveTextContent("ล่ม");
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(screen.queryByText(STALE)).toBeNull();
+
+    onlineManager.setOnline(true);
     await waitFor(() => {
       expect(headerBadge().wrapper).toHaveClass(GLOW);
     });
