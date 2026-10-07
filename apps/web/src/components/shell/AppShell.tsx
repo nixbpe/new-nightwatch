@@ -1,3 +1,4 @@
+import { SelfLeaveRouteBoundary } from "../../pages/organization-members/SelfLeaveAction";
 import {
   useEffect,
   useRef,
@@ -180,22 +181,27 @@ export function AppShell() {
             <div className="flex min-h-full flex-col">
               <div className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
                 <ErrorBoundary landmark={false}>
-                  {membershipInteraction &&
-                  /^\/organizations\/[^/]+\/monitors\/(new|[^/]+(?:\/edit)?)$/.test(
-                    pathname,
-                  ) ? (
-                    <Outlet />
-                  ) : mePending ? (
-                    <PageState kind="loading" label="กำลังโหลดข้อมูลองค์กร…" />
-                  ) : me === undefined ? (
-                    <PageState
-                      kind="error"
-                      message="โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่"
-                      onRetry={() => void retryMe()}
-                    />
-                  ) : (
-                    <Outlet />
-                  )}
+                  <SelfLeaveRouteBoundary>
+                    {membershipInteraction &&
+                    /^\/organizations\/[^/]+\/monitors\/(new|[^/]+(?:\/edit)?)$/.test(
+                      pathname,
+                    ) ? (
+                      <Outlet />
+                    ) : mePending ? (
+                      <PageState
+                        kind="loading"
+                        label="กำลังโหลดข้อมูลองค์กร…"
+                      />
+                    ) : me === undefined ? (
+                      <PageState
+                        kind="error"
+                        message="โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่"
+                        onRetry={() => void retryMe()}
+                      />
+                    ) : (
+                      <Outlet />
+                    )}
+                  </SelfLeaveRouteBoundary>
                 </ErrorBoundary>
               </div>
               <footer className="px-4 py-3 font-mono text-xs text-foreground-secondary sm:px-8">

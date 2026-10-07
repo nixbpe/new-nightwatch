@@ -1,3 +1,4 @@
+import { SelfLeaveRouteBoundary } from "./organization-members/SelfLeaveAction";
 import type {
   InvitationCreateResponse,
   OrganizationMemberListResponse,
@@ -6,8 +7,14 @@ import type {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { useState, type ReactNode } from "react";
+import {
+  createMemoryRouter,
+  RouterProvider,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { OrgSwitcher } from "../components/shell/OrgSwitcher";
@@ -22,6 +29,27 @@ import {
   fetchPendingInvitations,
 } from "../lib/api/invitations";
 import { OrganizationMembersPage } from "./OrganizationMembersPage";
+
+function MemberDataRouter({
+  initialEntries,
+  children,
+}: {
+  initialEntries: string[];
+  children: ReactNode;
+}) {
+  const [router] = useState(() =>
+    createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: <SelfLeaveRouteBoundary>{children}</SelfLeaveRouteBoundary>,
+        },
+      ],
+      { initialEntries },
+    ),
+  );
+  return <RouterProvider router={router} />;
+}
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const response: OrganizationMemberListResponse = {
@@ -89,6 +117,11 @@ let tenant: TenantStub = {
 vi.mock("../lib/tenant/TenantProvider", () => ({
   useTenant: () => ({
     ...tenant,
+    selfLeave: { kind: "idle" },
+    deliverSelfLeave: () => false,
+    consumeSelfLeaveNotice: () => undefined,
+    settleSelfLeave: () => Promise.resolve(),
+    retrySelfLeave: () => Promise.resolve(),
     me: tenant.me && { user: { id: "user-1" }, ...tenant.me },
   }),
 }));
@@ -115,7 +148,7 @@ function renderPage() {
     queryClient,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <Routes>
@@ -124,7 +157,7 @@ function renderPage() {
               element={<OrganizationMembersPage />}
             />
           </Routes>
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     ),
   };
@@ -620,7 +653,7 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <LocationProbe />
@@ -631,7 +664,7 @@ describe("OrganizationMembersPage", () => {
             />
             <Route path="/workspace" element={<p>workspace</p>} />
           </Routes>
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 
@@ -714,11 +747,11 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <SwitchableDirectory />
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 
@@ -815,11 +848,11 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <DeniedSwitchDirectory />
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 
@@ -893,7 +926,7 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <LocationProbe />
@@ -904,7 +937,7 @@ describe("OrganizationMembersPage", () => {
             />
             <Route path="/workspace" element={<p>workspace</p>} />
           </Routes>
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 
@@ -1025,7 +1058,7 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <LocationProbe />
@@ -1036,7 +1069,7 @@ describe("OrganizationMembersPage", () => {
             />
             <Route path="/workspace" element={<p>workspace</p>} />
           </Routes>
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 
@@ -1217,7 +1250,7 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <LocationProbe />
@@ -1228,7 +1261,7 @@ describe("OrganizationMembersPage", () => {
             />
             <Route path="/workspace" element={<p>workspace</p>} />
           </Routes>
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 
@@ -1287,7 +1320,7 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <LocationProbe />
@@ -1297,7 +1330,7 @@ describe("OrganizationMembersPage", () => {
               element={<OrganizationMembersPage />}
             />
           </Routes>
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 
@@ -1360,7 +1393,7 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <LocationProbe />
@@ -1371,7 +1404,7 @@ describe("OrganizationMembersPage", () => {
             />
             <Route path="/workspace" element={<p>workspace</p>} />
           </Routes>
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 
@@ -1431,7 +1464,7 @@ describe("OrganizationMembersPage", () => {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter
+        <MemberDataRouter
           initialEntries={[`/organizations/${organizationId}/members`]}
         >
           <LocationProbe />
@@ -1441,7 +1474,7 @@ describe("OrganizationMembersPage", () => {
               element={<OrganizationMembersPage />}
             />
           </Routes>
-        </MemoryRouter>
+        </MemberDataRouter>
       </QueryClientProvider>,
     );
 

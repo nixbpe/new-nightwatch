@@ -34,6 +34,7 @@ export function contextQueryOptions(queryClient: QueryClient) {
   return {
     queryKey: ME_CONTEXT_QUERY_KEY,
     retry: false,
+    retryOnMount: false,
     queryFn: async ({ signal }: { signal: AbortSignal }) => {
       const claim = createContextPublicationClaim();
       claimContextPublication(queryClient, claim, "bootstrap");

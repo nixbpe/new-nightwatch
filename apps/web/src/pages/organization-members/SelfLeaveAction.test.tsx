@@ -1,3 +1,6 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+import { useState, type ReactNode } from "react";
+import { SelfLeaveRouteBoundary } from "./SelfLeaveAction";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
@@ -9,7 +12,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  MemoryRouter,
+  createMemoryRouter,
+  RouterProvider,
   Route,
   Routes,
   useLocation,
@@ -45,6 +49,27 @@ vi.mock("../../lib/api/members", async (importOriginal) => ({
   fetchOrganizationMembers: vi.fn(),
   leaveOrganization: vi.fn(),
 }));
+
+function MemberDataRouter({
+  initialEntries,
+  children,
+}: {
+  initialEntries: string[];
+  children: ReactNode;
+}) {
+  const [router] = useState(() =>
+    createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: <SelfLeaveRouteBoundary>{children}</SelfLeaveRouteBoundary>,
+        },
+      ],
+      { initialEntries },
+    ),
+  );
+  return <RouterProvider router={router} />;
+}
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -91,13 +116,19 @@ const left = (role: OrganizationRole = "viewer") =>
     member: { id: "member-me", userId: ME, organizationId: A, role },
   }) satisfies OrganizationMemberRoleUpdateResponse;
 
+guardUnassignedNetwork();
+
 beforeEach(() => {
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
     Promise.resolve(list(id)),
   );
   vi.mocked(leaveOrganization).mockResolvedValue(left());
 });
-afterEach(() => vi.resetAllMocks());
+afterEach(async () => {
+  await queryClient.cancelQueries();
+  queryClient.clear();
+  vi.resetAllMocks();
+});
 
 function Harness() {
   const { switchOrg } = useTenant();
@@ -140,9 +171,9 @@ async function renderAs(
   render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+        <MemberDataRouter initialEntries={[`/organizations/${A}/members`]}>
           <Harness />
-        </MemoryRouter>
+        </MemberDataRouter>
       </TenantProvider>
     </QueryClientProvider>,
   );
@@ -154,7 +185,7 @@ const entry = () => screen.getByRole("button", { name: "ออกจากอง
 const confirmButton = () =>
   screen.getByRole("button", { name: "ยืนยันการออกจากองค์กร" });
 const afterLeaveContext = () => {
-  vi.mocked(fetchMeContext).mockResolvedValue(contextWith([ORG_B], null));
+  vi.mocked(fetchMeContext).mockResolvedValue(contextWith([ORG_B], B));
 };
 
 it.each(["viewer", "auditor"] as const)(
@@ -427,4 +458,34 @@ it("applies a late A leave to A when the switch to B is denied", async () => {
       `/organizations/${B}/members`,
     ),
   );
+});
+
+it("uses account destination when resolver returns B membership but no confirmed active selection", async () => {
+  const user = await renderAs("viewer");
+  await user.click(entry());
+  vi.mocked(fetchMeContext).mockResolvedValueOnce(contextWith([ORG_B], null));
+  await user.click(confirmButton());
+  await waitFor(() =>
+    expect(screen.getByTestId("location")).toHaveTextContent("/workspace"),
+  );
+  expect(leaveOrganization).toHaveBeenCalledTimes(1);
+});
+it("uses exact resolver C destination rather than a disagreeing DELETE B hint", async () => {
+  const C = "33333333-3333-4333-8333-333333333333";
+  const orgC = { ...ORG_B, id: C, name: "Gamma", slug: "gamma" };
+  const user = await renderAs("viewer");
+  await user.click(entry());
+  vi.mocked(leaveOrganization).mockResolvedValueOnce({
+    member: { ...left().member, organizationId: B },
+  });
+  vi.mocked(fetchMeContext).mockResolvedValueOnce(
+    contextWith([ORG_B, orgC], C),
+  );
+  await user.click(confirmButton());
+  await waitFor(() =>
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${C}/members`,
+    ),
+  );
+  expect(screen.queryByText(/ออกจากองค์กรไม่สำเร็จ/)).toBeNull();
 });

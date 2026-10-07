@@ -219,13 +219,16 @@ test("warm-cache scope change withdraws tenant and inbox use until deferred reso
   // Assertions hold while the response is still under this test's barrier.
   expect(scopeRequests).toBe(0);
   releaseResolver.resolve();
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
     "โหลดข้อมูลองค์กรไม่สำเร็จ",
   );
   expect(scopeRequests).toBe(0);
   await page.unroute("**/api/me/resolve-active-org");
   await page.unroute("**/api/notifications?*");
-  await page.getByRole("button", { name: "ลองใหม่", exact: true }).click();
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "ลองใหม่", exact: true })
+    .click();
   await expect(overview).toBeVisible();
   expect(await selection()).toEqual({
     last_active_tenant_id: identity.organizationId,

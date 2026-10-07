@@ -228,7 +228,6 @@ function OrganizationMembersPageForOrganization({
     organizationId,
     blocked: otherMutationPending,
     headingRef: memberPageHeadingRef,
-    refreshMembershipContext,
   });
   useFocusHeadingAfterSelfLeave(memberPageHeadingRef);
   const memberMutationPending =
@@ -248,32 +247,6 @@ function OrganizationMembersPageForOrganization({
     });
     setOffset(0);
   }, [invalidPage, organizationId, queryClient]);
-  if (selfLeave.phase === "refreshing") {
-    return (
-      <Page>
-        <PageHeader title="สมาชิกองค์กร" />
-        <PageState
-          kind="loading"
-          label="กำลังยืนยันการออกจากองค์กร"
-          layout="table"
-          visibleLabel
-        />
-      </Page>
-    );
-  }
-  if (selfLeave.phase === "refresh-failed") {
-    return (
-      <Page>
-        <PageHeader title="สมาชิกองค์กร" />
-        <PageState
-          kind="error"
-          message="ไม่สามารถยืนยันสถานะการเป็นสมาชิกได้"
-          retryLabel="ลองอีกครั้ง"
-          onRetry={selfLeave.retryRefresh}
-        />
-      </Page>
-    );
-  }
   if (
     membershipRefreshState === "refreshing" ||
     (isAuthorizationDenied(list.error) && membershipRefreshState === "idle")
