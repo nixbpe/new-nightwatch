@@ -1086,11 +1086,14 @@ describe("Checks history access", () => {
     expect(
       screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
     ).toBeNull();
-    expect(
-      queryClient
-        .getQueryCache()
-        .find({ queryKey: monitorQueryKeys.checksHistory(A, MONITOR_ID) }),
-    ).toBeUndefined();
+    // The unobserved entry leaves the cache on a zero-delay gc timer (gcTime 0), which is a macrotask: under load it can run after the last microtask above.
+    await waitFor(() => {
+      expect(
+        queryClient
+          .getQueryCache()
+          .find({ queryKey: monitorQueryKeys.checksHistory(A, MONITOR_ID) }),
+      ).toBeUndefined();
+    });
   });
 });
 
