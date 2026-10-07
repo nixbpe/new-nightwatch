@@ -423,15 +423,12 @@ function DetailForMonitor({
   const line = statusLine(monitor);
   const bannerShown =
     monitor.health === "down" && monitor.openIncident !== null;
-  // COL-08: a static glow while the incident is active and the data is fresh (`useDataFresh`).
+  // COL-08: a static glow in the badge's own Danger role while the incident is active and the data is fresh (`useDataFresh`).
   const badgeGlow = bannerShown && fresh;
   const status = (
     <>
       <span
-        className={cn(
-          "inline-flex rounded-full",
-          badgeGlow && "shadow-[0_0_10px_3px_var(--primary-glow)]",
-        )}
+        className={cn("inline-flex rounded-full", badgeGlow && "glow-danger")}
       >
         <HealthPill health={monitor.health} />
       </span>

@@ -840,7 +840,7 @@ describe("Detail loading, failure and refetch", () => {
 });
 
 describe("Detail data freshness (AC-81, AC-87)", () => {
-  const GLOW = "shadow-[0_0_10px_3px_var(--primary-glow)]";
+  const GLOW = "glow-danger";
   const STALE = /อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ/;
   const downWithIncident = () =>
     detail({
@@ -1197,7 +1197,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     ).filter((pill) => pill.textContent === "ล่ม");
     // The table and the cards both draw the pill.
     expect(pills.length).toBeGreaterThan(0);
-    expect(document.querySelector('[class*="primary-glow"]')).toBeNull();
+    expect(document.querySelector('[class*="glow-"]')).toBeNull();
     expect(document.querySelector('[class*="shadow-["]')).toBeNull();
   });
 });

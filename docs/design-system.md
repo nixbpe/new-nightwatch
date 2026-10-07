@@ -28,7 +28,7 @@ Divider is Text at 10% opacity in both themes. Derived levels are opacities of a
 - Inset levels: Text at 4% (inset), 5% (hover) and 8% (active) over Canvas or Surface; tint fills only, never borders.
 - Strong edge: Text at 20%, for pill, tag, avatar, system mark (monitor initial tile, read-notification dot, status dot, no-data strip cell) and dashed mockup-frame (CMP-06) edges only; essential controls keep Control boundary (COL-04).
 - Primary tint: Primary at 12% (dark) and 8% (light), only behind the active navigation row and a selected filter chip. Primary text on it measures 8.17:1 (dark) and 4.52:1 (light, over Canvas), so it meets COL-03.
-- Primary glow: Primary at 35% (dark) and 18% (light), only as the glow of a live-data indicator, never a fill or border (COL-07).
+- Status glow: Primary, Danger or Caution at 35% (dark) and 18% (light), as `primary-glow`, `danger-glow` and `caution-glow`; only as a glow in the role of the dot or text it surrounds (a live-data indicator, a severity badge under COL-08), never a fill or border (COL-07).
 - Grid-line: Text at 3.5%, a 1 px hairline texture every 32 px, an alternative to the canvas grain above, Canvas only (LAY-09).
 
 `canvas-deep` (LAY-08) is optional and the one exact, non-derived addition to the ten roles above: a deeper Canvas for a data-dense or live page section, dark `#07080a`, light unchanged (same as Canvas; no deeper light variant).
@@ -44,8 +44,8 @@ Faces: Inter for Latin, Noto Sans Thai (400 / 500 / 600) for Thai, JetBrains Mon
 - COL-04 Divider is a translucent hairline for separators and card edges; it never outlines essential controls or carries meaning alone.
 - COL-05 Danger fill with On danger text (light `#ffffff` at 6.29:1, dark `#2a0a12` at 6.78:1) is allowed only for the confirm button inside a confirmation dialog. Inline two-step confirms use the Danger outline button: Surface background, 1 px Danger border, Danger text (light `#be123c` on `#ffffff` at 6.29:1, dark `#fb7185` on `#0e0f12` at 7.12:1) and a Danger tint on hover. The wording and the stated consequence stay required, so color is never the only destructive cue.
 - COL-06 An alert banner for a down or failed state may use a Danger border and Danger at 10% (dark) / 6% (light) as fill, with an icon and a written state. Badges and status pills stay neutral (COL-01).
-- COL-07 `primary-glow` is the glow for a live-data indicator (a pulsing dot, a streaming card's edge), the use LAY-04 allows; it never replaces the focus ring (A11Y-01), never fills or outlines a resting control or card, and is never reused as a solid text, fill or border color.
-- COL-08 A monitor's severity badge may also carry `primary-glow` while the monitor has an active incident (its current health is down); the badge keeps its neutral fill and text label (COL-01, COL-02), and the glow stops the moment the incident ends, pauses, or the badge shows a resolved or historical state.
+- COL-07 `primary-glow`, `danger-glow` and `caution-glow` are the glows LAY-04 allows, each in the role of the dot or text it surrounds: a live-data indicator (a pulsing dot, a streaming card's edge) uses `primary-glow`, and a Danger or Caution badge uses its own role's glow, never another role's. A glow never replaces the focus ring (A11Y-01), never fills or outlines a resting control or card, and is never reused as a solid text, fill or border color.
+- COL-08 A monitor's severity badge may also carry the glow of its own role (`danger-glow`: the down badge's dot and text are Danger) while the monitor has an active incident (its current health is down); the badge keeps its neutral fill and text label (COL-01, COL-02), and the glow stops the moment the incident ends, pauses, or the badge shows a resolved or historical state.
 
 ## Typography
 

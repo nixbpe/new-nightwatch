@@ -93,10 +93,10 @@
  * overrides it — same token values either way.
  * After the ten roles each block adds the derived values the doc defines:
  * On danger (COL-05), Primary tint (Tokens), Danger tint (COL-06), the
- * modal scrim and shadow (LAY-07), and the futuristic addition primary-glow
- * (Tokens, COL-07). canvas-deep (LAY-08) is the one exact, non-derived
- * addition: dark #07080a, light unchanged. grid-line (LAY-09, below) is a
- * utility, not a themed variable.
+ * modal scrim and shadow (LAY-07), and the status glows primary-glow,
+ * danger-glow and caution-glow (Tokens, COL-07). canvas-deep (LAY-08) is
+ * the one exact, non-derived addition: dark #07080a, light unchanged.
+ * grid-line (LAY-09, below) is a utility, not a themed variable.
  *
  * shadcn/ui CSS variables are mapped onto the same NightWatch tokens
  * (components.json cssVariables: true) — one source of truth for both
@@ -122,6 +122,8 @@
     color-mix(in srgb, var(--foreground) 16%, transparent);
   --canvas-deep: var(--background);
   --primary-glow: color-mix(in srgb, var(--primary) 18%, transparent);
+  --danger-glow: color-mix(in srgb, var(--danger) 18%, transparent);
+  --caution-glow: color-mix(in srgb, var(--caution) 18%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -144,6 +146,8 @@
     --modal-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
     --canvas-deep: #07080a;
     --primary-glow: color-mix(in srgb, var(--primary) 35%, transparent);
+    --danger-glow: color-mix(in srgb, var(--danger) 35%, transparent);
+    --caution-glow: color-mix(in srgb, var(--caution) 35%, transparent);
   }
 }
 
@@ -170,6 +174,8 @@
     color-mix(in srgb, var(--foreground) 16%, transparent);
   --canvas-deep: var(--background);
   --primary-glow: color-mix(in srgb, var(--primary) 18%, transparent);
+  --danger-glow: color-mix(in srgb, var(--danger) 18%, transparent);
+  --caution-glow: color-mix(in srgb, var(--caution) 18%, transparent);
 }
 
 :root[data-theme="dark"] {
@@ -191,6 +197,8 @@
   --modal-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
   --canvas-deep: #07080a;
   --primary-glow: color-mix(in srgb, var(--primary) 35%, transparent);
+  --danger-glow: color-mix(in srgb, var(--danger) 35%, transparent);
+  --caution-glow: color-mix(in srgb, var(--caution) 35%, transparent);
 }
 
 @theme inline {
@@ -210,9 +218,10 @@
   --color-scrim: var(--scrim);
   --shadow-modal: var(--modal-shadow);
   --color-canvas-deep: var(--canvas-deep);
-  /* primary-glow (COL-07) has no --color-* mapping: it is a glow, never a
-     Tailwind fill/border/text utility; `live-pulse` reads it directly as
-     `var(--primary-glow)`. */
+  /* The status glows (COL-07: primary-glow, danger-glow, caution-glow) have
+     no --color-* mapping: a glow is never a Tailwind fill/border/text
+     utility; `live-pulse` and the `glow-*` utilities read them directly as
+     `var(--*-glow)`. */
   /* shadcn/ui semantic roles -> NightWatch tokens */
   --color-card: var(--surface);
   --color-card-foreground: var(--foreground);
@@ -318,6 +327,18 @@ body {
 }
 @utility live-pulse {
   animation: live-pulse 2200ms ease-in-out infinite alternate forwards;
+}
+
+/* A static glow in the role of the dot or text it surrounds (COL-07,
+   COL-08): the live-pulse end state, held. */
+@utility glow-primary {
+  box-shadow: 0 0 10px 3px var(--primary-glow);
+}
+@utility glow-danger {
+  box-shadow: 0 0 10px 3px var(--danger-glow);
+}
+@utility glow-caution {
+  box-shadow: 0 0 10px 3px var(--caution-glow);
 }
 
 /* Canvas grain for data-dense views (docs/design-system.md, Layout): 1 px
