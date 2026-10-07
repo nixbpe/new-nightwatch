@@ -441,11 +441,7 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
 
   return (
     <section aria-labelledby="checks-history" className="flex flex-col gap-4">
-      <SectionHeader
-        id="checks-history"
-        title="ประวัติการตรวจ"
-        meta={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}
-      />
+      <SectionHeader id="checks-history" title="ประวัติการตรวจ" />
       <div className="flex flex-col gap-3">
         {data === undefined && checks.isError ? (
           <>

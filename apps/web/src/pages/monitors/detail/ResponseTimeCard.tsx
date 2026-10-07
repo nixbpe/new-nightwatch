@@ -93,7 +93,6 @@ const boundFormat = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
-  fractionalSecondDigits: 3,
   hour12: false,
 });
 const formatBound = (iso: string) => boundFormat.format(new Date(iso));
@@ -298,8 +297,6 @@ export function ResponseTimeCard({
         {SEPARATOR}
         <span>แหล่ง: ผลการตรวจของ NightWatch</span>
         {SEPARATOR}
-        <span>เวลาแสดงตามเขตเวลา {TIME_ZONE}</span>
-        {SEPARATOR}
         <span>
           p50/p95 จากเวลาที่วัดได้และไม่เป็น null
           รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง
@@ -310,9 +307,9 @@ export function ResponseTimeCard({
           <>
             {SEPARATOR}
             <span>
-              ช่วง scheduled_for:{" "}
-              <Time iso={data.window.from} format={formatBound} /> ถึง{" "}
-              <Time iso={data.window.to} format={formatBound} /> ({TIME_ZONE})
+              ช่วงข้อมูล: <Time iso={data.window.from} format={formatBound} />{" "}
+              ถึง <Time iso={data.window.to} format={formatBound} /> (
+              {TIME_ZONE})
               {range === "24h"
                 ? null
                 : " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว"}

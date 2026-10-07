@@ -220,7 +220,7 @@ function historyRows(): HTMLElement[] {
   );
 }
 
-// The count line of the page; the section meta also says "แสดง" ("เวลาแสดงตามเขตเวลา").
+// The count line of the page.
 const COUNT_LINE = /^แสดง(ครบ \d+ รายการ| 1–\d+ จาก \d+)$/;
 
 const sleep = (ms: number) =>

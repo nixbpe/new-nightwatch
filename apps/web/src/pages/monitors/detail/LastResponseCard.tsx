@@ -202,7 +202,7 @@ function LastResponsePanel({
     );
   }
   return (
-    <Shell code={code} meta={`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`}>
+    <Shell code={code}>
       {data === undefined && query.isError ? (
         <>
           <Alert tone="error">โหลดการตอบกลับล่าสุดไม่สำเร็จ</Alert>

@@ -2266,7 +2266,6 @@ function expectCaption(
     "หน่วย: ms",
     `ช่วง: ${RANGE_TEXT[range]}`,
     "แหล่ง: ผลการตรวจของ NightWatch",
-    `เวลาแสดงตามเขตเวลา ${TIME_ZONE}`,
     POPULATION,
   ];
   const times = Array.from(caption.querySelectorAll("time"));
@@ -2278,7 +2277,7 @@ function expectCaption(
       options.window.to,
     ]);
     segments.push(
-      `ช่วง scheduled_for: ${must(times[0]).textContent} ถึง ${must(times[1]).textContent} (${TIME_ZONE})${range === "24h" ? "" : UTC_NOTE}`,
+      `ช่วงข้อมูล: ${must(times[0]).textContent} ถึง ${must(times[1]).textContent} (${TIME_ZONE})${range === "24h" ? "" : UTC_NOTE}`,
     );
   }
   if (options.capped === true) segments.push(CAP_TEXT);
@@ -2287,7 +2286,7 @@ function expectCaption(
   );
   expect(caption.textContent).toBe(segments.join(" · "));
   const holders = Array.from(document.querySelectorAll("p")).filter((node) =>
-    /หน่วย: ms|scheduled_for|p50\/p95 จาก|คำนวณจากผลตรวจล่าสุด/.test(
+    /หน่วย: ms|ช่วงข้อมูล:|p50\/p95 จาก|คำนวณจากผลตรวจล่าสุด/.test(
       node.textContent,
     ),
   );

@@ -99,11 +99,7 @@ export function IncidentsCard({
     data.page.offset + data.incidents.length < data.page.total;
   return (
     <section aria-labelledby="detail-incidents" className="flex flex-col gap-4">
-      <SectionHeader
-        id="detail-incidents"
-        title="เหตุการณ์"
-        meta={<>เวลาแสดงตามเขตเวลา {TIME_ZONE}</>}
-      />
+      <SectionHeader id="detail-incidents" title="เหตุการณ์" />
       <div className="flex flex-col gap-3">
         {data === undefined && incidents.isError ? (
           <>
