@@ -5,7 +5,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Outlet, useLocation } from "react-router";
+import { matchRoutes, Outlet, useLocation } from "react-router";
 
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { PageState } from "./PageState";
@@ -35,13 +35,26 @@ const DATA_DENSE_ROUTE =
 // (docs/design-system.md, Layout LAY-08/LAY-09).
 const WORKSPACE_ROUTE = /^\/workspace(\/|$)/;
 
+// Use the router's ranked/end matching for static segments and trailing slashes.
+// In particular, `new` is the create route, not the dynamic Detail exception.
+const MONITOR_ROUTES = [
+  { path: "/organizations/:organizationId/monitors/new", id: "create" },
+  {
+    path: "/organizations/:organizationId/monitors/:monitorId/edit",
+    id: "edit",
+  },
+  {
+    path: "/organizations/:organizationId/monitors/:monitorId/checks",
+    id: "checks",
+  },
+  { path: "/organizations/:organizationId/monitors/:monitorId", id: "detail" },
+];
+
 export function AppShell() {
   const { pathname } = useLocation();
   const { me, mePending, retryMe, membershipInteraction } = useTenant();
-  const privateRoute =
-    /^(?:\/organizations\/[^/]+\/monitors\/(?:new|[^/]+\/(?:edit|checks)))$/.test(
-      pathname,
-    );
+  const monitorRoute = matchRoutes(MONITOR_ROUTES, pathname)?.at(-1)?.route.id;
+  const privateRoute = monitorRoute !== undefined && monitorRoute !== "detail";
   const admittedPrivateRoute = useRef<string | null>(null);
   if (!privateRoute) admittedPrivateRoute.current = null;
   else if (me !== undefined) admittedPrivateRoute.current = pathname;
@@ -198,10 +211,7 @@ export function AppShell() {
                   <SelfLeaveRouteBoundary>
                     {(privateRoute &&
                       admittedPrivateRoute.current === pathname) ||
-                    (membershipInteraction &&
-                      /^\/organizations\/[^/]+\/monitors\/[^/]+$/.test(
-                        pathname,
-                      )) ? (
+                    (membershipInteraction && monitorRoute === "detail") ? (
                       <Outlet />
                     ) : mePending ? (
                       <PageState

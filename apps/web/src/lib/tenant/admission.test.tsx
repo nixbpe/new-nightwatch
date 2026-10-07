@@ -20,6 +20,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -1385,7 +1386,12 @@ it("viewer confirmation preserves disabled edit draft/refusal and never restores
   c.clear();
 });
 
-function renderPrivateRoute(c: QueryClient, page: "edit" | "checks") {
+function renderPrivateRoute(
+  c: QueryClient,
+  page: "new" | "edit" | "checks",
+  suffix = "",
+  uppercase = false,
+) {
   const router = createMemoryRouter(
     [
       {
@@ -1397,18 +1403,26 @@ function renderPrivateRoute(c: QueryClient, page: "edit" | "checks") {
         ),
         children: [
           {
-            path: "/organizations/:organizationId/monitors/:monitorId/" + page,
+            path:
+              "/organizations/:organizationId/monitors/" +
+              (page === "new" ? "new" : ":monitorId/" + page),
             element:
-              page === "edit" ? (
-                <MonitorFormPage mode="edit" />
-              ) : (
+              page === "checks" ? (
                 <ChecksHistoryPage />
+              ) : (
+                <MonitorFormPage mode={page === "new" ? "create" : "edit"} />
               ),
           },
         ],
       },
     ],
-    { initialEntries: [`/organizations/${A}/monitors/${MONITOR_ID}/${page}`] },
+    {
+      initialEntries: [
+        uppercase
+          ? `/ORGANIZATIONS/${A}/MONITORS/${page === "new" ? "NEW" : `${MONITOR_ID}/${page.toUpperCase()}`}${suffix}`
+          : `/organizations/${A}/monitors/${page === "new" ? "new" : `${MONITOR_ID}/${page}`}${suffix}`,
+      ],
+    },
   );
   render(
     <QueryClientProvider client={c}>
@@ -1554,14 +1568,20 @@ function historyChunk(offset: number) {
     urlChanges: [],
   };
 }
-it.each(["membership", "focus"] as const)(
-  "EG88-01 preserves privately loaded chunks across native shell %s pending/failure and same-member retry without offset zero reload",
-  async (cause) => {
+it.each([
+  ["membership", "", false],
+  ["focus", "", false],
+  ["focus", "/", false],
+  ["focus", "///", false],
+  ["focus", "///", true],
+] as const)(
+  "EG88-01 preserves privately loaded chunks across native shell %s pending/failure and same-member retry without offset zero reload (suffix %s, uppercase %s)",
+  async (cause, suffix, uppercase) => {
     const c = client();
     vi.mocked(fetchMonitorChecks).mockImplementation((_org, _id, page) =>
       Promise.resolve(historyChunk(page.offset)),
     );
-    const router = renderPrivateRoute(c, "checks");
+    const router = renderPrivateRoute(c, "checks", suffix, uppercase);
     await screen.findByText("แสดง 1–1 จาก 4");
     fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
     await screen.findByText("แสดง 1–2 จาก 4");
@@ -1657,108 +1677,124 @@ it("EG88-01 load-more 403 confirms once, retains chunks and error, then requires
   c.clear();
 });
 
-it("CR88-01 privately retains replacement secret, mode and pending TestPanel ownership across failed confirmation", async () => {
-  const c = client();
-  vi.mocked(fetchMonitorDetail).mockResolvedValue({
-    monitor: detail({
-      auth: { type: "bearer" },
-      secretSlots: [{ slot: "auth.token", configured: true }],
-    }),
-  });
-  const router = renderPrivateRoute(c, "edit");
-  await screen.findByRole("button", { name: "แทนที่ Token" });
-  fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
-  fireEvent.change(screen.getByLabelText("Token"), {
-    target: { value: "public-test-replacement" },
-  });
-  const testing =
-    Promise.withResolvers<Awaited<ReturnType<typeof testMonitorEdit>>>();
-  vi.mocked(testMonitorEdit).mockReturnValueOnce(testing.promise);
-  fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
-  await screen.findByRole("button", { name: "กำลังทดสอบ…" });
-  const pending = Promise.withResolvers<MeContextResponse>();
-  vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
-  await waitFor(() => {
-    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
-  });
-  assertPrivatePresentationWithdrawn();
-  expect(screen.queryByLabelText("Token")).toBeNull();
-  expect(screen.queryByRole("button", { name: "กำลังทดสอบ…" })).toBeNull();
-  await act(async () => {
-    pending.reject(new Error("confirmation failed"));
-    await pending.promise.catch(() => undefined);
-  });
-  vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-  fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
-  await screen.findByRole("button", { name: "กำลังทดสอบ…" });
-  expect(screen.getByLabelText("Token")).toHaveValue("public-test-replacement");
-  expect(
-    screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
-  ).toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: "ขั้นสูง" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "กำลังทดสอบ…" }));
-  expect(testMonitorEdit).toHaveBeenCalledTimes(1);
-  const hideAgain = Promise.withResolvers<MeContextResponse>();
-  vi.mocked(fetchMeContext).mockReturnValueOnce(hideAgain.promise);
-  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
-  await waitFor(() => {
-    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
-  });
-  await act(async () => {
-    testing.resolve({
-      result: {
-        checkedAt: baseResult.checkedAt,
-        outcome: "pass",
-        httpStatus: 200,
-        responseTimeMs: 20,
-        failureReason: null,
-        tlsReason: null,
-        assertions: [],
-        url: "https://protected.example/test-result",
-        evaluatedFromPrefix: false,
-        ssl: {
-          level: "no_data",
-          daysRemaining: null,
-          host: null,
-          issuer: null,
-          notAfter: null,
-        },
-      },
+it.each([
+  ["", false],
+  ["/", false],
+  ["///", false],
+  ["///", true],
+] as const)(
+  "CR88-01 privately retains replacement secret, mode and pending TestPanel ownership across failed confirmation (suffix %s, uppercase %s)",
+  async (suffix, uppercase) => {
+    const c = client();
+    vi.mocked(fetchMonitorDetail).mockResolvedValue({
+      monitor: detail({
+        auth: { type: "bearer" },
+        secretSlots: [{ slot: "auth.token", configured: true }],
+      }),
     });
-    await testing.promise;
-  });
-  assertPrivatePresentationWithdrawn();
-  expect(
-    screen.queryByText("https://protected.example/test-result"),
-  ).toBeNull();
-  await act(async () => {
-    hideAgain.resolve(context());
-    await hideAgain.promise;
-  });
-  await screen.findByText("การทดสอบผ่าน");
-  expect(
-    screen.getByText("https://protected.example/test-result"),
-  ).toBeInTheDocument();
-  const key = monitorQueryKeys.detail(A, MONITOR_ID);
-  vi.mocked(fetchMeContext).mockResolvedValueOnce(context("owner", []));
-  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
-  await screen.findByText("คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้");
-  expect(screen.queryByLabelText("Token")).toBeNull();
-  expect(c.getQueryData(key)).toBeUndefined();
-  vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
-  await screen.findByRole("button", { name: "แทนที่ Token" });
-  fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
-  expect(screen.getByLabelText("Token")).toHaveValue("");
-  expect(screen.queryByText("การทดสอบผ่าน")).toBeNull();
-  router.dispose();
-  await c.cancelQueries();
-  c.clear();
-});
+    const router = renderPrivateRoute(c, "edit", suffix, uppercase);
+    await screen.findByRole("button", { name: "แทนที่ Token" });
+    fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
+    fireEvent.change(screen.getByLabelText("Token"), {
+      target: { value: "public-test-replacement" },
+    });
+    const testing =
+      Promise.withResolvers<Awaited<ReturnType<typeof testMonitorEdit>>>();
+    vi.mocked(testMonitorEdit).mockReturnValueOnce(testing.promise);
+    fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
+    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+    const pending = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    assertPrivatePresentationWithdrawn();
+    expect(screen.queryByLabelText("Token")).toBeNull();
+    expect(screen.queryByRole("button", { name: "กำลังทดสอบ…" })).toBeNull();
+    await act(async () => {
+      pending.reject(new Error("confirmation failed"));
+      await pending.promise.catch(() => undefined);
+    });
+    vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
+    fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
+    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+    expect(screen.getByLabelText("Token")).toHaveValue(
+      "public-test-replacement",
+    );
+    expect(
+      screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "ขั้นสูง" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "กำลังทดสอบ…" }));
+    expect(testMonitorEdit).toHaveBeenCalledTimes(1);
+    const hideAgain = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext).mockReturnValueOnce(hideAgain.promise);
+    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    await act(async () => {
+      testing.resolve({
+        result: {
+          checkedAt: baseResult.checkedAt,
+          outcome: "pass",
+          httpStatus: 200,
+          responseTimeMs: 20,
+          failureReason: null,
+          tlsReason: null,
+          assertions: [],
+          url: "https://protected.example/test-result",
+          evaluatedFromPrefix: false,
+          ssl: {
+            level: "no_data",
+            daysRemaining: null,
+            host: null,
+            issuer: null,
+            notAfter: null,
+          },
+        },
+      });
+      await testing.promise;
+    });
+    assertPrivatePresentationWithdrawn();
+    expect(
+      screen.queryByText("https://protected.example/test-result"),
+    ).toBeNull();
+    await act(async () => {
+      hideAgain.resolve(context());
+      await hideAgain.promise;
+    });
+    await screen.findByText("การทดสอบผ่าน");
+    expect(
+      screen.getByText("https://protected.example/test-result"),
+    ).toBeInTheDocument();
+    const key = monitorQueryKeys.detail(A, MONITOR_ID);
+    vi.mocked(fetchMeContext).mockResolvedValueOnce(context("owner", []));
+    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    await screen.findByText(
+      "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
+    );
+    expect(screen.queryByLabelText("Token")).toBeNull();
+    expect(c.getQueryData(key)).toBeUndefined();
+    vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
+    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    await screen.findByRole("button", { name: "แทนที่ Token" });
+    fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
+    expect(screen.getByLabelText("Token")).toHaveValue("");
+    expect(screen.queryByText("การทดสอบผ่าน")).toBeNull();
+    router.dispose();
+    await c.cancelQueries();
+    c.clear();
+  },
+);
 it.each(["save", "test"] as const)(
   "CR88-01 %s membership refusal withdraws private edit presentation and keyboard retry restores focus without losing typed secret",
   async (operation) => {
@@ -2001,6 +2037,131 @@ it("CR88-01 preserves private TestPanel rate-limit refusal across withdrawn pres
   ).toHaveAttribute("aria-disabled", "true");
   fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
   expect(testMonitorEdit).toHaveBeenCalledTimes(1);
+  router.dispose();
+  await c.cancelQueries();
+  c.clear();
+});
+
+it.each([
+  ["/", false],
+  ["///", false],
+  ["///", true],
+] as const)(
+  "CR88-R3 new%s privately retains draft, typed secret and one pending Test across failed confirmation (uppercase %s)",
+  async (suffix, uppercase) => {
+    const c = client(),
+      router = renderPrivateRoute(c, "new", suffix, uppercase);
+    fireEvent.change(await screen.findByLabelText("ชื่อมอนิเตอร์"), {
+      target: { value: "private new draft" },
+    });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://protected.example/request" },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "ขั้นสูง" }));
+    fireEvent.change(
+      within(
+        screen.getByRole("region", { name: /การยืนยันตัวตน/ }),
+      ).getByLabelText("ชนิด"),
+      { target: { value: "bearer" } },
+    );
+    fireEvent.change(screen.getByLabelText("Token"), {
+      target: { value: "public-test-replacement" },
+    });
+    const testing =
+      Promise.withResolvers<Awaited<ReturnType<typeof testMonitorDraft>>>();
+    vi.mocked(testMonitorDraft).mockReturnValueOnce(testing.promise);
+    fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
+    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+    const pending = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    assertPrivatePresentationWithdrawn();
+    await act(async () => {
+      pending.reject(new Error("confirmation failed"));
+      await pending.promise.catch(() => undefined);
+    });
+    assertPrivatePresentationWithdrawn();
+    fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
+    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+      "private new draft",
+    );
+    expect(screen.getByLabelText("Token")).toHaveValue(
+      "public-test-replacement",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "กำลังทดสอบ…" }));
+    expect(testMonitorDraft).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      testing.reject(new Error("test completed"));
+      await testing.promise.catch(() => undefined);
+    });
+    router.dispose();
+    await c.cancelQueries();
+    c.clear();
+  },
+);
+
+it.each(["new", "edit", "checks"] as const)(
+  "CR88-R3 cold uppercase %s/// remains unmounted without confirmed admission and retries only its original scope",
+  async (page) => {
+    const c = client(),
+      pending = Promise.withResolvers<MeContextResponse>();
+    vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+    const router = renderPrivateRoute(c, page, "///", true);
+    await waitFor(() => {
+      expect(getContextPublicationSnapshot(c).admission.kind).toBe(
+        "confirming",
+      );
+    });
+    assertPrivatePresentationWithdrawn();
+    expect(fetchMonitorDetail).not.toHaveBeenCalled();
+    expect(fetchMonitorChecks).not.toHaveBeenCalled();
+    await act(async () => {
+      pending.reject(new Error("cold confirmation failed"));
+      await pending.promise.catch(() => undefined);
+    });
+    assertPrivatePresentationWithdrawn();
+    fireEvent.click(await screen.findByRole("button", { name: "ลองใหม่" }));
+    if (page === "checks") await screen.findByText("Payments API");
+    else await screen.findByLabelText("ชื่อมอนิเตอร์");
+    if (page !== "new")
+      expect(fetchMonitorDetail).toHaveBeenCalledWith(A, MONITOR_ID);
+    expect(router.state.location.pathname).toContain(
+      `/ORGANIZATIONS/${A}/MONITORS/`,
+    );
+    router.dispose();
+    await c.cancelQueries();
+    c.clear();
+  },
+);
+
+it("CR88-R3 an unadmitted new URL cannot inherit an old private owner while context is withdrawn", async () => {
+  const c = client(),
+    router = renderPrivateRoute(c, "new", "/");
+  fireEvent.change(await screen.findByLabelText("ชื่อมอนิเตอร์"), {
+    target: { value: "old URL draft" },
+  });
+  const pending = Promise.withResolvers<MeContextResponse>();
+  vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
+  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  await waitFor(() => {
+    expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
+  });
+  await act(async () => {
+    await router.navigate(`/organizations/${B}/monitors/new/`);
+  });
+  assertPrivatePresentationWithdrawn();
+  await act(async () => {
+    pending.resolve(context());
+    await pending.promise;
+  });
+  expect(await screen.findByLabelText("ชื่อมอนิเตอร์")).toHaveValue("");
+  expect(screen.queryByDisplayValue("old URL draft")).toBeNull();
   router.dispose();
   await c.cancelQueries();
   c.clear();
