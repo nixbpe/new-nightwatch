@@ -966,6 +966,88 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
   });
 
+  // After a pause the query keeps the snapshot from before it, so a resumed fetch that has not succeeded yet must not make the cues fresh (Codex 4202249500). The clock moves on during the pause; the poll interval is mocked at 60 ms, so data counts as fresh for 120 ms.
+  const PAUSE_MS = 10 * 60_000;
+
+  it("keeps the dot and the glow off while the resumed fetch is pending, then restores both when it succeeds", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(document.querySelector(".live-pulse")).toBeNull();
+    });
+    vi.setSystemTime(NOW.getTime() + PAUSE_MS);
+    const resumed = deferred<{ monitor: Monitor }>();
+    fetchDetailMock.mockReturnValue(resumed.promise);
+    const calls = fetchDetailMock.mock.calls.length;
+    onlineManager.setOnline(true);
+    await waitFor(() => {
+      expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
+    });
+    // The fetch is in flight and `data` is still the snapshot from before the pause.
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+
+    await act(async () => {
+      resumed.resolve({ monitor: downWithIncident() });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+  });
+
+  it("stays not fresh when the resumed fetch fails", async () => {
+    showDetail(downWithIncident());
+    renderDetail();
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+
+    onlineManager.setOnline(false);
+    await waitFor(() => {
+      expect(document.querySelector(".live-pulse")).toBeNull();
+    });
+    vi.setSystemTime(NOW.getTime() + PAUSE_MS);
+    fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
+    onlineManager.setOnline(true);
+    expect(await screen.findByText(STALE)).toBeInTheDocument();
+    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+  });
+
+  it("opens from a cached snapshot older than the limit with the dot and the glow off until the refetch succeeds", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      monitorQueryKeys.detail(A, MONITOR_ID),
+      { monitor: downWithIncident() },
+      { updatedAt: NOW.getTime() - PAUSE_MS },
+    );
+    const refetch = deferred<{ monitor: Monitor }>();
+    fetchDetailMock.mockReturnValue(refetch.promise);
+    renderDetail(A, MONITOR_ID, queryClient);
+    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
+    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    expect(fetchDetailMock).toHaveBeenCalled();
+
+    await act(async () => {
+      refetch.resolve({ monitor: downWithIncident() });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    });
+    expect(headerBadge().wrapper).toHaveClass(GLOW);
+  });
+
   it.each([
     ["the incident ends", () => detail({ health: "up", openIncident: null })],
     [

@@ -44,6 +44,7 @@ import {
   TIME_ZONE,
 } from "./format";
 import { HealthPill } from "./HealthPill";
+import { useDataFresh } from "./useDataFresh";
 import { useLeaveOnOrganizationSwitch } from "./useLeaveOnOrganizationSwitch";
 
 const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนแล้ว";
@@ -147,6 +148,7 @@ function DetailForMonitor({
         : MONITOR_REFETCH_INTERVAL_MS,
   });
 
+  const fresh = useDataFresh(detail);
   const notFound = isNotFound(detail.error);
   const denied = isDenied(detail.error);
   useEffect(() => {
@@ -421,9 +423,7 @@ function DetailForMonitor({
   const line = statusLine(monitor);
   const bannerShown =
     monitor.health === "down" && monitor.openIncident !== null;
-  // The data is fresh only while it keeps refreshing: a failed refetch and a query paused offline (`isPaused`, no error) both drop the live cues (CMP-01, Motion principle).
-  const fresh = !detail.isError && !detail.isPaused;
-  // COL-08: a static glow while the incident is active and the data is fresh.
+  // COL-08: a static glow while the incident is active and the data is fresh (`useDataFresh`).
   const badgeGlow = bannerShown && fresh;
   const status = (
     <>
