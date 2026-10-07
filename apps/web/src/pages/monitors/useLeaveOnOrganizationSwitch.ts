@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useTenant } from "../../lib/tenant/TenantProvider";
@@ -12,6 +12,7 @@ import { useTenant } from "../../lib/tenant/TenantProvider";
 export function useOrganizationSwitched(routeOrganizationId: string): boolean {
   const { serverActiveOrgId } = useTenant();
   const [anchor, setAnchor] = useState(serverActiveOrgId);
+  const [retired, setRetired] = useState(false);
   if (anchor === null && serverActiveOrgId !== null) {
     setAnchor(serverActiveOrgId);
   } else if (
@@ -20,12 +21,16 @@ export function useOrganizationSwitched(routeOrganizationId: string): boolean {
   ) {
     setAnchor(routeOrganizationId);
   }
-  return (
-    anchor !== null &&
-    serverActiveOrgId !== null &&
-    serverActiveOrgId !== anchor &&
-    serverActiveOrgId !== routeOrganizationId
-  );
+  const switched =
+    retired ||
+    (anchor !== null &&
+      serverActiveOrgId !== null &&
+      serverActiveOrgId !== anchor &&
+      serverActiveOrgId !== routeOrganizationId);
+  // A destination loader temporarily withdraws the context. That cannot revive
+  // the old page's private state, even if a later intent returns to its scope.
+  if (switched && !retired) setRetired(true);
+  return switched;
 }
 
 /**
@@ -40,8 +45,16 @@ export function useLeaveOnOrganizationSwitch(
   const { serverActiveOrgId } = useTenant();
   const navigate = useNavigate();
   const switched = useOrganizationSwitched(routeOrganizationId);
+  const destination = useRef<string | null>(null);
   useEffect(() => {
-    if (switched && serverActiveOrgId !== null) {
+    if (
+      switched &&
+      serverActiveOrgId !== null &&
+      destination.current !== serverActiveOrgId
+    ) {
+      // Reconfirming the same destination must not supersede its pending loader.
+      // A newer confirmed scope still replaces the old navigation.
+      destination.current = serverActiveOrgId;
       void navigate(`/organizations/${serverActiveOrgId}/monitors`, {
         replace: true,
       });

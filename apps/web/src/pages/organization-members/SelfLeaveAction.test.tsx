@@ -1,3 +1,7 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+import { useState, type ReactNode } from "react";
+import { SelfLeaveRouteBoundary } from "./SelfLeaveAction";
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
   OrganizationMemberListResponse,
@@ -8,7 +12,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  MemoryRouter,
+  createMemoryRouter,
+  RouterProvider,
   Route,
   Routes,
   useLocation,
@@ -44,6 +49,27 @@ vi.mock("../../lib/api/members", async (importOriginal) => ({
   fetchOrganizationMembers: vi.fn(),
   leaveOrganization: vi.fn(),
 }));
+
+function MemberDataRouter({
+  initialEntries,
+  children,
+}: {
+  initialEntries: string[];
+  children: ReactNode;
+}) {
+  const [router] = useState(() =>
+    createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: <SelfLeaveRouteBoundary>{children}</SelfLeaveRouteBoundary>,
+        },
+      ],
+      { initialEntries },
+    ),
+  );
+  return <RouterProvider router={router} />;
+}
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -90,13 +116,19 @@ const left = (role: OrganizationRole = "viewer") =>
     member: { id: "member-me", userId: ME, organizationId: A, role },
   }) satisfies OrganizationMemberRoleUpdateResponse;
 
+guardUnassignedNetwork();
+
 beforeEach(() => {
   vi.mocked(fetchOrganizationMembers).mockImplementation((id) =>
     Promise.resolve(list(id)),
   );
   vi.mocked(leaveOrganization).mockResolvedValue(left());
 });
-afterEach(() => vi.resetAllMocks());
+afterEach(async () => {
+  await queryClient.cancelQueries();
+  queryClient.clear();
+  vi.resetAllMocks();
+});
 
 function Harness() {
   const { switchOrg } = useTenant();
@@ -134,13 +166,14 @@ async function renderAs(
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, ME);
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
-        <MemoryRouter initialEntries={[`/organizations/${A}/members`]}>
+        <MemberDataRouter initialEntries={[`/organizations/${A}/members`]}>
           <Harness />
-        </MemoryRouter>
+        </MemberDataRouter>
       </TenantProvider>
     </QueryClientProvider>,
   );
@@ -152,7 +185,7 @@ const entry = () => screen.getByRole("button", { name: "ออกจากอง
 const confirmButton = () =>
   screen.getByRole("button", { name: "ยืนยันการออกจากองค์กร" });
 const afterLeaveContext = () => {
-  vi.mocked(fetchMeContext).mockResolvedValue(contextWith([ORG_B], null));
+  vi.mocked(fetchMeContext).mockResolvedValue(contextWith([ORG_B], B));
 };
 
 it.each(["viewer", "auditor"] as const)(
@@ -261,7 +294,7 @@ it("blocks a second confirm, cancel and Escape while the DELETE is pending", asy
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
 });
 
-it("explains LAST_OWNER, refreshes the server-confirmed context, stays on A and returns focus to the entry", async () => {
+it("explains LAST_OWNER, refreshes context, retains the organization and returns focus to the entry", async () => {
   vi.mocked(leaveOrganization).mockRejectedValue(
     new ApiError("LAST_OWNER", "last", 400),
   );
@@ -338,7 +371,7 @@ it("offers a retry of the context refresh, not of the DELETE, when the refresh f
 });
 
 it.each(["success", "LAST_OWNER"] as const)(
-  "keeps B untouched by a late A %s response after switching to B",
+  "ignores late origin self-leave %s responses after a confirmed organization switch",
   async (outcome) => {
     const pending =
       Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
@@ -402,7 +435,7 @@ it("keeps the LAST_OWNER explanation when the refresh fails and is retried", asy
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
 });
 
-it("applies a late A leave to A when the switch to B is denied", async () => {
+it("applies the late leave result to the origin when the organization switch is denied", async () => {
   const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
   vi.mocked(leaveOrganization).mockReturnValue(pending.promise);
   vi.mocked(updateActiveOrganization).mockRejectedValue(
@@ -425,4 +458,34 @@ it("applies a late A leave to A when the switch to B is denied", async () => {
       `/organizations/${B}/members`,
     ),
   );
+});
+
+it("uses the account destination when the resolver returns membership without confirmed active selection", async () => {
+  const user = await renderAs("viewer");
+  await user.click(entry());
+  vi.mocked(fetchMeContext).mockResolvedValueOnce(contextWith([ORG_B], null));
+  await user.click(confirmButton());
+  await waitFor(() =>
+    expect(screen.getByTestId("location")).toHaveTextContent("/workspace"),
+  );
+  expect(leaveOrganization).toHaveBeenCalledTimes(1);
+});
+it("uses the resolver destination when the DELETE hint names a different organization", async () => {
+  const C = "33333333-3333-4333-8333-333333333333";
+  const orgC = { ...ORG_B, id: C, name: "Gamma", slug: "gamma" };
+  const user = await renderAs("viewer");
+  await user.click(entry());
+  vi.mocked(leaveOrganization).mockResolvedValueOnce({
+    member: { ...left().member, organizationId: B },
+  });
+  vi.mocked(fetchMeContext).mockResolvedValueOnce(
+    contextWith([ORG_B, orgC], C),
+  );
+  await user.click(confirmButton());
+  await waitFor(() =>
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/organizations/${C}/members`,
+    ),
+  );
+  expect(screen.queryByText(/ออกจากองค์กรไม่สำเร็จ/)).toBeNull();
 });

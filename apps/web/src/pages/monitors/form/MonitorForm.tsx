@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useEffect,
   useMemo,
+  useLayoutEffect,
   useRef,
   useState,
   type SyntheticEvent,
@@ -24,6 +25,7 @@ import {
   testMonitorEdit,
   updateMonitor,
 } from "../../../lib/api/monitors";
+import { getContextPublicationSnapshot } from "../../../lib/queryClient";
 import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import type { MonitorFlashState } from "../flash";
@@ -100,10 +102,39 @@ export function MonitorForm({
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { refreshMembershipContext } = useTenant();
+  const { me, refreshMembershipContext } = useTenant();
   const organizationId = organization.id;
+  const confirmedOrganization = me?.organizations.find(
+    (item) => item.id === organizationId,
+  );
 
-  // Pinned when the form opens: a refetch must not change what a save is checked against.
+  const presented = confirmedOrganization !== undefined;
+  const lastFocusedId = useRef<string | null>(null);
+  const ownsFocusRecovery = useRef(false);
+  const previouslyPresented = useRef(presented);
+  useLayoutEffect(() => {
+    const active = document.activeElement;
+    const recoverable =
+      active === document.body ||
+      active === headingRef.current ||
+      active === null ||
+      !active.isConnected;
+    if (ownsFocusRecovery.current && recoverable) {
+      if (presented && !previouslyPresented.current) {
+        const target =
+          lastFocusedId.current === null
+            ? null
+            : document.getElementById(lastFocusedId.current);
+        (target ?? headingRef.current)?.focus();
+      } else if (!presented && previouslyPresented.current) {
+        headingRef.current?.focus();
+      }
+    } else if (!recoverable) {
+      ownsFocusRecovery.current = false;
+    }
+    previouslyPresented.current = presented;
+  }, [presented]);
+
   const [initial] = useState(() => ({
     values: record === undefined ? defaultValues() : valuesFromRecord(record),
     base: record === undefined ? null : editBaseFromRecord(record),
@@ -129,6 +160,9 @@ export function MonitorForm({
   const refused = useRef(false);
   const [membershipDenied, setMembershipDenied] = useState(false);
   // A refusal of the membership keeps actions off until a refresh proves it is back.
+  useEffect(() => {
+    if (confirmedOrganization !== undefined) setMembershipDenied(false);
+  }, [confirmedOrganization]);
   const roleLost = roleLostByRole || membershipDenied;
   const lockMessage =
     membershipDenied && !roleLostByRole ? DENIED_MESSAGE : ROLE_CHANGED;
@@ -145,11 +179,34 @@ export function MonitorForm({
   const saveInFlight = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  function releaseFocusRecovery(next: EventTarget | null) {
+    if (
+      next instanceof Node &&
+      next.isConnected &&
+      !formRef.current?.contains(next) &&
+      !headingRef.current?.closest("main")?.contains(next)
+    ) {
+      ownsFocusRecovery.current = false;
+    }
+  }
   const switchedNow = useRef(false);
   switchedNow.current = useOrganizationSwitched(organizationId);
   const mounted = useRef(true);
   /** The page is gone or the user switched Organization since the form opened. */
-  const leftOrganization = () => !mounted.current || switchedNow.current;
+  const leftOrganization = () => {
+    const admission = getContextPublicationSnapshot(queryClient).admission;
+    const role =
+      admission.kind === "confirmed"
+        ? admission.context.organizations.find(
+            (item) => item.id === organizationId,
+          )?.role
+        : undefined;
+    return (
+      !mounted.current ||
+      switchedNow.current ||
+      (role !== "owner" && role !== "admin")
+    );
+  };
 
   useEffect(() => {
     // StrictMode runs the cleanup once before the real mount, so the flag is set again here.
@@ -358,7 +415,12 @@ export function MonitorForm({
   const overviewPath = `/organizations/${organizationId}/monitors`;
   const backPath = editing ? `${overviewPath}/${monitorId}` : overviewPath;
   const heading = (
-    <>
+    <div
+      className="contents"
+      onBlurCapture={(event) => {
+        releaseFocusRecovery(event.relatedTarget);
+      }}
+    >
       <Link
         to={backPath}
         className="inline-flex items-center gap-1.5 self-start text-sm text-primary underline-offset-4 hover:underline"
@@ -373,18 +435,30 @@ export function MonitorForm({
             ? undefined
             : "เพิ่มเว็บไซต์หรือ API เพื่อให้ NightWatch ตรวจสถานะเป็นระยะและแจ้งเมื่อล่มหรือ SSL ใกล้หมดอายุ"
         }
-        scope={{
-          mark: organization.name,
-          label: organization.name,
-          tag: ROLE_LABELS[organization.role] ?? organization.role,
-        }}
+        scope={
+          confirmedOrganization === undefined
+            ? undefined
+            : {
+                mark: confirmedOrganization.name,
+                label: confirmedOrganization.name,
+                tag:
+                  ROLE_LABELS[confirmedOrganization.role] ??
+                  confirmedOrganization.role,
+              }
+        }
         title={
-          initial.title === null ? "เพิ่มมอนิเตอร์" : `แก้ไข ${initial.title}`
+          confirmedOrganization === undefined
+            ? editing
+              ? "แก้ไขมอนิเตอร์"
+              : "เพิ่มมอนิเตอร์"
+            : initial.title === null
+              ? "เพิ่มมอนิเตอร์"
+              : `แก้ไข ${initial.title}`
         }
         titleRef={headingRef}
         titleTabIndex={-1}
       />
-    </>
+    </div>
   );
 
   if (notFound) {
@@ -417,99 +491,118 @@ export function MonitorForm({
   return (
     <Page>
       {heading}
+      {!presented ? (
+        <PageState kind="loading" label="กำลังยืนยันสิทธิ์มอนิเตอร์" />
+      ) : null}
+      {!presented && formError !== null ? (
+        <Alert tone="error">{formError}</Alert>
+      ) : null}
       <form
         ref={formRef}
         noValidate
+        onFocusCapture={(event) => {
+          if (event.target instanceof HTMLElement) {
+            ownsFocusRecovery.current = true;
+            lastFocusedId.current = event.target.id || null;
+          }
+        }}
+        onBlurCapture={(event) => {
+          releaseFocusRecovery(event.relatedTarget);
+        }}
         onSubmit={(event) => {
           void save(event);
         }}
         className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-10"
       >
-        <div className="flex min-w-0 flex-col gap-6 lg:col-start-1 lg:row-start-1">
-          <div className="flex items-center gap-3">
-            <span aria-hidden="true" className="text-sm font-medium">
-              โหมด
-            </span>
-            <SegmentedControl
-              label="โหมด"
-              value={mode}
-              options={[
-                { value: "basic", label: "พื้นฐาน" },
-                { value: "advanced", label: "ขั้นสูง" },
-              ]}
-              onChange={setMode}
+        {presented ? (
+          <div className="flex min-w-0 flex-col gap-6 lg:col-start-1 lg:row-start-1">
+            <div className="flex items-center gap-3">
+              <span aria-hidden="true" className="text-sm font-medium">
+                โหมด
+              </span>
+              <SegmentedControl
+                label="โหมด"
+                value={mode}
+                options={[
+                  { value: "basic", label: "พื้นฐาน" },
+                  { value: "advanced", label: "ขั้นสูง" },
+                ]}
+                onChange={setMode}
+              />
+            </div>
+            {mode === "basic" && advancedInUse > 0 ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Alert tone="info" role="status">
+                  มีการตั้งค่าขั้นสูง {advancedInUse} รายการที่ยังใช้งานอยู่
+                </Alert>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setMode("advanced");
+                  }}
+                >
+                  ดูในโหมดขั้นสูง
+                </Button>
+              </div>
+            ) : null}
+            <BasicSection
+              {...sectionProps}
+              advanced={mode === "advanced"}
+              urlNote={originBlocked ? SECRET_ORIGIN_MESSAGE : null}
             />
-          </div>
-          {mode === "basic" && advancedInUse > 0 ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Alert tone="info" role="status">
-                มีการตั้งค่าขั้นสูง {advancedInUse} รายการที่ยังใช้งานอยู่
+            {mode === "advanced" ? (
+              <>
+                <RequestSection {...sectionProps} base={base} />
+                <SecretsSection {...sectionProps} base={base} />
+                <AssertionsSection {...sectionProps} />
+              </>
+            ) : null}
+            <AlertsSection
+              {...sectionProps}
+              code={mode === "advanced" ? "05" : "02"}
+              organizationId={organizationId}
+            />
+            {roleLost ? <Alert tone="error">{lockMessage}</Alert> : null}
+            {conflict ? (
+              <div className="flex flex-col gap-2">
+                <Alert tone="warning">{CONFLICT_MESSAGE}</Alert>
+                {onReload === undefined ? null : (
+                  <div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={controlsOff}
+                      onClick={() => {
+                        if (!controlsOff) void onReload();
+                      }}
+                    >
+                      โหลดค่าล่าสุด
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+            {formError === null || roleLost ? null : (
+              <Alert tone="error">{formError}</Alert>
+            )}
+            {unplaced.map((message) => (
+              <Alert key={message} tone="error">
+                {message}
               </Alert>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setMode("advanced");
-                }}
-              >
-                ดูในโหมดขั้นสูง
-              </Button>
-            </div>
-          ) : null}
-          <BasicSection
-            {...sectionProps}
-            advanced={mode === "advanced"}
-            urlNote={originBlocked ? SECRET_ORIGIN_MESSAGE : null}
-          />
-          {mode === "advanced" ? (
-            <>
-              <RequestSection {...sectionProps} base={base} />
-              <SecretsSection {...sectionProps} base={base} />
-              <AssertionsSection {...sectionProps} />
-            </>
-          ) : null}
-          <AlertsSection
-            {...sectionProps}
-            code={mode === "advanced" ? "05" : "02"}
-            organizationId={organizationId}
-          />
-          {roleLost ? <Alert tone="error">{lockMessage}</Alert> : null}
-          {conflict ? (
-            <div className="flex flex-col gap-2">
-              <Alert tone="warning">{CONFLICT_MESSAGE}</Alert>
-              {onReload === undefined ? null : (
-                <div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      void onReload();
-                    }}
-                  >
-                    โหลดค่าล่าสุด
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : null}
-          {formError === null || roleLost ? null : (
-            <Alert tone="error">{formError}</Alert>
-          )}
-          {unplaced.map((message) => (
-            <Alert key={message} tone="error">
-              {message}
-            </Alert>
-          ))}
-          {originBlocked && !roleLost ? (
-            <p className="text-sm text-foreground-secondary">
-              {ORIGIN_BLOCK_NOTE}
-            </p>
-          ) : null}
-        </div>
+            ))}
+            {originBlocked && !roleLost ? (
+              <p className="text-sm text-foreground-secondary">
+                {ORIGIN_BLOCK_NOTE}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <aside className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-6 lg:self-start">
           <TestPanel
+            presented={presented}
             payload={testSnapshot(values, entriesNow())}
             secretsChanged={secretStore.changed}
             onRun={secretStore.markClean}
@@ -533,23 +626,28 @@ export function MonitorForm({
             onPendingChange={setTesting}
           />
         </aside>
-        <div className="flex min-w-0 items-center justify-end gap-2 border-t border-foreground/10 pt-4 lg:col-start-1 lg:row-start-2">
-          <Button asChild variant="ghost">
-            <Link to={backPath}>ยกเลิก</Link>
-          </Button>
-          <Button
-            type="submit"
-            aria-disabled={saving || testing || roleLost}
-            disabled={originBlocked && !roleLost}
-            className={saving || testing || roleLost ? "opacity-60" : undefined}
-          >
-            {saving
-              ? "กำลังบันทึก…"
-              : editing
-                ? "บันทึกการแก้ไข"
-                : "บันทึกมอนิเตอร์"}
-          </Button>
-        </div>
+        {presented ? (
+          <div className="flex min-w-0 items-center justify-end gap-2 border-t border-foreground/10 pt-4 lg:col-start-1 lg:row-start-2">
+            <Button asChild variant="ghost">
+              <Link to={backPath}>ยกเลิก</Link>
+            </Button>
+            <Button
+              id="monitor-form-save-button"
+              type="submit"
+              aria-disabled={saving || testing || roleLost}
+              disabled={originBlocked && !roleLost}
+              className={
+                saving || testing || roleLost ? "opacity-60" : undefined
+              }
+            >
+              {saving
+                ? "กำลังบันทึก…"
+                : editing
+                  ? "บันทึกการแก้ไข"
+                  : "บันทึกมอนิเตอร์"}
+            </Button>
+          </div>
+        ) : null}
       </form>
     </Page>
   );

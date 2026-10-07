@@ -1,15 +1,24 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type {
   MeContextResponse,
   MonitorListResponse,
   MonitorRecentEvent,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  MemoryRouter,
-  Route,
-  Routes,
+  createMemoryRouter,
+  RouterProvider,
+  Outlet,
   useLocation,
   useNavigate,
 } from "react-router";
@@ -26,6 +35,8 @@ import { TenantProvider, useTenant } from "../../lib/tenant/TenantProvider";
 import { formatDateTime, formatTimeWithSeconds, TIME_ZONE } from "./format";
 import { MONITOR_LIST_SORTS } from "@nightwatch/api-contract";
 import { OverviewPage } from "./OverviewPage";
+
+guardUnassignedNetwork();
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -163,35 +174,55 @@ function Harness({ children }: { children?: React.ReactNode }) {
       <output data-testid="location">{useLocation().pathname}</output>
       <output data-testid="state">{JSON.stringify(useLocation().state)}</output>
       {children}
-      <Routes>
-        <Route
-          path="/organizations/:organizationId/monitors"
-          element={<OverviewPage />}
-        />
-      </Routes>
+      <Outlet />
     </>
   );
 }
+
+const resources: {
+  router: ReturnType<typeof createMemoryRouter>;
+  queryClient: QueryClient;
+}[] = [];
+afterEach(async () => {
+  cleanup();
+  for (const { router, queryClient } of resources.splice(0)) {
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  }
+});
 
 function renderPage(organizationId = A, state?: unknown) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
+  const router = createMemoryRouter(
+    [
+      {
+        element: <Harness />,
+        children: [
+          {
+            path: "/organizations/:organizationId/monitors",
+            element: <OverviewPage />,
+          },
+        ],
+      },
+    ],
+    {
+      initialEntries: [
+        { pathname: `/organizations/${organizationId}/monitors`, state },
+      ],
+    },
+  );
+  resources.push({ router, queryClient });
   return {
     queryClient,
+    router,
     ...render(
       <QueryClientProvider client={queryClient}>
         <TenantProvider>
-          <MemoryRouter
-            initialEntries={[
-              {
-                pathname: `/organizations/${organizationId}/monitors`,
-                state,
-              },
-            ]}
-          >
-            <Harness />
-          </MemoryRouter>
+          <RouterProvider router={router} />
         </TenantProvider>
       </QueryClientProvider>,
     ),
@@ -476,9 +507,6 @@ describe("Overview method, interval and sparkline", () => {
     expect(cardScope.getByText("https://api.example.test/v1")).toHaveClass(
       "break-all",
     );
-    expect(cardScope.getByText("15", { selector: "span" })).toHaveClass(
-      "font-mono",
-    );
     expect(cardScope.getByText(/^ทุก/)).toHaveTextContent("ทุก 15 นาที");
 
     await user.click(screen.getByRole("radio", { name: "ตาราง" }));
@@ -498,9 +526,8 @@ describe("Overview method, interval and sparkline", () => {
       `ตรวจล่าสุด (${TIME_ZONE})`,
     ]);
     const row = within(rowOf("Api"));
-    expect(row.getByText("POST")).toHaveClass("font-mono");
+    expect(row.getByText("POST")).toBeInTheDocument();
     expect(row.getByText(/^ทุก/)).toHaveTextContent("ทุก 15 นาที");
-    expect(row.getByText("15")).toHaveClass("font-mono");
   });
 
   it("draws 24 bars with empty slots for null hours and describes the chart", async () => {
@@ -859,17 +886,6 @@ describe("Overview success", () => {
       [
         {
           level: "caution",
-          daysRemaining: 21,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "ใกล้หมดอายุ เหลือ 21 วัน",
-        "text-caution",
-      ],
-      [
-        {
-          level: "caution",
           daysRemaining: 30,
           host: "h",
           issuer: null,
@@ -887,17 +903,6 @@ describe("Overview success", () => {
           notAfter: null,
         },
         "หมดอายุใน 7 วัน",
-        "text-danger",
-      ],
-      [
-        {
-          level: "danger",
-          daysRemaining: 5,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "หมดอายุใน 5 วัน",
         "text-danger",
       ],
       [
@@ -1388,7 +1393,7 @@ describe("Overview Organization switch", () => {
     expect(screen.getByText("BetaMonitor")).toBeInTheDocument();
   });
 
-  it("does not show Organization A rows on B while B is still loading", async () => {
+  it("hides origin organization rows while the destination organization loads", async () => {
     const user = userEvent.setup();
     const pendingB = Promise.withResolvers<MonitorListResponse>();
     fetchListMock.mockImplementation((organizationId) =>

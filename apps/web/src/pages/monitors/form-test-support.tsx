@@ -1,8 +1,15 @@
+import { afterEach } from "vitest";
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type { MonitorRecord } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { Fragment, StrictMode } from "react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import {
+  createMemoryRouter,
+  RouterProvider,
+  Outlet,
+  useLocation,
+} from "react-router";
 
 import { OrgSwitcher } from "../../components/shell/OrgSwitcher";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
@@ -10,6 +17,19 @@ import { A, MONITOR_ID } from "./detail-test-support";
 import { DetailPage } from "./DetailPage";
 import { MonitorFormPage } from "./MonitorFormPage";
 import { OverviewPage } from "./OverviewPage";
+
+const resources: {
+  router: ReturnType<typeof createMemoryRouter>;
+  queryClient: QueryClient;
+}[] = [];
+afterEach(async () => {
+  cleanup();
+  for (const { router, queryClient } of resources.splice(0)) {
+    router.dispose();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  }
+});
 
 export { A, B, MONITOR_ID, context, detail } from "./detail-test-support";
 
@@ -48,24 +68,7 @@ function Routing() {
     <>
       <OrgSwitcher collapsed={false} />
       <output data-testid="location">{useLocation().pathname}</output>
-      <Routes>
-        <Route
-          path="/organizations/:organizationId/monitors/new"
-          element={<MonitorFormPage mode="create" />}
-        />
-        <Route
-          path="/organizations/:organizationId/monitors/:monitorId/edit"
-          element={<MonitorFormPage mode="edit" />}
-        />
-        <Route
-          path="/organizations/:organizationId/monitors/:monitorId"
-          element={<DetailPage />}
-        />
-        <Route
-          path="/organizations/:organizationId/monitors"
-          element={<OverviewPage />}
-        />
-      </Routes>
+      <Outlet />
     </>
   );
 }
@@ -75,15 +78,42 @@ export function renderForm(path: string, client?: QueryClient, strict = false) {
   const queryClient =
     client ??
     new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  bindQueryClientIdentity(queryClient, "user-1");
+  const router = createMemoryRouter(
+    [
+      {
+        element: <Routing />,
+        children: [
+          {
+            path: "/organizations/:organizationId/monitors/new",
+            element: <MonitorFormPage mode="create" />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId/edit",
+            element: <MonitorFormPage mode="edit" />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors/:monitorId",
+            element: <DetailPage />,
+          },
+          {
+            path: "/organizations/:organizationId/monitors",
+            element: <OverviewPage />,
+          },
+        ],
+      },
+    ],
+    { initialEntries: [path] },
+  );
+  resources.push({ router, queryClient });
   return {
     queryClient,
+    router,
     ...render(
       <Wrapper>
         <QueryClientProvider client={queryClient}>
           <TenantProvider>
-            <MemoryRouter initialEntries={[path]}>
-              <Routing />
-            </MemoryRouter>
+            <RouterProvider router={router} />
           </TenantProvider>
         </QueryClientProvider>
       </Wrapper>,

@@ -1,3 +1,4 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
 import type { MonitorRecord } from "@nightwatch/api-contract";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,6 +9,8 @@ import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
+  fetchMonitorEvents,
+  fetchMonitorLastResponse,
   fetchMonitorChecks,
   fetchMonitorDetail,
   fetchMonitorIncidents,
@@ -30,6 +33,8 @@ import {
 } from "./form-test-support";
 import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
 
+guardUnassignedNetwork();
+
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
@@ -42,6 +47,8 @@ vi.mock("../../lib/api/notifications", async (importOriginal) => ({
 vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createMonitor: vi.fn(),
+  fetchMonitorEvents: vi.fn(),
+  fetchMonitorLastResponse: vi.fn(),
   updateMonitor: vi.fn(),
   fetchMonitorDetail: vi.fn(),
   fetchMonitorChecks: vi.fn(),
@@ -66,6 +73,11 @@ beforeEach(() => {
     monitorAlertsEnabled: false,
   });
   fetchMeContextMock.mockResolvedValue(context());
+  vi.mocked(fetchMonitorEvents).mockResolvedValue({
+    events: [],
+    page: { limit: 20, offset: 0, total: 0 },
+  });
+  vi.mocked(fetchMonitorLastResponse).mockResolvedValue({ response: null });
   vi.mocked(fetchMonitorChecks).mockResolvedValue(noChecks);
   vi.mocked(fetchMonitorIncidents).mockResolvedValue(noIncidents);
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });

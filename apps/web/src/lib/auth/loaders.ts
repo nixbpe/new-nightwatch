@@ -22,6 +22,10 @@ import {
 import { fetchInvitation, invitationQueryKey } from "../api/invitations";
 import { fetchMeContext, ME_CONTEXT_QUERY_KEY } from "../api/me";
 import {
+  assertContextIdentity,
+  contextQueryOptions,
+} from "../tenant/bootstrap";
+import {
   fetchMonitorDetail,
   fetchMonitorList,
   monitorQueryKeys,
@@ -40,10 +44,11 @@ import {
 import { fetchSessions, SESSIONS_QUERY_KEY } from "../sessions/sessions";
 import {
   claimContextPublication,
+  failContextPublication,
   createContextPublicationClaim,
   hasContextPublicationClaim,
-  peekActiveQueryClientIdentity,
   publishContextPublication,
+  peekActiveQueryClientIdentity,
   resolveQueryClientForIdentity,
 } from "../queryClient";
 import {
@@ -98,17 +103,12 @@ async function gateVerifiedSession(
   return session;
 }
 
-// staleTime "static" reuses cached data; a failed prefetch is left to the
-// page's own query error state instead of the router error boundary.
 async function prefetchMeContext(
   userId: string,
 ): Promise<MeContextResponse | undefined> {
-  return resolveQueryClientForIdentity(userId)
-    .query({
-      queryKey: ME_CONTEXT_QUERY_KEY,
-      queryFn: fetchMeContext,
-      staleTime: "static",
-    })
+  const queryClient = resolveQueryClientForIdentity(userId);
+  return queryClient
+    .query({ ...contextQueryOptions(queryClient), staleTime: 0 })
     .catch(() => undefined);
 }
 
@@ -140,11 +140,9 @@ export async function workspaceLoader({
     return sessionOrRedirect;
   }
   const context = await prefetchMeContext(sessionOrRedirect.user.id);
-  // Same pick as the page on a cold load (no in-memory choice): last active, else the first.
-  const organization =
-    context?.organizations.find(
-      (item) => item.id === context.lastActiveTenantId,
-    ) ?? context?.organizations[0];
+  const organization = context?.organizations.find(
+    (item) => item.id === context.lastActiveTenantId,
+  );
   if (organization !== undefined) {
     await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
       .query({
@@ -165,12 +163,12 @@ export async function notificationsLoader({
     return sessionOrRedirect;
   }
   const context = await prefetchMeContext(sessionOrRedirect.user.id);
-  const activeOrganizationId =
-    context?.organizations.some(
-      (organization) => organization.id === context.lastActiveTenantId,
-    ) === true
-      ? context.lastActiveTenantId
-      : null;
+  if (context === undefined) return null;
+  const activeOrganizationId = context.organizations.some(
+    (organization) => organization.id === context.lastActiveTenantId,
+  )
+    ? context.lastActiveTenantId
+    : null;
   await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
     .query({
       queryKey: notificationQueryKey(activeOrganizationId),
@@ -193,6 +191,9 @@ export async function notificationSettingsLoader({
   if (organizationId === undefined) {
     return null;
   }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (context?.organizations.some((org) => org.id === organizationId) !== true)
+    return null;
   await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
     .query({
       queryKey: organizationNotificationSettingsQueryKey(organizationId),
@@ -438,14 +439,12 @@ export async function organizationMembersLoader({
   const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
   if (
     isNavigationAborted(request.signal) ||
-    !claimContextPublication(queryClient, claim)
+    !claimContextPublication(queryClient, claim, "bootstrap")
   ) {
     return null;
   }
   const previousContext =
     queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY);
-  // A prior context or member query may have started before this membership
-  // gate. Cancel it before the direct request can publish.
   if (
     isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
@@ -469,9 +468,12 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  // A bookmarked tenant route needs a fresh server membership decision, not a
-  // static context cache that could predate a revocation or role change.
-  const context = await fetchMeContext().catch(() => undefined);
+  const context = await fetchMeContext()
+    .then((fresh) => {
+      assertContextIdentity(queryClient, fresh);
+      return fresh;
+    })
+    .catch(() => undefined);
   if (
     isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
@@ -479,6 +481,11 @@ export async function organizationMembersLoader({
     return null;
   }
   if (context === undefined) {
+    failContextPublication(
+      queryClient,
+      claim,
+      new Error("Context resolution failed"),
+    );
     if (
       isNavigationAborted(request.signal) ||
       !hasContextPublicationClaim(queryClient, claim)
@@ -524,14 +531,13 @@ export async function organizationMembersLoader({
   ) {
     return null;
   }
-  queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, context);
   if (
     isNavigationAborted(request.signal) ||
     !hasContextPublicationClaim(queryClient, claim)
   ) {
     return null;
   }
-  publishContextPublication(queryClient, claim);
+  publishContextPublication(queryClient, claim, context);
   const membership = context.organizations.find(
     (organization) => organization.id === organizationId,
   );

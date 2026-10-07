@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import type { MonitorTestResult } from "@nightwatch/api-contract";
 import {
   act,

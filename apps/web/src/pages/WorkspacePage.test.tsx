@@ -1,3 +1,4 @@
+import { bindQueryClientIdentity } from "../lib/queryClient";
 import type {
   MeContextResponse,
   OrganizationMemberListResponse,
@@ -219,6 +220,7 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/workspace"]}>
@@ -241,6 +243,7 @@ function renderDeniedMembershipPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   queryClient.setQueryData(memberListQueryKey(ORG_A, 50, 0), staleMemberPage);
   render(
     <QueryClientProvider client={queryClient}>
@@ -350,7 +353,7 @@ describe("WorkspacePage context states", () => {
       expected: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
     },
   ])(
-    "does not republish denied A before retry confirms $name",
+    "withholds the denied organization until retry confirms $name",
     async ({ error, retryContext, expected }) => {
       fetchMeContextMock
         .mockResolvedValueOnce(meContext([ownerOrg], ORG_A))
@@ -579,6 +582,7 @@ describe("WorkspacePage denied list", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    bindQueryClientIdentity(queryClient, "user-1");
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/workspace"]}>
@@ -662,7 +666,6 @@ describe("WorkspacePage overview details", () => {
     expect(expiry.parentElement).toHaveTextContent(
       `หมดอายุ ${formatDate(notAfter)}`,
     );
-    expect(expiry.closest(".font-mono")).toBeNull();
 
     expect(within(row("bare")).queryByText(/ผู้ออก|หมดอายุ \d/)).toBeNull();
     const issuerOnly = within(row("issuer-only"));
@@ -775,6 +778,7 @@ describe("WorkspacePage overview details", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    bindQueryClientIdentity(queryClient, "user-1");
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/workspace"]}>

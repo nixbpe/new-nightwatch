@@ -1,3 +1,6 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
+import { bindQueryClientIdentity } from "../queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -120,6 +123,7 @@ function Probe() {
 }
 
 function renderProvider(queryClient = new QueryClient()) {
+  bindQueryClientIdentity(queryClient, "user-1");
   return render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -137,6 +141,179 @@ describe("TenantProvider", () => {
     resetQueryClientRegistry();
   });
 
+  it.each(["failure", "success"] as const)(
+    "retires manual refresh pending when a shared resolver supersedes it with %s",
+    async (outcome) => {
+      const manual = Promise.withResolvers<MeContextResponse>();
+      const shared = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock
+        .mockResolvedValueOnce(me)
+        .mockReturnValueOnce(manual.promise)
+        .mockReturnValueOnce(shared.promise);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      renderProvider(queryClient);
+      await screen.findByText("org-b");
+      await userEvent.click(
+        screen.getByRole("button", { name: "refresh membership" }),
+      );
+      await waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      });
+      act(() => {
+        void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+      });
+      await waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+      });
+      await act(async () => {
+        if (outcome === "failure")
+          shared.reject(new Error("shared resolver failed"));
+        else shared.resolve({ ...me, lastActiveTenantId: "org-a" });
+        await shared.promise.catch(() => undefined);
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId("pending")).toHaveTextContent("false");
+      });
+      if (outcome === "failure")
+        expect(screen.getByTestId("error")).toHaveTextContent(
+          "shared resolver failed",
+        );
+      expect(screen.getByTestId("active")).toHaveTextContent(
+        outcome === "failure" ? "none" : "org-a",
+      );
+      await act(async () => {
+        manual.resolve(me);
+        await manual.promise;
+      });
+      expect(screen.getByTestId("pending")).toHaveTextContent("false");
+      expect(screen.getByTestId("active")).toHaveTextContent(
+        outcome === "failure" ? "none" : "org-a",
+      );
+      if (outcome === "failure") {
+        fetchMeContextMock.mockResolvedValueOnce({
+          ...me,
+          lastActiveTenantId: "org-a",
+        });
+        await userEvent.click(screen.getByRole("button", { name: "retry" }));
+        await waitFor(() => {
+          expect(screen.getByTestId("active")).toHaveTextContent("org-a");
+        });
+      }
+    },
+  );
+
+  it("withdraws warm cached scope during required bootstrap and recovers after failure/retry", async () => {
+    const resolver = Promise.withResolvers<MeContextResponse>();
+    fetchMeContextMock
+      .mockResolvedValueOnce(me)
+      .mockReturnValueOnce(resolver.promise);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderProvider(queryClient);
+    await screen.findByText("org-b");
+    act(() => {
+      void queryClient
+        .query({
+          queryKey: ["tenant", "notifications", "org-b", "scope-check"],
+          queryFn: () =>
+            Promise.reject(new ApiError("INBOX_SCOPE_CHANGED", "changed", 409)),
+          retry: false,
+        })
+        .catch(() => undefined);
+    });
+    await waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
+    expect(screen.getByTestId("pending")).toHaveTextContent("true");
+    await act(async () => {
+      resolver.reject(new Error("resolver unavailable"));
+      await resolver.promise.catch(() => undefined);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+    );
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
+    fetchMeContextMock.mockResolvedValueOnce({
+      ...me,
+      lastActiveTenantId: "org-a",
+    });
+    await userEvent.click(screen.getByRole("button", { name: "retry" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-a"),
+    );
+  });
+
+  it.each(["success", "superseded"] as const)(
+    "warm-cache required bootstrap %s retires old tenant work and publishes only current scope",
+    async (outcome) => {
+      const resolver = Promise.withResolvers<MeContextResponse>();
+      const lateTenant = Promise.withResolvers<string>();
+      fetchMeContextMock
+        .mockResolvedValueOnce(me)
+        .mockReturnValueOnce(resolver.promise);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      renderProvider(queryClient);
+      await screen.findByText("org-b");
+      let tenantSignal: AbortSignal | undefined;
+      const tenantRequest = queryClient
+        .query({
+          queryKey: ["tenant", "org-b", "deferred"],
+          queryFn: ({ signal }) => {
+            tenantSignal = signal;
+            return lateTenant.promise;
+          },
+        })
+        .catch(() => undefined);
+      act(() => {
+        void queryClient.invalidateQueries({ queryKey: ME_CONTEXT_QUERY_KEY });
+      });
+      await waitFor(() => {
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.getByTestId("active")).toHaveTextContent("none");
+      expect(screen.getByTestId("pending")).toHaveTextContent("true");
+      expect(tenantSignal?.aborted).toBe(true);
+      if (outcome === "superseded") {
+        fetchMeContextMock.mockResolvedValueOnce({
+          ...me,
+          organizations: [],
+          lastActiveTenantId: null,
+        });
+        await userEvent.click(
+          screen.getByRole("button", { name: "refresh membership" }),
+        );
+        await waitFor(() =>
+          expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+        );
+      }
+      await act(async () => {
+        resolver.resolve({ ...me, lastActiveTenantId: "org-a" });
+        lateTenant.resolve("late old org");
+        await resolver.promise;
+        await tenantRequest;
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+      );
+      expect(screen.getByTestId("active")).toHaveTextContent(
+        outcome === "success" ? "org-a" : "none",
+      );
+      expect(
+        queryClient.getQueryData(["tenant", "org-b", "deferred"]),
+      ).toBeUndefined();
+      expect(
+        queryClient.getQueryData<MeContextResponse>(ME_CONTEXT_QUERY_KEY)
+          ?.lastActiveTenantId,
+      ).toBe(outcome === "success" ? "org-a" : null);
+    },
+  );
+
   it("prefers lastActiveTenantId over the first membership", async () => {
     fetchMeContextMock.mockResolvedValue(me);
     renderProvider();
@@ -150,13 +327,16 @@ describe("TenantProvider", () => {
     fetchMeContextMock.mockResolvedValue({ ...me, lastActiveTenantId: null });
     renderProvider();
 
-    expect(await screen.findByText("org-a")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+    );
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
     expect(screen.getByTestId("server-active")).toHaveTextContent(
       "server:none",
     );
   });
 
-  it("switches from a navigation fallback so the server can establish its active organization", async () => {
+  it("allows an explicit membership switch without a usable fallback", async () => {
     const personalOnly = { ...me, lastActiveTenantId: null };
     fetchMeContextMock.mockResolvedValue(personalOnly);
     updateActiveOrganizationMock.mockResolvedValue({
@@ -164,7 +344,9 @@ describe("TenantProvider", () => {
       lastActiveTenantId: "org-a",
     });
     renderProvider();
-    await screen.findByText("org-a");
+    await waitFor(() =>
+      expect(screen.getByTestId("pending")).toHaveTextContent("false"),
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
 
@@ -695,9 +877,12 @@ describe("TenantProvider", () => {
 
     act(() => {
       const loaderClaim = createContextPublicationClaim();
-      expect(claimContextPublication(queryClient, loaderClaim)).toBe(true);
-      queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, me);
-      expect(publishContextPublication(queryClient, loaderClaim)).toBe(true);
+      expect(
+        claimContextPublication(queryClient, loaderClaim, "bootstrap"),
+      ).toBe(true);
+      expect(publishContextPublication(queryClient, loaderClaim, me)).toBe(
+        true,
+      );
       fireEvent.click(
         screen.getByRole("button", { name: "refresh membership" }),
       );
@@ -717,7 +902,7 @@ describe("TenantProvider", () => {
   it("observes a directory publication between render and subscription", async () => {
     const queryClient = new QueryClient();
     const claim = createContextPublicationClaim();
-    expect(claimContextPublication(queryClient, claim)).toBe(true);
+    expect(claimContextPublication(queryClient, claim, "bootstrap")).toBe(true);
 
     function SnapshotProbe() {
       const publication = useSyncExternalStore(
@@ -731,7 +916,7 @@ describe("TenantProvider", () => {
 
     function LayoutPublisher() {
       useLayoutEffect(() => {
-        publishContextPublication(queryClient, claim);
+        publishContextPublication(queryClient, claim, me);
       }, []);
       return null;
     }
@@ -761,7 +946,10 @@ describe("TenantProvider", () => {
       .mockImplementationOnce(() => stalledRefresh.promise);
     const view = renderProvider(oldClient);
     await screen.findByText("org-b");
-    newClient.setQueryData(ME_CONTEXT_QUERY_KEY, me);
+    bindQueryClientIdentity(newClient, "user-1");
+    const newClientClaim = createContextPublicationClaim();
+    claimContextPublication(newClient, newClientClaim, "bootstrap");
+    publishContextPublication(newClient, newClientClaim, me);
 
     view.rerender(
       <QueryClientProvider client={newClient}>
@@ -779,8 +967,10 @@ describe("TenantProvider", () => {
     });
 
     const oldClaim = createContextPublicationClaim();
-    expect(claimContextPublication(oldClient, oldClaim)).toBe(true);
-    expect(publishContextPublication(oldClient, oldClaim)).toBe(true);
+    expect(claimContextPublication(oldClient, oldClaim, "bootstrap")).toBe(
+      true,
+    );
+    expect(publishContextPublication(oldClient, oldClaim, me)).toBe(true);
 
     expect(screen.getByTestId("active")).toHaveTextContent("none");
   });
@@ -835,8 +1025,45 @@ describe("TenantProvider", () => {
     );
   });
 
+  it.each(["switch", "refresh"] as const)(
+    "rejects a foreign identity's late %s response without publishing it",
+    async (operation) => {
+      const completion = Promise.withResolvers<MeContextResponse>();
+      fetchMeContextMock
+        .mockResolvedValueOnce(me)
+        .mockReturnValueOnce(completion.promise);
+      updateActiveOrganizationMock.mockReturnValueOnce(completion.promise);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      renderProvider(queryClient);
+      await screen.findByText("org-b");
+      await userEvent.click(
+        screen.getByRole("button", {
+          name: operation === "switch" ? "switch-a" : "refresh membership",
+        }),
+      );
+      await waitFor(() => {
+        if (operation === "switch")
+          expect(updateActiveOrganizationMock).toHaveBeenCalledTimes(1);
+        else expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+      });
+      await act(async () => {
+        completion.resolve({
+          ...me,
+          user: { ...me.user, id: "user-b" },
+          lastActiveTenantId: "org-a",
+        });
+        await completion.promise;
+      });
+      expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(me);
+      expect(screen.getByTestId("active")).toHaveTextContent(
+        operation === "switch" ? "org-b" : "none",
+      );
+    },
+  );
+
   it("a failed context load exposes the error and retryMe recovers", async () => {
-    // A failed /me lookup is an explicit, retryable error, never a perpetual pending state.
     fetchMeContextMock.mockRejectedValueOnce(new Error("server exploded"));
     fetchMeContextMock.mockResolvedValue(me);
     renderProvider(

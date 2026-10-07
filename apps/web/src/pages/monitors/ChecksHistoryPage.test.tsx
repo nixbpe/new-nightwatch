@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isLeafActive } from "../../components/shell/nav-config";
 import { ApiError } from "../../lib/api/client";
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import {
   fetchMonitorChecks,
@@ -192,6 +193,7 @@ function renderChecks(
   const queryClient =
     client ??
     new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  bindQueryClientIdentity(queryClient, "user-1");
   return {
     queryClient,
     ...render(

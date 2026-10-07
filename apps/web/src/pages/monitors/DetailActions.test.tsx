@@ -1,3 +1,4 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
 import {
   monitorRecordSchema,
   type Monitor,
@@ -36,6 +37,8 @@ import {
   NOW,
   renderDetail,
 } from "./detail-test-support";
+
+guardUnassignedNetwork();
 
 vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),

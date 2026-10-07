@@ -1,11 +1,14 @@
+import { SelfLeaveRouteBoundary } from "../../pages/organization-members/SelfLeaveAction";
 import {
   useEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Outlet, useLocation } from "react-router";
+import { matchRoutes, Outlet, useLocation } from "react-router";
 
+import { useTenant } from "../../lib/tenant/TenantProvider";
+import { PageState } from "./PageState";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { CommandPalette } from "./CommandPalette";
 import { Header } from "./Header";
@@ -32,8 +35,29 @@ const DATA_DENSE_ROUTE =
 // (docs/design-system.md, Layout LAY-08/LAY-09).
 const WORKSPACE_ROUTE = /^\/workspace(\/|$)/;
 
+// Use the router's ranked/end matching for static segments and trailing slashes.
+// In particular, `new` is the create route, not the dynamic Detail exception.
+const MONITOR_ROUTES = [
+  { path: "/organizations/:organizationId/monitors/new", id: "create" },
+  {
+    path: "/organizations/:organizationId/monitors/:monitorId/edit",
+    id: "edit",
+  },
+  {
+    path: "/organizations/:organizationId/monitors/:monitorId/checks",
+    id: "checks",
+  },
+  { path: "/organizations/:organizationId/monitors/:monitorId", id: "detail" },
+];
+
 export function AppShell() {
   const { pathname } = useLocation();
+  const { me, mePending, retryMe, membershipInteraction } = useTenant();
+  const monitorRoute = matchRoutes(MONITOR_ROUTES, pathname)?.at(-1)?.route.id;
+  const privateRoute = monitorRoute !== undefined && monitorRoute !== "detail";
+  const admittedPrivateRoute = useRef<string | null>(null);
+  if (!privateRoute) admittedPrivateRoute.current = null;
+  else if (me !== undefined) admittedPrivateRoute.current = pathname;
   const isLarge = useMediaQuery("(min-width: 1024px)", true);
   const isDesktop = useMediaQuery("(min-width: 640px)", false);
   const [override, setOverride] = useState<{
@@ -184,7 +208,26 @@ export function AppShell() {
             <div className="flex min-h-full flex-col">
               <div className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
                 <ErrorBoundary landmark={false}>
-                  <Outlet />
+                  <SelfLeaveRouteBoundary>
+                    {(privateRoute &&
+                      admittedPrivateRoute.current === pathname) ||
+                    (membershipInteraction && monitorRoute === "detail") ? (
+                      <Outlet />
+                    ) : mePending ? (
+                      <PageState
+                        kind="loading"
+                        label="กำลังโหลดข้อมูลองค์กร…"
+                      />
+                    ) : me === undefined ? (
+                      <PageState
+                        kind="error"
+                        message="โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่"
+                        onRetry={() => void retryMe()}
+                      />
+                    ) : (
+                      <Outlet />
+                    )}
+                  </SelfLeaveRouteBoundary>
                 </ErrorBoundary>
               </div>
               <footer className="px-4 py-3 font-mono text-xs text-foreground-secondary sm:px-8">

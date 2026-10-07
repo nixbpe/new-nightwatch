@@ -1,3 +1,5 @@
+import { guardUnassignedNetwork } from "../../test/guard-network";
+guardUnassignedNetwork();
 import { useQuery } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { useLayoutEffect } from "react";
@@ -131,7 +133,7 @@ describe("SessionQueryProvider identity boundaries", () => {
     expect(peekStagedQueryClient()?.client).not.toBe(stagedClient);
   });
 
-  it("initial hydration keeps the in-flight context query (QA-12)", async () => {
+  it("initial hydration keeps the in-flight context query", async () => {
     // Hard reload: the session resolves after the /me query mounted; treating that as a user
     // switch would cancel the fresh query and strand the page on loading.
     const first = Promise.withResolvers<{ org: string }>();
@@ -175,7 +177,7 @@ describe("SessionQueryProvider identity boundaries", () => {
     expect(screen.queryByText("Org A")).toBeNull();
   });
 
-  it("a direct A→B account switch never commits a frame with A's cached data", async () => {
+  it("never renders the previous account cache after a direct account switch", async () => {
     // A→B flips in one step with no logged-out frame; only a commit observer can catch an
     // effect-phase swap here.
     transport.mockImplementationOnce(() => Promise.resolve({ org: "Org A" }));

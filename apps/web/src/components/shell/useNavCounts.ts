@@ -13,10 +13,12 @@ import { useTenant } from "../../lib/tenant/TenantProvider";
 
 /** One unread-count query for the bell badge and the inbox nav row. */
 export function useUnreadCount() {
-  const { serverActiveOrgId } = useTenant();
+  const { serverActiveOrgId, me } = useTenant();
   return useQuery({
     queryKey: [...notificationQueryKey(serverActiveOrgId), "count"],
     queryFn: () => fetchUnreadCount(serverActiveOrgId),
+    enabled: me !== undefined,
+    select: (data) => (me === undefined ? undefined : data),
   });
 }
 

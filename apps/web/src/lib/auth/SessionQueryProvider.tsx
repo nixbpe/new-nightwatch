@@ -3,6 +3,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { authClient } from "../auth-client";
 import {
+  bindQueryClientIdentity,
+  retireContextPublication,
   createSessionQueryClient,
   peekStagedQueryClient,
   publishActiveQueryClient,
@@ -41,7 +43,7 @@ export function SessionQueryProvider({
     const staged = peekStagedQueryClient();
     return {
       identity: undefined,
-      client: staged?.client ?? createSessionQueryClient(),
+      client: staged?.client ?? createSessionQueryClient(identity),
       stagedIdentity: staged?.identity,
       epoch: 0,
     };
@@ -59,13 +61,13 @@ export function SessionQueryProvider({
       boundary.stagedIdentity !== undefined &&
       boundary.stagedIdentity !== identity;
     if (boundary.identity === undefined && !adoptedMismatch) {
+      bindQueryClientIdentity(boundary.client, identity);
       setBoundary({ ...boundary, identity });
     } else {
-      // Also covers the hydration mismatch: the adopted client belongs to another identity (loader/session race).
       setRetired([...retired, boundary.client]);
       setBoundary({
         identity,
-        client: stagedClient ?? createSessionQueryClient(),
+        client: stagedClient ?? createSessionQueryClient(identity),
         stagedIdentity: undefined,
         epoch: boundary.epoch + 1,
       });
@@ -88,6 +90,7 @@ export function SessionQueryProvider({
     const outgoing = retired;
     setRetired([]);
     for (const client of outgoing) {
+      retireContextPublication(client);
       void client.cancelQueries().then(() => {
         client.clear();
       });

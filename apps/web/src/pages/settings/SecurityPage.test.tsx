@@ -1,6 +1,10 @@
+import { StrictMode } from "react";
+import { contextQueryOptions } from "../../lib/tenant/bootstrap";
+import { guardUnassignedNetwork } from "../../test/guard-network";
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,14 +70,12 @@ function resetAuthMocks() {
 }
 
 function renderPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  bindQueryClientIdentity(queryClient, "user-1");
   return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({
-          defaultOptions: { queries: { retry: false } },
-        })
-      }
-    >
+    <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/settings/security"]}>
         <Routes>
           <Route path="/settings/security" element={<SecurityPage />} />
@@ -112,11 +114,47 @@ async function enroll() {
   return user;
 }
 
+guardUnassignedNetwork();
+
 describe("SecurityPage enrollment", () => {
   beforeEach(resetAuthMocks);
 
-  it("reports pending after enable alone — never claims enabled before first-code verification", async () => {
-    // The server keeps twoFactorEnabled=false until verifyTotp succeeds.
+  it("keeps failed context stable during StrictMode mount and retries only on page action", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    bindQueryClientIdentity(queryClient, "user-1");
+    fetchMeContextMock.mockRejectedValue(new Error("offline"));
+    await queryClient
+      .query(contextQueryOptions(queryClient))
+      .catch(() => undefined);
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    const view = render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={["/settings/security"]}>
+            <SecurityPage />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    await screen.findByRole("alert");
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    fetchMeContextMock.mockResolvedValue(meContextFixture());
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "ลองใหม่" }));
+    await screen.findByRole("region", { name: "ยืนยันสองขั้นตอน (MFA)" });
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await queryClient.query(contextQueryOptions(queryClient));
+    });
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+    view.unmount();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
+  it("shows pending enrollment until the first TOTP code is verified", async () => {
     await enroll();
 
     expect(screen.getByText("กำลังตั้งค่า")).toBeInTheDocument();

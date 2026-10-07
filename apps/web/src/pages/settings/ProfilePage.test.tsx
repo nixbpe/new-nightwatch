@@ -1,6 +1,10 @@
+import { StrictMode } from "react";
+import { contextQueryOptions } from "../../lib/tenant/bootstrap";
+import { guardUnassignedNetwork } from "../../test/guard-network";
+import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -47,6 +51,7 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  bindQueryClientIdentity(queryClient, "user-1");
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   render(
     <QueryClientProvider client={queryClient}>
@@ -56,6 +61,8 @@ function renderPage() {
   return { invalidate };
 }
 
+guardUnassignedNetwork();
+
 describe("ProfilePage", () => {
   beforeEach(() => {
     meState.name = "นภัส วงศ์สกุล";
@@ -64,6 +71,39 @@ describe("ProfilePage", () => {
     fetchMeContextMock.mockImplementation(() => Promise.resolve(meContext()));
   });
 
+  it("keeps failed context stable during StrictMode mount and retries only on page action", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    bindQueryClientIdentity(queryClient, "user-1");
+    fetchMeContextMock.mockRejectedValue(new Error("offline"));
+    await queryClient
+      .query(contextQueryOptions(queryClient))
+      .catch(() => undefined);
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    const view = render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <ProfilePage />
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    await screen.findByRole("alert");
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    fetchMeContextMock.mockResolvedValue(meContext());
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "ลองใหม่" }));
+    await screen.findByLabelText("ชื่อที่แสดง");
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await queryClient.query(contextQueryOptions(queryClient));
+    });
+    expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
+    view.unmount();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+  });
   it("shows the stored name, the read-only verified email and the initials avatar", async () => {
     renderPage();
 
