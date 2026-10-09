@@ -43,6 +43,9 @@ services:
     # Transport only: durable notification state remains in PostgreSQL.
     image: redis:7.4.7-alpine
     command: ["redis-server", "--appendonly", "no", "--save", ""]
+    # Image declares VOLUME /data; with persistence off, tmpfs avoids a volume.
+    tmpfs:
+      - /data
     ports:
       - "127.0.0.1:${NW_REDIS_PORT:?run bun run db:up}:6379"
     healthcheck:

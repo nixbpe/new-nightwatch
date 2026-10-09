@@ -121,13 +121,13 @@ export async function startTestDatabase(label: string): Promise<TestDatabase> {
       async stop() {
         await opened.runtime.close();
         await opened.owner.close();
-        await docker(["rm", "--force", container], true);
+        await docker(["rm", "--force", "--volumes", container], true);
       },
     };
   } catch (error) {
     await runtime?.close();
     await owner?.close();
-    await docker(["rm", "--force", container], true);
+    await docker(["rm", "--force", "--volumes", container], true);
     throw error;
   }
 }
@@ -360,11 +360,11 @@ export async function startTestRedis(label: string): Promise<TestRedis> {
         await docker(["pause", container]);
       },
       stop: async () => {
-        await docker(["rm", "--force", container], true);
+        await docker(["rm", "--force", "--volumes", container], true);
       },
     };
   } catch (error) {
-    await docker(["rm", "--force", container], true);
+    await docker(["rm", "--force", "--volumes", container], true);
     throw error;
   }
 }

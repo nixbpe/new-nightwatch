@@ -253,7 +253,7 @@ afterAll(async () => {
       if (ownerInitialized) await owner.close();
     } finally {
       if (postgresStarted)
-        await docker(["rm", "--force", postgresContainer], true);
+        await docker(["rm", "--force", "--volumes", postgresContainer], true);
     }
   }
 }, 60_000);

@@ -277,7 +277,8 @@ afterAll(async () => {
   }
   await runtime.close();
   await owner.close();
-  if (postgresStarted) await docker(["rm", "--force", postgresContainer], true);
+  if (postgresStarted)
+    await docker(["rm", "--force", "--volumes", postgresContainer], true);
 }, 60_000);
 
 describe("monitor scheduler", () => {
