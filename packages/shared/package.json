@@ -9,7 +9,7 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "bun check -p tsconfig.json",
     "test": "vitest run",
     "test:bun": "bun --bun vitest run",
     "test:coverage": "vitest run --coverage"

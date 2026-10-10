@@ -11,7 +11,7 @@
     "migrate": "bun run src/migrate.ts",
     "build:migrate": "bun build src/migrate.ts --outdir dist-migrate --target bun",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "bun check -p tsconfig.json",
     "test": "vitest run --exclude 'tests/**/*.db.test.ts'",
     "test:integration": "vitest run tests/notification.db.test.ts tests/notification-mfa-backfill.db.test.ts tests/monitor.db.test.ts tests/audit-export.db.test.ts",
     "test:coverage": "vitest run --coverage"
