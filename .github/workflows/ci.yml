@@ -69,9 +69,26 @@ jobs:
   # The job runs against real PostgreSQL, Mailpit, and Redis transport
   # services with the least-privilege runtime role — no mocks for DB-backed
   # checks.
+  # One job per package group, each with its own PostgreSQL, Mailpit and
+  # Redis, so the DB suites no longer queue behind each other on one database.
   test:
-    name: unit tests + coverage
+    name: unit tests + coverage (${{ matrix.group }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: web
+            filters: --filter=@nightwatch/web
+          - group: worker
+            filters: --filter=@nightwatch/worker
+            bun_test: apps/worker
+          - group: api
+            filters: --filter=@nightwatch/api
+            bun_test: apps/api
+          - group: packages
+            filters: --filter=@nightwatch/shared --filter=@nightwatch/db --filter=@nightwatch/api-contract
+            bun_test: packages/shared
     env:
       COVERAGE_GATE: "1"
       APP_URL: http://localhost:3000
@@ -148,20 +165,17 @@ jobs:
         run: bun run db:migrate
       - name: Ensure monitor partitions
         run: bun run db:partitions
-      - run: bun run test:coverage
-      # test and test:coverage run vitest on Node; this step runs the SSRF
-      # helper suite on the pinned Bun runtime.
-      - name: Shared tests on Bun
-        run: bun run --cwd packages/shared test:bun
-      - name: Worker checker tests on Bun
-        run: bun run --cwd apps/worker test:bun
-      # The Test endpoint runs on a real Bun.serve listener here.
-      - name: API monitor Test route on Bun
-        run: bun run --cwd apps/api test:bun
+      - run: bun run test:coverage ${{ matrix.filters }}
+      # test:coverage runs vitest on Node. These suites run on the pinned Bun
+      # runtime: the SSRF helper (shared), the checker (worker) and the Test
+      # endpoint on a real Bun.serve listener (api).
+      - name: Tests on Bun
+        if: matrix.bun_test
+        run: bun run --cwd ${{ matrix.bun_test }} test:bun
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: coverage-report
+          name: coverage-report-${{ matrix.group }}
           path: apps/*/coverage/
           if-no-files-found: ignore
 

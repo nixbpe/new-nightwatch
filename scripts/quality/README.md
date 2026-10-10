@@ -97,7 +97,9 @@ NOCREATEDB NOCREATEROLE NOBYPASSRLS`). The runtime role is created by
   through to the app-level coverage runs and collects their reports; the root
   sets no thresholds of its own. Packages run one at a time because the DB
   suites share one Postgres, and parallel runs hit timeouts under load (a claim
-  test at 5 s, a lock wait of 5 s).
+  test at 5 s, a lock wait of 5 s). CI splits the `test` job into a matrix
+  (`web`, `worker`, `api`, `packages`) with one Postgres per job, so groups run
+  in parallel and packages inside a group still run one at a time.
 - Coverage is always measured and reported. Thresholds **fail the run only
   when `COVERAGE_GATE=1`** is set in the app's environment. The gate is **on**
   in the CI `test` job (`COVERAGE_GATE: "1"`) since the first domain feature
