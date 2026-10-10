@@ -10,7 +10,7 @@
     "emit-openapi": "bun run src/operator/emit-openapi.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "bun check -p tsconfig.json",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:bun": "bun --bun vitest run --project integration src/monitors/test-route.db.test.ts src/monitors/secrets.db.test.ts",

@@ -5,7 +5,7 @@
 #   docker build -f apps/worker/Dockerfile -t nightwatch-worker .
 
 # Copy manifests and lockfile only so source changes preserve the dependency cache.
-FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS deps
+FROM oven/bun:1.4.3-alpine@sha256:629e17411f1f129dbec3af78d5af9c9f2a937435c80349437206c6b0b7422373 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
@@ -27,7 +27,7 @@ WORKDIR /app/apps/worker
 ENV NODE_ENV=production
 RUN bun run build && test -f dist/index.js
 
-# The runtime is Bun 1.3.14, the version the SSRF helper (node:tls path) was
+# The runtime is Bun 1.4.3, the version the SSRF helper (node:tls path) was
 # validated on; never run this bundle on Node. No .env or secrets enter any
 # stage; configuration arrives via runtime environment variables.
 #
@@ -45,16 +45,14 @@ RUN bun run build && test -f dist/index.js
 # and is never set here.
 #
 # The Worker exposes no HTTP endpoint, so the image has no HEALTHCHECK.
-FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS runtime
+FROM oven/bun:1.4.3-alpine@sha256:629e17411f1f129dbec3af78d5af9c9f2a937435c80349437206c6b0b7422373 AS runtime
 WORKDIR /app
 # The base digest freezes Bun and the initial filesystem. Security fixes are
 # explicit reviewed package pins: no rolling `apk update`/`apk upgrade`.
 RUN apk add --no-cache \
-      'libcrypto3=3.5.8-r0' \
-      'libssl3=3.5.8-r0' \
-      'musl=1.2.5-r12' \
-      'musl-utils=1.2.5-r12' \
-      'zlib=1.3.2-r0' \
+      'libcrypto3=3.5.9-r0' \
+      'libssl3=3.5.9-r0' \
+      'zlib=1.3.2-r1' \
   && addgroup -S nightwatch -g 1001 \
   && adduser -S nightwatch -u 1001 -G nightwatch
 COPY --from=build --chown=1001:1001 /app/apps/worker/dist ./dist

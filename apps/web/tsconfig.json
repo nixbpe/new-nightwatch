@@ -3,7 +3,6 @@
   "extends": "@nightwatch/typescript-config/react.json",
   "compilerOptions": {
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
