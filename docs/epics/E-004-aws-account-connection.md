@@ -13,22 +13,24 @@
 
 ## ขอบเขตและกฎสำคัญ
 
-- Organization มีบัญชี AWS กลางได้หนึ่งบัญชี เชื่อมด้วยการให้ NightWatch assume role ในบัญชีนั้น
-- Project หนึ่งเชื่อมบัญชี AWS ได้หนึ่งบัญชี ด้วยหนึ่งในสองวิธี:
+ผู้ใช้ยืนยันสองแนวทางการเชื่อมต่อของ Project และการแก้ `DIR-001` S3 กฎที่ติดป้าย (ข้อเสนอ) มาจาก design และยังต้องยืนยัน
+
+- Organization มีบัญชี AWS กลางได้หนึ่งบัญชี เชื่อมด้วยการให้ NightWatch assume role ในบัญชีนั้น (ข้อเสนอ)
+- Project หนึ่งเชื่อมบัญชี AWS ได้หนึ่งบัญชี ด้วยหนึ่งในสองวิธี (ข้อเสนอ):
   - Assume role ผ่านบัญชีกลางขององค์กร: เก็บ Role ARN และ External ID เท่านั้น
   - Access key ของบัญชี Project: เก็บแบบเข้ารหัสและ write-only ตาม `DIR-001` S3 v4
-- External ID ถูกสร้างโดย NightWatch แยกต่อ Organization และต่อ Project
-- บันทึกการเชื่อมต่อได้หลังทดสอบผ่านเท่านั้น
-- ผู้แก้ไขการเชื่อมต่อของ Project คือผู้ดูแล Project; ของ Organization คือ Owner และ Admin
-- สิทธิ์ใน AWS ที่แนะนำคืออ่านอย่างเดียว เช่น AWS managed policy `SecurityAudit`
+- External ID ถูกสร้างโดย NightWatch แยกต่อ Organization และต่อ Project (ข้อเสนอ)
+- บันทึกการเชื่อมต่อได้หลังทดสอบผ่านเท่านั้น (ข้อเสนอ)
+- ผู้แก้ไขการเชื่อมต่อของ Project คือผู้ดูแล Project; ของ Organization คือ Owner และ Admin (ข้อเสนอ)
+- สิทธิ์ใน AWS ที่แนะนำคืออ่านอย่างเดียว เช่น AWS managed policy `SecurityAudit` (ข้อเสนอ)
 
 ## Features
 
 | Feature | Summary | Status |
 | ------- | ------- | ------ |
-| `F-007` | การเชื่อมต่อบัญชี AWS กลางของ Organization | Candidate / Draft |
-| `F-008` | การเชื่อมต่อ AWS ของ Project แบบ assume role ผ่านบัญชีกลาง | Candidate / Draft |
-| `F-009` | การเชื่อมต่อ AWS ของ Project แบบ access key | Blocked: รอการอนุมัติ `DIR-001 / v4` S3 |
+| `F-013` | การเชื่อมต่อบัญชี AWS กลางของ Organization | Candidate / Draft |
+| `F-014` | การเชื่อมต่อ AWS ของ Project แบบ assume role ผ่านบัญชีกลาง | Candidate / Draft |
+| `F-015` | การเชื่อมต่อ AWS ของ Project แบบ access key | Blocked: รอการอนุมัติ `DIR-001 / v4` S3 |
 
 ## Out of scope
 
@@ -39,7 +41,7 @@
 
 ## Risks and dependencies
 
-- `R-01`: การเก็บ access key เพิ่ม blast radius ถ้าระบบถูกเจาะ; `F-009` เริ่มได้หลัง `DIR-001 / v4` ได้รับอนุมัติเท่านั้น
+- `R-01`: การเก็บ access key เพิ่ม blast radius ถ้าระบบถูกเจาะ; `F-015` เริ่มได้หลัง `DIR-001 / v4` ได้รับอนุมัติเท่านั้น
 - `R-02`: การเรียก AWS STS เป็น protocol ใหม่ ต้องกำหนด SSRF boundary ตามหลัก "Calling outside systems" ใน `docs/architecture.md` ก่อนเพิ่ม
 - `R-03`: ARN ของ principal ฝั่ง NightWatch ที่ assume role เข้าบัญชีกลางยังไม่ได้กำหนด
 - ต้องมี `F-001` และ `F-002` ก่อน
@@ -55,4 +57,4 @@
 
 ## Readiness
 
-Epic อยู่ในสถานะ Draft `F-009` ถูก block จนกว่า `DIR-001 / v4` จะได้รับการอนุมัติ
+Epic อยู่ในสถานะ Draft `F-015` ถูก block จนกว่า `DIR-001 / v4` จะได้รับการอนุมัติ

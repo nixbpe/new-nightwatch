@@ -28,7 +28,7 @@ Owner และ Admin ของ Organization มองเห็นและจ�
 - เมื่อ role ใน Organization เปลี่ยน สิทธิ์ที่ได้จาก Owner หรือ Admin มีผลหรือหมดผลทันที โดยบทบาทใน Project ที่มีอยู่ยังคงเดิม
 - เมื่อนำ member ออกจาก Organization สมาชิกภาพในทุก Project ของ Organization นั้นถูกยกเลิกทันที
 - Project ไม่สามารถย้ายข้าม Organization ได้
-- การตั้งค่าทั่วไปของ Project ประกอบด้วยชื่อ slug และคำอธิบาย โดยคำอธิบายเป็น optional
+- การตั้งค่าทั่วไปของ Project ประกอบด้วยชื่อและคำอธิบาย โดยคำอธิบายเป็น optional ส่วน slug มาจาก design และยังเป็นข้อเสนอ
 
 ## Features
 
@@ -37,7 +37,7 @@ Owner และ Admin ของ Organization มองเห็นและจ�
 | `F-001` | สร้าง แก้ไข และลบ Project ภายใต้ Organization พร้อมหน้ารายการ Project ทั้งหมด | Candidate / Draft |
 | `F-002` | สมาชิก Project จากสมาชิกของ Organization พร้อมบทบาทผู้ดูแลหรือสมาชิก และกฎผู้ดูแลอย่างน้อย 1 คน | Candidate / Draft |
 | `F-003` | ปรับสิทธิ์ทันทีเมื่อ role หรือ Organization membership เปลี่ยน | Candidate / Draft |
-| `F-004` | Sidebar ตาม Project และตัวสลับ Project | Candidate / Draft |
+| `F-010` | Sidebar ตาม Project และตัวสลับ Project | Candidate / Draft |
 
 Feature ในตารางเป็น candidate scope ของ Epic ไม่ใช่ Feature specifications, Stories, ลำดับการส่งมอบ หรือการอนุญาตเริ่ม implementation งานในแต่ละ Project (ภาพรวมและการตรวจสถานะบริการ) อยู่ใน `E-003` และการเชื่อมต่อ AWS อยู่ใน `E-004`
 
@@ -59,6 +59,7 @@ Feature ในตารางเป็น candidate scope ของ Epic ไม�
 | Default member visibility | สมาชิก Organization ที่ไม่ได้เป็นสมาชิก Project ไม่เห็น Project นั้น |
 | Permission lifecycle | การเปลี่ยน role มีผลทันที; การออกจาก Organization ยกเลิกสมาชิกภาพ Project ทันที |
 | Organization transfer | Project ไม่สามารถย้ายข้าม Organization ได้ |
+| General settings | Project มีชื่อและ optional description; slug เป็นข้อเสนอจาก design |
 
 ## Risks and dependencies
 

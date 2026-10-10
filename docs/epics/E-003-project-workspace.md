@@ -23,19 +23,19 @@
 
 | Feature | Summary | Status |
 | ------- | ------- | ------ |
-| `F-005` | มอนิเตอร์ เหตุการณ์ และการแจ้งเตือนอยู่ภายใต้ Project | Candidate / Draft |
-| `F-006` | หน้าภาพรวมของ Project | Candidate / Draft |
+| `F-011` | มอนิเตอร์ เหตุการณ์ และการแจ้งเตือนอยู่ภายใต้ Project | Candidate / Draft |
+| `F-012` | หน้าภาพรวมของ Project | Candidate / Draft |
 
 ## Out of scope
 
-- ภาพรวมรวมทุก Project ระดับ Organization
+- ภาพรวมรวมทุก Project ระดับ Organization (ข้อเสนอ ยังเป็นคำถามที่เปิดอยู่จากรอบออกแบบ)
 - การย้ายมอนิเตอร์ข้าม Project
 - การย้ายข้อมูลมอนิเตอร์เดิมเข้า Project
 
 ## Risks and dependencies
 
 - `R-01`: การล้างข้อมูลมอนิเตอร์เป็นการลบถาวร ถ้ามี environment ที่มีข้อมูลจริงต้องยืนยันก่อน deploy
-- `R-02`: ผู้รับการแจ้งเตือนของมอนิเตอร์เปลี่ยนจากระดับ Organization เป็นระดับ Project ต้องกำหนดใน `F-005`
+- `R-02`: ผู้รับการแจ้งเตือนของมอนิเตอร์เปลี่ยนจากระดับ Organization เป็นระดับ Project ต้องกำหนดใน `F-011`
 - ต้องมี `F-001` และ `F-002` ก่อน เพราะมอนิเตอร์ต้องมี Project และสิทธิ์ Project
 
 ## Traceability
