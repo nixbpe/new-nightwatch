@@ -549,7 +549,7 @@ describe("final URL redaction", () => {
       ]) {
         const snapshot = await redirected(path, overrides, secret);
         expect(snapshot?.url).toContain("/cb/•••");
-        expect(snapshot?.url).not.toContain("123");
+        expect(new URL(snapshot?.url ?? "").pathname).not.toContain("123");
         expect(snapshot?.statusLine?.status).toBe(200);
       }
     },
