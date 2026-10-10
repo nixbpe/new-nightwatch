@@ -41,7 +41,7 @@
         "$TURBO_ROOT$/packages/typescript-config/*.json"
       ]
     },
-    "typecheck": {},
+    "typecheck": { "cache": false },
     "test": {},
     "test:integration": {},
     "test:coverage": {
