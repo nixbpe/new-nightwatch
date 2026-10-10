@@ -28,7 +28,10 @@ Owner และ Admin ของ Organization มองเห็นและจ�
 - เมื่อ role ใน Organization เปลี่ยน สิทธิ์ที่ได้จาก Owner หรือ Admin มีผลหรือหมดผลทันที โดยบทบาทใน Project ที่มีอยู่ยังคงเดิม
 - เมื่อนำ member ออกจาก Organization สมาชิกภาพในทุก Project ของ Organization นั้นถูกยกเลิกทันที
 - Project ไม่สามารถย้ายข้าม Organization ได้
-- การตั้งค่าทั่วไปของ Project ประกอบด้วยชื่อและคำอธิบาย โดยคำอธิบายเป็น optional ส่วน slug มาจาก design และยังเป็นข้อเสนอ
+- การตั้งค่าทั่วไปของ Project ประกอบด้วยชื่อ (ไม่เกิน 80 ตัวอักษร), slug ที่ไม่ซ้ำในองค์กรและเปลี่ยนไม่ได้หลังสร้าง และคำอธิบาย optional (ไม่เกิน 500 ตัวอักษร)
+- องค์กรหนึ่งมี Project ได้ไม่เกิน 50 Project
+- ผู้ใช้ทุก role ในองค์กร (รวมผู้ชมและผู้ตรวจสอบ) เป็นผู้ดูแลหรือสมาชิก Project ได้
+- นำ member ที่เป็นผู้ดูแลคนสุดท้ายของ Project ใด ๆ ออกจากองค์กรไม่ได้ ต้องตั้งผู้ดูแลคนอื่นก่อน
 
 ## Features
 
@@ -59,7 +62,9 @@ Feature ในตารางเป็น candidate scope ของ Epic ไม�
 | Default member visibility | สมาชิก Organization ที่ไม่ได้เป็นสมาชิก Project ไม่เห็น Project นั้น |
 | Permission lifecycle | การเปลี่ยน role มีผลทันที; การออกจาก Organization ยกเลิกสมาชิกภาพ Project ทันที |
 | Organization transfer | Project ไม่สามารถย้ายข้าม Organization ได้ |
-| General settings | Project มีชื่อและ optional description; slug เป็นข้อเสนอจาก design |
+| General settings | ชื่อ 80, คำอธิบาย 500, slug เปลี่ยนไม่ได้, ไม่เกิน 50 Project ต่อองค์กร (คำตอบของผู้ใช้ 2026-10-11) |
+| Last project admin | นำผู้ดูแลคนสุดท้ายออกจากองค์กรไม่ได้ (คำตอบของผู้ใช้ 2026-10-11) |
+| Organization roles in projects | ทุก role ขององค์กรเป็นผู้ดูแล Project ได้ (คำตอบของผู้ใช้ 2026-10-11) |
 
 ## Risks and dependencies
 

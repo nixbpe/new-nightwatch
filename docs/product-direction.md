@@ -3,7 +3,7 @@
 | Field           | Value                                                    |
 | --------------- | -------------------------------------------------------- |
 | ID / revision   | DIR-001 / v4                                             |
-| document_status | Direction Draft                                          |
+| document_status | Direction Approved                                       |
 | outcome_status  | Not measured                                             |
 | Owner           | Product Owner role; accountable person not yet confirmed |
 
