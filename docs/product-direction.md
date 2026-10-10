@@ -2,8 +2,8 @@
 
 | Field           | Value                                                    |
 | --------------- | -------------------------------------------------------- |
-| ID / revision   | DIR-001 / v3                                             |
-| document_status | Direction Approved                                       |
+| ID / revision   | DIR-001 / v4                                             |
+| document_status | Direction Draft                                          |
 | outcome_status  | Not measured                                             |
 | Owner           | Product Owner role; accountable person not yet confirmed |
 
@@ -31,7 +31,7 @@ Product intent only; it lists neither implemented capabilities nor validated dem
 
 - S1 Out of the first scope: autonomous cloud changes, certification guarantees, exhaustive-detection claims and provider parity. AWS-first is not full AWS coverage; other providers need their own decision.
 - S2 Reports, notifications, SLOs, access governance and broader compliance are possible later capabilities. Availability monitoring of HTTP(S) endpoints that an Organization specifies (uptime, response time, SSL expiry, in-app alerts) is in scope as a supporting capability; it is not the core positioning and does not change D1-D9.
-- S3 This document does not authorize collecting customer credentials or sensitive evidence, with one exception: auth values and secret headers of an availability monitor (S2) may be stored encrypted at rest, are write-only in UI and API, are decrypted only in a credential helper per JOB-05, and never appear in responses, logs, notifications or test results. All other customer credentials remain out of scope.
+- S3 This document does not authorize collecting customer credentials or sensitive evidence, with one exception: auth values and secret headers of an availability monitor (S2) may be stored encrypted at rest, are write-only in UI and API, are decrypted only in a credential helper per JOB-05, and never appear in responses, logs, notifications or test results. A Project's AWS access key (access key ID and secret access key) may be stored under the same rules: encrypted at rest, write-only in UI and API, decrypted only in a credential helper per JOB-05, and never shown in responses, logs, notifications or test results. Assume-role connections store only a role ARN and an External ID, which are not credentials. All other customer credentials remain out of scope.
 
 ## Discovery (all Hypothesis, Not run)
 
