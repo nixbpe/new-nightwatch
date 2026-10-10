@@ -64,8 +64,8 @@ readable with the old key until it is removed from the map.
 `apps/worker/Dockerfile` builds `nightwatch-worker` from the repo root:
 `docker build -f apps/worker/Dockerfile -t nightwatch-worker .`
 
-- Runtime is `oven/bun:1.3.14-alpine` (same digest as the API image), user
-  `nightwatch` (uid 1001). The SSRF helper was validated on Bun 1.3.14; do not
+- Runtime is `oven/bun:1.4.3-alpine` (same digest as the API image), user
+  `nightwatch` (uid 1001). The SSRF helper was validated on Bun 1.4.3; do not
   run the bundle on Node.
 - The image sets `NODE_ENV=production` and its entrypoint exits 78 with a message
   unless `NODE_ENV` is exactly `production`, so unset, empty, `development` and
