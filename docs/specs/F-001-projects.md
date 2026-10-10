@@ -1,6 +1,8 @@
 # F-001 Implementation spec: สร้างและจัดการ Project ภายใต้ Organization
 
-Source: issue #90 (`F-001`, Parent `E-001`) · Shared contract: issue #100 (`TS-001`) · Status: Draft
+Source: issue #90 (`F-001`, Parent `E-001`) · Shared contract: issue #100 (`TS-001`) · Status: Approved (ผู้ใช้อนุมัติ 2026-10-11)
+
+การอนุมัติ spec ไม่ใช่การอนุญาตให้ publish, deploy หรือ release
 
 Spec นี้คือส่วนของ `TS-001` ที่ `F-001` ต้อง implement กฎที่ `TS-001` กำหนดไว้แล้วใช้ตามนั้นโดยไม่คัดลอกซ้ำ จุดที่ spec นี้ต่างจาก `TS-001` อยู่ในหัวข้อ "ข้อแก้ไขที่ต้องนำกลับไปอัปเดต TS-001" Acceptance criteria อ้างจาก #90 ด้วย ID `AC-01` ถึง `AC-11`
 
