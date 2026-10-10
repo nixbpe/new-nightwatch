@@ -31,10 +31,10 @@ This index locates contract sources and code entry points. It defines no additio
 
 ## Evidence and delivery history
 
-Historical logs and screenshots remain under `docs/features/`. Removed planning and verification prose remains in Git history. Read it only when the assignment needs that history.
+Historical planning documents, verification logs and screenshots are recoverable from Git history. Read them only when the assignment needs that history.
 
 ## Large generated and evidence files
 
-`apps/web/src/lib/api/openapi-types.gen.ts` is generated output. Its generator and drift policy are documented in Quality gates. `bun.lock` and `e2e/bun.lock` belong to their installation boundaries. Logs and screenshots under Feature verification directories are historical evidence for their named runs.
+`apps/web/src/lib/api/openapi-types.gen.ts` is generated output. Its generator and drift policy are documented in Quality gates. `bun.lock` and `e2e/bun.lock` belong to their installation boundaries.
 
 These files remain available for contract, dependency and evidence inspection. This index adds no ignore rules or scanner exclusions.

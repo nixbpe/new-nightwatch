@@ -1,8 +1,0 @@
-PASS AC-24 the incident opened and one MONITOR_DOWN reached the inbox (alerts on by default)
-PASS AC-19 Pause closes the open incident with paused_by_user
-PASS AC-24 the owner can switch monitor alerts off
-PASS AC-24 alerts off: the incident opened but no MONITOR_DOWN was created for it
-PASS AC-24 the earlier notification stays in the inbox
-PASS AC-51 no MONITOR_RECOVERED for the paused incident
-checks: 6 failed: 0
-EXIT 0
