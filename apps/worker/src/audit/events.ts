@@ -34,6 +34,8 @@ function targetLabel(row: AuditEventBatchRow): string {
   switch (row.targetType) {
     case "monitor":
       return row.monitorExists && row.targetName ? row.targetName : "ถูกลบแล้ว";
+    case "project":
+      return row.projectExists && row.targetName ? row.targetName : "ถูกลบแล้ว";
     case "member":
       return row.targetCurrent && row.targetName
         ? row.targetName

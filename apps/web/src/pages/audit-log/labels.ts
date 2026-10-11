@@ -36,6 +36,10 @@ export function targetText(target: AuditTarget): string {
       return target.deleted || target.displayName === null
         ? "ถูกลบแล้ว"
         : target.displayName;
+    case "project":
+      return target.deleted || target.displayName === null
+        ? "ถูกลบแล้ว"
+        : target.displayName;
     case "member":
       return personName(target);
     case "invitation":
@@ -52,7 +56,8 @@ export const CHANGE_FIELD_LABELS: Record<AuditChangeField, string> = {
   role: "บทบาท",
   monitorAlertsEnabled: "แจ้งเตือนมอนิเตอร์",
   settingsChangedEnabled: "แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน",
-  name: "ชื่อมอนิเตอร์",
+  name: "ชื่อ",
+  description: "คำอธิบาย",
   url: "URL",
   method: "เมธอด",
   intervalSeconds: "รอบตรวจ (วินาที)",

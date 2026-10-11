@@ -17,6 +17,8 @@ import {
 // own database (see openIsolatedAuditDatabase); the other audit suites keep
 // writing to the shared database.
 const AUDIT_MIGRATION = "0020_organization_audit_log.sql";
+// Alters the audit_events that AUDIT_MIGRATION creates.
+const PROJECT_AUDIT_MIGRATION = "0023_projects.sql";
 let database: Database;
 let ownerDatabase: Database;
 let owner: Client;
@@ -92,7 +94,9 @@ beforeAll(async () => {
     owner,
     applySkipped: applyAuditMigration,
     close: closeDatabase,
-  } = await openIsolatedAuditDatabase({ skip: AUDIT_MIGRATION }));
+  } = await openIsolatedAuditDatabase({
+    skip: [AUDIT_MIGRATION, PROJECT_AUDIT_MIGRATION],
+  }));
   await owner.query(
     `insert into organization (id, name, slug, created_at)
      values ($1, 'Legacy', $2, $3)`,

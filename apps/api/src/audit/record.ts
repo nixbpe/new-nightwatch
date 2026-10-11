@@ -26,6 +26,9 @@ export const AUDIT_ACTION_CATEGORIES: Record<AuditAction, AuditCategory> = {
   "organization.invitation.resend": "invitation",
   "organization.invitation.cancel": "invitation",
   "organization.audit-log.export": "audit_log",
+  "organization.project.create": "project",
+  "organization.project.update": "project",
+  "organization.project.delete": "project",
 };
 
 // What a writer passes; the read response shape is `AuditTarget` in the contract.
@@ -35,8 +38,9 @@ export type AuditEventTarget = {
     | "member"
     | "invitation"
     | "notification_settings"
-    | "audit_export";
-  /** user id, invitation `public_id`, monitor id or export id; never `invitation.id`. */
+    | "audit_export"
+    | "project";
+  /** user id, invitation `public_id`, monitor, project or export id; never `invitation.id`. */
   id?: string;
   /** Non-personal display attributes only (no email, name or search text). */
   attributes?: Record<string, unknown>;

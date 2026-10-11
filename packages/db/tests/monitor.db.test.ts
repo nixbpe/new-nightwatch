@@ -778,7 +778,8 @@ describe("monitors alert settings backfill from migration 0022", () => {
     const source = new URL("../migrations", import.meta.url).pathname;
     const allNames = (await readdir(source)).sort();
     const preNames = allNames.filter((name) => name < "0022_");
-    const postNames = allNames.filter((name) => !preNames.includes(name));
+    // Only the migration under test: later ones do not change the backfill.
+    const postNames = allNames.filter((name) => name.startsWith("0022_"));
 
     preDir = await mkdtemp(join(tmpdir(), "nightwatch-monitor-legacy-pre-"));
     await copyIdempotent(preNames, preDir);

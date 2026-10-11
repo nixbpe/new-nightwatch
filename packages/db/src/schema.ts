@@ -869,6 +869,57 @@ export const auditExportJobs = pgTable(
   ],
 );
 
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("projects_id_tenant_key").on(table.id, table.tenantId),
+    unique("projects_tenant_slug_key").on(table.tenantId, table.slug),
+    index("projects_tenant_idx").on(table.tenantId, table.id),
+  ],
+);
+
+export const projectMembers = pgTable(
+  "project_members",
+  {
+    projectId: uuid("project_id").notNull(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    role: text("role").notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.userId] }),
+    foreignKey({
+      columns: [table.projectId, table.tenantId],
+      foreignColumns: [projects.id, projects.tenantId],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.tenantId, table.userId],
+      foreignColumns: [member.organizationId, member.userId],
+    }).onDelete("cascade"),
+    index("project_members_tenant_user_idx").on(table.tenantId, table.userId),
+  ],
+);
+
 export const schema = {
   user,
   session,
@@ -895,4 +946,6 @@ export const schema = {
   auditEvents,
   auditExports,
   auditExportJobs,
+  projects,
+  projectMembers,
 };
