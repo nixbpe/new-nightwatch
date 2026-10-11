@@ -194,6 +194,53 @@ describe("AuditEventPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  const PROJECT_ID = "00000000-0000-4000-8000-000000000001";
+  const projectMemberEvent = (deleted: boolean) =>
+    makeDetail({
+      action: "organization.project.member.add",
+      category: "member",
+      target: {
+        type: "member",
+        userId: "user-2",
+        displayName: "ประภา ค.",
+        membership: "current",
+        project: {
+          projectId: PROJECT_ID,
+          displayName: deleted ? null : "Payments",
+          deleted,
+        },
+      },
+      changes: [],
+    });
+
+  it("names the Project in a Project member target and links admins to its members page", async () => {
+    const { unmount } = open(projectMemberEvent(false), "admin");
+    const link = await screen.findByTestId("audit-event-target-link");
+    expect(link).toHaveTextContent("ประภา ค. ในโปรเจกต์ Payments");
+    expect(link).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/projects/${PROJECT_ID}/members`,
+    );
+    unmount();
+    open(projectMemberEvent(false), "auditor");
+    expect(await screen.findByTestId("audit-event-target")).toHaveTextContent(
+      "ประภา ค. ในโปรเจกต์ Payments",
+    );
+    expect(
+      screen.queryByTestId("audit-event-target-link"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a deleted Project without a link", async () => {
+    open(projectMemberEvent(true), "admin");
+    expect(await screen.findByTestId("audit-event-target")).toHaveTextContent(
+      "ประภา ค. ในโปรเจกต์ ถูกลบแล้ว",
+    );
+    expect(
+      screen.queryByTestId("audit-event-target-link"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows a former member target without a name or link", async () => {
     open(
       makeDetail({
