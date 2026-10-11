@@ -179,6 +179,7 @@ describe("validation (AC-03, AC-10)", () => {
     const before = (await projectRows(org.id)).length;
     const response = await create(org, org.users.owner, body);
     expect(response.status).toBe(400);
+    expect(errorOf(response).code).toBe("VALIDATION_ERROR");
     expect(await projectRows(org.id)).toHaveLength(before);
   });
 
@@ -197,6 +198,7 @@ describe("validation (AC-03, AC-10)", () => {
         body,
       );
       expect(response.status).toBe(400);
+      expect(errorOf(response).code).toBe("VALIDATION_ERROR");
       const rows = await projectRows(org.id);
       expect(rows.find((row) => row.id === project.id)?.slug).toBe(
         project.slug,

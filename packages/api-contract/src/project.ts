@@ -68,7 +68,7 @@ export const PROJECT_ERROR_CODES = [
 ] as const;
 export type ProjectErrorCode = (typeof PROJECT_ERROR_CODES)[number];
 
-function projectErrorSchema<Code extends ProjectErrorCode>(code: Code) {
+function projectErrorSchema<Code extends string>(code: Code) {
   return z.object({
     error: z.object({
       code: z.literal(code),
@@ -77,6 +77,9 @@ function projectErrorSchema<Code extends ProjectErrorCode>(code: Code) {
   });
 }
 
+/** The app-wide 400 for a request that fails its schema. */
+export const projectValidationErrorResponseSchema =
+  projectErrorSchema("VALIDATION_ERROR");
 export const projectNotFoundErrorResponseSchema =
   projectErrorSchema("PROJECT_NOT_FOUND");
 export const projectLimitReachedErrorResponseSchema = projectErrorSchema(

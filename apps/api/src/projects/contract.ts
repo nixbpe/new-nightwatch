@@ -2,7 +2,6 @@ import { createRoute } from "@hono/zod-openapi";
 import {
   createProjectRequestSchema,
   emailNotVerifiedErrorResponseSchema,
-  invalidInputErrorResponseSchema,
   membershipDeniedErrorResponseSchema,
   permissionDeniedErrorResponseSchema,
   projectLimitReachedErrorResponseSchema,
@@ -12,6 +11,7 @@ import {
   projectParamsSchema,
   projectSlugTakenErrorResponseSchema,
   projectSummarySchema,
+  projectValidationErrorResponseSchema,
   unauthenticatedErrorResponseSchema,
   unsupportedMediaTypeErrorResponseSchema,
   updateProjectRequestSchema,
@@ -23,7 +23,7 @@ const jsonError = (description: string, schema: z.ZodType) =>
 
 const invalidResponse = jsonError(
   "Invalid project input",
-  invalidInputErrorResponseSchema,
+  projectValidationErrorResponseSchema,
 );
 const mediaTypeResponse = jsonError(
   "The request body is not JSON",

@@ -6050,9 +6050,8 @@ export interface paths {
                         "application/json": {
                             error: {
                                 /** @enum {string} */
-                                code: "INVALID_INPUT";
+                                code: "VALIDATION_ERROR";
                                 message: string;
-                                details?: unknown;
                             };
                         };
                     };
@@ -6155,9 +6154,8 @@ export interface paths {
                         "application/json": {
                             error: {
                                 /** @enum {string} */
-                                code: "INVALID_INPUT";
+                                code: "VALIDATION_ERROR";
                                 message: string;
-                                details?: unknown;
                             };
                         };
                     };
@@ -6295,9 +6293,8 @@ export interface paths {
                         "application/json": {
                             error: {
                                 /** @enum {string} */
-                                code: "INVALID_INPUT";
+                                code: "VALIDATION_ERROR";
                                 message: string;
-                                details?: unknown;
                             };
                         };
                     };
@@ -6416,9 +6413,8 @@ export interface paths {
                         "application/json": {
                             error: {
                                 /** @enum {string} */
-                                code: "INVALID_INPUT";
+                                code: "VALIDATION_ERROR";
                                 message: string;
-                                details?: unknown;
                             };
                         };
                     };
