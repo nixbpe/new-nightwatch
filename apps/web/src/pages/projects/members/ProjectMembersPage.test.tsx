@@ -682,6 +682,10 @@ describe("add member dialog", () => {
       "add-member-checkbox",
     );
     expect(last).toBeDisabled();
+    expect(last).toHaveAccessibleDescription(/เพิ่มได้ครั้งละไม่เกิน 100 คน/);
+    expect(
+      candidate(dialog, "bulk-000").getByTestId("add-member-checkbox"),
+    ).not.toHaveAccessibleDescription(/เพิ่มได้ครั้งละไม่เกิน/);
     // Unticking one frees a slot again.
     fireEvent.click(
       candidate(dialog, "bulk-000").getByTestId("add-member-checkbox"),

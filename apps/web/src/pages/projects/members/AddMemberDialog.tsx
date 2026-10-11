@@ -145,7 +145,7 @@ export function AddMemberDialog({
   };
 
   // The API takes at most PROJECT_MEMBER_ADD_MAX ids per request, and
-  // selections persist across searches, so the list stops growing at the cap.
+  // selections persist across searches, so unselected rows disable at the cap.
   const full = selected.length >= PROJECT_MEMBER_ADD_MAX;
 
   const toggle = (userId: string) => {
@@ -153,9 +153,7 @@ export function AddMemberDialog({
     setSelected((current) =>
       current.includes(userId)
         ? current.filter((id) => id !== userId)
-        : current.length >= PROJECT_MEMBER_ADD_MAX
-          ? current
-          : [...current, userId],
+        : [...current, userId],
     );
   };
 
@@ -340,6 +338,7 @@ export function AddMemberDialog({
               rows.map((candidate) => {
                 const inProject = candidate.projectRole !== null;
                 const noteId = `${hintId}-note-${candidate.userId}`;
+                const capped = full && !selected.includes(candidate.userId);
                 return (
                   <label
                     key={candidate.userId}
@@ -353,11 +352,10 @@ export function AddMemberDialog({
                       checked={
                         !inProject && selected.includes(candidate.userId)
                       }
-                      disabled={
-                        inProject ||
-                        (full && !selected.includes(candidate.userId))
+                      disabled={inProject || capped}
+                      aria-describedby={
+                        capped ? `${noteId} ${hintId}-limit` : noteId
                       }
-                      aria-describedby={noteId}
                       onChange={() => {
                         toggle(candidate.userId);
                       }}
@@ -426,7 +424,7 @@ export function AddMemberDialog({
             </span>{" "}
             คน
             {full ? (
-              <span data-testid="add-member-limit">
+              <span id={`${hintId}-limit`} data-testid="add-member-limit">
                 {" "}
                 · เพิ่มได้ครั้งละไม่เกิน {PROJECT_MEMBER_ADD_MAX} คน
               </span>
