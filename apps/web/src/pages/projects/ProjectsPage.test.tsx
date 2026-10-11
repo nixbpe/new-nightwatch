@@ -603,8 +603,7 @@ describe("delete (AC-08)", () => {
 });
 
 describe("role changed under the user", () => {
-  const ROLE_CHANGED =
-    "สิทธิ์ของคุณในองค์กรเปลี่ยนไป รายการถูกโหลดใหม่ตามสิทธิ์ปัจจุบัน";
+  const ROLE_CHANGED = "สิทธิ์ของคุณในองค์กรเปลี่ยนไป";
 
   it.each(["edit", "delete"] as const)(
     "reloads the list and the role after a denied %s",
@@ -669,7 +668,7 @@ describe("role changed under the user", () => {
     });
     expect(fetchListMock.mock.calls.length - listCallsBefore).toBe(1);
   });
-  it("does not claim a reload when the list fails to reload after a denied edit", async () => {
+  it("shows the stale list warning next to the role notice when the reload fails", async () => {
     const user = userEvent.setup();
     fetchListMock.mockResolvedValueOnce({
       projects: [project({ name: "Payments", myRole: "admin" })],
@@ -687,9 +686,9 @@ describe("role changed under the user", () => {
     expect(
       await screen.findByText(/อัปเดตรายการไม่สำเร็จ/),
     ).toBeInTheDocument();
-    expect(screen.queryByText(ROLE_CHANGED)).toBeNull();
+    expect(screen.getByText(ROLE_CHANGED)).toBeInTheDocument();
   });
-  it("does not claim a reload when the Organization role changed and the list then fails", async () => {
+  it("shows the list error next to the role notice when the Organization role changed and the reload fails", async () => {
     const user = userEvent.setup();
     fetchListMock.mockResolvedValueOnce({
       projects: [project({ name: "Payments", myRole: "admin" })],
@@ -708,7 +707,7 @@ describe("role changed under the user", () => {
     expect(
       await screen.findByText("โหลดโปรเจกต์ไม่สำเร็จ"),
     ).toBeInTheDocument();
-    expect(screen.queryByText(ROLE_CHANGED)).toBeNull();
+    expect(screen.getByText(ROLE_CHANGED)).toBeInTheDocument();
   });
 });
 

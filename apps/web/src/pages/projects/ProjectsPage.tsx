@@ -45,8 +45,9 @@ const VIEW_OPTIONS = [
 ] as const;
 type View = (typeof VIEW_OPTIONS)[number]["value"];
 
-const ROLE_CHANGED =
-  "สิทธิ์ของคุณในองค์กรเปลี่ยนไป รายการถูกโหลดใหม่ตามสิทธิ์ปัจจุบัน";
+// Says only what the denied write proved; the list's own loading, stale and
+// error states report the reload.
+const ROLE_CHANGED = "สิทธิ์ของคุณในองค์กรเปลี่ยนไป";
 const DELETE_FAILED = "ลบโปรเจกต์ไม่สำเร็จ ลองอีกครั้ง";
 
 type Dialog =
@@ -115,12 +116,6 @@ function ProjectsForOrganization({
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
   >("idle");
-  // Set while a denied write waits for the list to reload: the list's update
-  // times when it was denied.
-  const [roleReload, setRoleReload] = useState<{
-    dataUpdatedAt: number;
-    errorUpdatedAt: number;
-  } | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -207,26 +202,10 @@ function ProjectsForOrganization({
 
   // A denied write means the role changed. The context refresh cancels tenant
   // queries, and removes them when the Organization role changed so the list
-  // query is rebuilt and refetched by its observer. The notice therefore waits
-  // for the list's own next result instead of the invalidation promise.
-  useEffect(() => {
-    if (roleReload === null) return;
-    if (list.dataUpdatedAt > roleReload.dataUpdatedAt) {
-      setRoleReload(null);
-      setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
-    } else if (list.errorUpdatedAt > roleReload.errorUpdatedAt) {
-      setRoleReload(null);
-    }
-  }, [roleReload, list.dataUpdatedAt, list.errorUpdatedAt]);
-
+  // observer refetches; the list reloads after it and joins that fetch.
   const roleChanged = () => {
-    setNotice(null);
-    setRoleReload({
-      dataUpdatedAt: list.dataUpdatedAt,
-      errorUpdatedAt: list.errorUpdatedAt,
-    });
+    setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
     void refreshMembershipContext().finally(() => {
-      // Joins the observer's refetch when the query was rebuilt.
       void queryClient.invalidateQueries(
         { queryKey: projectQueryKeys.all(organizationId) },
         { cancelRefetch: false },
