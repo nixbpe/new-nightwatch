@@ -653,6 +653,36 @@ describe("add member dialog", () => {
     expect(screen.queryByTestId("project-members-notice-saved")).toBeNull();
   });
 
+  it("drops a selected person whom a refreshed list shows as already in the project", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const dialog = await openDialog(user);
+    for (const id of ["kitti", "napa"]) {
+      await user.click(
+        candidate(dialog, id).getByTestId("add-member-checkbox"),
+      );
+    }
+    expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
+      "2",
+    );
+    // Another administrator adds kitti while the dialog is open.
+    roster = [...roster, member("kitti", "member")];
+    await user.type(within(dialog).getByTestId("add-member-search"), "kitti");
+    await waitFor(() => {
+      expect(
+        candidate(dialog, "kitti").getByTestId("add-member-checkbox"),
+      ).toBeDisabled();
+    });
+    expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
+      "1",
+    );
+    await user.click(within(dialog).getByTestId("add-member-submit"));
+    await waitFor(() => {
+      expect(addMock).toHaveBeenCalled();
+    });
+    expect(addMock.mock.calls[0]?.[2]).toMatchObject({ userIds: ["napa"] });
+  });
+
   it("stops selecting at the API's limit of 100 people per request", async () => {
     const user = userEvent.setup();
     for (let index = 0; index < 101; index += 1) {

@@ -106,6 +106,22 @@ export function AddMemberDialog({
     placeholderData: keepPreviousData,
   });
 
+  // A refreshed list can show a selected person as already in the Project
+  // (someone else added them). Their row disables, so drop the id here or it
+  // would hold a slot under the cap that the user cannot free.
+  const [reconciled, setReconciled] = useState(candidates.data);
+  if (candidates.data !== reconciled) {
+    setReconciled(candidates.data);
+    const joined = new Set(
+      (candidates.data?.candidates ?? [])
+        .filter((candidate) => candidate.projectRole !== null)
+        .map((candidate) => candidate.userId),
+    );
+    if (selected.some((id) => joined.has(id))) {
+      setSelected(selected.filter((id) => !joined.has(id)));
+    }
+  }
+
   useEffect(() => {
     searchInput.current?.focus();
     const fallback = fallbackFocus.current;
