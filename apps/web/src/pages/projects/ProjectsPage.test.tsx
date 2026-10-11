@@ -669,6 +669,26 @@ describe("role changed under the user", () => {
     });
     expect(fetchListMock.mock.calls.length - listCallsBefore).toBe(1);
   });
+  it("does not claim a reload when the list fails to reload after a denied edit", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValueOnce({
+      projects: [project({ name: "Payments", myRole: "admin" })],
+    });
+    renderPage();
+    const opener = await screen.findByRole("button", {
+      name: "แก้ไข Payments",
+    });
+    fetchListMock.mockRejectedValue(new ApiError("HTTP_500", "boom", 500));
+    updateMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "no", 403));
+    await user.click(opener);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "บันทึก" }));
+
+    expect(
+      await screen.findByText(/อัปเดตรายการไม่สำเร็จ/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(ROLE_CHANGED)).toBeNull();
+  });
 });
 
 describe("stale list", () => {

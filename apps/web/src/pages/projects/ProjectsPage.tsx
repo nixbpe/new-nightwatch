@@ -184,31 +184,33 @@ function ProjectsForOrganization({
     });
   };
 
-  // A success notice only after the list shows the change; otherwise the
-  // stale list warning speaks for the page.
-  const reloadThenNotify = async (text: string) => {
+  // Reloads the list and says so only once the list shows the result; a failed
+  // reload leaves the stale list warning to speak for the page.
+  const reloadThenNotify = async (
+    next: NonNullable<typeof notice>,
+    cancelRefetch = true,
+  ) => {
     const reloaded = await queryClient
       .invalidateQueries(
         { queryKey: projectQueryKeys.all(organizationId) },
-        { throwOnError: true },
+        { throwOnError: true, cancelRefetch },
       )
       .then(
         () => true,
         () => false,
       );
-    setNotice(reloaded ? { text, kind: "saved" } : null);
+    setNotice(reloaded ? next : null);
   };
 
-  // A denied write means the role changed: reload the context, then the list,
-  // and say so. The context refresh cancels tenant queries, and refetches them
-  // itself when the Organization role changed, so the list reload waits for it
-  // and joins a fetch already in flight.
+  // A denied write means the role changed. The context refresh cancels tenant
+  // queries and refetches them itself when the Organization role changed, so
+  // the list reloads after it and joins that fetch instead of repeating it.
   const roleChanged = () => {
-    setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
+    setNotice(null);
     void refreshMembershipContext().finally(() => {
-      void queryClient.invalidateQueries(
-        { queryKey: projectQueryKeys.all(organizationId) },
-        { cancelRefetch: false },
+      void reloadThenNotify(
+        { text: ROLE_CHANGED, kind: "role-changed" },
+        false,
       );
     });
   };
@@ -243,7 +245,10 @@ function ProjectsForOrganization({
       });
       return;
     }
-    await reloadThenNotify(`ลบโปรเจกต์ ${project.name} แล้ว`);
+    await reloadThenNotify({
+      text: `ลบโปรเจกต์ ${project.name} แล้ว`,
+      kind: "saved",
+    });
     setDeletion(null);
   };
 
@@ -549,11 +554,13 @@ function ProjectsForOrganization({
           opener={dialog.opener}
           fallbackFocus={heading}
           onSaved={async (saved) => {
-            await reloadThenNotify(
-              dialog.kind === "edit"
-                ? `บันทึกโปรเจกต์ ${saved.name} แล้ว`
-                : `สร้างโปรเจกต์ ${saved.name} แล้ว`,
-            );
+            await reloadThenNotify({
+              text:
+                dialog.kind === "edit"
+                  ? `บันทึกโปรเจกต์ ${saved.name} แล้ว`
+                  : `สร้างโปรเจกต์ ${saved.name} แล้ว`,
+              kind: "saved",
+            });
             setDialog(null);
           }}
           onCancel={() => {
