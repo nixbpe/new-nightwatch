@@ -1,4 +1,5 @@
 import {
+  addProjectMembersResponseSchema,
   auditLogListResponseSchema,
   projectDetailSchema,
   projectMemberCandidatesResponseSchema,
@@ -155,8 +156,13 @@ describe("add members (AC-04, AC-09, AC-12)", () => {
       role: "member",
     });
     expect(response.status).toBe(200);
-    const { members } = projectMemberListResponseSchema.parse(response.json);
+    const { members, addedUserIds } = addProjectMembersResponseSchema.parse(
+      response.json,
+    );
     expect(members.map((member) => member.userId).sort()).toEqual(
+      [org.users.viewer, org.users.auditor].sort(),
+    );
+    expect([...addedUserIds].sort()).toEqual(
       [org.users.viewer, org.users.auditor].sort(),
     );
     expect(await rolesOf(projectId)).toEqual({
@@ -191,6 +197,9 @@ describe("add members (AC-04, AC-09, AC-12)", () => {
       role: "member",
     });
     expect(again.status).toBe(200);
+    expect(
+      addProjectMembersResponseSchema.parse(again.json).addedUserIds,
+    ).toEqual([]);
     expect(await rolesOf(projectId)).toEqual({ [org.users.viewer]: "admin" });
     expect(await memberEvents(org.id, projectId)).toHaveLength(0);
 
@@ -199,6 +208,9 @@ describe("add members (AC-04, AC-09, AC-12)", () => {
       role: "member",
     });
     expect(mixed.status).toBe(200);
+    expect(
+      addProjectMembersResponseSchema.parse(mixed.json).addedUserIds,
+    ).toEqual([org.users.auditor]);
     expect(await rolesOf(projectId)).toEqual({
       [org.users.viewer]: "admin",
       [org.users.auditor]: "member",

@@ -1,6 +1,7 @@
 import { createRoute } from "@hono/zod-openapi";
 import {
   addProjectMembersRequestSchema,
+  addProjectMembersResponseSchema,
   createProjectRequestSchema,
   lastProjectAdminErrorResponseSchema,
   projectDetailSchema,
@@ -213,9 +214,10 @@ export const projectRouteDeclarations = {
     },
     responses: {
       200: {
-        description: "All members of the Project after the change",
+        description:
+          "All members of the Project after the change, and the users this request added",
         content: {
-          "application/json": { schema: projectMemberListResponseSchema },
+          "application/json": { schema: addProjectMembersResponseSchema },
         },
       },
       400: invalidResponse,

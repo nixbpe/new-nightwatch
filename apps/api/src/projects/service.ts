@@ -4,6 +4,7 @@ import {
   PROJECT_LIMIT_PER_ORGANIZATION,
   PROJECT_MEMBER_CANDIDATE_LIMIT,
   type AddProjectMembersRequest,
+  type AddProjectMembersResponse,
   type CreateProjectRequest,
   type OrganizationRole,
   type ProjectDetail,
@@ -626,7 +627,7 @@ const NOT_IN_ORGANIZATION = () =>
 export async function addProjectMembers(
   database: Database,
   input: Identity & { projectId: string; input: AddProjectMembersRequest },
-): Promise<ProjectMemberListResponse> {
+): Promise<AddProjectMembersResponse> {
   return withProjectAccess(
     database,
     input,
@@ -672,7 +673,10 @@ export async function addProjectMembers(
           ),
         );
       }
-      return { members: await loadMembers(client, input, projectId) };
+      return {
+        members: await loadMembers(client, input, projectId),
+        addedUserIds: inserted.map((row) => row.userId),
+      };
     },
   );
 }

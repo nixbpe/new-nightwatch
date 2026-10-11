@@ -1,10 +1,12 @@
 import {
+  addProjectMembersResponseSchema,
   projectDetailSchema,
   projectListResponseSchema,
   projectMemberCandidatesResponseSchema,
   projectMemberListResponseSchema,
   projectMemberSchema,
   projectSummarySchema,
+  type AddProjectMembersResponse,
   type addProjectMembersRequestSchema,
   type createProjectRequestSchema,
   type ProjectDetail,
@@ -130,10 +132,10 @@ export function addProjectMembers(
   organizationId: string,
   projectId: string,
   body: AddProjectMembersBody,
-): Promise<ProjectMemberListResponse> {
+): Promise<AddProjectMembersResponse> {
   return request(
     "/api/organizations/{organizationId}/projects/{projectId}/members",
-    projectMemberListResponseSchema,
+    addProjectMembersResponseSchema,
     { method: "POST", params: { organizationId, projectId }, body },
   );
 }

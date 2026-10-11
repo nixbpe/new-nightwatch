@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addProjectMembersRequestSchema,
+  addProjectMembersResponseSchema,
   createProjectRequestSchema,
   projectDetailSchema,
   projectMemberCandidatesQuerySchema,
@@ -210,5 +211,19 @@ describe("project detail", () => {
     expect(
       projectDetailSchema.safeParse({ ...summary, adminCount: 1 }).success,
     ).toBe(true);
+  });
+});
+
+describe("add project members response", () => {
+  it("carries the member list and the users this request added", () => {
+    expect(
+      addProjectMembersResponseSchema.safeParse({
+        members: [],
+        addedUserIds: [],
+      }).success,
+    ).toBe(true);
+    expect(
+      addProjectMembersResponseSchema.safeParse({ members: [] }).success,
+    ).toBe(false);
   });
 });

@@ -87,6 +87,17 @@ export type ProjectMemberListResponse = z.infer<
   typeof projectMemberListResponseSchema
 >;
 
+/**
+ * The whole member list after the change, and the users this request inserted.
+ * A user who was already in the Project keeps their role and is not listed in
+ * `addedUserIds`.
+ */
+export const addProjectMembersResponseSchema =
+  projectMemberListResponseSchema.extend({ addedUserIds: z.array(z.string()) });
+export type AddProjectMembersResponse = z.infer<
+  typeof addProjectMembersResponseSchema
+>;
+
 /** Any Organization member matching `q`; `projectRole` is `null` for one who is not in the Project. */
 export const projectMemberCandidateSchema = projectMemberSchema
   .omit({ projectRole: true, joinedAt: true })

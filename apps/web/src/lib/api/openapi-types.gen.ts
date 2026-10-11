@@ -6763,7 +6763,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description All members of the Project after the change */
+                /** @description All members of the Project after the change, and the users this request added */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -6781,6 +6781,7 @@ export interface paths {
                                 /** Format: date-time */
                                 joinedAt: string;
                             }[];
+                            addedUserIds: string[];
                         };
                     };
                 };
