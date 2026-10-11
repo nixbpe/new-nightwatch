@@ -209,6 +209,21 @@ for (const theme of ["light", "dark"] as const) {
 
       await page.setViewportSize({ width: 320, height: 700 });
       await shot(page, `projects-list-320-${theme}`, true);
+      const slugWraps = await page
+        .getByText(`secret-${run}`, { exact: true })
+        .evaluate(
+          (element) =>
+            element.getBoundingClientRect().height >
+            parseFloat(getComputedStyle(element).lineHeight) + 1,
+        );
+      expect(slugWraps).toBe(false);
+      // Row actions sit past the table's right edge; they stay reachable by
+      // scrolling the table region.
+      await page.getByRole("button", { name: `แก้ไข Secret ${run}` }).click();
+      await expect(
+        page.getByRole("dialog", { name: `แก้ไขโปรเจกต์ Secret ${run}` }),
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
       // Only the table's own scroll region may scroll sideways (LAY-02).
       const overflow = await page.evaluate(
         () =>

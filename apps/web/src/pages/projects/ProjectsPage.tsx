@@ -355,9 +355,9 @@ function ProjectsForOrganization({
       key: "project",
       header: "โปรเจกต์",
       cell: (project) => (
-        <span className="flex flex-col">
-          <span className="font-medium">{project.name}</span>
-          <span className="font-mono text-[13px] text-foreground-secondary">
+        <span className="flex min-w-40 flex-col">
+          <span className="font-medium break-words">{project.name}</span>
+          <span className="font-mono text-[13px] whitespace-nowrap text-foreground-secondary">
             {project.slug}
           </span>
         </span>
