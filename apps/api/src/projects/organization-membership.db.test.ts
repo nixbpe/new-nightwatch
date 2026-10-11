@@ -355,16 +355,16 @@ describe("last Project administrator (AC-04)", () => {
 });
 
 describe("concurrent removal and Project role change (AC-06)", () => {
-  // Holds the Organization row so both requests queue behind it, then releases
-  // them together. Revoke and leave take the row FOR UPDATE and a Project role
-  // change takes it FOR SHARE, so whichever runs second sees the first's result.
+  // Holds the Organization row, starts `first`, waits until it is queued, then
+  // starts `second` and waits until it is queued too, so the lock queue (and
+  // with it the order the requests run in) is fixed. Revoke and leave take the
+  // row FOR UPDATE and a Project role change takes it FOR SHARE.
   async function race(
     org: TestOrganization,
     first: () => Promise<Response>,
     second: () => Promise<Response>,
-  ) {
+  ): Promise<[Response, Response]> {
     const holder = await ctx.owner.sql.connect();
-    let responses: Response[];
     try {
       await holder.query("begin");
       await holder.query(
@@ -374,69 +374,88 @@ describe("concurrent removal and Project role change (AC-06)", () => {
       const holderPid = (
         await holder.query<{ pid: number }>("select pg_backend_pid() as pid")
       ).rows[0]?.pid;
-      const pending = Promise.all([first(), second()]);
-      // Both requests queue on the Organization row: one behind the holder,
-      // the other behind the first waiter.
-      await vi.waitFor(
-        async () => {
-          // Not on the holder: inside a transaction pg_stat_activity is a
-          // snapshot taken at the first read.
-          const waiting = await ctx.owner.sql.query<{ total: string }>(
-            `select count(*) as total from pg_stat_activity a
-             where $1::int = any(pg_blocking_pids(a.pid))
-                or exists (
-                  select 1 from pg_stat_activity b
-                  where b.pid = any(pg_blocking_pids(a.pid))
-                    and $1::int = any(pg_blocking_pids(b.pid))
-                )`,
-            [holderPid],
-          );
-          expect(Number(waiting.rows[0]?.total)).toBeGreaterThanOrEqual(2);
-        },
-        { timeout: 10_000, interval: 25 },
-      );
+      // Backends queued behind the holder, directly or behind another waiter.
+      // Read on a separate connection: inside the holder's transaction
+      // pg_stat_activity is a snapshot taken at the first read.
+      const waitForQueued = (count: number) =>
+        vi.waitFor(
+          async () => {
+            const queued = await ctx.owner.sql.query<{ total: string }>(
+              `select count(*) as total from pg_stat_activity a
+               where $1::int = any(pg_blocking_pids(a.pid))
+                  or exists (
+                    select 1 from pg_stat_activity b
+                    where b.pid = any(pg_blocking_pids(a.pid))
+                      and $1::int = any(pg_blocking_pids(b.pid))
+                  )`,
+              [holderPid],
+            );
+            expect(Number(queued.rows[0]?.total)).toBe(count);
+          },
+          { timeout: 8_000, interval: 25 },
+        );
+      const firstResponse = first();
+      await waitForQueued(1);
+      const secondResponse = second();
+      await waitForQueued(2);
       await holder.query("commit");
-      responses = await pending;
+      return [await firstResponse, await secondResponse];
     } finally {
       await holder.query("rollback").catch(() => undefined);
       holder.release();
     }
-    return responses;
   }
 
-  it.each(["revoke", "leave"] as const)(
-    "never leaves a Project without an administrator when a %s races a demotion",
-    async (how) => {
+  const adminCount = async (projectId: string) =>
+    (
+      await ctx.owner.sql.query(
+        "select 1 from project_members where project_id = $1 and role = 'admin'",
+        [projectId],
+      )
+    ).rowCount;
+
+  describe.each(["revoke", "leave"] as const)("%s", (how) => {
+    async function setup() {
       const org = await ctx.createOrganization(`om-race-${how}`);
       const [a, b] = [org.users.viewer, org.users.auditor];
       const projectId = await projectNamed(org, `Race ${how}`, [
         [a, "admin"],
         [b, "admin"],
       ]);
+      const removal = () =>
+        how === "revoke" ? revoke(org, org.users.owner, a) : leave(org, a);
+      const demotion = () =>
+        ctx.call(
+          org.users.owner,
+          "PATCH",
+          `${projectBase(org, projectId)}/members/${b}`,
+          { role: "member" },
+        );
+      return { org, a, b, projectId, removal, demotion };
+    }
 
-      const responses = await race(
-        org,
-        () =>
-          how === "revoke" ? revoke(org, org.users.owner, a) : leave(org, a),
-        () =>
-          ctx.call(
-            org.users.owner,
-            "PATCH",
-            `${projectBase(org, projectId)}/members/${b}`,
-            { role: "member" },
-          ),
-      );
+    it("rejects the removal with 409 LAST_PROJECT_ADMIN when the demotion of the other admin runs first", async () => {
+      const { org, a, projectId, removal, demotion } = await setup();
 
-      const statuses = responses.map((response) => response.status);
-      expect(statuses.filter((status) => status === 409)).toHaveLength(1);
-      expect(statuses.filter((status) => status === 200)).toHaveLength(1);
-      const loser = responses.find((response) => response.status === 409);
-      expect(loser && errorOf(loser).code).toBe("LAST_PROJECT_ADMIN");
-      const admins = await ctx.owner.sql.query(
-        "select 1 from project_members where project_id = $1 and role = 'admin'",
-        [projectId],
-      );
-      expect(admins.rowCount).toBeGreaterThanOrEqual(1);
-    },
-  );
+      const [demoted, removed] = await race(org, demotion, removal);
+
+      expect(demoted.status).toBe(200);
+      expect(removed.status).toBe(409);
+      expect(errorOf(removed).code).toBe("LAST_PROJECT_ADMIN");
+      expect(await memberRowCount(org, a)).toBe(1);
+      expect(await adminCount(projectId)).toBe(1);
+    });
+
+    it("rejects the demotion with 409 LAST_PROJECT_ADMIN when the removal runs first", async () => {
+      const { org, a, projectId, removal, demotion } = await setup();
+
+      const [removed, demoted] = await race(org, removal, demotion);
+
+      expect(removed.status).toBe(200);
+      expect(demoted.status).toBe(409);
+      expect(errorOf(demoted).code).toBe("LAST_PROJECT_ADMIN");
+      expect(await memberRowCount(org, a)).toBe(0);
+      expect(await adminCount(projectId)).toBe(1);
+    });
+  });
 });
