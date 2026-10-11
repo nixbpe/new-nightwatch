@@ -796,7 +796,7 @@ describe("member candidates", () => {
   });
 });
 
-describe("audit", () => {
+describe("audit (AC-10)", () => {
   it("is readable through the audit log API with both the member and the Project resolved, and the Project name follows a rename", async () => {
     const auditOrg = await ctx.createOrganization("pmember-audit");
     const projectId = await projectWith(auditOrg, [
@@ -880,5 +880,32 @@ describe("audit", () => {
       500, 500, 500,
     ]);
     expect(await rolesOf(projectId)).toEqual(before);
+  });
+});
+
+describe("search term redaction", () => {
+  it("keeps q out of the logs and the audit log on success, denial and validation failure", async () => {
+    const term = `somchai.secret.${ctx.run}@example.test`;
+    const projectId = await projectWith(org, [
+      [org.users.viewer, "member"],
+      [org.users.auditor, "admin"],
+    ]);
+    const path = `${base(org, projectId)}/member-candidates`;
+    const ok = await ctx.call(org.users.owner, "GET", `${path}?q=${term}`);
+    const denied = await ctx.call(org.users.viewer, "GET", `${path}?q=${term}`);
+    const invalid = await ctx.call(
+      org.users.owner,
+      "GET",
+      `${path}?q=${term}${"a".repeat(100)}`,
+    );
+    expect([ok.status, denied.status, invalid.status]).toEqual([200, 403, 400]);
+    expect(ctx.lines.length).toBeGreaterThan(0);
+    expect(ctx.lines.join("\n")).not.toContain(term);
+    expect(JSON.stringify(invalid.json)).not.toContain(term);
+    const events = await ctx.owner.sql.query(
+      "select 1 from audit_events where tenant_id = $1 and (target_attributes::text like $2 or changes::text like $2)",
+      [org.id, `%${term}%`],
+    );
+    expect(events.rows).toEqual([]);
   });
 });
