@@ -42,3 +42,35 @@ describe("targetText for a Project", () => {
     ).toBe(deletedMonitor);
   });
 });
+
+describe("targetText for a Project member", () => {
+  const member = {
+    type: "member" as const,
+    userId: "u1",
+    displayName: "Somchai",
+    membership: "current" as const,
+  };
+
+  it("names both the member and the Project", () => {
+    expect(
+      targetText({
+        ...member,
+        project: { projectId, displayName: "Payments", deleted: false },
+      }),
+    ).toBe("Somchai ในโปรเจกต์ Payments");
+  });
+
+  it("never shows a former member's name or a deleted Project's name", () => {
+    expect(
+      targetText({
+        ...member,
+        membership: "former",
+        project: { projectId, displayName: null, deleted: true },
+      }),
+    ).toBe("ไม่ใช่สมาชิกแล้ว ในโปรเจกต์ ถูกลบแล้ว");
+  });
+
+  it("keeps the Organization member target unchanged", () => {
+    expect(targetText(member)).toBe("Somchai");
+  });
+});

@@ -41,7 +41,13 @@ export function targetText(target: AuditTarget): string {
         ? "ถูกลบแล้ว"
         : target.displayName;
     case "member":
-      return personName(target);
+      return target.project === undefined
+        ? personName(target)
+        : `${personName(target)} ในโปรเจกต์ ${
+            target.project.deleted || target.project.displayName === null
+              ? "ถูกลบแล้ว"
+              : target.project.displayName
+          }`;
     case "invitation":
       return `คำเชิญ ${roleLabel(target.role)}`;
     case "notification_settings":

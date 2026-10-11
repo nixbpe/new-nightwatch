@@ -213,8 +213,19 @@ describe("project grants", () => {
     ]);
   });
 
-  it("grants select and insert only on project_members", async () => {
-    expect(await privileges("project_members")).toEqual(["select", "insert"]);
+  it("grants select, insert and delete on project_members, with update on role only", async () => {
+    expect(await privileges("project_members")).toEqual([
+      "select",
+      "insert",
+      "delete",
+    ]);
+    const columns = await owner.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_name = 'project_members' and table_schema = 'public'
+         and has_column_privilege('nightwatch', 'project_members', column_name, 'update')
+       order by column_name`,
+    );
+    expect(columns.rows.map((row) => row.column_name)).toEqual(["role"]);
   });
 
   it.each(["slug", "tenant_id", "id"])(
@@ -232,14 +243,68 @@ describe("project grants", () => {
     },
   );
 
-  it("denies the runtime role deleting project_members directly", async () => {
-    await expect(
-      withTenantContextRaw(database, tenantA, (client) =>
-        client.query("delete from project_members where project_id = $1", [
-          projectA,
-        ]),
-      ),
-    ).rejects.toThrow(/permission denied/);
+  it.each(["project_id", "tenant_id", "user_id"])(
+    "denies the runtime role updating project_members.%s",
+    async (column) => {
+      const value = column === "user_id" ? "'someone'" : "gen_random_uuid()";
+      await expect(
+        withTenantContextRaw(database, tenantA, (client) =>
+          client.query(
+            `update project_members set ${column} = ${value} where project_id = $1`,
+            [projectA],
+          ),
+        ),
+      ).rejects.toThrow(/permission denied/);
+    },
+  );
+
+  it("lets the runtime role change a role and delete a row inside its tenant, and nothing in another", async () => {
+    await owner.query(
+      "insert into project_members (project_id, tenant_id, user_id, role) values ($1, $2, $3, 'member')",
+      [projectA, tenantA, userA2],
+    );
+    const crossUpdate = await withTenantContextRaw(
+      database,
+      tenantB,
+      (client) =>
+        client.query(
+          "update project_members set role = 'admin' where project_id = $1 and user_id = $2",
+          [projectA, userA2],
+        ),
+    );
+    expect(crossUpdate.rowCount).toBe(0);
+    const crossDelete = await withTenantContextRaw(
+      database,
+      tenantB,
+      (client) =>
+        client.query(
+          "delete from project_members where project_id = $1 and user_id = $2",
+          [projectA, userA2],
+        ),
+    );
+    expect(crossDelete.rowCount).toBe(0);
+    const crossRead = await withTenantContextRaw(database, tenantB, (client) =>
+      client.query("select 1 from project_members where project_id = $1", [
+        projectA,
+      ]),
+    );
+    expect(crossRead.rows).toEqual([]);
+    const own = await withTenantContextRaw(
+      database,
+      tenantA,
+      async (client) => {
+        const updated = await client.query(
+          "update project_members set role = 'admin' where project_id = $1 and user_id = $2",
+          [projectA, userA2],
+        );
+        const deleted = await client.query(
+          "delete from project_members where project_id = $1 and user_id = $2",
+          [projectA, userA2],
+        );
+        return [updated.rowCount, deleted.rowCount];
+      },
+    );
+    expect(own).toEqual([1, 1]);
   });
 });
 
@@ -331,7 +396,14 @@ describe("audit_events constraints", () => {
          values ($1, $2, 'owner', $3, $4, 'project', $5)`,
         [tenantA, userA, category, action, randomUUID()],
       );
-    for (const action of ["create", "update", "delete"]) {
+    for (const action of [
+      "create",
+      "update",
+      "delete",
+      "member.add",
+      "member.role.update",
+      "member.remove",
+    ]) {
       await insert(`organization.project.${action}`, "project");
     }
     await expect(
