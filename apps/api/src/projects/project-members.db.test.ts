@@ -922,3 +922,48 @@ describe("search term redaction", () => {
     expect(events.rows).toEqual([]);
   });
 });
+
+describe("reads racing a Project delete", () => {
+  it("answers 404 PROJECT_NOT_FOUND on detail, members and candidates, never 500 or a stale 200", async () => {
+    const projectId = await projectWith(org, [[org.users.viewer, "admin"]]);
+    const paths = [
+      base(org, projectId),
+      `${base(org, projectId)}/members`,
+      `${base(org, projectId)}/member-candidates`,
+    ];
+    const holder = await ctx.owner.sql.connect();
+    let responses: Awaited<ReturnType<typeof ctx.call>>[];
+    try {
+      await holder.query("begin");
+      await holder.query("delete from projects where id = $1", [projectId]);
+      const pending = Promise.all(
+        paths.map((path) => ctx.call(org.users.owner, "GET", path)),
+      );
+      await vi.waitFor(
+        async () => {
+          // Each read waits on the delete's row lock (the first on its
+          // transaction id, the others behind it on the tuple lock).
+          const waiting = await holder.query<{ total: string }>(
+            `select count(*) as total from pg_locks
+             where not granted
+               and ((locktype = 'transactionid'
+                     and transactionid = xid(pg_current_xact_id()))
+                 or (locktype = 'tuple'
+                     and relation = 'projects'::regclass))`,
+          );
+          expect(Number(waiting.rows[0]?.total)).toBeGreaterThanOrEqual(3);
+        },
+        { timeout: 10_000, interval: 25 },
+      );
+      await holder.query("commit");
+      responses = await pending;
+    } finally {
+      await holder.query("rollback").catch(() => undefined);
+      holder.release();
+    }
+    for (const response of responses) {
+      expect(response.status).toBe(404);
+      expect(errorCode(response)).toBe("PROJECT_NOT_FOUND");
+    }
+  });
+});

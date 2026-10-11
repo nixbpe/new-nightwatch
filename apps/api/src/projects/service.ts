@@ -148,21 +148,24 @@ async function loadSummary(
 
 // Locks the row (writes), then reads the actor's own membership: a role change
 // locks the same row, so reading before the lock could judge by a role that is
-// being replaced. Reads pass `lock: false` and take no row lock.
+// being replaced. Reads pass `exclusive: false` and take FOR SHARE: a delete
+// holds FOR UPDATE, so a read either finishes before it or waits and then finds
+// the Project gone (404), never a half-deleted one. Shared locks do not block
+// each other and nobody upgrades one, so they cannot deadlock with a writer.
 async function lockProject(
   client: PoolClient,
   identity: Identity,
   projectId: string,
   organizationRole: OrganizationRole,
   action: ProjectAction,
-  lock = true,
+  exclusive = true,
 ): Promise<{ name: string; description: string | null }> {
   const locked = await client.query<{
     name: string;
     description: string | null;
   }>(
     `select name, description from projects
-     where id = $1 and tenant_id = $2${lock ? " for update" : ""}`,
+     where id = $1 and tenant_id = $2 ${exclusive ? "for update" : "for share"}`,
     [projectId, identity.organizationId],
   );
   const row = locked.rows[0];
