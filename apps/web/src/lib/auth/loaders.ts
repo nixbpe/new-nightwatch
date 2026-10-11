@@ -33,7 +33,12 @@ import {
   OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
-import { fetchProjectList, projectQueryKeys } from "../api/projects";
+import {
+  fetchProjectDetail,
+  fetchProjectList,
+  fetchProjectMembers,
+  projectQueryKeys,
+} from "../api/projects";
 import { authClient } from "../auth-client";
 import { formatAuditDate, readPreferences } from "../preferences";
 import {
@@ -266,6 +271,44 @@ export async function projectsLoader({
       staleTime: "static",
     })
     .catch(() => undefined);
+  return null;
+}
+
+// Same membership check as projectsLoader; a missing or inaccessible Project is
+// left to the page, which shows the uniform "not found" state.
+export async function projectMembersLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const { organizationId, projectId } = params;
+  if (organizationId === undefined || projectId === undefined) {
+    return null;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (
+    context?.organizations.some(
+      (organization) => organization.id === organizationId,
+    ) !== true
+  ) {
+    return null;
+  }
+  const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
+  await Promise.all([
+    queryClient.query({
+      queryKey: projectQueryKeys.detail(organizationId, projectId),
+      queryFn: () => fetchProjectDetail(organizationId, projectId),
+      staleTime: "static",
+    }),
+    queryClient.query({
+      queryKey: projectQueryKeys.members(organizationId, projectId),
+      queryFn: () => fetchProjectMembers(organizationId, projectId),
+      staleTime: "static",
+    }),
+  ]).catch(() => undefined);
   return null;
 }
 

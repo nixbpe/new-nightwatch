@@ -4,7 +4,7 @@ import {
 } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 
 import { EmptyState } from "../../components/shell/EmptyState";
 import { GridIcon, SearchIcon } from "../../components/shell/icons";
@@ -424,7 +424,13 @@ function ProjectsForOrganization({
       cell: (project) => (
         <span className="flex min-w-40 flex-col">
           <span data-testid="project-name" className="font-medium break-words">
-            {project.name}
+            <Link
+              data-testid="project-members-link"
+              className="rounded-[4px] underline-offset-4 hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              to={`/organizations/${organizationId}/projects/${project.id}/members`}
+            >
+              {project.name}
+            </Link>
           </span>
           <span
             data-testid="project-slug"

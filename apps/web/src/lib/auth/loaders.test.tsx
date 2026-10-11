@@ -32,7 +32,12 @@ import {
   monitorQueryKeys,
   OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
-import { fetchProjectList, projectQueryKeys } from "../api/projects";
+import {
+  fetchProjectDetail,
+  fetchProjectList,
+  fetchProjectMembers,
+  projectQueryKeys,
+} from "../api/projects";
 import {
   fetchNotifications,
   fetchOrganizationNotificationSettings,
@@ -59,6 +64,7 @@ import {
   notificationSettingsLoader,
   notificationsLoader,
   organizationMembersLoader,
+  projectMembersLoader,
   projectsLoader,
   requireAnonLoader,
   rootLoader,
@@ -141,11 +147,18 @@ vi.mock("../api/members", async (importOriginal) => {
 
 vi.mock("../api/projects", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
-  return { ...original, fetchProjectList: vi.fn() };
+  return {
+    ...original,
+    fetchProjectList: vi.fn(),
+    fetchProjectDetail: vi.fn(),
+    fetchProjectMembers: vi.fn(),
+  };
 });
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const fetchProjectListMock = vi.mocked(fetchProjectList);
+const fetchProjectDetailMock = vi.mocked(fetchProjectDetail);
+const fetchProjectMembersMock = vi.mocked(fetchProjectMembers);
 const fetchInvitationMock = vi.mocked(fetchInvitation);
 const fetchNotificationsMock = vi.mocked(fetchNotifications);
 const fetchOrganizationNotificationSettingsMock = vi.mocked(
@@ -760,6 +773,71 @@ describe("projectsLoader", () => {
       `/organizations/${organizationId}/projects`,
     );
     expect(fetchProjectListMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("projectMembersLoader", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const projectId = "00000000-0000-4000-8000-000000000001";
+  const path = `/organizations/${organizationId}/projects/${projectId}/members`;
+  const route: RouteObject = {
+    path: "/organizations/:organizationId/projects/:projectId/members",
+    loader: projectMembersLoader,
+    element: <div data-testid="members-area">members-area</div>,
+  };
+
+  it("stages the project and its members in the identity client for a member", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+      lastActiveTenantId: organizationId,
+    });
+    fetchProjectDetailMock.mockResolvedValue({
+      id: projectId,
+      name: "Payments",
+      slug: "payments",
+      description: null,
+      memberCount: 0,
+      adminCount: 0,
+      myRole: null,
+      updatedAt: "2026-10-10T07:32:00.000Z",
+    });
+    fetchProjectMembersMock.mockResolvedValue({ members: [] });
+    renderAt([route], path);
+
+    expect(await screen.findByTestId("members-area")).toBeInTheDocument();
+    expect(fetchProjectDetailMock).toHaveBeenCalledExactlyOnceWith(
+      organizationId,
+      projectId,
+    );
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        projectQueryKeys.members(organizationId, projectId),
+      ),
+    ).toEqual({ members: [] });
+  });
+
+  it("requests nothing for an Organization the user does not belong to", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    fetchProjectDetailMock.mockReset();
+    fetchProjectMembersMock.mockReset();
+    renderAt([route], path);
+
+    expect(await screen.findByTestId("members-area")).toBeInTheDocument();
+    expect(fetchProjectDetailMock).not.toHaveBeenCalled();
+    expect(fetchProjectMembersMock).not.toHaveBeenCalled();
+  });
+
+  it("sends an anonymous visitor to sign in with a return path", async () => {
+    sessionState.data = null;
+    renderAt([route], path);
+
+    expect(await screen.findByTestId("from")).toHaveTextContent(path);
+    expect(fetchProjectDetailMock).not.toHaveBeenCalled();
   });
 });
 
