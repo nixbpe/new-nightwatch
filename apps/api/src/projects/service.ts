@@ -138,10 +138,10 @@ async function loadSummary(
 // Locks the row, then reads the actor's own membership: a role change locks the
 // same row, so reading before the lock could judge by a role that is being
 // replaced. Writes take FOR UPDATE. Reads pass `exclusive: false` and take
-// FOR SHARE: a delete
-// holds FOR UPDATE, so a read either finishes before it or waits and then finds
-// the Project gone (404), never a half-deleted one. Shared locks do not block
-// each other and nobody upgrades one, so they cannot deadlock with a writer.
+// FOR SHARE: a delete holds FOR UPDATE, so a read either finishes before it or
+// waits and then finds the Project gone (404), never a half-deleted one. Shared
+// locks do not block each other and nobody upgrades one, so they cannot
+// deadlock with a writer.
 async function lockProject(
   client: PoolClient,
   identity: Identity,

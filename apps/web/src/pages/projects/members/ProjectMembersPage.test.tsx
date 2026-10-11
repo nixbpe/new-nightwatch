@@ -10,6 +10,7 @@ import type {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -650,6 +651,43 @@ describe("add member dialog", () => {
       "คนที่เลือกอยู่ในโปรเจกต์อยู่แล้ว ไม่มีใครถูกเพิ่ม",
     );
     expect(screen.queryByTestId("project-members-notice-saved")).toBeNull();
+  });
+
+  it("stops selecting at the API's limit of 100 people per request", async () => {
+    const user = userEvent.setup();
+    for (let index = 0; index < 101; index += 1) {
+      orgPeople.push({
+        userId: `bulk-${String(index).padStart(3, "0")}`,
+        name: `Bulk ${String(index).padStart(3, "0")}`,
+        organizationRole: "viewer",
+      });
+    }
+    renderPage();
+    const dialog = await openDialog(user);
+    await within(dialog).findByTestId("add-member-row-bulk-100");
+    for (let index = 0; index < 100; index += 1) {
+      fireEvent.click(
+        candidate(dialog, `bulk-${String(index).padStart(3, "0")}`).getByTestId(
+          "add-member-checkbox",
+        ),
+      );
+    }
+    expect(within(dialog).getByTestId("add-member-count")).toHaveTextContent(
+      "100",
+    );
+    expect(within(dialog).getByTestId("add-member-limit")).toHaveTextContent(
+      "เพิ่มได้ครั้งละไม่เกิน 100 คน",
+    );
+    const last = candidate(dialog, "bulk-100").getByTestId(
+      "add-member-checkbox",
+    );
+    expect(last).toBeDisabled();
+    // Unticking one frees a slot again.
+    fireEvent.click(
+      candidate(dialog, "bulk-000").getByTestId("add-member-checkbox"),
+    );
+    expect(last).toBeEnabled();
+    expect(within(dialog).queryByTestId("add-member-limit")).toBeNull();
   });
 
   it("selects an owner, admin, viewer and auditor candidate (AC-12)", async () => {

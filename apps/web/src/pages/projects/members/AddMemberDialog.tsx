@@ -1,4 +1,7 @@
-import type { ProjectRole } from "@nightwatch/api-contract";
+import {
+  PROJECT_MEMBER_ADD_MAX,
+  type ProjectRole,
+} from "@nightwatch/api-contract";
 import {
   keepPreviousData,
   useQuery,
@@ -141,12 +144,18 @@ export function AddMemberDialog({
     if (!inFlight.current) onCancel();
   };
 
+  // The API takes at most PROJECT_MEMBER_ADD_MAX ids per request, and
+  // selections persist across searches, so the list stops growing at the cap.
+  const full = selected.length >= PROJECT_MEMBER_ADD_MAX;
+
   const toggle = (userId: string) => {
     setFormError(null);
     setSelected((current) =>
       current.includes(userId)
         ? current.filter((id) => id !== userId)
-        : [...current, userId],
+        : current.length >= PROJECT_MEMBER_ADD_MAX
+          ? current
+          : [...current, userId],
     );
   };
 
@@ -344,7 +353,10 @@ export function AddMemberDialog({
                       checked={
                         !inProject && selected.includes(candidate.userId)
                       }
-                      disabled={inProject}
+                      disabled={
+                        inProject ||
+                        (full && !selected.includes(candidate.userId))
+                      }
                       aria-describedby={noteId}
                       onChange={() => {
                         toggle(candidate.userId);
@@ -413,6 +425,12 @@ export function AddMemberDialog({
               {selected.length}
             </span>{" "}
             คน
+            {full ? (
+              <span data-testid="add-member-limit">
+                {" "}
+                · เพิ่มได้ครั้งละไม่เกิน {PROJECT_MEMBER_ADD_MAX} คน
+              </span>
+            ) : null}
           </span>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button
