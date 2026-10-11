@@ -1,7 +1,7 @@
 import type { ProjectMember, ProjectRole } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 
 import { SearchIcon } from "../../../components/shell/icons";
 import { initialsOf } from "../../../components/shell/initials";
@@ -33,6 +33,8 @@ import { isDenied } from "../../workspace/rows";
 import { AddMemberDialog, type AddStaleReason } from "./AddMemberDialog";
 import { PROJECT_ROLE_DESCRIPTIONS, PROJECT_ROLE_LABELS } from "./roles";
 
+export const PROJECT_GONE_NOTICE =
+  "ไม่พบโปรเจกต์นี้ หรือคุณไม่มีสิทธิ์เข้าถึงโปรเจกต์นี้แล้ว";
 export const LAST_ADMIN_CHANGE_MESSAGE =
   "ต้องมีผู้ดูแลอย่างน้อย 1 คน เปลี่ยนบทบาทผู้ดูแลคนสุดท้ายไม่ได้";
 export const LAST_ADMIN_REMOVE_MESSAGE =
@@ -77,6 +79,7 @@ function ProjectMembers({
 }) {
   const { me, mePending, meError, refreshMembershipContext } = useTenant();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { preferences } = usePreferences();
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
@@ -126,6 +129,31 @@ function ProjectMembers({
 
   const notFound = isNotFound(detail.error) || isNotFound(membersQuery.error);
   const denied = isDenied(detail.error) || isDenied(membersQuery.error);
+  // A 404 means the Project is gone or no longer visible to this user: forget
+  // what was cached for it and go back to the list, which announces why.
+  useEffect(() => {
+    if (!notFound || denied) return;
+    queryClient.removeQueries({
+      queryKey: projectQueryKeys.project(organizationId, projectId),
+    });
+    void navigate(`/organizations/${organizationId}/projects`, {
+      replace: true,
+      state: {
+        projectNotice:
+          leftProject === null
+            ? PROJECT_GONE_NOTICE
+            : `คุณออกจากโปรเจกต์ ${leftProject} แล้ว`,
+      },
+    });
+  }, [
+    notFound,
+    denied,
+    leftProject,
+    queryClient,
+    navigate,
+    organizationId,
+    projectId,
+  ]);
   useEffect(() => {
     if (!denied || contextRefresh !== "idle") return;
     setContextRefresh("refreshing");

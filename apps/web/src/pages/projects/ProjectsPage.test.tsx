@@ -22,6 +22,7 @@ import {
   createProject,
   deleteProject,
   fetchProjectList,
+  projectQueryKeys,
   updateProject,
 } from "../../lib/api/projects";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
@@ -94,7 +95,7 @@ beforeEach(() => {
   fetchMeContextMock.mockResolvedValue(context("owner"));
 });
 
-function renderPage(organizationId = A) {
+function renderPage(organizationId = A, state?: unknown) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -107,7 +108,11 @@ function renderPage(organizationId = A) {
         element: <ProjectsPage />,
       },
     ],
-    { initialEntries: [`/organizations/${organizationId}/projects`] },
+    {
+      initialEntries: [
+        { pathname: `/organizations/${organizationId}/projects`, state },
+      ],
+    },
   );
   return render(
     <QueryClientProvider client={queryClient}>
@@ -848,5 +853,66 @@ describe("stale list", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("projects-stale-warning")).toBeNull();
     expect(screen.queryByTestId("projects-notice-saved")).toBeNull();
+  });
+});
+
+describe("a Project that answers 404 (AC-05)", () => {
+  it.each(["edit", "delete"] as const)(
+    "drops the Project's cached detail, members and candidates after a 404 on %s",
+    async (action) => {
+      const user = userEvent.setup();
+      const gone = project({ name: "Payments", myRole: "admin" });
+      const other = project({ name: "Other", myRole: "admin" });
+      fetchListMock.mockResolvedValue({ projects: [gone, other] });
+      renderPage();
+      const queryClient = queryClients[0];
+      if (queryClient === undefined) throw new Error("no query client");
+      for (const id of [gone.id, other.id]) {
+        for (const kind of ["detail", "members", "candidates"] as const) {
+          queryClient.setQueryData([...projectQueryKeys.all(A), id, kind], {
+            cached: id,
+          });
+        }
+      }
+      const denied = new ApiError("PROJECT_NOT_FOUND", "gone", 404);
+      updateMock.mockRejectedValue(denied);
+      deleteMock.mockRejectedValue(denied);
+      await user.click(
+        within(await screen.findByTestId(`project-row-${gone.id}`)).getByTestId(
+          `project-${action}`,
+        ),
+      );
+      const dialog = await screen.findByTestId(
+        action === "edit" ? "project-edit-dialog" : "project-delete-dialog",
+      );
+      await user.click(
+        within(dialog).getByTestId(
+          action === "edit" ? "project-form-submit" : "project-delete-confirm",
+        ),
+      );
+      await waitFor(() => {
+        expect(
+          queryClient
+            .getQueryCache()
+            .findAll({ queryKey: projectQueryKeys.project(A, gone.id) }),
+        ).toEqual([]);
+      });
+      expect(
+        queryClient
+          .getQueryCache()
+          .findAll({ queryKey: projectQueryKeys.project(A, other.id) }),
+      ).toHaveLength(3);
+    },
+  );
+
+  it("announces the notice carried from a Project page and focuses the heading", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, { projectNotice: "ไม่พบโปรเจกต์นี้" });
+    expect(
+      await screen.findByTestId("projects-notice-role-changed"),
+    ).toHaveTextContent("ไม่พบโปรเจกต์นี้");
+    await waitFor(() => {
+      expect(screen.getByTestId("page-title")).toHaveFocus();
+    });
   });
 });

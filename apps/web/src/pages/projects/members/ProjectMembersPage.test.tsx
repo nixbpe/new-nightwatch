@@ -32,11 +32,12 @@ import {
   fetchProjectDetail,
   fetchProjectMemberCandidates,
   fetchProjectMembers,
+  projectQueryKeys,
   removeProjectMember,
   updateProjectMemberRole,
 } from "../../../lib/api/projects";
 import { TenantProvider, useTenant } from "../../../lib/tenant/TenantProvider";
-import { ProjectMembersPage } from "./ProjectMembersPage";
+import { PROJECT_GONE_NOTICE, ProjectMembersPage } from "./ProjectMembersPage";
 
 guardUnassignedNetwork();
 
@@ -168,10 +169,23 @@ beforeEach(() => {
   });
 });
 
+// Stands in for the list page: shows where a 404 sent the user and the notice it carried.
+function ProjectListStub() {
+  const state = useLocation().state as { projectNotice?: string } | null;
+  return (
+    <>
+      <p data-testid="harness-projects">projects</p>
+      <p data-testid="harness-notice">{state?.projectNotice}</p>
+    </>
+  );
+}
+
+let lastQueryClient: QueryClient;
 function renderPage(organizationId = A) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  lastQueryClient = queryClient;
   bindQueryClientIdentity(queryClient, ME);
   queryClients.push(queryClient);
   const router = createMemoryRouter(
@@ -179,6 +193,10 @@ function renderPage(organizationId = A) {
       {
         path: "/organizations/:organizationId/projects/:projectId/members",
         element: <ProjectMembersPage />,
+      },
+      {
+        path: "/organizations/:organizationId/projects",
+        element: <ProjectListStub />,
       },
     ],
     {
@@ -323,16 +341,43 @@ describe("who can manage", () => {
 });
 
 describe("states", () => {
-  it("shows one not-found state for a missing or invisible project (AC-08)", async () => {
+  it("clears the Project's cached queries and returns to the list with a notice on 404 (AC-05)", async () => {
     const error = new ApiError("PROJECT_NOT_FOUND", "missing", 404);
     detailMock.mockRejectedValue(error);
     membersMock.mockRejectedValue(error);
     renderPage();
-    expect(
-      await screen.findByTestId("project-members-not-found"),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("harness-projects")).toBeInTheDocument();
+    expect(screen.getByTestId("harness-notice")).toHaveTextContent(
+      PROJECT_GONE_NOTICE,
+    );
     expect(screen.queryByTestId("project-members-table")).toBeNull();
-    expect(screen.queryByTestId("page-scope")).toBeNull();
+    expect(
+      lastQueryClient.getQueryCache().findAll({
+        queryKey: projectQueryKeys.project(A, P),
+      }),
+    ).toEqual([]);
+  });
+
+  it("returns to the list when a demotion makes a later request answer 404 (AC-05)", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await loaded();
+    expect(
+      lastQueryClient.getQueryCache().findAll({
+        queryKey: projectQueryKeys.project(A, P),
+      }),
+    ).not.toEqual([]);
+    const gone = new ApiError("PROJECT_NOT_FOUND", "missing", 404);
+    patchMock.mockRejectedValue(gone);
+    detailMock.mockRejectedValue(gone);
+    membersMock.mockRejectedValue(gone);
+    await user.selectOptions(select("thanakorn"), "admin");
+    expect(await screen.findByTestId("harness-projects")).toBeInTheDocument();
+    expect(
+      lastQueryClient.getQueryCache().findAll({
+        queryKey: projectQueryKeys.project(A, P),
+      }),
+    ).toEqual([]);
   });
 
   it("shows denied for an organization the user does not belong to, without a request", async () => {
@@ -437,10 +482,11 @@ describe("self changes", () => {
     await loaded();
     await user.click(within(row(ME)).getByTestId("project-member-remove"));
     await user.click(screen.getByTestId("project-member-remove-confirm"));
-    expect(await screen.findByTestId("project-members-left")).toBeVisible();
+    expect(await screen.findByTestId("harness-projects")).toBeVisible();
     expect(removeMock).toHaveBeenCalledWith(A, P, ME);
-    expect(screen.queryByTestId("project-members-not-found")).toBeNull();
-    expect(screen.getByTestId("page-title")).toHaveFocus();
+    expect(screen.getByTestId("harness-notice")).toHaveTextContent(
+      /^คุณออกจากโปรเจกต์ .+ แล้ว$/,
+    );
   });
 
   it("keeps the organization owner on the page after removing themself", async () => {

@@ -4,7 +4,7 @@ import {
 } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 
 import { EmptyState } from "../../components/shell/EmptyState";
 import { GridIcon, SearchIcon } from "../../components/shell/icons";
@@ -72,6 +72,12 @@ export function ProjectsPage() {
   );
 }
 
+function projectNoticeOf(state: unknown): string | null {
+  if (typeof state !== "object" || state === null) return null;
+  const notice = (state as { projectNotice?: unknown }).projectNotice;
+  return typeof notice === "string" && notice !== "" ? notice : null;
+}
+
 function RolePill({ role }: { role: ProjectSummary["myRole"] }) {
   const hooks = {
     "data-testid": "project-role",
@@ -110,6 +116,8 @@ function ProjectsForOrganization({
     (item) => item.id === organizationId,
   );
   const isMember = organization !== undefined;
+  // Set by the Project pages when they send the user back after a 404.
+  const arrivalNotice = projectNoticeOf(useLocation().state);
 
   const [view, setView] = useState<View>("all");
   const [searchText, setSearchText] = useState("");
@@ -120,12 +128,20 @@ function ProjectsForOrganization({
   const [notice, setNotice] = useState<{
     text: string;
     kind: "saved" | "role-changed";
-  } | null>(null);
+  } | null>(
+    arrivalNotice === null
+      ? null
+      : { text: arrivalNotice, kind: "role-changed" },
+  );
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
   >("idle");
   const heading = useRef<HTMLHeadingElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  // Arriving with a notice moves focus to the heading, so it is read first.
+  useEffect(() => {
+    if (arrivalNotice !== null) heading.current?.focus();
+  }, [arrivalNotice]);
 
   const list = useQuery({
     queryKey: projectQueryKeys.list(organizationId),
@@ -216,6 +232,13 @@ function ProjectsForOrganization({
     setNotice(reloaded ? { text, kind: "saved" } : null);
   };
 
+  // The Project answered 404: drop what is cached for it, not only the list.
+  const forgetProject = (projectId: string) => {
+    queryClient.removeQueries({
+      queryKey: projectQueryKeys.project(organizationId, projectId),
+    });
+  };
+
   const roleChanged = () => {
     setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
     reload();
@@ -239,6 +262,7 @@ function ProjectsForOrganization({
         }
         if (error.code === "PROJECT_NOT_FOUND") {
           setDeletion(null);
+          forgetProject(project.id);
           reload();
           return;
         }
@@ -643,7 +667,10 @@ function ProjectsForOrganization({
           onStale={(reason: StaleReason) => {
             setDialog(null);
             if (reason === "denied") roleChanged();
-            else reload();
+            else {
+              if (dialog.kind === "edit") forgetProject(dialog.project.id);
+              reload();
+            }
           }}
         />
       )}
