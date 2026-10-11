@@ -35,7 +35,12 @@ export function statusLine(monitor: Monitor): ReactNode {
     );
     return (
       <>
-        ตั้งแต่ <Time iso={openIncident.startedAt} format={formatTimeOrDate} />{" "}
+        ตั้งแต่{" "}
+        <Time
+          testId="monitor-detail-incident-start"
+          iso={openIncident.startedAt}
+          format={formatTimeOrDate}
+        />{" "}
         ({formatDuration(seconds)})
       </>
     );
@@ -45,7 +50,11 @@ export function statusLine(monitor: Monitor): ReactNode {
       return (
         <>
           {HEALTH_REASON_LABELS.stale}ตั้งแต่{" "}
-          <Time iso={monitor.lastCheckAt} format={formatTimeOrDate} />
+          <Time
+            testId="monitor-detail-stale-time"
+            iso={monitor.lastCheckAt}
+            format={formatTimeOrDate}
+          />
         </>
       );
     }
@@ -57,14 +66,20 @@ export function statusLine(monitor: Monitor): ReactNode {
 function UptimeWindow({
   label,
   window,
+  testId,
 }: {
+  testId?: string;
   label: string;
   window: Monitor["uptime"]["h24"];
 }) {
   return (
-    <div className="p-4">
+    <div data-testid={testId} className="p-4">
       <dt className="text-sm text-foreground-secondary">{label}</dt>
-      <dd className="mt-1 font-mono text-xl font-medium text-heading tabular-nums">
+      <dd
+        data-testid="monitor-status-percent"
+        data-has-percent={window.percent !== null}
+        className="mt-1 font-mono text-xl font-medium text-heading tabular-nums"
+      >
         {window.percent === null ? (
           <span className="font-sans text-base font-normal">{NO_DATA}</span>
         ) : (
@@ -74,9 +89,11 @@ function UptimeWindow({
       {window.percent === null ? null : (
         <dd className="mt-1 text-xs text-foreground-secondary">
           จากการตรวจ{" "}
-          <span className="font-mono">{formatNumber(window.checks)}</span> ครั้ง
-          ครอบคลุม{" "}
-          <span className="font-mono">
+          <span data-testid="monitor-status-checks" className="font-mono">
+            {formatNumber(window.checks)}
+          </span>{" "}
+          ครั้ง ครอบคลุม{" "}
+          <span data-testid="monitor-status-coverage" className="font-mono">
             {formatPercent(window.coveragePercent)}%
           </span>
         </dd>
@@ -97,7 +114,11 @@ export function DownBanner({
   const { openIncident } = monitor;
   if (monitor.health !== "down" || openIncident === null) return null;
   return (
-    <div className="flex flex-wrap items-start gap-3.5 rounded-md border border-danger bg-danger-tint px-4 py-4">
+    <div
+      data-testid="monitor-detail-down-banner"
+      data-reason={openIncident.reason}
+      className="flex flex-wrap items-start gap-3.5 rounded-md border border-danger bg-danger-tint px-4 py-4"
+    >
       <svg
         viewBox="0 0 24 24"
         width="20"
@@ -114,17 +135,30 @@ export function DownBanner({
       </svg>
       <div className="flex min-w-0 grow flex-col gap-0.5">
         <p className="font-semibold text-heading">
-          <span>ล่ม</span> <span>{statusLine(monitor)}</span>
+          <span>ล่ม</span>{" "}
+          <span data-testid="monitor-detail-down-duration">
+            {statusLine(monitor)}
+          </span>
         </p>
-        <p className="text-sm text-foreground-secondary">
+        <p
+          data-testid="monitor-detail-down-cause"
+          className="text-sm text-foreground-secondary"
+        >
           สาเหตุ {incidentReasonLabel(openIncident.reason)} (คาดหวัง{" "}
-          <span className="font-mono">{monitor.expectedStatus}</span>)
+          <span
+            data-testid="monitor-detail-down-expected-status"
+            className="font-mono"
+          >
+            {monitor.expectedStatus}
+          </span>
+          )
         </p>
       </div>
       {/* /notifications shows the server-active organization's inbox; any other organization's banner must not link to it. */}
       {organizationId === serverActiveOrgId ? (
         <Link
           to="/notifications"
+          data-testid="monitor-detail-down-notifications"
           className="inline-flex min-h-6 items-center text-xs whitespace-nowrap text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           ดูการแจ้งเตือน
@@ -147,23 +181,33 @@ export function StatusCard({
     consecutiveFailures > 0 &&
     (health === "up" || (health === "unknown" && healthReason === null));
   return (
-    <section aria-labelledby="detail-status" className="flex flex-col gap-4">
+    <section
+      data-testid="monitor-status"
+      aria-labelledby="detail-status"
+      className="flex flex-col gap-4"
+    >
       <SectionHeader
         id="detail-status"
         title="สถานะปัจจุบัน"
         meta={
           <span className="inline-flex items-center gap-1.5">
             <span
+              data-testid="monitor-status-freshness-dot"
+              data-fresh={fresh}
               aria-hidden="true"
               className={cn(
                 "size-[6px] shrink-0 rounded-full",
                 fresh ? "live-pulse bg-primary" : "bg-foreground-secondary",
               )}
             />
-            <span>
+            <span data-testid="monitor-status-as-of">
               ข้อมูล ณ{" "}
               <span className="font-mono">
-                <Time iso={monitor.dataAsOf} format={formatTimeWithSeconds} />
+                <Time
+                  testId="monitor-status-as-of-time"
+                  iso={monitor.dataAsOf}
+                  format={formatTimeWithSeconds}
+                />
               </span>{" "}
               ({TIME_ZONE})
             </span>
@@ -172,11 +216,21 @@ export function StatusCard({
       />
       {failing || monitor.lastKnownDown ? (
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {monitor.lastKnownDown ? <span>ล่าสุดทราบว่าล่ม</span> : null}
+          {monitor.lastKnownDown ? (
+            <span data-testid="monitor-status-last-known-down">
+              ล่าสุดทราบว่าล่ม
+            </span>
+          ) : null}
           {failing ? (
-            <span className="font-medium text-caution">
+            <span
+              data-testid="monitor-status-failures"
+              className="font-medium text-caution"
+            >
               ล้มเหลว {consecutiveFailures} ครั้ง
-              <span className="font-normal text-foreground-secondary">
+              <span
+                data-testid="monitor-status-failure-threshold"
+                className="font-normal text-foreground-secondary"
+              >
                 {" "}
                 จะเปลี่ยนเป็นล่มเมื่อล้มเหลวติดกันครบ{" "}
                 {monitor.alerts.failureThreshold} ครั้ง
@@ -187,19 +241,25 @@ export function StatusCard({
       ) : null}
       <HairlineGrid as="dl" className="grid-cols-1 sm:grid-cols-3">
         <UptimeWindow
+          testId="monitor-status-window-h24"
           label="ความพร้อมใช้งาน 24 ชม."
           window={monitor.uptime.h24}
         />
         <UptimeWindow
+          testId="monitor-status-window-d7"
           label="ความพร้อมใช้งาน 7 วัน"
           window={monitor.uptime.d7}
         />
         <UptimeWindow
+          testId="monitor-status-window-d30"
           label="ความพร้อมใช้งาน 30 วัน"
           window={monitor.uptime.d30}
         />
       </HairlineGrid>
-      <p className="text-xs text-foreground-secondary">
+      <p
+        data-testid="monitor-status-calculation-note"
+        className="text-xs text-foreground-secondary"
+      >
         คำนวณจากการตรวจที่มีผล ไม่รวมช่วงหยุดชั่วคราวและช่วงที่ตรวจไม่ได้
         ช่วงไม่มีข้อมูลไม่นับเป็นปกติ
       </p>

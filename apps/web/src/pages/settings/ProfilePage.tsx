@@ -38,6 +38,7 @@ export function ProfilePage() {
       <Card
         as="section"
         role="status"
+        data-testid="profile-loading"
         aria-label="กำลังโหลดโปรไฟล์"
         padding="md"
       >
@@ -54,13 +55,14 @@ export function ProfilePage() {
   if (meQuery.isError) {
     return (
       <div className="flex flex-col gap-4">
-        <Alert tone="error">
+        <Alert data-testid="profile-load-error" tone="error">
           โหลดข้อมูลโปรไฟล์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
         </Alert>
         <div>
           <Button
             type="button"
             variant="secondary"
+            data-testid="profile-load-retry"
             disabled={meQuery.isRefetching}
             onClick={() => {
               void meQuery.refetch();
@@ -153,10 +155,15 @@ function ProfileForm({
         </p>
       </div>
 
-      {notice === null ? null : <Alert tone={notice.tone}>{notice.text}</Alert>}
+      {notice === null ? null : (
+        <Alert data-testid={`profile-save-${notice.tone}`} tone={notice.tone}>
+          {notice.text}
+        </Alert>
+      )}
 
       <div className="flex items-center gap-4">
         <span
+          data-testid="profile-avatar"
           aria-hidden="true"
           className="surface-inset inline-flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full border border-foreground/10 text-xl font-medium"
         >
@@ -183,9 +190,11 @@ function ProfileForm({
               </span>
             }
             error={showError ? validation : null}
+            errorTestId="profile-name-error"
             errorId={`${nameId}-error`}
           >
             <Input
+              data-testid="profile-name"
               id={nameId}
               name="display-name"
               autoComplete="name"
@@ -208,7 +217,11 @@ function ProfileForm({
                 <span className="inline-flex min-h-6 items-center gap-2">
                   อีเมล
                   {emailVerified ? (
-                    <StatusPill tone="primary" dot>
+                    <StatusPill
+                      data-testid="profile-email-verified"
+                      tone="primary"
+                      dot
+                    >
                       ยืนยันแล้ว
                     </StatusPill>
                   ) : null}
@@ -216,6 +229,7 @@ function ProfileForm({
               }
             >
               <Input
+                data-testid="profile-email"
                 id={emailId}
                 type="email"
                 value={email}
@@ -236,6 +250,7 @@ function ProfileForm({
           <Button
             type="button"
             variant="ghost"
+            data-testid="profile-cancel"
             disabled={!dirty || saving}
             onClick={() => {
               setName(storedName);
@@ -245,7 +260,11 @@ function ProfileForm({
           >
             ยกเลิก
           </Button>
-          <Button type="submit" disabled={!dirty || saving}>
+          <Button
+            data-testid="profile-save"
+            type="submit"
+            disabled={!dirty || saving}
+          >
             {saving ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}
           </Button>
         </CardFooter>

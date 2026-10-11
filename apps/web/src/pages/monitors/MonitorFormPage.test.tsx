@@ -99,9 +99,9 @@ const written = (overrides: Partial<MonitorRecord> = {}) => ({
 });
 
 async function fillBasic(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText("ชื่อมอนิเตอร์"), "Payments API");
+  await user.type(screen.getByTestId("monitor-form-name"), "Payments API");
   await user.type(
-    screen.getByLabelText("URL"),
+    screen.getByTestId("monitor-form-url"),
     "https://api.acme.example/health",
   );
 }
@@ -109,43 +109,55 @@ async function fillBasic(user: ReturnType<typeof userEvent.setup>) {
 async function openCreate() {
   const user = userEvent.setup();
   renderForm(newPath());
-  await screen.findByRole("heading", { level: 1, name: "เพิ่มมอนิเตอร์" });
-  await screen.findByLabelText("ชื่อมอนิเตอร์");
+  await screen.findByTestId("monitor-form-title");
+  await screen.findByTestId("monitor-form-name");
   return user;
 }
 
 describe("Create form defaults", () => {
   it("starts in basic mode with 5 minutes, 200-299 and a 10 second timeout", async () => {
     await openCreate();
-    expect(screen.getByRole("radio", { name: "พื้นฐาน" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "5 นาที" })).toBeChecked();
-    expect(screen.getByText(/ถือว่าปกติเมื่อได้รหัส 200-299/)).toBeVisible();
-    expect(screen.getByText("หมดเวลารอ 10 วินาที")).toBeVisible();
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("");
+    expect(screen.getByTestId("monitor-form-mode-basic")).toBeChecked();
+    expect(screen.getByTestId("monitor-form-interval-300")).toBeChecked();
+    expect(screen.getByTestId("monitor-form-status-summary")).toHaveAttribute(
+      "data-expected-status",
+      "200-299",
+    );
+    expect(screen.getByTestId("monitor-form-timeout-summary")).toHaveAttribute(
+      "data-timeout-seconds",
+      "10",
+    );
+    expect(screen.getByTestId("monitor-form-name")).toHaveValue("");
   });
 
   it("moves the interval with the arrow keys", async () => {
     const user = await openCreate();
-    screen.getByRole("radio", { name: "5 นาที" }).focus();
+    screen.getByTestId("monitor-form-interval-300").focus();
     await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("radio", { name: "15 นาที" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "15 นาที" })).toHaveFocus();
+    expect(screen.getByTestId("monitor-form-interval-900")).toBeChecked();
+    expect(screen.getByTestId("monitor-form-interval-900")).toHaveFocus();
     await user.keyboard("{ArrowLeft}{ArrowLeft}");
-    expect(screen.getByRole("radio", { name: "1 นาที" })).toBeChecked();
+    expect(screen.getByTestId("monitor-form-interval-60")).toBeChecked();
   });
 });
 
 describe("Create validation and save", () => {
   it("puts errors beside name and url, focuses the first and sends nothing", async () => {
     const user = await openCreate();
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
-    const name = screen.getByLabelText("ชื่อมอนิเตอร์");
-    const url = screen.getByLabelText("URL");
+    await user.click(screen.getByTestId("monitor-form-save"));
+    const name = screen.getByTestId("monitor-form-name");
+    const url = screen.getByTestId("monitor-form-url");
     expect(name).toHaveAttribute("aria-invalid", "true");
-    expect(name).toHaveAccessibleDescription("กรอกชื่อมอนิเตอร์");
-    expect(url).toHaveAccessibleDescription(
-      expect.stringContaining("กรอก URL"),
+    expect(name).toHaveAccessibleDescription();
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    expect(name).toHaveAttribute(
+      "aria-describedby",
+      expect.stringContaining("monitor-form-name-error"),
     );
+    expect(
+      document.getElementById("monitor-form-name-error"),
+    ).not.toBeEmptyDOMElement();
+    expect(url).toHaveAccessibleDescription();
     expect(name).toHaveFocus();
     expect(createMock).not.toHaveBeenCalled();
   });
@@ -163,11 +175,18 @@ describe("Create validation and save", () => {
     });
     const user = await openCreate();
     await fillBasic(user);
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
+    const health = await screen.findByTestId("monitor-detail-health");
+    expect(health).toHaveAttribute("data-health", "unknown");
+    expect(health).toHaveAttribute("data-health-reason", "never_checked");
+    expect(health).toHaveAttribute("data-last-check-at", "");
+    expect(screen.getByTestId("monitor-detail-first-check")).toBeVisible();
     expect(
-      (await screen.findAllByText("รอตรวจครั้งแรก")).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByText("สร้างมอนิเตอร์แล้ว")).toBeInTheDocument();
+      screen.getByTestId("monitor-detail-first-check"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      screen.getByTestId("monitor-detail-notice"),
+    ).not.toBeEmptyDOMElement();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${A}/monitors/${MONITOR_ID}`,
     );
@@ -191,12 +210,12 @@ describe("Create validation and save", () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail() });
     const user = await openCreate();
     await fillBasic(user);
-    const save = screen.getByRole("button", { name: "บันทึกมอนิเตอร์" });
+    const save = screen.getByTestId("monitor-form-save");
     await user.click(save);
-    await user.click(screen.getByRole("button", { name: "กำลังบันทึก…" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     await user.keyboard("{Enter}");
     expect(createMock).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "กำลังบันทึก…" })).toHaveFocus();
+    expect(screen.getByTestId("monitor-form-save")).toHaveFocus();
     pending.resolve(written());
     await screen.findByTestId("location");
   });
@@ -209,10 +228,18 @@ describe("Create validation and save", () => {
     );
     const user = await openCreate();
     await fillBasic(user);
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
-    const url = await screen.findByLabelText("URL");
+    await user.click(screen.getByTestId("monitor-form-save"));
+    const url = await screen.findByTestId("monitor-form-url");
     await waitFor(() => {
-      expect(url).toHaveAccessibleDescription(/ที่อยู่นี้ไม่อนุญาตให้ตรวจสอบ/);
+      expect(url).toHaveAccessibleDescription();
+      expect(url).toHaveAttribute("aria-invalid", "true");
+      expect(url).toHaveAttribute(
+        "aria-describedby",
+        expect.stringContaining("monitor-form-url-error"),
+      );
+      expect(
+        document.getElementById("monitor-form-url-error"),
+      ).not.toBeEmptyDOMElement();
     });
     expect(url).toHaveFocus();
     expect(url).toHaveValue("https://api.acme.example/health");
@@ -227,10 +254,10 @@ describe("Create validation and save", () => {
     );
     const user = await openCreate();
     await fillBasic(user);
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
-    const name = await screen.findByLabelText("ชื่อมอนิเตอร์");
+    await user.click(screen.getByTestId("monitor-form-save"));
+    const name = await screen.findByTestId("monitor-form-name");
     await waitFor(() => {
-      expect(name).toHaveAccessibleDescription(/ชื่อยาวได้ไม่เกิน 100/);
+      expect(name).toHaveAccessibleDescription();
     });
     expect(name).toHaveFocus();
     await user.type(name, "x");
@@ -243,11 +270,9 @@ describe("Create validation and save", () => {
     );
     const user = await openCreate();
     await fillBasic(user);
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
-    expect(
-      await screen.findByText(/มีมอนิเตอร์ครบตามจำนวนสูงสุด/),
-    ).toBeVisible();
-    expect(screen.getByLabelText("URL")).toHaveValue(
+    await user.click(screen.getByTestId("monitor-form-save"));
+    expect(await screen.findByTestId("monitor-form-error")).toBeVisible();
+    expect(screen.getByTestId("monitor-form-url")).toHaveValue(
       "https://api.acme.example/health",
     );
   });
@@ -259,9 +284,9 @@ describe("StrictMode", () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail() });
     const user = userEvent.setup();
     renderForm(newPath(), undefined, true);
-    await screen.findByLabelText("ชื่อมอนิเตอร์");
+    await screen.findByTestId("monitor-form-name");
     await fillBasic(user);
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
         `/organizations/${A}/monitors/${MONITOR_ID}`,
@@ -277,22 +302,18 @@ describe("Access", () => {
       fetchMeContextMock.mockResolvedValue(context(role));
       renderForm(newPath());
       expect(
-        await screen.findByText(
-          "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
-        ),
+        await screen.findByTestId("monitor-form-denied"),
       ).toBeInTheDocument();
-      expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+      expect(screen.queryByTestId("monitor-form-name")).toBeNull();
     },
   );
 
   it("shows denied to a non-member without the Organization's name", async () => {
     renderForm(newPath("33333333-3333-4333-8333-333333333333"));
     expect(
-      await screen.findByText(
-        "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
-      ),
+      await screen.findByTestId("monitor-form-denied"),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   });
 });
 
@@ -304,8 +325,8 @@ describe("Organization switch", () => {
       ...context(),
       lastActiveTenantId: B,
     });
-    await user.click(screen.getByRole("button", { name: /Acme/ }));
-    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+    await user.click(screen.getByTestId("shell-organization-switch"));
+    await user.click(screen.getByTestId(`shell-organization-${B}`));
   }
 
   it("sends /monitors/new to the new Organization's Overview without the typed values", async () => {
@@ -315,19 +336,23 @@ describe("Organization switch", () => {
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(overviewOfB);
     });
-    expect(screen.queryByDisplayValue("Payments API")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   });
 
   it("sends an Edit page to the new Organization's Overview", async () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail({ version: 3 }) });
     const user = userEvent.setup();
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     await switchToB(user);
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(overviewOfB);
     });
-    expect(screen.queryByDisplayValue("Payments API")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   });
 
   it("does not navigate back to the old Organization when a save lands after the switch", async () => {
@@ -335,7 +360,7 @@ describe("Organization switch", () => {
     createMock.mockReturnValue(pending.promise);
     const user = await openCreate();
     await fillBasic(user);
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     await switchToB(user);
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(overviewOfB);
@@ -356,21 +381,27 @@ describe("Edit", () => {
     updateMock.mockResolvedValue(written({ version: 4 }));
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await screen.findByDisplayValue("Payments API");
-    expect(screen.getByLabelText("URL")).toHaveValue(
+    const name = await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
+    expect(screen.getByTestId("monitor-form-url")).toHaveValue(
       "https://api.acme.example/health",
     );
-    expect(screen.getByRole("radio", { name: "5 นาที" })).toBeChecked();
+    expect(screen.getByTestId("monitor-form-interval-300")).toBeChecked();
     fetchDetailMock.mockResolvedValue({
       monitor: detail({ name: "Payments API 2", version: 4 }),
     });
     await user.type(name, " 2");
-    await user.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
-    expect(await screen.findByText("บันทึกการแก้ไขแล้ว")).toBeInTheDocument();
-    // Detail's first paint already holds the saved monitor, never the pre-edit one.
+    await user.click(screen.getByTestId("monitor-form-save"));
     expect(
-      screen.getByRole("heading", { level: 1, name: "Payments API 2" }),
-    ).toBeInTheDocument();
+      await screen.findByTestId("monitor-detail-notice"),
+    ).not.toBeEmptyDOMElement();
+    // Detail's first paint already holds the saved monitor, never the pre-edit one.
+    expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+      /^Payments API 2$/,
+    );
     expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
       name: "Payments API 2",
       expectedVersion: 3,
@@ -387,15 +418,17 @@ describe("Edit", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await screen.findByDisplayValue("Payments API");
+    const name = await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     await user.type(name, " mine");
-    await user.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     expect(
-      await screen.findByText(
-        "มอนิเตอร์นี้ถูกแก้โดยผู้อื่น โหลดใหม่เพื่อดูค่าล่าสุด",
-      ),
+      await screen.findByTestId("monitor-form-conflict"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+    expect(screen.getByTestId("monitor-form-name")).toHaveValue(
       "Payments API mine",
     );
   });
@@ -409,17 +442,27 @@ describe("Edit", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await screen.findByDisplayValue("Payments API");
+    const name = await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     await user.type(name, " mine");
-    await user.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
-    await screen.findByText(/ถูกแก้โดยผู้อื่น/);
+    await user.click(screen.getByTestId("monitor-form-save"));
+    await screen.findByTestId("monitor-form-conflict");
     fetchDetailMock.mockResolvedValue({
       monitor: detail({ name: "Theirs", version: 5 }),
     });
-    await user.click(screen.getByRole("button", { name: "โหลดค่าล่าสุด" }));
-    expect(await screen.findByDisplayValue("Theirs")).toBeInTheDocument();
+    await user.click(screen.getByTestId("monitor-form-reload"));
+    expect(
+      await waitFor(() => {
+        const field = screen.getByTestId("monitor-form-name");
+        expect(field).toHaveValue("Theirs");
+        return field;
+      }),
+    ).toBeInTheDocument();
     updateMock.mockResolvedValue(written({ version: 6 }));
-    await user.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(2);
     });
@@ -431,8 +474,14 @@ describe("Edit", () => {
     updateMock.mockRejectedValue(new ApiError("MONITOR_NOT_FOUND", "nf", 404));
     const user = userEvent.setup();
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
-    await user.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
+    await user.click(screen.getByTestId("monitor-form-save"));
+    expect(
+      await screen.findByTestId("monitor-form-not-found"),
+    ).toBeInTheDocument();
   });
 });

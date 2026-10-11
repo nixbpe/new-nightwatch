@@ -41,14 +41,9 @@ function renderAt(entry: string) {
 }
 
 async function fillAndSubmit(password: string) {
-  await userEvent.type(
-    screen.getByLabelText("รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)"),
-    password,
-  );
-  await userEvent.type(screen.getByLabelText("ยืนยันรหัสผ่านใหม่"), password);
-  await userEvent.click(
-    screen.getByRole("button", { name: "บันทึกรหัสผ่านใหม่" }),
-  );
+  await userEvent.type(screen.getByTestId("reset-password-password"), password);
+  await userEvent.type(screen.getByTestId("reset-password-confirm"), password);
+  await userEvent.click(screen.getByTestId("reset-password-submit"));
 }
 
 describe("ResetPasswordPage", () => {
@@ -66,6 +61,10 @@ describe("ResetPasswordPage", () => {
     await fillAndSubmit("brand-new-pass-1");
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/login");
+    expect(resetPasswordMock).toHaveBeenCalledWith({
+      newPassword: "brand-new-pass-1",
+      token: "reset-tok-1",
+    });
   });
 
   it("refuses an expired or replayed token and keeps the form intact", async () => {
@@ -77,15 +76,20 @@ describe("ResetPasswordPage", () => {
 
     await fillAndSubmit("another-pass-22");
 
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว");
+    const alert = await screen.findByTestId("reset-password-error");
+    expect(alert).toBeVisible();
+    expect(resetPasswordMock).toHaveBeenCalledWith({
+      newPassword: "another-pass-22",
+      token: "spent-tok",
+    });
+    expect(screen.getByTestId("reset-password-submit")).toBeEnabled();
     // Retry-safe: still on the page, inputs preserved, request-new-link shown.
     expect(screen.queryByTestId("location")).toBeNull();
+    expect(screen.getByTestId("reset-password-password")).toHaveValue(
+      "another-pass-22",
+    );
     expect(
-      screen.getByLabelText("รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)"),
-    ).toHaveValue("another-pass-22");
-    expect(
-      screen.getByRole("link", { name: "ขอลิงก์ใหม่" }),
+      screen.getByTestId("reset-password-request-link"),
     ).toBeInTheDocument();
   });
 
@@ -93,15 +97,12 @@ describe("ResetPasswordPage", () => {
     renderAt("/reset-password");
 
     // No password form to submit against a missing token.
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByTestId("reset-password-invalid-link")).toBeVisible();
+    expect(resetPasswordMock).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("link", { name: "ขอลิงก์ใหม่" }),
+      screen.getByTestId("reset-password-request-link"),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)"),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "บันทึกรหัสผ่านใหม่" }),
-    ).toBeNull();
+    expect(screen.queryByTestId("reset-password-password")).toBeNull();
+    expect(screen.queryByTestId("reset-password-submit")).toBeNull();
   });
 });

@@ -125,6 +125,7 @@ export function RequestSection({
         title="คำขอ (Request)"
       />
       <SelectControl
+        data-testid="monitor-form-method"
         path="method"
         label="เมธอด"
         value={values.method}
@@ -156,6 +157,7 @@ export function RequestSection({
           return (
             <RowShell
               key={header.key}
+              data-testid={`monitor-form-header-row-${header.key}`}
               legend={`Header แถวที่ ${row}`}
               removeLabel={`ลบ header แถวที่ ${row}`}
               disabled={disabled}
@@ -164,6 +166,7 @@ export function RequestSection({
               }}
             >
               <TextControl
+                data-testid="monitor-form-header-name"
                 path={`${path}.name`}
                 label="ชื่อ"
                 ariaLabel={`ชื่อ header แถวที่ ${row}`}
@@ -186,6 +189,7 @@ export function RequestSection({
               />
               <label className="flex items-center gap-2 text-sm">
                 <input
+                  data-testid="monitor-form-header-secret"
                   type="checkbox"
                   checked={header.secret}
                   aria-label={`ค่าลับ header แถวที่ ${row}`}
@@ -199,6 +203,8 @@ export function RequestSection({
               </label>
               {header.secret && header.id !== undefined ? (
                 <SecretSlot
+                  testId="monitor-header-secret"
+                  valueTestId="monitor-form-header-value"
                   slot={headerSlot(header.id)}
                   path={`${path}.value`}
                   label={`ค่า header แถวที่ ${row}`}
@@ -236,6 +242,7 @@ export function RequestSection({
                 />
               ) : (
                 <TextControl
+                  data-testid="monitor-form-header-value"
                   path={`${path}.value`}
                   label="ค่า"
                   ariaLabel={`ค่า header แถวที่ ${row}`}
@@ -258,7 +265,11 @@ export function RequestSection({
                 />
               )}
               {header.id !== undefined && stored.has(headerSlot(header.id)) ? (
-                <p role="status" className="text-sm text-caution">
+                <p
+                  data-testid="monitor-header-secret-dropped"
+                  role="status"
+                  className="text-sm text-caution"
+                >
                   {header.secret ? null : "ค่าลับเดิมจะถูกลบ"}
                 </p>
               ) : null}
@@ -266,6 +277,7 @@ export function RequestSection({
           );
         })}
         <AddRowButton
+          data-testid="monitor-form-add-header"
           id={ADD_HEADER_ID}
           label="เพิ่ม header"
           limitMessage={
@@ -295,6 +307,7 @@ export function RequestSection({
           return (
             <RowShell
               key={param.key}
+              data-testid={`monitor-form-query-row-${param.key}`}
               legend={`Query param แถวที่ ${row}`}
               removeLabel={`ลบ query param แถวที่ ${row}`}
               disabled={disabled}
@@ -303,6 +316,7 @@ export function RequestSection({
               }}
             >
               <TextControl
+                data-testid="monitor-form-query-name"
                 path={`${path}.name`}
                 label="ชื่อ"
                 ariaLabel={`ชื่อ query param แถวที่ ${row}`}
@@ -324,6 +338,7 @@ export function RequestSection({
                 }}
               />
               <TextControl
+                data-testid="monitor-form-query-value"
                 path={`${path}.value`}
                 label="ค่า"
                 ariaLabel={`ค่า query param แถวที่ ${row}`}
@@ -348,6 +363,7 @@ export function RequestSection({
           );
         })}
         <AddRowButton
+          data-testid="monitor-form-add-query"
           id={ADD_QUERY_ID}
           label="เพิ่ม query param"
           limitMessage={
@@ -361,12 +377,18 @@ export function RequestSection({
             addRow("queryParams");
           }}
         />
-        <p className="text-sm text-caution">{VISIBLE_WARNING}</p>
+        <p
+          data-testid="monitor-form-query-visible-warning"
+          className="text-sm text-caution"
+        >
+          {VISIBLE_WARNING}
+        </p>
       </div>
 
       <div className="flex flex-col gap-3">
         <h3 className="text-sm font-medium">Body</h3>
         <SelectControl
+          data-testid="monitor-form-body-type"
           path="bodyType"
           label="ชนิด"
           value={values.bodyType}
@@ -384,6 +406,7 @@ export function RequestSection({
           <option value="text">ข้อความ</option>
         </SelectControl>
         <TextareaControl
+          data-testid="monitor-form-body-content"
           path="body.content"
           label="เนื้อหา"
           value={values.bodyContent}
@@ -394,11 +417,20 @@ export function RequestSection({
           }}
         />
         {bodySent ? null : (
-          <p className="text-sm text-foreground-secondary">
+          <p
+            data-testid="monitor-form-body-not-sent"
+            data-method={values.method}
+            className="text-sm text-foreground-secondary"
+          >
             method {values.method} ไม่ส่ง body
           </p>
         )}
-        <p className="text-sm text-caution">{VISIBLE_WARNING}</p>
+        <p
+          data-testid="monitor-form-body-visible-warning"
+          className="text-sm text-caution"
+        >
+          {VISIBLE_WARNING}
+        </p>
       </div>
     </Card>
   );

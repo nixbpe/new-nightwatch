@@ -62,7 +62,10 @@ export function PasswordCard() {
   };
 
   return (
-    <CardSection aria-labelledby="password-card-title">
+    <CardSection
+      data-testid="password-change-section"
+      aria-labelledby="password-card-title"
+    >
       <div className="flex flex-col gap-2">
         <SectionHeader id="password-card-title" code="02" title="รหัสผ่าน" />
         <p className="text-sm text-foreground-secondary">
@@ -70,8 +73,16 @@ export function PasswordCard() {
         </p>
       </div>
 
-      {notice === null ? null : <Alert tone="success">{notice}</Alert>}
-      {formError === null ? null : <Alert tone="error">{formError}</Alert>}
+      {notice === null ? null : (
+        <Alert data-testid="password-change-success" tone="success">
+          {notice}
+        </Alert>
+      )}
+      {formError === null ? null : (
+        <Alert data-testid="password-change-error" tone="error">
+          {formError}
+        </Alert>
+      )}
 
       <form
         onSubmit={(event) => {
@@ -184,7 +195,11 @@ export function PasswordCard() {
           <form.Subscribe
             selector={(state) => state.isSubmitting}
             children={(submitting) => (
-              <Button type="submit" disabled={submitting}>
+              <Button
+                data-testid="password-change-submit"
+                type="submit"
+                disabled={submitting}
+              >
                 {submitting ? "กำลังเปลี่ยน…" : "เปลี่ยนรหัสผ่าน"}
               </Button>
             )}
@@ -249,6 +264,7 @@ function PasswordField({
       </Label>
       <div className="relative">
         <Input
+          data-testid={id}
           id={id}
           type={revealed ? "text" : "password"}
           autoComplete={autoComplete}
@@ -263,6 +279,7 @@ function PasswordField({
         />
         <button
           type="button"
+          data-testid={`${id}-toggle`}
           onClick={onToggle}
           className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-md text-foreground-secondary hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
         >
@@ -273,9 +290,14 @@ function PasswordField({
         </button>
       </div>
       {serverError === null ? (
-        <FieldValidationError id={errorId} errors={errors} />
+        <FieldValidationError
+          data-testid={errorId}
+          id={errorId}
+          errors={errors}
+        />
       ) : (
         <span
+          data-testid={errorId}
           id={errorId}
           role="alert"
           className="mt-1 block text-sm text-danger"

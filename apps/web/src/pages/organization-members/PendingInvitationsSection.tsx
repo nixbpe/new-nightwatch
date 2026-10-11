@@ -62,7 +62,7 @@ function useNow(deadlines: readonly string[]) {
 /**
  * Pending invitations of one Organization, rendered only for owner/admin by
  * the page. The "การทำงาน" column holds resend and cancel, each with its own
- * confirmation. `invitation.publicId` is the row key and the action target only; the invitation id and link never reach this
+ * confirmation. `invitation.publicId` identifies the row, action target and test hooks; the invitation id and link never reach this
  * component. One status region carries the loading text, the pending text of
  * an action and its notice.
  */
@@ -85,7 +85,7 @@ export function PendingInvitationsSection({
     if (createdSignal > 0) setOffset(0);
   }, [createdSignal]);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  // Keyed by publicId so the DOM never carries an identifier.
+  // Keyed by publicId; DOM row/action hooks carry only the public identifier.
   const controls = useRef({
     cancel: new Map<string, HTMLElement>(),
     resend: new Map<string, HTMLElement>(),
@@ -188,11 +188,14 @@ export function PendingInvitationsSection({
   if (!showData && failed) {
     body = (
       <>
-        <Alert tone="error">โหลดคำเชิญไม่สำเร็จ</Alert>
+        <Alert data-testid="pending-invitations-load-error" tone="error">
+          โหลดคำเชิญไม่สำเร็จ
+        </Alert>
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="secondary"
+            data-testid="pending-invitations-retry"
             disabled={busy}
             onClick={() => {
               pendingFocus.current = { kind: "cancel", target: "heading" };
@@ -208,6 +211,7 @@ export function PendingInvitationsSection({
               onClick={() => {
                 changePage(Math.max(0, offset - LIMIT));
               }}
+              data-testid="pending-invitations-previous"
             >
               หน้าก่อนหน้า
             </Button>
@@ -217,7 +221,11 @@ export function PendingInvitationsSection({
     );
   } else if (!showData) {
     body = (
-      <div aria-busy="true" className="flex flex-col gap-px">
+      <div
+        data-testid="pending-invitations-loading"
+        aria-busy="true"
+        className="flex flex-col gap-px"
+      >
         <Skeleton className="h-11 w-full" />
         <Skeleton className="h-11 w-full" />
         <Skeleton className="h-11 w-full" />
@@ -225,7 +233,10 @@ export function PendingInvitationsSection({
     );
   } else if (data.page.total === 0) {
     body = (
-      <div className="flex flex-col items-center gap-1 rounded-md border border-foreground/10 bg-surface px-5 py-10 text-center">
+      <div
+        data-testid="pending-invitations-empty"
+        className="flex flex-col items-center gap-1 rounded-md border border-foreground/10 bg-surface px-5 py-10 text-center"
+      >
         <p className="text-sm font-medium text-foreground">
           ไม่มีคำเชิญที่รอตอบรับ
         </p>
@@ -238,6 +249,11 @@ export function PendingInvitationsSection({
     body = (
       <>
         <DataTable<PendingInvitation>
+          data-testid="pending-invitations-table"
+          rowTestId={(item) => `pending-invitation-row-${item.publicId}`}
+          columnHeaderTestId={(column) =>
+            `pending-invitation-column-${column.key}`
+          }
           ariaLabel="ตารางคำเชิญที่รอตอบรับ"
           columns={[
             {
@@ -258,14 +274,22 @@ export function PendingInvitationsSection({
               header: "บทบาท",
               width: "160px",
               cell: (item) => (
-                <StatusPill tone="neutral">{ROLE_LABELS[item.role]}</StatusPill>
+                <StatusPill
+                  data-testid={`pending-invitation-role-${item.role}`}
+                  tone="neutral"
+                >
+                  {ROLE_LABELS[item.role]}
+                </StatusPill>
               ),
             },
             {
               key: "sentAt",
               header: "ส่งเมื่อ",
               cell: (item) => (
-                <time dateTime={item.sentAt}>
+                <time
+                  data-testid="pending-invitation-sent-at"
+                  dateTime={item.sentAt}
+                >
                   {formatDateTime(new Date(item.sentAt), preferences)}
                 </time>
               ),
@@ -275,9 +299,17 @@ export function PendingInvitationsSection({
               header: "หมดอายุ",
               cell: (item) =>
                 item.expired || item.expiresAt === null ? (
-                  <StatusPill tone="caution">หมดอายุ</StatusPill>
+                  <StatusPill
+                    data-testid="pending-invitation-expired"
+                    tone="caution"
+                  >
+                    หมดอายุ
+                  </StatusPill>
                 ) : (
-                  <time dateTime={item.expiresAt}>
+                  <time
+                    data-testid="pending-invitation-expires-at"
+                    dateTime={item.expiresAt}
+                  >
                     {formatDateTime(new Date(item.expiresAt), preferences)}
                   </time>
                 ),
@@ -317,6 +349,9 @@ export function PendingInvitationsSection({
           rowKey={(item) => item.publicId}
         />
         <DataTablePagination
+          summaryTestId="pending-invitations-total"
+          previousTestId="pending-invitations-previous"
+          nextTestId="pending-invitations-next"
           ariaLabel="หน้าคำเชิญ"
           summary={`คำเชิญทั้งหมด ${String(data.page.total)} รายการ`}
           previousLabel="หน้าก่อนหน้า"
@@ -339,10 +374,12 @@ export function PendingInvitationsSection({
     : 0;
   return (
     <section
+      data-testid="pending-invitations-section"
       aria-labelledby="pending-invitations-title"
       className="flex flex-col gap-4"
     >
       <SectionHeader
+        headingTestId="pending-invitations-heading"
         id="pending-invitations-title"
         code="01"
         headingRef={headingRef}
@@ -354,9 +391,19 @@ export function PendingInvitationsSection({
             {showData ? (
               <>
                 {" ("}
-                <span className="font-mono">{String(data.activeCount)}</span>
+                <span
+                  data-testid="pending-invitations-count"
+                  className="font-mono"
+                >
+                  {String(data.activeCount)}
+                </span>
                 {" จาก "}
-                <span className="font-mono">{String(data.activeLimit)}</span>
+                <span
+                  data-testid="pending-invitations-limit"
+                  className="font-mono"
+                >
+                  {String(data.activeLimit)}
+                </span>
                 {")"}
               </>
             ) : null}
@@ -380,15 +427,25 @@ export function PendingInvitationsSection({
           ) : undefined
         }
       />
-      <div role="status" className="flex flex-col gap-1 text-sm empty:sr-only">
+      <div
+        data-testid="pending-invitations-status"
+        role="status"
+        className="flex flex-col gap-1 text-sm empty:sr-only"
+      >
         {showData || failed ? null : (
           <p className="text-foreground-secondary">กำลังโหลดคำเชิญ</p>
         )}
         {pendingText === null || dialogOpen ? null : (
-          <p className="text-foreground-secondary">{pendingText}</p>
+          <p
+            data-testid={`pending-invitations-${lastAction}-pending`}
+            className="text-foreground-secondary"
+          >
+            {pendingText}
+          </p>
         )}
         {notice === null ? null : (
           <p
+            data-testid={`pending-invitations-${lastAction}-${notice.tone}`}
             className={
               "rounded-md border border-foreground/10 bg-surface px-3.5 py-2.5 " +
               (notice.tone === "success"
@@ -405,10 +462,14 @@ export function PendingInvitationsSection({
       {body}
       {cancel.confirmation === null ? null : (
         <ConfirmDialog
+          data-testid="invitation-cancel-dialog"
+          confirmTestId="invitation-cancel-confirm"
           title="ยืนยันการยกเลิกคำเชิญ"
           description={
             <>
-              <p>
+              <p
+                data-testid={`pending-invitation-confirm-role-${cancel.confirmation.invitation.role}`}
+              >
                 ยกเลิกคำเชิญถึง {cancel.confirmation.invitation.email} (
                 {ROLE_LABELS[cancel.confirmation.invitation.role]}) ขององค์กร{" "}
                 {organizationName}
@@ -435,10 +496,14 @@ export function PendingInvitationsSection({
       )}
       {resend.confirmation === null ? null : (
         <ConfirmDialog
+          data-testid="invitation-resend-dialog"
+          confirmTestId="invitation-resend-confirm"
           title="ยืนยันการส่งคำเชิญซ้ำ"
           description={
             <>
-              <p>
+              <p
+                data-testid={`pending-invitation-confirm-role-${resend.confirmation.invitation.role}`}
+              >
                 ส่งซ้ำคำเชิญถึง {resend.confirmation.invitation.email} (
                 {ROLE_LABELS[resend.confirmation.invitation.role]}) ขององค์กร{" "}
                 {organizationName}

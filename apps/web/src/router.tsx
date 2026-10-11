@@ -98,7 +98,11 @@ function NotFoundPage() {
 export const routes: RouteObject[] = [
   {
     element: <RootLayout />,
-    hydrateFallbackElement: <div role="status">กำลังเปิดหน้า…</div>,
+    hydrateFallbackElement: (
+      <div data-testid="route-opening-status" role="status">
+        กำลังเปิดหน้า…
+      </div>
+    ),
     children: [
       { path: "/", loader: rootLoader },
       {

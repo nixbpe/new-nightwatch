@@ -184,6 +184,7 @@ export function InvitationResendButton({
   return (
     <div className="flex flex-col gap-1">
       <Button
+        data-testid={`invitation-resend-${invitation.publicId}`}
         ref={(control) => {
           register(invitation.publicId, control);
         }}
@@ -204,7 +205,11 @@ export function InvitationResendButton({
         ส่งซ้ำ
       </Button>
       {cooling ? (
-        <span id={cooldownId} className="text-xs text-foreground-secondary">
+        <span
+          data-testid={`invitation-cooldown-${invitation.publicId}`}
+          id={cooldownId}
+          className="text-xs text-foreground-secondary"
+        >
           ส่งซ้ำได้อีกครั้งเมื่อ {formatDateTime(availableAt, preferences)}
         </span>
       ) : null}

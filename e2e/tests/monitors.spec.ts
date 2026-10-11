@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
+import {
+  monitorWriteResponseSchema,
+  notificationListResponseSchema,
+  type NotificationItem,
+} from "../../packages/api-contract/src/index.ts";
+
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
@@ -30,6 +36,9 @@ let orgA: string;
 let orgB: string;
 let owner: Person;
 let viewer: Person;
+let flapId: string;
+let otherId: string;
+let crudId: string;
 const userIds: string[] = [];
 const orgNames = { a: `E2E Monitors A ${run}`, b: `E2E Monitors B ${run}` };
 const flapName = `flap-${run}`;
@@ -41,9 +50,9 @@ const urlOf = (server: Target, path: string) =>
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(person.email);
-  await page.locator("#login-password").fill(person.password);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(person.email);
+  await page.getByTestId("login-password").fill(person.password);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace/);
 }
 
@@ -77,11 +86,13 @@ test.beforeAll(async () => {
     clientRequestId: randomUUID(),
   });
   expect(flap.status).toBe(201);
+  flapId = monitorWriteResponseSchema.parse(flap.body).monitor.id;
   const other = await session.request("POST", monitorPath(orgB), {
     ...basicConfig(otherOrgMonitor, urlOf(target, "/health")),
     clientRequestId: randomUUID(),
   });
   expect(other.status).toBe(201);
+  otherId = monitorWriteResponseSchema.parse(other.body).monitor.id;
 });
 
 test.afterAll(async () => {
@@ -102,38 +113,101 @@ test("owner tests a config before saving, sees pass and a failing target, then s
   const before = await monitorCount(orgA);
   await signIn(page, owner);
   await page.goto(`/organizations/${orgA}/monitors/new`);
-  await page.getByLabel("ชื่อมอนิเตอร์").fill(crudName);
+  await page.getByTestId("monitor-form-name").fill(crudName);
   await page
-    .getByLabel("URL", { exact: true })
+    .getByTestId("monitor-form-url")
     .fill(urlOf(target, "/health?probe=1"));
 
   // Scheduled checks of other monitors also hit /health, so only the probe query counts.
   const probeHits = () =>
     target.hits.filter((h) => h.search === "?probe=1").length;
   const hitsBefore = probeHits();
-  await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
-  await expect(page.getByText("การทดสอบผ่าน")).toBeVisible();
-  await expect(page.getByText("รหัสสถานะ 200")).toBeVisible();
+  await page.getByTestId("monitor-form-test").click();
+  await expect(page.getByTestId("monitor-test-result")).toHaveAttribute(
+    "data-outcome",
+    "pass",
+  );
+  await expect(page.getByTestId("monitor-test-result")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-test-result-url")).toHaveText(
+    urlOf(target, "/health?probe=•••"),
+  );
+  await expect(page.getByTestId("monitor-test-http-status")).toHaveAttribute(
+    "data-http-status",
+    "200",
+  );
+  await expect(page.getByTestId("monitor-test-http-status")).toContainText(
+    /\b200\b/,
+  );
   expect(probeHits()).toBe(hitsBefore + 1);
 
   target.setMode("down");
-  await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
-  await expect(page.getByText(/^ไม่ผ่าน:/)).toBeVisible();
-  await expect(page.getByText("รหัสสถานะ 503")).toBeVisible();
+  await page.getByTestId("monitor-form-test").click();
+  await expect(page.getByTestId("monitor-test-result")).toHaveAttribute(
+    "data-outcome",
+    "fail",
+  );
+  await expect(page.getByTestId("monitor-test-result")).toHaveAttribute(
+    "data-failure-reason",
+    "http_status",
+  );
+  await expect(page.getByTestId("monitor-test-result")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-test-http-status")).toHaveAttribute(
+    "data-http-status",
+    "503",
+  );
+  await expect(page.getByTestId("monitor-test-http-status")).toContainText(
+    /\b503\b/,
+  );
   // A Test never creates a monitor (AC-08) and does not block saving (AC-54).
   expect(await monitorCount(orgA)).toBe(before);
 
   target.setMode("up");
   // A slow first answer keeps the monitor waiting long enough to be seen (AC-54).
   target.setDelay(4000);
-  await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
-  await expect(page.getByRole("heading", { name: crudName })).toBeVisible();
+  const createdResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === monitorPath(orgA) &&
+      response.request().method() === "POST",
+  );
+  await page.getByTestId("monitor-form-save").click();
+  const created = await createdResponse;
+  expect(created.status()).toBe(201);
+  const record = monitorWriteResponseSchema.parse(await created.json()).monitor;
+  crudId = record.id;
+  expect(record).toMatchObject({
+    name: crudName,
+    url: urlOf(target, "/health?probe=1"),
+    method: "GET",
+    headers: [],
+    queryParams: [],
+    body: null,
+    expectedStatus: "200-299",
+    assertions: [],
+    auth: { type: "none" },
+    secretSlots: [],
+    status: "active",
+    version: 1,
+  });
+  await expect(page).toHaveURL(`/organizations/${orgA}/monitors/${crudId}`);
+  await expect(page.getByTestId("monitor-detail-url")).toHaveText(
+    urlOf(target, "/health?probe=1"),
+  );
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(crudName);
   await expect
     .poll(() => page.evaluate(() => window.history.state?.usr))
     .toBeNull();
-  await expect(page.getByText("สร้างมอนิเตอร์แล้ว")).toBeVisible();
-  await expect(page.getByRole("heading", { name: crudName })).toBeFocused();
-  await expect(page.getByText("รอตรวจครั้งแรก").first()).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-notice")).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-notice")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-detail-title")).toBeFocused();
+  await expect(page.getByTestId("monitor-detail-first-check")).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+    "data-health",
+    "unknown",
+  );
+  await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+    "data-last-check-at",
+    "",
+  );
   target.setDelay(0);
   expect(await monitorCount(orgA)).toBe(before + 1);
 });
@@ -144,13 +218,21 @@ test("owner sees the first result within a scheduler poll", async ({
   test.setTimeout(120_000);
   await signIn(page, owner);
   await page.goto(`/organizations/${orgA}/monitors`);
-  const row = page.getByRole("row", { name: new RegExp(crudName) });
+  const row = page.getByTestId(`monitor-list-row-${crudId}`);
   await expect(row).toBeVisible();
   // The scheduler polls every 10 s; the list refetches on its own.
-  await expect(row.getByText("ปกติ")).toBeVisible({ timeout: 60_000 });
-  await row.getByRole("link", { name: crudName }).click();
-  await expect(page.getByRole("heading", { name: crudName })).toBeVisible();
-  await expect(page.getByText("รอตรวจครั้งแรก")).toHaveCount(0);
+  await expect(row.getByTestId("monitor-list-health")).toHaveAttribute(
+    "data-health",
+    "up",
+    { timeout: 60_000 },
+  );
+  await expect(row.getByTestId("monitor-list-health")).toHaveText(/\S/);
+  await expect(row.getByTestId(`monitor-list-name-${crudId}`)).toHaveText(
+    crudName,
+  );
+  await row.getByTestId(`monitor-list-name-${crudId}`).click();
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(crudName);
+  await expect(page.getByTestId("monitor-detail-first-check")).toHaveCount(0);
 });
 
 test("owner pauses, resumes and deletes the monitor", async ({ page }) => {
@@ -158,32 +240,44 @@ test("owner pauses, resumes and deletes the monitor", async ({ page }) => {
   await signIn(page, owner);
   await page.goto(`/organizations/${orgA}/monitors`);
   await page
-    .getByRole("row", { name: new RegExp(crudName) })
-    .getByRole("link", { name: crudName })
+    .getByTestId(`monitor-list-row-${crudId}`)
+    .getByTestId(`monitor-list-name-${crudId}`)
     .click();
-  await expect(page.getByRole("heading", { name: crudName })).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(crudName);
 
   const hitsBefore = target.hitsFor("/health").length;
-  await page.getByRole("button", { name: "หยุดชั่วคราว" }).click();
-  await expect(page.getByText("หยุดการตรวจแล้ว")).toBeVisible();
-  const resume = page.getByRole("button", { name: "เริ่มต่อ" });
+  await page.getByTestId("monitor-detail-toggle").click();
+  await expect(page.getByTestId("monitor-detail-notice")).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-notice")).toHaveText(/\S/);
+  const resume = page.getByTestId("monitor-detail-toggle");
   await expect(resume).toBeVisible();
   await expect(resume).toBeFocused();
-  await expect(page.getByText("หยุดชั่วคราว").first()).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+    "data-health",
+    "paused",
+  );
+  await expect(page.getByTestId("monitor-detail-health")).toHaveText(/\S/);
+  await expect(resume).toHaveAttribute("data-status", "paused");
 
   await resume.click();
-  await expect(page.getByText("เริ่มการตรวจต่อแล้ว")).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-notice")).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-notice")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+    "data-status",
+    "active",
+  );
   await expect
     .poll(() => target.hitsFor("/health").length, { timeout: 45_000 })
     .toBeGreaterThan(hitsBefore);
 
-  await page.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
-  const dialog = page.getByRole("dialog", { name: "ยืนยันการลบมอนิเตอร์" });
-  await expect(dialog.getByRole("button", { name: "ยกเลิก" })).toBeFocused();
-  await dialog.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
+  await page.getByTestId("monitor-detail-delete").click();
+  const dialog = page.getByTestId("monitor-detail-delete-dialog");
+  await expect(dialog.getByTestId("confirmation-cancel")).toBeFocused();
+  await dialog.getByTestId("monitor-detail-delete-confirm").click();
   await expect(page).toHaveURL(new RegExp(`/organizations/${orgA}/monitors$`));
-  await expect(page.getByText("ลบมอนิเตอร์แล้ว")).toBeVisible();
-  await expect(page.getByRole("link", { name: crudName })).toHaveCount(0);
+  await expect(page.getByTestId("monitor-overview-notice")).toBeVisible();
+  await expect(page.getByTestId("monitor-overview-notice")).toHaveText(/\S/);
+  await expect(page.getByTestId(`monitor-list-name-${crudId}`)).toHaveCount(0);
   expect(
     (await pool.query("select 1 from monitors where name = $1", [crudName]))
       .rowCount,
@@ -195,25 +289,29 @@ test("viewer reads Overview and Detail and sees no action", async ({
 }) => {
   await signIn(page, viewer);
   await page.goto(`/organizations/${orgA}/monitors`);
-  const link = page.getByRole("link", { name: flapName });
+  const link = page.getByTestId(`monitor-list-name-${flapId}`);
   await expect(link).toBeVisible();
-  await expect(page.getByText("สิทธิ์ของคุณ: ดูอย่างเดียว")).toBeVisible();
-  await expect(page.getByRole("link", { name: "เพิ่มมอนิเตอร์" })).toHaveCount(
-    0,
-  );
+  await expect(page.getByTestId("monitor-overview-readonly")).toBeVisible();
+  await expect(link).toHaveText(flapName);
+  await expect(page.getByTestId("monitor-overview-add")).toHaveCount(0);
   await link.click();
-  await expect(page.getByRole("heading", { name: flapName })).toBeVisible();
-  for (const name of ["แก้ไข", "หยุดชั่วคราว", "ลบมอนิเตอร์"]) {
-    await expect(page.getByRole("button", { name })).toHaveCount(0);
-    await expect(page.getByRole("link", { name })).toHaveCount(0);
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(flapName);
+  for (const action of [
+    "monitor-detail-edit",
+    "monitor-detail-toggle",
+    "monitor-detail-delete",
+  ]) {
+    await expect(page.getByTestId(action)).toHaveCount(0);
   }
+  await expect(page.getByTestId("monitor-detail-read-only")).toHaveAttribute(
+    "data-role",
+    "viewer",
+  );
 
   // Direct routes and requests are refused, and nothing reaches the target.
   const hits = flapTarget.hits.length;
   await page.goto(`/organizations/${orgA}/monitors/new`);
-  await expect(
-    page.getByRole("button", { name: "บันทึกมอนิเตอร์" }),
-  ).toHaveCount(0);
+  await expect(page.getByTestId("monitor-form-save")).toHaveCount(0);
   const session = await signInApi(viewer);
   const created = await session.request("POST", monitorPath(orgA), {
     ...basicConfig(`viewer-${run}`, urlOf(target, "/health")),
@@ -232,50 +330,84 @@ test("Organization switch leaves Overview, Detail and the form for the new Organ
   page,
 }) => {
   await signIn(page, owner);
-  const switchTo = async (name: string, current: string) => {
+  const switchTo = async (organizationId: string) => {
+    await page.getByTestId("shell-organization-switch").click();
     await page
-      .getByRole("button", { name: new RegExp(current) })
-      .first()
+      .getByTestId("shell-organization-menu")
+      .getByTestId(`shell-organization-${organizationId}`)
       .click();
-    await page.getByRole("menuitemradio", { name: new RegExp(name) }).click();
   };
 
   await page.goto(`/organizations/${orgA}/monitors`);
-  await expect(page.getByRole("link", { name: flapName })).toBeVisible();
-  await switchTo(orgNames.b, orgNames.a);
+  await expect(page.getByTestId(`monitor-list-name-${flapId}`)).toBeVisible();
+  await switchTo(orgB);
   await expect(page).toHaveURL(new RegExp(`/organizations/${orgB}/monitors$`));
-  await expect(page.getByRole("link", { name: otherOrgMonitor })).toBeVisible();
-  await expect(page.getByRole("link", { name: flapName })).toHaveCount(0);
+  await expect(page.getByTestId(`monitor-list-name-${otherId}`)).toBeVisible();
+  await expect(page.getByTestId(`monitor-list-name-${flapId}`)).toHaveCount(0);
 
   await page.goto(`/organizations/${orgB}/monitors/new`);
-  await page.getByLabel("ชื่อมอนิเตอร์").fill("typed in B");
-  await switchTo(orgNames.a, orgNames.b);
+  await page.getByTestId("monitor-form-name").fill("typed in B");
+  await switchTo(orgA);
   await expect(page).toHaveURL(new RegExp(`/organizations/${orgA}/monitors$`));
 
-  await page.getByRole("link", { name: flapName }).click();
-  await expect(page.getByRole("heading", { name: flapName })).toBeVisible();
-  await switchTo(orgNames.b, orgNames.a);
+  await page.getByTestId(`monitor-list-name-${flapId}`).click();
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(flapName);
+  await switchTo(orgB);
   await expect(page).toHaveURL(new RegExp(`/organizations/${orgB}/monitors$`));
-  await expect(page.getByText(flapName)).toHaveCount(0);
+  await expect(page.getByTestId("shell-main")).not.toContainText(flapName);
 });
 
 // The inbox has no live refresh, so the page is reloaded until the item shows.
-async function waitForInboxItem(page: Page, text: string, timeoutMs: number) {
+async function waitForInboxItem(
+  page: Page,
+  eventType: "MONITOR_DOWN" | "MONITOR_RECOVERED",
+  timeoutMs: number,
+) {
   const deadline = Date.now() + timeoutMs;
   const seen: string[] = [];
   for (;;) {
     await page.goto("/notifications");
     try {
-      await expect(page.getByText(text)).toBeVisible({ timeout: 10_000 });
-      return;
+      let notification: NotificationItem | undefined;
+      await expect
+        .poll(
+          async () => {
+            const response = await page.request.get("/api/notifications");
+            expect(response.status()).toBe(200);
+            const body = notificationListResponseSchema.parse(
+              await response.json(),
+            );
+            expect(body.organizationId).toBe(orgA);
+            const matches = body.items.filter(
+              (item) =>
+                item.scope === "organization" &&
+                item.category === "monitor" &&
+                item.subject.monitorId === flapId &&
+                item.eventType === eventType,
+            );
+            expect(matches.length).toBeLessThanOrEqual(1);
+            notification = matches.pop();
+            return notification?.id ?? null;
+          },
+          { timeout: 10_000 },
+        )
+        .not.toBeNull();
+      if (notification === undefined)
+        throw new Error("Notification not published");
+      const row = page.getByTestId(`notification-row-${notification.id}`);
+      await expect(row).toBeVisible({ timeout: 10_000 });
+      await expect(row).toHaveAttribute("data-event-type", eventType);
+      await expect(row.getByTestId("notification-title")).toContainText(
+        flapName,
+      );
+      await expect(
+        row.getByTestId("notification-monitor-link"),
+      ).toHaveAttribute("href", `/organizations/${orgA}/monitors/${flapId}`);
+      return notification.id;
     } catch {
-      // Not delivered yet; the next loop reloads the page.
-      const api = await page.evaluate(async () => {
-        const reply = await fetch("/api/notifications");
-        const body = (await reply.json()) as { items?: unknown[] };
-        return `${String(reply.status)}:${String(body.items?.length)}`;
-      });
-      seen.push(api);
+      const response = await page.request.get("/api/notifications");
+      const body = notificationListResponseSchema.parse(await response.json());
+      seen.push(`${String(response.status())}:${String(body.items.length)}`);
     }
     if (Date.now() > deadline) {
       const state = await pool.query(
@@ -288,11 +420,8 @@ async function waitForInboxItem(page: Page, text: string, timeoutMs: number) {
           where inbox.tenant_id = $1`,
         [orgA, owner.userId],
       );
-      const listed = await page.evaluate(async () =>
-        (await fetch("/api/notifications")).json(),
-      );
       throw new Error(
-        `inbox never showed "${text}": ${JSON.stringify(state.rows)} listed=${JSON.stringify(listed)} history=${seen.join(",")}`,
+        `inbox never showed ${eventType}: ${JSON.stringify(state.rows)} history=${seen.join(",")}`,
       );
     }
   }
@@ -309,15 +438,24 @@ test("a target that goes down and comes back reaches the inbox once each", async
     [owner.userId, orgA],
   );
   await signIn(page, owner);
-  await waitForInboxItem(page, `มอนิเตอร์ ${flapName} ล่ม`, 5 * 60_000);
+  const downId = await waitForInboxItem(page, "MONITOR_DOWN", 5 * 60_000);
+  const downTitle = await page
+    .getByTestId(`notification-row-${downId}`)
+    .getByTestId("notification-title")
+    .innerText();
 
   flapTarget.setMode("up");
-  await waitForInboxItem(
+  const recoveredId = await waitForInboxItem(
     page,
-    `มอนิเตอร์ ${flapName} กลับมาทำงานแล้ว`,
+    "MONITOR_RECOVERED",
     5 * 60_000,
   );
-  await expect(page.getByText(`มอนิเตอร์ ${flapName} ล่ม`)).toHaveCount(1);
+  await expect(page.getByTestId(`notification-row-${downId}`)).toHaveCount(1);
+  await expect(
+    page
+      .getByTestId(`notification-row-${recoveredId}`)
+      .getByTestId("notification-title"),
+  ).not.toHaveText(downTitle);
 
   const counts = await pool.query<{ event_type: string; n: number }>(
     `select event_type, count(*)::int as n from notification_inbox_items
@@ -349,13 +487,14 @@ test("a notification of a deleted monitor stays and its link reads as not found"
   );
   await signIn(page, owner);
   await page.goto("/notifications");
-  await expect(page.getByText(`มอนิเตอร์ ${flapName} ล่ม`)).toBeVisible();
+  const downId = await waitForInboxItem(page, "MONITOR_DOWN", 10_000);
   await page
-    .getByRole("main")
-    .getByRole("link", { name: new RegExp(`เปิดมอนิเตอร์.*${flapName}`) })
-    .first()
+    .getByTestId(`notification-row-${downId}`)
+    .getByTestId("notification-monitor-link")
     .click();
-  await expect(page.getByText("ไม่พบมอนิเตอร์นี้")).toBeVisible();
+  await expect(page).toHaveURL(`/organizations/${orgA}/monitors/${flapId}`);
+  await expect(page.getByTestId("monitor-detail-not-found")).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-not-found")).toHaveText(/\S/);
 });
 
 test("Resume shows unknown until a new result arrives", async ({ page }) => {
@@ -365,22 +504,46 @@ test("Resume shows unknown until a new result arrives", async ({ page }) => {
     ...basicConfig(`resume-${run}`, urlOf(target, "/health")),
     clientRequestId: randomUUID(),
   });
-  const id = (created.body as { monitor: { id: string } }).monitor.id;
+  expect(created.status).toBe(201);
+  const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
   const detail = `/organizations/${orgA}/monitors/${id}`;
   await signIn(page, owner);
   await page.goto(detail);
-  await expect(page.getByText("ปกติ", { exact: true })).toBeVisible({
-    timeout: 60_000,
-  });
+  await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+    "data-health",
+    "up",
+    { timeout: 60_000 },
+  );
+  await expect(page.getByTestId("monitor-detail-health")).toHaveText(/\S/);
+  const upText = await page.getByTestId("monitor-detail-health").innerText();
 
   // A slow answer keeps the first check after Resume pending, so the page
   // cannot show a new result yet.
   target.setDelay(8000);
-  await page.getByRole("button", { name: "หยุดชั่วคราว" }).click();
-  await page.getByRole("button", { name: "เริ่มต่อ" }).click();
-  await expect(page.getByText("เริ่มการตรวจต่อแล้ว")).toBeVisible();
+  await page.getByTestId("monitor-detail-toggle").click();
+  await expect(page.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+    "data-status",
+    "paused",
+  );
+  await expect(page.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+    "data-in-progress",
+    "false",
+  );
+  await page.getByTestId("monitor-detail-toggle").click();
+  await expect(page.getByTestId("monitor-detail-notice")).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-notice")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+    "data-status",
+    "active",
+  );
   // The last result predates the pause, so it must not read as "ปกติ".
-  await expect(page.getByText("ไม่ทราบสถานะ", { exact: true })).toBeVisible();
-  await expect(page.getByText("ปกติ", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+    "data-health",
+    "unknown",
+  );
+  await expect(page.getByTestId("monitor-detail-health")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-detail-health")).not.toHaveText(
+    upText,
+  );
   target.setDelay(0);
 });

@@ -91,18 +91,17 @@ describe("VerifyEmailPage", () => {
     });
     renderPage();
 
-    const emailInput = await screen.findByLabelText("อีเมลที่ใช้สมัครบัญชี");
+    const emailInput = await screen.findByTestId("verify-email-email");
     await waitFor(() => {
       expect(emailInput).toHaveValue("new@example.com");
     });
-    await userEvent.click(
-      screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
-    );
+    await userEvent.click(screen.getByTestId("verify-email-resend"));
 
-    // Generic confirmation only: no account-existence signal.
-    expect(
-      await screen.findByText(/ส่งอีเมลยืนยันใหม่แล้ว/),
-    ).toBeInTheDocument();
+    expect(sendVerificationEmailMock).toHaveBeenCalledWith({
+      email: "new@example.com",
+      callbackURL: "/onboarding?invitationId=inv-123",
+    });
+    expect(await screen.findByTestId("verify-email-sent")).toBeInTheDocument();
   });
 
   it("signed-in unverified user resends to session email", async () => {
@@ -116,16 +115,12 @@ describe("VerifyEmailPage", () => {
     renderPage();
 
     expect(
-      await screen.findByText(/เราส่งลิงก์ยืนยันไปที่ member@example\.com/),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("อีเมลที่ใช้สมัครบัญชี")).toBeNull();
-    await userEvent.click(
-      screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
-    );
+      await screen.findByTestId("verify-email-recipient"),
+    ).toHaveTextContent("member@example.com");
+    expect(screen.queryByTestId("verify-email-email")).toBeNull();
+    await userEvent.click(screen.getByTestId("verify-email-resend"));
 
-    expect(
-      await screen.findByText(/ส่งอีเมลยืนยันใหม่แล้ว/),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("verify-email-sent")).toBeInTheDocument();
   });
 
   it("resend keeps a pending invitation intact", async () => {
@@ -139,15 +134,11 @@ describe("VerifyEmailPage", () => {
     rememberInvitation("inv-123");
     renderPage();
 
-    await screen.findByText(/เราส่งลิงก์ยืนยันไปที่ member@example\.com/);
-    await userEvent.click(
-      screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
-    );
+    await screen.findByTestId("verify-email-recipient");
+    await userEvent.click(screen.getByTestId("verify-email-resend"));
 
     // Generic confirmation; the invitation stays stored for the post-verification continuation.
-    expect(
-      await screen.findByText(/ส่งอีเมลยืนยันใหม่แล้ว/),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("verify-email-sent")).toBeInTheDocument();
     expect(readInvitation()).toBe("inv-123");
   });
 
@@ -160,9 +151,7 @@ describe("VerifyEmailPage", () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-09-11T00:00:00.000Z"));
       const submit = async () => {
-        fireEvent.click(
-          screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
-        );
+        fireEvent.click(screen.getByTestId("verify-email-resend"));
         await act(async () => {
           await Promise.resolve();
         });
@@ -180,7 +169,7 @@ describe("VerifyEmailPage", () => {
 
       const page = renderPage();
       if (!signedIn) {
-        fireEvent.change(screen.getByLabelText("อีเมลที่ใช้สมัครบัญชี"), {
+        fireEvent.change(screen.getByTestId("verify-email-email"), {
           target: { value: "member@example.com" },
         });
       }
@@ -188,24 +177,18 @@ describe("VerifyEmailPage", () => {
       await submit();
 
       expect(sendVerificationEmailMock).toHaveBeenCalledTimes(1);
-      const coolingDownButton = screen.getByRole("button", {
-        name: "ส่งแล้ว กรุณารอสักครู่",
-      });
+      const coolingDownButton = screen.getByTestId("verify-email-resend");
       expect(coolingDownButton).toBeDisabled();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(59_999);
       });
-      expect(
-        screen.getByRole("button", { name: "ส่งแล้ว กรุณารอสักครู่" }),
-      ).toBeDisabled();
+      expect(screen.getByTestId("verify-email-resend")).toBeDisabled();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1);
       });
-      const readyButton = screen.getByRole("button", {
-        name: "ส่งอีเมลยืนยันอีกครั้ง",
-      });
+      const readyButton = screen.getByTestId("verify-email-resend");
       expect(readyButton).toBeEnabled();
 
       await submit();
@@ -229,17 +212,20 @@ describe("VerifyEmailPage", () => {
     };
     renderPage();
 
-    await screen.findByText(/เราส่งลิงก์ยืนยันไปที่ member@example\.com/);
-    await userEvent.click(
-      screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
-    );
+    await screen.findByTestId("verify-email-recipient");
+    await userEvent.click(screen.getByTestId("verify-email-resend"));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "ส่งอีเมลยืนยันไม่สำเร็จ",
-    );
     expect(
-      screen.getByRole("button", { name: "ส่งอีเมลยืนยันอีกครั้ง" }),
-    ).toBeInTheDocument();
+      await screen.findByTestId("verify-email-resend-error"),
+    ).toBeVisible();
+    expect(screen.getByTestId("verify-email-recipient")).toHaveTextContent(
+      "member@example.com",
+    );
+    expect(sendVerificationEmailMock).toHaveBeenCalledWith({
+      email: "member@example.com",
+      callbackURL: "/onboarding",
+    });
+    expect(screen.getByTestId("verify-email-resend")).toBeEnabled();
     expect(screen.queryByTestId("location")).toBeNull();
   });
 
@@ -250,7 +236,7 @@ describe("VerifyEmailPage", () => {
     );
     renderPage();
 
-    const emailInput = await screen.findByLabelText("อีเมลที่ใช้สมัครบัญชี");
+    const emailInput = await screen.findByTestId("verify-email-email");
     await waitFor(() => {
       expect(fetchInvitationMock).toHaveBeenCalledWith("inv-gone");
     });

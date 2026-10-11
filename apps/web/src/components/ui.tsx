@@ -15,6 +15,7 @@ export function Field({
   label,
   error,
   errorId,
+  errorTestId,
   className,
   children,
 }: {
@@ -22,6 +23,7 @@ export function Field({
   error?: string | null;
   /** Lets the control point at the message through aria-describedby. */
   errorId?: string;
+  errorTestId?: string;
   className?: string;
   children: ReactNode;
 }) {
@@ -34,6 +36,7 @@ export function Field({
       </Label>
       {error === undefined || error === null ? null : (
         <span
+          data-testid={errorTestId}
           id={errorId}
           role="alert"
           className="mt-1 block text-sm text-danger"
@@ -48,14 +51,21 @@ export function Field({
 export function FieldValidationError({
   id,
   errors,
+  "data-testid": testId,
 }: {
+  "data-testid"?: string;
   id: string;
   errors: readonly unknown[];
 }) {
   const first = errors[0];
   if (typeof first === "string") {
     return (
-      <span id={id} role="alert" className="mt-1 block text-sm text-danger">
+      <span
+        data-testid={testId}
+        id={id}
+        role="alert"
+        className="mt-1 block text-sm text-danger"
+      >
         {first}
       </span>
     );
@@ -67,7 +77,12 @@ export function FieldValidationError({
     typeof first.message === "string"
   ) {
     return (
-      <span id={id} role="alert" className="mt-1 block text-sm text-danger">
+      <span
+        data-testid={testId}
+        id={id}
+        role="alert"
+        className="mt-1 block text-sm text-danger"
+      >
         {first.message}
       </span>
     );
@@ -79,8 +94,10 @@ export function SubmitButton({
   pending,
   pendingLabel,
   disabled,
+  "data-testid": testId,
   children,
 }: {
+  "data-testid"?: string;
   pending: boolean;
   pendingLabel: string;
   disabled?: boolean;
@@ -88,6 +105,7 @@ export function SubmitButton({
 }) {
   return (
     <Button
+      data-testid={testId}
       type="submit"
       disabled={pending || disabled === true}
       className="w-full"
@@ -101,8 +119,10 @@ export function Alert({
   id,
   tone,
   role = "alert",
+  "data-testid": testId,
   children,
 }: {
+  "data-testid"?: string;
   id?: string;
   tone: "error" | "success" | "warning" | "info";
   /** `status` for outcomes that inform without interrupting (a sent invitation). */
@@ -120,6 +140,7 @@ export function Alert({
           : "border-foreground/15 bg-foreground/4 text-foreground";
   return (
     <p
+      data-testid={testId}
       id={id}
       role={role}
       className={`rounded-md border px-3 py-2 text-sm ${className}`}
@@ -129,9 +150,18 @@ export function Alert({
   );
 }
 
-export function FullPageLoading({ label }: { label: string }) {
+export function FullPageLoading({
+  label,
+  "data-testid": testId,
+}: {
+  label: string;
+  "data-testid"?: string;
+}) {
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
+    <main
+      data-testid={testId}
+      className="flex min-h-screen items-center justify-center p-4"
+    >
       <p role="status" className="text-foreground-secondary">
         {label}
       </p>

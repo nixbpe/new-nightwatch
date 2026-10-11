@@ -38,7 +38,11 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
   const showsPlainValues =
     monitor.queryParams.length > 0 || monitor.body !== null;
   return (
-    <Card as="section" aria-labelledby="detail-config">
+    <Card
+      as="section"
+      data-testid="monitor-detail-config"
+      aria-labelledby="detail-config"
+    >
       <CardHeader
         id="detail-config"
         title="การตั้งค่า"
@@ -46,7 +50,9 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
       />
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 p-4 text-sm [&>dd]:text-right [&>dd]:break-words">
         <dt className="text-foreground-secondary">เมธอด</dt>
-        <dd className="font-mono text-sm">{monitor.method}</dd>
+        <dd data-testid="monitor-config-method" className="font-mono text-sm">
+          {monitor.method}
+        </dd>
         <dt className="text-foreground-secondary">รอบตรวจ</dt>
         <dd>
           <IntervalText seconds={monitor.intervalSeconds} />
@@ -58,7 +64,11 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
         <dt className="text-foreground-secondary">รหัสสถานะที่ถือว่าปกติ</dt>
         <dd className="font-mono text-sm">{monitor.expectedStatus}</dd>
         <dt className="text-foreground-secondary">การยืนยันตัวตน</dt>
-        <dd>
+        <dd
+          data-testid="monitor-config-auth"
+          data-auth-type={monitor.auth.type}
+          data-configured={authSet}
+        >
           {authText(monitor.auth)}
           {monitor.auth.type === "none"
             ? null
@@ -70,17 +80,32 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
             <dd>
               <ul>
                 {monitor.headers.map((header) => (
-                  <li key={header.id ?? header.name}>
-                    <span className="font-mono text-[13px]">{header.name}</span>{" "}
+                  <li
+                    data-testid="monitor-config-header"
+                    data-secret={header.secret}
+                    key={header.id ?? header.name}
+                  >
+                    <span
+                      data-testid="monitor-config-header-name"
+                      className="font-mono text-[13px]"
+                    >
+                      {header.name}
+                    </span>{" "}
                     {header.secret ? (
-                      <span className="text-foreground-secondary">
+                      <span
+                        data-testid="monitor-config-header-state"
+                        className="text-foreground-secondary"
+                      >
                         {header.id !== undefined &&
                         stored.has(`header.${header.id.toLowerCase()}`)
                           ? `${SECRET_SET} (ค่าลับ)`
                           : `${SECRET_MISSING} (ค่าลับ)`}
                       </span>
                     ) : (
-                      <span className="font-mono text-[13px] break-all text-foreground-secondary">
+                      <span
+                        data-testid="monitor-config-header-value"
+                        className="font-mono text-[13px] break-all text-foreground-secondary"
+                      >
                         {header.value}
                       </span>
                     )}
@@ -96,7 +121,10 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
             <dd>
               <ul>
                 {monitor.queryParams.map((param, index) => (
-                  <li key={`${String(index)}:${param.name}`}>
+                  <li
+                    data-testid="monitor-config-query-param"
+                    key={`${String(index)}:${param.name}`}
+                  >
                     <span className="font-mono text-[13px] break-all">
                       {param.name}={param.value}
                     </span>
@@ -114,6 +142,8 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
             <dd>
               <pre
                 role="group"
+                data-testid="monitor-config-body"
+                data-body-type={monitor.body.type}
                 aria-label="เนื้อหา body"
                 className="surface-inset rounded-md border border-foreground/10 p-2 text-left font-mono text-xs whitespace-pre-wrap break-all"
               >
@@ -128,7 +158,11 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
             <dd>
               <ul>
                 {monitor.assertions.map((assertion, index) => (
-                  <li key={`${String(index)}:${assertion.kind}`}>
+                  <li
+                    data-testid="monitor-config-assertion"
+                    data-kind={assertion.kind}
+                    key={`${String(index)}:${assertion.kind}`}
+                  >
                     <span className="break-all">
                       {assertionText(assertion)}
                     </span>
@@ -140,7 +174,10 @@ export function ConfigCard({ monitor }: { monitor: Monitor }) {
         )}
       </dl>
       {showsPlainValues ? (
-        <p className="border-t border-foreground/10 px-4 py-3 text-xs text-foreground-secondary">
+        <p
+          data-testid="monitor-config-visibility-note"
+          className="border-t border-foreground/10 px-4 py-3 text-xs text-foreground-secondary"
+        >
           ผู้ที่ดูมอนิเตอร์เห็นค่านี้ได้ ห้ามใส่ความลับ ใช้ header ลับแทน
         </p>
       ) : null}

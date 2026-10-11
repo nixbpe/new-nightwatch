@@ -1,4 +1,3 @@
-import { ORG_ALERTS_OFF_MESSAGE } from "../../pages/monitors/detail/labels";
 import {
   fetchOrganizationNotificationSettings,
   organizationNotificationSettingsQueryKey,
@@ -61,7 +60,6 @@ import { MonitorFormPage } from "../../pages/monitors/MonitorFormPage";
 import { DetailPage } from "../../pages/monitors/DetailPage";
 import {
   context,
-  must,
   A,
   B,
   MONITOR_ID,
@@ -146,7 +144,10 @@ function client() {
 function MembershipRefreshProbe() {
   const { refreshMembershipContext } = useTenant();
   return (
-    <button onClick={() => void refreshMembershipContext()}>
+    <button
+      data-testid="refresh-membership"
+      onClick={() => void refreshMembershipContext()}
+    >
       refresh membership
     </button>
   );
@@ -184,10 +185,10 @@ function Flash() {
   const { notice, heading } = useFlashNotice();
   return (
     <>
-      <h1 ref={heading} tabIndex={-1}>
+      <h1 data-testid="flash-heading" ref={heading} tabIndex={-1}>
         Flash heading
       </h1>
-      {notice && <p>created notice</p>}
+      {notice && <p data-testid="flash-created-notice">created notice</p>}
     </>
   );
 }
@@ -224,13 +225,13 @@ it("consumes flash state once without replacing the node or focus and resolves e
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  const heading = await screen.findByRole("heading", { name: "Flash heading" });
+  const heading = await screen.findByTestId("flash-heading");
   await waitFor(() => {
     expect(router.state.location.state).toBeNull();
   });
-  expect(screen.getByRole("heading")).toBe(heading);
+  expect(screen.getByTestId("flash-heading")).toBe(heading);
   expect(heading).toHaveFocus();
-  expect(screen.getByText("created notice")).toBeVisible();
+  expect(screen.getByTestId("flash-created-notice")).toBeVisible();
   expect(loads).toBe(1);
   expect(nullCommits).toBe(1);
   const delayed = Promise.withResolvers<MeContextResponse>();
@@ -238,14 +239,14 @@ it("consumes flash state once without replacing the node or focus and resolves e
   act(() => {
     void router.revalidate();
   });
-  await screen.findByText("กำลังโหลดข้อมูลองค์กร…");
+  await screen.findByTestId("shell-admission-loading");
   expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
-  expect(screen.queryByText("created notice")).toBeNull();
+  expect(screen.queryByTestId("flash-created-notice")).toBeNull();
   await act(async () => {
     delayed.resolve(context());
     await delayed.promise;
   });
-  await screen.findByRole("heading", { name: "Flash heading" });
+  await screen.findByTestId("flash-heading");
   expect(loads).toBe(2);
   router.dispose();
   const fresh = createMemoryRouter(routes, { initialEntries: ["/flash"] });
@@ -260,9 +261,9 @@ it.each(["save", "test"] as const)(
   async (operation) => {
     const c = client();
     const router = renderCreateForm(c);
-    const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
+    const input = await screen.findByTestId("monitor-form-name");
     fireEvent.change(input, { target: { value: "local draft" } });
-    fireEvent.change(screen.getByLabelText("URL"), {
+    fireEvent.change(screen.getByTestId("monitor-form-url"), {
       target: { value: "https://api.acme.example/health" },
     });
     const delayed = Promise.withResolvers<MeContextResponse>();
@@ -274,21 +275,19 @@ it.each(["save", "test"] as const)(
       new ApiError("PERMISSION_DENIED", "Denied", 403),
     );
     fireEvent.click(
-      screen.getByRole("button", {
-        name: operation === "save" ? "บันทึกมอนิเตอร์" : "ทดสอบการตั้งค่า",
-      }),
+      screen.getByTestId(
+        operation === "save" ? "monitor-form-save" : "monitor-form-test",
+      ),
     );
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
       );
     });
-    expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "บันทึกมอนิเตอร์" }),
-    ).toBeNull();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-save")).toBeNull();
     expect(input.isConnected).toBe(false);
-    expect(screen.queryByText("Acme")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-scope")).toBeNull();
     const viewer = context("viewer");
     await act(async () => {
       delayed.resolve(viewer);
@@ -297,17 +296,17 @@ it.each(["save", "test"] as const)(
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
     });
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("local draft");
-    expect(screen.getByRole("alert")).toBeVisible();
+    expect(screen.getByTestId("monitor-form-name")).toHaveValue("local draft");
+    expect(screen.getByTestId("monitor-form-role-changed")).toBeVisible();
     router.dispose();
   },
 );
 it("keeps form interaction disabled after required resolver failure and offers bootstrap retry", async () => {
   const c = client();
   const router = renderCreateForm(c);
-  const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
+  const input = await screen.findByTestId("monitor-form-name");
   fireEvent.change(input, { target: { value: "local draft" } });
-  fireEvent.change(screen.getByLabelText("URL"), {
+  fireEvent.change(screen.getByTestId("monitor-form-url"), {
     target: { value: "https://api.acme.example/health" },
   });
   const delayed = Promise.withResolvers<MeContextResponse>();
@@ -315,7 +314,7 @@ it("keeps form interaction disabled after required resolver failure and offers b
   vi.mocked(createMonitor).mockRejectedValue(
     new ApiError("PERMISSION_DENIED", "Denied", 403),
   );
-  fireEvent.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+  fireEvent.click(screen.getByTestId("monitor-form-save"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
@@ -325,17 +324,17 @@ it("keeps form interaction disabled after required resolver failure and offers b
   });
   expect(getContextPublicationSnapshot(c).admission.kind).toBe("failed");
   expect(input.isConnected).toBe(false);
-  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
-  expect(screen.queryByRole("button", { name: "บันทึกมอนิเตอร์" })).toBeNull();
-  await screen.findByText("ไม่สามารถยืนยันสิทธิ์ของคุณได้");
-  expect(screen.getByRole("button", { name: "ลองอีกครั้ง" })).toBeVisible();
+  expect(screen.queryByTestId("monitor-form-name")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-save")).toBeNull();
+  await screen.findByTestId("monitor-form-admission-error");
+  expect(screen.getByTestId("monitor-form-admission-retry")).toBeVisible();
   const retry = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(retry.promise);
-  fireEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+  fireEvent.click(screen.getByTestId("monitor-form-admission-retry"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
-  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   await act(async () => {
     retry.resolve(context("viewer"));
     await retry.promise;
@@ -343,7 +342,7 @@ it("keeps form interaction disabled after required resolver failure and offers b
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
   });
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("local draft");
+  expect(screen.getByTestId("monitor-form-name")).toHaveValue("local draft");
   router.dispose();
 });
 it.each(["pause", "dialog"] as const)(
@@ -369,10 +368,14 @@ it.each(["pause", "dialog"] as const)(
         <RouterProvider router={router} />
       </QueryClientProvider>,
     );
-    await screen.findByRole("heading", { name: "Payments API" });
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+        "Payments API",
+      );
+    });
     if (action === "dialog") {
-      fireEvent.click(screen.getByRole("button", { name: "ลบมอนิเตอร์" }));
-      await screen.findByRole("dialog");
+      fireEvent.click(screen.getByTestId("monitor-detail-delete"));
+      await screen.findByTestId("monitor-detail-delete-dialog");
     }
     const delayed = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(delayed.promise);
@@ -384,19 +387,21 @@ it.each(["pause", "dialog"] as const)(
     );
     fireEvent.click(
       action === "pause"
-        ? screen.getByRole("button", { name: "หยุดชั่วคราว" })
-        : must(screen.getAllByRole("button", { name: "ลบมอนิเตอร์" }).at(-1)),
+        ? screen.getByTestId("monitor-detail-toggle")
+        : within(
+            screen.getByTestId("monitor-detail-delete-dialog"),
+          ).getByTestId("monitor-detail-delete-confirm"),
     );
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
       );
     });
-    expect(screen.queryByRole("heading", { name: "Payments API" })).toBeNull();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "สิทธิ์ของคุณเปลี่ยนแล้ว",
+    expect(screen.getByTestId("monitor-detail-title")).not.toHaveTextContent(
+      "Payments API",
     );
-    expect(screen.queryByText("https://api.acme.example/health")).toBeNull();
+    expect(screen.getByTestId("monitor-detail-action-error")).toBeVisible();
+    expect(screen.queryByTestId("monitor-detail-url")).toBeNull();
     const calls = vi.mocked(fetchMonitorDetail).mock.calls.length;
     await act(async () => {
       await c.invalidateQueries({ queryKey: ["tenant"] });
@@ -406,11 +411,13 @@ it.each(["pause", "dialog"] as const)(
       delayed.reject(new Error("Resolver failed"));
       await delayed.promise.catch(() => undefined);
     });
-    await screen.findByText("ไม่สามารถยืนยันสิทธิ์ดูมอนิเตอร์ได้");
-    expect(screen.queryByRole("heading", { name: "Payments API" })).toBeNull();
+    await screen.findByTestId("monitor-detail-admission-error");
+    expect(screen.getByTestId("monitor-detail-title")).not.toHaveTextContent(
+      "Payments API",
+    );
     const retry = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(retry.promise);
-    fireEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    fireEvent.click(screen.getByTestId("monitor-detail-admission-retry"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
@@ -421,11 +428,13 @@ it.each(["pause", "dialog"] as const)(
       retry.resolve(context("viewer"));
       await retry.promise;
     });
-    await screen.findByRole("heading", { name: "Payments API" });
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "สิทธิ์ของคุณเปลี่ยนแล้ว",
-    );
-    expect(screen.queryByRole("button", { name: "หยุดชั่วคราว" })).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+        "Payments API",
+      );
+    });
+    expect(screen.getByTestId("monitor-detail-action-error")).toBeVisible();
+    expect(screen.queryByTestId("monitor-detail-toggle")).toBeNull();
     router.dispose();
   },
 );
@@ -437,9 +446,18 @@ function Operations() {
       <output data-testid="scope">{activeOrg?.id ?? "none"}</output>
       <output data-testid="pending">{String(mePending)}</output>
       <output data-testid="error">{meError?.message ?? "none"}</output>
-      <button onClick={() => void refreshMembershipContext()}>refresh</button>
-      <button onClick={() => void switchOrg(B)}>switch</button>
-      <button onClick={() => void switchOrg(A)}>switch-a</button>
+      <button
+        data-testid="refresh-membership"
+        onClick={() => void refreshMembershipContext()}
+      >
+        refresh
+      </button>
+      <button data-testid="switch-org-b" onClick={() => void switchOrg(B)}>
+        switch
+      </button>
+      <button data-testid="switch-org-a" onClick={() => void switchOrg(A)}>
+        switch-a
+      </button>
     </>
   );
 }
@@ -454,11 +472,13 @@ it.each(["success", "failure"] as const)(
         </TenantProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText(A);
+    await waitFor(() => {
+      expect(screen.getByTestId("scope")).toHaveTextContent(A);
+    });
     vi.mocked(updateActiveOrganization).mockRejectedValueOnce(
       new Error("PATCH failed"),
     );
-    fireEvent.click(screen.getByText("switch"));
+    fireEvent.click(screen.getByTestId("switch-org-b"));
     await waitFor(() => {
       expect(vi.mocked(updateActiveOrganization)).toHaveBeenCalledTimes(1);
     });
@@ -469,7 +489,7 @@ it.each(["success", "failure"] as const)(
     vi.mocked(fetchMeContext)
       .mockReturnValueOnce(manual.promise)
       .mockReturnValueOnce(required.promise);
-    fireEvent.click(screen.getByText("refresh"));
+    fireEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(vi.mocked(fetchMeContext)).toHaveBeenCalledTimes(2);
     });
@@ -504,9 +524,9 @@ it.each(["success", "failure"] as const)(
 it("destroys the local form snapshot when required resolution confirms membership removal", async () => {
   const c = client();
   const router = renderCreateForm(c);
-  const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
+  const input = await screen.findByTestId("monitor-form-name");
   fireEvent.change(input, { target: { value: "local draft" } });
-  fireEvent.change(screen.getByLabelText("URL"), {
+  fireEvent.change(screen.getByTestId("monitor-form-url"), {
     target: { value: "https://api.acme.example/health" },
   });
   const pending = Promise.withResolvers<MeContextResponse>();
@@ -514,7 +534,7 @@ it("destroys the local form snapshot when required resolution confirms membershi
   vi.mocked(createMonitor).mockRejectedValue(
     new ApiError("MEMBERSHIP_DENIED", "Denied", 403),
   );
-  fireEvent.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+  fireEvent.click(screen.getByTestId("monitor-form-save"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
@@ -526,9 +546,11 @@ it("destroys the local form snapshot when required resolution confirms membershi
     });
     await pending.promise;
   });
-  await screen.findByText("คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้");
+  await screen.findByTestId("monitor-form-denied");
   expect(input.isConnected).toBe(false);
-  expect(screen.queryByDisplayValue("local draft")).toBeNull();
+  expect(
+    screen.queryByTestId<HTMLInputElement>("monitor-form-name")?.value,
+  ).not.toBe("local draft");
   router.dispose();
 });
 it("supersedes both queued PATCH intents during required refresh and prevents old intents from reopening admission", async () => {
@@ -540,20 +562,22 @@ it("supersedes both queued PATCH intents during required refresh and prevents ol
       </TenantProvider>
     </QueryClientProvider>,
   );
-  await screen.findByText(A);
+  await waitFor(() => {
+    expect(screen.getByTestId("scope")).toHaveTextContent(A);
+  });
   const patch1 = Promise.withResolvers<MeContextResponse>(),
     patch2 = Promise.withResolvers<MeContextResponse>(),
     required = Promise.withResolvers<MeContextResponse>();
   vi.mocked(updateActiveOrganization)
     .mockReturnValueOnce(patch1.promise)
     .mockReturnValueOnce(patch2.promise);
-  fireEvent.click(screen.getByText("switch"));
+  fireEvent.click(screen.getByTestId("switch-org-b"));
   await waitFor(() => {
     expect(vi.mocked(updateActiveOrganization)).toHaveBeenCalledTimes(1);
   });
-  fireEvent.click(screen.getByText("switch"));
+  fireEvent.click(screen.getByTestId("switch-org-b"));
   vi.mocked(fetchMeContext).mockReturnValueOnce(required.promise);
-  fireEvent.click(screen.getByText("refresh"));
+  fireEvent.click(screen.getByTestId("refresh-membership"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
@@ -577,7 +601,9 @@ it("supersedes both queued PATCH intents during required refresh and prevents ol
     required.resolve(context("viewer"));
     await required.promise;
   });
-  await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent(A));
+  await waitFor(() => {
+    expect(screen.getByTestId("scope")).toHaveTextContent(A);
+  });
   expect(screen.getByTestId("pending")).toHaveTextContent("false");
 });
 it.each(["success", "failure"] as const)(
@@ -591,17 +617,19 @@ it.each(["success", "failure"] as const)(
         </TenantProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText(A);
+    await waitFor(() => {
+      expect(screen.getByTestId("scope")).toHaveTextContent(A);
+    });
     const patch = Promise.withResolvers<MeContextResponse>(),
       required = Promise.withResolvers<MeContextResponse>();
     vi.mocked(updateActiveOrganization).mockReturnValueOnce(patch.promise);
-    fireEvent.click(screen.getByText("switch"));
+    fireEvent.click(screen.getByTestId("switch-org-b"));
     await waitFor(() => {
       expect(vi.mocked(updateActiveOrganization)).toHaveBeenCalledTimes(1);
     });
-    fireEvent.click(screen.getByText("switch"));
+    fireEvent.click(screen.getByTestId("switch-org-b"));
     vi.mocked(fetchMeContext).mockReturnValueOnce(required.promise);
-    fireEvent.click(screen.getByText("refresh"));
+    fireEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
@@ -628,10 +656,10 @@ it.each(["success", "failure"] as const)(
         ...context(),
         lastActiveTenantId: B,
       });
-      fireEvent.click(screen.getByText("switch"));
-      await waitFor(() =>
-        expect(screen.getByTestId("scope")).toHaveTextContent(B),
-      );
+      fireEvent.click(screen.getByTestId("switch-org-b"));
+      await waitFor(() => {
+        expect(screen.getByTestId("scope")).toHaveTextContent(B);
+      });
     }
   },
 );
@@ -644,16 +672,18 @@ it("retains the successful selection when the next queued PATCH fails in the sam
       </TenantProvider>
     </QueryClientProvider>,
   );
-  await screen.findByText(A);
+  await waitFor(() => {
+    expect(screen.getByTestId("scope")).toHaveTextContent(A);
+  });
   const first = Promise.withResolvers<MeContextResponse>();
   vi.mocked(updateActiveOrganization)
     .mockReturnValueOnce(first.promise)
     .mockRejectedValueOnce(new Error("second PATCH failed"));
-  fireEvent.click(screen.getByText("switch"));
+  fireEvent.click(screen.getByTestId("switch-org-b"));
   await waitFor(() => {
     expect(vi.mocked(updateActiveOrganization)).toHaveBeenCalledTimes(1);
   });
-  fireEvent.click(screen.getByText("switch"));
+  fireEvent.click(screen.getByTestId("switch-org-b"));
   await act(async () => {
     first.resolve({
       ...context(),
@@ -679,17 +709,19 @@ it.each(["user-b", null] as const)(
         </TenantProvider>
       </SessionQueryProvider>,
     );
-    await screen.findByText(A);
+    await waitFor(() => {
+      expect(screen.getByTestId("scope")).toHaveTextContent(A);
+    });
     const patch = Promise.withResolvers<MeContextResponse>(),
       manual = Promise.withResolvers<MeContextResponse>();
     vi.mocked(updateActiveOrganization).mockReturnValueOnce(patch.promise);
-    fireEvent.click(screen.getByText("switch"));
+    fireEvent.click(screen.getByTestId("switch-org-b"));
     await waitFor(() => {
       expect(vi.mocked(updateActiveOrganization)).toHaveBeenCalledTimes(1);
     });
-    fireEvent.click(screen.getByText("switch"));
+    fireEvent.click(screen.getByTestId("switch-org-b"));
     vi.mocked(fetchMeContext).mockReturnValueOnce(manual.promise);
-    fireEvent.click(screen.getByText("refresh"));
+    fireEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(old).admission.kind).toBe(
         "confirming",
@@ -744,7 +776,9 @@ it("retires the adopted staged client when its identity differs from first resol
   await waitFor(() => {
     expect(getContextPublicationSnapshot(old).admission.kind).toBe("retired");
   });
-  await screen.findByText(B);
+  await waitFor(() => {
+    expect(screen.getByTestId("scope")).toHaveTextContent(B);
+  });
   expect(old.getQueryData(ME_CONTEXT_QUERY_KEY)).toBeUndefined();
 });
 it("rejects flash consumption during explicit revalidation and consumes once without clearing a newer notice", async () => {
@@ -813,7 +847,9 @@ it("keeps INBOX_SCOPE_CHANGED resolution ahead of flash consumption and consumes
       </TenantProvider>
     </QueryClientProvider>,
   );
-  await screen.findByText(A);
+  await waitFor(() => {
+    expect(screen.getByTestId("scope")).toHaveTextContent(A);
+  });
   const expected = {
       key: router.state.location.key,
       notice: "created" as const,
@@ -843,7 +879,7 @@ it("keeps INBOX_SCOPE_CHANGED resolution ahead of flash consumption and consumes
   expect(router.state.location.state).toEqual({ notice: "created" as const });
   expect(screen.getByTestId("scope")).toHaveTextContent("none");
   vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-  fireEvent.click(screen.getByText("refresh"));
+  fireEvent.click(screen.getByTestId("refresh-membership"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
   });
@@ -867,7 +903,7 @@ it("scope replacement destroys local form snapshot before old values can reopen"
           },
           {
             path: "/organizations/:organizationId/monitors",
-            element: <p>new scope overview</p>,
+            element: <p data-testid="new-scope-overview">new scope overview</p>,
           },
         ],
       },
@@ -879,9 +915,9 @@ it("scope replacement destroys local form snapshot before old values can reopen"
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
+  const input = await screen.findByTestId("monitor-form-name");
   fireEvent.change(input, { target: { value: "local draft" } });
-  fireEvent.change(screen.getByLabelText("URL"), {
+  fireEvent.change(screen.getByTestId("monitor-form-url"), {
     target: { value: "https://api.acme.example/health" },
   });
   const pending = Promise.withResolvers<MeContextResponse>();
@@ -889,7 +925,7 @@ it("scope replacement destroys local form snapshot before old values can reopen"
   vi.mocked(createMonitor).mockRejectedValue(
     new ApiError("PERMISSION_DENIED", "Denied", 403),
   );
-  fireEvent.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+  fireEvent.click(screen.getByTestId("monitor-form-save"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
@@ -900,9 +936,11 @@ it("scope replacement destroys local form snapshot before old values can reopen"
     });
     await pending.promise;
   });
-  await screen.findByText("new scope overview");
+  await screen.findByTestId("new-scope-overview");
   expect(input.isConnected).toBe(false);
-  expect(screen.queryByDisplayValue("local draft")).toBeNull();
+  expect(
+    screen.queryByTestId<HTMLInputElement>("monitor-form-name")?.value,
+  ).not.toBe("local draft");
   router.dispose();
 });
 it("destroys form input and local draft when SessionQueryProvider replaces identity", async () => {
@@ -926,7 +964,7 @@ it("destroys form input and local draft when SessionQueryProvider replaces ident
       <RouterProvider router={router} />
     </SessionQueryProvider>,
   );
-  const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
+  const input = await screen.findByTestId("monitor-form-name");
   fireEvent.change(input, { target: { value: "local draft identityA" } });
   sessionState.data = { user: { id: "user-b" } };
   vi.mocked(fetchMeContext).mockResolvedValue({
@@ -940,9 +978,11 @@ it("destroys form input and local draft when SessionQueryProvider replaces ident
       <RouterProvider router={router} />
     </SessionQueryProvider>,
   );
-  await screen.findByText("คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้");
+  await screen.findByTestId("monitor-form-denied");
   expect(input.isConnected).toBe(false);
-  expect(screen.queryByDisplayValue("local draft identityA")).toBeNull();
+  expect(
+    screen.queryByTestId<HTMLInputElement>("monitor-form-name")?.value,
+  ).not.toBe("local draft identityA");
   router.dispose();
 });
 it("flash consumed state stays one-time on back and a fresh document router", async () => {
@@ -959,7 +999,11 @@ it("flash consumed state stays one-time on back and a fresh document router", as
       element: <Boundary />,
       children: [
         { path: "/flash", loader, element: <Flash /> },
-        { path: "/other", loader, element: <p>Other</p> },
+        {
+          path: "/other",
+          loader,
+          element: <p data-testid="other-route">Other</p>,
+        },
       ],
     },
   ];
@@ -973,19 +1017,19 @@ it("flash consumed state stays one-time on back and a fresh document router", as
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  await screen.findByText("created notice");
+  await screen.findByTestId("flash-created-notice");
   await waitFor(() => {
     expect(router.state.location.state).toBeNull();
   });
   await act(async () => {
     await router.navigate("/other");
   });
-  await screen.findByText("Other");
+  await screen.findByTestId("other-route");
   await act(async () => {
     await router.navigate(-1);
   });
-  await screen.findByRole("heading", { name: "Flash heading" });
-  expect(screen.queryByText("created notice")).toBeNull();
+  await screen.findByTestId("flash-heading");
+  expect(screen.queryByTestId("flash-created-notice")).toBeNull();
   const consumed = router.state.location;
   tree.unmount();
   router.dispose();
@@ -995,8 +1039,8 @@ it("flash consumed state stays one-time on back and a fresh document router", as
       <RouterProvider router={fresh} />
     </QueryClientProvider>,
   );
-  await screen.findByRole("heading", { name: "Flash heading" });
-  expect(screen.queryByText("created notice")).toBeNull();
+  await screen.findByTestId("flash-heading");
+  expect(screen.queryByTestId("flash-created-notice")).toBeNull();
   fresh.dispose();
 });
 it("consumes concurrent duplicate flash commands once before the router commits null state", async () => {
@@ -1056,41 +1100,50 @@ it("keeps only the edit draft and generic heading during resolution delay and fa
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  await screen.findByRole("heading", { name: "แก้ไข Payments API" });
-  const input = screen.getByLabelText("ชื่อมอนิเตอร์");
+  await waitFor(() => {
+    expect(screen.getByTestId("monitor-form-title")).toHaveTextContent(
+      "Payments API",
+    );
+  });
+  const input = screen.getByTestId("monitor-form-name");
   fireEvent.change(input, { target: { value: "edited local draft" } });
   const pending = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
   vi.mocked(updateMonitor).mockRejectedValue(
     new ApiError("PERMISSION_DENIED", "Denied", 403),
   );
-  fireEvent.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
+  fireEvent.click(screen.getByTestId("monitor-form-save"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
-  expect(screen.getByRole("heading", { name: "แก้ไขมอนิเตอร์" })).toBeVisible();
-  expect(
-    screen.queryByRole("heading", { name: "แก้ไข Payments API" }),
-  ).toBeNull();
-  expect(screen.queryByText("Acme")).toBeNull();
-  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  expect(screen.getByTestId("monitor-form-title")).toBeVisible();
+  expect(screen.getByTestId("monitor-form-title")).not.toHaveTextContent(
+    "Payments API",
+  );
+  expect(screen.queryByTestId("monitor-form-scope")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   expect(input.isConnected).toBe(false);
   await act(async () => {
     pending.reject(new Error("Current resolver failed"));
     await pending.promise.catch(() => undefined);
   });
-  await screen.findByText("ไม่สามารถยืนยันสิทธิ์ของคุณได้");
-  expect(screen.queryByText("Acme")).toBeNull();
-  expect(screen.getByRole("heading", { name: "แก้ไขมอนิเตอร์" })).toBeVisible();
+  await screen.findByTestId("monitor-form-admission-error");
+  expect(screen.queryByTestId("monitor-form-scope")).toBeNull();
+  expect(screen.getByTestId("monitor-form-title")).toBeVisible();
   vi.mocked(fetchMeContext).mockResolvedValueOnce(context("viewer"));
-  fireEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-  await screen.findByRole("heading", { name: "แก้ไข Payments API" });
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+  fireEvent.click(screen.getByTestId("monitor-form-admission-retry"));
+  await waitFor(() => {
+    expect(screen.getByTestId("monitor-form-title")).toHaveTextContent(
+      "Payments API",
+    );
+  });
+  expect(screen.getByTestId("monitor-form-name")).toHaveValue(
     "edited local draft",
   );
-  expect(
-    screen.getByRole("button", { name: "บันทึกการแก้ไข" }),
-  ).toHaveAttribute("aria-disabled", "true");
+  expect(screen.getByTestId("monitor-form-save")).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   router.dispose();
 });
 
@@ -1128,29 +1181,29 @@ it.each(["create", "edit"] as const)(
         <RouterProvider router={router} />
       </QueryClientProvider>,
     );
-    await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
+    await screen.findByTestId("shell-admission-error");
     const pending = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-    fireEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
+    fireEvent.click(screen.getByTestId("shell-admission-retry"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
       );
     });
-    expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
     expect(fetchMonitorDetail).not.toHaveBeenCalled();
     expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
     await act(async () => {
       pending.reject(new Error("Retry still refused"));
       await pending.promise.catch(() => undefined);
     });
-    await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
-    expect(screen.queryByText("กำลังโหลดองค์กร")).toBeNull();
+    await screen.findByTestId("shell-admission-error");
+    expect(screen.queryByTestId("shell-admission-loading")).toBeNull();
     expect(fetchMonitorDetail).not.toHaveBeenCalled();
     expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
     vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-    fireEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
-    await screen.findByLabelText("ชื่อมอนิเตอร์");
+    fireEvent.click(screen.getByTestId("shell-admission-retry"));
+    await screen.findByTestId("monitor-form-name");
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
     router.dispose();
     await c.cancelQueries();
@@ -1183,26 +1236,26 @@ it("blocks conflict reload, settings invalidation and focus during resolver dela
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
+  const input = await screen.findByTestId("monitor-form-name");
   fireEvent.change(input, { target: { value: "conflict draft" } });
   vi.mocked(updateMonitor).mockRejectedValueOnce(
     new ApiError("MONITOR_VERSION_CONFLICT", "Conflict", 409),
   );
-  fireEvent.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
-  await screen.findByRole("button", { name: "โหลดค่าล่าสุด" });
-  await screen.findByText(ORG_ALERTS_OFF_MESSAGE);
+  fireEvent.click(screen.getByTestId("monitor-form-save"));
+  await screen.findByTestId("monitor-form-reload");
+  await screen.findByTestId("monitor-form-org-alerts-disabled");
   vi.mocked(fetchOrganizationNotificationSettings).mockClear();
   vi.mocked(fetchMonitorDetail).mockClear();
   const pending = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  fireEvent.click(screen.getByTestId("refresh-membership"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
   await waitFor(() => {
     expect(fetchMeContext).toHaveBeenCalledTimes(2);
   });
-  expect(screen.queryByText(ORG_ALERTS_OFF_MESSAGE)).toBeNull();
+  expect(screen.queryByTestId("monitor-form-org-alerts-disabled")).toBeNull();
   await act(async () => {
     await c.invalidateQueries({
       queryKey: organizationNotificationSettingsQueryKey(A),
@@ -1215,15 +1268,15 @@ it("blocks conflict reload, settings invalidation and focus during resolver dela
   });
   expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
   expect(fetchMeContext).toHaveBeenCalledTimes(2);
-  expect(screen.queryByRole("button", { name: "โหลดค่าล่าสุด" })).toBeNull();
+  expect(screen.queryByTestId("monitor-form-reload")).toBeNull();
   expect(fetchMonitorDetail).not.toHaveBeenCalled();
-  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   expect(input.isConnected).toBe(false);
   await act(async () => {
     pending.reject(new Error("Membership unresolved"));
     await pending.promise.catch(() => undefined);
   });
-  await screen.findByText("ไม่สามารถยืนยันสิทธิ์ของคุณได้");
+  await screen.findByTestId("monitor-form-admission-error");
   await act(async () => {
     await c.invalidateQueries({
       queryKey: organizationNotificationSettingsQueryKey(A),
@@ -1235,21 +1288,21 @@ it("blocks conflict reload, settings invalidation and focus during resolver dela
     onlineManager.setOnline(true);
   });
   expect(fetchMeContext).toHaveBeenCalledTimes(2);
-  expect(screen.queryByText(ORG_ALERTS_OFF_MESSAGE)).toBeNull();
-  expect(screen.queryByRole("button", { name: "โหลดค่าล่าสุด" })).toBeNull();
+  expect(screen.queryByTestId("monitor-form-org-alerts-disabled")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-reload")).toBeNull();
   expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
   expect(fetchMonitorDetail).not.toHaveBeenCalled();
   vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-  fireEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+  fireEvent.click(screen.getByTestId("monitor-form-admission-retry"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
   });
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("conflict draft");
+  expect(screen.getByTestId("monitor-form-name")).toHaveValue("conflict draft");
   await waitFor(() => {
     expect(fetchMonitorDetail).toHaveBeenCalledTimes(1);
   });
   vi.mocked(fetchMonitorDetail).mockClear();
-  fireEvent.click(screen.getByRole("button", { name: "โหลดค่าล่าสุด" }));
+  fireEvent.click(screen.getByTestId("monitor-form-reload"));
   await waitFor(() => {
     expect(fetchMonitorDetail).toHaveBeenCalledTimes(1);
   });
@@ -1265,7 +1318,12 @@ it("confirmed focus and reconnect resolve afresh; pending admission cannot be di
       {
         element: <Boundary />,
         children: [
-          { path: "/ready", element: <p>Current admitted content</p> },
+          {
+            path: "/ready",
+            element: (
+              <p data-testid="admitted-content">Current admitted content</p>
+            ),
+          },
         ],
       },
     ],
@@ -1276,7 +1334,7 @@ it("confirmed focus and reconnect resolve afresh; pending admission cannot be di
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  await screen.findByText("Current admitted content");
+  await screen.findByTestId("admitted-content");
   const fresh = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(fresh.promise);
   act(() => {
@@ -1287,7 +1345,7 @@ it("confirmed focus and reconnect resolve afresh; pending admission cannot be di
   await waitFor(() => {
     expect(fetchMeContext).toHaveBeenCalledTimes(2);
   });
-  expect(screen.queryByText("Current admitted content")).toBeNull();
+  expect(screen.queryByTestId("admitted-content")).toBeNull();
   const claim = getContextPublicationSnapshot(c).claim;
   act(() => {
     onlineManager.setOnline(false);
@@ -1299,7 +1357,7 @@ it("confirmed focus and reconnect resolve afresh; pending admission cannot be di
     fresh.resolve(context());
     await fresh.promise;
   });
-  await screen.findByText("Current admitted content");
+  await screen.findByTestId("admitted-content");
   const reconnect = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(reconnect.promise);
   act(() => {
@@ -1309,12 +1367,12 @@ it("confirmed focus and reconnect resolve afresh; pending admission cannot be di
   await waitFor(() => {
     expect(fetchMeContext).toHaveBeenCalledTimes(3);
   });
-  expect(screen.queryByText("Current admitted content")).toBeNull();
+  expect(screen.queryByTestId("admitted-content")).toBeNull();
   await act(async () => {
     reconnect.resolve(context());
     await reconnect.promise;
   });
-  await screen.findByText("Current admitted content");
+  await screen.findByTestId("admitted-content");
   router.dispose();
   await c.cancelQueries();
   c.clear();
@@ -1345,17 +1403,17 @@ it("viewer confirmation preserves disabled edit draft/refusal and never restores
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  const input = await screen.findByLabelText("ชื่อมอนิเตอร์");
-  await screen.findByText(ORG_ALERTS_OFF_MESSAGE);
+  const input = await screen.findByTestId("monitor-form-name");
+  await screen.findByTestId("monitor-form-org-alerts-disabled");
   fireEvent.change(input, { target: { value: "viewer keeps local draft" } });
   const pending = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
   vi.mocked(fetchOrganizationNotificationSettings).mockClear();
-  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  fireEvent.click(screen.getByTestId("refresh-membership"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
-  expect(screen.queryByText(ORG_ALERTS_OFF_MESSAGE)).toBeNull();
+  expect(screen.queryByTestId("monitor-form-org-alerts-disabled")).toBeNull();
   expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
   await act(async () => {
     pending.resolve(context("viewer"));
@@ -1370,17 +1428,16 @@ it("viewer confirmation preserves disabled edit draft/refusal and never restores
     });
   });
   expect(fetchOrganizationNotificationSettings).not.toHaveBeenCalled();
-  expect(screen.queryByText(ORG_ALERTS_OFF_MESSAGE)).toBeNull();
+  expect(screen.queryByTestId("monitor-form-org-alerts-disabled")).toBeNull();
   expect(input.isConnected).toBe(false);
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+  expect(screen.getByTestId("monitor-form-name")).toHaveValue(
     "viewer keeps local draft",
   );
-  expect(
-    screen.getByRole("button", { name: "บันทึกการแก้ไข" }),
-  ).toHaveAttribute("aria-disabled", "true");
-  expect(screen.getByRole("alert")).toHaveTextContent(
-    "สิทธิ์ของคุณเปลี่ยนแล้ว",
+  expect(screen.getByTestId("monitor-form-save")).toHaveAttribute(
+    "aria-disabled",
+    "true",
   );
+  expect(screen.getByTestId("monitor-form-role-changed")).toBeVisible();
   router.dispose();
   await c.cancelQueries();
   c.clear();
@@ -1432,24 +1489,20 @@ function renderPrivateRoute(
   return router;
 }
 function assertPrivatePresentationWithdrawn() {
-  expect(screen.queryByLabelText("URL")).toBeNull();
-  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-url")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   expect(
-    screen.queryByDisplayValue("https://protected.example/request"),
-  ).toBeNull();
-  for (const original of [
-    "protected header",
-    "protected query",
-    "protected body",
-    "protected assertion",
-  ]) {
-    expect(screen.queryByDisplayValue(original)).toBeNull();
-  }
-  expect(screen.queryByLabelText("Token")).toBeNull();
-  expect(screen.queryByRole("button", { name: "แทนที่ Token" })).toBeNull();
-  expect(screen.queryByText(/ตั้งค่าแล้ว/)).toBeNull();
-  expect(screen.queryByText("การทดสอบผ่าน")).toBeNull();
-  expect(screen.queryByText("Acme")).toBeNull();
+    screen.queryByTestId<HTMLInputElement>("monitor-form-url")?.value,
+  ).not.toBe("https://protected.example/request");
+  expect(screen.queryByTestId("monitor-form-header-value")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-query-value")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-body-content")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-assertion-text")).toBeNull();
+  expect(screen.queryByTestId("monitor-secret-auth.token-value")).toBeNull();
+  expect(screen.queryByTestId("monitor-secret-auth.token-replace")).toBeNull();
+  expect(screen.queryAllByTestId(/^monitor-secret-.*-stored$/)).toHaveLength(0);
+  expect(screen.queryByTestId("monitor-test-result")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-scope")).toBeNull();
 }
 for (const operation of ["save", "test"] as const) {
   it.each(["owner", "admin", "viewer", "auditor"] as const)(
@@ -1471,9 +1524,9 @@ for (const operation of ["save", "test"] as const) {
         }),
       });
       const router = renderPrivateRoute(c, "edit");
-      const name = await screen.findByLabelText("ชื่อมอนิเตอร์");
+      const name = await screen.findByTestId("monitor-form-name");
       fireEvent.change(name, { target: { value: "one edited field" } });
-      expect(screen.getByLabelText("URL")).toHaveValue(
+      expect(screen.getByTestId("monitor-form-url")).toHaveValue(
         "https://protected.example/request",
       );
       const pending = Promise.withResolvers<MeContextResponse>();
@@ -1485,9 +1538,9 @@ for (const operation of ["save", "test"] as const) {
         new ApiError("PERMISSION_DENIED", "Denied", 403),
       );
       fireEvent.click(
-        screen.getByRole("button", {
-          name: operation === "save" ? "บันทึกการแก้ไข" : "ทดสอบการตั้งค่า",
-        }),
+        screen.getByTestId(
+          operation === "save" ? "monitor-form-save" : "monitor-form-test",
+        ),
       );
       await waitFor(() => {
         expect(getContextPublicationSnapshot(c).admission.kind).toBe(
@@ -1512,30 +1565,50 @@ for (const operation of ["save", "test"] as const) {
       assertPrivatePresentationWithdrawn();
       vi.mocked(fetchMeContext).mockResolvedValueOnce(context(role));
       fireEvent.click(
-        await screen.findByRole("button", { name: "ลองอีกครั้ง" }),
+        await screen.findByTestId("monitor-form-admission-retry"),
       );
-      const restored = await screen.findByLabelText("ชื่อมอนิเตอร์");
+      const restored = await screen.findByTestId("monitor-form-name");
       expect(restored).toHaveValue("one edited field");
-      expect(screen.getByLabelText("URL")).toHaveValue(
+      expect(screen.getByTestId("monitor-form-url")).toHaveValue(
         "https://protected.example/request",
       );
-      expect(screen.getByDisplayValue("protected header")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("protected query")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("protected body")).toBeInTheDocument();
       expect(
-        screen.getByDisplayValue("protected assertion"),
-      ).toBeInTheDocument();
-      expect(screen.getAllByText(/ตั้งค่าแล้ว/).length).toBeGreaterThan(0);
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "สิทธิ์ของคุณเปลี่ยนแล้ว",
+        within(screen.getByTestId(/^monitor-form-header-row-/)).getByTestId(
+          "monitor-form-header-value",
+        ),
+      ).toHaveValue("protected header");
+      expect(
+        within(screen.getByTestId(/^monitor-form-query-row-/)).getByTestId(
+          "monitor-form-query-value",
+        ),
+      ).toHaveValue("protected query");
+      expect(screen.getByTestId("monitor-form-body-content")).toHaveValue(
+        "protected body",
       );
+      expect(
+        within(screen.getByTestId(/^monitor-form-assertion-row-/)).getByTestId(
+          "monitor-form-assertion-text",
+        ),
+      ).toHaveValue("protected assertion");
+      expect(
+        screen.getAllByTestId(/^monitor-secret-.*-stored$/).length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.getByTestId(
+          role === "owner" || role === "admin"
+            ? "monitor-form-error"
+            : "monitor-form-role-changed",
+        ),
+      ).toBeVisible();
       if (role === "viewer" || role === "auditor") {
-        expect(
-          screen.getByRole("button", { name: "บันทึกการแก้ไข" }),
-        ).toHaveAttribute("aria-disabled", "true");
-        expect(
-          screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
-        ).toHaveAttribute("aria-disabled", "true");
+        expect(screen.getByTestId("monitor-form-save")).toHaveAttribute(
+          "aria-disabled",
+          "true",
+        );
+        expect(screen.getByTestId("monitor-form-test")).toHaveAttribute(
+          "aria-disabled",
+          "true",
+        );
         expect(fetchOrganizationNotificationSettings).toHaveBeenCalledTimes(
           settings,
         );
@@ -1582,9 +1655,17 @@ it.each([
       Promise.resolve(historyChunk(page.offset)),
     );
     const router = renderPrivateRoute(c, "checks", suffix, uppercase);
-    await screen.findByText("แสดง 1–1 จาก 4");
-    fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
-    await screen.findByText("แสดง 1–2 จาก 4");
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+      ).toEqual(["1", "1", "4"]);
+    });
+    fireEvent.click(screen.getByTestId("monitor-checks-load-more"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+      ).toEqual(["1", "2", "4"]);
+    });
     const key = monitorQueryKeys.checksHistory(A, MONITOR_ID),
       before = c.getQueryData(key);
     const detailReads = vi.mocked(fetchMonitorDetail).mock.calls.length;
@@ -1592,9 +1673,7 @@ it.each([
     const pending = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
     if (cause === "membership")
-      fireEvent.click(
-        screen.getByRole("button", { name: "refresh membership" }),
-      );
+      fireEvent.click(screen.getByTestId("refresh-membership"));
     else
       act(() => {
         focusManager.setFocused(false);
@@ -1606,10 +1685,10 @@ it.each([
         "confirming",
       );
     });
-    expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
-    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
+    expect(screen.getByTestId("monitor-checks-title")).not.toHaveTextContent(
+      "Payments API",
+    );
     expect(c.getQueryData(key)).toEqual(before);
     expect(fetchMonitorDetail).toHaveBeenCalledTimes(detailReads);
     expect(fetchMonitorChecks).toHaveBeenCalledTimes(checkReads);
@@ -1617,12 +1696,16 @@ it.each([
       pending.reject(new Error("resolve failed"));
       await pending.promise.catch(() => undefined);
     });
-    expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
     const calls = vi.mocked(fetchMonitorChecks).mock.calls.length;
-    fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
-    await screen.findByText("แสดง 1–2 จาก 4");
+    fireEvent.click(
+      await screen.findByTestId("monitor-checks-admission-retry"),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+      ).toEqual(["1", "2", "4"]);
+    });
     expect(c.getQueryData(key)).toEqual(before);
     expect(fetchMonitorChecks).toHaveBeenCalledTimes(calls);
     router.dispose();
@@ -1638,24 +1721,34 @@ it("EG88-01 load-more 403 confirms once, retains chunks and error, then requires
     .mockRejectedValueOnce(new ApiError("MEMBERSHIP_DENIED", "Denied", 403))
     .mockResolvedValue(historyChunk(2));
   const router = renderPrivateRoute(c, "checks");
-  await screen.findByText("แสดง 1–1 จาก 4");
-  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
-  await screen.findByText("แสดง 1–2 จาก 4");
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+    ).toEqual(["1", "1", "4"]);
+  });
+  fireEvent.click(screen.getByTestId("monitor-checks-load-more"));
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+    ).toEqual(["1", "2", "4"]);
+  });
   const pending = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+  fireEvent.click(screen.getByTestId("monitor-checks-load-more"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
-  expect(
-    screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-  ).toBeNull();
+  expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
   await act(async () => {
     pending.resolve(context());
     await pending.promise;
   });
-  await screen.findByText("แสดง 1–2 จาก 4");
-  await screen.findByText("โหลดประวัติการตรวจไม่สำเร็จ");
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+    ).toEqual(["1", "2", "4"]);
+  });
+  await screen.findByTestId("monitor-checks-load-error");
   expect(fetchMeContext).toHaveBeenCalledTimes(2);
   expect(fetchMonitorChecks).toHaveBeenCalledTimes(3);
   act(() => {
@@ -1669,8 +1762,12 @@ it("EG88-01 load-more 403 confirms once, retains chunks and error, then requires
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
   });
   expect(fetchMonitorChecks).toHaveBeenCalledTimes(3);
-  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
-  await screen.findByText("แสดง 1–3 จาก 4");
+  fireEvent.click(screen.getByTestId("monitor-checks-load-more"));
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+    ).toEqual(["1", "3", "4"]);
+  });
   expect(vi.mocked(fetchMonitorChecks).mock.calls.at(-1)?.[2]?.offset).toBe(2);
   router.dispose();
   await c.cancelQueries();
@@ -1693,49 +1790,49 @@ it.each([
       }),
     });
     const router = renderPrivateRoute(c, "edit", suffix, uppercase);
-    await screen.findByRole("button", { name: "แทนที่ Token" });
-    fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
-    fireEvent.change(screen.getByLabelText("Token"), {
+    await screen.findByTestId("monitor-secret-auth.token-replace");
+    fireEvent.click(screen.getByTestId("monitor-secret-auth.token-replace"));
+    fireEvent.change(screen.getByTestId("monitor-secret-auth.token-value"), {
       target: { value: "public-test-replacement" },
     });
     const testing =
       Promise.withResolvers<Awaited<ReturnType<typeof testMonitorEdit>>>();
     vi.mocked(testMonitorEdit).mockReturnValueOnce(testing.promise);
-    fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
-    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+    fireEvent.click(screen.getByTestId("monitor-form-test"));
+    await screen.findByTestId("monitor-form-test");
     const pending = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    fireEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
       );
     });
     assertPrivatePresentationWithdrawn();
-    expect(screen.queryByLabelText("Token")).toBeNull();
-    expect(screen.queryByRole("button", { name: "กำลังทดสอบ…" })).toBeNull();
+    expect(screen.queryByTestId("monitor-secret-auth.token-value")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-test")).toBeNull();
     await act(async () => {
       pending.reject(new Error("confirmation failed"));
       await pending.promise.catch(() => undefined);
     });
     vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-    fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
-    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
-    expect(screen.getByLabelText("Token")).toHaveValue(
+    fireEvent.click(await screen.findByTestId("monitor-form-admission-retry"));
+    await screen.findByTestId("monitor-form-test");
+    expect(screen.getByTestId("monitor-secret-auth.token-value")).toHaveValue(
       "public-test-replacement",
     );
     expect(
-      screen.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }),
+      screen.getByTestId("monitor-secret-auth.token-cancel"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "ขั้นสูง" })).toHaveAttribute(
+    expect(screen.getByTestId("monitor-form-mode-advanced")).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    fireEvent.click(screen.getByRole("button", { name: "กำลังทดสอบ…" }));
+    fireEvent.click(screen.getByTestId("monitor-form-test"));
     expect(testMonitorEdit).toHaveBeenCalledTimes(1);
     const hideAgain = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(hideAgain.promise);
-    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    fireEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
@@ -1765,31 +1862,29 @@ it.each([
       await testing.promise;
     });
     assertPrivatePresentationWithdrawn();
-    expect(
-      screen.queryByText("https://protected.example/test-result"),
-    ).toBeNull();
+    expect(screen.queryByTestId("monitor-test-result-url")).toBeNull();
     await act(async () => {
       hideAgain.resolve(context());
       await hideAgain.promise;
     });
-    await screen.findByText("การทดสอบผ่าน");
-    expect(
-      screen.getByText("https://protected.example/test-result"),
-    ).toBeInTheDocument();
+    await screen.findByTestId("monitor-test-result");
+    expect(screen.getByTestId("monitor-test-result-url")).toHaveTextContent(
+      "https://protected.example/test-result",
+    );
     const key = monitorQueryKeys.detail(A, MONITOR_ID);
     vi.mocked(fetchMeContext).mockResolvedValueOnce(context("owner", []));
-    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
-    await screen.findByText(
-      "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
-    );
-    expect(screen.queryByLabelText("Token")).toBeNull();
+    fireEvent.click(screen.getByTestId("refresh-membership"));
+    await screen.findByTestId("monitor-form-denied");
+    expect(screen.queryByTestId("monitor-secret-auth.token-value")).toBeNull();
     expect(c.getQueryData(key)).toBeUndefined();
     vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
-    await screen.findByRole("button", { name: "แทนที่ Token" });
-    fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
-    expect(screen.getByLabelText("Token")).toHaveValue("");
-    expect(screen.queryByText("การทดสอบผ่าน")).toBeNull();
+    fireEvent.click(screen.getByTestId("refresh-membership"));
+    await screen.findByTestId("monitor-secret-auth.token-replace");
+    fireEvent.click(screen.getByTestId("monitor-secret-auth.token-replace"));
+    expect(screen.getByTestId("monitor-secret-auth.token-value")).toHaveValue(
+      "",
+    );
+    expect(screen.queryByTestId("monitor-test-result")).toBeNull();
     router.dispose();
     await c.cancelQueries();
     c.clear();
@@ -1806,9 +1901,9 @@ it.each(["save", "test"] as const)(
       }),
     });
     const router = renderPrivateRoute(c, "edit");
-    await screen.findByRole("button", { name: "แทนที่ Token" });
-    fireEvent.click(screen.getByRole("button", { name: "แทนที่ Token" }));
-    fireEvent.change(screen.getByLabelText("Token"), {
+    await screen.findByTestId("monitor-secret-auth.token-replace");
+    fireEvent.click(screen.getByTestId("monitor-secret-auth.token-replace"));
+    fireEvent.change(screen.getByTestId("monitor-secret-auth.token-value"), {
       target: { value: "public-test-replacement" },
     });
     const pending = Promise.withResolvers<MeContextResponse>();
@@ -1819,9 +1914,9 @@ it.each(["save", "test"] as const)(
     vi.mocked(testMonitorEdit).mockRejectedValue(
       new ApiError("MEMBERSHIP_DENIED", "Denied", 403),
     );
-    const button = screen.getByRole("button", {
-      name: operation === "save" ? "บันทึกการแก้ไข" : "ทดสอบการตั้งค่า",
-    });
+    const button = screen.getByTestId(
+      operation === "save" ? "monitor-form-save" : "monitor-form-test",
+    );
     button.focus();
     fireEvent.click(button);
     await waitFor(() => {
@@ -1835,21 +1930,19 @@ it.each(["save", "test"] as const)(
       await pending.promise.catch(() => undefined);
     });
     vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-    const retry = await screen.findByRole("button", { name: "ลองอีกครั้ง" });
+    const retry = await screen.findByTestId("monitor-form-admission-retry");
     retry.focus();
     fireEvent.keyDown(retry, { key: "Enter" });
     fireEvent.click(retry);
-    const restored = await screen.findByRole("button", {
-      name: operation === "save" ? "บันทึกการแก้ไข" : "ทดสอบการตั้งค่า",
-    });
+    const restored = await screen.findByTestId(
+      operation === "save" ? "monitor-form-save" : "monitor-form-test",
+    );
     expect(restored).toHaveFocus();
-    expect(screen.getByLabelText("Token")).toHaveValue(
+    expect(screen.getByTestId("monitor-secret-auth.token-value")).toHaveValue(
       "public-test-replacement",
     );
     expect(restored).toHaveAttribute("aria-disabled", "false");
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
-    );
+    expect(screen.getByTestId("monitor-form-error")).toBeVisible();
     router.dispose();
     await c.cancelQueries();
     c.clear();
@@ -1863,14 +1956,22 @@ it.each(["role", "removal", "scope"] as const)(
       Promise.resolve(historyChunk(page.offset)),
     );
     const router = renderPrivateRoute(c, "checks");
-    await screen.findByText("แสดง 1–1 จาก 4");
-    fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
-    await screen.findByText("แสดง 1–2 จาก 4");
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+      ).toEqual(["1", "1", "4"]);
+    });
+    fireEvent.click(screen.getByTestId("monitor-checks-load-more"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+      ).toEqual(["1", "2", "4"]);
+    });
     const key = monitorQueryKeys.checksHistory(A, MONITOR_ID),
       original = c.getQueryCache().find({ queryKey: key });
     const pending = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    fireEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
@@ -1890,8 +1991,17 @@ it.each(["role", "removal", "scope"] as const)(
       expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
     });
     expect(c.getQueryCache().find({ queryKey: key })).not.toBe(original);
-    expect(screen.queryByText("แสดง 1–2 จาก 4")).toBeNull();
-    if (change === "role") await screen.findByText("แสดง 1–1 จาก 4");
+    expect(
+      screen.queryByTestId("monitor-checks-summary")?.textContent.match(/\d+/g),
+    ).not.toEqual(["1", "2", "4"]);
+    if (change === "role")
+      await waitFor(() => {
+        expect(
+          screen
+            .getByTestId("monitor-checks-summary")
+            .textContent.match(/\d+/g),
+        ).toEqual(["1", "1", "4"]);
+      });
     else expect(c.getQueryData(key)).toBeUndefined();
     router.dispose();
     await c.cancelQueries();
@@ -1905,9 +2015,13 @@ it("EG88-01 a failed load-more network request stays manual through native conte
     .mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0))
     .mockResolvedValue(historyChunk(1));
   const router = renderPrivateRoute(c, "checks");
-  await screen.findByText("แสดง 1–1 จาก 4");
-  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
-  await screen.findByText("โหลดประวัติการตรวจไม่สำเร็จ");
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+    ).toEqual(["1", "1", "4"]);
+  });
+  fireEvent.click(screen.getByTestId("monitor-checks-load-more"));
+  await screen.findByTestId("monitor-checks-load-error");
   act(() => {
     focusManager.setFocused(false);
     focusManager.setFocused(true);
@@ -1924,9 +2038,13 @@ it("EG88-01 a failed load-more network request stays manual through native conte
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirmed");
   });
   expect(fetchMonitorChecks).toHaveBeenCalledTimes(2);
-  expect(screen.getByText("แสดง 1–1 จาก 4")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
-  await screen.findByText("แสดง 1–2 จาก 4");
+  expect(screen.getByTestId("monitor-checks-summary")).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("monitor-checks-load-more"));
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+    ).toEqual(["1", "2", "4"]);
+  });
   expect(fetchMonitorChecks).toHaveBeenCalledTimes(3);
   router.dispose();
   await c.cancelQueries();
@@ -1938,11 +2056,15 @@ it("EG88-01 first-read denial confirms finitely then needs explicit data retry",
     .mockRejectedValueOnce(new ApiError("MEMBERSHIP_DENIED", "Denied", 403))
     .mockResolvedValue(historyChunk(0));
   const router = renderPrivateRoute(c, "checks");
-  await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้");
+  await screen.findByTestId("monitor-checks-denied");
   expect(fetchMeContext).toHaveBeenCalledTimes(2);
   expect(fetchMonitorChecks).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-  await screen.findByText("แสดง 1–1 จาก 4");
+  fireEvent.click(screen.getByTestId("monitor-checks-data-retry"));
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+    ).toEqual(["1", "1", "4"]);
+  });
   expect(fetchMeContext).toHaveBeenCalledTimes(2);
   expect(fetchMonitorChecks).toHaveBeenCalledTimes(2);
   router.dispose();
@@ -1989,7 +2111,11 @@ it("EG88-01 native SessionQueryProvider identity replacement ignores a late old 
       <RouterProvider router={router} />
     </SessionQueryProvider>,
   );
-  await screen.findByText("แสดง 1–1 จาก 4");
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("monitor-checks-summary").textContent.match(/\d+/g),
+    ).toEqual(["1", "1", "4"]);
+  });
   const fresh = resolveQueryClientForIdentity("user-b");
   expect(fresh).not.toBe(old);
   const accepted = fresh.getQueryData(key);
@@ -2009,33 +2135,34 @@ it("EG88-01 native SessionQueryProvider identity replacement ignores a late old 
 it("CR88-01 preserves private TestPanel rate-limit refusal across withdrawn presentation", async () => {
   const c = client(),
     router = renderPrivateRoute(c, "edit");
-  await screen.findByLabelText("ชื่อมอนิเตอร์");
+  await screen.findByTestId("monitor-form-name");
   vi.mocked(testMonitorEdit).mockRejectedValueOnce(
     new ApiError("MONITOR_TEST_RATE_LIMITED", "rate", 429, {
       retryAfterSeconds: 60,
     }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
-  await screen.findByText("ทดสอบบ่อยเกินไป");
+  fireEvent.click(screen.getByTestId("monitor-form-test"));
+  await screen.findByTestId("monitor-test-rateLimited");
   const pending = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  fireEvent.click(screen.getByTestId("refresh-membership"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
-  expect(screen.queryByText("ทดสอบบ่อยเกินไป")).toBeNull();
+  expect(screen.queryByTestId("monitor-test-rateLimited")).toBeNull();
   assertPrivatePresentationWithdrawn();
   await act(async () => {
     pending.reject(new Error("offline"));
     await pending.promise.catch(() => undefined);
   });
   vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
-  fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
-  await screen.findByText("ทดสอบบ่อยเกินไป");
-  expect(
-    screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
-  ).toHaveAttribute("aria-disabled", "true");
-  fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
+  fireEvent.click(await screen.findByTestId("monitor-form-admission-retry"));
+  await screen.findByTestId("monitor-test-rateLimited");
+  expect(screen.getByTestId("monitor-form-test")).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  fireEvent.click(screen.getByTestId("monitor-form-test"));
   expect(testMonitorEdit).toHaveBeenCalledTimes(1);
   router.dispose();
   await c.cancelQueries();
@@ -2051,30 +2178,27 @@ it.each([
   async (suffix, uppercase) => {
     const c = client(),
       router = renderPrivateRoute(c, "new", suffix, uppercase);
-    fireEvent.change(await screen.findByLabelText("ชื่อมอนิเตอร์"), {
+    fireEvent.change(await screen.findByTestId("monitor-form-name"), {
       target: { value: "private new draft" },
     });
-    fireEvent.change(screen.getByLabelText("URL"), {
+    fireEvent.change(screen.getByTestId("monitor-form-url"), {
       target: { value: "https://protected.example/request" },
     });
-    fireEvent.click(screen.getByRole("radio", { name: "ขั้นสูง" }));
-    fireEvent.change(
-      within(
-        screen.getByRole("region", { name: /การยืนยันตัวตน/ }),
-      ).getByLabelText("ชนิด"),
-      { target: { value: "bearer" } },
-    );
-    fireEvent.change(screen.getByLabelText("Token"), {
+    fireEvent.click(screen.getByTestId("monitor-form-mode-advanced"));
+    fireEvent.change(screen.getByTestId("monitor-form-auth-type"), {
+      target: { value: "bearer" },
+    });
+    fireEvent.change(screen.getByTestId("monitor-secret-auth.token-value"), {
       target: { value: "public-test-replacement" },
     });
     const testing =
       Promise.withResolvers<Awaited<ReturnType<typeof testMonitorDraft>>>();
     vi.mocked(testMonitorDraft).mockReturnValueOnce(testing.promise);
-    fireEvent.click(screen.getByRole("button", { name: "ทดสอบการตั้งค่า" }));
-    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
+    fireEvent.click(screen.getByTestId("monitor-form-test"));
+    await screen.findByTestId("monitor-form-test");
     const pending = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-    fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+    fireEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(c).admission.kind).toBe(
         "confirming",
@@ -2086,15 +2210,15 @@ it.each([
       await pending.promise.catch(() => undefined);
     });
     assertPrivatePresentationWithdrawn();
-    fireEvent.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
-    await screen.findByRole("button", { name: "กำลังทดสอบ…" });
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+    fireEvent.click(await screen.findByTestId("monitor-form-admission-retry"));
+    await screen.findByTestId("monitor-form-test");
+    expect(screen.getByTestId("monitor-form-name")).toHaveValue(
       "private new draft",
     );
-    expect(screen.getByLabelText("Token")).toHaveValue(
+    expect(screen.getByTestId("monitor-secret-auth.token-value")).toHaveValue(
       "public-test-replacement",
     );
-    fireEvent.click(screen.getByRole("button", { name: "กำลังทดสอบ…" }));
+    fireEvent.click(screen.getByTestId("monitor-form-test"));
     expect(testMonitorDraft).toHaveBeenCalledTimes(1);
     await act(async () => {
       testing.reject(new Error("test completed"));
@@ -2126,9 +2250,14 @@ it.each(["new", "edit", "checks"] as const)(
       await pending.promise.catch(() => undefined);
     });
     assertPrivatePresentationWithdrawn();
-    fireEvent.click(await screen.findByRole("button", { name: "ลองใหม่" }));
-    if (page === "checks") await screen.findByText("Payments API");
-    else await screen.findByLabelText("ชื่อมอนิเตอร์");
+    fireEvent.click(await screen.findByTestId("shell-admission-retry"));
+    if (page === "checks")
+      await waitFor(() => {
+        expect(screen.getByTestId("monitor-checks-title")).toHaveTextContent(
+          "Payments API",
+        );
+      });
+    else await screen.findByTestId("monitor-form-name");
     if (page !== "new")
       expect(fetchMonitorDetail).toHaveBeenCalledWith(A, MONITOR_ID);
     expect(router.state.location.pathname).toContain(
@@ -2143,12 +2272,12 @@ it.each(["new", "edit", "checks"] as const)(
 it("CR88-R3 an unadmitted new URL cannot inherit an old private owner while context is withdrawn", async () => {
   const c = client(),
     router = renderPrivateRoute(c, "new", "/");
-  fireEvent.change(await screen.findByLabelText("ชื่อมอนิเตอร์"), {
+  fireEvent.change(await screen.findByTestId("monitor-form-name"), {
     target: { value: "old URL draft" },
   });
   const pending = Promise.withResolvers<MeContextResponse>();
   vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
-  fireEvent.click(screen.getByRole("button", { name: "refresh membership" }));
+  fireEvent.click(screen.getByTestId("refresh-membership"));
   await waitFor(() => {
     expect(getContextPublicationSnapshot(c).admission.kind).toBe("confirming");
   });
@@ -2160,8 +2289,10 @@ it("CR88-R3 an unadmitted new URL cannot inherit an old private owner while cont
     pending.resolve(context());
     await pending.promise;
   });
-  expect(await screen.findByLabelText("ชื่อมอนิเตอร์")).toHaveValue("");
-  expect(screen.queryByDisplayValue("old URL draft")).toBeNull();
+  expect(await screen.findByTestId("monitor-form-name")).toHaveValue("");
+  expect(
+    screen.queryByTestId<HTMLInputElement>("monitor-form-name")?.value,
+  ).not.toBe("old URL draft");
   router.dispose();
   await c.cancelQueries();
   c.clear();

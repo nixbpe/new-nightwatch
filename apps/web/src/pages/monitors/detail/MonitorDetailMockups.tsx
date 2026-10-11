@@ -17,7 +17,11 @@ const DAY_CLASS = {
 /** Issue #56: a 90-day availability strip needs a per-day uptime series. */
 export function UptimeStripMockup() {
   return (
-    <MockupFrame label="ความพร้อมใช้งาน 90 วัน" issue={56}>
+    <MockupFrame
+      testId="monitor-uptime-sample"
+      label="ความพร้อมใช้งาน 90 วัน"
+      issue={56}
+    >
       <p className="text-xs text-foreground-secondary">
         ความพร้อมใช้งาน{" "}
         <span className="font-mono font-medium text-foreground">00.00%</span>{" "}

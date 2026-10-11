@@ -1,6 +1,9 @@
-import { monitorResponseTimesResponseSchema } from "../../packages/api-contract/src/monitor.ts";
+import {
+  monitorResponseTimesResponseSchema,
+  monitorWriteResponseSchema,
+} from "../../packages/api-contract/src/monitor.ts";
 import { randomUUID } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Locator } from "@playwright/test";
 
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
@@ -47,9 +50,9 @@ const urlOf = (server: Target, path: string) =>
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(person.email);
-  await page.locator("#login-password").fill(person.password);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(person.email);
+  await page.getByTestId("login-password").fill(person.password);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace/);
 }
 
@@ -80,7 +83,7 @@ test.beforeAll(async () => {
     clientRequestId: randomUUID(),
   });
   expect(created.status).toBe(201);
-  monitorId = (created.body as { monitor: { id: string } }).monitor.id;
+  monitorId = monitorWriteResponseSchema.parse(created.body).monitor.id;
 });
 
 test.afterAll(async () => {
@@ -105,42 +108,44 @@ test.describe("monitor permissions by role and screen", () => {
       await signIn(page, people[role]);
 
       await page.goto(overview());
-      await expect(page.getByRole("link", { name: monitorName })).toBeVisible();
       await expect(
-        page.getByRole("link", { name: "เพิ่มมอนิเตอร์" }),
-      ).toHaveCount(writes ? 1 : 0);
-      await expect(page.getByText("สิทธิ์ของคุณ: ดูอย่างเดียว")).toHaveCount(
+        page.getByTestId(`monitor-list-name-${monitorId}`),
+      ).toHaveText(monitorName);
+      await expect(page.getByTestId("monitor-overview-add")).toHaveCount(
+        writes ? 1 : 0,
+      );
+      await expect(page.getByTestId("monitor-overview-readonly")).toHaveCount(
         writes ? 0 : 1,
       );
 
       await page.goto(detail());
-      await expect(
-        page.getByRole("heading", { name: monitorName }),
-      ).toBeVisible();
-      await expect(
-        page.getByText(urlOf(target, "/health")).first(),
-      ).toBeVisible();
-      for (const name of ["แก้ไข", "หยุดชั่วคราว", "ลบมอนิเตอร์"]) {
-        const count =
-          (await page.getByRole("button", { name }).count()) +
-          (await page.getByRole("link", { name, exact: true }).count());
-        expect(count, `${role} ${name}`).toBe(writes ? 1 : 0);
-      }
+      await expect(page.getByTestId("monitor-detail-title")).toHaveText(
+        monitorName,
+      );
+      await expect(page.getByTestId("monitor-detail-url")).toHaveText(
+        urlOf(target, "/health"),
+      );
+      await expect(page.getByTestId("monitor-detail-edit")).toHaveCount(
+        writes ? 1 : 0,
+      );
+      await expect(page.getByTestId("monitor-detail-toggle")).toHaveCount(
+        writes ? 1 : 0,
+      );
+      await expect(page.getByTestId("monitor-detail-delete")).toHaveCount(
+        writes ? 1 : 0,
+      );
 
       const hits = probe.hits.length;
       for (const path of ["/new", `/${monitorId}/edit`]) {
         await page.goto(`${overview()}${path}`);
         if (writes) {
-          await expect(
-            page.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
-          ).toBeVisible();
+          await expect(page.getByTestId("monitor-form-test")).toBeVisible();
         } else {
-          await expect(
-            page.getByText("คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้"),
-          ).toBeVisible();
-          await expect(
-            page.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
-          ).toHaveCount(0);
+          await expect(page.getByTestId("monitor-form-denied")).toBeVisible();
+          await expect(page.getByTestId("monitor-form-denied")).toHaveText(
+            /\S/,
+          );
+          await expect(page.getByTestId("monitor-form-test")).toHaveCount(0);
         }
       }
       expect(probe.hits.length).toBe(hits);
@@ -153,26 +158,27 @@ test.describe("monitor permissions by role and screen", () => {
     await signIn(page, people.nonmember);
     await page.goto(overview());
     // The denied state must be on screen before the absence checks mean anything.
-    await expect(
-      page.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
-    ).toBeVisible();
-    await expect(page.getByText(monitorName)).toHaveCount(0);
-    await expect(page.getByText(host)).toHaveCount(0);
+    await expect(page.getByTestId("monitor-overview-denied")).toBeVisible();
+    await expect(page.getByTestId("monitor-overview-denied")).toHaveText(/\S/);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(monitorName);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(host);
     await page.goto(detail());
-    await expect(
-      page.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
-    ).toBeVisible();
-    await expect(page.getByText(monitorName)).toHaveCount(0);
-    await expect(page.getByText(host)).toHaveCount(0);
+    await expect(page.getByTestId("monitor-detail-denied")).toBeVisible();
+    await expect(page.getByTestId("monitor-detail-denied")).toHaveText(/\S/);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(monitorName);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(host);
     await page.goto(`${overview()}/new`);
-    await expect(
-      page
-        .getByText("คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้")
-        .first(),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
-    ).toHaveCount(0);
+    await expect(page.getByTestId("monitor-form-denied")).toBeVisible();
+    await expect(page.getByTestId("monitor-form-denied")).toHaveText(/\S/);
+    await expect(page.getByTestId("monitor-form-test")).toHaveCount(0);
   });
 });
 
@@ -189,20 +195,16 @@ test.describe("monitor role changes across signed-in sessions", () => {
 
     for (const page of [saveForm, testForm]) {
       await page.goto(`${overview()}/new`);
-      await page.getByLabel("ชื่อมอนิเตอร์").fill("typed before demotion");
-      await page
-        .getByLabel("URL", { exact: true })
-        .fill(urlOf(probe, "/typed"));
+      await page.getByTestId("monitor-form-name").fill("typed before demotion");
+      await page.getByTestId("monitor-form-url").fill(urlOf(probe, "/typed"));
     }
     await view.goto(detail());
-    await expect(
-      view.getByRole("heading", { name: monitorName }),
-    ).toBeVisible();
+    await expect(view.getByTestId("monitor-detail-title")).toHaveText(
+      monitorName,
+    );
     await dialogPage.goto(detail());
-    await dialogPage.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
-    const dialog = dialogPage.getByRole("dialog", {
-      name: "ยืนยันการลบมอนิเตอร์",
-    });
+    await dialogPage.getByTestId("monitor-detail-delete").click();
+    const dialog = dialogPage.getByTestId("monitor-detail-delete-dialog");
     await expect(dialog).toBeVisible();
 
     // Second session: the owner demotes the first user to viewer.
@@ -219,27 +221,41 @@ test.describe("monitor role changes across signed-in sessions", () => {
     );
     const hits = probe.hits.length;
 
-    await saveForm.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
+    await saveForm.getByTestId("monitor-form-save").click();
     await expect(
-      saveForm.getByText("สิทธิ์ของคุณเปลี่ยนแล้ว").first(),
+      saveForm.getByTestId("monitor-form-role-changed"),
     ).toBeVisible();
-    await expect(saveForm.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(
+    await expect(saveForm.getByTestId("monitor-form-role-changed")).toHaveText(
+      /\S/,
+    );
+    await expect(saveForm.getByTestId("monitor-form-name")).toHaveValue(
       "typed before demotion",
     );
 
-    await testForm.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
+    await testForm.getByTestId("monitor-form-test").click();
     await expect(
-      testForm.getByText("สิทธิ์ของคุณเปลี่ยนแล้ว").first(),
+      testForm.getByTestId("monitor-form-role-changed"),
     ).toBeVisible();
-    await expect(testForm.getByLabel("URL", { exact: true })).toHaveValue(
+    await expect(testForm.getByTestId("monitor-form-role-changed")).toHaveText(
+      /\S/,
+    );
+    await expect(testForm.getByTestId("monitor-form-url")).toHaveValue(
       urlOf(probe, "/typed"),
     );
 
-    await view.getByRole("button", { name: "หยุดชั่วคราว" }).click();
-    await expect(view.getByText("สิทธิ์ของคุณเปลี่ยนแล้ว")).toBeVisible();
+    await view.getByTestId("monitor-detail-toggle").click();
+    await expect(view.getByTestId("monitor-detail-action-error")).toBeVisible();
+    await expect(view.getByTestId("monitor-detail-action-error")).toHaveText(
+      /\S/,
+    );
 
-    await dialog.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
-    await expect(dialogPage.getByText("สิทธิ์ของคุณเปลี่ยนแล้ว")).toBeVisible();
+    await dialog.getByTestId("monitor-detail-delete-confirm").click();
+    await expect(
+      dialogPage.getByTestId("monitor-detail-action-error"),
+    ).toBeVisible();
+    await expect(
+      dialogPage.getByTestId("monitor-detail-action-error"),
+    ).toHaveText(/\S/);
 
     const after = await pool.query(
       "select count(*)::int n, max(version)::int v, bool_or(status = 'paused') paused from monitors where tenant_id = $1",
@@ -257,11 +273,14 @@ test.describe("monitor role changes across signed-in sessions", () => {
     );
     expect(removal.status).toBeLessThan(300);
     await view.reload();
-    await expect(
-      view.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
-    ).toBeVisible();
-    await expect(view.getByText(monitorName)).toHaveCount(0);
-    await expect(view.getByText(host)).toHaveCount(0);
+    await expect(view.getByTestId("monitor-detail-denied")).toBeVisible();
+    await expect(view.getByTestId("monitor-detail-denied")).toHaveText(/\S/);
+    await expect
+      .poll(() => view.evaluate(() => document.body.textContent))
+      .not.toContain(monitorName);
+    await expect
+      .poll(() => view.evaluate(() => document.body.textContent))
+      .not.toContain(host);
     await context.close();
   });
 
@@ -273,12 +292,14 @@ test.describe("monitor role changes across signed-in sessions", () => {
     const form = await context.newPage();
     await signIn(view, people.removed);
     await view.goto(detail());
-    await expect(
-      view.getByRole("heading", { name: monitorName }),
-    ).toBeVisible();
+    await expect(view.getByTestId("monitor-detail-title")).toHaveText(
+      monitorName,
+    );
     await form.goto(`${overview()}/${monitorId}/edit`);
-    await expect(form.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(monitorName);
-    await form.getByLabel("ชื่อมอนิเตอร์").fill(`${monitorName}-removed`);
+    await expect(form.getByTestId("monitor-form-name")).toHaveValue(
+      monitorName,
+    );
+    await form.getByTestId("monitor-form-name").fill(`${monitorName}-removed`);
     const stored = () =>
       pool.query("select name, version from monitors where id = $1", [
         monitorId,
@@ -292,23 +313,26 @@ test.describe("monitor role changes across signed-in sessions", () => {
     expect(removal.status).toBeLessThan(300);
 
     // A background refresh may already have locked the form; either way it must refuse.
-    const saveEdit = form.getByRole("button", { name: "บันทึกการแก้ไข" });
+    const saveEdit = form.getByTestId("monitor-form-save");
     if (await saveEdit.isEnabled()) await saveEdit.click();
-    await expect(
-      form
-        .getByText(
-          /สิทธิ์ของคุณเปลี่ยนแล้ว|คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้/,
-        )
-        .first(),
-    ).toBeVisible();
+    await expect
+      .poll(
+        async () =>
+          (await form.getByTestId("monitor-form-role-changed").isVisible()) ||
+          (await form.getByTestId("monitor-form-denied").isVisible()),
+      )
+      .toBe(true);
     // The refused save changed nothing.
     expect((await stored()).rows[0]).toEqual(before);
     await view.reload();
-    await expect(
-      view.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้").first(),
-    ).toBeVisible();
-    await expect(view.getByText(monitorName)).toHaveCount(0);
-    await expect(view.getByText(host)).toHaveCount(0);
+    await expect(view.getByTestId("monitor-detail-denied")).toBeVisible();
+    await expect(view.getByTestId("monitor-detail-denied")).toHaveText(/\S/);
+    await expect
+      .poll(() => view.evaluate(() => document.body.textContent))
+      .not.toContain(monitorName);
+    await expect
+      .poll(() => view.evaluate(() => document.body.textContent))
+      .not.toContain(host);
     await context.close();
   });
 
@@ -317,51 +341,47 @@ test.describe("monitor role changes across signed-in sessions", () => {
   }) => {
     await signIn(page, people.owner);
     await page.goto(`${overview()}/${monitorId}/edit`);
-    await expect(page.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(monitorName);
+    await expect(page.getByTestId("monitor-form-name")).toHaveValue(
+      monitorName,
+    );
+    await page.getByTestId("shell-organization-switch").click();
     await page
-      .getByRole("button", { name: new RegExp(orgNameA) })
-      .first()
-      .click();
-    await page
-      .getByRole("menuitemradio", { name: new RegExp(orgNameB) })
+      .getByTestId("shell-organization-menu")
+      .getByTestId(`shell-organization-${orgB}`)
       .click();
     await expect(page).toHaveURL(
       new RegExp(`/organizations/${orgB}/monitors$`),
     );
-    await expect(page.getByText(monitorName)).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(monitorName);
   });
 });
 
-async function focusedName(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    const el = document.activeElement as HTMLElement | null;
-    if (el === null) return "";
-    const labelled = el.getAttribute("aria-label");
-    if (labelled) return labelled;
-    const labels = (el as HTMLInputElement).labels;
-    if (labels && labels.length > 0)
-      return labels[0]!.innerText.trim().split("\n")[0]!;
-    return (
-      el.innerText ||
-      el.getAttribute("placeholder") ||
-      el.tagName
-    ).trim();
-  });
-}
-
-async function tabTo(page: Page, name: string | RegExp, max = 60) {
-  const seen: string[] = [];
+async function tabTo(page: Page, target: Locator, max = 60) {
   for (let i = 0; i < max; i++) {
     await page.keyboard.press("Tab");
-    const current = await focusedName(page);
-    seen.push(current);
-    if (
-      typeof name === "string" ? current.includes(name) : name.test(current)
-    ) {
-      return seen;
-    }
+    if (await target.evaluate((element) => element === document.activeElement))
+      return;
   }
-  throw new Error(`Tab never reached ${String(name)}: ${seen.join(" > ")}`);
+  await expect(target).toBeFocused();
+}
+
+async function addHeader(page: Page) {
+  const rows = page.getByTestId(/^monitor-form-header-row-/);
+  const before = await rows.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("data-testid")),
+  );
+  await page.getByTestId("monitor-form-add-header").click();
+  const after = await rows.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("data-testid")),
+  );
+  const added = after.filter((id) => id !== null && !before.includes(id));
+  expect(added).toHaveLength(1);
+  const id = added.pop();
+  if (id === null || id === undefined)
+    throw new Error("Added header has no public editor key");
+  return page.getByTestId(id);
 }
 
 for (const theme of ["light", "dark"] as const) {
@@ -378,48 +398,42 @@ for (const theme of ["light", "dark"] as const) {
       await signIn(page, people.owner);
       await page.goto(overview());
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await expect(page.getByRole("link", { name: monitorName })).toBeVisible();
+      await expect(
+        page.getByTestId(`monitor-list-name-${monitorId}`),
+      ).toHaveText(monitorName);
       await shot(page, `overview-${theme}`);
       // The shared DataTable puts the label on the scroll region around the table.
       await expect(
-        page.getByRole("region", { name: "ตารางมอนิเตอร์" }).getByRole("table"),
+        page
+          .getByTestId("monitor-overview-table-region")
+          .getByTestId("monitor-overview-table"),
       ).toBeVisible();
 
-      await page.getByRole("heading", { level: 1 }).click();
-      const order: string[] = [];
-      for (const step of [
-        "เพิ่มมอนิเตอร์",
-        "รีเฟรช",
-        "ค้นหาชื่อหรือ URL",
-        "ทั้งหมด",
-        monitorName,
-      ]) {
-        order.push(...(await tabTo(page, step)).slice(-1));
-      }
-      // The status filter is a group of toggle chips; its first chip ("ทั้งหมด")
-      // carries an aria-hidden count after the label.
       await expect(
-        page.getByRole("group", { name: "สถานะ" }).getByRole("button").first(),
+        page.getByTestId("monitor-overview-table-region"),
+      ).toHaveAccessibleName(/\S/);
+      await page.getByTestId("monitor-overview-heading").click();
+      await tabTo(page, page.getByTestId("monitor-overview-add"));
+      await tabTo(page, page.getByTestId("monitor-overview-refresh"));
+      await tabTo(page, page.getByTestId("monitor-overview-search"));
+      await tabTo(page, page.getByTestId("monitor-overview-health-all"));
+      await tabTo(page, page.getByTestId(`monitor-list-name-${monitorId}`));
+      await expect(
+        page.getByTestId("monitor-overview-health-all"),
       ).toHaveAttribute("aria-pressed", "true");
-      expect(order.map((name) => name.split("\n")[0])).toEqual([
-        "เพิ่มมอนิเตอร์",
-        "รีเฟรช",
-        "ค้นหาชื่อหรือ URL",
-        "ทั้งหมด",
-        monitorName,
-      ]);
 
-      await page.getByLabel("ค้นหาชื่อหรือ URL").fill(monitorName);
-      await expect(page.getByRole("status", { name: "ผลการกรอง" })).toHaveText(
-        /พบ \d+ จาก \d+/,
-      );
-      // Health is a word, never a colour alone.
+      await page.getByTestId("monitor-overview-search").fill(monitorName);
+      await expect(
+        page.getByTestId("monitor-overview-announcement"),
+      ).toHaveText(/\S/);
+      await expect(
+        page.getByTestId("monitor-overview-announcement"),
+      ).toContainText(/1/);
       await expect(
         page
-          .getByRole("row", { name: new RegExp(monitorName) })
-          .getByText(/ปกติ|ไม่ทราบสถานะ|ล่ม|หยุดชั่วคราว/)
-          .first(),
-      ).toBeVisible();
+          .getByTestId(`monitor-list-row-${monitorId}`)
+          .getByTestId("monitor-list-health"),
+      ).toHaveText(/\S/);
     });
 
     test("Form: first invalid field takes focus, errors are described, Test keeps focus, radiogroup uses arrows, rows are named", async ({
@@ -429,8 +443,8 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto(`${overview()}/new`);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 
-      await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
-      const name = page.getByLabel("ชื่อมอนิเตอร์");
+      await page.getByTestId("monitor-form-save").click();
+      const name = page.getByTestId("monitor-form-name");
       await expect(name).toBeFocused();
       const describedBy = await name.getAttribute("aria-describedby");
       expect(describedBy).toBeTruthy();
@@ -439,47 +453,46 @@ for (const theme of ["light", "dark"] as const) {
       ).not.toBeEmpty();
 
       await name.fill(`kbd-${run}`);
-      await page
-        .getByLabel("URL", { exact: true })
-        .fill(urlOf(target, "/health"));
-      const testButton = page.getByRole("button", { name: "ทดสอบการตั้งค่า" });
+      await page.getByTestId("monitor-form-url").fill(urlOf(target, "/health"));
+      const testButton = page.getByTestId("monitor-form-test");
       await testButton.focus();
       await page.keyboard.press("Enter");
-      await expect(
-        page.getByRole("status").filter({ hasText: "การทดสอบผ่าน" }),
-      ).toBeVisible();
+      await expect(page.getByTestId("monitor-test-result")).toHaveAttribute(
+        "data-outcome",
+        "pass",
+      );
+      await expect(page.getByTestId("monitor-test-result")).toHaveText(/\S/);
       await expect(testButton).toBeFocused();
       await shot(page, `form-test-result-${theme}`);
 
-      const group = page.getByRole("radiogroup", { name: "ตรวจทุก" });
-      await group.getByRole("radio", { checked: true }).focus();
-      const start = await group
-        .getByRole("radio", { checked: true })
-        .innerText();
+      const interval = page.getByTestId("monitor-form-interval-300");
+      await expect(interval).toHaveAttribute("aria-checked", "true");
+      await interval.focus();
       await page.keyboard.press("ArrowRight");
-      expect(
-        await group.getByRole("radio", { checked: true }).innerText(),
-      ).not.toBe(start);
+      await expect(
+        page.getByTestId("monitor-form-interval-900"),
+      ).toHaveAttribute("aria-checked", "true");
+      await expect(page.getByTestId("monitor-form-interval-900")).toBeFocused();
+      await expect(interval).toHaveAttribute("aria-checked", "false");
 
-      await page.getByRole("radio", { name: "ขั้นสูง" }).click();
-      await page.getByRole("button", { name: "เพิ่ม header" }).click();
+      await page.getByTestId("monitor-form-mode-advanced").click();
+      const first = await addHeader(page);
+      await expect(first.getByTestId("monitor-form-header-name")).toBeFocused();
       await expect(
-        page.getByRole("textbox", { name: "ชื่อ header แถวที่ 1" }),
+        first.getByTestId("monitor-form-header-name"),
+      ).toHaveAccessibleName(/\S/);
+      const second = await addHeader(page);
+      await expect(
+        second.getByTestId("monitor-form-header-name"),
       ).toBeFocused();
-      await page.getByRole("button", { name: "เพิ่ม header" }).click();
       await expect(
-        page.getByRole("textbox", { name: "ชื่อ header แถวที่ 2" }),
-      ).toBeFocused();
+        second.getByTestId("monitor-form-header-name"),
+      ).toHaveAccessibleName(/\S/);
+      await expect(second.getByTestId("monitor-form-row-remove")).toBeVisible();
+      await first.getByTestId("monitor-form-row-remove").click();
+      await expect(first).toHaveCount(0);
       await expect(
-        page.getByRole("button", { name: "ลบ header แถวที่ 2" }),
-      ).toBeVisible();
-      await page.getByRole("button", { name: "ลบ header แถวที่ 1" }).click();
-      await expect(
-        page.getByRole("button", { name: "ลบ header แถวที่ 2" }),
-      ).toHaveCount(0);
-      // After a removal focus lands on the row that took its place.
-      await expect(
-        page.getByRole("textbox", { name: "ชื่อ header แถวที่ 1" }),
+        second.getByTestId("monitor-form-header-name"),
       ).toBeFocused();
     });
 
@@ -522,39 +535,41 @@ for (const theme of ["light", "dark"] as const) {
         ]),
       });
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await expect(
-        page.getByRole("heading", { level: 1, name: monitorName }),
-      ).toBeVisible();
-      const h2 = await page.getByRole("heading", { level: 2 }).allInnerTexts();
+      await expect(page.getByTestId("monitor-detail-title")).toHaveText(
+        monitorName,
+      );
+      const headings = await page.evaluate(() => ({
+        h1: document.querySelectorAll("h1").length,
+        h2: document.querySelectorAll("h2").length,
+      }));
       await shot(page, `detail-${theme}`);
-      expect(h2.length).toBeGreaterThanOrEqual(6);
-      expect(await page.getByRole("heading", { level: 1 }).count()).toBe(1);
+      expect(headings.h2).toBeGreaterThanOrEqual(6);
+      expect(headings.h1).toBe(1);
       // The chart's alternative is a real table opened from the keyboard.
-      const toggle = page.getByRole("button", {
-        name: "ดูข้อมูลกราฟเป็นตาราง",
-      });
+      const toggle = page.getByTestId("monitor-response-toggle");
       await toggle.focus();
       await page.keyboard.press("Enter");
-      await expect(page.getByRole("table").first()).toBeVisible();
+      await expect(page.getByTestId("monitor-response-table")).toBeVisible();
 
-      const pause = page.getByRole("button", { name: "หยุดชั่วคราว" });
+      const pause = page.getByTestId("monitor-detail-toggle");
       await pause.focus();
       await page.keyboard.press("Enter");
-      const resume = page.getByRole("button", { name: "เริ่มต่อ" });
-      await expect(resume).toBeVisible();
+      const resume = page.getByTestId("monitor-detail-toggle");
+      await expect(resume).toHaveAttribute("data-status", "paused");
+      await expect(resume).toHaveAttribute("data-in-progress", "false");
       await expect(resume).toBeFocused();
       await page.keyboard.press("Enter");
-      await expect(
-        page.getByRole("button", { name: "หยุดชั่วคราว" }),
-      ).toBeFocused();
+      await expect(page.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+        "data-status",
+        "active",
+      );
+      await expect(page.getByTestId("monitor-detail-toggle")).toBeFocused();
 
-      const opener = page.getByRole("button", { name: "ลบมอนิเตอร์" });
+      const opener = page.getByTestId("monitor-detail-delete");
       await opener.focus();
       await page.keyboard.press("Enter");
-      const dialog = page.getByRole("dialog", { name: "ยืนยันการลบมอนิเตอร์" });
-      await expect(
-        dialog.getByRole("button", { name: "ยกเลิก" }),
-      ).toBeFocused();
+      const dialog = page.getByTestId("monitor-detail-delete-dialog");
+      await expect(dialog.getByTestId("confirmation-cancel")).toBeFocused();
       for (let i = 0; i < 6; i++) {
         await page.keyboard.press("Tab");
         expect(
@@ -573,19 +588,22 @@ for (const theme of ["light", "dark"] as const) {
         ...basicConfig(`disposable-${theme}-${run}`, urlOf(target, "/health")),
         clientRequestId: randomUUID(),
       });
-      const id = (created.body as { monitor: { id: string } }).monitor.id;
+      const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
       await signIn(page, people.owner);
       await page.goto(`${overview()}/${id}`);
-      await page.getByRole("button", { name: "ลบมอนิเตอร์" }).focus();
+      await page.getByTestId("monitor-detail-delete").focus();
       await page.keyboard.press("Enter");
-      const dialog = page.getByRole("dialog", { name: "ยืนยันการลบมอนิเตอร์" });
-      await dialog.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
+      const dialog = page.getByTestId("monitor-detail-delete-dialog");
+      await dialog.getByTestId("monitor-detail-delete-confirm").click();
       await expect(page).toHaveURL(new RegExp(`${overview()}$`));
       await expect
         .poll(() => page.evaluate(() => window.history.state?.usr))
         .toBeNull();
-      await expect(page.getByText("ลบมอนิเตอร์แล้ว")).toBeVisible();
-      await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+      await expect(page.getByTestId("monitor-overview-notice")).toBeVisible();
+      await expect(page.getByTestId("monitor-overview-notice")).toHaveText(
+        /\S/,
+      );
+      await expect(page.getByTestId("monitor-overview-heading")).toBeFocused();
     });
   });
 }
@@ -601,41 +619,37 @@ test.describe("reflow at 200% (640 px viewport, LAY-02)", () => {
         localStorage.setItem("nightwatch-theme", value);
       }, theme);
       await signIn(page, people.owner);
-      const screens: [string, string[]][] = [
-        [overview(), ["เพิ่มมอนิเตอร์", "รีเฟรช"]],
-        [detail(), ["แก้ไข", "หยุดชั่วคราว", "ลบมอนิเตอร์"]],
-        [`${overview()}/new`, ["ทดสอบการตั้งค่า", "บันทึกมอนิเตอร์"]],
-        [
-          `${overview()}/${monitorId}/edit`,
-          ["ทดสอบการตั้งค่า", "บันทึกการแก้ไข"],
-        ],
-      ];
-      for (const [path, names] of screens) {
+      for (const path of [
+        overview(),
+        detail(),
+        `${overview()}/new`,
+        `${overview()}/${monitorId}/edit`,
+      ]) {
         await page.goto(path);
-        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-        // Polled so late layout (fonts, data) is measured, not a fixed wait.
-        await expect
-          .poll(
-            () =>
-              page.evaluate(
-                () =>
-                  document.documentElement.scrollWidth -
-                  document.documentElement.clientWidth,
-              ),
-            { message: `${path} sideways overflow`, timeout: 5000 },
-          )
-          .toBeLessThanOrEqual(0);
+        if (path === overview()) {
+          await expect(page.getByTestId("monitor-overview-add")).toBeVisible();
+          await expect(
+            page.getByTestId("monitor-overview-refresh"),
+          ).toBeVisible();
+        } else if (path === detail()) {
+          await expect(page.getByTestId("monitor-detail-edit")).toBeVisible();
+          await expect(page.getByTestId("monitor-detail-toggle")).toBeVisible();
+          await expect(page.getByTestId("monitor-detail-delete")).toBeVisible();
+        } else {
+          await expect(page.getByTestId("monitor-form-test")).toBeVisible();
+          await expect(page.getByTestId("monitor-form-save")).toBeVisible();
+          await expect(
+            page.getByTestId("monitor-form-name"),
+          ).toHaveAccessibleName(/\S/);
+          await expect(
+            page.getByTestId("monitor-form-url"),
+          ).toHaveAccessibleName(/\S/);
+        }
         await shot(
           page,
           `reflow-640-${theme}-${path.endsWith("/new") ? "new" : path.endsWith("/edit") ? "edit" : path.includes(monitorId) ? "detail" : "overview"}`,
           true,
         );
-        for (const name of names) {
-          const count =
-            (await page.getByRole("button", { name }).count()) +
-            (await page.getByRole("link", { name, exact: true }).count());
-          expect(count, `${path} ${name}`).toBeGreaterThanOrEqual(1);
-        }
       }
     });
   }

@@ -37,7 +37,10 @@ function OrgAlertsValue({
 }) {
   if (isDenied(org.error)) {
     return (
-      <span className="text-foreground-secondary">
+      <span
+        data-testid="monitor-alerts-org-denied"
+        className="text-foreground-secondary"
+      >
         ไม่มีสิทธิ์ดูการตั้งค่านี้
       </span>
     );
@@ -45,11 +48,14 @@ function OrgAlertsValue({
   if (org.isError) {
     return (
       <span className="inline-flex flex-col items-end gap-1.5">
-        <Alert tone="error">โหลดไม่สำเร็จ</Alert>
+        <Alert data-testid="monitor-alerts-org-error" tone="error">
+          โหลดไม่สำเร็จ
+        </Alert>
         <Button
           type="button"
           variant="secondary"
           size="sm"
+          data-testid="monitor-alerts-org-retry"
           onClick={() => void org.refetch()}
         >
           ลองอีกครั้ง
@@ -59,7 +65,11 @@ function OrgAlertsValue({
   }
   if (org.data === undefined) {
     return (
-      <span aria-busy="true" className="inline-flex flex-col items-end gap-1">
+      <span
+        data-testid="monitor-alerts-org-loading"
+        aria-busy="true"
+        className="inline-flex flex-col items-end gap-1"
+      >
         <span role="status" className="sr-only">
           กำลังโหลดการตั้งค่าระดับองค์กร
         </span>
@@ -83,7 +93,11 @@ export function AlertsCard({
   const orgKnownOff =
     canWrite && !org.isError && org.data?.monitorAlertsEnabled === false;
   return (
-    <Card as="section" aria-labelledby="detail-alerts">
+    <Card
+      as="section"
+      data-testid="monitor-detail-alerts"
+      aria-labelledby="detail-alerts"
+    >
       <CardHeader
         id="detail-alerts"
         title="การแจ้งเตือน"
@@ -95,38 +109,61 @@ export function AlertsCard({
             <dt className="text-foreground-secondary">
               การแจ้งเตือนระดับองค์กร
             </dt>
-            <dd>
+            <dd
+              data-testid="monitor-alerts-org-value"
+              data-enabled={
+                org.isError ? undefined : org.data?.monitorAlertsEnabled
+              }
+            >
               <OrgAlertsValue org={org} />
             </dd>
           </>
         ) : null}
         <dt className="text-foreground-secondary">เกณฑ์ล้มเหลว</dt>
         <dd>
-          <span className="font-mono">{monitor.alerts.failureThreshold}</span>{" "}
+          <span data-testid="monitor-alerts-threshold" className="font-mono">
+            {monitor.alerts.failureThreshold}
+          </span>{" "}
           ครั้ง
         </dd>
         <dt className="text-foreground-secondary">แจ้งเมื่อล่มและกลับมาปกติ</dt>
-        <dd>{monitor.alerts.downEnabled ? "เปิด" : "ปิด"}</dd>
+        <dd
+          data-testid="monitor-alerts-down"
+          data-enabled={monitor.alerts.downEnabled}
+        >
+          {monitor.alerts.downEnabled ? "เปิด" : "ปิด"}
+        </dd>
         <dt className="text-foreground-secondary">แจ้งเมื่อ SSL ใกล้หมดอายุ</dt>
-        <dd>
+        <dd
+          data-testid="monitor-alerts-ssl"
+          data-enabled={monitor.alerts.sslEnabled}
+        >
           {monitor.alerts.sslEnabled ? (
             <>
               เปิด (ล่วงหน้า{" "}
-              <span className="font-mono">{monitor.alerts.sslCautionDays}</span>{" "}
+              <span data-testid="monitor-alerts-ssl-days" className="font-mono">
+                {monitor.alerts.sslCautionDays}
+              </span>{" "}
               วัน)
             </>
           ) : (
             "ปิด"
           )}
           {monitor.ssl.state === "not_https" ? (
-            <p className="mt-1 font-normal text-foreground-secondary">
+            <p
+              data-testid="monitor-alerts-http-note"
+              className="mt-1 font-normal text-foreground-secondary"
+            >
               มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง
             </p>
           ) : null}
         </dd>
       </dl>
       {orgKnownOff ? (
-        <p className="border-t border-foreground/10 px-4 py-3 text-sm text-foreground-secondary">
+        <p
+          data-testid="monitor-alerts-org-suppressed"
+          className="border-t border-foreground/10 px-4 py-3 text-sm text-foreground-secondary"
+        >
           {ORG_ALERTS_OFF_MESSAGE}
         </p>
       ) : null}

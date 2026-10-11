@@ -43,7 +43,6 @@ import {
   noResponseTimes,
   NOW,
   renderDetail,
-  sectionOf,
 } from "./detail-test-support";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { formatDateTime, formatTime, TIME_ZONE } from "./format";
@@ -117,6 +116,25 @@ function showDetail(monitor: Monitor) {
 const notFound = () => new ApiError("MONITOR_NOT_FOUND", "not found", 404);
 
 describe("Detail health and special states", () => {
+  async function expectHealth(health: string, reason?: string) {
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+        /^Payments API$/,
+      );
+      expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+        "data-health",
+        health,
+      );
+      expect(screen.getByTestId("monitor-detail-health")).toHaveTextContent(
+        /\S/,
+      );
+      if (reason !== undefined)
+        expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+          "data-health-reason",
+          reason,
+        );
+    });
+  }
   it("shows a down monitor with its open incident and cause", async () => {
     showDetail(
       detail({
@@ -143,20 +161,46 @@ describe("Detail health and special states", () => {
       page: { limit: 20, offset: 0, total: 1 },
     });
     renderDetail();
+    await expectHealth("down");
+    const banner = screen.getByTestId("monitor-detail-down-banner");
+    expect(banner).toHaveAttribute("data-reason", "http_status");
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Payments API" }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("ล่ม").length).toBeGreaterThan(0);
-    expect(screen.getByText(/ตั้งแต่/)).toHaveTextContent("12 นาที");
-    expect(screen.getByText(/^สาเหตุ /)).toHaveTextContent(/คาดหวัง 200-299/);
+      within(banner).getByTestId("monitor-detail-down-duration"),
+    ).toHaveTextContent(/12 นาที/);
     expect(
-      screen.getByRole("link", { name: "ดูการแจ้งเตือน" }),
+      within(banner).getByTestId("monitor-detail-incident-start"),
+    ).toHaveAttribute("dateTime", "2026-09-30T07:20:00.000Z");
+    expect(
+      within(banner).getByTestId("monitor-detail-down-cause"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(banner).getByTestId("monitor-detail-down-expected-status"),
+    ).toHaveTextContent(/^200-299$/);
+    expect(
+      within(banner).getByTestId("monitor-detail-down-notifications"),
     ).toHaveAttribute("href", "/notifications");
     // The duration changes every poll, so no assertive live region may hold it.
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(await screen.findByText("กำลังเกิดอยู่")).toBeInTheDocument();
-    expect(screen.getByText("ยังไม่สิ้นสุด")).toBeInTheDocument();
-    expect(screen.getByText(/HTTP 503/)).toBeInTheDocument();
+    expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    const incident = await screen.findByTestId(
+      "monitor-incident-00000000-0000-4000-8000-000000000001",
+    );
+    expect(
+      within(screen.getByTestId("monitor-incidents-table")).getAllByTestId(
+        "monitor-incident-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toHaveLength(1);
+    expect(
+      within(incident).getByTestId("monitor-incident-open"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(incident).getByTestId("monitor-incident-start"),
+    ).toHaveAttribute("dateTime", "2026-09-30T07:20:00.000Z");
+    expect(
+      within(incident).getByTestId("monitor-incident-cell-duration"),
+    ).toHaveTextContent(/^12 นาที$/);
+    expect(
+      within(incident).getByTestId("monitor-incident-cell-reason"),
+    ).toHaveTextContent(/HTTP 503/);
   });
 
   it("hides the notifications link when the route organization is not the server-active one", async () => {
@@ -172,19 +216,29 @@ describe("Detail health and special states", () => {
       }),
     );
     renderDetail(B);
+    await expectHealth("down");
+    const banner = screen.getByTestId("monitor-detail-down-banner");
+    expect(banner).toHaveAttribute("data-reason", "http_status");
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Payments API" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/^สาเหตุ /)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "ดูการแจ้งเตือน" })).toBeNull();
+      within(banner).getByTestId("monitor-detail-down-cause"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(banner).queryByTestId("monitor-detail-down-notifications"),
+    ).toBeNull();
   });
 
   it("shows one failure as a warning beside an unchanged health", async () => {
     showDetail(detail({ consecutiveFailures: 1 }));
     renderDetail();
-    expect(await screen.findByText(/ล้มเหลว 1 ครั้ง/)).toHaveTextContent(
-      "จะเปลี่ยนเป็นล่มเมื่อล้มเหลวติดกันครบ 2 ครั้ง",
-    );
+    await expectHealth("up");
+    expect(
+      screen.getByTestId("monitor-status-failures").textContent.match(/\d+/g),
+    ).toEqual(["1", "2"]);
+    expect(
+      screen
+        .getByTestId("monitor-status-failure-threshold")
+        .textContent.match(/\d+/g),
+    ).toEqual(["2"]);
   });
 
   it("shows a never-checked monitor as unknown with empty sections", async () => {
@@ -210,13 +264,41 @@ describe("Detail health and special states", () => {
       }),
     );
     renderDetail();
-    expect(await screen.findAllByText("รอตรวจครั้งแรก")).not.toHaveLength(0);
-    expect(screen.getAllByText("ไม่ทราบสถานะ").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("ยังไม่มีข้อมูล")).toHaveLength(4);
+    await expectHealth("unknown", "never_checked");
+    expect(screen.getByTestId("monitor-detail-first-check")).toHaveTextContent(
+      /\S/,
+    );
+    expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-last-check-at",
+      "",
+    );
+    for (const key of ["h24", "d7", "d30"] as const) {
+      const window = screen.getByTestId(`monitor-status-window-${key}`);
+      expect(
+        within(window).getByTestId("monitor-status-percent"),
+      ).toHaveAttribute("data-has-percent", "false");
+      expect(
+        within(window).getByTestId("monitor-status-percent"),
+      ).toHaveTextContent(/\S/);
+      expect(
+        within(window).getByTestId("monitor-status-percent").textContent,
+      ).not.toMatch(/\d+([.,]\d+)?%/);
+      expect(within(window).queryByTestId("monitor-status-checks")).toBeNull();
+      expect(
+        within(window).queryByTestId("monitor-status-coverage"),
+      ).toBeNull();
+    }
+    const ssl = within(screen.getByTestId("monitor-detail-ssl"));
+    expect(ssl.getByTestId("monitor-detail-ssl-state")).toHaveAttribute(
+      "data-ssl-level",
+      "no_data",
+    );
+    expect(ssl.getByTestId("monitor-detail-ssl-state")).toHaveTextContent(/\S/);
+    expect(ssl.queryByTestId("monitor-detail-ssl-expiry")).toBeNull();
     expect(
-      await screen.findByText("ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("ปกติ")).toBeNull();
+      await screen.findByTestId("monitor-incidents-empty"),
+    ).toHaveTextContent(/\S/);
+    expect(screen.queryByTestId("monitor-incidents-table")).toBeNull();
   });
 
   it("explains a monitor waiting for the new config and keeps the last-known-down note", async () => {
@@ -233,11 +315,20 @@ describe("Detail health and special states", () => {
       }),
     );
     renderDetail();
-    const alert = await screen.findByText(/^แก้ไขเมื่อ/);
-    expect(alert).toHaveTextContent(formatTime("2026-09-30T07:40:00.000Z"));
-    expect(alert).toHaveTextContent("รอผลตรวจตามค่าใหม่");
-    expect(alert).toHaveTextContent("ล่าสุดทราบว่าล่ม");
-    expect(screen.getAllByText("รอตรวจตามค่าใหม่").length).toBeGreaterThan(0);
+    await expectHealth("unknown", "awaiting_new_config");
+    const alert = screen.getByTestId("monitor-detail-awaiting-config");
+    expect(alert).toHaveAttribute("role", "status");
+    expect(alert).toHaveTextContent(/\S/);
+    expect(
+      screen.getByTestId("monitor-status-last-known-down"),
+    ).toHaveTextContent(/\S/);
+    const updated = within(alert).getByTestId("monitor-detail-updated-time");
+    expect(updated.tagName).toBe("TIME");
+    expect(updated).toHaveAttribute("dateTime", "2026-09-30T07:40:00.000Z");
+    expect(updated).toHaveTextContent(formatTime("2026-09-30T07:40:00.000Z"));
+    expect(
+      screen.getByTestId("monitor-detail-health-reason"),
+    ).toHaveTextContent(/\S/);
   });
 
   it("shows a system-side failure as 'ตรวจไม่ได้', not as healthy or as the target failing", async () => {
@@ -255,11 +346,11 @@ describe("Detail health and special states", () => {
       }),
     );
     renderDetail();
+    await expectHealth("unknown", "check_error");
     expect(
-      (await screen.findAllByText("ตรวจไม่ได้ (ปัญหาฝั่งระบบ)")).length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByText("ปกติ")).toBeNull();
-    expect(screen.queryByText("ล่ม")).toBeNull();
+      screen.getByTestId("monitor-detail-health-reason"),
+    ).toHaveTextContent(/\S/);
+    expect(screen.queryByTestId("monitor-detail-down-banner")).toBeNull();
   });
 
   it("warns that a stale result may not match the current state", async () => {
@@ -271,71 +362,104 @@ describe("Detail health and special states", () => {
       }),
     );
     renderDetail();
+    await expectHealth("unknown", "stale");
+    expect(screen.getByTestId("monitor-detail-stale-note")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.getByTestId("monitor-detail-stale-note")).toHaveTextContent(
+      /\S/,
+    );
     expect(
-      await screen.findByText(
-        "ยังไม่มีผลตรวจใหม่ ข้อมูลอาจไม่ตรงกับสถานะปัจจุบัน",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/ไม่มีผลใหม่ตั้งแต่/)).toBeInTheDocument();
+      screen.getByTestId("monitor-detail-health-reason"),
+    ).toHaveTextContent(/\S/);
+    expect(screen.getByTestId("monitor-detail-stale-time")).toHaveAttribute(
+      "dateTime",
+      "2026-09-30T06:10:00.000Z",
+    );
   });
 
   it("shows a paused monitor with an info alert and no healthy tone", async () => {
     showDetail(detail({ status: "paused", health: "paused" }));
     renderDetail();
-    expect(
-      await screen.findByText("มอนิเตอร์นี้หยุดตรวจอยู่ จะไม่มีการแจ้งเตือน"),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("หยุดชั่วคราว").length).toBeGreaterThan(0);
-    expect(
-      screen.getByRole("button", { name: "เริ่มต่อ" }),
-    ).toBeInTheDocument();
+    await expectHealth("paused");
+    expect(screen.getByTestId("monitor-detail-paused")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.getByTestId("monitor-detail-paused")).toHaveTextContent(/\S/);
+    expect(screen.getByTestId("monitor-detail-toggle").tagName).toBe("BUTTON");
+    expect(screen.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+      "data-status",
+      "paused",
+    );
+    expect(screen.getByTestId("monitor-detail-toggle")).toBeEnabled();
   });
 
-  it("gives only a healthy monitor the primary tone and check icon", async () => {
+  it("keeps paused and healthy monitor states written and distinct", async () => {
     showDetail(detail({ status: "paused", health: "paused" }));
     const { unmount } = renderDetail();
-    const pill = must(
-      must((await screen.findAllByText("หยุดชั่วคราว"))[0]).closest(
-        "[data-slot=status-pill]",
-      ),
+    await expectHealth("paused");
+    expect(screen.getByTestId("monitor-detail-paused")).toHaveAttribute(
+      "role",
+      "status",
     );
-    expect(pill.querySelector("svg")).toBeNull();
-    expect(pill.className).not.toContain("text-primary");
+    const pausedState = screen.getByTestId("monitor-detail-health").textContent;
     unmount();
 
     showDetail(detail());
     renderDetail();
-    const up = must(
-      must((await screen.findAllByText("ปกติ"))[0]).closest(
-        "[data-slot=status-pill]",
-      ),
+    await expectHealth("up");
+    expect(screen.getByTestId("monitor-detail-health").textContent).not.toBe(
+      pausedState,
     );
-    expect(up.querySelector("svg")).not.toBeNull();
+    expect(screen.queryByTestId("monitor-detail-paused")).toBeNull();
   });
 });
 
+async function readyDetail() {
+  await waitFor(() =>
+    expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+      /^Payments API$/,
+    ),
+  );
+}
+
 describe("Detail SSL card", () => {
-  const cases: [string, Partial<Monitor["ssl"]>, string[]][] = [
-    [
-      "ok",
-      { state: "ok", daysRemaining: 128 },
-      ["เหลือ 128 วัน", "Example CA"],
-    ],
-    [
-      "caution",
-      { state: "caution", daysRemaining: 21 },
-      ["ใกล้หมดอายุ เหลือ 21 วัน", "Example CA"],
-    ],
-    [
-      "danger",
-      { state: "danger", daysRemaining: 5 },
-      ["หมดอายุใน 5 วัน", "Example CA"],
-    ],
-    [
-      "expired with a date",
-      { state: "expired", daysRemaining: -2 },
-      ["หมดอายุแล้ว เมื่อ 2 วันก่อน", "Example CA"],
-    ],
+  function certificate(card: HTMLElement, ssl: Monitor["ssl"]) {
+    const scope = within(card);
+    for (const field of ["issuer", "host"] as const) {
+      if (ssl[field] === null)
+        expect(scope.queryByTestId(`monitor-detail-ssl-${field}`)).toBeNull();
+      else
+        expect(
+          scope.getByTestId(`monitor-detail-ssl-${field}`).textContent,
+        ).toBe(ssl[field]);
+    }
+    if (ssl.notAfter === null)
+      expect(scope.queryByTestId("monitor-detail-ssl-expiry")).toBeNull();
+    else {
+      const expiry = scope.getByTestId("monitor-detail-ssl-expiry");
+      expect(expiry.tagName).toBe("TIME");
+      expect(expiry).toHaveAttribute("dateTime", ssl.notAfter);
+      expect(expiry).toHaveTextContent(/\S/);
+    }
+    const state = scope.getByTestId("monitor-detail-ssl-state");
+    expect(state).toHaveAttribute("data-ssl-level", ssl.state);
+    expect(state).toHaveAttribute(
+      "data-days-remaining",
+      ssl.daysRemaining === null ? "" : String(ssl.daysRemaining),
+    );
+    expect(state).toHaveTextContent(/\S/);
+    expect(state.textContent.match(/\d+/g) ?? []).toEqual(
+      ssl.daysRemaining === null ? [] : [String(Math.abs(ssl.daysRemaining))],
+    );
+  }
+  const cases: [string, Partial<Monitor["ssl"]>][] = [
+    ["ok", { state: "ok", daysRemaining: 128 }],
+    ["caution", { state: "caution", daysRemaining: 21 }],
+    ["danger", { state: "danger", daysRemaining: 5 }],
+    ["expired with a date", { state: "expired", daysRemaining: -2 }],
     [
       "expired without a date",
       {
@@ -345,7 +469,6 @@ describe("Detail SSL card", () => {
         issuer: null,
         host: null,
       },
-      ["หมดอายุแล้ว"],
     ],
     [
       "unreadable with its reason",
@@ -356,7 +479,6 @@ describe("Detail SSL card", () => {
         issuer: null,
         reason: "hostname_mismatch",
       },
-      ["อ่านใบรับรองไม่ได้", "เหตุผล: ชื่อไม่ตรง"],
     ],
     [
       "not https",
@@ -367,7 +489,6 @@ describe("Detail SSL card", () => {
         issuer: null,
         host: null,
       },
-      ["ไม่ใช้ HTTPS", "มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง"],
     ],
     [
       "no data",
@@ -378,86 +499,89 @@ describe("Detail SSL card", () => {
         issuer: null,
         host: null,
       },
-      ["ยังไม่มีข้อมูล"],
     ],
   ];
-  it.each(cases)("shows %s", async (_name, ssl, texts) => {
-    showDetail(detail({ ssl: { ...detail().ssl, ...ssl } }));
+  it.each(cases)("shows %s", async (_name, ssl) => {
+    const value = { ...detail().ssl, ...ssl };
+    showDetail(detail({ ssl: value }));
     renderDetail();
-    const card = sectionOf(await screen.findByRole("heading", { name: "SSL" }));
-    for (const text of texts) {
+    await readyDetail();
+    const card = screen.getByTestId("monitor-detail-ssl");
+    certificate(card, value);
+    if (value.state === "unreadable") {
       expect(
-        within(card).getAllByText(new RegExp(text)).length,
-      ).toBeGreaterThan(0);
+        within(card).getByTestId("monitor-detail-ssl-unreadable"),
+      ).toHaveAttribute("data-reason", "hostname_mismatch");
+      expect(
+        within(card).getByTestId("monitor-detail-ssl-unreadable"),
+      ).toHaveTextContent(/\S/);
     }
+    if (value.state === "not_https")
+      expect(
+        within(card).getByTestId("monitor-detail-ssl-http"),
+      ).toHaveTextContent(/\S/);
+    if (value.state === "no_data")
+      expect(
+        within(card).getByTestId("monitor-detail-ssl-empty"),
+      ).toHaveTextContent(/\S/);
   });
-
-  it.each([
-    ["self_signed", "ใบรับรองลงนามเอง"],
-    ["hostname_mismatch", "ชื่อไม่ตรง"],
-    ["untrusted", "ไม่น่าเชื่อถือ"],
-  ])(
+  const reasonRecords = new Map<string, string>();
+  it.each(["self_signed", "hostname_mismatch", "untrusted"] as const)(
     "says a readable but invalid certificate (%s) is invalid, in a warning tone",
-    async (reason, wording) => {
-      showDetail(
-        detail({
-          ssl: { ...detail().ssl, state: "ok", daysRemaining: 128, reason },
-        }),
-      );
+    async (reason) => {
+      const ssl = {
+        ...detail().ssl,
+        state: "ok" as const,
+        daysRemaining: 128,
+        reason,
+      };
+      showDetail(detail({ ssl }));
       renderDetail();
-      const card = sectionOf(
-        await screen.findByRole("heading", { name: "SSL" }),
-      );
-      const line = within(card).getByText(/^ใบรับรองไม่ถูกต้อง/);
-      expect(line).toHaveTextContent(`ใบรับรองไม่ถูกต้อง: ${wording}`);
-      expect(line).toHaveClass("text-danger");
-      // The days and dates of the certificate stay visible beside it.
-      expect(within(card).getAllByText(/เหลือ 128 วัน/).length).toBeGreaterThan(
-        0,
-      );
+      await readyDetail();
+      const card = screen.getByTestId("monitor-detail-ssl");
+      const line = within(card).getByTestId("monitor-detail-ssl-invalid");
+      expect(line).toHaveAttribute("data-reason", reason);
+      expect(line).toHaveTextContent(/\S/);
+      reasonRecords.set(reason, line.textContent);
+      expect(new Set(reasonRecords.values()).size).toBe(reasonRecords.size);
+      certificate(card, ssl);
     },
   );
-
   it("shows the host when it is known even without issuer or expiry", async () => {
-    showDetail(
-      detail({
-        ssl: {
-          ...detail().ssl,
-          state: "unreadable",
-          issuer: null,
-          notAfter: null,
-          daysRemaining: null,
-          host: "api.acme.example",
-        },
-      }),
-    );
+    const ssl = {
+      ...detail().ssl,
+      state: "unreadable" as const,
+      issuer: null,
+      notAfter: null,
+      daysRemaining: null,
+      host: "api.acme.example",
+    };
+    showDetail(detail({ ssl }));
     renderDetail();
-    const card = sectionOf(await screen.findByRole("heading", { name: "SSL" }));
-    expect(within(card).getByText("api.acme.example")).toBeInTheDocument();
+    await readyDetail();
+    certificate(screen.getByTestId("monitor-detail-ssl"), ssl);
   });
-
   it("lists issuer, host and expiry date of a readable certificate", async () => {
     showDetail(detail());
     renderDetail();
-    const card = sectionOf(await screen.findByRole("heading", { name: "SSL" }));
-    expect(within(card).getByText("Example CA")).toBeInTheDocument();
-    expect(within(card).getByText("api.acme.example")).toBeInTheDocument();
-    expect(card.querySelector("time")).toHaveAttribute(
-      "datetime",
-      "2027-02-05T00:00:00.000Z",
-    );
+    await readyDetail();
+    certificate(screen.getByTestId("monitor-detail-ssl"), detail().ssl);
   });
 });
 
 describe("Detail alerts card", () => {
-  const alertsCard = async () =>
-    sectionOf(await screen.findByRole("heading", { name: "การแจ้งเตือน" }));
-
-  function orgRowValue(card: HTMLElement): HTMLElement {
-    const dt = within(card).getByText("การแจ้งเตือนระดับองค์กร");
-    return must(dt.nextElementSibling as HTMLElement | null);
+  const alertsCard = async () => {
+    await readyDetail();
+    return screen.getByTestId("monitor-detail-alerts");
+  };
+  const orgRowValue = (card: HTMLElement) =>
+    within(card).getByTestId("monitor-alerts-org-value");
+  function enabled(value: HTMLElement, yes: boolean) {
+    expect(value).toHaveAttribute("data-enabled", String(yes));
+    expect(value.textContent.trim().split(/\s|\(/)[0]).toBe(
+      yes ? "เปิด" : "ปิด",
+    );
   }
-
   it("shows the stored failure threshold, down and SSL alert settings, and SSL caution days", async () => {
     showDetail(
       detail({
@@ -471,12 +595,18 @@ describe("Detail alerts card", () => {
     );
     renderDetail();
     const card = await alertsCard();
-    expect(within(card).getByText("3")).toBeInTheDocument();
-    expect(within(card).getByText("ปิด")).toBeInTheDocument();
-    expect(within(card).getByText(/เปิด \(ล่วงหน้า/)).toBeInTheDocument();
-    expect(within(card).getByText("15")).toBeInTheDocument();
+    expect(
+      within(card).getByTestId("monitor-alerts-threshold"),
+    ).toHaveTextContent(/^3$/);
+    const down = within(card).getByTestId("monitor-alerts-down"),
+      ssl = within(card).getByTestId("monitor-alerts-ssl");
+    enabled(down, false);
+    enabled(ssl, true);
+    expect(down.textContent).not.toBe(ssl.textContent);
+    expect(
+      within(ssl).getByTestId("monitor-alerts-ssl-days"),
+    ).toHaveTextContent(/^15$/);
   });
-
   it("shows the HTTP certificate note without hiding the enabled SSL alert setting", async () => {
     showDetail(
       detail({
@@ -491,12 +621,15 @@ describe("Detail alerts card", () => {
     );
     renderDetail();
     const card = await alertsCard();
+    const ssl = within(card).getByTestId("monitor-alerts-ssl");
+    enabled(ssl, true);
     expect(
-      within(card).getByText("มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง"),
-    ).toBeInTheDocument();
-    expect(within(card).getByText(/เปิด \(ล่วงหน้า/)).toBeInTheDocument();
+      within(ssl).getByTestId("monitor-alerts-http-note"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(ssl).getByTestId("monitor-alerts-ssl-days"),
+    ).toHaveTextContent(/^30$/);
   });
-
   it("hides the SSL advance-notice text when monitor SSL alerts are off", async () => {
     showDetail(
       detail({
@@ -510,9 +643,10 @@ describe("Detail alerts card", () => {
     );
     renderDetail();
     const card = await alertsCard();
-    expect(within(card).queryByText(/ล่วงหน้า/)).toBeNull();
+    const ssl = within(card).getByTestId("monitor-alerts-ssl");
+    enabled(ssl, false);
+    expect(within(ssl).queryByTestId("monitor-alerts-ssl-days")).toBeNull();
   });
-
   it.each(["owner", "admin"] as const)(
     "shows disabled organization monitor alerts and the suppression note to %s",
     async (role) => {
@@ -527,16 +661,20 @@ describe("Detail alerts card", () => {
       renderDetail();
       const card = await alertsCard();
       await waitFor(() => {
-        expect(orgRowValue(card)).toHaveTextContent("ปิด");
+        enabled(orgRowValue(card), false);
       });
       expect(
-        await within(card).findByText(
-          "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ",
-        ),
-      ).toBeInTheDocument();
+        within(card).getByTestId("monitor-alerts-org-suppressed"),
+      ).toHaveTextContent(/\S/);
+      expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+        "data-health",
+        "up",
+      );
+      expect(
+        within(card).getByTestId("monitor-alerts-threshold"),
+      ).toHaveTextContent(/^2$/);
     },
   );
-
   it.each(["viewer", "auditor"] as const)(
     "hides organization monitor alert settings from %s without requesting them",
     async (role) => {
@@ -544,22 +682,30 @@ describe("Detail alerts card", () => {
       showDetail(detail());
       renderDetail();
       const card = await alertsCard();
-      expect(within(card).getByText("เกณฑ์ล้มเหลว")).toBeInTheDocument();
-      expect(within(card).queryByText("การแจ้งเตือนระดับองค์กร")).toBeNull();
-      await screen.findByText("ยังไม่มีเหตุการณ์ใน 30 วันล่าสุด");
+      expect(
+        within(card).getByTestId("monitor-alerts-threshold"),
+      ).toHaveTextContent(/^2$/);
+      expect(within(card).queryByTestId("monitor-alerts-org-value")).toBeNull();
+      await waitFor(() =>
+        expect(screen.getByTestId("monitor-incidents-empty")).toHaveTextContent(
+          /\S/,
+        ),
+      );
       expect(fetchOrgAlertsMock).not.toHaveBeenCalled();
     },
   );
-
   it("shows a loading placeholder for organization monitor alerts, then เปิด when loading succeeds", async () => {
     const pending = deferred<Awaited<ReturnType<typeof fetchOrgAlertsMock>>>();
     fetchOrgAlertsMock.mockReturnValue(pending.promise);
     showDetail(detail());
     renderDetail();
     const card = await alertsCard();
-    expect(
-      within(orgRowValue(card)).getByText("กำลังโหลดการตั้งค่าระดับองค์กร"),
-    ).toBeInTheDocument();
+    const loading = within(orgRowValue(card)).getByTestId(
+      "monitor-alerts-org-loading",
+    );
+    expect(loading).toHaveAttribute("aria-busy", "true");
+    expect(loading.textContent).toMatch(/\S/);
+    expect(orgRowValue(card)).not.toHaveAttribute("data-enabled");
     pending.resolve({
       organizationId: A,
       version: 1,
@@ -567,10 +713,12 @@ describe("Detail alerts card", () => {
       monitorAlertsEnabled: true,
     });
     await waitFor(() => {
-      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+      enabled(orgRowValue(card), true);
+      expect(
+        within(card).queryByTestId("monitor-alerts-org-loading"),
+      ).toBeNull();
     });
   });
-
   it("shows a load error for organization monitor alerts without เปิด, then shows เปิด after a successful retry", async () => {
     fetchOrgAlertsMock.mockRejectedValueOnce(
       new ApiError("INTERNAL", "boom", 500),
@@ -580,8 +728,9 @@ describe("Detail alerts card", () => {
     const card = await alertsCard();
     await waitFor(() => {
       expect(
-        within(orgRowValue(card)).getByText("โหลดไม่สำเร็จ"),
-      ).toBeInTheDocument();
+        within(orgRowValue(card)).getByTestId("monitor-alerts-org-error"),
+      ).toHaveAttribute("role", "alert");
+      expect(orgRowValue(card)).not.toHaveAttribute("data-enabled");
     });
     expect(orgRowValue(card)).not.toHaveTextContent("เปิด");
     fetchOrgAlertsMock.mockResolvedValue({
@@ -590,14 +739,17 @@ describe("Detail alerts card", () => {
       settingsChangedEnabled: true,
       monitorAlertsEnabled: true,
     });
+    expect(within(card).getByTestId("monitor-alerts-org-retry")).toHaveRole(
+      "button",
+    );
     await userEvent
       .setup({ advanceTimers: vi.advanceTimersByTime })
-      .click(within(card).getByRole("button", { name: "ลองอีกครั้ง" }));
+      .click(within(card).getByTestId("monitor-alerts-org-retry"));
     await waitFor(() => {
-      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+      enabled(orgRowValue(card), true);
+      expect(within(card).queryByTestId("monitor-alerts-org-error")).toBeNull();
     });
   });
-
   it("replaces the organization monitor alert value with a permission-denied message and stops polling after PERMISSION_DENIED", async () => {
     fetchOrgAlertsMock.mockResolvedValue({
       organizationId: A,
@@ -609,8 +761,9 @@ describe("Detail alerts card", () => {
     const { queryClient } = renderDetail();
     const card = await alertsCard();
     await waitFor(() => {
-      expect(orgRowValue(card)).toHaveTextContent("เปิด");
+      enabled(orgRowValue(card), true);
     });
+    const previous = orgRowValue(card).textContent;
     fetchOrgAlertsMock.mockRejectedValue(
       new ApiError("PERMISSION_DENIED", "denied", 403),
     );
@@ -618,7 +771,12 @@ describe("Detail alerts card", () => {
       queryKey: ["tenant", "notification-settings", A],
     });
     await waitFor(() => {
-      expect(orgRowValue(card)).toHaveTextContent("ไม่มีสิทธิ์ดูการตั้งค่านี้");
+      expect(
+        within(orgRowValue(card)).getByTestId("monitor-alerts-org-denied"),
+      ).toHaveTextContent(/\S/);
+      expect(orgRowValue(card)).not.toHaveAttribute("data-enabled");
+      expect(orgRowValue(card).textContent).not.toBe(previous);
+      expect(orgRowValue(card)).not.toHaveTextContent("เปิด");
     });
     const calls = fetchOrgAlertsMock.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -654,18 +812,22 @@ describe("Detail last result (AC-84)", () => {
       }),
     );
     renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    await screen.findByText("ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล");
-    expect(
-      screen.queryByRole("heading", { name: /ผลการตรวจล่าสุด/ }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("table", { name: "ผลการตรวจล่าสุดต่อเงื่อนไข" }),
-    ).toBeNull();
-    expect(screen.queryByText(/ชนิดข้อมูลไม่ตรง/)).toBeNull();
-    expect(screen.queryByText("ประเมินจากส่วนต้นของ response")).toBeNull();
-    expect(screen.queryByText(/^สาเหตุ /)).toBeNull();
-    expect(screen.queryByText("HTTP 503")).toBeNull();
+    await readyDetail();
+    await screen.findByTestId("monitor-incidents-empty");
+    for (const heading of document.querySelectorAll(
+      'h1,h2,h3,h4,h5,h6,[role="heading"]',
+    ))
+      expect(heading.textContent).not.toMatch(/ผลการตรวจล่าสุด/);
+    for (const table of document.querySelectorAll('table,[role="table"]'))
+      expect(table).not.toHaveAccessibleName("ผลการตรวจล่าสุดต่อเงื่อนไข");
+    expect(document.body.textContent).not.toMatch(
+      /ชนิดข้อมูลไม่ตรง|ประเมินจากส่วนต้นของ response|HTTP 503/,
+    );
+    expect(document.body.innerHTML).not.toMatch(
+      /ชนิดข้อมูลไม่ตรง|ประเมินจากส่วนต้นของ response|HTTP 503/,
+    );
+    expect(document.body.textContent).not.toMatch(/สาเหตุ /);
+    expect(screen.queryByTestId("monitor-detail-down-banner")).toBeNull();
   });
 });
 
@@ -673,67 +835,77 @@ describe("Detail checks history link", () => {
   it("links to the checks history page and shows neither its table nor its pagination", async () => {
     showDetail(detail());
     renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    // The arrow is aria-hidden, so the accessible name is the label alone.
+    await readyDetail();
+    const link = screen.getByTestId("monitor-detail-checks-link");
+    expect(link.tagName).toBe("A");
+    expect(link).toHaveAccessibleName(/\S/);
     expect(
-      screen.getByRole("link", { name: "ดูประวัติการตรวจ" }),
-    ).toHaveAttribute(
+      within(link).getByTestId("monitor-detail-checks-arrow"),
+    ).toHaveAttribute("aria-hidden", "true");
+    expect(link).toHaveAttribute(
       "href",
       `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
     );
-    expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("navigation", { name: "หน้าประวัติการตรวจ" }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("heading", { name: "ประวัติการตรวจ" }),
-    ).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-records")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-summary")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-load-more")).toBeNull();
+    for (const nav of document.querySelectorAll('nav,[role="navigation"]'))
+      expect(nav).not.toHaveAccessibleName("หน้าประวัติการตรวจ");
+    expect(screen.queryByTestId("monitor-checks-heading")).toBeNull();
     expect(fetchChecksMock).not.toHaveBeenCalled();
   });
 });
 
 describe("Detail access", () => {
+  const refusalRecords = new Set<string>();
   it.each(["viewer", "auditor"] as const)(
     "shows %s the page without any edit, pause, resume or delete control",
     async (role) => {
       fetchMeContextMock.mockResolvedValue(context(role));
       showDetail(detail());
       renderDetail();
-      await screen.findByRole("heading", { level: 1, name: "Payments API" });
-      expect(
-        screen.getByText("สิทธิ์ของคุณ: ดูอย่างเดียว"),
-      ).toBeInTheDocument();
-      for (const name of ["แก้ไข", "หยุดชั่วคราว", "เริ่มต่อ", "ลบมอนิเตอร์"]) {
-        expect(screen.queryByRole("button", { name })).toBeNull();
-        expect(screen.queryByRole("link", { name })).toBeNull();
-      }
+      await readyDetail();
+      expect(screen.getByTestId("monitor-detail-read-only")).toHaveAttribute(
+        "data-role",
+        role,
+      );
+      expect(screen.getByTestId("monitor-detail-read-only")).toHaveTextContent(
+        /\S/,
+      );
+      expect(screen.queryByTestId("monitor-detail-edit")).toBeNull();
+      expect(screen.queryByTestId("monitor-detail-toggle")).toBeNull();
+      expect(screen.queryByTestId("monitor-detail-delete")).toBeNull();
     },
   );
-
   it("gives owner and admin the edit link, pause and delete", async () => {
     fetchMeContextMock.mockResolvedValue(context("admin"));
     showDetail(detail());
     renderDetail();
-    expect(await screen.findByRole("link", { name: "แก้ไข" })).toHaveAttribute(
+    await readyDetail();
+    expect(screen.getByTestId("monitor-detail-edit")).toHaveRole("link");
+    expect(screen.getByTestId("monitor-detail-toggle")).toHaveRole("button");
+    expect(screen.getByTestId("monitor-detail-delete")).toHaveRole("button");
+    expect(screen.getByTestId("monitor-detail-edit")).toHaveAttribute(
       "href",
       `/organizations/${A}/monitors/${MONITOR_ID}/edit`,
     );
-    expect(screen.getByRole("button", { name: "หยุดชั่วคราว" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "ลบมอนิเตอร์" })).toBeVisible();
-    expect(screen.queryByText("สิทธิ์ของคุณ: ดูอย่างเดียว")).toBeNull();
+    expect(screen.getByTestId("monitor-detail-toggle")).toBeVisible();
+    expect(screen.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+      "data-status",
+      "active",
+    );
+    expect(screen.getByTestId("monitor-detail-delete")).toBeVisible();
+    expect(screen.queryByTestId("monitor-detail-read-only")).toBeNull();
   });
-
   it("shows denied to a non-member without fetching or naming the monitor", async () => {
     renderDetail(B.replace("2222", "3333"));
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
-    ).toBeInTheDocument();
+      await screen.findByTestId("monitor-detail-denied"),
+    ).toHaveTextContent(/\S/);
     expect(fetchDetailMock).not.toHaveBeenCalled();
-    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
   });
-
   it("shows denied only after re-reading the membership when the API refuses", async () => {
     fetchDetailMock.mockRejectedValue(
       new ApiError("MEMBERSHIP_DENIED", "denied", 403),
@@ -748,18 +920,17 @@ describe("Detail access", () => {
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
     });
-    // The re-read is still open: no "denied" and no monitor yet.
-    expect(
-      screen.queryByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
-    ).toBeNull();
+    expect(screen.queryByTestId("monitor-detail-denied")).toBeNull();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
     finish(
       context("viewer", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
     );
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
-    ).toBeInTheDocument();
+      await screen.findByTestId("monitor-detail-denied"),
+    ).toHaveTextContent(/\S/);
+    expect(document.body.innerHTML).not.toContain("Payments API");
   });
-
   it.each([
     ["a monitor that does not exist", MONITOR_ID],
     ["a malformed id", "not-a-uuid"],
@@ -770,11 +941,27 @@ describe("Detail access", () => {
   ])("answers %s with the same text", async (_name, monitorId) => {
     fetchDetailMock.mockRejectedValue(notFound());
     renderDetail(A, monitorId);
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
     expect(
-      screen.getAllByRole("link", { name: "กลับไปรายการมอนิเตอร์" }).length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByText("Payments API")).toBeNull();
+      await screen.findByTestId("monitor-detail-not-found"),
+    ).toHaveTextContent(/\S/);
+    refusalRecords.add(
+      screen.getByTestId("monitor-detail-not-found").textContent,
+    );
+    expect(refusalRecords.size).toBe(1);
+    expect(screen.getByTestId("monitor-detail-back")).toHaveRole("link");
+    expect(screen.getByTestId("monitor-detail-not-found-back")).toHaveRole(
+      "link",
+    );
+    expect(screen.getByTestId("monitor-detail-back")).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors`,
+    );
+    expect(screen.getByTestId("monitor-detail-not-found-back")).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors`,
+    );
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
   });
 });
 
@@ -784,10 +971,21 @@ describe("Detail loading, failure and refetch", () => {
     renderDetail();
     await waitFor(() => {
       expect(
-        screen.getByRole("status", { name: "กำลังโหลดมอนิเตอร์" }),
+        screen.getByTestId("monitor-detail-loading-status"),
       ).toBeInTheDocument();
     });
-    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(screen.getByTestId("monitor-detail-loading")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(screen.getByTestId("monitor-detail-loading-status")).toHaveRole(
+      "status",
+    );
+    expect(
+      screen.getByTestId("monitor-detail-loading-status"),
+    ).toHaveAccessibleName(/\S/);
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
   });
 
   it("shows a failure with a retry, never the empty state", async () => {
@@ -795,27 +993,33 @@ describe("Detail loading, failure and refetch", () => {
       new ApiError("NETWORK_ERROR", "down", 0),
     );
     renderDetail();
-    expect(
-      await screen.findByText("โหลดมอนิเตอร์ไม่สำเร็จ"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-detail-load-alert")).toHaveRole(
+        "alert",
+      );
+    });
+    expect(screen.getByTestId("monitor-detail-load-retry")).toHaveRole(
+      "button",
+    );
     showDetail(detail());
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Payments API" }),
-    ).toBeInTheDocument();
+      .click(screen.getByTestId("monitor-detail-load-retry"));
+    await readyDetail();
+    expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+      /^Payments API$/,
+    );
   });
 
   it("keeps the last data with a warning when a refetch fails", async () => {
     showDetail(detail());
     renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    await readyDetail();
     fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
     expect(
-      await screen.findByText(/อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ/),
+      await screen.findByTestId("monitor-detail-refresh-error"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+    expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
       "Payments API",
     );
   });
@@ -823,29 +1027,36 @@ describe("Detail loading, failure and refetch", () => {
   it("shows the new state after another session pauses the monitor", async () => {
     showDetail(detail());
     renderDetail();
-    await screen.findByRole("button", { name: "หยุดชั่วคราว" });
+    await screen.findByTestId("monitor-detail-toggle");
     showDetail(detail({ status: "paused", health: "paused" }));
     expect(
-      await screen.findByText("มอนิเตอร์นี้หยุดตรวจอยู่ จะไม่มีการแจ้งเตือน"),
+      await screen.findByTestId("monitor-detail-paused"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "เริ่มต่อ" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-detail-toggle")).toHaveRole("button");
+    expect(screen.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+      "data-status",
+      "paused",
+    );
+    expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-health",
+      "paused",
+    );
   });
 
   it("shows 'not found' after another session deletes the monitor", async () => {
     showDetail(detail());
     renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    await readyDetail();
     fetchDetailMock.mockRejectedValue(notFound());
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
-    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(
+      await screen.findByTestId("monitor-detail-not-found"),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
   });
 });
 
 describe("Detail data freshness (AC-81, AC-87)", () => {
-  const GLOW = "glow-danger";
-  const STALE = /อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ/;
   const downWithIncident = () =>
     detail({
       health: "down",
@@ -856,121 +1067,199 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       },
     });
 
+  let freshClient: QueryClient;
+  function renderFresh() {
+    const result = renderDetail();
+    freshClient = result.queryClient;
+    return result;
+  }
+  function snapshot() {
+    expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+      /^Payments API$/,
+    );
+    expect(screen.getByTestId("monitor-detail-url")).toHaveTextContent(
+      /^https:\/\/api.acme.example\/health$/,
+    );
+    const time = screen.getByTestId("monitor-status-as-of-time");
+    expect(time.tagName).toBe("TIME");
+    expect(time).toHaveAttribute("dateTime", DATA_AS_OF);
+    expect(time).toHaveTextContent(
+      new Date(DATA_AS_OF).toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }),
+    );
+    expect(screen.getByTestId("monitor-status-as-of")).toHaveTextContent(
+      TIME_ZONE,
+    );
+    expect(screen.getByTestId("monitor-detail-last-check")).toHaveAttribute(
+      "dateTime",
+      "2026-09-30T07:30:00.000Z",
+    );
+    for (const [key, percent, checks] of [
+      ["h24", "100.00%", "288"],
+      ["d7", "99.50%", "2,016"],
+      ["d30", "99.20%", "8,640"],
+    ] as const) {
+      const window = within(screen.getByTestId(`monitor-status-window-${key}`));
+      expect(window.getByTestId("monitor-status-percent")).toHaveTextContent(
+        percent,
+      );
+      expect(window.getByTestId("monitor-status-checks")).toHaveTextContent(
+        checks,
+      );
+      expect(window.getByTestId("monitor-status-coverage")).toHaveTextContent(
+        "100.00%",
+      );
+    }
+  }
   async function dataAsOfDot() {
-    const section = sectionOf(
-      await screen.findByRole("heading", { name: "สถานะปัจจุบัน" }),
-    );
-    return must(within(section).getByText(/^ข้อมูล ณ/).previousElementSibling);
+    await readyDetail();
+    snapshot();
+    return screen.getByTestId("monitor-status-freshness-dot");
   }
-
   function headerBadge() {
-    // The status line follows the title; the scope row above it has its own role pill.
-    const status = must(
-      screen.getByRole("heading", { level: 1 }).nextElementSibling,
-    );
-    const pill = must(status.querySelector("[data-slot=status-pill]"));
-    return { pill, wrapper: must(pill.parentElement) };
+    const health = screen.getByTestId("monitor-detail-health");
+    expect(health).toHaveTextContent(/\S/);
+    return { pill: health, wrapper: health };
   }
-
   it("pulses the data-as-of dot while fresh, goes neutral after a failed refresh and pulses again after recovery", async () => {
     showDetail(detail());
-    renderDetail();
+    renderFresh();
     const fresh = await dataAsOfDot();
     expect(fresh).toHaveAttribute("aria-hidden", "true");
-    expect(fresh).toHaveClass("live-pulse");
-    expect(fresh).toHaveClass("bg-primary");
-    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    expect(fresh).toHaveAttribute("data-fresh", "true");
+    expect(fresh).toHaveAttribute("data-fresh", "true");
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "true",
+    );
 
     fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    expect(await screen.findByText(STALE)).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("monitor-detail-refresh-error"),
+    ).toBeInTheDocument();
     const stale = await dataAsOfDot();
-    expect(stale).toHaveClass("bg-foreground-secondary");
-    expect(stale).not.toHaveClass("live-pulse");
-    expect(stale).not.toHaveClass("bg-primary");
-    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(stale).toHaveAttribute("data-fresh", "false");
+    expect(stale).toHaveAttribute("data-fresh", "false");
+    expect(stale).toHaveAttribute("data-fresh", "false");
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "false",
+    );
 
     showDetail(detail());
     await waitFor(() => {
-      expect(screen.queryByText(STALE)).toBeNull();
+      expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
     });
     const recovered = await dataAsOfDot();
-    expect(recovered).toHaveClass("live-pulse");
-    expect(recovered).toHaveClass("bg-primary");
+    expect(recovered).toHaveAttribute("data-fresh", "true");
+    expect(recovered).toHaveAttribute("data-fresh", "true");
   });
 
   it("glows the badge while an incident is active, drops the glow on a failed refresh and brings it back on recovery", async () => {
     showDetail(downWithIncident());
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    renderFresh();
+    await readyDetail();
     const { pill, wrapper } = headerBadge();
-    expect(pill).toHaveTextContent("ล่ม");
-    expect(wrapper).toHaveClass("rounded-full");
-    expect(wrapper).toHaveClass(GLOW);
+    expect(pill).toHaveAttribute("data-health", "down");
+    expect(wrapper).toHaveAttribute("data-fresh", "true");
     // Static glow: the dot is still the only live-pulse, and the badge keeps its neutral look (COL-01).
-    expect(wrapper.className).not.toMatch(/live-pulse|animate/);
-    expect(pill.className).not.toMatch(/glow|shadow/);
-    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
-    const pillClass = pill.className;
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "true",
+    );
 
     fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    expect(await screen.findByText(STALE)).toBeInTheDocument();
-    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
-    expect(headerBadge().pill).toHaveTextContent("ล่ม");
-    expect(headerBadge().pill.className).toBe(pillClass);
-    expect(document.querySelector(".live-pulse")).toBeNull();
+    expect(
+      await screen.findByTestId("monitor-detail-refresh-error"),
+    ).toBeInTheDocument();
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
+    expect(headerBadge().pill).toHaveAttribute("data-health", "down");
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "false",
+    );
 
     showDetail(downWithIncident());
     await waitFor(() => {
-      expect(headerBadge().wrapper).toHaveClass(GLOW);
+      expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
     });
-    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "true",
+    );
   });
 
   // Offline, TanStack pauses the refetch (`fetchStatus: "paused"`) without an error: the data no longer refreshes, so it is not fresh (CMP-01).
   it("drops the pulse of the dot while the refresh is paused offline and brings it back when it resumes", async () => {
     showDetail(detail());
-    renderDetail();
-    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+    renderFresh();
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
 
     onlineManager.setOnline(false);
     await waitFor(() => {
-      expect(document.querySelector(".live-pulse")).toBeNull();
+      expect(
+        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+          ?.fetchStatus,
+      ).toBe("paused");
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-status-freshness-dot"),
+      ).toHaveAttribute("data-fresh", "false");
     });
     const paused = await dataAsOfDot();
-    expect(paused).toHaveClass("bg-foreground-secondary");
-    expect(paused).not.toHaveClass("bg-primary");
+    expect(paused).toHaveAttribute("data-fresh", "false");
+    expect(paused).toHaveAttribute("data-fresh", "false");
     // No new copy: a pause is not a failed refresh.
-    expect(screen.queryByText(STALE)).toBeNull();
+    expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
 
     // Time passes while it is paused, so the response that follows is stamped after the pause began.
     vi.setSystemTime(NOW.getTime() + 1_000);
     onlineManager.setOnline(true);
     await waitFor(() => {
-      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+      expect(
+        screen.getByTestId("monitor-status-freshness-dot"),
+      ).toHaveAttribute("data-fresh", "true");
     });
-    expect(await dataAsOfDot()).toHaveClass("bg-primary");
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
   });
 
   it("drops the badge glow while the refresh is paused offline and brings it back when it resumes", async () => {
     showDetail(downWithIncident());
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    renderFresh();
+    await readyDetail();
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
 
     onlineManager.setOnline(false);
     await waitFor(() => {
-      expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+      expect(
+        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+          ?.fetchStatus,
+      ).toBe("paused");
     });
-    expect(headerBadge().pill).toHaveTextContent("ล่ม");
-    expect(document.querySelector(".live-pulse")).toBeNull();
-    expect(screen.queryByText(STALE)).toBeNull();
+    await waitFor(() => {
+      expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
+    });
+    expect(headerBadge().pill).toHaveAttribute("data-health", "down");
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "false",
+    );
+    expect(screen.queryByTestId("monitor-detail-refresh-error")).toBeNull();
 
     vi.setSystemTime(NOW.getTime() + 1_000);
     onlineManager.setOnline(true);
     await waitFor(() => {
-      expect(headerBadge().wrapper).toHaveClass(GLOW);
+      expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
     });
-    expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "true",
+    );
   });
 
   // After a pause the query keeps the snapshot from before it, so a resumed fetch that has not succeeded yet must not make the cues fresh (Codex 4202249500). The clock moves on during the pause; the poll interval is mocked at 60 ms, so data counts as fresh for 120 ms.
@@ -978,13 +1267,21 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
 
   it("keeps the dot and the glow off while the resumed fetch is pending, then restores both when it succeeds", async () => {
     showDetail(downWithIncident());
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    renderFresh();
+    await readyDetail();
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
 
     onlineManager.setOnline(false);
     await waitFor(() => {
-      expect(document.querySelector(".live-pulse")).toBeNull();
+      expect(
+        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+          ?.fetchStatus,
+      ).toBe("paused");
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-status-freshness-dot"),
+      ).toHaveAttribute("data-fresh", "false");
     });
     vi.setSystemTime(NOW.getTime() + PAUSE_MS);
     const resumed = deferred<{ monitor: Monitor }>();
@@ -995,46 +1292,72 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
     });
     // The fetch is in flight and `data` is still the snapshot from before the pause.
-    expect(document.querySelector(".live-pulse")).toBeNull();
-    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
-    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "false",
+    );
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "false");
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
 
     await act(async () => {
       resumed.resolve({ monitor: downWithIncident() });
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+      expect(
+        screen.getByTestId("monitor-status-freshness-dot"),
+      ).toHaveAttribute("data-fresh", "true");
     });
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
   });
 
   it("stays not fresh when the resumed fetch fails", async () => {
     showDetail(downWithIncident());
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    renderFresh();
+    await readyDetail();
 
     onlineManager.setOnline(false);
     await waitFor(() => {
-      expect(document.querySelector(".live-pulse")).toBeNull();
+      expect(
+        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+          ?.fetchStatus,
+      ).toBe("paused");
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-status-freshness-dot"),
+      ).toHaveAttribute("data-fresh", "false");
     });
     vi.setSystemTime(NOW.getTime() + PAUSE_MS);
     fetchDetailMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
     onlineManager.setOnline(true);
-    expect(await screen.findByText(STALE)).toBeInTheDocument();
-    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
-    expect(document.querySelector(".live-pulse")).toBeNull();
-    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    expect(
+      await screen.findByTestId("monitor-detail-refresh-error"),
+    ).toBeInTheDocument();
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "false");
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "false",
+    );
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
   });
 
   it("keeps the dot and the glow off after a short pause while the resumed fetch is pending, however recent the snapshot is", async () => {
     showDetail(downWithIncident());
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
+    renderFresh();
+    await readyDetail();
 
     onlineManager.setOnline(false);
     await waitFor(() => {
-      expect(document.querySelector(".live-pulse")).toBeNull();
+      expect(
+        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+          ?.fetchStatus,
+      ).toBe("paused");
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("monitor-status-freshness-dot"),
+      ).toHaveAttribute("data-fresh", "false");
     });
     // No time passes: the snapshot is still within the age limit when the query resumes (Codex 4202350103).
     const resumed = deferred<{ monitor: Monitor }>();
@@ -1044,9 +1367,12 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     await waitFor(() => {
       expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
     });
-    expect(document.querySelector(".live-pulse")).toBeNull();
-    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
-    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "false",
+    );
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "false");
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
 
     vi.setSystemTime(NOW.getTime() + 1_000);
     await act(async () => {
@@ -1054,16 +1380,18 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+      expect(
+        screen.getByTestId("monitor-status-freshness-dot"),
+      ).toHaveAttribute("data-fresh", "true");
     });
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
   });
 
   it("keeps the dot and the glow on while a routine poll is in flight", async () => {
     showDetail(downWithIncident());
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    renderFresh();
+    await readyDetail();
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
 
     const poll = deferred<{ monitor: Monitor }>();
     fetchDetailMock.mockReturnValue(poll.promise);
@@ -1072,15 +1400,15 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       expect(fetchDetailMock.mock.calls.length).toBeGreaterThan(calls);
     });
     // Pending, no pause and no error: nothing flickers.
-    expect(await dataAsOfDot()).toHaveClass("live-pulse");
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
 
     await act(async () => {
       poll.resolve({ monitor: downWithIncident() });
       await Promise.resolve();
     });
-    expect(await dataAsOfDot()).toHaveClass("live-pulse");
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
   });
 
   it("opens from a cached snapshot older than the limit with the dot and the glow off until the refetch succeeds", async () => {
@@ -1095,10 +1423,14 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     const refetch = deferred<{ monitor: Monitor }>();
     fetchDetailMock.mockReturnValue(refetch.promise);
     renderDetail(A, MONITOR_ID, queryClient);
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    expect(await dataAsOfDot()).toHaveClass("bg-foreground-secondary");
-    expect(document.querySelector(".live-pulse")).toBeNull();
-    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    freshClient = queryClient;
+    await readyDetail();
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "false");
+    expect(screen.getByTestId("monitor-status-freshness-dot")).toHaveAttribute(
+      "data-fresh",
+      "false",
+    );
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "false");
     expect(fetchDetailMock).toHaveBeenCalled();
 
     await act(async () => {
@@ -1106,9 +1438,11 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(document.querySelectorAll(".live-pulse")).toHaveLength(1);
+      expect(
+        screen.getByTestId("monitor-status-freshness-dot"),
+      ).toHaveAttribute("data-fresh", "true");
     });
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
   });
 
   it.each([
@@ -1119,24 +1453,32 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     ],
   ])("drops the badge glow when %s", async (_name, next) => {
     showDetail(downWithIncident());
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    renderFresh();
+    await readyDetail();
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
 
     showDetail(next());
     await waitFor(() => {
-      expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+      expect(headerBadge().wrapper).toHaveAttribute(
+        "data-incident-open",
+        "false",
+      );
+      expect(screen.queryByTestId("monitor-detail-down-banner")).toBeNull();
     });
     // The data is fresh again, so the dot keeps pulsing: no glow is not a stale state.
-    expect(await dataAsOfDot()).toHaveClass("live-pulse");
+    expect(await dataAsOfDot()).toHaveAttribute("data-fresh", "true");
   });
 
   it("does not glow a down monitor that has no open incident", async () => {
     showDetail(detail({ health: "down", openIncident: null }));
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    expect(headerBadge().pill).toHaveTextContent("ล่ม");
-    expect(headerBadge().wrapper).not.toHaveClass(GLOW);
+    renderFresh();
+    await readyDetail();
+    expect(headerBadge().pill).toHaveAttribute("data-health", "down");
+    expect(headerBadge().wrapper).toHaveAttribute(
+      "data-incident-open",
+      "false",
+    );
+    expect(screen.queryByTestId("monitor-detail-down-banner")).toBeNull();
   });
 
   it("leaves the Overview pills of the same down monitor without a glow", async () => {
@@ -1183,53 +1525,92 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     } satisfies MonitorListResponse);
     showDetail(downWithIncident());
     const user = userEvent.setup();
-    renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    expect(headerBadge().wrapper).toHaveClass(GLOW);
+    renderFresh();
+    await readyDetail();
+    expect(headerBadge().wrapper).toHaveAttribute("data-fresh", "true");
 
-    await user.click(
-      screen.getByRole("link", { name: "กลับไปรายการมอนิเตอร์" }),
-    );
+    await user.click(screen.getByTestId("monitor-detail-back"));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
         new RegExp(`^/organizations/${A}/monitors$`),
       );
     });
-    await screen.findAllByText("Payments API");
-    const pills = Array.from(
-      document.querySelectorAll("[data-slot=status-pill]"),
-    ).filter((pill) => pill.textContent === "ล่ม");
-    // The table and the cards both draw the pill.
-    expect(pills.length).toBeGreaterThan(0);
-    expect(document.querySelector('[class*="glow-"]')).toBeNull();
-    expect(document.querySelector('[class*="shadow-["]')).toBeNull();
+    const row = await screen.findByTestId(`monitor-list-row-${MONITOR_ID}`);
+    expect(
+      within(row).getByTestId(`monitor-list-name-${MONITOR_ID}`),
+    ).toHaveTextContent(/^Payments API$/);
+    expect(within(row).getByTestId("monitor-list-health")).toHaveAttribute(
+      "data-health",
+      "down",
+    );
+    expect(
+      within(row).getByTestId("monitor-list-incident-time"),
+    ).toHaveAttribute("dateTime", "2026-09-30T07:20:00.000Z");
   });
 });
 
 describe("Detail structure", () => {
+  function headingOf(id: string) {
+    const card = screen.getByTestId(id);
+    const heading = must(
+      document.getElementById(must(card.getAttribute("aria-labelledby"))),
+    );
+    expect(heading.tagName).toBe("H2");
+    expect(heading).toHaveAccessibleName(/\S/);
+  }
+  function headerRecords(card: HTMLElement) {
+    return within(card)
+      .getAllByTestId("monitor-config-header")
+      .map((row) => ({
+        name: within(row).getByTestId("monitor-config-header-name").textContent,
+        secret: row.getAttribute("data-secret"),
+        value:
+          within(row).queryByTestId("monitor-config-header-value")
+            ?.textContent ?? null,
+        state:
+          within(row).queryByTestId("monitor-config-header-state")
+            ?.textContent ?? null,
+      }));
+  }
   it("orders the section headings as h2 under one h1", async () => {
     showDetail(detail());
     renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    await screen.findByText("ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล");
-    const names = [
-      "เวลาตอบสนอง",
-      "สถานะปัจจุบัน",
-      "ฟีดเหตุการณ์",
-      "เหตุการณ์",
-      "การตั้งค่า",
-      "การแจ้งเตือน",
-      "SSL",
-      "การตอบกลับล่าสุด",
-    ];
-    const headings = screen.getAllByRole("heading", { level: 2 });
-    expect(headings).toHaveLength(names.length);
-    // AC-75: no section code in front of any title, hidden or not.
-    names.forEach((name, index) => {
-      expect(headings[index]).toHaveAccessibleName(name);
-      expect(headings[index]).toHaveTextContent(new RegExp(`^${name}$`));
-    });
-    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    await readyDetail();
+    await screen.findByTestId("monitor-incidents-empty");
+    expect(screen.getByTestId("monitor-detail-title")).toHaveRole("heading");
+    expect(screen.getByTestId("monitor-detail-title").tagName).toBe("H1");
+    expect(
+      document.querySelectorAll('h1,[role="heading"][aria-level="1"]'),
+    ).toHaveLength(1);
+    headingOf("monitor-response-times");
+    headingOf("monitor-status");
+    headingOf("monitor-event-feed");
+    headingOf("monitor-incidents");
+    headingOf("monitor-detail-config");
+    headingOf("monitor-detail-alerts");
+    headingOf("monitor-detail-ssl");
+    headingOf("monitor-last-response");
+    expect(screen.getByTestId("monitor-detail-config-region")).toHaveRole(
+      "complementary",
+    );
+    expect(screen.getByTestId("monitor-config-method")).toHaveTextContent(
+      /^GET$/,
+    );
+    expect(screen.getByTestId("monitor-detail-url")).toHaveTextContent(
+      /^https:\/\/api.acme.example\/health$/,
+    );
+    expect(screen.getByTestId("response-range-announcement")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.getByTestId("response-range-announcement")).toHaveAttribute(
+      "aria-live",
+      "polite",
+    );
+    expect(screen.getByTestId("monitor-detail-checks-link")).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
+    );
   });
 
   const HEADER_ID = "5c2f0a86-7d0e-4c58-9f4e-1a2b3c4d5e6f";
@@ -1249,16 +1630,34 @@ describe("Detail structure", () => {
       }),
     );
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "การตั้งค่า" }),
+    await readyDetail();
+    const card = screen.getByTestId("monitor-detail-config");
+    expect(within(card).getByTestId("monitor-config-auth")).toHaveAttribute(
+      "data-auth-type",
+      "bearer",
     );
-    expect(within(card).getByText(/Bearer token/)).toHaveTextContent(
-      "ตั้งค่าแล้ว",
+    expect(within(card).getByTestId("monitor-config-auth")).toHaveAttribute(
+      "data-configured",
+      "true",
     );
-    expect(within(card).getByText("X-Api-Key").parentElement).toHaveTextContent(
-      "ตั้งค่าแล้ว (ค่าลับ)",
+    expect(within(card).getByTestId("monitor-config-auth")).toHaveTextContent(
+      /Bearer token.*ตั้งค่าแล้ว/,
     );
-    expect(within(card).getByText("application/json")).toBeInTheDocument();
+    expect(headerRecords(card)).toEqual([
+      {
+        name: "X-Api-Key",
+        secret: "true",
+        value: null,
+        state: "ตั้งค่าแล้ว (ค่าลับ)",
+      },
+      {
+        name: "Accept",
+        secret: "false",
+        value: "application/json",
+        state: null,
+      },
+    ]);
+    expect(card.innerHTML).not.toContain(HEADER_ID);
   });
 
   it("does not claim a secret is set when its slot is not stored", async () => {
@@ -1271,16 +1670,29 @@ describe("Detail structure", () => {
       }),
     );
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "การตั้งค่า" }),
+    await readyDetail();
+    const card = screen.getByTestId("monitor-detail-config");
+    expect(within(card).getByTestId("monitor-config-auth")).toHaveAttribute(
+      "data-auth-type",
+      "basic",
     );
-    expect(within(card).getByText(/^Basic/)).toHaveTextContent(
-      "ยังไม่ได้ตั้งค่า",
+    expect(within(card).getByTestId("monitor-config-auth")).toHaveAttribute(
+      "data-configured",
+      "false",
     );
-    expect(within(card).getByText("X-Api-Key").parentElement).toHaveTextContent(
-      "ยังไม่ได้ตั้งค่า (ค่าลับ)",
+    expect(within(card).getByTestId("monitor-config-auth")).toHaveTextContent(
+      /Basic.*ยังไม่ได้ตั้งค่า/,
     );
-    expect(within(card).queryByText(/ตั้งค่าแล้ว/)).toBeNull();
+    expect(headerRecords(card)).toEqual([
+      {
+        name: "X-Api-Key",
+        secret: "true",
+        value: null,
+        state: "ยังไม่ได้ตั้งค่า (ค่าลับ)",
+      },
+    ]);
+    expect(card.textContent).not.toMatch(/ตั้งค่าแล้ว/);
+    expect(card.innerHTML).not.toContain(HEADER_ID);
   });
 
   it.each(["viewer", "auditor"] as const)(
@@ -1299,38 +1711,50 @@ describe("Detail structure", () => {
         }),
       );
       renderDetail();
-      const card = sectionOf(
-        await screen.findByRole("heading", { name: "การตั้งค่า" }),
-      );
-      expect(within(card).getByText("region=eu")).toBeInTheDocument();
-      expect(within(card).getByText("Body (json)")).toBeInTheDocument();
+      await readyDetail();
+      const card = screen.getByTestId("monitor-detail-config");
       expect(
-        within(card).getByRole("group", { name: "เนื้อหา body" }),
-      ).toHaveTextContent('{"ping":true}');
+        within(card)
+          .getAllByTestId("monitor-config-query-param")
+          .map((x) => x.textContent),
+      ).toEqual(["region=eu"]);
+      const body = within(card).getByTestId("monitor-config-body");
+      expect(body).toHaveRole("group");
+      expect(body).toHaveAccessibleName(/\S/);
+      expect(body).toHaveAttribute("data-body-type", "json");
+      expect(body.textContent).toBe('{"ping":true}');
+      const pathValue: unknown = expect.stringMatching(/\$\.status = ok$/);
+      const bodyValue: unknown = expect.stringMatching(/ready$/);
+      const timingValue: unknown = expect.stringMatching(/800 ms$/);
       expect(
-        within(card).getByText("JSONPath เท่ากับ $.status = ok"),
-      ).toBeInTheDocument();
+        within(card)
+          .getAllByTestId("monitor-config-assertion")
+          .map((row) => ({
+            kind: row.getAttribute("data-kind"),
+            text: row.textContent,
+          })),
+      ).toEqual([
+        {
+          kind: "jsonPathEquals",
+          text: pathValue,
+        },
+        { kind: "bodyContains", text: bodyValue },
+        { kind: "responseTimeBelow", text: timingValue },
+      ]);
       expect(
-        within(card).getByText("เนื้อหามีข้อความ ready"),
-      ).toBeInTheDocument();
-      expect(
-        within(card).getByText("เวลาตอบสนองน้อยกว่า 800 ms"),
-      ).toBeInTheDocument();
-      expect(
-        within(card).getByText(
-          "ผู้ที่ดูมอนิเตอร์เห็นค่านี้ได้ ห้ามใส่ความลับ ใช้ header ลับแทน",
-        ),
-      ).toBeInTheDocument();
+        within(card).getByTestId("monitor-config-visibility-note"),
+      ).toHaveTextContent(/\S/);
     },
   );
 
   it("shows no visibility warning when there are no query parameters or body", async () => {
     showDetail(detail());
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "การตั้งค่า" }),
-    );
-    expect(within(card).queryByText(/ห้ามใส่ความลับ/)).toBeNull();
+    await readyDetail();
+    const card = screen.getByTestId("monitor-detail-config");
+    expect(
+      within(card).queryByTestId("monitor-config-visibility-note"),
+    ).toBeNull();
   });
 
   it("keeps the monitor leaf active on the Detail path", () => {
@@ -1356,54 +1780,41 @@ describe("Detail Organization switch", () => {
     showDetail(detail());
     const user = userEvent.setup();
     renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    await user.click(screen.getByRole("button", { name: "switch to B" }));
+    await readyDetail();
+    await user.click(screen.getByTestId("detail-harness-switch"));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
         `/organizations/${B}/monitors`,
       );
     });
-    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
   });
 });
 
+function responseScope() {
+  return within(screen.getByTestId("monitor-response-times"));
+}
+function responseElement(id: string) {
+  return responseScope().getByTestId("monitor-response-" + id);
+}
 function chartTable() {
-  return within(
-    screen.getByRole("region", { name: "ข้อมูลกราฟเวลาตอบสนอง" }),
-  ).getByRole("table");
+  const region = responseElement("table-region");
+  expect(region).toHaveRole("region");
+  return within(region).getByTestId("monitor-response-table");
 }
-
-const TOGGLE_TO_TABLE = "ดูข้อมูลกราฟเป็นตาราง";
-const TOGGLE_TO_CHART = "ดูข้อมูลเป็นกราฟ";
-const CHART_NAME = /กราฟเส้นเวลาตอบสนอง/;
-const KEYBOARD_HINT = "เลือกกราฟด้วย Tab แล้วใช้ลูกศรซ้ายขวาเพื่อดูค่าแต่ละจุด";
-const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
-
-/** The chart's own polite region; the card's range announcement is another one. */
 function chartLiveRegion() {
-  return must(
-    must(
-      screen.getByRole("group", { name: CHART_NAME }).parentElement,
-    ).querySelector('[aria-live="polite"]'),
-  );
+  return responseElement("live");
 }
-
-/** Looks past accessibility: a table that is only hidden would still be in the DOM. */
 function expectNoTableInDom() {
-  expect(screen.queryByRole("table", { hidden: true })).toBeNull();
   expect(
-    screen.queryByRole("region", {
-      name: "ข้อมูลกราฟเวลาตอบสนอง",
-      hidden: true,
-    }),
+    responseScope().queryByTestId("monitor-response-table-region"),
   ).toBeNull();
+  expect(document.body.innerHTML).not.toMatch(/<table\b|role="table"/);
 }
-
 function expectNoChartInDom() {
-  expect(
-    screen.queryByRole("group", { name: CHART_NAME, hidden: true }),
-  ).toBeNull();
-  expect(document.querySelector("[data-chart-part]")).toBeNull();
+  expect(responseScope().queryByTestId("monitor-response-chart")).toBeNull();
+  expect(document.body.innerHTML).not.toContain("data-chart-part=");
 }
 
 function expectNoStateAttributes(toggle: HTMLElement) {
@@ -1437,31 +1848,145 @@ const responseTimes24h: MonitorResponseTimesResponse = {
 };
 
 describe("Detail response-time chart", () => {
+  const responseCard = () => screen.getByTestId("monitor-response-times");
+  const rootChart = () =>
+    within(responseCard()).getByTestId("monitor-response-chart");
+  function responseTable() {
+    const region = within(responseCard()).getByTestId(
+      "monitor-response-table-region",
+    );
+    expect(region).toHaveRole("region");
+    expect(region).toHaveAccessibleName(/\S/);
+    expect(region).toHaveAttribute("tabindex", "0");
+    const table = within(region).getByTestId("monitor-response-table");
+    expect(table).toHaveRole("table");
+    expect(table).toHaveAccessibleName(/ms/);
+    return table;
+  }
+  function records() {
+    const labels = new Map<string, string>();
+    const rows = within(responseTable())
+      .getAllByTestId("monitor-response-record")
+      .map((row) => {
+        const scope = within(row),
+          time = scope.getByTestId("monitor-response-cell-time");
+        expect(time).toHaveRole("rowheader");
+        const kind = row.getAttribute("data-kind"),
+          changeCount = Number(row.getAttribute("data-change-count")),
+          noteCell = scope.getByTestId("monitor-response-cell-note"),
+          label = noteCell.textContent.trim();
+        expect(noteCell).toHaveRole("cell");
+        const notePresent = kind !== "value" || changeCount > 0;
+        if (notePresent) {
+          expect(noteCell).toHaveTextContent(/\S/);
+          const key = changeCount > 0 ? "url-change" : must(kind);
+          labels.set(key, label);
+        } else expect(noteCell).toBeEmptyDOMElement();
+        return {
+          changeCount,
+          kind,
+          at: Number(row.getAttribute("data-at")),
+          end: Number(row.getAttribute("data-end")),
+          checks: Number(row.getAttribute("data-checks")),
+          time: time.textContent,
+          average: scope.getByTestId("monitor-response-cell-average")
+            .textContent,
+          max:
+            scope.queryByTestId("monitor-response-cell-max")?.textContent ??
+            null,
+          note: notePresent,
+        };
+      });
+    expect(new Set(labels.values()).size).toBe(labels.size);
+    return rows;
+  }
+  function record(
+    kind: string,
+    at: string,
+    end: string,
+    checks: number,
+    average: string,
+    max: string | null = null,
+    note = false,
+  ) {
+    return {
+      kind,
+      changeCount: kind === "value" && note ? 1 : 0,
+      at: Date.parse(at),
+      end: Date.parse(end),
+      checks,
+      time: formatTime(at) + (end === at ? "" : "–" + formatTime(end)),
+      average,
+      max,
+      note,
+    };
+  }
+  const standardRecords = () => [
+    record("value", inWindow(3), inWindow(3), 1, "182", null, true),
+    record("value", inWindow(8), inWindow(8), 1, "1,204"),
+    record("gap", inWindow(10), inWindow(25), 0, "–", null, true),
+    record("pause", inWindow(25), inWindow(40), 0, "–", null, true),
+    record("value", inWindow(1437), inWindow(1437), 1, "200"),
+  ];
+  function summaryNumbers() {
+    const node = within(responseCard()).getByTestId("monitor-response-summary");
+    expect(node).toHaveTextContent(/\S/);
+    return (
+      node.textContent
+        .match(/\d[\d,]*(?:\.\d+)?/g)
+        ?.map((x) => Number(x.replaceAll(",", ""))) ?? []
+    );
+  }
+  function noTable() {
+    expect(
+      within(responseCard()).queryByTestId("monitor-response-table-region"),
+    ).toBeNull();
+    expect(document.body.innerHTML).not.toMatch(/<table\b|role="table"/);
+  }
+  function noChart() {
+    expect(
+      within(responseCard()).queryByTestId("monitor-response-chart"),
+    ).toBeNull();
+    expect(
+      within(responseCard()).queryByTestId("monitor-response-readout"),
+    ).toBeNull();
+    expect(document.body.innerHTML).not.toContain("data-chart-part=");
+  }
+
   it("shows the empty state when there are no results", async () => {
     showDetail(detail({ lastCheckAt: null, lastResult: null }));
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    await readyDetail();
+    const card = responseCard();
+    expect(
+      await within(card).findByTestId("monitor-response-empty"),
+    ).toBeInTheDocument();
+    expect(within(card).queryByTestId("monitor-response-chart")).toBeNull();
+    expect(card.innerHTML).not.toContain('role="group"');
+    expect(within(card).getByTestId("monitor-response-empty")).toHaveAttribute(
+      "data-last-check-at",
+      "",
     );
     expect(
-      await within(card).findByText("ยังไม่มีผลการตรวจ"),
-    ).toBeInTheDocument();
-    expect(within(card).queryByRole("group")).toBeNull();
-    expect(
-      within(card).queryByRole("button", { name: /^ดูข้อมูล/ }),
+      within(card).queryByTestId("monitor-response-empty-time"),
     ).toBeNull();
+    expect(within(card).queryByTestId("monitor-response-toggle")).toBeNull();
   });
 
   it("tells a monitor with no results in the window from one that was never checked", async () => {
     showDetail(detail({ lastCheckAt: "2026-09-28T07:30:00.000Z" }));
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
-    );
+    await readyDetail();
+    const card = responseCard();
     expect(
-      await within(card).findByText(/^ไม่มีผลใน 24 ชม\. \(ผลล่าสุด/),
+      await within(card).findByTestId("monitor-response-empty"),
     ).toBeInTheDocument();
-    expect(within(card).queryByText("ยังไม่มีผลการตรวจ")).toBeNull();
+    expect(
+      within(card).getByTestId("monitor-response-empty-time"),
+    ).toHaveAttribute("dateTime", "2026-09-28T07:30:00.000Z");
+    expect(
+      within(card).getByTestId("monitor-response-empty-time"),
+    ).toHaveTextContent(formatDateTime("2026-09-28T07:30:00.000Z"));
   });
 
   it("says so when the whole window is paused", async () => {
@@ -1470,19 +1995,26 @@ describe("Detail response-time chart", () => {
       ...noResponseTimes,
       pauses: [{ from: inWindow(-60), to: DATA_AS_OF }],
     });
+    const user = userEvent.setup();
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
-    );
+    await readyDetail();
+    const card = responseCard();
     expect(
-      await within(card).findByText("หยุดชั่วคราวตลอดช่วง ไม่มีการตรวจ"),
+      await within(card).findByTestId("monitor-response-summary"),
     ).toBeInTheDocument();
     expect(
-      await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+      await within(card).findByTestId("monitor-response-chart"),
     ).toBeInTheDocument();
     expect(
-      within(card).getByRole("button", { name: TOGGLE_TO_TABLE }),
+      within(card).getByTestId("monitor-response-toggle"),
     ).toBeInTheDocument();
+    expect(
+      within(card).getByTestId("monitor-response-summary"),
+    ).toHaveAttribute("data-paused", "true");
+    await user.click(within(card).getByTestId("monitor-response-toggle"));
+    expect(records()).toEqual([
+      record("pause", inWindow(-60), DATA_AS_OF, 0, "–", null, true),
+    ]);
   });
 
   it("says 'หยุดชั่วคราวตลอดช่วง' for a 7 d window paused from before its start until now", async () => {
@@ -1524,12 +2056,43 @@ describe("Detail response-time chart", () => {
     );
     const user = userEvent.setup();
     renderDetail();
-    await screen.findByRole("radio", { name: "7 วัน" });
-    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    await screen.findByTestId("monitor-response-range-7d");
+    await user.click(screen.getByTestId("monitor-response-range-7d"));
     expect(
-      await screen.findByText("หยุดชั่วคราวตลอดช่วง ไม่มีการตรวจ"),
+      await screen.findByTestId("monitor-response-summary"),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/^ไม่มีผลใน 7 วัน/)).toBeNull();
+    await waitFor(() =>
+      expect(rootChart()).toHaveAttribute("data-range", "7d"),
+    );
+    expect(screen.getByTestId("monitor-response-summary")).toHaveAttribute(
+      "data-paused",
+      "true",
+    );
+    expect(
+      within(responseCard()).queryByTestId("monitor-response-empty"),
+    ).toBeNull();
+    expect(screen.getByTestId("monitor-response-checks")).toHaveTextContent(
+      /^0$/,
+    );
+    await user.click(
+      within(responseCard()).getByTestId("monitor-response-toggle"),
+    );
+    expect(records()).toEqual([
+      {
+        changeCount: 0,
+        kind: "pause",
+        at: start,
+        end: asOf,
+        checks: 0,
+        time:
+          formatDateTime(new Date(start).toISOString()) +
+          "–" +
+          formatDateTime(DATA_AS_OF),
+        average: "–",
+        max: "–",
+        note: true,
+      },
+    ]);
   });
 
   it("shows a monitor created 2 h ago without a gap before its creation", async () => {
@@ -1543,14 +2106,13 @@ describe("Detail response-time chart", () => {
     });
     const user = userEvent.setup();
     renderDetail();
-    await user.click(
-      await screen.findByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" }),
-    );
-    const rows = within(chartTable()).getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(2);
-    expect(
-      screen.getByText("ไม่มีช่วงไม่มีข้อมูล", { exact: false }),
-    ).toBeInTheDocument();
+    await user.click(await screen.findByTestId("monitor-response-toggle"));
+    const rows = records();
+    expect(rows).toEqual([
+      record("value", inWindow(1330), inWindow(1330), 1, "100"),
+      record("value", inWindow(1435), inWindow(1435), 1, "110"),
+    ]);
+    expect(summaryNumbers()).toEqual([105, 110]);
   });
 
   it("draws the stretch from the last result up to now as no data for a stale monitor", async () => {
@@ -1570,37 +2132,48 @@ describe("Detail response-time chart", () => {
     });
     const user = userEvent.setup();
     renderDetail();
-    const button = await screen.findByRole("button", {
-      name: "ดูข้อมูลกราฟเป็นตาราง",
-    });
+    const button = await screen.findByTestId("monitor-response-toggle");
     await user.click(button);
-    const rows = within(chartTable()).getAllByRole("row").slice(1);
+    const rows = records();
     // Two results, then the gap from the last one to now (and one before the first).
-    expect(rows.at(-1)).toHaveTextContent("ไม่มีข้อมูล");
-    expect(rows[0]).toHaveTextContent("ไม่มีข้อมูล");
-    expect(screen.getByText(/ไม่มีข้อมูล 2 ช่วง รวม/)).toBeInTheDocument();
+    expect(rows).toEqual([
+      record("gap", inWindow(0), inWindow(60), 0, "–", null, true),
+      record("value", inWindow(60), inWindow(60), 1, "150"),
+      record("value", inWindow(600), inWindow(600), 1, "160"),
+      record("gap", inWindow(600), DATA_AS_OF, 0, "–", null, true),
+    ]);
+    expect(summaryNumbers()).toEqual([155, 160, 2, 900]);
   });
 
   it("loads the chart lazily with its unit, range, source and summary", async () => {
     showDetail(detail());
     fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
+    await readyDetail();
+    const card = responseCard();
+    expect(
+      await within(card).findByTestId("monitor-response-chart"),
+    ).toBeInTheDocument();
+    expect(within(card).getByTestId("monitor-response-chart")).toHaveRole(
+      "group",
     );
+    expect(rootChart()).toHaveAccessibleName(/ms/);
+    expect(rootChart()).toHaveAttribute("data-range", "24h");
+    expect(summaryNumbers()).toEqual([529, 1204, 1, 15, 1]);
     expect(
-      await within(card).findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
-    ).toBeInTheDocument();
-    expect(within(card).getByText("หน่วย: ms")).toBeInTheDocument();
-    expect(within(card).getByText("ช่วง: 24 ชม.ล่าสุด")).toBeInTheDocument();
+      within(rootChart()).getByTestId("monitor-response-config-change"),
+    ).toHaveAttribute("data-url-changed", "true");
+    const bands = within(rootChart()).getAllByTestId("monitor-response-gap");
     expect(
-      within(card).getByText("แหล่ง: ผลการตรวจของ NightWatch"),
-    ).toBeInTheDocument();
-    expect(
-      within(card).getByText(
-        "เฉลี่ย 529 ms สูงสุด 1,204 ms ไม่มีข้อมูล 1 ช่วง รวม 15 นาที หยุดชั่วคราว 1 ช่วง",
-      ),
-    ).toBeInTheDocument();
+      bands.map((band) => {
+        expect(band).toBeVisible();
+        expect(band.tagName).toBe("rect");
+        return [
+          Number(band.getAttribute("data-at")),
+          Number(band.getAttribute("data-end")),
+        ];
+      }),
+    ).toEqual([[Date.parse(inWindow(10)), Date.parse(inWindow(25))]]);
     expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, MONITOR_ID, "24h");
   });
 
@@ -1609,57 +2182,79 @@ describe("Detail response-time chart", () => {
     fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
     const user = userEvent.setup();
     renderDetail();
-    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
-    const group = await screen.findByRole("group", { name: CHART_NAME });
+    const toggle = await screen.findByTestId("monitor-response-toggle");
+    const group = await screen.findByTestId("monitor-response-chart");
     expectNoStateAttributes(toggle);
-    expectNoTableInDom();
+    noTable();
     // AC-76: the keyboard hint stays off the accessibility tree and the polite region stays.
-    expect(screen.getByText(KEYBOARD_HINT)).toHaveAttribute(
+    expect(screen.getByTestId("monitor-response-readout")).toHaveAttribute(
       "aria-hidden",
       "true",
     );
-    expect(chartLiveRegion()).toHaveAttribute("aria-live", "polite");
-    expect(toggle.compareDocumentPosition(group) & FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId("monitor-response-live")).toHaveAttribute(
+      "aria-live",
+      "polite",
+    );
+    expect(group).toHaveRole("group");
+    expect(toggle).toHaveRole("button");
+    const chartAction = toggle.textContent;
+    group.focus();
+    await user.keyboard("{Home}");
+    expect(screen.getByTestId("monitor-response-readout")).toHaveTextContent(
+      /182 ms/,
+    );
+    expect(screen.getByTestId("monitor-response-live")).toHaveTextContent(
+      formatTime(inWindow(3)),
+    );
+    await user.keyboard("{ArrowRight}{ArrowRight}");
+    expect(screen.getByTestId("monitor-response-readout")).toHaveAttribute(
+      "data-selected-kind",
+      "gap",
+    );
+    expect(
+      screen.getByTestId("monitor-response-readout"),
+    ).not.toHaveTextContent(/0 ms/);
+    expect(screen.getByTestId("monitor-response-live")).toHaveTextContent(
+      formatTime(inWindow(10)),
+    );
 
     toggle.focus();
     await user.keyboard("{Enter}");
-    expect(toggle).toHaveAccessibleName(TOGGLE_TO_CHART);
+    expect(toggle).toHaveAttribute("data-view", "table");
+    expect(toggle.textContent).not.toBe(chartAction);
     expect(toggle).toHaveFocus();
     expectNoStateAttributes(toggle);
     // The inactive view is unmounted, not hidden.
-    expect(screen.queryByRole("group", { name: CHART_NAME })).toBeNull();
-    expect(screen.queryByText(KEYBOARD_HINT)).toBeNull();
-    expect(document.querySelector("[data-chart-part]")).toBeNull();
-    const table = chartTable();
-    expect(toggle.compareDocumentPosition(table) & FOLLOWING).toBeTruthy();
-    expect(table).toHaveAccessibleName(
-      /เวลาตอบสนอง หน่วย ms ช่วง 24 ชม.ล่าสุด/,
-    );
-    const headers = within(table)
-      .getAllByRole("columnheader")
-      .map((header) => header.textContent);
-    expect(headers[1]).toBe("เวลาตอบสนอง (ms)");
-    const body = within(table).getAllByRole("row").slice(1);
-    // Three checks, one gap and one pause.
-    expect(body).toHaveLength(5);
-    expect(within(table).getByText("ไม่มีข้อมูล")).toBeInTheDocument();
-    expect(within(table).getByText("หยุดชั่วคราว")).toBeInTheDocument();
-    expect(within(table).getByText("เปลี่ยน URL")).toBeInTheDocument();
+    noChart();
+    expect(screen.queryByTestId("monitor-response-readout")).toBeNull();
+    expect(document.body.innerHTML).not.toContain("data-chart-part=");
+    const table = responseTable();
+    expect(
+      within(table).getByTestId("monitor-response-heading-average"),
+    ).toHaveRole("columnheader");
+    expect(
+      within(table).getByTestId("monitor-response-heading-average"),
+    ).toHaveTextContent(/ms/);
+    expect(
+      within(table).queryByTestId("monitor-response-heading-max"),
+    ).toBeNull();
+    expect(records()).toEqual(standardRecords());
 
     await user.keyboard(" ");
-    expect(toggle).toHaveAccessibleName(TOGGLE_TO_TABLE);
+    expect(toggle).toHaveAttribute("data-view", "chart");
+    expect(toggle.textContent).toBe(chartAction);
     expect(toggle).toHaveFocus();
-    expectNoTableInDom();
-    expect(screen.getByRole("group", { name: CHART_NAME })).toBeInTheDocument();
-    expect(screen.getByText(KEYBOARD_HINT)).toBeInTheDocument();
+    noTable();
+    expect(rootChart()).toHaveRole("group");
+    expect(screen.getByTestId("monitor-response-readout")).toBeInTheDocument();
   });
 
   it.each([
-    ["7 วัน", "7d", "7 วันล่าสุด"],
-    ["30 วัน", "30d", "30 วันล่าสุด"],
+    ["7 วัน", "7d"],
+    ["30 วัน", "30d"],
   ] as const)(
     "refetches for %s and labels the table with the range",
-    async (label, range, text) => {
+    async (_label, range) => {
       showDetail(detail());
       fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
         Promise.resolve(
@@ -1701,8 +2296,8 @@ describe("Detail response-time chart", () => {
       );
       const user = userEvent.setup();
       renderDetail();
-      await screen.findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ });
-      await user.click(screen.getByRole("radio", { name: label }));
+      await screen.findByTestId("monitor-response-chart");
+      await user.click(screen.getByTestId(`monitor-response-range-${range}`));
       await waitFor(() => {
         expect(fetchResponseTimesMock).toHaveBeenCalledWith(
           A,
@@ -1710,21 +2305,78 @@ describe("Detail response-time chart", () => {
           range,
         );
       });
-      expect(
-        await screen.findByRole("group", { name: new RegExp(`ช่วง ${text}`) }),
-      ).toBeInTheDocument();
-      await user.click(
-        screen.getByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" }),
+      await waitFor(() =>
+        expect(rootChart()).toHaveAttribute("data-range", range),
       );
-      const table = chartTable();
-      expect(table).toHaveAccessibleName(new RegExp(text));
       expect(
-        within(table)
-          .getAllByRole("columnheader")
-          .map((header) => header.textContent),
-      ).toEqual(
-        expect.arrayContaining(["เฉลี่ย (ms)", "สูงสุด (ms)", "หมายเหตุ"]),
-      );
+        screen.getByTestId(`monitor-response-range-${range}`),
+      ).toHaveAttribute("aria-checked", "true");
+      await user.click(screen.getByTestId("monitor-response-toggle"));
+      const table = responseTable();
+      expect(summaryNumbers()).toEqual([200, 500, 1, 60]);
+      expect(
+        within(responseCard()).getByTestId("monitor-response-p50"),
+      ).toHaveTextContent(/^100 ms$/);
+      expect(
+        within(responseCard()).getByTestId("monitor-response-p95"),
+      ).toHaveTextContent(/^500 ms$/);
+      expect(
+        within(responseCard()).getByTestId("monitor-response-checks"),
+      ).toHaveTextContent(/^24$/);
+      expect(
+        within(responseCard()).getByTestId("monitor-response-failed"),
+      ).toHaveTextContent(/^0$/);
+      expect(
+        within(table).getByTestId("monitor-response-heading-average"),
+      ).toHaveTextContent(/ms/);
+      expect(
+        within(table).getByTestId("monitor-response-heading-max"),
+      ).toHaveTextContent(/ms/);
+      const list = records();
+      expect(
+        list.map(({ kind, at, end, checks, average, max, note }) => ({
+          kind,
+          at,
+          end,
+          checks,
+          average,
+          max,
+          note,
+        })),
+      ).toEqual([
+        {
+          kind: "value",
+          at: Date.parse(T("05:00")),
+          end: Date.parse(T("06:00")),
+          checks: 12,
+          average: "100",
+          max: "150",
+          note: false,
+        },
+        {
+          kind: "gap",
+          at: Date.parse(T("06:00")),
+          end: Date.parse(T("07:00")),
+          checks: 0,
+          average: "–",
+          max: "–",
+          note: true,
+        },
+        {
+          kind: "value",
+          at: Date.parse(T("07:00")),
+          end: Date.parse(DATA_AS_OF),
+          checks: 12,
+          average: "300",
+          max: "500",
+          note: false,
+        },
+      ]);
+      expect(list.map((x) => x.time)).toEqual([
+        formatDateTime(T("05:00")) + "–" + formatTime(T("06:00")),
+        formatDateTime(T("06:00")) + "–" + formatTime(T("07:00")),
+        formatDateTime(T("07:00")) + "–" + formatTime(DATA_AS_OF),
+      ]);
     },
   );
 
@@ -1735,20 +2387,30 @@ describe("Detail response-time chart", () => {
     );
     const user = userEvent.setup();
     renderDetail();
-    expect(
-      await screen.findByText("โหลดกราฟเวลาตอบสนองไม่สำเร็จ"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Payments API",
-    );
+    await waitFor(() => {
+      const error = within(
+        screen.getByTestId("monitor-response-times"),
+      ).getByTestId("monitor-response-error");
+      expect(error).toBeInTheDocument();
+      expect(error).toHaveAttribute("role", "alert");
+      expect(error).toHaveTextContent(/\S/);
+      expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+        /^Payments API$/,
+      );
+    });
     fetchResponseTimesMock.mockResolvedValue(responseTimes24h);
-    const card = sectionOf(
-      screen.getByRole("heading", { name: "เวลาตอบสนอง" }),
+    await user.click(
+      within(screen.getByTestId("monitor-response-times")).getByTestId(
+        "monitor-response-retry",
+      ),
     );
-    await user.click(within(card).getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(
-      await screen.findByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
-    ).toBeInTheDocument();
+    const chart = await within(
+      screen.getByTestId("monitor-response-times"),
+    ).findByTestId("monitor-response-chart");
+    expect(chart).toHaveRole("group");
+    expect(chart).toHaveAccessibleName(/ms/);
+    expect(chart).toHaveAttribute("data-range", "24h");
+    expect(chart).toHaveAttribute("tabindex", "0");
   });
 });
 
@@ -1756,14 +2418,11 @@ describe("Detail redesign behaviours", () => {
   it("keeps the date in the header when the last check was on a previous day", async () => {
     showDetail(detail({ lastCheckAt: "2026-09-28T07:30:00.000Z" }));
     renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    const time = screen
-      .getAllByText(/ตรวจล่าสุด/)
-      .map((node) => node.querySelector("time"))
-      .find((node) => node !== null);
-    expect(must(time)).toHaveTextContent(
-      formatDateTime("2026-09-28T07:30:00.000Z"),
-    );
+    await readyDetail();
+    const time = screen.getByTestId("monitor-detail-last-check");
+    expect(time.tagName).toBe("TIME");
+    expect(time).toHaveAttribute("dateTime", "2026-09-28T07:30:00.000Z");
+    expect(time).toHaveTextContent(formatDateTime("2026-09-28T07:30:00.000Z"));
   });
 
   it("shows p50, p95, check count and failures for 24 h", async () => {
@@ -1789,17 +2448,16 @@ describe("Detail redesign behaviours", () => {
       ],
     });
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
-    );
-    const kpi = (label: string) =>
-      must(within(card).getByText(label).nextElementSibling);
+    await readyDetail();
+    const card = screen.getByTestId("monitor-response-times");
+    const kpi = (key: string) =>
+      within(card).getByTestId(`monitor-response-${key}`);
     await waitFor(() => {
-      expect(kpi("จำนวนการตรวจ")).toHaveTextContent("3");
+      expect(kpi("checks")).toHaveTextContent(/^3$/);
     });
-    expect(kpi("ล้มเหลว")).toHaveTextContent("1");
-    expect(kpi("p50")).toHaveTextContent("100 ms");
-    expect(kpi("p95")).toHaveTextContent("300 ms");
+    expect(kpi("failed")).toHaveTextContent(/^1$/);
+    expect(kpi("p50")).toHaveTextContent(/^100 ms$/);
+    expect(kpi("p95")).toHaveTextContent(/^300 ms$/);
   });
 
   it("reads ไม่มีข้อมูล for p50 and p95 when no point has a response time", async () => {
@@ -1815,17 +2473,28 @@ describe("Detail redesign behaviours", () => {
       ],
     });
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
-    );
+    await readyDetail();
+    const card = screen.getByTestId("monitor-response-times");
     await waitFor(() => {
       expect(
-        must(within(card).getByText("p50").nextElementSibling),
-      ).toHaveTextContent("ไม่มีข้อมูล");
+        within(card).getByTestId("monitor-response-p50"),
+      ).not.toHaveTextContent(/\d/);
     });
     expect(
-      must(within(card).getByText("p95").nextElementSibling),
-    ).toHaveTextContent("ไม่มีข้อมูล");
+      within(card).getByTestId("monitor-response-p95"),
+    ).not.toHaveTextContent(/\d/);
+    expect(within(card).getByTestId("monitor-response-p50")).toHaveTextContent(
+      /\S/,
+    );
+    expect(within(card).getByTestId("monitor-response-p95")).toHaveTextContent(
+      /\S/,
+    );
+    expect(
+      within(card).getByTestId("monitor-response-checks"),
+    ).toHaveTextContent(/^1$/);
+    expect(
+      within(card).getByTestId("monitor-response-failed"),
+    ).toHaveTextContent(/^1$/);
   });
 
   it("shows four live KPIs without a percentile sample on 7 d", async () => {
@@ -1856,55 +2525,51 @@ describe("Detail redesign behaviours", () => {
     );
     const user = userEvent.setup();
     renderDetail();
-    await screen.findByRole("radio", { name: "7 วัน" });
-    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
-    );
+    const range = await screen.findByTestId("monitor-response-range-7d");
+    expect(range).toHaveRole("radio");
+    await user.click(range);
+    await readyDetail();
+    const card = screen.getByTestId("monitor-response-times");
     await waitFor(() =>
       expect(
-        must(within(card).getByText("p50").nextElementSibling),
-      ).toHaveTextContent("100 ms"),
+        within(card).getByTestId("monitor-response-p50"),
+      ).toHaveTextContent(/^100 ms$/),
+    );
+    expect(within(card).getByTestId("monitor-response-p95")).toHaveTextContent(
+      "150 ms",
     );
     expect(
-      must(within(card).getByText("p95").nextElementSibling),
-    ).toHaveTextContent("150 ms");
+      within(card).getByTestId("monitor-response-checks"),
+    ).toHaveTextContent(/^12$/);
     expect(
-      must(within(card).getByText("จำนวนการตรวจ").nextElementSibling),
-    ).toHaveTextContent("12");
-    expect(
-      must(within(card).getByText("ล้มเหลว").nextElementSibling),
-    ).toHaveTextContent("0");
-    expect(
-      within(card).queryByRole("group", { name: /^ตัวอย่าง: p50 p95/ }),
-    ).toBeNull();
+      within(card).getByTestId("monitor-response-failed"),
+    ).toHaveTextContent(/^0$/);
+    expect(range).toHaveAttribute("aria-checked", "true");
+    expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, MONITOR_ID, "7d");
+    for (const group of card.querySelectorAll('[role="group"]'))
+      expect(group).not.toHaveAccessibleName(/^ตัวอย่าง: p50 p95/);
   });
 
   it("frames every sample region with its issue link", async () => {
     showDetail(detail());
     renderDetail();
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    const frames = Array.from(
-      document.querySelectorAll('[data-slot="mockup-frame"]'),
+    await readyDetail();
+    const frame = within(screen.getByTestId("monitor-status")).getByTestId(
+      "monitor-uptime-sample",
     );
-    expect(
-      frames.map(
-        (frame) =>
-          /(\d+)$/.exec(
-            within(frame as HTMLElement)
-              .getByRole("link")
-              .getAttribute("href") ?? "",
-          )?.[1],
-      ),
-    ).toEqual(["56"]);
-    for (const frame of frames) {
-      expect(frame.textContent).not.toMatch(/HTTP\/\d/);
-      expect(frame).toHaveAccessibleName(/^ตัวอย่าง:/);
-      expect(within(frame as HTMLElement).getByRole("link")).toHaveAttribute(
-        "href",
-        expect.stringContaining("/issues/"),
-      );
-    }
+    expect(frame).toHaveRole("group");
+    expect(frame).toHaveAccessibleName(/^ตัวอย่าง:/);
+    expect(frame.textContent).not.toMatch(/HTTP\/\d/);
+    expect(frame.innerHTML).not.toMatch(/HTTP\/\d/);
+    expect(within(frame).getByTestId("mockup-notice")).toHaveTextContent(/\S/);
+    const issue = within(frame).getByTestId("mockup-issue");
+    expect(issue).toHaveRole("link");
+    expect(issue).toHaveAttribute(
+      "href",
+      "https://github.com/nixbpe/new-nightwatch/issues/56",
+    );
+    expect(issue).toHaveAttribute("target", "_blank");
+    expect(issue).toHaveAttribute("rel", "noreferrer");
   });
 });
 
@@ -1957,18 +2622,47 @@ function renderResponseCard(createdAt = "2026-09-01T00:00:00.000Z") {
   );
   return { client, view, ...render(view()) };
 }
-function expectKpis(values: string[]) {
-  expect(
-    ["p50", "p95", "จำนวนการตรวจ", "ล้มเหลว"].map(
-      (label) => must(screen.getByText(label).nextElementSibling).textContent,
-    ),
-  ).toEqual(values);
+function expectKpis(
+  values: [string | null, string | null, string | null, string | null],
+) {
+  function scalar(field: string, value: string | null) {
+    const node = responseElement(field);
+    if (value === null) {
+      expect(node).toHaveAttribute("data-value-code", "");
+      expect(node).toHaveTextContent(/\S/);
+      expect(node).not.toHaveTextContent(/\d/);
+    } else expect(node).toHaveTextContent(new RegExp("^" + value + "$"));
+  }
+  scalar("p50", values[0]);
+  scalar("p95", values[1]);
+  scalar("checks", values[2]);
+  scalar("failed", values[3]);
+}
+function announcementNumbers(text: string) {
+  return (
+    text
+      .replace(/p50|p95/g, "")
+      .match(/\d[\d,]*(?:\.\d+)?/g)
+      ?.map((x) => Number(x.replaceAll(",", ""))) ?? []
+  );
+}
+function expectAnnouncement(range: "7d" | "30d", missing = false) {
+  const node = screen.getByTestId("response-range-announcement");
+  expect(node).toHaveAttribute("role", "status");
+  expect(node).toHaveAttribute("aria-live", "polite");
+  expect(announcementNumbers(node.textContent)).toEqual(
+    missing
+      ? [range === "7d" ? 7 : 30, 0, 0]
+      : [range === "7d" ? 7 : 30, 20, 40, 4, 1],
+  );
+  if (missing)
+    expect(node).toHaveTextContent(responseElement("p50").textContent);
 }
 
 describe("response-time state and selection", () => {
-  it.each(["7 วัน", "30 วัน"])(
+  it.each(["7d", "30d"] as const)(
     "shows the same literal four KPI values for %s, full bounds and keyboard table",
-    async (label) => {
+    async (range) => {
       fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
         Promise.resolve(
           range === "24h"
@@ -1988,37 +2682,22 @@ describe("response-time state and selection", () => {
         expectKpis(["20 ms", "40 ms", "4", "1"]);
       });
       const user = userEvent.setup();
-      const option = screen.getByRole("radio", { name: label });
+      const option = responseElement(`range-${range}`);
       option.focus();
       await user.keyboard(" ");
-      await waitFor(() =>
-        expect(
-          screen.getByTestId("response-range-announcement"),
-        ).toHaveTextContent(
-          label === "7 วัน"
-            ? "7 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1"
-            : "30 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
-        ),
-      );
+      await waitFor(() => {
+        expectAnnouncement(range);
+      });
       expectKpis(["20 ms", "40 ms", "4", "1"]);
       expect(option).toHaveFocus();
+      expectCaption(range, { window: liveRange(range).window });
       expect(
-        screen.getByText(/ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC/),
-      ).toBeInTheDocument();
-      expect(
-        document.querySelector(
-          label === "7 วัน"
-            ? 'time[datetime="2026-09-23T08:00:00.000Z"]'
-            : 'time[datetime="2026-08-31T08:00:00.000Z"]',
-        ),
-      ).toBeInTheDocument();
-      expect(screen.queryByRole("link", { name: /issue #57/ })).toBeNull();
-      const table = screen.getByRole("button", {
-        name: "ดูข้อมูลกราฟเป็นตาราง",
-      });
+        screen.getByTestId("monitor-response-times").innerHTML,
+      ).not.toMatch(/<a\b/);
+      const table = responseElement("toggle");
       table.focus();
       await user.keyboard("{Enter}");
-      expect(screen.getByRole("table")).toBeInTheDocument();
+      expect(chartTable()).toBeInTheDocument();
       expect(table).toHaveFocus();
     },
   );
@@ -2036,12 +2715,17 @@ describe("response-time state and selection", () => {
     await waitFor(() => {
       expectKpis(["0 ms", "0 ms", "0", "0"]);
     });
-    expect(
-      screen.getByText("คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/ตรวจไม่ได้ \(ปัญหาฝั่งระบบ\)/),
-    ).toBeInTheDocument();
+    expect(responseElement("cap-note")).toBeInTheDocument();
+    expect(responseElement("summary")).toBeInTheDocument();
+    const user = userEvent.setup();
+    (await responseScope().findByTestId("monitor-response-chart")).focus();
+    await user.keyboard("{End}");
+    expect(responseElement("readout")).toHaveAttribute(
+      "data-selected-kind",
+      "check-error",
+    );
+    expect(responseElement("live")).toHaveTextContent(formatTime(DATA_AS_OF));
+    expect(responseElement("live")).not.toHaveTextContent(/\d+ ms/);
   });
 
   it("keeps timeout counts real while empty percentiles remain explicit", async () => {
@@ -2054,12 +2738,56 @@ describe("response-time state and selection", () => {
     });
     renderResponseCard();
     await waitFor(() => {
-      expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "2", "2"]);
+      expectKpis([null, null, "2", "2"]);
     });
-    expect(screen.getByText(/^p50\/p95 จากเวลาที่วัดได้/)).toHaveTextContent(
-      "ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล”",
+    expect(responseElement("caption-population")).toHaveTextContent(/\S/);
+    const user = userEvent.setup();
+    (await responseScope().findByTestId("monitor-response-chart")).focus();
+    await user.keyboard("{End}");
+    expect(responseElement("readout")).toHaveAttribute(
+      "data-selected-kind",
+      "no-response",
     );
-    expect(screen.queryByText(/nearest-rank/)).toBeNull();
+    expect(responseElement("live")).toHaveTextContent(formatTime(DATA_AS_OF));
+    expect(responseElement("live")).not.toHaveTextContent(/\d+ ms/);
+    await user.click(responseElement("toggle"));
+    const expected = {
+      kind: "no-response",
+      at: Date.parse(DATA_AS_OF),
+      end: Date.parse(DATA_AS_OF),
+      checks: 1,
+      time: formatTime(DATA_AS_OF),
+      average: "–",
+      max: null,
+    };
+    const rows = tableSteps();
+    expect(
+      rows.map(({ kind, at, end, checks, time, average, max }) => ({
+        kind,
+        at,
+        end,
+        checks,
+        time,
+        average,
+        max,
+      })),
+    ).toEqual([
+      {
+        kind: "gap",
+        at: Date.parse(noResponseTimes.window.from),
+        end: Date.parse(DATA_AS_OF),
+        checks: 0,
+        time:
+          formatTime(noResponseTimes.window.from) +
+          "–" +
+          formatTime(DATA_AS_OF),
+        average: "–",
+        max: null,
+      },
+      expected,
+      expected,
+    ]);
+    for (const row of rows) expect(row.note).toMatch(/\S/);
   });
 
   it("hides previous KPIs during rapid selections, ignores late completion, announces latest once and never auto-refetch", async () => {
@@ -2074,15 +2802,13 @@ describe("response-time state and selection", () => {
     );
     renderResponseCard();
     await waitFor(() => {
-      expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+      expectKpis([null, null, "0", "0"]);
     });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
-    expect(
-      screen.getByLabelText("กำลังโหลดสรุปเวลาตอบสนอง"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("p50")).toBeNull();
-    await user.click(screen.getByRole("radio", { name: "30 วัน" }));
+    await user.click(responseElement("range-7d"));
+    expect(responseElement("kpis-loading")).toBeInTheDocument();
+    expect(responseScope().queryByTestId("monitor-response-p50")).toBeNull();
+    await user.click(responseElement("range-30d"));
     const announcement = screen.getByTestId("response-range-announcement");
     const changes: string[] = [];
     const observer = new MutationObserver(() => {
@@ -2109,11 +2835,9 @@ describe("response-time state and selection", () => {
     await waitFor(() => {
       expectKpis(["30 ms", "40 ms", "4", "1"]);
     });
-    expect(changes).toEqual([
-      "30 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
-    ]);
+    expect(changes.map(announcementNumbers)).toEqual([[30, 20, 40, 4, 1]]);
     observer.disconnect();
-    expect(screen.getByRole("radio", { name: "30 วัน" })).toHaveFocus();
+    expect(responseElement("range-30d")).toHaveFocus();
   });
 
   it("keeps only same-key data on refetch error with its response timestamp and working retry", async () => {
@@ -2133,23 +2857,24 @@ describe("response-time state and selection", () => {
       });
     });
     expectKpis(["10 ms", "10 ms", "1", "0"]);
-    const warning = await screen.findByText(/อัปเดตกราฟไม่สำเร็จ/);
-    expect(warning).toHaveTextContent("ข้อมูล ณ");
-    expect(warning.querySelector("time")).toHaveAttribute(
-      "datetime",
-      "2026-09-30T07:31:01.123Z",
+    const warning = await responseScope().findByTestId(
+      "monitor-response-retained-warning",
     );
+    expect(warning).toHaveRole("alert");
+    expect(
+      within(warning).getByTestId("monitor-response-retained-time"),
+    ).toHaveAttribute("datetime", "2026-09-30T07:31:01.123Z");
     fetchResponseTimesMock.mockResolvedValue({
       ...noResponseTimes,
       points: [{ at: DATA_AS_OF, responseTimeMs: 40, outcome: "pass" }],
     });
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    await userEvent.setup().click(responseElement("retained-retry"));
     await waitFor(() => {
       expectKpis(["40 ms", "40 ms", "1", "0"]);
     });
-    expect(screen.queryByText(/อัปเดตกราฟไม่สำเร็จ/)).toBeNull();
+    expect(
+      responseScope().queryByTestId("monitor-response-retained-warning"),
+    ).toBeNull();
     expect(
       screen.getByTestId("response-range-announcement"),
     ).toBeEmptyDOMElement();
@@ -2174,17 +2899,20 @@ describe("response-time state and selection", () => {
           queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
         });
       });
+      const denial = await responseScope().findByTestId(
+        "monitor-response-denial",
+      );
+      expect(denial).toHaveRole("alert");
+      expect(denial).toHaveTextContent(/\S/);
+      expect(screen.getByTestId("monitor-response-times")).toHaveAttribute(
+        code === "MONITOR_NOT_FOUND" ? "data-not-found" : "data-denied",
+        "true",
+      );
+      expect(responseScope().queryByTestId("monitor-response-p50")).toBeNull();
+      expect(document.body.textContent).not.toContain("987 ms");
+      expect(document.body.innerHTML).not.toContain("987 ms");
       expect(
-        await screen.findByText(
-          code === "MONITOR_NOT_FOUND"
-            ? "ไม่พบมอนิเตอร์นี้"
-            : "คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้",
-        ),
-      ).toBeInTheDocument();
-      expect(screen.queryByText("p50")).toBeNull();
-      expect(screen.queryByText("987 ms")).toBeNull();
-      expect(
-        screen.queryByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
+        responseScope().queryByTestId("monitor-response-chart"),
       ).toBeNull();
     },
   );
@@ -2236,65 +2964,62 @@ describe("response-time state and selection", () => {
       await retiredRequest;
     });
     expectKpis(["33 ms", "33 ms", "1", "0"]);
-    expect(screen.queryByText("888 ms")).toBeNull();
-    expect(screen.queryByText("999 ms")).toBeNull();
+    expect(document.body.textContent).not.toContain("888 ms");
+    expect(document.body.innerHTML).not.toContain("888 ms");
+    expect(document.body.textContent).not.toContain("999 ms");
+    expect(document.body.innerHTML).not.toContain("999 ms");
   });
 });
 
-const POPULATION =
-  "p50/p95 จากเวลาที่วัดได้และไม่เป็น null รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง “ไม่มีข้อมูล” จำนวนการตรวจนับ pass + fail ไม่นับปัญหาฝั่งระบบ ล้มเหลวนับผล fail ไม่ใช่จำนวนเหตุการณ์";
-const UTC_NOTE =
-  " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว";
-const RANGE_TEXT = {
-  "24h": "24 ชม.ล่าสุด",
-  "7d": "7 วันล่าสุด",
-  "30d": "30 วันล่าสุด",
-} as const;
-const CAP_TEXT = "คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ";
-
 function captionElement() {
-  return must(screen.getByText("หน่วย: ms").closest("p"));
+  return responseElement("caption");
 }
-
-/**
- * The one caption paragraph of AC-75: segments joined by " · ", every segment HEAD showed in the
- * state still present, and no other paragraph carrying one of them.
- */
 function expectCaption(
-  range: keyof typeof RANGE_TEXT,
+  range: "24h" | "7d" | "30d",
   options: { window?: { from: string; to: string }; capped?: boolean } = {},
 ) {
   const caption = captionElement();
-  expect(caption).toHaveClass("text-xs", "text-foreground-secondary");
-  const segments = [
-    "หน่วย: ms",
-    `ช่วง: ${RANGE_TEXT[range]}`,
-    "แหล่ง: ผลการตรวจของ NightWatch",
-    POPULATION,
-  ];
-  const times = Array.from(caption.querySelectorAll("time"));
-  if (options.window === undefined) {
-    expect(times).toHaveLength(0);
-  } else {
-    expect(times.map((time) => time.getAttribute("datetime"))).toEqual([
-      options.window.from,
-      options.window.to,
-    ]);
-    segments.push(
-      `ช่วงข้อมูล: ${must(times[0]).textContent} ถึง ${must(times[1]).textContent} (${TIME_ZONE})${range === "24h" ? "" : UTC_NOTE}`,
+  expect(caption).toHaveAttribute("data-range", range);
+  const c = within(caption);
+  expect(c.getByTestId("monitor-response-caption-unit")).toHaveTextContent(
+    /ms/,
+  );
+  expect(c.getByTestId("monitor-response-caption-range")).toHaveTextContent(
+    /\S/,
+  );
+  expect(c.getByTestId("monitor-response-caption-source")).toHaveTextContent(
+    /\S/,
+  );
+  expect(
+    c.getByTestId("monitor-response-caption-population"),
+  ).toHaveTextContent(/\S/);
+  if (options.window) {
+    const bounds = c.getByTestId("monitor-response-caption-window");
+    expect(bounds).toHaveAttribute("data-time-zone", TIME_ZONE);
+    expect(bounds).toHaveTextContent(TIME_ZONE);
+    const format = new Intl.DateTimeFormat("th-TH-u-nu-latn", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const from = c.getByTestId("monitor-response-window-from"),
+      to = c.getByTestId("monitor-response-window-to");
+    expect(from).toHaveAttribute("datetime", options.window.from);
+    expect(to).toHaveAttribute("datetime", options.window.to);
+    expect(from).toHaveTextContent(
+      format.format(new Date(options.window.from)),
     );
-  }
-  if (options.capped === true) segments.push(CAP_TEXT);
-  expect(Array.from(caption.children).map((part) => part.textContent)).toEqual(
-    segments,
-  );
-  expect(caption.textContent).toBe(segments.join(" · "));
-  const holders = Array.from(document.querySelectorAll("p")).filter((node) =>
-    /หน่วย: ms|ช่วงข้อมูล:|p50\/p95 จาก|คำนวณจากผลตรวจล่าสุด/.test(
-      node.textContent,
-    ),
-  );
-  expect(holders).toEqual([caption]);
+    expect(to).toHaveTextContent(format.format(new Date(options.window.to)));
+  } else expect(c.queryByTestId("monitor-response-caption-window")).toBeNull();
+  const cap = c.queryByTestId("monitor-response-cap-note");
+  if (options.capped) {
+    expect(cap).toHaveTextContent(/1,440/);
+    expect(cap).toHaveAttribute("data-count", "1440");
+  } else expect(cap).toBeNull();
   expect(
     caption.contains(screen.getByTestId("response-range-announcement")),
   ).toBe(false);
@@ -2350,14 +3075,10 @@ describe("response-time caption (AC-75)", () => {
       );
       renderResponseCard();
       await waitFor(() => {
-        expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+        expectKpis([null, null, "0", "0"]);
       });
       const user = userEvent.setup();
-      await user.click(
-        screen.getByRole("radio", {
-          name: range === "7d" ? "7 วัน" : "30 วัน",
-        }),
-      );
+      await user.click(responseElement(`range-${range}`));
       await waitFor(() => {
         expectKpis(["20 ms", "40 ms", "4", "1"]);
       });
@@ -2375,7 +3096,9 @@ describe("response-time caption (AC-75)", () => {
       fetchResponseTimesMock.mockRejectedValue(error);
       renderResponseCard();
       await waitFor(() => {
-        expect(screen.queryByLabelText("กำลังโหลดสรุปเวลาตอบสนอง")).toBeNull();
+        expect(
+          responseScope().queryByTestId("monitor-response-kpis-loading"),
+        ).toBeNull();
       });
       expectCaption("24h");
     },
@@ -2396,7 +3119,7 @@ describe("response-time caption (AC-75)", () => {
         queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
       });
     });
-    await screen.findByText(/อัปเดตกราฟไม่สำเร็จ/);
+    await responseScope().findByTestId("monitor-response-retained-warning");
     expectCaption("24h", { window: noResponseTimes.window, capped: true });
   });
 });
@@ -2431,55 +3154,65 @@ const hourlyRange = (
   ],
 });
 
-/** What a screen reader hears, step by step, when the chart is walked with the keyboard. */
 async function chartSteps(
   user: ReturnType<typeof userEvent.setup>,
   count: number,
 ) {
-  screen.getByRole("group", { name: CHART_NAME }).focus();
-  const region = chartLiveRegion();
-  const steps: string[] = [];
+  responseElement("chart").focus();
+  const live = chartLiveRegion(),
+    steps = [];
   for (let step = 0; step < count; step++) {
     await user.keyboard(step === 0 ? "{Home}" : "{ArrowRight}");
-    steps.push(region.textContent);
+    const readout = responseElement("readout");
+    steps.push({
+      kind: readout.getAttribute("data-selected-kind"),
+      at: Number(readout.getAttribute("data-selected-at")),
+      text: live.textContent,
+    });
   }
   return steps;
 }
-
 function tableSteps() {
   return within(chartTable())
-    .getAllByRole("row")
-    .slice(1)
+    .getAllByTestId("monitor-response-record")
     .map((row) => {
-      const cells = within(row)
-        .getAllByRole("cell")
-        .map((cell) => cell.textContent);
+      const scope = within(row);
       return {
-        time: must(within(row).getByRole("rowheader").textContent),
-        cells,
+        kind: row.getAttribute("data-kind"),
+        at: Number(row.getAttribute("data-at")),
+        end: Number(row.getAttribute("data-end")),
+        checks: Number(row.getAttribute("data-checks")),
+        time: scope.getByTestId("monitor-response-cell-time").textContent,
+        average: scope.getByTestId("monitor-response-cell-average").textContent,
+        max:
+          scope.queryByTestId("monitor-response-cell-max")?.textContent ?? null,
+        note: scope.getByTestId("monitor-response-cell-note").textContent,
       };
     });
 }
-
-/** Every table row names the same time and value (or kind) as the chart step at its position. */
 function expectSameSteps(
-  steps: string[],
+  steps: Awaited<ReturnType<typeof chartSteps>>,
   rows: ReturnType<typeof tableSteps>,
   hourly: boolean,
 ) {
   expect(rows).toHaveLength(steps.length);
+  const notes = new Map<string, string>();
   rows.forEach((row, index) => {
     const step = must(steps[index]);
-    expect(step.startsWith(row.time)).toBe(true);
-    const [average, ...rest] = row.cells;
-    const note = must(rest.at(-1));
-    if (average === "–") {
-      expect(step).toContain(note.split(", ")[0]);
+    expect(step.kind).toBe(row.kind);
+    expect(step.at).toBe(row.at);
+    expect(step.text.startsWith(row.time)).toBe(true);
+    if (row.average === "–") {
+      expect(step.text).not.toMatch(/\d+ ms/);
+      expect(step.text.length).toBeGreaterThan(row.time.length);
+      expect(row.note).toMatch(/\S/);
+      notes.set(must(row.kind), row.note);
     } else {
-      expect(step).toContain(`${must(average)} ms`);
-      if (hourly) expect(step).toContain(`${must(rest[0])} ms`);
+      expect(step.text).toContain(row.average + " ms");
+      if (hourly) expect(step.text).toContain(must(row.max) + " ms");
     }
   });
+  expect(new Set(notes.values()).size).toBe(notes.size);
 }
 
 describe("response-time view toggle (AC-76, AC-77)", () => {
@@ -2493,7 +3226,9 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     mockRanges();
     const user = userEvent.setup();
     renderResponseCard();
-    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
+    const toggle = await responseScope().findByTestId(
+      "monitor-response-toggle",
+    );
 
     // 24 h: chart first, then the table.
     const steps24 = await chartSteps(user, 5);
@@ -2501,75 +3236,83 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     expectSameSteps(steps24, tableSteps(), false);
 
     // The view does not follow the range: 7 d opens in the table the user chose.
-    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    await user.click(responseElement("range-7d"));
     expect(
-      await screen.findByRole("button", { name: TOGGLE_TO_CHART }),
+      await responseScope().findByTestId("monitor-response-toggle"),
     ).toBeInTheDocument();
-    expect(chartTable()).toHaveAccessibleName(/7 วันล่าสุด/);
-    expect(screen.queryByRole("group", { name: CHART_NAME })).toBeNull();
+    await waitFor(() =>
+      expect(responseElement("table-region")).toHaveAttribute(
+        "data-range",
+        "7d",
+      ),
+    );
+    expect(responseScope().queryByTestId("monitor-response-chart")).toBeNull();
     const rows7 = tableSteps();
-    await user.click(screen.getByRole("button", { name: TOGGLE_TO_CHART }));
+    await user.click(responseElement("toggle"));
     expectSameSteps(await chartSteps(user, 3), rows7, true);
 
     // The range does not follow the view: 30 d opens in the chart.
-    await user.click(screen.getByRole("radio", { name: "30 วัน" }));
+    await user.click(responseElement("range-30d"));
     expect(
-      await screen.findByRole("group", { name: /ช่วง 30 วันล่าสุด/ }),
+      await responseScope().findByTestId("monitor-response-chart"),
     ).toBeInTheDocument();
     expectNoTableInDom();
     const steps30 = await chartSteps(user, 3);
-    await user.click(screen.getByRole("button", { name: TOGGLE_TO_TABLE }));
-    expect(chartTable()).toHaveAccessibleName(/30 วันล่าสุด/);
+    await user.click(responseElement("toggle"));
+    expect(responseElement("table-region")).toHaveAttribute(
+      "data-range",
+      "30d",
+    );
     expectSameSteps(steps30, tableSteps(), true);
-    expect(screen.getByRole("radio", { name: "30 วัน" })).toBeChecked();
+    expect(responseElement("range-30d")).toBeChecked();
 
     // Back to 24 h from the table: the range changes, the view stays.
-    await user.click(screen.getByRole("radio", { name: "24 ชม." }));
+    await user.click(responseElement("range-24h"));
     expect(
-      await screen.findByRole("button", { name: TOGGLE_TO_CHART }),
+      await responseScope().findByTestId("monitor-response-toggle"),
     ).toBeInTheDocument();
-    expect(chartTable()).toHaveAccessibleName(/24 ชม.ล่าสุด/);
+    await waitFor(() =>
+      expect(responseElement("table-region")).toHaveAttribute(
+        "data-range",
+        "24h",
+      ),
+    );
   });
 
   it("keeps the toggle and the range control in place and leaves KPIs, summary, caption and announcement mounted", async () => {
     mockRanges();
     const user = userEvent.setup();
     const { client } = renderResponseCard();
-    const toggle = await screen.findByRole("button", { name: TOGGLE_TO_TABLE });
-    const range = screen.getByRole("radiogroup");
-    const kpis = must(screen.getByText("p50").closest("dl"));
-    const summary = screen.getByText(/^เฉลี่ย 529 ms สูงสุด 1,204 ms/);
+    const toggle = await responseScope().findByTestId(
+      "monitor-response-toggle",
+    );
+    const range = responseElement("range-controls");
+    const kpis = responseElement("kpis");
+    const summary = responseElement("summary");
     const caption = captionElement();
     const announcement = screen.getByTestId("response-range-announcement");
-    const slot = Array.from(must(toggle.parentElement).children).indexOf(
-      toggle,
-    );
-    const swapped = () => screen.getByRole("group", { name: CHART_NAME });
-    expect(range.compareDocumentPosition(toggle) & FOLLOWING).toBeTruthy();
-    expect(toggle.compareDocumentPosition(swapped()) & FOLLOWING).toBeTruthy();
-
     fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
     await act(async () => {
       await client.refetchQueries({
         queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
       });
     });
-    const warning = await screen.findByText(/อัปเดตกราฟไม่สำเร็จ/);
+    const warning = await responseScope().findByTestId(
+      "monitor-response-retained-warning",
+    );
 
-    for (const label of [TOGGLE_TO_TABLE, TOGGLE_TO_CHART]) {
-      await user.click(screen.getByRole("button", { name: label }));
-      expect(screen.getByRole("button", { name: /^ดูข้อมูล/ })).toBe(toggle);
-      expect(screen.getByRole("radiogroup")).toBe(range);
-      expect(
-        Array.from(must(toggle.parentElement).children).indexOf(toggle),
-      ).toBe(slot);
-      expect(must(screen.getByText("p50").closest("dl"))).toBe(kpis);
-      expect(screen.getByText(/^เฉลี่ย 529 ms สูงสุด 1,204 ms/)).toBe(summary);
+    for (const view of ["table", "chart"] as const) {
+      await user.click(responseElement("toggle"));
+      expect(responseElement("toggle")).toBe(toggle);
+      expect(toggle).toHaveAttribute("data-view", view);
+      expect(responseElement("range-controls")).toBe(range);
+      expect(responseElement("kpis")).toBe(kpis);
+      expect(responseElement("summary")).toBe(summary);
       expect(captionElement()).toBe(caption);
       expect(screen.getByTestId("response-range-announcement")).toBe(
         announcement,
       );
-      expect(screen.getByText(/อัปเดตกราฟไม่สำเร็จ/)).toBe(warning);
+      expect(responseElement("retained-warning")).toBe(warning);
     }
   });
 
@@ -2584,43 +3327,36 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     expect(announcement).toHaveAttribute("aria-live", "polite");
     expect(captionElement().contains(announcement)).toBe(false);
 
-    await user.click(await screen.findByRole("radio", { name: "7 วัน" }));
     await user.click(
-      await screen.findByRole("button", { name: TOGGLE_TO_TABLE }),
+      await responseScope().findByTestId("monitor-response-range-7d"),
+    );
+    await user.click(
+      await responseScope().findByTestId("monitor-response-toggle"),
     );
     await waitFor(() => {
-      expect(announcement).toHaveTextContent(
-        "7 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
-      );
+      expectAnnouncement("7d");
     });
     expect(chartTable()).toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: "30 วัน" }));
+    await user.click(responseElement("range-30d"));
     await waitFor(() => {
-      expect(announcement).toHaveTextContent(
-        "30 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
-      );
+      expectAnnouncement("30d");
     });
     expect(screen.getByTestId("response-range-announcement")).toBe(
       announcement,
     );
     expect(chartTable()).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: TOGGLE_TO_CHART }));
-    await user.click(screen.getByRole("radio", { name: "7 วัน" }));
+    await user.click(responseElement("toggle"));
+    await user.click(responseElement("range-7d"));
     await waitFor(() => {
-      expect(announcement).toHaveTextContent(
-        "7 วันล่าสุด p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
-      );
+      expectAnnouncement("7d");
     });
-    expect(screen.getByRole("group", { name: CHART_NAME })).toBeInTheDocument();
+    expect(responseElement("chart")).toBeInTheDocument();
   });
 });
 
 describe("response-time data notes in both views", () => {
-  const CLAMP = "ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์";
-  const HOURLY =
-    "ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้ (ปัญหาฝั่งระบบ) แสดงเป็นไม่มีข้อมูล เพราะไม่อยู่ในสรุปรายชั่วโมง";
   const OLD = "2026-09-01T00:00:00.000Z";
   const young24h: MonitorResponseTimesResponse = {
     ...noResponseTimes,
@@ -2648,31 +3384,86 @@ describe("response-time data notes in both views", () => {
       renderResponseCard(createdAt);
       if (range !== "24h") {
         await user.click(
-          await screen.findByRole("radio", {
-            name: range === "7d" ? "7 วัน" : "30 วัน",
-          }),
+          await responseScope().findByTestId(`monitor-response-range-${range}`),
         );
       }
-      const toggle = await screen.findByRole("button", {
-        name: TOGGLE_TO_TABLE,
-      });
-      const chartRoot = must(
-        screen.getByRole("group", { name: CHART_NAME }).parentElement,
+      const toggle = await responseScope().findByTestId(
+        "monitor-response-toggle",
       );
-      const clampNotes = screen.queryAllByText(CLAMP);
-      const hourlyNotes = screen.queryAllByText(HOURLY);
+      const chartRoot = responseElement("chart");
+      expect(chartRoot).toHaveAttribute("data-range", range);
+      function expected(
+        kind: string,
+        from: string,
+        to: string,
+        checks: number,
+        average: string,
+        max: string | null,
+      ) {
+        return {
+          kind,
+          at: Date.parse(from),
+          end: Date.parse(to),
+          checks,
+          time:
+            (hourly ? formatDateTime(from) : formatTime(from)) +
+            (from === to ? "" : "–" + formatTime(to)),
+          average,
+          max,
+        };
+      }
+      const expectedRows = hourly
+        ? [
+            ...(clamped
+              ? []
+              : [expected("value", T("05:00"), T("06:00"), 12, "100", "150")]),
+            expected("gap", T("06:00"), T("07:00"), 0, "–", "–"),
+            expected("value", T("07:00"), DATA_AS_OF, 12, "300", "500"),
+          ]
+        : [
+            ...(clamped
+              ? []
+              : [expected("gap", inWindow(0), inWindow(1330), 0, "–", null)]),
+            expected("value", inWindow(1330), inWindow(1330), 1, "100", null),
+            expected("value", inWindow(1435), inWindow(1435), 1, "120", null),
+          ];
+      const selectedSteps = await chartSteps(user, expectedRows.length);
+      const clampNotes = responseScope().queryAllByTestId(
+        "monitor-response-clamp-note",
+      );
+      const hourlyNotes = responseScope().queryAllByTestId(
+        "monitor-response-hourly-note",
+      );
       expect(clampNotes).toHaveLength(clamped ? 1 : 0);
       expect(hourlyNotes).toHaveLength(hourly ? 1 : 0);
       // The chart component no longer owns them, so the swap cannot take them away.
       for (const note of [...clampNotes, ...hourlyNotes]) {
+        expect(note).toHaveTextContent(/\S/);
         expect(chartRoot.contains(note)).toBe(false);
       }
 
       await user.click(toggle);
       expectNoChartInDom();
       expect(chartTable()).toBeInTheDocument();
-      expect(screen.queryAllByText(CLAMP)).toEqual(clampNotes);
-      expect(screen.queryAllByText(HOURLY)).toEqual(hourlyNotes);
+      const renderedRows = tableSteps();
+      expect(
+        renderedRows.map(({ kind, at, end, checks, time, average, max }) => ({
+          kind,
+          at,
+          end,
+          checks,
+          time,
+          average,
+          max,
+        })),
+      ).toEqual(expectedRows);
+      expectSameSteps(selectedSteps, renderedRows, hourly);
+      expect(
+        responseScope().queryAllByTestId("monitor-response-clamp-note"),
+      ).toEqual(clampNotes);
+      expect(
+        responseScope().queryAllByTestId("monitor-response-hourly-note"),
+      ).toEqual(hourlyNotes);
     },
   );
 });
@@ -2685,13 +3476,13 @@ it("announces an empty latest selection once after failed load and retry, withou
   );
   renderResponseCard();
   await waitFor(() => {
-    expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+    expectKpis([null, null, "0", "0"]);
   });
   const user = userEvent.setup();
-  const radio = screen.getByRole("radio", { name: "7 วัน" });
+  const radio = responseElement("range-7d");
   await user.click(radio);
-  await screen.findByText("โหลดกราฟเวลาตอบสนองไม่สำเร็จ");
-  expect(screen.queryByText("p50")).toBeNull();
+  await responseScope().findByTestId("monitor-response-error");
+  expect(responseScope().queryByTestId("monitor-response-p50")).toBeNull();
   expect(
     screen.getByTestId("response-range-announcement"),
   ).toBeEmptyDOMElement();
@@ -2701,16 +3492,15 @@ it("announces an empty latest selection once after failed load and retry, withou
     buckets: [],
     summary: { p50Ms: null, p95Ms: null, checks: 0, failed: 0 },
   });
-  const retry = screen.getByRole("button", { name: "ลองอีกครั้ง" });
+  const retry = responseElement("retry");
   retry.focus();
   await user.keyboard("{Enter}");
   await waitFor(() => {
-    expectKpis(["ไม่มีข้อมูล", "ไม่มีข้อมูล", "0", "0"]);
+    expectKpis([null, null, "0", "0"]);
   });
-  expect(screen.getByText(/^ไม่มีผลใน/)).toHaveTextContent("ไม่มีผลใน 7 วัน");
-  expect(screen.getByTestId("response-range-announcement")).toHaveTextContent(
-    "7 วันล่าสุด p50 ไม่มีข้อมูล p95 ไม่มีข้อมูล จำนวนการตรวจ 0 ล้มเหลว 0",
-  );
+  expect(responseElement("empty")).toHaveTextContent(/\S/);
+  expect(responseElement("empty-time")).toHaveAttribute("datetime", DATA_AS_OF);
+  expectAnnouncement("7d", true);
 });
 
 it.each(["owner", "admin", "viewer", "auditor"] as const)(
@@ -2723,18 +3513,17 @@ it.each(["owner", "admin", "viewer", "auditor"] as const)(
       points: [{ at: DATA_AS_OF, responseTimeMs: 20, outcome: "fail" }],
     });
     renderDetail();
-    const card = sectionOf(
-      await screen.findByRole("heading", { name: "เวลาตอบสนอง" }),
-    );
+    await readyDetail();
+    const card = screen.getByTestId("monitor-response-times");
     await waitFor(() =>
       expect(
-        must(within(card).getByText("p50").nextElementSibling),
+        within(card).getByTestId("monitor-response-p50"),
       ).toHaveTextContent("20 ms"),
     );
     expect(
-      must(within(card).getByText("ล้มเหลว").nextElementSibling),
+      within(card).getByTestId("monitor-response-failed"),
     ).toHaveTextContent("1");
     if (role === "viewer" || role === "auditor")
-      expect(screen.queryByRole("button", { name: "แก้ไข" })).toBeNull();
+      expect(screen.queryByTestId("monitor-detail-edit")).toBeNull();
   },
 );

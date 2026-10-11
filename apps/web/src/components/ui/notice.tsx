@@ -7,7 +7,9 @@ function Notice({
   tone,
   className,
   children,
+  "data-testid": testId,
 }: {
+  "data-testid"?: string;
   tone: "success" | "pending";
   className?: string;
   children?: ReactNode;
@@ -17,6 +19,7 @@ function Notice({
   }
   return (
     <p
+      data-testid={testId}
       role="status"
       data-slot="notice"
       className={cn(

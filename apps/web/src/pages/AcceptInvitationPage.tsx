@@ -69,10 +69,20 @@ export function AcceptInvitationPage() {
 
   if (invitationId.length === 0 || preview.error !== null) {
     return (
-      <AuthPageFrame eyebrow="// invitation" title="คำเชิญ">
+      <AuthPageFrame
+        data-testid="invitation-page"
+        eyebrow="// invitation"
+        title="คำเชิญ"
+      >
         <div className="flex flex-col gap-4">
-          <Alert tone="error">{invitationProblemMessage(preview.error)}</Alert>
-          <Link to="/login" className="text-sm text-primary underline">
+          <Alert data-testid="invitation-preview-error" tone="error">
+            {invitationProblemMessage(preview.error)}
+          </Alert>
+          <Link
+            data-testid="invitation-login"
+            to="/login"
+            className="text-sm text-primary underline"
+          >
             ไปที่หน้าเข้าสู่ระบบ
           </Link>
         </div>
@@ -81,7 +91,12 @@ export function AcceptInvitationPage() {
   }
 
   if (preview.isPending) {
-    return <FullPageLoading label="กำลังตรวจสอบคำเชิญ…" />;
+    return (
+      <FullPageLoading
+        data-testid="invitation-loading"
+        label="กำลังตรวจสอบคำเชิญ…"
+      />
+    );
   }
 
   const invitation = preview.data.invitation;
@@ -92,6 +107,8 @@ export function AcceptInvitationPage() {
       rememberInvitation(invitation.id);
       return (
         <AuthPageFrame
+          data-testid="invitation-unverified"
+          subtitleTestId="invitation-recipient"
           eyebrow="// invitation"
           title="ยืนยันอีเมลก่อนเข้าร่วม"
           subtitle={`คำเชิญสำหรับ ${invitation.email} กรุณายืนยันอีเมลของบัญชีนี้ก่อนรับคำเชิญ`}
@@ -102,6 +119,7 @@ export function AcceptInvitationPage() {
               คำเชิญจะรอการยอมรับหลังยืนยันสำเร็จ
             </Alert>
             <Button
+              data-testid="invitation-verify-email"
               type="button"
               className="w-full"
               onClick={() => {
@@ -119,6 +137,8 @@ export function AcceptInvitationPage() {
       return (
         <div className="break-words">
           <AuthPageFrame
+            data-testid="invitation-wrong-account"
+            subtitleTestId="invitation-recipient"
             eyebrow="// invitation"
             title="บัญชีนี้ไม่ตรงกับคำเชิญ"
             subtitle={`คำเชิญส่งถึง ${invitation.email} แต่คุณกำลังเข้าสู่ระบบด้วย ${user.email}`}
@@ -129,6 +149,7 @@ export function AcceptInvitationPage() {
                 หรือออกจากระบบเพื่อสร้างบัญชีใหม่
               </Alert>
               <Button
+                data-testid="invitation-sign-out"
                 type="button"
                 className="w-full"
                 style={{ outlineColor: "var(--primary)" }}
@@ -267,6 +288,8 @@ function VerifiedAcceptance({
   }
   return (
     <AuthPageFrame
+      data-testid="invitation-accept-page"
+      subtitleTestId="invitation-organization"
       eyebrow="// invitation"
       title="ยอมรับคำเชิญ"
       subtitle={`คุณได้รับเชิญให้เข้าร่วมองค์กร ${organizationName} ในบทบาท${ROLE_LABELS[role] ?? role}`}
@@ -280,19 +303,27 @@ function VerifiedAcceptance({
       >
         {error === null ? null : (
           <div
+            data-testid="invitation-accept-error-focus"
             ref={errorRef}
             tabIndex={-1}
             className="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <Alert tone="error">{error}</Alert>
+            <Alert data-testid="invitation-accept-error" tone="error">
+              {error}
+            </Alert>
           </div>
         )}
         {accepted ? (
-          <Link to="/workspace" className="text-primary underline">
+          <Link
+            data-testid="invitation-workspace"
+            to="/workspace"
+            className="text-primary underline"
+          >
             ไปหน้าองค์กร
           </Link>
         ) : (
           <Button
+            data-testid="invitation-accept"
             type="submit"
             className="w-full"
             style={{ outlineColor: "var(--primary)" }}
@@ -357,12 +388,14 @@ function SignupGate({
 
   return (
     <AuthPageFrame
+      data-testid="invitation-signup-page"
+      subtitleTestId="invitation-organization"
       eyebrow="// invitation"
       title="สร้างบัญชีจากคำเชิญ"
       subtitle={`คุณได้รับเชิญให้เข้าร่วมองค์กร ${organizationName} ในบทบาท${ROLE_LABELS[role] ?? role}`}
     >
       {expired ? (
-        <Alert tone="error">
+        <Alert data-testid="invitation-expired" tone="error">
           คำเชิญหมดอายุแล้ว กรุณาขอคำเชิญใหม่จากผู้ดูแลองค์กร
         </Alert>
       ) : (
@@ -375,9 +408,14 @@ function SignupGate({
           className="flex flex-col gap-4"
           noValidate
         >
-          {error === null ? null : <Alert tone="error">{error}</Alert>}
+          {error === null ? null : (
+            <Alert data-testid="invitation-signup-error" tone="error">
+              {error}
+            </Alert>
+          )}
           <Field label="อีเมล (ตามคำเชิญ)">
             <Input
+              data-testid="invitation-signup-email"
               type="email"
               name="email"
               value={email}
@@ -402,6 +440,7 @@ function SignupGate({
             {(field) => (
               <Field label="ชื่อที่แสดง">
                 <Input
+                  data-testid="invitation-signup-name"
                   type="text"
                   name="name"
                   autoComplete="name"
@@ -419,6 +458,7 @@ function SignupGate({
                 />
                 <FieldValidationError
                   id="invitation-name-error"
+                  data-testid="invitation-name-error"
                   errors={field.state.meta.errors}
                 />
               </Field>
@@ -440,6 +480,7 @@ function SignupGate({
             {(field) => (
               <Field label="รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)">
                 <Input
+                  data-testid="invitation-signup-password"
                   type="password"
                   name="password"
                   autoComplete="new-password"
@@ -457,6 +498,7 @@ function SignupGate({
                 />
                 <FieldValidationError
                   id="invitation-password-error"
+                  data-testid="invitation-password-error"
                   errors={field.state.meta.errors}
                 />
               </Field>
@@ -466,6 +508,7 @@ function SignupGate({
             selector={(state) => state.isSubmitting}
             children={(isSubmitting) => (
               <SubmitButton
+                data-testid="invitation-signup-submit"
                 pending={isSubmitting}
                 pendingLabel="กำลังสร้างบัญชี…"
               >
@@ -476,6 +519,7 @@ function SignupGate({
           <p className="text-center text-sm text-foreground-secondary">
             มีบัญชีอยู่แล้ว?{" "}
             <Link
+              data-testid="invitation-login"
               to="/login"
               className="text-primary underline"
               onClick={() => {
@@ -489,6 +533,7 @@ function SignupGate({
       )}
       {expired ? (
         <Link
+          data-testid="invitation-login"
           to="/login"
           className="mt-4 block text-center text-sm text-primary underline"
         >

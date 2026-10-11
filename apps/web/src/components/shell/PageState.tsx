@@ -18,6 +18,7 @@ type ErrorState = {
   kind: "error";
   message: ReactNode;
   retryLabel?: string;
+  retryTestId?: string;
   onRetry?: () => void;
   actions?: ReactNode;
 };
@@ -31,11 +32,18 @@ type DeniedState = {
 
 // Page-level loading, error and denied views render inside the frame under
 // the page header, never as their own main region (docs/ref/shell-structure.md).
-export function PageState(props: LoadingState | ErrorState | DeniedState) {
+export function PageState(
+  props: (LoadingState | ErrorState | DeniedState) & {
+    "data-testid"?: string;
+    statusTestId?: string;
+    alertTestId?: string;
+  },
+) {
   if (props.kind === "loading") {
     const layout = props.layout ?? "lines";
     const label = (
       <p
+        data-testid={props.statusTestId}
         role="status"
         aria-label={props.label}
         className={
@@ -49,7 +57,7 @@ export function PageState(props: LoadingState | ErrorState | DeniedState) {
     );
     if (layout === "lines") {
       return (
-        <Card padding="md" aria-busy="true">
+        <Card data-testid={props["data-testid"]} padding="md" aria-busy="true">
           {label}
           <Skeleton className="h-3 w-40" />
           <Skeleton className="h-7 w-56" />
@@ -61,7 +69,7 @@ export function PageState(props: LoadingState | ErrorState | DeniedState) {
     const keys = Array.from({ length: count }, (_, index) => index);
     if (layout === "rows") {
       return (
-        <Card aria-busy="true">
+        <Card data-testid={props["data-testid"]} aria-busy="true">
           {label}
           {keys.map((row) => (
             <div
@@ -79,7 +87,7 @@ export function PageState(props: LoadingState | ErrorState | DeniedState) {
       );
     }
     return (
-      <Card aria-busy="true">
+      <Card data-testid={props["data-testid"]} aria-busy="true">
         {props.visibleLabel === true ? (
           <div className="px-4 pt-4">{label}</div>
         ) : (
@@ -105,12 +113,19 @@ export function PageState(props: LoadingState | ErrorState | DeniedState) {
   }
   if (props.kind === "error") {
     return (
-      <Card as="section" padding="md">
-        <Alert tone="error">{props.message}</Alert>
+      <Card data-testid={props["data-testid"]} as="section" padding="md">
+        <Alert data-testid={props.alertTestId} tone="error">
+          {props.message}
+        </Alert>
         {props.onRetry === undefined && props.actions === undefined ? null : (
           <div className="flex flex-wrap gap-2">
             {props.onRetry === undefined ? null : (
-              <Button type="button" variant="secondary" onClick={props.onRetry}>
+              <Button
+                data-testid={props.retryTestId}
+                type="button"
+                variant="secondary"
+                onClick={props.onRetry}
+              >
                 {props.retryLabel ?? "ลองใหม่"}
               </Button>
             )}
@@ -121,8 +136,10 @@ export function PageState(props: LoadingState | ErrorState | DeniedState) {
     );
   }
   return (
-    <Card as="section" padding="md">
-      <Alert tone={props.tone ?? "error"}>{props.message}</Alert>
+    <Card data-testid={props["data-testid"]} as="section" padding="md">
+      <Alert data-testid={props.alertTestId} tone={props.tone ?? "error"}>
+        {props.message}
+      </Alert>
       {props.action === undefined ? null : <div>{props.action}</div>}
     </Card>
   );

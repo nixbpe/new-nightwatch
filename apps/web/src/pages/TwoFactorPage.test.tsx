@@ -95,11 +95,9 @@ describe("TwoFactorPage challenge", () => {
     sessionState.data = null;
     renderPage();
 
-    expect(
-      screen.getByRole("heading", { name: "ยืนยันตัวตนสองขั้นตอน" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("two-factor-page")).toBeInTheDocument();
     expect(screen.queryByTestId("location")).toBeNull();
-    expect(screen.getByRole("button", { name: "ยืนยัน" })).toBeInTheDocument();
+    expect(screen.getByTestId("two-factor-submit")).toBeInTheDocument();
   });
 
   it("does not authorize a successful verification response before the full session resolves", async () => {
@@ -112,12 +110,10 @@ describe("TwoFactorPage challenge", () => {
     const user = userEvent.setup();
     const page = renderPage();
 
-    await user.type(screen.getByLabelText("รหัสยืนยัน 6 หลัก"), "123456");
-    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    await user.type(screen.getByTestId("two-factor-code"), "123456");
+    await user.click(screen.getByTestId("two-factor-submit"));
 
-    expect(
-      screen.getByRole("heading", { name: "ยืนยันตัวตนสองขั้นตอน" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("two-factor-page")).toBeInTheDocument();
     expect(screen.queryByTestId("location")).toBeNull();
     expect(readInvitation()).toBe("inv-await-session");
     expect(readReturnTo()).toBe("/settings/security");
@@ -138,8 +134,8 @@ describe("TwoFactorPage challenge", () => {
     const user = userEvent.setup();
     const page = renderPage();
 
-    await user.type(screen.getByLabelText("รหัสยืนยัน 6 หลัก"), "123456");
-    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    await user.type(screen.getByTestId("two-factor-code"), "123456");
+    await user.click(screen.getByTestId("two-factor-submit"));
     expect(screen.queryByTestId("location")).toBeNull();
     page.resolveSession();
 
@@ -165,12 +161,18 @@ describe("TwoFactorPage challenge", () => {
     });
     renderPage();
 
-    await user.type(screen.getByLabelText("รหัสยืนยัน 6 หลัก"), "000000");
-    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    await user.type(screen.getByTestId("two-factor-code"), "000000");
+    await user.click(screen.getByTestId("two-factor-submit"));
 
-    expect(await screen.findByText("รหัสยืนยันไม่ถูกต้อง")).toBeInTheDocument();
+    expect(await screen.findByTestId("two-factor-error")).toBeVisible();
+    expect(screen.getByTestId("two-factor-code")).toHaveValue("000000");
+    expect(twoFactorMock.verifyTotp).toHaveBeenCalledWith({
+      code: "000000",
+      trustDevice: false,
+    });
+    expect(twoFactorMock.verifyBackupCode).not.toHaveBeenCalled();
     expect(screen.queryByTestId("location")).toBeNull();
-    expect(screen.getByRole("button", { name: "ยืนยัน" })).toBeInTheDocument();
+    expect(screen.getByTestId("two-factor-submit")).toBeInTheDocument();
   });
 
   it.each(["totp", "recovery"] as const)(
@@ -191,17 +193,13 @@ describe("TwoFactorPage challenge", () => {
       const page = renderPage();
 
       if (mode === "recovery") {
-        await user.click(
-          screen.getByRole("radio", { name: /รหัสกู้คืนบัญชี/ }),
-        );
+        await user.click(screen.getByTestId("two-factor-mode-recovery"));
       }
       await user.type(
-        screen.getByLabelText(
-          mode === "totp" ? "รหัสยืนยัน 6 หลัก" : "รหัสกู้คืนบัญชี",
-        ),
+        screen.getByTestId("two-factor-code"),
         mode === "totp" ? "123456" : "backup-code-1",
       );
-      await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+      await user.click(screen.getByTestId("two-factor-submit"));
       expect(screen.queryByTestId("location")).toBeNull();
       page.resolveSession();
 
@@ -230,13 +228,19 @@ describe("TwoFactorPage challenge", () => {
     });
     renderPage();
 
-    await user.click(screen.getByRole("radio", { name: /รหัสกู้คืนบัญชี/ }));
-    await user.type(screen.getByLabelText("รหัสกู้คืนบัญชี"), "used-code");
-    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    await user.click(screen.getByTestId("two-factor-mode-recovery"));
+    await user.type(screen.getByTestId("two-factor-code"), "used-code");
+    await user.click(screen.getByTestId("two-factor-submit"));
 
-    expect(
-      await screen.findByText("รหัสกู้คืนไม่ถูกต้องหรือถูกใช้ไปแล้ว"),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("two-factor-error")).toBeVisible();
+    expect(screen.getByTestId("two-factor-code")).toHaveValue("used-code");
+    expect(screen.getByTestId("two-factor-mode-recovery")).toBeChecked();
+    expect(screen.getByTestId("two-factor-submit")).toBeEnabled();
+    expect(twoFactorMock.verifyBackupCode).toHaveBeenCalledWith({
+      code: "used-code",
+      trustDevice: false,
+    });
+    expect(twoFactorMock.verifyTotp).not.toHaveBeenCalled();
     expect(screen.queryByTestId("location")).toBeNull();
   });
 

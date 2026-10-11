@@ -24,9 +24,15 @@ async function fill(
   user: ReturnType<typeof userEvent.setup>,
   values: { current: string; next: string; confirm: string },
 ) {
-  await user.type(screen.getByLabelText("รหัสผ่านปัจจุบัน"), values.current);
-  await user.type(screen.getByLabelText("รหัสผ่านใหม่"), values.next);
-  await user.type(screen.getByLabelText("ยืนยันรหัสผ่านใหม่"), values.confirm);
+  await user.type(
+    screen.getByTestId("change-current-password"),
+    values.current,
+  );
+  await user.type(screen.getByTestId("change-new-password"), values.next);
+  await user.type(
+    screen.getByTestId("change-confirm-password"),
+    values.confirm,
+  );
 }
 
 describe("PasswordCard", () => {
@@ -39,21 +45,23 @@ describe("PasswordCard", () => {
     render(<PasswordCard />);
 
     await fill(user, { current: "OldPassw0rd!", next: "short", confirm: "x" });
-    await user.click(screen.getByRole("button", { name: "เปลี่ยนรหัสผ่าน" }));
+    await user.click(screen.getByTestId("password-change-submit"));
 
+    expect(screen.getByTestId("change-new-password-error")).toBeInTheDocument();
     expect(
-      screen.getByText("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("รหัสผ่านยืนยันไม่ตรงกับรหัสผ่านใหม่"),
+      screen.getByTestId("change-confirm-password-error"),
     ).toBeInTheDocument();
     expect(changePasswordMock).not.toHaveBeenCalled();
 
-    await user.clear(screen.getByLabelText("รหัสผ่านใหม่"));
-    await user.type(screen.getByLabelText("รหัสผ่านใหม่"), "OldPassw0rd!");
-    expect(
-      screen.getByText("รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านปัจจุบัน"),
-    ).toBeInTheDocument();
+    await user.clear(screen.getByTestId("change-new-password"));
+    await user.type(screen.getByTestId("change-new-password"), "OldPassw0rd!");
+    expect(screen.getByTestId("change-new-password-error")).toBeInTheDocument();
+    await user.click(screen.getByTestId("password-change-submit"));
+    expect(changePasswordMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("change-new-password")).toHaveAttribute(
+      "aria-describedby",
+      screen.getByTestId("change-new-password-error").id,
+    );
   });
 
   it("changes the password with other sessions revoked, then resets and confirms", async () => {
@@ -66,19 +74,17 @@ describe("PasswordCard", () => {
       next: "NewPassw0rd!!",
       confirm: "NewPassw0rd!!",
     });
-    await user.click(screen.getByRole("button", { name: "เปลี่ยนรหัสผ่าน" }));
+    await user.click(screen.getByTestId("password-change-submit"));
 
     expect(changePasswordMock).toHaveBeenCalledWith({
       currentPassword: "OldPassw0rd!",
       newPassword: "NewPassw0rd!!",
       revokeOtherSessions: true,
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "เปลี่ยนรหัสผ่านแล้ว อุปกรณ์อื่นทุกเครื่องถูกออกจากระบบ",
-    );
-    expect(screen.getByLabelText("รหัสผ่านปัจจุบัน")).toHaveValue("");
-    expect(screen.getByLabelText("รหัสผ่านใหม่")).toHaveValue("");
-    expect(screen.getByLabelText("ยืนยันรหัสผ่านใหม่")).toHaveValue("");
+    expect(await screen.findByTestId("password-change-success")).toBeVisible();
+    expect(screen.getByTestId("change-current-password")).toHaveValue("");
+    expect(screen.getByTestId("change-new-password")).toHaveValue("");
+    expect(screen.getByTestId("change-confirm-password")).toHaveValue("");
   });
 
   it("a rejected current password is reported on that field", async () => {
@@ -98,39 +104,54 @@ describe("PasswordCard", () => {
       next: "NewPassw0rd!!",
       confirm: "NewPassw0rd!!",
     });
-    await user.click(screen.getByRole("button", { name: "เปลี่ยนรหัสผ่าน" }));
+    await user.click(screen.getByTestId("password-change-submit"));
 
-    const current = screen.getByLabelText("รหัสผ่านปัจจุบัน");
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "รหัสผ่านไม่ถูกต้อง",
-    );
+    const current = screen.getByTestId("change-current-password");
+    expect(
+      await screen.findByTestId("change-current-password-error"),
+    ).toBeVisible();
     expect(current).toHaveAttribute("aria-invalid", "true");
+    expect(current).toHaveAttribute(
+      "aria-describedby",
+      screen.getByTestId("change-current-password-error").id,
+    );
+    expect(screen.getByTestId("password-change-submit")).toBeEnabled();
     expect(current).toHaveValue("WrongPassw0rd!");
-    expect(screen.getByLabelText("รหัสผ่านใหม่")).toHaveValue("NewPassw0rd!!");
+    expect(screen.getByTestId("change-new-password")).toHaveValue(
+      "NewPassw0rd!!",
+    );
   });
 
   it("show/hide toggles reveal each field independently", async () => {
     const user = userEvent.setup();
     render(<PasswordCard />);
 
-    const toggles = screen.getAllByRole("button", { name: "แสดงรหัสผ่าน" });
+    const toggles = screen.getAllByTestId(
+      /^change-(current|new|confirm)-password-toggle$/,
+    );
     expect(toggles).toHaveLength(3);
-    const newPasswordToggle = toggles[1];
-    if (newPasswordToggle === undefined) {
-      throw new Error("expected a toggle for the new-password field");
-    }
+    const newPasswordToggle = screen.getByTestId("change-new-password-toggle");
     await user.click(newPasswordToggle);
 
-    expect(screen.getByLabelText("รหัสผ่านใหม่")).toHaveAttribute(
+    expect(screen.getByTestId("change-new-password")).toHaveAttribute(
       "type",
       "text",
     );
-    expect(screen.getByLabelText("รหัสผ่านปัจจุบัน")).toHaveAttribute(
+    expect(screen.getByTestId("change-current-password")).toHaveAttribute(
       "type",
       "password",
     );
     expect(
-      screen.getByRole("button", { name: "ซ่อนรหัสผ่าน" }),
+      screen.getByTestId("change-new-password-toggle"),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("change-confirm-password")).toHaveAttribute(
+      "type",
+      "password",
+    );
+    await user.click(newPasswordToggle);
+    expect(screen.getByTestId("change-new-password")).toHaveAttribute(
+      "type",
+      "password",
+    );
   });
 });

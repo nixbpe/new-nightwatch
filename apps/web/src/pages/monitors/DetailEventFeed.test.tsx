@@ -20,6 +20,7 @@ import {
   fetchMonitorEvents,
   fetchMonitorIncidents,
   fetchMonitorLastResponse,
+  monitorQueryKeys,
   fetchMonitorRecentEvents,
   fetchMonitorResponseTimes,
 } from "../../lib/api/monitors";
@@ -31,9 +32,9 @@ import {
   noChecks,
   noIncidents,
   noResponseTimes,
+  MONITOR_ID,
   NOW,
   renderDetail,
-  sectionOf,
 } from "./detail-test-support";
 import { RecentEventsCard } from "./RecentEventsCard";
 
@@ -65,6 +66,7 @@ const lastResponseMock = vi.mocked(fetchMonitorLastResponse);
 const INCIDENT = "00000000-0000-4000-8000-000000000001";
 const HEADER_ID = "5c2f0a86-7d0e-4c58-9f4e-1a2b3c4d5e6f";
 const AT = "2026-09-30T07:30:00.000Z";
+const nonempty: unknown = expect.stringMatching(/\S/);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
@@ -97,19 +99,107 @@ function feed(
 }
 
 async function feedSection() {
-  const heading = await screen.findByRole("heading", {
-    level: 2,
-    name: "ฟีดเหตุการณ์",
-  });
-  return sectionOf(heading);
+  return screen.findByTestId("monitor-event-feed");
 }
 
 async function rows(section: HTMLElement) {
-  const list = await within(section).findByRole("list", {
-    name: "ฟีดเหตุการณ์ของมอนิเตอร์",
-  });
-  // Direct children only: a config row nests its own list of changes.
-  return Array.from(list.children) as HTMLElement[];
+  const list = await within(section).findByTestId("monitor-event-feed-list");
+  expect(list.tagName).toBe("OL");
+  expect(list).toHaveAccessibleName(/\S/);
+  return within(list).queryAllByTestId(/^monitor-event-record-/);
+}
+
+function eventRecord(item: HTMLElement) {
+  const text = item.textContent;
+  const time = within(item).getByTestId("monitor-event-time");
+  expect(time).toHaveAttribute("dateTime", AT);
+  expect(time).toHaveTextContent(
+    new Date(AT).toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+  );
+  expect(within(item).getByTestId("monitor-event-title")).toHaveTextContent(
+    /\S/,
+  );
+  const clone = item.cloneNode(true) as HTMLElement;
+  within(clone).getByTestId("monitor-event-title").remove();
+  within(clone).getByTestId("monitor-event-time").remove();
+  expect(clone.textContent.trim().length > 0).toBe(
+    item.getAttribute("data-reason") !== null ||
+      text.includes("HTTP") ||
+      text.includes("ms") ||
+      item.getAttribute("data-event-kind") === "incident_closed",
+  );
+  return {
+    id: item.getAttribute("data-testid")?.slice("monitor-event-record-".length),
+    kind: item.getAttribute("data-event-kind"),
+    reason: item.getAttribute("data-reason"),
+    tls: item.getAttribute("data-tls-reason"),
+    incident: item.getAttribute("data-incident-id"),
+    http: text.match(/HTTP (\d+)/)?.[1] ?? null,
+    ms: text.match(/([\d,]+) ms/)?.[1] ?? null,
+    duration: text.match(/(\d+ นาที)/)?.[1] ?? null,
+  };
+}
+function actorRecord(item: HTMLElement) {
+  const clone = item.cloneNode(true) as HTMLElement;
+  within(clone).getByTestId("monitor-event-time").remove();
+  within(clone).getByTestId("monitor-event-title").remove();
+  const text = clone.textContent.trim();
+  const actor = text.replace(/^\S+\s+/, "");
+  return {
+    id: item.getAttribute("data-testid")?.slice("monitor-event-record-".length),
+    kind: item.getAttribute("data-event-kind"),
+    actorKind: item.getAttribute("data-actor-kind"),
+    actor,
+  };
+}
+function changeRecords(item: HTMLElement) {
+  return within(item)
+    .getAllByTestId("monitor-event-change")
+    .map((line) => {
+      const kind = line.getAttribute("data-kind");
+      const tail = line.textContent
+        .slice(line.textContent.indexOf(":") + 1)
+        .trim();
+      expect(tail).toMatch(/\S/);
+      if (kind === "value") {
+        const pair = tail.match(/^\S+\s+(.+?)\s+\S+\s+(.+)$/);
+        expect(pair).not.toBeNull();
+        return {
+          field: line.getAttribute("data-field"),
+          kind,
+          beforeKind: line.getAttribute("data-before-kind"),
+          afterKind: line.getAttribute("data-after-kind"),
+          before: pair?.[1],
+          after: pair?.[2],
+        };
+      }
+      return {
+        field: line.getAttribute("data-field"),
+        kind,
+        action: line.getAttribute("data-action-code"),
+        description: tail,
+      };
+    });
+}
+function responseHeaderRecords(section: HTMLElement) {
+  return within(section)
+    .queryAllByTestId("monitor-response-header")
+    .map((row) => {
+      const name = within(row).getByTestId("monitor-response-header-name");
+      const value = within(row).getByTestId("monitor-response-header-value");
+      expect(name.tagName).toBe("TH");
+      expect(name).toHaveAttribute("scope", "row");
+      expect(value.tagName).toBe("TD");
+      return {
+        name: name.textContent,
+        value: value.textContent,
+        redacted: row.getAttribute("data-redacted"),
+      };
+    });
 }
 
 describe("Event feed rows", () => {
@@ -185,20 +275,78 @@ describe("Event feed rows", () => {
     );
     renderDetail();
     const items = await rows(await feedSection());
-    const text = items.map((item) => item.textContent);
-    expect(text[0]).toContain("ตรวจล้มเหลว · ใบรับรองไม่ถูกต้อง: หมดอายุ");
-    expect(text[1]).toContain(
-      "ตรวจล้มเหลว · รหัสสถานะ HTTP ไม่ตรงเงื่อนไข · HTTP 503 · 1,200 ms",
-    );
-    expect(text[2]).toMatch(/ตรวจล้มเหลว$/);
-    expect(text[3]).toContain("เริ่มล่ม · หมดเวลารอ");
-    expect(text[3]).not.toContain("HTTP");
-    expect(text[4]).toContain("กลับมาปกติ · HTTP 200 · 182 ms · ล่ม 12 นาที");
-    expect(text[5]).toContain("กลับมาปกติ · ล่ม 1 นาที");
-    expect(text[5]).not.toContain("HTTP");
-    expect(text[6]).toContain("สิ้นสุดเหตุการณ์ล่ม · หยุดชั่วคราวโดยผู้ใช้");
-    const time = items[0]?.querySelector("time");
-    expect(time).toHaveAttribute("dateTime", AT);
+    expect(items.map(eventRecord)).toEqual([
+      {
+        id: "event:1",
+        kind: "check_failed",
+        reason: "tls_invalid",
+        tls: "expired",
+        incident: null,
+        http: null,
+        ms: null,
+        duration: null,
+      },
+      {
+        id: "event:2",
+        kind: "check_failed",
+        reason: "http_status",
+        tls: null,
+        incident: null,
+        http: "503",
+        ms: "1,200",
+        duration: null,
+      },
+      {
+        id: "event:3",
+        kind: "check_failed",
+        reason: null,
+        tls: null,
+        incident: null,
+        http: null,
+        ms: null,
+        duration: null,
+      },
+      {
+        id: "incident:a:opened",
+        kind: "incident_opened",
+        reason: "timeout",
+        tls: null,
+        incident: INCIDENT,
+        http: null,
+        ms: null,
+        duration: null,
+      },
+      {
+        id: "incident:a:closed",
+        kind: "incident_closed",
+        reason: "recovered",
+        tls: null,
+        incident: INCIDENT,
+        http: "200",
+        ms: "182",
+        duration: "12 นาที",
+      },
+      {
+        id: "incident:b:closed",
+        kind: "incident_closed",
+        reason: "recovered",
+        tls: null,
+        incident: INCIDENT,
+        http: null,
+        ms: null,
+        duration: "1 นาที",
+      },
+      {
+        id: "incident:c:closed",
+        kind: "incident_closed",
+        reason: "paused_by_user",
+        tls: null,
+        incident: INCIDENT,
+        http: null,
+        ms: null,
+        duration: "10 นาที",
+      },
+    ]);
   });
 
   it("names the actor of pause, resume and config rows in all five forms", async () => {
@@ -233,14 +381,34 @@ describe("Event feed rows", () => {
       ]),
     );
     renderDetail();
-    const text = (await rows(await feedSection())).map(
-      (item) => item.textContent,
-    );
-    expect(text[0]).toContain("หยุดชั่วคราว โดย Somchai");
-    expect(text[1]).toContain("เริ่มตรวจต่อ โดย สมาชิก");
-    expect(text[2]).toContain("แก้ไขการตั้งค่า โดย อดีตสมาชิก");
-    expect(text[3]).toContain("หยุดชั่วคราว โดย ผู้ใช้ที่ถูกลบ");
-    expect(text[4]).toMatch(/เริ่มตรวจต่อ$/);
+    const actors = (await rows(await feedSection())).map(actorRecord);
+    expect(actors).toEqual([
+      { id: "event:1", kind: "paused", actorKind: "member", actor: "Somchai" },
+      {
+        id: "event:2",
+        kind: "resumed",
+        actorKind: "member_hidden",
+        actor: nonempty,
+      },
+      {
+        id: "event:3",
+        kind: "config_changed",
+        actorKind: "former_member",
+        actor: nonempty,
+      },
+      {
+        id: "event:4",
+        kind: "paused",
+        actorKind: "deleted",
+        actor: nonempty,
+      },
+      { id: "event:5", kind: "resumed", actorKind: "unrecorded", actor: "" },
+    ]);
+    expect(
+      new Set(
+        actors.filter((x) => x.actorKind !== "unrecorded").map((x) => x.actor),
+      ).size,
+    ).toBe(4);
   });
 
   it("lists changes with ก่อน and หลัง, secrets as actions only, and an empty list as the bare row", async () => {
@@ -292,23 +460,90 @@ describe("Event feed rows", () => {
       ]),
     );
     renderDetail();
-    const [withChanges, bare] = await rows(await feedSection());
-    const lines = within(withChanges as HTMLElement)
-      .getAllByRole("listitem")
-      .map((li) => li.textContent);
-    expect(lines).toEqual([
-      "เวลารอสูงสุด (วินาที): ก่อน 10 หลัง 30",
-      "Header Accept: ก่อน ไม่มี หลัง application/json",
-      "Query page: ก่อน ••• หลัง •••",
-      "เนื้อหาคำขอ: เปลี่ยน",
-      "Assertions: เปลี่ยน",
-      "Bearer token: แทนที่ค่าใหม่",
-      "ค่า header ลับ X-Api-Key: ตั้งค่าแล้ว",
-      "ค่า header ลับ: ลบค่าแล้ว",
-      "Header X-Token: ตั้งค่าแล้ว",
-    ]);
-    expect(within(bare as HTMLElement).queryByRole("list")).toBeNull();
-    expect(bare?.textContent).toContain("แก้ไขการตั้งค่า");
+    const section = await feedSection();
+    await rows(section);
+    const withChanges = within(section).getByTestId(
+      "monitor-event-record-event:1",
+    );
+    const bare = within(section).getByTestId("monitor-event-record-event:2");
+    expect(changeRecords(withChanges)).toEqual(
+      expect.arrayContaining([
+        {
+          field: "timeoutSeconds",
+          kind: "value",
+          beforeKind: "number",
+          afterKind: "number",
+          before: "10",
+          after: "30",
+        },
+        {
+          field: "headers.Accept",
+          kind: "value",
+          beforeKind: "null",
+          afterKind: "string",
+          before: nonempty,
+          after: "application/json",
+        },
+        {
+          field: "queryParams.page",
+          kind: "value",
+          beforeKind: "string",
+          afterKind: "string",
+          before: "•••",
+          after: "•••",
+        },
+        {
+          field: "body",
+          kind: "changed",
+          action: null,
+          description: nonempty,
+        },
+        {
+          field: "assertions",
+          kind: "changed",
+          action: null,
+          description: nonempty,
+        },
+        {
+          field: "auth.token",
+          kind: "secret",
+          action: "replaced",
+          description: nonempty,
+        },
+        {
+          field: `header.${HEADER_ID}`,
+          kind: "secret",
+          action: "set",
+          description: nonempty,
+        },
+        {
+          field: "header.99999999-9999-4999-8999-999999999999",
+          kind: "secret",
+          action: "deleted",
+          description: nonempty,
+        },
+        {
+          field: "headers.X-Token",
+          kind: "secret",
+          action: "set",
+          description: nonempty,
+        },
+      ]),
+    );
+    expect(changeRecords(withChanges)).toHaveLength(9);
+    expect(withChanges).toHaveTextContent("Accept");
+    expect(withChanges).toHaveTextContent("page");
+    expect(withChanges).toHaveTextContent("X-Api-Key");
+    expect(withChanges).toHaveTextContent("X-Token");
+    const secrets = changeRecords(withChanges).filter(
+      (x) => x.kind === "secret",
+    );
+    expect(new Set(secrets.map((x) => x.description)).size).toBe(3);
+    expect(within(bare).queryAllByTestId("monitor-event-change")).toEqual([]);
+    expect(bare).toHaveAttribute("data-event-kind", "config_changed");
+    expect(within(bare).getByTestId("monitor-event-title")).toHaveTextContent(
+      /\S/,
+    );
   });
 
   it("shows Thai labels and before-and-after values for all four alert settings, with toggles shown as เปิด or ปิด", async () => {
@@ -349,16 +584,48 @@ describe("Event feed rows", () => {
       ]),
     );
     renderDetail();
-    const [withChanges] = await rows(await feedSection());
-    const lines = within(withChanges as HTMLElement)
-      .getAllByRole("listitem")
-      .map((li) => li.textContent);
-    expect(lines).toEqual([
-      "แจ้งเมื่อล้มเหลวติดกัน: ก่อน 2 หลัง 3",
-      "แจ้งเมื่อล่มและกลับมาปกติ: ก่อน เปิด หลัง ปิด",
-      "แจ้งเมื่อ SSL ใกล้หมดอายุ: ก่อน ปิด หลัง เปิด",
-      "แจ้งล่วงหน้าก่อน SSL หมดอายุ (วัน): ก่อน 30 หลัง 10",
-    ]);
+    const section = await feedSection();
+    await rows(section);
+    const withChanges = within(section).getByTestId(
+      "monitor-event-record-event:alerts",
+    );
+    expect(changeRecords(withChanges)).toEqual(
+      expect.arrayContaining([
+        {
+          field: "alerts.failureThreshold",
+          kind: "value",
+          beforeKind: "number",
+          afterKind: "number",
+          before: "2",
+          after: "3",
+        },
+        {
+          field: "alerts.downEnabled",
+          kind: "value",
+          beforeKind: "string",
+          afterKind: "string",
+          before: "เปิด",
+          after: "ปิด",
+        },
+        {
+          field: "alerts.sslEnabled",
+          kind: "value",
+          beforeKind: "string",
+          afterKind: "string",
+          before: "ปิด",
+          after: "เปิด",
+        },
+        {
+          field: "alerts.sslCautionDays",
+          kind: "value",
+          beforeKind: "number",
+          afterKind: "number",
+          before: "30",
+          after: "10",
+        },
+      ]),
+    );
+    expect(changeRecords(withChanges)).toHaveLength(4);
   });
 });
 
@@ -372,12 +639,12 @@ describe("Event feed states", () => {
     );
     renderDetail();
     expect(
-      await screen.findByText("กำลังโหลดฟีดเหตุการณ์"),
-    ).toBeInTheDocument();
+      await screen.findByTestId("monitor-event-feed-loading"),
+    ).toHaveTextContent(/\S/);
     release(feed([]));
     expect(
-      await screen.findByText("ยังไม่มีเหตุการณ์ใน 30 วันล่าสุด"),
-    ).toBeInTheDocument();
+      await screen.findByTestId("monitor-event-feed-empty"),
+    ).toHaveTextContent(/\S/);
   });
 
   it("shows an error with retry that stays inside the card", async () => {
@@ -385,17 +652,15 @@ describe("Event feed states", () => {
     renderDetail();
     const section = await feedSection();
     expect(
-      await within(section).findByText("โหลดฟีดเหตุการณ์ไม่สำเร็จ"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Payments API" }),
-    ).toBeInTheDocument();
+      await within(section).findByTestId("monitor-event-feed-error"),
+    ).toHaveTextContent(/\S/);
+    expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(/\S/);
     await userEvent
       .setup({ advanceTimers: vi.advanceTimersByTime })
-      .click(within(section).getByRole("button", { name: "ลองอีกครั้ง" }));
+      .click(within(section).getByTestId("monitor-event-feed-retry"));
     expect(
-      await within(section).findByText("ยังไม่มีเหตุการณ์ใน 30 วันล่าสุด"),
-    ).toBeInTheDocument();
+      await within(section).findByTestId("monitor-event-feed-empty"),
+    ).toHaveTextContent(/\S/);
   });
 
   it("keeps the rows and warns when a refetch fails after data arrived", async () => {
@@ -419,8 +684,8 @@ describe("Event feed states", () => {
     feedMock.mockRejectedValue(new ApiError("INTERNAL", "boom", 500));
     await queryClient.refetchQueries({ queryKey: ["tenant", "monitors"] });
     expect(
-      await within(section).findByText("อัปเดตฟีดเหตุการณ์ไม่สำเร็จ"),
-    ).toBeInTheDocument();
+      await within(section).findByTestId("monitor-event-feed-refresh-error"),
+    ).toHaveTextContent(/\S/);
     expect(await rows(section)).toHaveLength(1);
   });
 
@@ -442,7 +707,7 @@ describe("Event feed states", () => {
     const section = await feedSection();
     await userEvent
       .setup({ advanceTimers: vi.advanceTimersByTime })
-      .click(await within(section).findByRole("button", { name: "ถัดไป" }));
+      .click(await within(section).findByTestId("monitor-event-feed-next"));
     await waitFor(() => {
       expect(feedMock).toHaveBeenCalledWith(
         expect.any(String),
@@ -483,9 +748,7 @@ describe("Pagination threshold of the feed and the incidents", () => {
   ] as const;
 
   async function incidentsSection() {
-    return sectionOf(
-      await screen.findByRole("heading", { level: 2, name: "เหตุการณ์" }),
-    );
+    return screen.findByTestId("monitor-incidents");
   }
 
   it.each(cases)(
@@ -495,20 +758,23 @@ describe("Pagination threshold of the feed and the incidents", () => {
       renderDetail();
       const section = await feedSection();
       expect(await rows(section)).toHaveLength(rowCount);
-      const nav = within(section).queryByRole("navigation", {
-        name: "หน้าฟีดเหตุการณ์",
-      });
+      const nav = within(section).queryByTestId(
+        "monitor-event-feed-pagination",
+      );
       if (pager) {
-        expect(nav).toHaveTextContent(
-          `แสดง 1–${String(rowCount)} จาก ${String(total)}`,
-        );
         expect(
-          within(section).getByRole("button", { name: "ถัดไป" }),
+          within(section)
+            .getByTestId("monitor-event-feed-summary")
+            .textContent.match(/\d+/g)
+            ?.map(Number),
+        ).toEqual([1, rowCount, total]);
+        expect(
+          within(section).getByTestId("monitor-event-feed-next"),
         ).toBeEnabled();
       } else {
         expect(nav).toBeNull();
         expect(
-          within(section).queryByRole("button", { name: "ถัดไป" }),
+          within(section).queryByTestId("monitor-event-feed-next"),
         ).toBeNull();
       }
     },
@@ -523,14 +789,15 @@ describe("Pagination threshold of the feed and the incidents", () => {
       });
       renderDetail();
       const section = await incidentsSection();
-      await within(section).findByRole("region", { name: "ตารางเหตุการณ์" });
-      const nav = within(section).queryByRole("navigation", {
-        name: "หน้าเหตุการณ์",
-      });
+      await within(section).findByTestId("monitor-incidents-region");
+      const nav = within(section).queryByTestId("monitor-incidents-pagination");
       if (pager) {
-        expect(nav).toHaveTextContent(
-          `แสดง 1–${String(rowCount)} จาก ${String(total)}`,
-        );
+        expect(
+          within(section)
+            .getByTestId("monitor-incidents-summary")
+            .textContent.match(/\d+/g)
+            ?.map(Number),
+        ).toEqual([1, rowCount, total]);
       } else {
         expect(nav).toBeNull();
       }
@@ -553,22 +820,22 @@ describe("Pagination threshold of the feed and the incidents", () => {
     const section = await feedSection();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     await user.click(
-      await within(section).findByRole("button", { name: "ถัดไป" }),
+      await within(section).findByTestId("monitor-event-feed-next"),
     );
 
-    const nav = await within(section).findByRole("navigation", {
-      name: "หน้าฟีดเหตุการณ์",
-    });
-    const previous = within(nav).getByRole("button", { name: "ก่อนหน้า" });
+    const nav = await within(section).findByTestId(
+      "monitor-event-feed-pagination",
+    );
+    const previous = within(nav).getByTestId("monitor-event-feed-previous");
     expect(previous).toBeEnabled();
-    expect(within(nav).getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+    expect(within(nav).getByTestId("monitor-event-feed-next")).toBeDisabled();
 
     shrunk = true;
     await user.click(previous);
     expect(await rows(section)).toHaveLength(15);
     await waitFor(() => {
       expect(
-        within(section).queryByRole("navigation", { name: "หน้าฟีดเหตุการณ์" }),
+        within(section).queryByTestId("monitor-event-feed-pagination"),
       ).toBeNull();
     });
   });
@@ -595,22 +862,22 @@ describe("Pagination threshold of the feed and the incidents", () => {
     const section = await incidentsSection();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     await user.click(
-      await within(section).findByRole("button", { name: "ถัดไป" }),
+      await within(section).findByTestId("monitor-incidents-next"),
     );
 
-    const nav = await within(section).findByRole("navigation", {
-      name: "หน้าเหตุการณ์",
-    });
-    const previous = within(nav).getByRole("button", { name: "ก่อนหน้า" });
+    const nav = await within(section).findByTestId(
+      "monitor-incidents-pagination",
+    );
+    const previous = within(nav).getByTestId("monitor-incidents-previous");
     expect(previous).toBeEnabled();
-    expect(within(nav).getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+    expect(within(nav).getByTestId("monitor-incidents-next")).toBeDisabled();
 
     shrunk = true;
     await user.click(previous);
-    await within(section).findByRole("region", { name: "ตารางเหตุการณ์" });
+    await within(section).findByTestId("monitor-incidents-region");
     await waitFor(() => {
       expect(
-        within(section).queryByRole("navigation", { name: "หน้าเหตุการณ์" }),
+        within(section).queryByTestId("monitor-incidents-pagination"),
       ).toBeNull();
     });
   });
@@ -627,7 +894,11 @@ const fullResponse: LastResponse = {
   statusLine: { httpVersion: "HTTP/1.1", status: 200, reasonPhrase: "OK" },
   headers: [
     { name: "content-type", value: "application/json", redacted: false },
-    { name: "set-cookie", value: "•••", redacted: true },
+    {
+      name: "set-cookie",
+      value: "PRIVATE_RESPONSE_HEADER_VALUE",
+      redacted: true,
+    },
   ],
   headersTruncated: true,
   body: {
@@ -639,37 +910,55 @@ const fullResponse: LastResponse = {
 };
 
 async function lastResponseSection() {
-  return sectionOf(
-    await screen.findByRole("heading", { level: 2, name: "การตอบกลับล่าสุด" }),
-  );
+  return screen.findByTestId("monitor-last-response");
 }
 
 describe("Last response panel", () => {
   it("shows status line, URL, headers table, body and the badges for an owner", async () => {
     lastResponseMock.mockResolvedValue({ response: fullResponse });
-    renderDetail();
+    const { queryClient } = renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText("HTTP/1.1 200 OK"),
-    ).toBeInTheDocument();
+      await within(section).findByTestId("monitor-response-status"),
+    ).toHaveTextContent("HTTP/1.1 200 OK");
     expect(
-      within(section).getByText("https://api.acme.example/health"),
-    ).toBeInTheDocument();
-    const table = within(section).getByRole("table", {
-      name: "headers ของการตอบกลับล่าสุด",
-    });
-    expect(within(table).getByText("application/json")).toBeInTheDocument();
-    expect(within(table).getByText("ค่าถูกซ่อน")).toBeInTheDocument();
-    expect(within(section).getAllByText("ตัดแล้ว")).toHaveLength(2);
-    const body = within(section).getByText('{"ok":true}');
+      within(section).getByTestId("monitor-response-url"),
+    ).toHaveTextContent(/^https:\/\/api\.acme\.example\/health$/);
+    const table = within(section).getByTestId("monitor-response-headers");
+    expect(table.tagName).toBe("TABLE");
+    expect(table).toHaveAccessibleName(/\S/);
+    expect(
+      queryClient.getQueryData(monitorQueryKeys.lastResponse(A, MONITOR_ID)),
+    ).toEqual({ response: fullResponse });
+    expect(lastResponseMock).toHaveBeenCalledWith(A, MONITOR_ID);
+    expect(section.innerHTML).not.toContain("PRIVATE_RESPONSE_HEADER_VALUE");
+    expect(responseHeaderRecords(section)).toEqual(
+      expect.arrayContaining([
+        { name: "content-type", value: "application/json", redacted: "false" },
+        {
+          name: "set-cookie",
+          value: nonempty,
+          redacted: "true",
+        },
+      ]),
+    );
+    expect(responseHeaderRecords(section)).toHaveLength(2);
+    expect(
+      within(
+        within(section).getByTestId("monitor-response-header-section"),
+      ).getByTestId("monitor-response-truncated"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(
+        within(section).getByTestId("monitor-response-body-section"),
+      ).getByTestId("monitor-response-truncated"),
+    ).toHaveTextContent(/\S/);
+    const body = within(section).getByTestId("monitor-response-body");
     expect(body.tagName).toBe("PRE");
-    // The body wraps inside its own container instead of widening the page (LAY-02).
-    expect(body.className).toContain("whitespace-pre-wrap");
-    expect(body.className).toContain("overflow-auto");
-    expect(body.parentElement?.className).toContain("min-w-0");
+    expect(body).toHaveTextContent(/^\{"ok":true\}$/);
     expect(
-      within(section).getByText("เนื้อหานี้มาจากเป้าหมายโดยตรง"),
-    ).toBeInTheDocument();
+      within(section).getByTestId("monitor-response-target-disclosure"),
+    ).toHaveTextContent(/\S/);
   });
 
   it("shows a non-text body as words and no truncated badge", async () => {
@@ -683,9 +972,14 @@ describe("Last response panel", () => {
     renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText("เนื้อหาไม่ใช่ข้อความ"),
-    ).toBeInTheDocument();
-    expect(within(section).queryByText("ตัดแล้ว")).toBeNull();
+      await within(section).findByTestId("monitor-response-body-omitted"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(section).getByTestId("monitor-response-body-omitted"),
+    ).toHaveAttribute("data-reason", "not_text");
+    expect(
+      within(section).queryByTestId("monitor-response-truncated"),
+    ).toBeNull();
   });
 
   it("shows only version and status, with the reason, when request values were involved", async () => {
@@ -706,16 +1000,17 @@ describe("Last response panel", () => {
     renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText("HTTP/1.1 200"),
-    ).toBeInTheDocument();
+      await within(section).findByTestId("monitor-response-status"),
+    ).toHaveTextContent("HTTP/1.1 200");
     expect(
-      within(section).getByText(
-        "ไม่เก็บ headers และเนื้อหา เพราะคำขอมี query หรือ body ซึ่งเป้าหมายอาจสะท้อนกลับ",
-      ),
-    ).toBeInTheDocument();
-    expect(within(section).queryByRole("table")).toBeNull();
+      within(section).getByTestId("monitor-response-request-values"),
+    ).toHaveTextContent(/\S/);
     expect(
-      within(section).queryByText("เนื้อหานี้มาจากเป้าหมายโดยตรง"),
+      within(section).queryByTestId("monitor-response-headers"),
+    ).toBeNull();
+    expect(section.querySelector("table")).toBeNull();
+    expect(
+      within(section).queryByTestId("monitor-response-target-disclosure"),
     ).toBeNull();
   });
 
@@ -734,20 +1029,27 @@ describe("Last response panel", () => {
     renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText("ไม่มี response"),
-    ).toBeInTheDocument();
+      await within(section).findByTestId("monitor-response-missing"),
+    ).toHaveTextContent(/\S/);
     expect(
-      within(section).getByText("สาเหตุ redirect เกินกำหนด"),
-    ).toBeInTheDocument();
-    expect(within(section).queryByText("ตัดแล้ว")).toBeNull();
-    expect(within(section).queryByRole("table")).toBeNull();
+      within(section).getByTestId("monitor-response-cause"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(section).queryByTestId("monitor-response-truncated"),
+    ).toBeNull();
+    expect(
+      within(section).queryByTestId("monitor-response-headers"),
+    ).toBeNull();
+    expect(section.querySelector("table")).toBeNull();
   });
 
   it("shows the empty text before any result", async () => {
     renderDetail();
     expect(
-      await within(await lastResponseSection()).findByText("ยังไม่มีผลตรวจ"),
-    ).toBeInTheDocument();
+      await within(await lastResponseSection()).findByTestId(
+        "monitor-response-empty",
+      ),
+    ).toHaveTextContent(/\S/);
   });
 
   it("shows 'ไม่มีเนื้อหา' for a null body and 'ไม่มี headers' for an empty list (204)", async () => {
@@ -767,11 +1069,21 @@ describe("Last response panel", () => {
     renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText("HTTP/1.1 204 No Content"),
-    ).toBeInTheDocument();
-    expect(within(section).getByText("ไม่มี headers")).toBeInTheDocument();
-    expect(within(section).getByText("ไม่มีเนื้อหา")).toBeInTheDocument();
-    expect(within(section).queryByRole("table")).toBeNull();
+      await within(section).findByTestId("monitor-response-status"),
+    ).toHaveTextContent("HTTP/1.1 204 No Content");
+    expect(
+      within(section).getByTestId("monitor-response-no-headers"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(section).getByTestId("monitor-response-body-omitted"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(section).getByTestId("monitor-response-body-omitted"),
+    ).toHaveAttribute("data-reason", "no_body");
+    expect(
+      within(section).queryByTestId("monitor-response-headers"),
+    ).toBeNull();
+    expect(section.querySelector("table")).toBeNull();
   });
 
   it("shows 'ถอดรหัสเนื้อหาไม่ได้' for an undecodable body", async () => {
@@ -784,20 +1096,28 @@ describe("Last response panel", () => {
     });
     renderDetail();
     expect(
-      await within(await lastResponseSection()).findByText(
-        "ถอดรหัสเนื้อหาไม่ได้",
+      await within(await lastResponseSection()).findByTestId(
+        "monitor-response-body-omitted",
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(await lastResponseSection()).getByTestId(
+        "monitor-response-body-omitted",
+      ),
+    ).toHaveAttribute("data-reason", "undecodable");
   });
 
   it("makes the body keyboard-focusable with an accessible name", async () => {
     lastResponseMock.mockResolvedValue({ response: fullResponse });
     renderDetail();
-    const body = await within(await lastResponseSection()).findByRole(
-      "region",
-      { name: "เนื้อหาของการตอบกลับล่าสุด" },
+    const body = await within(await lastResponseSection()).findByTestId(
+      "monitor-response-body",
     );
     expect(body.tagName).toBe("PRE");
+    expect(body).toHaveAttribute("role", "region");
+    expect(body).toHaveAttribute("tabindex", "0");
+    expect(body).toHaveAccessibleName(/\S/);
+    expect(body).toHaveTextContent(/^\{"ok":true\}$/);
     body.focus();
     expect(body).toHaveFocus();
   });
@@ -825,10 +1145,17 @@ describe("Last response panel", () => {
     renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText(`HTTP/1.1 200 ${script}`),
-    ).toBeInTheDocument();
-    expect(within(section).getByText(img)).toBeInTheDocument();
-    expect(within(section).getByText(`${script}${img}`).tagName).toBe("PRE");
+      await within(section).findByTestId("monitor-response-status"),
+    ).toHaveTextContent(`HTTP/1.1 200 ${script}`);
+    expect(responseHeaderRecords(section)).toEqual([
+      { name: "x-note", value: img, redacted: "false" },
+    ]);
+    expect(within(section).getByTestId("monitor-response-body").tagName).toBe(
+      "PRE",
+    );
+    expect(
+      within(section).getByTestId("monitor-response-body"),
+    ).toHaveTextContent(`${script}${img}`);
     expect(section.querySelector("script, img")).toBeNull();
     expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
   });
@@ -838,8 +1165,8 @@ describe("Last response panel", () => {
     const { queryClient } = renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText("HTTP/1.1 200 OK"),
-    ).toBeInTheDocument();
+      await within(section).findByTestId("monitor-response-status"),
+    ).toHaveTextContent("HTTP/1.1 200 OK");
     lastResponseMock.mockRejectedValue(
       new ApiError("PERMISSION_DENIED", "denied", 403),
     );
@@ -848,14 +1175,18 @@ describe("Last response panel", () => {
       type: "active",
     });
     expect(
-      await within(section).findByText(
-        "เฉพาะเจ้าของและผู้ดูแลเห็น headers และเนื้อหา",
-      ),
-    ).toBeInTheDocument();
-    expect(within(section).queryByRole("table")).toBeNull();
-    expect(section.querySelector("pre")).toBeNull();
+      await within(section).findByTestId("monitor-response-read-role"),
+    ).toHaveTextContent(/\S/);
     expect(
-      within(section).queryByText("อัปเดตการตอบกลับล่าสุดไม่สำเร็จ"),
+      within(section).queryByTestId("monitor-response-headers"),
+    ).toBeNull();
+    expect(section.querySelector("table")).toBeNull();
+    expect(section.querySelector("pre")).toBeNull();
+    expect(section.innerHTML).not.toContain('{"ok":true}');
+    expect(section.innerHTML).not.toContain("application/json");
+    expect(section.innerHTML).not.toContain("PRIVATE_RESPONSE_HEADER_VALUE");
+    expect(
+      within(section).queryByTestId("monitor-response-refresh-error"),
     ).toBeNull();
     const calls = lastResponseMock.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -869,19 +1200,19 @@ describe("Last response panel", () => {
     renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText(
-        "โหลดการตอบกลับล่าสุดไม่สำเร็จ",
+      await within(section).findByTestId(
+        "monitor-response-error",
         {},
         { timeout: 4000 },
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent(/\S/);
     lastResponseMock.mockResolvedValue({ response: fullResponse });
     await userEvent
       .setup({ advanceTimers: vi.advanceTimersByTime })
-      .click(within(section).getByRole("button", { name: "ลองอีกครั้ง" }));
+      .click(within(section).getByTestId("monitor-response-retry"));
     expect(
-      await within(section).findByText("HTTP/1.1 200 OK"),
-    ).toBeInTheDocument();
+      await within(section).findByTestId("monitor-response-status"),
+    ).toHaveTextContent("HTTP/1.1 200 OK");
   });
 
   it("shows the role note when the API answers PERMISSION_DENIED", async () => {
@@ -891,13 +1222,9 @@ describe("Last response panel", () => {
     renderDetail();
     const section = await lastResponseSection();
     expect(
-      await within(section).findByText(
-        "เฉพาะเจ้าของและผู้ดูแลเห็น headers และเนื้อหา",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(section).queryByRole("button", { name: "ลองอีกครั้ง" }),
-    ).toBeNull();
+      await within(section).findByTestId("monitor-response-read-role"),
+    ).toHaveTextContent(/\S/);
+    expect(within(section).queryByTestId("monitor-response-retry")).toBeNull();
   });
 
   it.each(["viewer", "auditor"] as const)(
@@ -907,11 +1234,9 @@ describe("Last response panel", () => {
       renderDetail();
       const section = await lastResponseSection();
       expect(
-        within(section).getByText(
-          "เฉพาะเจ้าของและผู้ดูแลเห็น headers และเนื้อหา",
-        ),
-      ).toBeInTheDocument();
-      await screen.findByText("ยังไม่มีเหตุการณ์ใน 30 วันล่าสุด");
+        within(section).getByTestId("monitor-response-read-role"),
+      ).toHaveTextContent(/\S/);
+      await screen.findByTestId("monitor-event-feed-empty");
       expect(lastResponseMock).not.toHaveBeenCalled();
     },
   );
@@ -921,8 +1246,10 @@ describe("Last response panel", () => {
     lastResponseMock.mockResolvedValue({ response: fullResponse });
     renderDetail();
     expect(
-      await within(await lastResponseSection()).findByText("HTTP/1.1 200 OK"),
-    ).toBeInTheDocument();
+      await within(await lastResponseSection()).findByTestId(
+        "monitor-response-status",
+      ),
+    ).toHaveTextContent("HTTP/1.1 200 OK");
   });
 });
 
@@ -967,10 +1294,55 @@ describe("Recent events HTTP status", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    const items = await screen.findAllByRole("listitem");
-    expect(items[0]).toHaveTextContent("เริ่มล่ม");
-    expect(items[0]).toHaveTextContent("HTTP 503");
-    expect(items[1]).toHaveTextContent("HTTP 200");
-    expect(items[2]?.textContent).not.toContain("HTTP");
+    const items = await screen.findAllByTestId("monitor-overview-event");
+    const records = items.map((item) => {
+      const link = within(item).getByTestId("monitor-overview-event-monitor");
+      const time = within(item).getByTestId("monitor-overview-event-time");
+      expect(time).toHaveAttribute("dateTime", AT);
+      expect(time).toHaveTextContent(
+        new Date(AT).toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }),
+      );
+      const description = within(item).getByTestId(
+        "monitor-overview-event-description",
+      );
+      expect(description).toHaveTextContent(/\S/);
+      return {
+        kind: item.getAttribute("data-event-kind"),
+        name: link.textContent,
+        href: link.getAttribute("href"),
+        http: description.textContent.match(/HTTP (\d+)/)?.[1] ?? null,
+        duration: description.textContent.match(/(\d+ นาที)/)?.[1] ?? null,
+      };
+    });
+    expect(records).toEqual(
+      expect.arrayContaining([
+        {
+          kind: "incident_opened",
+          name: "A",
+          href: "/organizations/o1/monitors/m1",
+          http: "503",
+          duration: null,
+        },
+        {
+          kind: "incident_closed",
+          name: "A",
+          href: "/organizations/o1/monitors/m1",
+          http: "200",
+          duration: "2 นาที",
+        },
+        {
+          kind: "incident_opened",
+          name: "B",
+          href: "/organizations/o1/monitors/m2",
+          http: null,
+          duration: null,
+        },
+      ]),
+    );
+    expect(records).toHaveLength(3);
   });
 });

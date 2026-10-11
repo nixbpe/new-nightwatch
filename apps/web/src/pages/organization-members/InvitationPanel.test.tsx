@@ -34,10 +34,10 @@ function render(ui: ReactElement) {
 
 async function draft(user: UserEvent) {
   await user.type(
-    screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+    screen.getByTestId("members-invitation-email"),
     "new@example.com",
   );
-  await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+  await user.click(screen.getByTestId("members-invitation-send"));
 }
 
 describe("InvitationPanel", () => {
@@ -52,7 +52,10 @@ describe("InvitationPanel", () => {
         onCreated={vi.fn()}
       />,
     );
-    expect(screen.getByRole("option", { name: "เจ้าของ" })).toBeInTheDocument();
+    expect(screen.getByTestId("members-invitation-role-owner")).toHaveAttribute(
+      "value",
+      "owner",
+    );
     rerender(
       <InvitationPanel
         organizationId={A}
@@ -61,21 +64,21 @@ describe("InvitationPanel", () => {
         onCreated={vi.fn()}
       />,
     );
-    expect(screen.queryByRole("option", { name: "เจ้าของ" })).toBeNull();
+    expect(screen.queryByTestId("members-invitation-role-owner")).toBeNull();
     await user.type(
-      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      screen.getByTestId("members-invitation-email"),
       "NEW@EXAMPLE.COM",
     );
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    await user.click(screen.getByTestId("members-invitation-send"));
     expect(create).toHaveBeenCalledWith(A, {
       email: "new@example.com",
       role: "viewer",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "สร้างคำเชิญแล้ว",
-    );
-    expect(screen.getByRole("status").parentElement).toHaveFocus();
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+    expect(
+      await screen.findByTestId("members-invitation-success"),
+    ).toHaveAttribute("role", "status");
+    expect(screen.getByTestId("members-invitation-notice-focus")).toHaveFocus();
+    expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
   });
 
   it.each(["accepted", "failed"] as const)(
@@ -93,7 +96,19 @@ describe("InvitationPanel", () => {
         />,
       );
       await draft(user);
-      await screen.findByRole("status");
+      const outcome = await screen.findByTestId(
+        emailDispatch === "accepted"
+          ? "members-invitation-success"
+          : "members-invitation-warning",
+      );
+      expect(outcome).toHaveAttribute("role", "status");
+      expect(
+        screen.queryByTestId(
+          emailDispatch === "accepted"
+            ? "members-invitation-warning"
+            : "members-invitation-success",
+        ),
+      ).toBeNull();
       expect(onCreated).toHaveBeenCalledTimes(1);
     },
   );
@@ -113,7 +128,7 @@ describe("InvitationPanel", () => {
       />,
     );
     await draft(user);
-    await screen.findByRole("alert");
+    await screen.findByTestId("members-invitation-error");
     expect(onCreated).not.toHaveBeenCalled();
   });
 
@@ -127,11 +142,18 @@ describe("InvitationPanel", () => {
         onCreated={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-    const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
+    await user.click(screen.getByTestId("members-invitation-send"));
+    const email = screen.getByTestId("members-invitation-email");
     expect(email).toHaveFocus();
     expect(email).toHaveAttribute("aria-invalid", "true");
-    expect(email).toHaveAccessibleDescription("กรุณากรอกอีเมลผู้รับคำเชิญ");
+    expect(email).toHaveAttribute(
+      "aria-describedby",
+      screen.getByTestId("members-invitation-email-error").id,
+    );
+    expect(
+      screen.getByTestId("members-invitation-email-error"),
+    ).toHaveAttribute("role", "alert");
+    expect(email).toHaveAccessibleDescription();
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -148,18 +170,16 @@ describe("InvitationPanel", () => {
       />,
     );
     await draft(user);
-    expect(
-      screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
-    ).toBeDisabled();
+    expect(screen.getByTestId("members-invitation-send")).toBeDisabled();
     expect(create).toHaveBeenCalledTimes(1);
     await act(async () => {
       deferred.reject(new ApiError("INVITATION_LIMIT_REACHED", "limit", 409));
       await Promise.resolve();
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "ครบ 100 รายการ",
-    );
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+    const error = await screen.findByTestId("members-invitation-error");
+    expect(error).toHaveAttribute("role", "alert");
+    expect(error.textContent.match(/\d+/g)).toEqual(["100"]);
+    expect(screen.getByTestId("members-invitation-email")).toHaveValue(
       "new@example.com",
     );
   });
@@ -176,9 +196,9 @@ describe("InvitationPanel", () => {
       />,
     );
     await draft(user);
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ",
-    );
+    expect(
+      await screen.findByTestId("members-invitation-warning"),
+    ).toHaveAttribute("role", "status");
     await waitFor(() => {
       expect(create).toHaveBeenCalledTimes(1);
     });
@@ -207,12 +227,14 @@ describe("InvitationPanel", () => {
         onCreated={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+    expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
     await act(async () => {
       delayed.resolve({ created: true, emailDispatch: "failed" });
       await delayed.promise;
     });
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+    expect(
+      screen.queryByTestId(/^members-invitation-(success|warning)$/),
+    ).toBeNull();
+    expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
   });
 });

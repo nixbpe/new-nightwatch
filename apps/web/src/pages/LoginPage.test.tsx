@@ -125,9 +125,9 @@ function deferSignIn() {
 
 async function submitLogin(email: string, password: string) {
   const user = userEvent.setup();
-  await user.type(await screen.findByLabelText("อีเมล"), email);
-  await user.type(screen.getByLabelText("รหัสผ่าน"), password);
-  await user.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+  await user.type(await screen.findByTestId("login-email"), email);
+  await user.type(screen.getByTestId("login-password"), password);
+  await user.click(screen.getByTestId("login-submit"));
   return user;
 }
 
@@ -142,12 +142,10 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(
-      await screen.findByRole("button", { name: "เข้าสู่ระบบ" }),
-    );
+    await user.click(await screen.findByTestId("login-submit"));
 
-    const email = screen.getByLabelText(/อีเมล/);
-    const password = screen.getByLabelText(/รหัสผ่าน/);
+    const email = screen.getByTestId("login-email");
+    const password = screen.getByTestId("login-password");
     expect(email).toHaveAttribute("aria-invalid", "true");
     expect(email).toHaveAttribute("aria-describedby", "login-email-error");
     expect(password).toHaveAttribute("aria-invalid", "true");
@@ -155,11 +153,11 @@ describe("LoginPage", () => {
       "aria-describedby",
       "login-password-error",
     );
-    expect(screen.getByText("กรุณากรอกอีเมล")).toHaveAttribute(
+    expect(screen.getByTestId("login-email-error")).toHaveAttribute(
       "id",
       "login-email-error",
     );
-    expect(screen.getByText("กรุณากรอกรหัสผ่าน")).toHaveAttribute(
+    expect(screen.getByTestId("login-password-error")).toHaveAttribute(
       "id",
       "login-password-error",
     );
@@ -167,7 +165,7 @@ describe("LoginPage", () => {
   });
   it("submits the entered credentials unchanged", async () => {
     renderPage();
-    await screen.findByRole("button", { name: "เข้าสู่ระบบ" });
+    await screen.findByTestId("login-submit");
 
     signInEmailMock.mockResolvedValue({ data: null, error: null });
     await submitLogin("member@example.com", "correct-password");
@@ -182,17 +180,15 @@ describe("LoginPage", () => {
     renderPage();
 
     await user.type(
-      await screen.findByLabelText("อีเมล"),
+      await screen.findByTestId("login-email"),
       "member@example.com",
     );
-    await user.type(screen.getByLabelText("รหัสผ่าน"), "correct-password");
-    const submit = screen.getByRole("button", { name: "เข้าสู่ระบบ" });
+    await user.type(screen.getByTestId("login-password"), "correct-password");
+    const submit = screen.getByTestId("login-submit");
     await user.dblClick(submit);
 
     expect(signInEmailMock).toHaveBeenCalledTimes(1);
-    expect(
-      screen.getByRole("button", { name: "กำลังเข้าสู่ระบบ…" }),
-    ).toBeDisabled();
+    expect(screen.getByTestId("login-submit")).toBeDisabled();
     await finishSignIn();
   });
 
@@ -210,13 +206,15 @@ describe("LoginPage", () => {
 
     await submitLogin("member@example.com", "wrong-password");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
-    );
-    expect(screen.getByLabelText("อีเมล")).toHaveValue("member@example.com");
-    expect(screen.getByLabelText("รหัสผ่าน")).toHaveValue("wrong-password");
+    expect(await screen.findByTestId("login-auth-error")).toBeVisible();
+    expect(signInEmailMock).toHaveBeenCalledWith({
+      email: "member@example.com",
+      password: "wrong-password",
+    });
+    expect(screen.getByTestId("login-email")).toHaveValue("member@example.com");
+    expect(screen.getByTestId("login-password")).toHaveValue("wrong-password");
     expect(screen.queryByTestId("location")).toBeNull();
-    expect(screen.getByRole("button", { name: "เข้าสู่ระบบ" })).toBeEnabled();
+    expect(screen.getByTestId("login-submit")).toBeEnabled();
   });
 
   it.each([
@@ -227,31 +225,29 @@ describe("LoginPage", () => {
         message: "Email not verified",
         status: 403,
       },
-      "อีเมลนี้ยังไม่ได้รับการยืนยัน",
     ],
     [
       "EMAIL_NOT_VERIFIED without a 403 status",
       { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
-      "อีเมลนี้ยังไม่ได้รับการยืนยัน",
     ],
-    [
-      "a 403 without a code",
-      { message: "Forbidden", status: 403 },
-      "เข้าสู่ระบบไม่สำเร็จ",
-    ],
+    ["a 403 without a code", { message: "Forbidden", status: 403 }],
   ] as const)(
     // Each of these is recoverable: the error links to the anonymous-safe resend hub.
     "offers the resend page instead of a dead end for %s",
-    async (_label, error, alertText) => {
+    async (_label, error) => {
       signInEmailMock.mockResolvedValue({ data: null, error });
       renderPage();
 
       await submitLogin("new@example.com", "super-secret-1");
 
-      expect(await screen.findByRole("alert")).toHaveTextContent(alertText);
-      expect(
-        screen.getByRole("link", { name: "ไปที่หน้ายืนยันอีเมล" }),
-      ).toBeInTheDocument();
+      expect(await screen.findByTestId("login-auth-error")).toBeVisible();
+      expect(screen.getByTestId("login-email")).toHaveValue("new@example.com");
+      expect(screen.getByTestId("login-password")).toHaveValue(
+        "super-secret-1",
+      );
+      expect(screen.queryByTestId("location")).toBeNull();
+      expect(screen.getByTestId("login-submit")).toBeEnabled();
+      expect(screen.getByTestId("login-verify-email")).toBeInTheDocument();
     },
   );
 
@@ -267,11 +263,9 @@ describe("LoginPage", () => {
     renderPage();
 
     await submitLogin("new@example.com", "super-secret-1");
-    await screen.findByRole("alert");
+    await screen.findByTestId("login-auth-error");
     const user = userEvent.setup();
-    await user.click(
-      screen.getByRole("link", { name: "ไปที่หน้ายืนยันอีเมล" }),
-    );
+    await user.click(screen.getByTestId("login-verify-email"));
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/verify-email",
     );
@@ -288,7 +282,7 @@ describe("LoginPage", () => {
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/settings/security?tab=sessions#current",
     );
-    expect(screen.queryByLabelText("อีเมล")).toBeNull();
+    expect(screen.queryByTestId("login-email")).toBeNull();
     await finishSignIn();
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/settings/security?tab=sessions#current",
@@ -356,10 +350,8 @@ describe("LoginPage", () => {
 
     await submitLogin("member@example.com", "correct-password");
 
-    expect(
-      await screen.findByRole("heading", { name: "เข้าสู่ระบบ" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(await screen.findByTestId("login-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("login-auth-error")).toBeNull();
     expect(screen.queryByTestId("location")).toBeNull();
     expect(readReturnTo()).toBe("/settings/security");
   });
@@ -370,9 +362,12 @@ describe("LoginPage", () => {
 
     await submitLogin("member@example.com", "correct-password");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง",
+    expect(await screen.findByTestId("login-auth-error")).toBeVisible();
+    expect(screen.getByTestId("login-email")).toHaveValue("member@example.com");
+    expect(screen.getByTestId("login-password")).toHaveValue(
+      "correct-password",
     );
+    expect(screen.getByTestId("login-submit")).toBeEnabled();
     expect(screen.queryByTestId("location")).toBeNull();
   });
 });

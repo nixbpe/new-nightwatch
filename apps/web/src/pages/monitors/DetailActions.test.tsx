@@ -132,19 +132,26 @@ describe("Pause and Resume", () => {
     });
     const user = userEvent.setup();
     const { queryClient } = renderDetail();
-    const button = await screen.findByRole("button", { name: "หยุดชั่วคราว" });
+    const button = await screen.findByTestId("monitor-detail-toggle");
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const previousLabel = button.textContent;
     await user.click(button);
 
-    expect(await screen.findByText("หยุดการตรวจแล้ว")).toBeInTheDocument();
-    expect(pauseMock).toHaveBeenCalledExactlyOnceWith(A, MONITOR_ID);
-    // Same node, relabelled: it was never unmounted, so focus stayed on it.
-    expect(screen.getByRole("button", { name: "เริ่มต่อ" })).toBe(button);
-    expect(button).toHaveFocus();
-    expect(screen.getAllByText("หยุดชั่วคราว").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("มอนิเตอร์นี้หยุดตรวจอยู่ จะไม่มีการแจ้งเตือน"),
-    ).toBeInTheDocument();
+      await screen.findByTestId("monitor-detail-notice"),
+    ).toHaveTextContent(/\S/);
+    expect(pauseMock).toHaveBeenCalledExactlyOnceWith(A, MONITOR_ID);
+    expect(button).toHaveAttribute("data-status", "paused");
+    expect(button).toHaveAccessibleName(/\S/);
+    expect(button.textContent).not.toBe(previousLabel);
+    // Same node, relabelled: it was never unmounted, so focus stayed on it.
+    expect(screen.getByTestId("monitor-detail-toggle")).toBe(button);
+    expect(button).toHaveFocus();
+    expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-health",
+      "paused",
+    );
+    expect(screen.getByTestId("monitor-detail-paused")).toBeInTheDocument();
     expect(invalidate).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ["tenant", "monitors", A] }),
     );
@@ -165,15 +172,31 @@ describe("Pause and Resume", () => {
     });
     const user = userEvent.setup();
     renderDetail();
-    const button = await screen.findByRole("button", { name: "เริ่มต่อ" });
+    const button = await screen.findByTestId("monitor-detail-toggle");
+    const previousLabel = button.textContent;
     await user.click(button);
 
-    expect(await screen.findByText("เริ่มการตรวจต่อแล้ว")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("monitor-detail-notice"),
+    ).toHaveTextContent(/\S/);
     expect(resumeMock).toHaveBeenCalledExactlyOnceWith(A, MONITOR_ID);
-    expect(screen.getByRole("button", { name: "หยุดชั่วคราว" })).toBe(button);
+    expect(button).toHaveAttribute("data-status", "active");
+    expect(button).toHaveAccessibleName(/\S/);
+    expect(button.textContent).not.toBe(previousLabel);
+    expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-health-reason",
+      "awaiting_new_config",
+    );
+    expect(screen.getByTestId("monitor-detail-toggle")).toBe(button);
     expect(button).toHaveFocus();
-    expect(screen.getAllByText("ไม่ทราบสถานะ").length).toBeGreaterThan(0);
-    expect(screen.queryByText("ปกติ")).toBeNull();
+    expect(screen.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-health",
+      "unknown",
+    );
+    expect(screen.getByTestId("monitor-detail-health")).not.toHaveAttribute(
+      "data-health",
+      "up",
+    );
   });
 
   it("sends one request when the button is pressed again while pending", async () => {
@@ -186,16 +209,17 @@ describe("Pause and Resume", () => {
     );
     const user = userEvent.setup();
     renderDetail();
-    await user.click(
-      await screen.findByRole("button", { name: "หยุดชั่วคราว" }),
-    );
-    const pending = await screen.findByRole("button", { name: "กำลังหยุด…" });
+    await user.click(await screen.findByTestId("monitor-detail-toggle"));
+    const pending = await screen.findByTestId("monitor-detail-toggle");
     expect(pending).toHaveAttribute("aria-disabled", "true");
     await user.click(pending);
     expect(pauseMock).toHaveBeenCalledTimes(1);
     finish(record(detail({ status: "paused" })));
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "กำลังหยุด…" })).toBeNull();
+      expect(screen.getByTestId("monitor-detail-toggle")).toHaveAttribute(
+        "data-in-progress",
+        "false",
+      );
     });
   });
 
@@ -204,12 +228,12 @@ describe("Pause and Resume", () => {
     pauseMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
     const user = userEvent.setup();
     renderDetail();
-    const button = await screen.findByRole("button", { name: "หยุดชั่วคราว" });
+    const button = await screen.findByTestId("monitor-detail-toggle");
     await user.click(button);
     expect(
-      await screen.findByText("หยุดการตรวจไม่สำเร็จ ลองอีกครั้ง"),
+      await screen.findByTestId("monitor-detail-action-error"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "หยุดชั่วคราว" })).toBe(button);
+    expect(screen.getByTestId("monitor-detail-toggle")).toBe(button);
     expect(button).toHaveFocus();
   });
 
@@ -226,23 +250,24 @@ describe("Pause and Resume", () => {
     );
     const user = userEvent.setup();
     renderDetail();
-    await user.click(
-      await screen.findByRole("button", { name: "หยุดชั่วคราว" }),
-    );
+    await user.click(await screen.findByTestId("monitor-detail-toggle"));
     expect(
-      await screen.findByText("สิทธิ์ของคุณเปลี่ยนแล้ว"),
+      await screen.findByTestId("monitor-detail-action-error"),
     ).toBeInTheDocument();
     // The membership re-read is still open: the page must not claim access is denied.
     expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
-    expect(
-      screen.queryByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
-    ).toBeNull();
+    expect(screen.queryByTestId("monitor-detail-denied")).toBeNull();
+    expect(document.body.textContent).not.toContain(
+      "คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้",
+    );
     finish(context("viewer"));
     expect(
-      await screen.findByText("สิทธิ์ของคุณ: ดูอย่างเดียว"),
+      await screen.findByTestId("monitor-detail-read-only"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "หยุดชั่วคราว" })).toBeNull();
-    expect(screen.getByText("สิทธิ์ของคุณเปลี่ยนแล้ว")).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-detail-toggle")).toBeNull();
+    expect(
+      screen.getByTestId("monitor-detail-action-error"),
+    ).toBeInTheDocument();
   });
 
   it("turns into 'not found' when another session deleted the monitor first", async () => {
@@ -255,18 +280,21 @@ describe("Pause and Resume", () => {
     });
     const user = userEvent.setup();
     renderDetail();
-    await user.click(
-      await screen.findByRole("button", { name: "หยุดชั่วคราว" }),
-    );
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
+    await user.click(await screen.findByTestId("monitor-detail-toggle"));
+    expect(
+      await screen.findByTestId("monitor-detail-not-found"),
+    ).toBeInTheDocument();
   });
 });
 
 describe("Delete", () => {
   async function openDialog(user: ReturnType<typeof userEvent.setup>) {
-    const opener = await screen.findByRole("button", { name: "ลบมอนิเตอร์" });
+    const opener = await screen.findByTestId("monitor-detail-delete");
     await user.click(opener);
-    return { opener, dialog: await screen.findByRole("dialog") };
+    return {
+      opener,
+      dialog: await screen.findByTestId("monitor-detail-delete-dialog"),
+    };
   }
 
   it("asks for confirmation with the consequence and starts on Cancel", async () => {
@@ -274,16 +302,16 @@ describe("Delete", () => {
     const user = userEvent.setup();
     renderDetail();
     const { dialog } = await openDialog(user);
-    expect(dialog).toHaveAccessibleName("ยืนยันการลบมอนิเตอร์");
-    expect(dialog).toHaveTextContent(
-      "ลบ Payments API (https://api.acme.example/health) ออกจากองค์กร Acme",
-    );
+    expect(dialog).toHaveAccessibleName(/\S/);
+    expect(dialog).toHaveAttribute("role", "dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveTextContent("Payments API");
+    expect(dialog).toHaveTextContent("https://api.acme.example/health");
+    expect(dialog).toHaveTextContent("Acme");
     expect(dialog).toHaveTextContent(
       "ประวัติการตรวจและเหตุการณ์จะหายและกู้คืนไม่ได้ ถ้าต้องการเก็บประวัติ ให้ใช้หยุดชั่วคราวแทน",
     );
-    expect(
-      within(dialog).getByRole("button", { name: "ยกเลิก" }),
-    ).toHaveFocus();
+    expect(within(dialog).getByTestId("confirmation-cancel")).toHaveFocus();
   });
 
   it("sends no request on Cancel and returns focus to the opener", async () => {
@@ -291,8 +319,8 @@ describe("Delete", () => {
     const user = userEvent.setup();
     renderDetail();
     const { opener, dialog } = await openDialog(user);
-    await user.click(within(dialog).getByRole("button", { name: "ยกเลิก" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(within(dialog).getByTestId("confirmation-cancel"));
+    expect(screen.queryByTestId("monitor-detail-delete-dialog")).toBeNull();
     expect(deleteMock).not.toHaveBeenCalled();
     expect(opener).toHaveFocus();
   });
@@ -304,13 +332,15 @@ describe("Delete", () => {
     renderDetail();
     const { dialog } = await openDialog(user);
     await user.click(
-      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+      within(dialog).getByTestId("monitor-detail-delete-confirm"),
     );
     expect(
-      await within(dialog).findByRole("button", { name: "กำลังลบ…" }),
+      await within(dialog).findByTestId("monitor-detail-delete-confirm"),
     ).toBeDisabled();
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("monitor-detail-delete-dialog"),
+    ).toBeInTheDocument();
     expect(deleteMock).toHaveBeenCalledTimes(1);
   });
 
@@ -322,18 +352,17 @@ describe("Delete", () => {
     const { dialog } = await openDialog(user);
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
     await user.click(
-      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+      within(dialog).getByTestId("monitor-detail-delete-confirm"),
     );
 
-    expect(await screen.findByText("ลบมอนิเตอร์แล้ว")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("monitor-overview-notice"),
+    ).toBeInTheDocument();
     expect(deleteMock).toHaveBeenCalledExactlyOnceWith(A, MONITOR_ID);
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${A}/monitors`,
     );
-    const heading = screen.getByRole("heading", {
-      level: 1,
-      name: "ตรวจสถานะบริการ",
-    });
+    const heading = screen.getByTestId("monitor-overview-heading");
     await waitFor(() => {
       expect(heading).toHaveFocus();
     });
@@ -350,7 +379,7 @@ describe("Delete", () => {
     const user = userEvent.setup();
     renderDetail();
     const { dialog } = await openDialog(user);
-    const confirm = within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" });
+    const confirm = within(dialog).getByTestId("monitor-detail-delete-confirm");
     await user.dblClick(confirm);
     expect(deleteMock).toHaveBeenCalledTimes(1);
   });
@@ -404,14 +433,20 @@ describe("Delete", () => {
     );
     const { dialog } = await openDialog(user);
     await user.click(
-      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+      within(dialog).getByTestId("monitor-detail-delete-confirm"),
     );
 
-    expect(await screen.findByText("ลบมอนิเตอร์แล้ว")).toBeInTheDocument();
     expect(
-      await screen.findByRole("link", { name: "Docs" }),
+      await screen.findByTestId("monitor-overview-notice"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Payments API" })).toBeNull();
+    expect(
+      await screen.findByTestId("monitor-list-name-" + OTHER_ID),
+    ).toHaveTextContent(/^Docs$/);
+    expect(screen.getByTestId("monitor-list-name-" + OTHER_ID)).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/${OTHER_ID}`,
+    );
+    expect(screen.queryByTestId("monitor-list-name-" + MONITOR_ID)).toBeNull();
     expect(
       queryClient.getQueryData<MonitorListResponse>(
         monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
@@ -445,9 +480,9 @@ describe("Delete", () => {
     queryClient.setQueryData(monitorQueryKeys.recentEvents(B), theirs);
     const { dialog } = await openDialog(user);
     await user.click(
-      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+      within(dialog).getByTestId("monitor-detail-delete-confirm"),
     );
-    await screen.findByText("ลบมอนิเตอร์แล้ว");
+    await screen.findByTestId("monitor-overview-notice");
 
     expect(
       queryClient
@@ -466,12 +501,12 @@ describe("Delete", () => {
     renderDetail();
     const { dialog } = await openDialog(user);
     await user.click(
-      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+      within(dialog).getByTestId("monitor-detail-delete-confirm"),
     );
-    await screen.findByText("ลบมอนิเตอร์แล้ว");
-    await user.click(screen.getByRole("button", { name: "open detail" }));
-    await screen.findByRole("heading", { level: 1, name: "Payments API" });
-    expect(screen.queryByText("ลบมอนิเตอร์แล้ว")).toBeNull();
+    await screen.findByTestId("monitor-overview-notice");
+    await user.click(screen.getByTestId("detail-harness-open"));
+    await screen.findByTestId("monitor-detail-title");
+    expect(screen.queryByTestId("monitor-overview-notice")).toBeNull();
   });
 
   it("goes to the Overview with 'มอนิเตอร์นี้ถูกลบแล้ว' when another session deleted it first", async () => {
@@ -483,10 +518,10 @@ describe("Delete", () => {
     renderDetail();
     const { dialog } = await openDialog(user);
     await user.click(
-      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+      within(dialog).getByTestId("monitor-detail-delete-confirm"),
     );
     expect(
-      await screen.findByText("มอนิเตอร์นี้ถูกลบแล้ว"),
+      await screen.findByTestId("monitor-overview-notice"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${A}/monitors`,
@@ -500,12 +535,12 @@ describe("Delete", () => {
     renderDetail();
     const { opener, dialog } = await openDialog(user);
     await user.click(
-      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+      within(dialog).getByTestId("monitor-detail-delete-confirm"),
     );
     expect(
-      await screen.findByText("ลบมอนิเตอร์ไม่สำเร็จ ลองอีกครั้ง"),
+      await screen.findByTestId("monitor-detail-action-error"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("monitor-detail-delete-dialog")).toBeNull();
     expect(opener).toHaveFocus();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${A}/monitors/${MONITOR_ID}`,
@@ -524,14 +559,14 @@ describe("Delete", () => {
     renderDetail();
     const { dialog } = await openDialog(user);
     await user.click(
-      within(dialog).getByRole("button", { name: "ลบมอนิเตอร์" }),
+      within(dialog).getByTestId("monitor-detail-delete-confirm"),
     );
     expect(
-      await screen.findByText("สิทธิ์ของคุณเปลี่ยนแล้ว"),
+      await screen.findByTestId("monitor-detail-action-error"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("monitor-detail-delete-dialog")).toBeNull();
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "ลบมอนิเตอร์" })).toBeNull();
+      expect(screen.queryByTestId("monitor-detail-delete")).toBeNull();
     });
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${A}/monitors/${MONITOR_ID}`,

@@ -177,13 +177,17 @@ export function InvitationCancelButton({
 }) {
   if (!invitation.manageable) {
     return (
-      <span className="text-sm text-foreground-secondary">
+      <span
+        data-testid="invitation-owner-only"
+        className="text-sm text-foreground-secondary"
+      >
         เฉพาะเจ้าของจัดการได้
       </span>
     );
   }
   return (
     <Button
+      data-testid={`invitation-cancel-${invitation.publicId}`}
       ref={(control) => {
         register(invitation.publicId, control);
       }}

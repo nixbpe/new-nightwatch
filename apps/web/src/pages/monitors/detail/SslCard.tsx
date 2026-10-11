@@ -12,32 +12,52 @@ export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
   // A readable certificate that fails validation keeps its level and dates but carries a reason (AC-35).
   const invalid = ssl.state !== "unreadable" && ssl.reason !== null;
   return (
-    <Card as="section" aria-labelledby="detail-ssl">
+    <Card
+      as="section"
+      data-testid="monitor-detail-ssl"
+      aria-labelledby="detail-ssl"
+    >
       <CardHeader
         id="detail-ssl"
         title="SSL"
         action={
-          <SslLabel level={ssl.state} daysRemaining={ssl.daysRemaining} />
+          <SslLabel
+            testId="monitor-detail-ssl-state"
+            level={ssl.state}
+            daysRemaining={ssl.daysRemaining}
+          />
         }
         className="border-b border-foreground/10 p-4"
       />
       <div className="flex flex-col gap-2 p-4 text-sm">
         {ssl.state === "not_https" ? (
-          <p>มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง</p>
+          <p data-testid="monitor-detail-ssl-http">
+            มอนิเตอร์นี้ใช้ http ไม่มีข้อมูลใบรับรอง
+          </p>
         ) : null}
         {ssl.state === "no_data" ? (
-          <p className="text-foreground-secondary">
+          <p
+            data-testid="monitor-detail-ssl-empty"
+            className="text-foreground-secondary"
+          >
             ยังไม่มีข้อมูลใบรับรอง จะแสดงหลังตรวจ https สำเร็จ
           </p>
         ) : null}
         {invalid ? (
-          <p className="font-medium text-danger">
+          <p
+            data-testid="monitor-detail-ssl-invalid"
+            data-reason={ssl.reason}
+            className="font-medium text-danger"
+          >
             ใบรับรองไม่ถูกต้อง{reason === null ? null : <>: {reason}</>} การตรวจ
             https ล้มเหลว
           </p>
         ) : null}
         {ssl.state === "unreadable" ? (
-          <p>
+          <p
+            data-testid="monitor-detail-ssl-unreadable"
+            data-reason={ssl.reason}
+          >
             อ่านใบรับรองไม่ได้
             {reason === null ? null : <> เหตุผล: {reason}</>}
           </p>
@@ -47,20 +67,29 @@ export function SslCard({ ssl }: { ssl: Monitor["ssl"] }) {
             {ssl.issuer === null ? null : (
               <>
                 <dt className="text-foreground-secondary">ผู้ออก</dt>
-                <dd>{ssl.issuer}</dd>
+                <dd data-testid="monitor-detail-ssl-issuer">{ssl.issuer}</dd>
               </>
             )}
             {ssl.host === null ? null : (
               <>
                 <dt className="text-foreground-secondary">โฮสต์</dt>
-                <dd className="font-mono break-all">{ssl.host}</dd>
+                <dd
+                  data-testid="monitor-detail-ssl-host"
+                  className="font-mono break-all"
+                >
+                  {ssl.host}
+                </dd>
               </>
             )}
             {ssl.notAfter === null ? null : (
               <>
                 <dt className="text-foreground-secondary">หมดอายุ</dt>
                 <dd>
-                  <time dateTime={ssl.notAfter} className="font-mono">
+                  <time
+                    data-testid="monitor-detail-ssl-expiry"
+                    dateTime={ssl.notAfter}
+                    className="font-mono"
+                  >
                     {formatDate(ssl.notAfter)}
                   </time>
                 </dd>

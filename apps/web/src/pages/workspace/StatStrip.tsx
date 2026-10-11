@@ -78,12 +78,15 @@ export function StatStrip({
   ];
   return (
     <HairlineGrid
+      data-testid="workspace-stats"
       as="section"
       aria-label="สรุปสถานะ"
       className="grid-cols-2 lg:grid-cols-4"
     >
       {tiles.map((tile) => (
         <Link
+          data-testid={`workspace-stat-${tile.key}`}
+          data-expired-count={tile.key === "ssl" ? expired : undefined}
           key={tile.key}
           to={`/organizations/${organizationId}/monitors`}
           className={cn(
@@ -92,6 +95,7 @@ export function StatStrip({
           )}
         >
           <StatTile
+            valueTestId="workspace-stat-value"
             dot={tile.dot}
             label={tile.label}
             value={tile.value}

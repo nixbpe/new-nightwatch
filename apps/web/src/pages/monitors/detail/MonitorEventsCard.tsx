@@ -82,7 +82,9 @@ function EventSummary({
       const cause = failureCauseText(event.failureReason, event.tlsReason);
       return (
         <>
-          <span className="font-medium">{EVENT_KIND_LABELS.check_failed}</span>
+          <span data-testid="monitor-event-title" className="font-medium">
+            {EVENT_KIND_LABELS.check_failed}
+          </span>
           {cause === null ? null : <> · {cause}</>}
           {event.httpStatus === null ? null : (
             <> · {mono(`HTTP ${String(event.httpStatus)}`)}</>
@@ -97,7 +99,7 @@ function EventSummary({
       const cause = failureCauseText(event.reason);
       return (
         <>
-          <span className="font-medium">
+          <span data-testid="monitor-event-title" className="font-medium">
             {EVENT_KIND_LABELS.incident_opened}
           </span>
           {cause === null ? null : <> · {cause}</>}
@@ -110,7 +112,7 @@ function EventSummary({
     case "incident_closed":
       return event.endReason === "recovered" ? (
         <>
-          <span className="font-medium">
+          <span data-testid="monitor-event-title" className="font-medium">
             {EVENT_KIND_LABELS.incident_closed_recovered}
           </span>
           {event.httpStatus === null ? null : (
@@ -123,7 +125,7 @@ function EventSummary({
         </>
       ) : (
         <>
-          <span className="font-medium">
+          <span data-testid="monitor-event-title" className="font-medium">
             {EVENT_KIND_LABELS.incident_closed_paused}
           </span>{" "}
           · หยุดชั่วคราวโดยผู้ใช้ · ล่ม {formatDuration(event.durationSeconds)}
@@ -136,13 +138,38 @@ function EventSummary({
       const title = EVENT_KIND_LABELS[event.kind];
       return (
         <>
-          <span className="font-medium">{title}</span>
+          <span data-testid="monitor-event-title" className="font-medium">
+            {title}
+          </span>
           {actor === null ? null : <> โดย {actor}</>}
           {event.kind === "config_changed" && event.changes.length > 0 ? (
-            <ul className="mt-1 flex flex-col gap-0.5 text-xs text-foreground-secondary">
+            <ul
+              data-testid="monitor-event-changes"
+              className="mt-1 flex flex-col gap-0.5 text-xs text-foreground-secondary"
+            >
               {event.changes.map((change) => (
                 <li
                   key={`${change.field}:${change.kind}`}
+                  data-testid="monitor-event-change"
+                  data-field={change.field}
+                  data-kind={change.kind}
+                  data-before-kind={
+                    change.kind === "value"
+                      ? change.before === null
+                        ? "null"
+                        : typeof change.before
+                      : undefined
+                  }
+                  data-after-kind={
+                    change.kind === "value"
+                      ? change.after === null
+                        ? "null"
+                        : typeof change.after
+                      : undefined
+                  }
+                  data-action-code={
+                    change.kind === "secret" ? change.action : undefined
+                  }
                   className="break-words"
                 >
                   <ChangeLine change={change} headerNameById={headerNameById} />
@@ -187,6 +214,7 @@ export function MonitorEventsCard({
   );
   return (
     <section
+      data-testid="monitor-event-feed"
       aria-labelledby="detail-event-feed"
       className="flex flex-col gap-4"
     >
@@ -198,12 +226,15 @@ export function MonitorEventsCard({
       <div className="flex flex-col gap-3">
         {data === undefined && events.isError ? (
           <>
-            <Alert tone="error">โหลดฟีดเหตุการณ์ไม่สำเร็จ</Alert>
+            <Alert data-testid="monitor-event-feed-error" tone="error">
+              โหลดฟีดเหตุการณ์ไม่สำเร็จ
+            </Alert>
             <Button
               type="button"
               variant="secondary"
               size="sm"
               className="self-start"
+              data-testid="monitor-event-feed-retry"
               onClick={() => void events.refetch()}
             >
               ลองอีกครั้ง
@@ -212,7 +243,11 @@ export function MonitorEventsCard({
         ) : null}
         {data === undefined && !events.isError ? (
           <div aria-busy="true" className="flex flex-col gap-3">
-            <p role="status" className="sr-only">
+            <p
+              data-testid="monitor-event-feed-loading"
+              role="status"
+              className="sr-only"
+            >
               กำลังโหลดฟีดเหตุการณ์
             </p>
             <Skeleton className="h-4 w-64 max-w-full" />
@@ -220,23 +255,51 @@ export function MonitorEventsCard({
           </div>
         ) : null}
         {data !== undefined && data.page.total === 0 ? (
-          <p className="text-sm text-foreground-secondary">
+          <p
+            data-testid="monitor-event-feed-empty"
+            className="text-sm text-foreground-secondary"
+          >
             ยังไม่มีเหตุการณ์ใน 30 วันล่าสุด
           </p>
         ) : null}
         {data !== undefined && data.page.total > 0 ? (
           <>
             <ol
+              data-testid="monitor-event-feed-list"
               aria-label="ฟีดเหตุการณ์ของมอนิเตอร์"
               className="divide-y divide-foreground/10 text-sm"
             >
               {data.events.map((event) => (
                 <li
                   key={event.id}
+                  data-testid={`monitor-event-record-${event.id}`}
+                  data-event-kind={event.kind}
+                  data-reason={
+                    "failureReason" in event
+                      ? event.failureReason
+                      : "reason" in event
+                        ? event.reason
+                        : "endReason" in event
+                          ? event.endReason
+                          : undefined
+                  }
+                  data-tls-reason={
+                    "tlsReason" in event ? event.tlsReason : undefined
+                  }
+                  data-actor-kind={
+                    "actor" in event ? event.actor.kind : undefined
+                  }
+                  data-incident-id={
+                    "incidentId" in event ? event.incidentId : undefined
+                  }
                   className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2.5"
                 >
                   <span className="w-40 shrink-0 font-mono text-xs text-foreground-secondary">
-                    <Time iso={event.at} format={formatDateTime} />
+                    <Time
+                      testId="monitor-event-time"
+                      iso={event.at}
+                      format={formatDateTime}
+                    />
                   </span>
                   <div className="min-w-0 flex-1 break-words">
                     <EventSummary
@@ -249,6 +312,10 @@ export function MonitorEventsCard({
             </ol>
             {hasPrevious || hasNext ? (
               <DataTablePagination
+                data-testid="monitor-event-feed-pagination"
+                previousTestId="monitor-event-feed-previous"
+                nextTestId="monitor-event-feed-next"
+                summaryTestId="monitor-event-feed-summary"
                 ariaLabel="หน้าฟีดเหตุการณ์"
                 summary={
                   <>
@@ -272,7 +339,9 @@ export function MonitorEventsCard({
           </>
         ) : null}
         {data !== undefined && events.isError ? (
-          <Alert tone="warning">อัปเดตฟีดเหตุการณ์ไม่สำเร็จ</Alert>
+          <Alert data-testid="monitor-event-feed-refresh-error" tone="warning">
+            อัปเดตฟีดเหตุการณ์ไม่สำเร็จ
+          </Alert>
         ) : null}
       </div>
     </section>

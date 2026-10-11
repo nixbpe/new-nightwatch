@@ -43,7 +43,7 @@ export function assertionRowFromResult(
   };
 }
 
-function StatusCell({ row }: { row: AssertionRow }) {
+function StatusCell({ row, testId }: { row: AssertionRow; testId?: string }) {
   const tone =
     row.status === "pass"
       ? "text-primary"
@@ -51,7 +51,10 @@ function StatusCell({ row }: { row: AssertionRow }) {
         ? "text-danger"
         : "text-foreground-secondary";
   return (
-    <span className={`inline-flex items-center gap-1.5 font-medium ${tone}`}>
+    <span
+      data-testid={testId}
+      className={`inline-flex items-center gap-1.5 font-medium ${tone}`}
+    >
       {row.status === "pass" ? <CheckIcon size={14} /> : null}
       {row.status === "fail" ? <XIcon size={14} /> : null}
       {row.status === "not_evaluated" ? (
@@ -70,13 +73,18 @@ function StatusCell({ row }: { row: AssertionRow }) {
 export function AssertionTable({
   caption,
   rows,
+  testId,
 }: {
+  testId?: string;
   caption: string;
   rows: AssertionRow[];
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[480px] text-left text-sm">
+      <table
+        data-testid={testId}
+        className="w-full min-w-[480px] text-left text-sm"
+      >
         <caption className="sr-only">{caption}</caption>
         <thead className="text-xs text-foreground-secondary">
           <tr>
@@ -96,12 +104,38 @@ export function AssertionTable({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.key} className="border-t border-foreground/10">
-              <td className="py-2 pr-4">{row.label}</td>
-              <td className="py-2 pr-4 font-mono text-[13px] break-all">
+            <tr
+              data-testid={testId === undefined ? undefined : `${testId}-row`}
+              data-status={testId === undefined ? undefined : row.status}
+              data-has-actual={
+                testId === undefined ? undefined : row.actual !== null
+              }
+              data-truncated={testId === undefined ? undefined : row.truncated}
+              key={row.key}
+              className="border-t border-foreground/10"
+            >
+              <td
+                data-testid={
+                  testId === undefined ? undefined : `${testId}-label`
+                }
+                className="py-2 pr-4"
+              >
+                {row.label}
+              </td>
+              <td
+                data-testid={
+                  testId === undefined ? undefined : `${testId}-expected`
+                }
+                className="py-2 pr-4 font-mono text-[13px] break-all"
+              >
                 {row.expected}
               </td>
-              <td className="py-2 pr-4 font-mono text-[13px] break-all">
+              <td
+                data-testid={
+                  testId === undefined ? undefined : `${testId}-actual`
+                }
+                className="py-2 pr-4 font-mono text-[13px] break-all"
+              >
                 {row.actual === null ? (
                   <span className="font-sans text-foreground-secondary">
                     ไม่มีค่า
@@ -110,13 +144,21 @@ export function AssertionTable({
                   row.actual
                 )}
                 {row.truncated ? (
-                  <span className="ml-2 rounded-full border border-foreground/10 px-1.5 py-0.5 font-sans text-xs text-foreground-secondary">
+                  <span
+                    data-testid={
+                      testId === undefined ? undefined : `${testId}-truncated`
+                    }
+                    className="ml-2 rounded-full border border-foreground/10 px-1.5 py-0.5 font-sans text-xs text-foreground-secondary"
+                  >
                     ตัดแล้ว
                   </span>
                 ) : null}
               </td>
               <td className="py-2">
-                <StatusCell row={row} />
+                <StatusCell
+                  row={row}
+                  testId={testId === undefined ? undefined : `${testId}-status`}
+                />
               </td>
             </tr>
           ))}

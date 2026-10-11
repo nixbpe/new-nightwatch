@@ -94,11 +94,13 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh]">
       <button
         type="button"
+        data-testid="shell-command-close"
         aria-label="ปิดการค้นหา"
         onClick={onClose}
         className="backdrop-enter absolute inset-0 bg-scrim"
       />
       <div
+        data-testid="shell-command-dialog"
         role="dialog"
         aria-modal="true"
         aria-label="ค้นหาทั้งหมด"
@@ -111,6 +113,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           </span>
           <input
             ref={inputRef}
+            data-testid="shell-command-query"
             type="text"
             role="combobox"
             aria-label="ค้นหาทั้งหมด"
@@ -142,6 +145,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                 หน้าและการตั้งค่า
               </p>
               <ul
+                data-testid="shell-command-results"
                 id="command-palette-results"
                 role="listbox"
                 aria-label="ผลการค้นหา"
@@ -153,6 +157,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                   return (
                     <li
                       key={destination.path}
+                      data-testid={`shell-command-option-${destination.path}`}
                       id={`command-option-${String(index)}`}
                       role="option"
                       aria-selected={isSelected}
@@ -198,7 +203,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             <Kbd>esc</Kbd>
             <span className="ms-1">ปิด</span>
           </span>
-          <span className="ms-auto truncate">
+          <span
+            data-testid="shell-command-organization"
+            className="ms-auto truncate"
+          >
             ค้นหาใน {activeOrg?.name ?? "NightWatch"}
           </span>
         </div>

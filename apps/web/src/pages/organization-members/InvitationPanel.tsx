@@ -154,6 +154,7 @@ export function InvitationPanel({
       <div className="border-b border-foreground/10 px-5 py-3.5">
         <h2
           id="invite-card-title"
+          data-testid="members-invitation-heading"
           className="text-base font-semibold text-heading"
         >
           เชิญสมาชิกเข้าสู่ {organizationName}
@@ -162,13 +163,17 @@ export function InvitationPanel({
       {notice && (
         <div
           ref={noticeRef}
+          data-testid="members-invitation-notice-focus"
           tabIndex={-1}
           className="mx-5 mt-5 outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           {notice.tone === "error" ? (
-            <Alert tone="error">{notice.text}</Alert>
+            <Alert data-testid="members-invitation-error" tone="error">
+              {notice.text}
+            </Alert>
           ) : (
             <Alert
+              data-testid={`members-invitation-${notice.tone}`}
               tone={notice.tone === "warning" ? "warning" : "success"}
               role="status"
             >
@@ -188,6 +193,7 @@ export function InvitationPanel({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <Field label="อีเมลของผู้ได้รับเชิญ" className="min-w-0 flex-1">
             <Input
+              data-testid="members-invitation-email"
               ref={emailRef}
               type="email"
               name="invite-email"
@@ -205,6 +211,7 @@ export function InvitationPanel({
           </Field>
           <Field label="บทบาท" className="sm:w-[200px]">
             <select
+              data-testid="members-invitation-role"
               name="invite-role"
               value={role}
               onChange={(event) => {
@@ -216,18 +223,27 @@ export function InvitationPanel({
                 ? INVITABLE_ROLES
                 : ADMIN_INVITABLE_ROLES
               ).map((value) => (
-                <option key={value} value={value}>
+                <option
+                  data-testid={`members-invitation-role-${value}`}
+                  key={value}
+                  value={value}
+                >
                   {ROLE_LABELS[value]}
                 </option>
               ))}
             </select>
           </Field>
-          <Button type="submit" disabled={pending}>
+          <Button
+            data-testid="members-invitation-send"
+            type="submit"
+            disabled={pending}
+          >
             {pending ? "กำลังส่งคำเชิญ…" : "ส่งคำเชิญ"}
           </Button>
         </div>
         {fieldError && (
           <span
+            data-testid="members-invitation-email-error"
             id="invite-email-error"
             role="alert"
             className="text-sm text-danger"

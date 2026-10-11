@@ -36,49 +36,96 @@ export function ResponseTimeTable({
   const hourly = range !== "24h";
   return (
     <div
+      data-testid="monitor-response-table-region"
+      data-range={range}
       role="region"
       aria-label="ข้อมูลกราฟเวลาตอบสนอง"
       tabIndex={0}
       className="max-h-80 overflow-auto rounded-md border border-foreground/10 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
     >
-      <table className="w-full min-w-[480px] text-left text-sm">
-        <caption className="p-3 text-left text-xs text-foreground-secondary">
+      <table
+        data-testid="monitor-response-table"
+        className="w-full min-w-[480px] text-left text-sm"
+      >
+        <caption
+          data-testid="monitor-response-table-caption"
+          className="p-3 text-left text-xs text-foreground-secondary"
+        >
           เวลาตอบสนอง หน่วย ms ช่วง {RANGE_LABELS[range]} แหล่ง ผลการตรวจของ
           NightWatch
         </caption>
         <thead className="surface-inset sticky top-0 text-xs text-foreground-secondary">
           <tr>
-            <th scope="col" className="h-10 px-3 font-medium">
+            <th
+              data-testid="monitor-response-heading-time"
+              scope="col"
+              className="h-10 px-3 font-medium"
+            >
               เวลา ({TIME_ZONE})
             </th>
-            <th scope="col" className="h-10 px-3 text-end font-medium">
+            <th
+              data-testid="monitor-response-heading-average"
+              scope="col"
+              className="h-10 px-3 text-end font-medium"
+            >
               {hourly ? "เฉลี่ย (ms)" : "เวลาตอบสนอง (ms)"}
             </th>
             {hourly ? (
-              <th scope="col" className="h-10 px-3 text-end font-medium">
+              <th
+                data-testid="monitor-response-heading-max"
+                scope="col"
+                className="h-10 px-3 text-end font-medium"
+              >
                 สูงสุด (ms)
               </th>
             ) : null}
-            <th scope="col" className="h-10 px-3 font-medium">
+            <th
+              data-testid="monitor-response-heading-note"
+              scope="col"
+              className="h-10 px-3 font-medium"
+            >
               หมายเหตุ
             </th>
           </tr>
         </thead>
         <tbody>
           {series.map((entry) => (
-            <tr key={entry.key} className="border-t border-foreground/10">
-              <th scope="row" className="px-3 py-2 font-normal">
+            <tr
+              data-testid="monitor-response-record"
+              data-kind={entry.kind}
+              data-at={entry.at}
+              data-end={entry.end}
+              data-checks={entry.checks}
+              data-change-count={entry.changes.length}
+              data-response-checks={entry.responseChecks ?? ""}
+              key={entry.key}
+              className="border-t border-foreground/10"
+            >
+              <th
+                data-testid="monitor-response-cell-time"
+                scope="row"
+                className="px-3 py-2 font-normal"
+              >
                 {entryTime(range, entry)}
               </th>
-              <td className="px-3 py-2 text-end tabular-nums">
+              <td
+                data-testid="monitor-response-cell-average"
+                className="px-3 py-2 text-end tabular-nums"
+              >
                 {entry.avgMs === null ? "–" : formatNumber(entry.avgMs)}
               </td>
               {hourly ? (
-                <td className="px-3 py-2 text-end tabular-nums">
+                <td
+                  data-testid="monitor-response-cell-max"
+                  className="px-3 py-2 text-end tabular-nums"
+                >
                   {entry.maxMs === null ? "–" : formatNumber(entry.maxMs)}
                 </td>
               ) : null}
-              <td className="px-3 py-2 text-foreground-secondary">
+              <td
+                data-testid="monitor-response-cell-note"
+                className="px-3 py-2 text-foreground-secondary"
+              >
                 {note(entry)}
               </td>
             </tr>

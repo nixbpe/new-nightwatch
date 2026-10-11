@@ -47,11 +47,12 @@ export function ForgotPasswordPage() {
     >
       {sent ? (
         <div className="flex flex-col gap-4">
-          <Alert tone="success">
+          <Alert data-testid="forgot-password-success" tone="success">
             หากอีเมลนี้มีบัญชีในระบบ เราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้โดยเร็ว
           </Alert>
           <Link
             to="/login"
+            data-testid="forgot-password-login"
             className="text-center text-sm text-primary underline"
           >
             กลับไปเข้าสู่ระบบ
@@ -67,7 +68,11 @@ export function ForgotPasswordPage() {
           className="flex flex-col gap-4"
           noValidate
         >
-          {error === null ? null : <Alert tone="error">{error}</Alert>}
+          {error === null ? null : (
+            <Alert data-testid="forgot-password-error" tone="error">
+              {error}
+            </Alert>
+          )}
           <form.Field
             name="email"
             validators={{
@@ -84,6 +89,7 @@ export function ForgotPasswordPage() {
             {(field) => (
               <Field label="อีเมล">
                 <Input
+                  data-testid="forgot-password-email"
                   type="email"
                   name="email"
                   autoComplete="email"
@@ -101,6 +107,7 @@ export function ForgotPasswordPage() {
                 />
                 <FieldValidationError
                   id="forgot-password-email-error"
+                  data-testid="forgot-password-email-error"
                   errors={field.state.meta.errors}
                 />
               </Field>
@@ -109,13 +116,21 @@ export function ForgotPasswordPage() {
           <form.Subscribe
             selector={(state) => state.isSubmitting}
             children={(isSubmitting) => (
-              <SubmitButton pending={isSubmitting} pendingLabel="กำลังส่ง…">
+              <SubmitButton
+                data-testid="forgot-password-submit"
+                pending={isSubmitting}
+                pendingLabel="กำลังส่ง…"
+              >
                 ส่งลิงก์ตั้งรหัสผ่านใหม่
               </SubmitButton>
             )}
           />
           <p className="text-center text-sm">
-            <Link to="/login" className="text-primary underline">
+            <Link
+              data-testid="forgot-password-login"
+              to="/login"
+              className="text-primary underline"
+            >
               กลับไปเข้าสู่ระบบ
             </Link>
           </p>

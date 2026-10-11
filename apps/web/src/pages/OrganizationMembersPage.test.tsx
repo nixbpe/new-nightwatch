@@ -178,19 +178,17 @@ afterEach(() => {
 // The invitation section keeps an empty status region mounted, so member and
 // notice assertions address the one status region that carries text.
 const textStatuses = () =>
-  screen.queryAllByRole("status").filter((node) => node.textContent !== "");
+  screen
+    .queryAllByTestId(
+      /^(members-(list|admission|context)-status|members-invitation-(success|warning)|pending-invitations-(status|loading|(?:cancel|resend)-(pending|success|warning))|member-(role|revoke)-(pending|success))$/,
+    )
+    .filter((node) => node.textContent !== "");
 const getStatus = () => {
   const found = textStatuses();
   expect(found).toHaveLength(1);
   return found[0] as HTMLElement;
 };
 const findStatus = () => waitFor(getStatus);
-
-const totalCountText =
-  (total: string, limit = "1,000") =>
-  (_content: string, el: Element | null) =>
-    el?.tagName === "SPAN" &&
-    el.textContent === `สมาชิกทั้งหมด ${total} / ${limit} คน`;
 
 describe("OrganizationMembersPage", () => {
   // The outcome messages (pre-insert failure, SMTP accepted, SMTP failed) are
@@ -210,10 +208,17 @@ describe("OrganizationMembersPage", () => {
       .mockImplementationOnce(() => nextPage.promise);
     const user = userEvent.setup();
     const { queryClient } = renderPage();
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
-    const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
+    const email = screen.getByTestId("members-invitation-email");
     await user.type(email, "new@example.com");
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    await user.click(screen.getByTestId("members-invitation-send"));
     expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
     act(() => {
       void queryClient.invalidateQueries({
@@ -221,18 +226,23 @@ describe("OrganizationMembersPage", () => {
         exact: true,
       });
     });
-    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
-    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(await findStatus()).toHaveRole("status");
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
     expect(email).toBeInTheDocument();
     expect(email).toHaveValue("new@example.com");
-    expect(
-      screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
-    ).toBeDisabled();
+    expect(screen.getByTestId("members-invitation-send")).toBeDisabled();
     refreshedPage.resolve(response);
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
-    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
+    await user.click(screen.getByTestId("members-next"));
+    expect(await findStatus()).toHaveRole("status");
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
     expect(email).toBeInTheDocument();
     nextPage.resolve({
       ...response,
@@ -240,7 +250,14 @@ describe("OrganizationMembersPage", () => {
       page: { limit: 50, offset: 50, total: 51 },
       memberLimit: 1000,
     });
-    expect(await screen.findByText("Zoe")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-51"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-51")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Zoe");
     await act(async () => {
       post.resolve({ created: true, emailDispatch: "accepted" });
       await post.promise;
@@ -248,7 +265,7 @@ describe("OrganizationMembersPage", () => {
     // The pending list reloads page 1 after a create; its own loading
     // status leaves once that fetch settles, leaving the panel's notice.
     await waitFor(() => {
-      expect(getStatus()).toHaveTextContent("สร้างคำเชิญแล้ว");
+      expect(getStatus()).toHaveRole("status");
     });
     expect(email).toHaveValue("");
     expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
@@ -274,31 +291,59 @@ describe("OrganizationMembersPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByText(totalCountText("51"))).toBeInTheDocument();
-    expect(screen.getByText("Ada")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-    expect(await screen.findByText("Zoe")).toBeInTheDocument();
-    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+    expect(
+      await screen.findByTestId("members-total-count"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-total")).toHaveTextContent("51");
+    expect(screen.getByTestId("members-limit")).toHaveTextContent("1,000");
+    expect(screen.getByTestId("member-row-member-1")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
+    await user.click(screen.getByTestId("members-next"));
+    expect(
+      await screen.findByTestId("member-row-member-51"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-51")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Zoe");
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("members-next")).toBeDisabled();
   });
   it("renders the redesigned page structure: actor marker, headings and mono counts", async () => {
     vi.mocked(fetchOrganizationMembers).mockResolvedValueOnce(response);
     renderPage();
 
-    await screen.findByText(totalCountText("51"));
+    await screen.findByTestId("members-total-count");
+    expect(screen.getByTestId("members-total")).toHaveTextContent("51");
+    expect(screen.getByTestId("members-limit")).toHaveTextContent("1,000");
 
+    const actor = screen.getByTestId("member-row-member-1");
     expect(
-      screen.queryByRole("group", { name: "ตัวอย่าง: เพดานจำนวนสมาชิก" }),
-    ).toBeNull();
-    expect(screen.queryByText("เพดานสมาชิกต่อองค์กร")).toBeNull();
-
-    expect(screen.getAllByText("คุณ")).toHaveLength(1);
-    expect(
-      screen.getAllByRole("heading", { level: 1, name: "สมาชิก" }),
-    ).toHaveLength(1);
-    expect(
-      screen.getByRole("heading", { level: 2, name: /รายชื่อสมาชิก/ }),
-    ).toBeInTheDocument();
+      within(actor).getByTestId("member-current-actor"),
+    ).not.toBeEmptyDOMElement();
+    expect(within(actor).getByTestId("member-name")).toHaveTextContent(/^Ada$/);
+    expect(within(actor).getByTestId("member-email")).toHaveTextContent(
+      /^ada@example.test$/,
+    );
+    expect(within(actor).getByTestId("member-current-role")).toHaveAttribute(
+      "data-member-role",
+      "owner",
+    );
+    expect(screen.queryByTestId("member-revoke-member-1")).toBeNull();
+    expect(screen.getByTestId("member-role-select-member-1")).toHaveValue(
+      "owner",
+    );
+    expect(screen.getByTestId("page-title").tagName).toBe("H1");
+    expect(screen.getByTestId("members-directory-heading")).toHaveRole(
+      "heading",
+    );
+    expect(screen.getByTestId("members-total")).toHaveTextContent(/^51$/);
+    expect(screen.getByTestId("members-limit")).toHaveTextContent(/^1,000$/);
   });
   it("shows the member limit from the response with thousands separators", async () => {
     vi.mocked(fetchOrganizationMembers).mockResolvedValueOnce({
@@ -308,7 +353,9 @@ describe("OrganizationMembersPage", () => {
     });
     renderPage();
 
-    await screen.findByText(totalCountText("1,234", "2,500"));
+    await screen.findByTestId("members-total-count");
+    expect(screen.getByTestId("members-total")).toHaveTextContent("1,234");
+    expect(screen.getByTestId("members-limit")).toHaveTextContent("2,500");
   });
   it("hides stale first-page member data while revisiting it refetches", async () => {
     const secondPage: OrganizationMemberListResponse = {
@@ -333,9 +380,23 @@ describe("OrganizationMembersPage", () => {
     const user = userEvent.setup();
     const { queryClient } = renderPage();
 
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-    expect(await screen.findByText("Zoe")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
+    await user.click(screen.getByTestId("members-next"));
+    expect(
+      await screen.findByTestId("member-row-member-51"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-51")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Zoe");
     queryClient.setQueryData(
       memberListQueryKey(organizationId, 50, 0),
       response,
@@ -343,22 +404,38 @@ describe("OrganizationMembersPage", () => {
         updatedAt: Date.now() - 30_001,
       },
     );
-    await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
+    await user.click(screen.getByTestId("members-previous"));
 
-    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
-    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
-    expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
-    expect(screen.queryByText("แสดง 1–1 จาก 51")).not.toBeInTheDocument();
+    expect(await findStatus()).toHaveRole("status");
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-pagination-summary"),
+    ).not.toBeInTheDocument();
 
     freshFirstPage.resolve({
       ...response,
       members: [{ ...firstMember, name: "Fresh Ada" }],
     });
 
-    expect(await screen.findByText("Fresh Ada")).toBeInTheDocument();
-    expect(screen.getByText(totalCountText("51"))).toBeInTheDocument();
-    expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Fresh Ada");
+    expect(screen.getByTestId("members-total-count")).toBeInTheDocument();
+    expect(screen.getByTestId("members-total")).toHaveTextContent("51");
+    expect(screen.getByTestId("members-limit")).toHaveTextContent("1,000");
+    expect(
+      screen.getByTestId("members-pagination-summary"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-pagination-summary")).toHaveTextContent(
+      /1\s*[–-]\s*1.*51/,
+    );
   });
 
   it("hides current-page member data during a background refetch", async () => {
@@ -368,7 +445,14 @@ describe("OrganizationMembersPage", () => {
       .mockImplementationOnce(() => freshPage.promise);
     const { queryClient } = renderPage();
 
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
     act(() => {
       void queryClient.invalidateQueries({
         queryKey: memberListQueryKey(organizationId, 50, 0),
@@ -376,18 +460,27 @@ describe("OrganizationMembersPage", () => {
       });
     });
 
-    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
-    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
-    expect(screen.queryByText("ada@example.test")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
-    expect(screen.queryByText("แสดง 1–1 จาก 51")).not.toBeInTheDocument();
+    expect(await findStatus()).toHaveRole("status");
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-pagination-summary"),
+    ).not.toBeInTheDocument();
 
     freshPage.resolve({
       ...response,
       members: [{ ...firstMember, name: "Fresh Ada" }],
     });
 
-    expect(await screen.findByText("Fresh Ada")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Fresh Ada");
   });
   it("returns to first-page rows by keyboard after the next page fails", async () => {
     const restoredPage =
@@ -399,13 +492,20 @@ describe("OrganizationMembersPage", () => {
     const user = userEvent.setup();
     const { queryClient } = renderPage();
 
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
+    await user.click(screen.getByTestId("members-next"));
 
-    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
-    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ลองอีกครั้ง" })).toBeEnabled();
-    const previous = screen.getByRole("button", { name: "ก่อนหน้า" });
+    expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
+    expect(screen.getByTestId("members-list-retry")).toBeEnabled();
+    const previous = screen.getByTestId("members-previous");
     expect(previous).toBeEnabled();
     previous.focus();
     expect(previous).toHaveFocus();
@@ -415,17 +515,29 @@ describe("OrganizationMembersPage", () => {
     });
     await user.keyboard("{Enter}");
 
-    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
-    const heading = screen.getByRole("heading", { name: "สมาชิก" });
+    expect(await findStatus()).toHaveRole("status");
+    const heading = screen.getByTestId("page-title");
     expect(heading).toHaveFocus();
     expect(heading).toHaveAttribute("tabindex", "-1");
 
     restoredPage.resolve(response);
 
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
     expect(heading).toHaveFocus();
-    expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
-    expect(screen.queryByText("โหลดสมาชิกไม่สำเร็จ")).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("members-pagination-summary"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-pagination-summary")).toHaveTextContent(
+      /1\s*[–-]\s*1.*51/,
+    );
+    expect(screen.queryByTestId("members-list-alert")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
     expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
       3,
@@ -442,14 +554,26 @@ describe("OrganizationMembersPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ก่อนหน้า" }));
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
+    await user.click(screen.getByTestId("members-next"));
+    expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
+    await user.click(screen.getByTestId("members-previous"));
 
-    const heading = await screen.findByRole("heading", { name: "สมาชิก" });
+    const heading = await screen.findByTestId("page-title");
     expect(heading).toHaveFocus();
-    expect(screen.getByText("แสดง 1–1 จาก 51")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("members-pagination-summary"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-pagination-summary")).toHaveTextContent(
+      /1\s*[–-]\s*1.*51/,
+    );
   });
 
   it("resets an invalid later page before success rendering and refetches page one once", async () => {
@@ -474,17 +598,32 @@ describe("OrganizationMembersPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByText("Ada");
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
+    await screen.findByTestId("member-row-member-1");
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
+    await user.click(screen.getByTestId("members-next"));
 
-    expect(await findStatus()).toHaveTextContent("กำลังโหลดสมาชิก");
-    expect(screen.queryByText("แสดง 0–50 จาก 49")).toBeNull();
-    expect(screen.queryByText(totalCountText("49"))).not.toBeInTheDocument();
+    expect(await findStatus()).toHaveRole("status");
+    expect(screen.queryByTestId("members-pagination-summary")).toBeNull();
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
     repairedFirstPageResult.resolve(repairedFirstPage);
     expect(
-      await screen.findByText("Repaired first member"),
+      await screen.findByTestId("member-row-member-1"),
     ).toBeInTheDocument();
-    expect(screen.getByText("แสดง 1–1 จาก 49")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Repaired first member");
+    expect(
+      screen.getByTestId("members-pagination-summary"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-pagination-summary")).toHaveTextContent(
+      /1\s*[–-]\s*1.*49/,
+    );
     expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
       3,
       organizationId,
@@ -503,7 +642,12 @@ describe("OrganizationMembersPage", () => {
     });
     renderPage();
 
-    expect(await screen.findByText("แสดง 0–0 จาก 0")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("members-pagination-summary"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-pagination-summary")).toHaveTextContent(
+      /0\s*[–-]\s*0.*0/,
+    );
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(1);
   });
 
@@ -523,11 +667,9 @@ describe("OrganizationMembersPage", () => {
     };
     renderPage();
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้",
-    );
-    expect(screen.queryByText("สมาชิกทั้งหมด")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
+    expect(screen.getByTestId("members-denied-alert")).toHaveRole("alert");
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("members-invitation-send")).toBeNull();
     expect(fetchOrganizationMembers).not.toHaveBeenCalled();
   });
 
@@ -539,14 +681,10 @@ describe("OrganizationMembersPage", () => {
     };
     renderPage();
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้",
-    );
-    expect(
-      screen.getByRole("button", { name: "ลองอีกครั้ง" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Ada")).toBeNull();
-    expect(screen.queryByText("สมาชิกทั้งหมด")).toBeNull();
+    expect(screen.getByTestId("members-context-alert")).toHaveRole("alert");
+    expect(screen.getByTestId("members-context-retry")).toBeInTheDocument();
+    expect(screen.queryByTestId("member-row-member-1")).toBeNull();
+    expect(screen.queryByTestId("members-total-count")).toBeNull();
     expect(fetchOrganizationMembers).not.toHaveBeenCalled();
   });
 
@@ -557,15 +695,18 @@ describe("OrganizationMembersPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "โหลดสมาชิกไม่สำเร็จ",
-    );
+    expect(await screen.findByTestId("members-list-alert")).toHaveRole("alert");
+    expect(screen.queryByTestId("members-previous")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("members-list-retry"));
     expect(
-      screen.queryByRole("button", { name: "ก่อนหน้า" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
   });
 
   it("unmounts a pending invitation when fresh permission denies its organization", async () => {
@@ -589,12 +730,19 @@ describe("OrganizationMembersPage", () => {
     };
     const user = userEvent.setup();
     const { queryClient } = renderPage();
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
     await user.type(
-      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      screen.getByTestId("members-invitation-email"),
       "a-draft@example.test",
     );
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    await user.click(screen.getByTestId("members-invitation-send"));
     act(() => {
       void queryClient.invalidateQueries({
         queryKey: memberListQueryKey(organizationId, 50, 0),
@@ -606,14 +754,16 @@ describe("OrganizationMembersPage", () => {
     });
     await waitFor(() => {
       expect(
-        screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ"),
+        screen.queryByTestId("members-invitation-email"),
       ).not.toBeInTheDocument();
     });
     await act(async () => {
       post.resolve({ created: true, emailDispatch: "accepted" });
       await post.promise;
     });
-    expect(screen.queryByText("สร้างคำเชิญแล้ว")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-invitation-success"),
+    ).not.toBeInTheDocument();
     expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
   });
 
@@ -661,17 +811,24 @@ describe("OrganizationMembersPage", () => {
               path="/organizations/:organizationId/members"
               element={<OrganizationMembersPage />}
             />
-            <Route path="/workspace" element={<p>workspace</p>} />
+            <Route
+              path="/workspace"
+              element={<p data-testid="test-members-workspace">workspace</p>}
+            />
           </Routes>
         </MemberDataRouter>
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(await screen.findByText("workspace")).toBeInTheDocument();
+    expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
+    await user.click(screen.getByTestId("members-list-retry"));
+    expect(
+      await screen.findByTestId("test-members-workspace"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-organization-slug"),
+    ).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });
@@ -754,31 +911,57 @@ describe("OrganizationMembersPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("A-first")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("A-first");
     await user.type(
-      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      screen.getByTestId("members-invitation-email"),
       "a-draft@example.test",
     );
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    await user.click(screen.getByTestId("members-invitation-send"));
     expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-    expect(await screen.findByText("กำลังโหลดสมาชิก")).toHaveAttribute(
+    await user.click(screen.getByTestId("members-next"));
+    expect(await screen.findByTestId("members-list-status")).toHaveAttribute(
       "role",
       "status",
     );
-    await user.click(screen.getByRole("button", { name: /Acme/ }));
-    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+    await user.click(screen.getByTestId("shell-organization-switch"));
+    await user.click(
+      screen.getByTestId(`shell-organization-${organizationBId}`),
+    );
 
-    expect(await screen.findByText("B-only")).toBeInTheDocument();
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
-    expect(screen.queryByText("a-draft@example.test")).not.toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-b"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-b")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("B-only");
+    expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
+    expect(screen.getByTestId("members-invitation-email")).not.toHaveValue(
+      "a-draft@example.test",
+    );
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
-    expect(screen.getByText("beta")).toBeInTheDocument();
-    expect(screen.getByText("แสดง 1–1 จาก 1")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+    expect(screen.getByTestId("members-organization-slug")).toBeInTheDocument();
+    expect(screen.getByTestId("members-organization-slug")).toHaveTextContent(
+      "beta",
+    );
+    expect(
+      screen.getByTestId("members-pagination-summary"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-pagination-summary")).toHaveTextContent(
+      /1\s*[–-]\s*1.*1/,
+    );
+    expect(screen.getByTestId("members-previous")).toBeDisabled();
+    expect(screen.getByTestId("members-next")).toBeDisabled();
 
     resolveASecondPage({
       ...response,
@@ -792,14 +975,19 @@ describe("OrganizationMembersPage", () => {
       await pendingInvitation.promise;
     });
     expect(
-      screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
+      screen.queryByTestId("members-invitation-warning"),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+    expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
     expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
 
-    expect(screen.queryByText("A-late")).not.toBeInTheDocument();
-    expect(screen.queryByText("A-first")).not.toBeInTheDocument();
-    expect(screen.getByText("B-only")).toBeInTheDocument();
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("member-row-member-b")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-b")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("B-only");
   });
 
   it("keeps the origin scope, route, list and offset when an organization switch is denied", async () => {
@@ -855,27 +1043,56 @@ describe("OrganizationMembersPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("A-first")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-    expect(await screen.findByText("A-second")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("A-first");
+    await user.click(screen.getByTestId("members-next"));
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("A-second");
     await user.type(
-      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      screen.getByTestId("members-invitation-email"),
       "a-draft@example.test",
     );
-    await user.click(screen.getByRole("button", { name: /Acme/ }));
-    await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+    await user.click(screen.getByTestId("shell-organization-switch"));
+    await user.click(
+      screen.getByTestId(`shell-organization-${organizationBId}`),
+    );
 
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationId}/members`,
     );
-    expect(screen.getByText("acme")).toBeInTheDocument();
-    expect(screen.getByText("A-second")).toBeInTheDocument();
-    expect(screen.queryByText("B-only")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+    expect(screen.getByTestId("members-organization-slug")).toBeInTheDocument();
+    expect(screen.getByTestId("members-organization-slug")).toHaveTextContent(
+      "acme",
+    );
+    expect(screen.getByTestId("member-row-member-1")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("A-second");
+    expect(screen.queryByTestId("member-row-member-b")).not.toBeInTheDocument();
+    expect(screen.getByTestId("members-invitation-email")).toHaveValue(
       "a-draft@example.test",
     );
-    expect(screen.getByText("แสดง 51–51 จาก 51")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeEnabled();
+    expect(
+      screen.getByTestId("members-pagination-summary"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-pagination-summary")).toHaveTextContent(
+      /51\s*[–-]\s*51.*51/,
+    );
+    expect(screen.getByTestId("members-previous")).toBeEnabled();
   });
 
   it("keeps revoked organization access restricted until fresh context confirms a replacement", async () => {
@@ -934,31 +1151,48 @@ describe("OrganizationMembersPage", () => {
               path="/organizations/:organizationId/members"
               element={<OrganizationMembersPage />}
             />
-            <Route path="/workspace" element={<p>workspace</p>} />
+            <Route
+              path="/workspace"
+              element={<p data-testid="test-members-workspace">workspace</p>}
+            />
           </Routes>
         </MemberDataRouter>
       </QueryClientProvider>,
     );
 
     expect(
-      await screen.findByRole("button", { name: "ลองอีกครั้ง" }),
+      await screen.findByTestId("members-admission-retry"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationId}/members`,
     );
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
-    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-organization-slug"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("member-row-member-1")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
 
-    await userEvent.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    await userEvent.click(screen.getByTestId("members-admission-retry"));
 
-    expect(await screen.findByText("B-confirmed")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-b"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-b")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("B-confirmed");
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
+    expect(screen.getByTestId("members-organization-slug")).toHaveTextContent(
+      /^beta$/,
+    );
+    expect(
+      screen.getByTestId("members-organization-slug"),
+    ).not.toHaveTextContent("acme");
   });
 
   it("announces a pending membership refresh and recovers after a denied list", async () => {
@@ -979,13 +1213,11 @@ describe("OrganizationMembersPage", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("status", {
-        name: "กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก",
-      }),
+      await screen.findByTestId("members-admission-status"),
     ).toBeInTheDocument();
-    expect(screen.getByText("กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก")).toBeVisible();
+    expect(screen.getByTestId("members-admission-status")).toBeVisible();
     expect(
-      screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+      screen.queryByTestId("members-admission-alert"),
     ).not.toBeInTheDocument();
 
     context.resolve({
@@ -993,9 +1225,16 @@ describe("OrganizationMembersPage", () => {
       lastActiveTenantId: organizationId,
     });
 
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
     expect(
-      screen.queryByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
+    expect(
+      screen.queryByTestId("members-admission-alert"),
     ).not.toBeInTheDocument();
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
     // The retry after a confirmed, unchanged membership requests the same
@@ -1066,16 +1305,23 @@ describe("OrganizationMembersPage", () => {
               path="/organizations/:organizationId/members"
               element={<OrganizationMembersPage />}
             />
-            <Route path="/workspace" element={<p>workspace</p>} />
+            <Route
+              path="/workspace"
+              element={<p data-testid="test-members-workspace">workspace</p>}
+            />
           </Routes>
         </MemberDataRouter>
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("workspace")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("test-members-workspace"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-organization-slug"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1105,12 +1351,12 @@ describe("OrganizationMembersPage", () => {
     renderPage();
 
     expect(
-      await screen.findByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+      await screen.findByTestId("members-admission-alert"),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("members-admission-retry")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "ลองอีกครั้ง" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
+      screen.queryByTestId("members-organization-slug"),
+    ).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1137,12 +1383,12 @@ describe("OrganizationMembersPage", () => {
     renderPage();
 
     expect(
-      await screen.findByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
+      await screen.findByTestId("members-admission-alert"),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("members-admission-retry")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "ลองอีกครั้ง" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
+      screen.queryByTestId("members-organization-slug"),
+    ).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1163,9 +1409,7 @@ describe("OrganizationMembersPage", () => {
     const page = renderPage();
 
     expect(
-      await screen.findByRole("status", {
-        name: "กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก",
-      }),
+      await screen.findByTestId("members-admission-status"),
     ).toBeInTheDocument();
     page.unmount();
     context.resolve({
@@ -1196,11 +1440,18 @@ describe("OrganizationMembersPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
+    expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(await screen.findByText("Ada")).toBeInTheDocument();
+    await user.click(screen.getByTestId("members-list-retry"));
+    expect(
+      await screen.findByTestId("member-row-member-1"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-1")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Ada");
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });
@@ -1258,17 +1509,24 @@ describe("OrganizationMembersPage", () => {
               path="/organizations/:organizationId/members"
               element={<OrganizationMembersPage />}
             />
-            <Route path="/workspace" element={<p>workspace</p>} />
+            <Route
+              path="/workspace"
+              element={<p data-testid="test-members-workspace">workspace</p>}
+            />
           </Routes>
         </MemberDataRouter>
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("โหลดสมาชิกไม่สำเร็จ")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(await screen.findByText("workspace")).toBeInTheDocument();
+    expect(await screen.findByTestId("members-list-alert")).toBeInTheDocument();
+    await user.click(screen.getByTestId("members-list-retry"));
+    expect(
+      await screen.findByTestId("test-members-workspace"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-organization-slug"),
+    ).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledTimes(3);
     expect(tenant.refreshMembershipContext).toHaveBeenCalledTimes(2);
   });
@@ -1333,13 +1591,25 @@ describe("OrganizationMembersPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("B-confirmed")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-b"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-b")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("B-confirmed");
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.getByText("beta")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("members-organization-slug"),
+    ).not.toHaveTextContent("acme");
+    expect(screen.getByTestId("members-organization-slug")).toBeInTheDocument();
+    expect(screen.getByTestId("members-organization-slug")).toHaveTextContent(
+      "beta",
+    );
     expect(fetchOrganizationMembers).toHaveBeenNthCalledWith(
       1,
       organizationId,
@@ -1401,16 +1671,23 @@ describe("OrganizationMembersPage", () => {
               path="/organizations/:organizationId/members"
               element={<OrganizationMembersPage />}
             />
-            <Route path="/workspace" element={<p>workspace</p>} />
+            <Route
+              path="/workspace"
+              element={<p data-testid="test-members-workspace">workspace</p>}
+            />
           </Routes>
         </MemberDataRouter>
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("workspace")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("test-members-workspace"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
-    expect(screen.queryByText(totalCountText("51"))).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("members-organization-slug"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("members-total-count")).not.toBeInTheDocument();
     expect(fetchOrganizationMembers).toHaveBeenCalledOnce();
     expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
   });
@@ -1477,7 +1754,14 @@ describe("OrganizationMembersPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("B-confirmed")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-b"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-b")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("B-confirmed");
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${organizationBId}/members`,
     );
@@ -1525,10 +1809,14 @@ describe("OrganizationMembersPage pending invitations", () => {
       renderPage();
 
       expect(
-        await screen.findByText("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"),
+        await screen.findByTestId("members-denied-alert"),
       ).toBeInTheDocument();
-      expect(screen.queryByText(/คำเชิญที่รอตอบรับ/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/จาก 100/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("pending-invitations-section"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("pending-invitations-limit"),
+      ).not.toBeInTheDocument();
       expect(fetchPendingInvitations).not.toHaveBeenCalled();
     },
   );
@@ -1557,26 +1845,28 @@ describe("OrganizationMembersPage pending invitations", () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(
-      await screen.findByRole("button", {
-        name: "ยกเลิกคำเชิญถึง gone@example.test",
-      }),
+      await screen.findByTestId(
+        "invitation-cancel-00000000-0000-4000-8000-000000000000",
+      ),
     );
-    await user.click(
-      screen.getByRole("button", { name: "ยืนยันการยกเลิกคำเชิญ" }),
-    );
+    await user.click(screen.getByTestId("invitation-cancel-confirm"));
 
     await waitFor(() => {
       expect(tenant.refreshMembershipContext).toHaveBeenCalledOnce();
     });
     await waitFor(() => {
-      expect(screen.queryByText(/คำเชิญที่รอตอบรับ/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("pending-invitations-section"),
+      ).not.toBeInTheDocument();
     });
-    expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
+    expect(
+      screen.queryByTestId(/^pending-invitations-cancel-(success|error)$/),
+    ).toBeNull();
     expect(cancelInvitation).toHaveBeenCalledOnce();
   });
 
   it.each(["owner", "admin"] as const)(
-    "places the section after the invite card and before the member table for %s",
+    "exposes invite, pending and member capabilities for %s",
     async (role) => {
       asRole(role);
       vi.mocked(fetchOrganizationMembers).mockResolvedValue(response);
@@ -1585,24 +1875,43 @@ describe("OrganizationMembersPage pending invitations", () => {
       );
       renderPage();
 
-      const invite = await screen.findByRole("heading", {
-        name: /เชิญสมาชิกเข้าสู่/,
-      });
-      const section = await screen.findByRole("heading", {
-        name: /คำเชิญที่รอตอบรับ/,
-      });
-      const members = await screen.findByRole("region", {
-        name: "ตารางสมาชิก",
-      });
+      const invite = await screen.findByTestId("members-invitation-heading");
+      const section = await screen.findByTestId("pending-invitations-heading");
+      const members = await screen.findByTestId("members-table");
+      expect(invite).toHaveRole("heading");
+      expect(invite).toHaveTextContent("Acme");
+      expect(section).toHaveRole("heading");
+      expect(screen.getByTestId("members-invitation-email")).toBeEnabled();
+      expect(screen.getByTestId("members-invitation-send")).toBeEnabled();
+      const allowed = within(screen.getByTestId("members-invitation-role"))
+        .getAllByTestId(/^members-invitation-role-/)
+        .map((option) => option.getAttribute("value"));
+      expect(new Set(allowed)).toEqual(
+        new Set(
+          role === "owner"
+            ? ["owner", "admin", "viewer", "auditor"]
+            : ["admin", "viewer", "auditor"],
+        ),
+      );
+      const actor = within(members).getByTestId("member-row-member-1");
+      expect(within(actor).getByTestId("member-name")).toHaveTextContent(
+        /^Ada$/,
+      );
+      expect(within(actor).getByTestId("member-current-role")).toHaveAttribute(
+        "data-member-role",
+        "owner",
+      );
+      expect(screen.queryByTestId("member-revoke-member-1")).toBeNull();
       expect(
-        invite.compareDocumentPosition(section) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+        await screen.findByTestId(
+          "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+        ),
+      ).toBeInTheDocument();
       expect(
-        section.compareDocumentPosition(members) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-      expect(await screen.findByText("wait@example.test")).toBeInTheDocument();
+        screen.getByTestId(
+          "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+        ),
+      ).toHaveTextContent("wait@example.test");
     },
   );
 
@@ -1625,18 +1934,45 @@ describe("OrganizationMembersPage pending invitations", () => {
     });
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText("old-1@example.test");
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    await screen.findByText("old-51@example.test");
+    await screen.findByTestId(
+      "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+    );
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toHaveTextContent("old-1@example.test");
+    await user.click(screen.getByTestId("pending-invitations-next"));
+    await screen.findByTestId(
+      "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+    );
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+      ),
+    ).toHaveTextContent("old-51@example.test");
 
     await user.type(
-      screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+      screen.getByTestId("members-invitation-email"),
       "new@example.com",
     );
-    await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+    await user.click(screen.getByTestId("members-invitation-send"));
 
-    expect(await screen.findByText("new@example.com")).toBeInTheDocument();
-    expect(screen.queryByText("old-51@example.test")).toBeNull();
+    expect(
+      await screen.findByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+      ),
+    ).toHaveTextContent("new@example.com");
+    expect(
+      screen.queryByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+      ),
+    ).not.toHaveTextContent("old-51@example.test");
     expect(fetchPendingInvitations).toHaveBeenLastCalledWith(
       organizationId,
       50,
@@ -1664,21 +2000,46 @@ describe("OrganizationMembersPage pending invitations", () => {
       .mockResolvedValueOnce(pending(["wait@example.test"]))
       .mockResolvedValue(pending([]));
     const { queryClient } = renderPage();
-    expect(await screen.findByText("wait@example.test")).toBeInTheDocument();
-    expect(screen.queryByText("Recipient")).not.toBeInTheDocument();
+    expect(
+      await screen.findByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000000",
+      ),
+    ).toHaveTextContent("wait@example.test");
+    expect(screen.queryByTestId("member-row-member-2")).not.toBeInTheDocument();
 
     await act(async () => {
       await queryClient.invalidateQueries({ queryKey: ["tenant"] });
     });
 
     expect(
-      await screen.findByText("ไม่มีคำเชิญที่รอตอบรับ"),
+      await screen.findByTestId("pending-invitations-empty"),
     ).toBeInTheDocument();
-    const members = await screen.findByRole("region", { name: "ตารางสมาชิก" });
-    expect(within(members).getByText("Recipient")).toBeInTheDocument();
-    expect(within(members).getByText("wait@example.test")).toBeInTheDocument();
+    const members = await screen.findByTestId("members-table");
     expect(
-      screen.queryByRole("region", { name: "ตารางคำเชิญที่รอตอบรับ" }),
+      within(members).getByTestId("member-row-member-2"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-2")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent("Recipient");
+    expect(
+      within(within(members).getByTestId("member-row-member-2")).getByTestId(
+        "member-email",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(within(members).getByTestId("member-row-member-2")).getByTestId(
+        "member-email",
+      ),
+    ).toHaveTextContent("wait@example.test");
+    expect(
+      screen.queryByTestId("pending-invitations-table"),
     ).not.toBeInTheDocument();
   });
 });

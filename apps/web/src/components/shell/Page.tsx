@@ -69,7 +69,13 @@ export function PageHeader({
   titleRef,
   titleTabIndex,
   titleClassName,
+  titleTestId = "page-title",
+  scopeTestId = "page-scope",
+  descriptionTestId,
 }: {
+  titleTestId?: string;
+  scopeTestId?: string;
+  descriptionTestId?: string;
   /** Latin route code only; rendered outside the h1 so the heading name stays the title. */
   eyebrow?: string;
   scope?: PageScope;
@@ -82,16 +88,21 @@ export function PageHeader({
   titleClassName?: string;
 }) {
   return (
-    <header className="flex flex-wrap items-end justify-between gap-4 pb-2">
+    <header
+      data-testid="page-header"
+      className="flex flex-wrap items-end justify-between gap-4 pb-2"
+    >
       <div className="min-w-0">
         {scope === undefined ? null : (
           <p className="flex min-w-0 items-center gap-2 text-[13px] text-foreground-secondary">
             {scope.mark === undefined ? null : (
               <ScopeMark name={scope.mark} shape={scope.markShape ?? "org"} />
             )}
-            <span className="truncate">{scope.label}</span>
+            <span data-testid={scopeTestId} className="truncate">
+              {scope.label}
+            </span>
             {scope.tag === undefined ? null : (
-              <StatusPill>{scope.tag}</StatusPill>
+              <StatusPill data-testid="page-scope-tag">{scope.tag}</StatusPill>
             )}
           </p>
         )}
@@ -106,6 +117,7 @@ export function PageHeader({
           </p>
         )}
         <h1
+          data-testid={titleTestId}
           className={cn(
             "mt-2.5 text-[28px] leading-9 font-semibold text-heading",
             titleTabIndex !== undefined &&
@@ -123,7 +135,10 @@ export function PageHeader({
           </p>
         )}
         {description === undefined ? null : (
-          <p className="mt-2 text-sm text-foreground-secondary">
+          <p
+            data-testid={descriptionTestId}
+            className="mt-2 text-sm text-foreground-secondary"
+          >
             {description}
           </p>
         )}

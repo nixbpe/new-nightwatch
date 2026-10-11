@@ -58,9 +58,15 @@ export function SecretsSection({
   }
 
   return (
-    <Card as="section" aria-labelledby="monitor-form-auth" padding="md">
+    <Card
+      data-testid="monitor-form-auth"
+      as="section"
+      aria-labelledby="monitor-form-auth"
+      padding="md"
+    >
       <SectionHeader id="monitor-form-auth" code="03" title="การยืนยันตัวตน" />
       <SelectControl
+        data-testid="monitor-form-auth-type"
         path="auth.type"
         label="ชนิด"
         value={auth.type}
@@ -81,11 +87,17 @@ export function SecretsSection({
         ))}
       </SelectControl>
       {/* In the DOM from the first render so the note is announced when it appears. */}
-      <p role="status" className="text-sm text-caution">
+      <p
+        data-testid="monitor-auth-secret-dropped"
+        data-dropped={dropped}
+        role="status"
+        className="text-sm text-caution"
+      >
         {dropped ? AUTH_DROPPED_NOTE : null}
       </p>
       {auth.type === "apiKey" ? (
         <TextControl
+          data-testid="monitor-form-auth-header-name"
           path="auth.headerName"
           label="ชื่อ header ของ API key"
           spellCheck={false}
@@ -103,7 +115,11 @@ export function SecretsSection({
         />
       ) : null}
       {conflict === undefined ? null : (
-        <p className="text-sm text-caution">
+        <p
+          data-testid="monitor-auth-header-conflict"
+          data-header-name={conflict.name}
+          className="text-sm text-caution"
+        >
           header {conflict.name} ในส่วนคำขอชนกับการยืนยันตัวตน
           ใช้ชื่อเดียวกันไม่ได้
         </p>
@@ -140,6 +156,7 @@ export function SecretsSection({
       {storedInUse ? (
         <div>
           <Button
+            data-testid="monitor-auth-secret-remove"
             type="button"
             variant="ghost"
             size="sm"

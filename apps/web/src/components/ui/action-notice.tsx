@@ -17,7 +17,9 @@ function ActionNotice({
   live = true,
   ref,
   className,
+  "data-testid": testId,
 }: {
+  "data-testid"?: string;
   children: ReactNode;
   actions?: ReactNode;
   /** Renders the close button, named "ปิดข้อความ". */
@@ -36,6 +38,7 @@ function ActionNotice({
   return (
     <div
       ref={ref}
+      data-testid={testId}
       tabIndex={focusable ? -1 : undefined}
       data-slot="action-notice"
       className={cn(
@@ -44,6 +47,7 @@ function ActionNotice({
       )}
     >
       <p
+        data-testid="action-notice-message"
         role={live ? "status" : undefined}
         className="inline-flex items-center gap-1.5 text-foreground-secondary"
       >
@@ -56,6 +60,7 @@ function ActionNotice({
       {actions}
       {onClose === undefined ? null : (
         <Button
+          data-testid="action-notice-close"
           type="button"
           size="sm"
           variant="ghost"

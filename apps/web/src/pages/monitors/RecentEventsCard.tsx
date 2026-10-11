@@ -50,7 +50,15 @@ function EventRow({
       ? null
       : sslDaysText(event.sslLevel, event.daysRemaining ?? null);
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-foreground/10 px-4 py-3 text-sm last:border-b-0">
+    <li
+      data-testid="monitor-overview-event"
+      data-event-kind={event.kind}
+      data-reason={event.reason ?? ""}
+      data-ssl-level={event.sslLevel ?? ""}
+      data-days-remaining={event.daysRemaining ?? ""}
+      data-duration-seconds={event.durationSeconds ?? ""}
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-foreground/10 px-4 py-3 text-sm last:border-b-0"
+    >
       {event.kind === "ssl_level" ? (
         <StatusPill tone={sslTitle?.tone ?? "neutral"} neutralLabel>
           {sslTitle?.text ?? "SSL"}
@@ -61,15 +69,24 @@ function EventRow({
         </StatusPill>
       )}
       <Link
+        data-testid="monitor-overview-event-monitor"
         to={`/organizations/${organizationId}/monitors/${event.monitorId}`}
         className="font-medium text-primary underline-offset-4 hover:underline"
       >
         {event.monitorName}
       </Link>
-      <span className="text-foreground-secondary">
+      <span
+        data-testid="monitor-overview-event-description"
+        className="text-foreground-secondary"
+      >
         {event.kind === "incident_opened" ? (
           <>
-            เริ่มล่ม <Time iso={event.at} format={formatDateTime} />
+            เริ่มล่ม{" "}
+            <Time
+              testId="monitor-overview-event-time"
+              iso={event.at}
+              format={formatDateTime}
+            />
             {event.reason === null
               ? null
               : ` สาเหตุ ${incidentReasonLabel(event.reason)}`}
@@ -79,7 +96,11 @@ function EventRow({
         {event.kind === "incident_closed" ? (
           <>
             ล่ม {formatDuration(event.durationSeconds ?? 0)} สิ้นสุด{" "}
-            <Time iso={event.at} format={formatDateTime} />
+            <Time
+              testId="monitor-overview-event-time"
+              iso={event.at}
+              format={formatDateTime}
+            />
             {event.reason === null
               ? null
               : ` (${incidentReasonLabel(event.reason)})`}
@@ -89,7 +110,11 @@ function EventRow({
         {event.kind === "ssl_level" ? (
           <>
             {days === null ? null : `${days} `}ตั้งแต่{" "}
-            <Time iso={event.at} format={formatDateTime} />
+            <Time
+              testId="monitor-overview-event-time"
+              iso={event.at}
+              format={formatDateTime}
+            />
           </>
         ) : null}
       </span>
@@ -112,7 +137,10 @@ export function RecentEventsCard({
   if (events.data !== undefined) {
     body =
       events.data.events.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-foreground-secondary">
+        <p
+          data-testid="monitor-overview-events-empty"
+          className="px-4 py-6 text-sm text-foreground-secondary"
+        >
           ไม่มีเหตุการณ์ล่มหรือ SSL เตือนในช่วงที่เก็บข้อมูล
         </p>
       ) : (
@@ -129,8 +157,11 @@ export function RecentEventsCard({
   } else if (events.isError) {
     body = (
       <div className="flex flex-col items-start gap-3 p-4">
-        <Alert tone="error">โหลดเหตุการณ์ล่าสุดไม่สำเร็จ</Alert>
+        <Alert data-testid="monitor-overview-events-error" tone="error">
+          โหลดเหตุการณ์ล่าสุดไม่สำเร็จ
+        </Alert>
         <Button
+          data-testid="monitor-overview-events-retry"
           type="button"
           variant="secondary"
           size="sm"
@@ -152,7 +183,11 @@ export function RecentEventsCard({
     );
   }
   return (
-    <Card as="section" aria-labelledby="recent-events-title">
+    <Card
+      data-testid="monitor-overview-events"
+      as="section"
+      aria-labelledby="recent-events-title"
+    >
       <CardHeader
         id="recent-events-title"
         title="เหตุการณ์ล่าสุด"

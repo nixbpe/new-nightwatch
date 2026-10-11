@@ -18,7 +18,12 @@ export function SecurityPage() {
 
   if (meQuery.isPending) {
     return (
-      <Card role="status" aria-label="กำลังโหลดข้อมูลความปลอดภัย" padding="md">
+      <Card
+        data-testid="security-loading"
+        role="status"
+        aria-label="กำลังโหลดข้อมูลความปลอดภัย"
+        padding="md"
+      >
         <Skeleton className="h-4 w-48" />
         <Skeleton className="h-3 w-full max-w-lg" />
         <Skeleton className="h-16 w-full" />
@@ -29,13 +34,14 @@ export function SecurityPage() {
   if (meQuery.isError) {
     return (
       <div className="flex flex-col gap-4">
-        <Alert tone="error">
+        <Alert data-testid="security-load-error" tone="error">
           ไม่สามารถตรวจสอบสถานะยืนยันสองขั้นตอนได้ กรุณาลองใหม่อีกครั้ง
         </Alert>
         <div>
           <Button
             type="button"
             variant="secondary"
+            data-testid="security-load-retry"
             disabled={meQuery.isRefetching}
             onClick={() => {
               void meQuery.refetch();

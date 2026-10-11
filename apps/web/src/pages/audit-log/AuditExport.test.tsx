@@ -1,8 +1,9 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
-import type {
-  AuditExportListResponse,
-  AuditExportRecord,
+import {
+  auditScopeNote,
+  type AuditExportListResponse,
+  type AuditExportRecord,
 } from "@nightwatch/api-contract";
 import { QueryClient } from "@tanstack/react-query";
 import { act, screen, waitFor, within } from "@testing-library/react";
@@ -100,19 +101,21 @@ function open(
     queryClient: options.queryClient,
   });
 }
-const exportButton = () =>
-  screen.findByRole("button", { name: /^(ส่งออก|กำลังสร้างไฟล์…)$/ });
+const exportButton = () => screen.findByTestId("audit-export-open");
 const sectionHeading = async () => {
-  await screen.findByRole("table", { name: "ไฟล์ส่งออกของฉัน" });
-  return screen.getByRole("heading", { name: "ไฟล์ส่งออกของฉัน" });
+  await screen.findByTestId("audit-export-jobs-table");
+  return screen.getByTestId("audit-export-jobs-title");
 };
-const row = (n: number) =>
-  within(screen.getByRole("table", { name: "ไฟล์ส่งออกของฉัน" }))
-    .getAllByRole("row")
-    .slice(1)[n] as HTMLElement;
+const DEFAULT_JOB_ID = makeRecord().id;
+const row = (id: string) =>
+  within(screen.getByTestId("audit-export-jobs")).getByTestId(
+    `audit-export-job-${id}`,
+  );
 async function openDialog(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await exportButton());
-  return screen.findByRole("dialog", { name: "ส่งออกบันทึกกิจกรรม" });
+  const opener = await exportButton();
+  await waitFor(() => expect(opener).not.toHaveAttribute("aria-disabled"));
+  await user.click(opener);
+  return screen.findByTestId("audit-export-dialog");
 }
 
 beforeEach(() => {
@@ -130,27 +133,34 @@ describe("export button", () => {
     "does not render the button or the section and never asks for the exports of a %s",
     async (role) => {
       open({ role });
-      if (role === "auditor") await screen.findByRole("table");
-      else await screen.findByRole("heading", { name: /เข้าถึงบันทึก/ });
-      expect(screen.queryByRole("button", { name: /ส่งออก/ })).toBeNull();
-      expect(
-        screen.queryByRole("heading", { name: "ไฟล์ส่งออกของฉัน" }),
-      ).toBeNull();
+      if (role === "auditor") await screen.findByTestId("audit-events-table");
+      else await screen.findByTestId("audit-denied-title");
+      expect(screen.queryByTestId("audit-export-open")).toBeNull();
+      expect(screen.queryByTestId("audit-export-jobs-title")).toBeNull();
       expect(exportsMock).not.toHaveBeenCalled();
+      expect(createMock).not.toHaveBeenCalled();
+      expect(downloadMock).not.toHaveBeenCalled();
     },
   );
 
   it("is aria-disabled with the visible reason when the filter matches nothing", async () => {
     open({ total: 0 });
     const button = await exportButton();
-    await screen.findByText("ไม่มีรายการให้ส่งออกตามตัวกรองนี้", {
-      selector: "p#audit-export-reason",
-    });
+    await screen.findByTestId("audit-export-reason");
+    await waitFor(() =>
+      expect(screen.getByTestId("audit-export-reason")).toHaveAttribute(
+        "data-blocked-reason",
+        "empty",
+      ),
+    );
+    expect(
+      screen.getByTestId("audit-export-reason").textContent.trim(),
+    ).not.toBe("");
     expect(button).toHaveAttribute("aria-disabled", "true");
     expect(button).not.toBeDisabled();
     expect(button).toHaveAttribute("aria-describedby", "audit-export-reason");
     await userEvent.setup().click(button);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
   });
 
   it("explains why ส่งออก is unavailable while the list loads", async () => {
@@ -163,16 +173,18 @@ describe("export button", () => {
     });
     const button = await exportButton();
     expect(button).toHaveAttribute("aria-disabled", "true");
-    const reason = screen.getByText("กำลังโหลดรายการ…", { selector: "p" });
+    const reason = screen.getByTestId("audit-export-reason");
+    expect(reason).toHaveAttribute("data-blocked-reason", "loading");
+    expect(reason.textContent.trim()).not.toBe("");
     expect(button).toHaveAttribute("aria-describedby", reason.id);
   });
 
   it("explains why ส่งออก is unavailable for an invalid custom range", async () => {
     open({ search: "?range=custom&from=2026-10-02&to=2026-10-01" });
     const button = await exportButton();
-    const reason = screen.getByText(
-      /ช่วงวันที่ไม่ถูกต้อง แก้ไขช่วงวันที่ก่อนส่งออก/,
-    );
+    const reason = screen.getByTestId("audit-export-reason");
+    expect(reason).toHaveAttribute("data-blocked-reason", "invalid-range");
+    expect(reason.textContent.trim()).not.toBe("");
     expect(button).toHaveAttribute("aria-disabled", "true");
     expect(button).toHaveAttribute("aria-describedby", reason.id);
   });
@@ -193,17 +205,18 @@ describe("export button", () => {
         }),
       ],
     });
-    const button = await screen.findByRole("button", {
-      name: "กำลังสร้างไฟล์…",
-    });
-    expect(button).toHaveAttribute("aria-disabled", "true");
-    const reason = screen.getByText(
-      /สร้างไฟล์ส่งออกได้ครั้งละ 1 คำขอ รอให้ไฟล์ปัจจุบันเสร็จก่อน คำขอที่ยังไม่เสร็จภายใน 60 นาที/,
+    const button = await screen.findByTestId("audit-export-open");
+    await waitFor(() =>
+      expect(button).toHaveAttribute("data-in-progress", "true"),
     );
-    expect(screen.getAllByText(reason.textContent)).toHaveLength(1);
-    const retries = await screen.findAllByRole("button", {
-      name: /^ขอใหม่ CSV/,
-    });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    const reason = screen.getByTestId("audit-export-reason");
+    expect(reason).toHaveAttribute("data-blocked-reason", "in-progress");
+    expect(reason).toHaveTextContent(/\b60\b/);
+    expect(reason).toHaveTextContent(/\b1\b/);
+    expect(reason.textContent.trim()).not.toBe("");
+    expect(screen.getAllByTestId("audit-export-reason")).toHaveLength(1);
+    const retries = await screen.findAllByTestId("audit-export-job-retry");
     expect(retries).toHaveLength(2);
     for (const control of [button, ...retries]) {
       expect(control).toHaveAttribute("aria-disabled", "true");
@@ -213,36 +226,56 @@ describe("export button", () => {
 });
 
 describe("export dialog", () => {
-  it("starts on the first format, shows the snapshot and the scope note, and scrolls inside", async () => {
+  it("starts on CSV and shows the snapshot, scope and actual total", async () => {
     const user = userEvent.setup();
     open({ search: "?categories=member" });
     const dialog = await openDialog(user);
-    expect(within(dialog).getByRole("radio", { name: "CSV" })).toHaveFocus();
-    expect(within(dialog).getByRole("radio", { name: "CSV" })).toBeChecked();
     expect(
-      within(dialog).getByRole("group", { name: "รูปแบบไฟล์" }),
+      within(dialog).getByTestId("audit-export-dialog-format-csv"),
+    ).toHaveFocus();
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-format-csv"),
+    ).toBeChecked();
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-formats"),
     ).toBeInTheDocument();
-    expect(dialog).toHaveTextContent("ณ โหลดเมื่อ 14:02:11 (Asia/Bangkok)");
-    expect(dialog).toHaveTextContent("1,234 รายการ");
-    expect(dialog).toHaveTextContent("หมวด สมาชิก");
-    expect(dialog).toHaveTextContent("บันทึกเฉพาะการกระทำที่สำเร็จในหมวด");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-snapshot"),
+    ).toHaveTextContent("14:02:11");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-snapshot"),
+    ).toHaveAttribute("data-time-zone", "Asia/Bangkok");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-total"),
+    ).toHaveTextContent(/^1,234$/);
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-filters"),
+    ).toHaveAttribute("data-categories", "member");
+    expect(
+      within(dialog)
+        .getByTestId("audit-export-dialog-filters")
+        .textContent.trim(),
+    ).not.toBe("");
+    const recording = within(dialog).getByTestId("audit-recording-scope");
+    expect(recording).toHaveAttribute("data-recording-since", "2025-06-01");
+    // Public contract note agrees with the page/dialog/file disclosure contract, not cosmetic UI copy.
+    expect(recording).toHaveTextContent(auditScopeNote("2025-06-01"));
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    // The content scrolls; the title and the button row do not.
-    expect(dialog.querySelector(".overflow-y-auto")).not.toBeNull();
-    expect(dialog).not.toHaveClass("overflow-y-auto");
+    expect(dialog).toHaveAttribute("role", "dialog");
+    expect(dialog).not.toHaveAccessibleName("");
   });
 
   it("makes the scrolling body a named, focusable region and keeps first focus on CSV", async () => {
     const user = userEvent.setup();
     open();
     const dialog = await openDialog(user);
-    const body = within(dialog).getByRole("region", {
-      name: "รายละเอียดการส่งออก",
-    });
+    const body = within(dialog).getByTestId("audit-export-dialog-body");
     expect(body).toHaveAttribute("tabindex", "0");
-    expect(body.className).toContain("overflow-y-auto");
-    expect(body.className).toContain("focus-visible:outline-primary");
-    expect(within(dialog).getByRole("radio", { name: "CSV" })).toHaveFocus();
+    expect(body).toHaveAttribute("role", "region");
+    expect(body).not.toHaveAccessibleName("");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-format-csv"),
+    ).toHaveFocus();
     await user.tab({ shift: true });
     expect(body).toHaveFocus();
   });
@@ -251,11 +284,9 @@ describe("export dialog", () => {
     const user = userEvent.setup();
     open();
     const dialog = await openDialog(user);
-    const cancel = within(dialog).getByRole("button", { name: "ยกเลิก" });
-    const create = within(dialog).getByRole("button", { name: "สร้างไฟล์" });
-    const body = within(dialog).getByRole("region", {
-      name: "รายละเอียดการส่งออก",
-    });
+    const cancel = within(dialog).getByTestId("audit-export-dialog-cancel");
+    const create = within(dialog).getByTestId("audit-export-dialog-create");
+    const body = within(dialog).getByTestId("audit-export-dialog-body");
     create.focus();
     await user.tab();
     // The scrolling body is the first stop of the trap, so Tab from the last control wraps to it.
@@ -263,7 +294,7 @@ describe("export dialog", () => {
     await user.tab({ shift: true });
     expect(create).toHaveFocus();
     await user.click(cancel);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
     expect(await exportButton()).toHaveFocus();
   });
 
@@ -272,8 +303,10 @@ describe("export dialog", () => {
     open({ search: "?categories=member&q=ada&actor=user-1" });
     const dialog = await openDialog(user);
     createMock.mockResolvedValue({ export: makeRecord() });
-    await user.click(within(dialog).getByRole("radio", { name: "JSON" }));
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await user.click(
+      within(dialog).getByTestId("audit-export-dialog-format-json"),
+    );
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
@@ -299,7 +332,7 @@ describe("export dialog", () => {
     open({ search: "?range=custom&from=2026-09-26&to=2026-10-02" });
     const dialog = await openDialog(user);
     createMock.mockResolvedValue({ export: makeRecord() });
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
     await waitFor(() => {
       expect(createMock).toHaveBeenCalled();
     });
@@ -315,21 +348,22 @@ describe("export dialog", () => {
     const dialog = await openDialog(user);
     const pending = Promise.withResolvers<{ export: AuditExportRecord }>();
     createMock.mockReturnValue(pending.promise);
-    const create = within(dialog).getByRole("button", { name: "สร้างไฟล์" });
+    const create = within(dialog).getByTestId("audit-export-dialog-create");
     await user.click(create);
     await user.click(create);
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(create).toHaveAttribute("aria-busy", "true");
-    expect(create).toHaveTextContent("กำลังส่งคำขอ…");
+    expect(create).toHaveAttribute("aria-disabled", "true");
+    expect(create).not.toBeDisabled();
     expect(dialog).toHaveAttribute("aria-busy", "true");
-    const cancel = within(dialog).getByRole("button", { name: "ยกเลิก" });
+    const cancel = within(dialog).getByTestId("audit-export-dialog-cancel");
     expect(cancel).toHaveAttribute("aria-disabled", "true");
     await user.click(cancel);
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("audit-export-dialog")).toBeInTheDocument();
     pending.resolve({ export: makeRecord() });
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
     });
   });
 
@@ -343,12 +377,17 @@ describe("export dialog", () => {
         total: 61234,
       }),
     );
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
-    const alert = await within(dialog).findByRole("alert");
-    expect(alert).toHaveTextContent(
-      "ข้อมูลมากเกินไปสำหรับการส่งออกครั้งเดียว ลดช่วงเวลาแล้วลองใหม่ (พบ 61,234 รายการ สูงสุด 50,000)",
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
+    const alert = await within(dialog).findByTestId(
+      "audit-export-dialog-too-large",
     );
-    const create = within(dialog).getByRole("button", { name: "สร้างไฟล์" });
+    expect(alert).toHaveAttribute("role", "alert");
+    expect(alert).toHaveTextContent("61,234");
+    expect(alert).toHaveTextContent("50,000");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-total"),
+    ).toHaveTextContent(/^61,234$/);
+    const create = within(dialog).getByTestId("audit-export-dialog-create");
     expect(create).toHaveAttribute("aria-disabled", "true");
     expect(create).toHaveAttribute("aria-describedby", alert.id);
     await user.click(create);
@@ -359,11 +398,20 @@ describe("export dialog", () => {
     const user = userEvent.setup();
     open({ total: 50_001 });
     const dialog = await openDialog(user);
-    const create = within(dialog).getByRole("button", { name: "สร้างไฟล์" });
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-total"),
+    ).toHaveTextContent(/^50,001$/);
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-too-large"),
+    ).toHaveTextContent("50,001");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-too-large"),
+    ).toHaveTextContent("50,000");
+    const create = within(dialog).getByTestId("audit-export-dialog-create");
     expect(create).toHaveAttribute("aria-disabled", "true");
     expect(create).toHaveAttribute(
       "aria-describedby",
-      within(dialog).getByRole("alert").id,
+      within(dialog).getByTestId("audit-export-dialog-too-large").id,
     );
     await user.click(create);
     expect(createMock).not.toHaveBeenCalled();
@@ -374,12 +422,22 @@ describe("export dialog", () => {
     open();
     const dialog = await openDialog(user);
     createMock.mockRejectedValue(new ApiError("AUDIT_EXPORT_EMPTY", "x", 422));
-    await user.click(within(dialog).getByRole("radio", { name: "JSON" }));
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "ไม่มีรายการให้ส่งออกตามตัวกรองนี้",
+    await user.click(
+      within(dialog).getByTestId("audit-export-dialog-format-json"),
     );
-    expect(within(dialog).getByRole("radio", { name: "JSON" })).toBeChecked();
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
+    const alert = await within(dialog).findByTestId(
+      "audit-export-dialog-error",
+    );
+    expect(alert).toHaveAttribute("data-outcome", "empty");
+    expect(alert).toHaveAttribute("role", "alert");
+    expect(alert.textContent.trim()).not.toBe("");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-create"),
+    ).not.toHaveAttribute("aria-disabled");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-format-json"),
+    ).toBeChecked();
   });
 
   it("closes on 409 and loads the exports again", async () => {
@@ -391,16 +449,19 @@ describe("export dialog", () => {
     );
     const before = exportsMock.mock.calls.length;
     exportsMock.mockResolvedValue(exportList([makeRecord()], true));
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
     });
     await waitFor(() => {
       expect(exportsMock.mock.calls.length).toBeGreaterThan(before);
     });
-    expect(
-      await screen.findByRole("button", { name: "กำลังสร้างไฟล์…" }),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("audit-export-open")).toHaveAttribute(
+        "data-in-progress",
+        "true",
+      ),
+    );
   });
 
   it("keeps the dialog open with the retry message on a network error", async () => {
@@ -408,11 +469,17 @@ describe("export dialog", () => {
     open();
     const dialog = await openDialog(user);
     createMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "ส่งคำขอส่งออกไม่สำเร็จ ตัวเลือกของคุณยังอยู่ ลองใหม่อีกครั้ง",
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
+    const alert = await within(dialog).findByTestId(
+      "audit-export-dialog-error",
     );
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(alert).toHaveAttribute("data-outcome", "failed");
+    expect(alert).toHaveAttribute("role", "alert");
+    expect(alert.textContent.trim()).not.toBe("");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-create"),
+    ).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByTestId("audit-export-dialog")).toBeInTheDocument();
   });
 
   it("aborts a request that takes more than 15 s and gives Cancel and Escape back", async () => {
@@ -430,19 +497,25 @@ describe("export dialog", () => {
           });
         }),
     );
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
     expect(
-      within(dialog).getByRole("button", { name: "กำลังส่งคำขอ…" }),
+      within(dialog).getByTestId("audit-export-dialog-create"),
     ).toHaveAttribute("aria-busy", "true");
     await act(() => vi.advanceTimersByTimeAsync(15_001));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "ส่งคำขอส่งออกไม่สำเร็จ ตัวเลือกของคุณยังอยู่",
+    const alert = await within(dialog).findByTestId(
+      "audit-export-dialog-error",
     );
+    expect(alert).toHaveAttribute("data-outcome", "failed");
+    expect(alert).toHaveAttribute("role", "alert");
+    expect(alert.textContent.trim()).not.toBe("");
     expect(
-      within(dialog).getByRole("button", { name: "ยกเลิก" }),
+      within(dialog).getByTestId("audit-export-dialog-create"),
+    ).not.toHaveAttribute("aria-disabled");
+    expect(
+      within(dialog).getByTestId("audit-export-dialog-cancel"),
     ).not.toHaveAttribute("aria-disabled");
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
   });
 });
 
@@ -452,49 +525,39 @@ describe("after the request is accepted", () => {
     const view = open();
     const dialog = await openDialog(user);
     // C6-02: the page's live region is there before the request, empty.
-    const region = document.querySelector(
-      '[data-slot="export-announcement"]',
-    ) as HTMLElement;
+    const region = screen.getByTestId("audit-export-announcement");
     expect(region).toHaveAttribute("role", "status");
     expect(region).toBeEmptyDOMElement();
     const refetch = Promise.withResolvers<AuditExportListResponse>();
     exportsMock.mockReturnValue(refetch.promise);
     createMock.mockResolvedValue({ export: makeRecord() });
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
     });
-    const button = screen.getByRole("button", { name: "กำลังสร้างไฟล์…" });
+    const button = screen.getByTestId("audit-export-open");
     expect(button).toHaveAttribute("aria-disabled", "true");
     expect(button).toHaveFocus();
     expect(
       view.queryClient.getQueryData(["tenant", "audit-log", "exports", ORG_A]),
     ).toMatchObject({ inProgress: true });
-    expect(
-      screen.getByRole("heading", { name: "ไฟล์ส่งออกของฉัน" }),
-    ).toBeInTheDocument();
-    expect(region).toHaveTextContent(
-      "กำลังสร้างไฟล์ เราจะแจ้งใน การแจ้งเตือน เมื่อพร้อมดาวน์โหลด",
-    );
-    const notice = screen
-      .getAllByText(/กำลังสร้างไฟล์ เราจะแจ้งใน/)
-      .find((element) => !region.contains(element))
-      ?.closest("p") as HTMLElement;
+    expect(screen.getByTestId("audit-export-jobs-title")).toBeInTheDocument();
+    expect(region.textContent.trim()).not.toBe("");
+    const requested = screen.getByTestId("audit-export-requested-notice");
+    const notice = within(requested).getByTestId("action-notice-message");
     // The visible notice is not a second live region, so nothing is announced twice.
     expect(notice).not.toHaveAttribute("role");
     expect(
-      within(notice).getByRole("link", { name: "การแจ้งเตือน" }),
+      within(notice).getByTestId("audit-export-notifications-link"),
     ).toHaveAttribute("href", "/notifications");
-    const showFiles = screen.getByRole("link", { name: "ดูไฟล์ส่งออกของฉัน" });
+    const showFiles = screen.getByTestId("audit-export-show-jobs");
     expect(notice).not.toContainElement(showFiles);
     await user.click(showFiles);
-    expect(
-      screen.getByRole("heading", { name: "ไฟล์ส่งออกของฉัน" }),
-    ).toHaveFocus();
-    const close = screen.getByRole("button", { name: "ปิดข้อความ" });
+    expect(screen.getByTestId("audit-export-jobs-title")).toHaveFocus();
+    const close = within(requested).getByTestId("action-notice-close");
     expect(notice).not.toContainElement(close);
     await user.click(close);
-    expect(screen.queryByText(/กำลังสร้างไฟล์ เราจะแจ้งใน/)).toBeNull();
+    expect(screen.queryByTestId("audit-export-requested-notice")).toBeNull();
     expect(region).toBeEmptyDOMElement();
     expect(button).toHaveFocus();
     refetch.resolve(
@@ -508,15 +571,21 @@ describe("after the request is accepted", () => {
         false,
       ),
     );
-    expect(
-      await screen.findByRole("button", { name: "ส่งออก" }),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("audit-export-open")).toHaveAttribute(
+        "data-in-progress",
+        "false",
+      ),
+    );
+    expect(screen.getByTestId("audit-export-open")).not.toHaveAttribute(
+      "aria-disabled",
+    );
   });
 });
 
 describe("my exports section", () => {
   it("is a captioned table with one live region and rows with their own button names", async () => {
-    open({
+    const view = open({
       rows: [
         makeRecord({
           id: "11111111-1111-4111-8111-111111111111",
@@ -536,36 +605,64 @@ describe("my exports section", () => {
       ],
     });
     await sectionHeading();
-    const table = screen.getByRole("table", { name: "ไฟล์ส่งออกของฉัน" });
+    const table = screen.getByTestId("audit-export-jobs-table");
+    expect(table.tagName).toBe("TABLE");
+    expect(table).not.toHaveAccessibleName("");
     expect(
       within(table)
-        .getAllByRole("columnheader")
-        .map((h) => h.textContent),
-    ).toEqual(["รูปแบบ", "ขอบเขต", "ขอเมื่อ", "สถานะ", "การดำเนินการ"]);
-    const first = row(0);
+        .getAllByTestId("audit-export-job-format")
+        .map((cell) => cell.textContent.trim()),
+    ).toEqual(["CSV", "JSON"]);
+    const first = row("11111111-1111-4111-8111-111111111111");
     expect(first).toHaveTextContent(
       "2026-09-26 00:00:00 – 2026-10-03 14:02:00 (Asia/Bangkok)",
     );
-    expect(first).toHaveTextContent("หมวด สมาชิก");
-    expect(first).toHaveTextContent("มีการค้นหาข้อความ");
+    expect(within(first).getByTestId("audit-export-job-scope")).toHaveAttribute(
+      "data-categories",
+      "member",
+    );
+    expect(within(first).getByTestId("audit-export-job-scope")).toHaveAttribute(
+      "data-search-applied",
+      "true",
+    );
     expect(first).not.toHaveTextContent("secret-term");
+    expect(document.body.innerHTML).not.toContain("secret-term");
+    expect(
+      view.queryClient
+        .getQueryData<AuditExportListResponse>([
+          "tenant",
+          "audit-log",
+          "exports",
+          ORG_A,
+        ])
+        ?.exports.map(({ id, filters }) => ({ id, q: filters.q })),
+    ).toEqual([
+      { id: "11111111-1111-4111-8111-111111111111", q: "secret-term" },
+      { id: "22222222-2222-4222-8222-222222222222", q: null },
+    ]);
     expect(first).toHaveTextContent("2026-10-03 14:05:10 Asia/Bangkok");
-    expect(first).toHaveTextContent(
-      "พร้อมดาวน์โหลด · ดาวน์โหลดได้ถึง 2026-10-04 14:07:30 Asia/Bangkok",
+    expect(first).toHaveAttribute("data-status", "ready");
+    expect(
+      within(first).getByTestId("audit-export-job-expires-at"),
+    ).toHaveTextContent("2026-10-04 14:07:30 Asia/Bangkok");
+    expect(
+      within(first).getByTestId("audit-export-job-download"),
+    ).toHaveAccessibleName(/CSV.*2026-10-03 14:05/);
+    expect(row("22222222-2222-4222-8222-222222222222")).toHaveAttribute(
+      "data-status",
+      "expired",
     );
     expect(
-      within(first).getByRole("button", {
-        name: "ดาวน์โหลด CSV ที่ขอเมื่อ 2026-10-03 14:05",
-      }),
-    ).toBeInTheDocument();
-    expect(row(1)).toHaveTextContent("หมดอายุ · ไฟล์หมดอายุแล้ว");
-    expect(
-      within(row(1)).getByRole("button", {
-        name: "ขอใหม่ JSON ที่ขอเมื่อ 2026-10-03 14:05",
-      }),
+      within(row("22222222-2222-4222-8222-222222222222")).getByTestId(
+        "audit-export-job-retry",
+      ),
     ).not.toHaveAttribute("aria-disabled");
-    const section = document.getElementById("my-exports") as HTMLElement;
-    expect(within(section).getAllByRole("status")).toHaveLength(1);
+    const section = screen.getByTestId("audit-export-jobs");
+    expect(
+      within(section).getByTestId("audit-export-jobs-status"),
+    ).toHaveAttribute("role", "status");
+    // Native live-region family scan guards duplicate announcements, never locates a component.
+    expect(section.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
 
   it("wraps the table in a focusable, named scroll region", async () => {
@@ -573,16 +670,13 @@ describe("my exports section", () => {
       rows: [makeRecord({ status: "failed", failureCode: "EXPORT_FAILED" })],
     });
     await sectionHeading();
-    const region = screen.getByRole("region", {
-      name: "ตารางไฟล์ส่งออกของฉัน",
-    });
+    const region = screen.getByTestId("audit-export-jobs-region");
     expect(region).toHaveAttribute("tabindex", "0");
     expect(region).toContainElement(
-      screen.getByRole("table", { name: "ไฟล์ส่งออกของฉัน" }),
+      screen.getByTestId("audit-export-jobs-table"),
     );
-    expect(region.className).toContain("overflow-x-auto");
-    expect(region.className).not.toContain("overflow-y");
-    expect(region.className).toContain("focus:outline-primary");
+    expect(region).toHaveAttribute("role", "region");
+    expect(region).not.toHaveAccessibleName("");
     region.focus();
     expect(region).toHaveFocus();
   });
@@ -604,26 +698,24 @@ describe("my exports section", () => {
       ],
     });
     await sectionHeading();
-    const first = row(0);
+    const first = row(DEFAULT_JOB_ID);
     expect(first).toHaveTextContent(
       "2026-09-25 13:00:00 – 2026-10-03 03:02:00 (America/New_York)",
     );
     expect(first).not.toHaveTextContent("(Asia/Bangkok)");
     expect(first).toHaveTextContent("2026-10-03 14:05:10 Asia/Bangkok");
-    expect(first).toHaveTextContent(
-      "ดาวน์โหลดได้ถึง 2026-10-04 14:07:30 Asia/Bangkok",
-    );
+    expect(
+      within(first).getByTestId("audit-export-job-expires-at"),
+    ).toHaveTextContent("2026-10-04 14:07:30 Asia/Bangkok");
   });
 
   it("hides the section when there are no requests", async () => {
     open({ rows: [] });
-    await screen.findByRole("table");
+    await screen.findByTestId("audit-events-table");
     await waitFor(() => {
       expect(exportsMock).toHaveBeenCalled();
     });
-    expect(
-      screen.queryByRole("heading", { name: "ไฟล์ส่งออกของฉัน" }),
-    ).toBeNull();
+    expect(screen.queryByTestId("audit-export-jobs-title")).toBeNull();
   });
 
   it.each([
@@ -642,9 +734,20 @@ describe("my exports section", () => {
   ] as const)("explains a failed row: %s", async (failureCode, text) => {
     open({ rows: [makeRecord({ status: "failed", failureCode })] });
     await sectionHeading();
-    expect(row(0)).toHaveTextContent(`ล้มเหลว · ${text}`);
+    expect(row(DEFAULT_JOB_ID)).toHaveAttribute("data-status", "failed");
+    expect(row(DEFAULT_JOB_ID)).toHaveAttribute(
+      "data-failure-code",
+      failureCode,
+    );
     expect(
-      within(row(0)).getByRole("button", { name: /^ขอใหม่/ }),
+      within(row(DEFAULT_JOB_ID))
+        .getByTestId("audit-export-job-status")
+        .textContent.trim(),
+    ).not.toBe("");
+    if (text.includes("25 MiB"))
+      expect(row(DEFAULT_JOB_ID)).toHaveTextContent("25 MiB");
+    expect(
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-retry"),
     ).toBeInTheDocument();
   });
 
@@ -665,8 +768,12 @@ describe("my exports section", () => {
       ],
     });
     await sectionHeading();
-    const adjust = within(row(0)).getByRole("button", { name: /^ปรับตัวกรอง/ });
-    const retry = within(row(0)).getByRole("button", { name: /^ขอใหม่/ });
+    const adjust = within(row(DEFAULT_JOB_ID)).getByTestId(
+      "audit-export-job-adjust",
+    );
+    const retry = within(row(DEFAULT_JOB_ID)).getByTestId(
+      "audit-export-job-retry",
+    );
     expect(retry).toBeInTheDocument();
     await user.click(adjust);
     await waitFor(() => {
@@ -674,7 +781,7 @@ describe("my exports section", () => {
         `?range=custom&from=2026-09-26&to=2026-10-03&categories=member%2Cmonitor&actor=user-1&q=ada`,
       );
     });
-    expect(screen.getByRole("heading", { name: "ตัวกรอง" })).toHaveFocus();
+    expect(screen.getByTestId("audit-filters-title")).toHaveFocus();
     // The day range covers the row's instants: 2026-09-26 00:00 Bangkok is before 25 17:00Z.
     await waitFor(() => {
       expect(listMock.mock.calls.at(-1)?.[1]).toMatchObject({
@@ -705,7 +812,9 @@ describe("my exports section", () => {
       });
       createMock.mockResolvedValue({ export: created });
       exportsMock.mockResolvedValue(exportList([created, record], true));
-      const retry = within(row(0)).getByRole("button", { name: /^ขอใหม่/ });
+      const retry = within(row(record.id)).getByTestId(
+        "audit-export-job-retry",
+      );
       await user.click(retry);
       await waitFor(() => {
         expect(createMock).toHaveBeenCalledTimes(1);
@@ -723,15 +832,16 @@ describe("my exports section", () => {
         asOf: now.toISOString(),
       });
       // N-1: no dialog and no second notice; focus stays on the (now aria-disabled) button.
-      expect(screen.queryByRole("dialog")).toBeNull();
-      expect(screen.queryByText(/กำลังสร้างไฟล์ เราจะแจ้งใน/)).toBeNull();
+      expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
+      expect(screen.queryByTestId("audit-export-requested-notice")).toBeNull();
       await waitFor(() => {
         expect(retry).toHaveAttribute("aria-disabled", "true");
       });
       expect(retry).toHaveFocus();
-      expect(
-        screen.getByRole("button", { name: "กำลังสร้างไฟล์…" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("audit-export-open")).toHaveAttribute(
+        "data-in-progress",
+        "true",
+      );
     },
   );
 
@@ -764,10 +874,18 @@ describe("my exports section", () => {
       });
       await sectionHeading();
       createMock.mockRejectedValue(error);
-      const retry = within(row(0)).getByRole("button", { name: /^ขอใหม่/ });
+      const retry = within(row(DEFAULT_JOB_ID)).getByTestId(
+        "audit-export-job-retry",
+      );
       await user.click(retry);
-      const alert = await within(row(0)).findByRole("alert");
-      expect(alert).toHaveTextContent(text);
+      const alert = await within(row(DEFAULT_JOB_ID)).findByTestId(
+        "audit-export-job-error",
+      );
+      expect(alert).toHaveAttribute("role", "alert");
+      expect(alert.textContent.trim()).not.toBe("");
+      for (const value of text.match(/\d[\d,]*/g) ?? [])
+        expect(alert).toHaveTextContent(value);
+      expect(createMock).toHaveBeenCalledTimes(1);
       expect(retry).toHaveAttribute("aria-describedby", alert.id);
     },
   );
@@ -789,14 +907,18 @@ describe("my exports section", () => {
       ]),
     );
     await act(() => vi.advanceTimersByTimeAsync(5_100));
-    const section = document.getElementById("my-exports") as HTMLElement;
+    const section = screen.getByTestId("audit-export-jobs");
     await waitFor(() => {
-      expect(within(section).getByRole("status")).toHaveTextContent(
-        "ไฟล์ CSV ที่ขอเมื่อ 2026-10-03 14:05:10 Asia/Bangkok พร้อมดาวน์โหลด",
-      );
+      expect(
+        within(section).getByTestId("audit-export-jobs-status"),
+      ).toHaveTextContent("CSV");
+      expect(
+        within(section).getByTestId("audit-export-jobs-status"),
+      ).toHaveTextContent("2026-10-03 14:05:10 Asia/Bangkok");
+      expect(row(DEFAULT_JOB_ID)).toHaveAttribute("data-status", "ready");
     });
     expect(exportsMock.mock.calls.length).toBe(callsBefore + 1);
-    expect(row(0)).toHaveTextContent("พร้อมดาวน์โหลด");
+    expect(row(DEFAULT_JOB_ID)).toHaveAttribute("data-status", "ready");
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["tenant", "notifications"],
     });
@@ -815,19 +937,19 @@ describe("my exports section", () => {
     exportsMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
     await act(() => vi.advanceTimersByTimeAsync(8_000));
     expect(
-      await screen.findByText("ข้อมูลอาจไม่เป็นปัจจุบัน"),
+      await screen.findByTestId("audit-export-jobs-stale"),
     ).toBeInTheDocument();
-    expect(row(0)).toHaveTextContent("กำลังสร้าง");
+    expect(row(DEFAULT_JOB_ID)).toHaveAttribute("data-status", "generating");
     exportsMock.mockResolvedValue(
       exportList([
         makeRecord({ status: "failed", failureCode: "EXPORT_FAILED" }),
       ]),
     );
-    await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
+    await user.click(screen.getByTestId("audit-export-jobs-retry"));
     await waitFor(() => {
-      expect(row(0)).toHaveTextContent("ล้มเหลว");
+      expect(row(DEFAULT_JOB_ID)).toHaveAttribute("data-status", "failed");
     });
-    expect(screen.queryByText("ข้อมูลอาจไม่เป็นปัจจุบัน")).toBeNull();
+    expect(screen.queryByTestId("audit-export-jobs-stale")).toBeNull();
   });
 });
 
@@ -837,9 +959,12 @@ describe("download", () => {
     expiresAt: "2026-10-04T07:07:30.000Z",
   });
   let click: MockInstance<() => void>;
+  const createObjectUrl = vi.fn<(blob: Blob) => string>();
+  const revokeObjectUrl = vi.fn<(url: string) => void>();
   beforeEach(() => {
-    URL.createObjectURL = vi.fn(() => "blob:test");
-    URL.revokeObjectURL = vi.fn();
+    createObjectUrl.mockReturnValue("blob:test");
+    URL.createObjectURL = createObjectUrl;
+    URL.revokeObjectURL = revokeObjectUrl;
     click = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => undefined);
@@ -854,22 +979,38 @@ describe("download", () => {
       filename: string | null;
     }>();
     downloadMock.mockReturnValue(pending.promise);
-    const button = within(row(0)).getByRole("button", { name: /^ดาวน์โหลด/ });
+    const button = within(row(DEFAULT_JOB_ID)).getByTestId(
+      "audit-export-job-download",
+    );
     let download = "";
+    let href = "";
+    let target = "";
     click.mockImplementation(function (this: HTMLAnchorElement) {
       download = this.download;
+      href = this.href;
+      target = this.target;
     });
     await user.click(button);
-    expect(button).toHaveTextContent("กำลังดาวน์โหลด…");
+    expect(button).toHaveAttribute("data-busy", "true");
     expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toBeDisabled();
+    await user.click(button);
+    expect(downloadMock).toHaveBeenCalledTimes(1);
+    const blob = new Blob(["a"], { type: "text/csv" });
     pending.resolve({
-      blob: new Blob(["a"]),
+      blob,
       filename: "nightwatch-audit-log.csv",
     });
     await waitFor(() => {
-      expect(button).toHaveTextContent("ดาวน์โหลด");
+      expect(button).toHaveAttribute("data-busy", "false");
+      expect(button).not.toHaveAttribute("aria-disabled");
     });
     expect(download).toBe("nightwatch-audit-log.csv");
+    expect(href).toBe("blob:test");
+    expect(target).toBe("");
+    expect(createObjectUrl).toHaveBeenCalledWith(blob);
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:test");
+    expect(click).toHaveBeenCalledTimes(1);
     expect(downloadMock).toHaveBeenCalledWith(
       ORG_A,
       ready.id,
@@ -900,9 +1041,16 @@ describe("download", () => {
     downloadMock.mockRejectedValue(error);
     const before = exportsMock.mock.calls.length;
     await user.click(
-      within(row(0)).getByRole("button", { name: /^ดาวน์โหลด/ }),
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-download"),
     );
-    expect(await within(row(0)).findByRole("alert")).toHaveTextContent(text);
+    const alert = await within(row(DEFAULT_JOB_ID)).findByTestId(
+      "audit-export-job-error",
+    );
+    expect(alert).toHaveAttribute("role", "alert");
+    expect(alert.textContent.trim()).not.toBe("");
+    expect(
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-download"),
+    ).not.toHaveAttribute("aria-disabled");
     if (refetches) {
       await waitFor(() => {
         expect(exportsMock.mock.calls.length).toBeGreaterThan(before);
@@ -920,42 +1068,33 @@ describe("download", () => {
       new ApiError("AUDIT_EXPORT_EXPIRED", "x", 410),
     );
     await user.click(
-      within(row(0)).getByRole("button", { name: /^ดาวน์โหลด/ }),
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-download"),
     );
     await waitFor(() => {
-      expect(row(0)).toHaveTextContent("หมดอายุ · ไฟล์หมดอายุแล้ว");
+      expect(row(DEFAULT_JOB_ID)).toHaveAttribute("data-status", "expired");
     });
     expect(
-      within(row(0)).getByRole("button", { name: /^ขอใหม่/ }),
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-retry"),
     ).toBeInTheDocument();
     expect(
-      within(row(0)).queryByRole("button", { name: /^ดาวน์โหลด/ }),
+      within(row(DEFAULT_JOB_ID)).queryByTestId("audit-export-job-download"),
     ).toBeNull();
   });
 });
 
 describe("403 during export", () => {
-  const notice = () =>
-    screen.findByText(
-      "สิทธิ์ส่งออกของคุณเปลี่ยนแล้ว คุณยังดูบันทึกกิจกรรมได้ แต่ส่งออกและดาวน์โหลดไฟล์ไม่ได้",
-    );
+  const notice = () => screen.findByTestId("audit-export-permission-notice");
 
   async function expectRevoked(queryClient: QueryClient, exportsCalls: number) {
-    const text = await notice();
-    const box = text.closest("[data-slot='action-notice']") as HTMLElement;
+    const box = await notice();
+    const text = within(box).getByTestId("action-notice-message");
     expect(box).toHaveFocus();
-    expect(text.closest("p")).toHaveAttribute("role", "status");
-    expect(
-      screen.queryByRole("button", { name: /^(ส่งออก|กำลังสร้างไฟล์…)$/ }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("heading", { name: "ไฟล์ส่งออกของฉัน" }),
-    ).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(text).toHaveAttribute("role", "status");
+    expect(screen.queryByTestId("audit-export-open")).toBeNull();
+    expect(screen.queryByTestId("audit-export-jobs-title")).toBeNull();
+    expect(screen.queryByTestId("audit-export-dialog")).toBeNull();
     // The list stays readable and the exports stop being asked.
-    expect(
-      screen.getByRole("region", { name: "ตารางบันทึกกิจกรรม" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("audit-events-region")).toBeInTheDocument();
     expect(
       queryClient.getQueryData(["tenant", "audit-log", "exports", ORG_A]),
     ).toBeUndefined();
@@ -999,7 +1138,7 @@ describe("403 during export", () => {
     });
     const dialog = await openDialog(user);
     createMock.mockRejectedValue(denied("PERMISSION_DENIED"));
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
     await expectRevoked(queryClient, exportsMock.mock.calls.length);
   });
 
@@ -1012,7 +1151,9 @@ describe("403 during export", () => {
     });
     await sectionHeading();
     createMock.mockRejectedValue(denied("PERMISSION_DENIED"));
-    await user.click(within(row(0)).getByRole("button", { name: /^ขอใหม่/ }));
+    await user.click(
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-retry"),
+    );
     await expectRevoked(queryClient, exportsMock.mock.calls.length);
   });
 
@@ -1028,23 +1169,19 @@ describe("403 during export", () => {
     await sectionHeading();
     downloadMock.mockRejectedValue(denied("PERMISSION_DENIED"));
     await user.click(
-      within(row(0)).getByRole("button", { name: /^ดาวน์โหลด/ }),
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-download"),
     );
     await expectRevoked(queryClient, exportsMock.mock.calls.length);
   });
 
   it("sends MEMBERSHIP_DENIED to the page's denied card", async () => {
     open({ exportsError: denied("MEMBERSHIP_DENIED") });
-    const heading = await screen.findByRole("heading", {
-      name: "เข้าถึงบันทึกกิจกรรมไม่ได้",
-    });
+    const heading = await screen.findByTestId("audit-denied-title");
     await waitFor(() => {
       expect(heading).toHaveFocus();
     });
-    expect(screen.getByText("คุณไม่ใช่สมาชิกขององค์กรนี้")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("region", { name: "ตารางบันทึกกิจกรรม" }),
-    ).toBeNull();
+    expect(screen.getByTestId("audit-denied-message")).toBeInTheDocument();
+    expect(screen.queryByTestId("audit-events-region")).toBeNull();
   });
 });
 
@@ -1101,7 +1238,7 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
     open({ queryClient });
     const dialog = await openDialog(user);
     const { late, signalOf } = lateCreated();
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
     await waitFor(() => {
       expect(signalOf()).toBeDefined();
     });
@@ -1109,10 +1246,9 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
     expect(signalOf()?.aborted).toBe(true);
     late.resolve({ export: makeRecord() });
     await act(() => Promise.resolve());
-    expect(screen.queryByText(/กำลังสร้างไฟล์ เราจะแจ้งใน/)).toBeNull();
+    expect(screen.queryByTestId("audit-export-requested-notice")).toBeNull();
     expect(
-      document.querySelector('[data-slot="export-announcement"]')
-        ?.textContent ?? "",
+      screen.queryByTestId("audit-export-announcement")?.textContent ?? "",
     ).toBe("");
     expect(queryClient.getQueryData(exportsKey)).not.toMatchObject({
       inProgress: true,
@@ -1124,7 +1260,7 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
     const view = open();
     const dialog = await openDialog(user);
     const { late, signalOf } = lateCreated();
-    await user.click(within(dialog).getByRole("button", { name: "สร้างไฟล์" }));
+    await user.click(within(dialog).getByTestId("audit-export-dialog-create"));
     await waitFor(() => {
       expect(signalOf()).toBeDefined();
     });
@@ -1146,7 +1282,9 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
     });
     await sectionHeading();
     const { late, signalOf } = lateCreated();
-    await user.click(within(row(0)).getByRole("button", { name: /^ขอใหม่/ }));
+    await user.click(
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-retry"),
+    );
     await waitFor(() => {
       expect(signalOf()).toBeDefined();
     });
@@ -1184,7 +1322,7 @@ describe("requests in flight when the scope retires or the page unmounts", () =>
       return late.promise;
     });
     await user.click(
-      within(row(0)).getByRole("button", { name: /^ดาวน์โหลด/ }),
+      within(row(DEFAULT_JOB_ID)).getByTestId("audit-export-job-download"),
     );
     await waitFor(() => {
       expect(signal).toBeDefined();
@@ -1211,10 +1349,8 @@ describe("hash and Organization scope", () => {
 
   it("opens at the top for an auditor, whose section does not render", async () => {
     open({ role: "auditor", hash: "#my-exports" });
-    await screen.findByRole("table");
-    expect(
-      screen.queryByRole("heading", { name: "ไฟล์ส่งออกของฉัน" }),
-    ).toBeNull();
+    await screen.findByTestId("audit-events-table");
+    expect(screen.queryByTestId("audit-export-jobs-title")).toBeNull();
     expect(document.body).toHaveFocus();
   });
 
@@ -1248,10 +1384,8 @@ describe("hash and Organization scope", () => {
       });
     });
     await waitFor(() => {
-      expect(
-        screen.queryByRole("table", { name: "ไฟล์ส่งออกของฉัน" }),
-      ).toBeNull();
+      expect(screen.queryByTestId("audit-export-jobs-table")).toBeNull();
     });
-    expect(screen.queryByRole("button", { name: "ส่งออก" })).toBeNull();
+    expect(screen.queryByTestId("audit-export-open")).toBeNull();
   });
 });

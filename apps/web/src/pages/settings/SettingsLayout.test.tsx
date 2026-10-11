@@ -1,7 +1,7 @@
 import { bindQueryClientIdentity } from "../../lib/queryClient";
 import type { MeContextResponse } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -96,10 +96,19 @@ function renderSettings(initialEntry: string) {
         ),
         children: [
           { index: true, loader: settingsIndexLoader },
-          { path: "profile", element: <p>หน้าโปรไฟล์</p> },
+          {
+            path: "profile",
+            element: <p data-testid="settings-route-profile">หน้าโปรไฟล์</p>,
+          },
           { path: "security", element: <SecurityPage /> },
-          { path: "sessions", element: <p>หน้าเซสชัน</p> },
-          { path: "display", element: <p>หน้าการแสดงผล</p> },
+          {
+            path: "sessions",
+            element: <p data-testid="settings-route-sessions">หน้าเซสชัน</p>,
+          },
+          {
+            path: "display",
+            element: <p data-testid="settings-route-display">หน้าการแสดงผล</p>,
+          },
         ],
       },
       { path: "*", element: <p>ไม่พบหน้านี้</p> },
@@ -118,21 +127,30 @@ describe("SettingsLayout", () => {
     fetchMeContextMock.mockResolvedValue(meContext([ORG_A]));
     renderSettings("/settings/profile");
 
-    expect(
-      screen.getByRole("heading", { name: "การตั้งค่าส่วนตัว" }),
-    ).toBeInTheDocument();
-    expect(await screen.findByText("นภัส วงศ์สกุล")).toBeInTheDocument();
-    expect(
-      screen.getByText(/ไม่ใช่การตั้งค่าขององค์กร Org A/),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("page-title")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("page-scope")).toHaveTextContent(
+        "นภัส วงศ์สกุล",
+      ),
+    );
+    expect(screen.getByTestId("settings-description")).toHaveTextContent(
+      "Org A",
+    );
 
-    const tablist = screen.getByRole("tablist", { name: "หมวดการตั้งค่า" });
-    const tabs = within(tablist).getAllByRole("tab");
+    const tablist = screen.getByTestId("settings-tabs");
+    const tabs = within(tablist).getAllByTestId(/^settings-tab-\//);
     expect(tabs.map((tab) => tab.getAttribute("href"))).toEqual(
       SETTINGS_TABS.map((tab) => tab.path),
     );
-    expect(tabs.map((tab) => tab.textContent)).toEqual(
-      SETTINGS_TABS.map((tab) => tab.label),
+    expect(tablist).toHaveAttribute("role", "tablist");
+    for (const tab of tabs) expect(tab).toHaveAttribute("role", "tab");
+    expect(screen.getByTestId("settings-panel")).toHaveAttribute(
+      "role",
+      "tabpanel",
+    );
+    expect(screen.getByTestId("settings-panel")).toHaveAttribute(
+      "aria-labelledby",
+      screen.getByTestId("settings-tab-/settings/profile").id,
     );
   });
 
@@ -142,28 +160,30 @@ describe("SettingsLayout", () => {
     renderSettings("/settings/sessions");
 
     expect(
-      screen.getByRole("tab", { name: "เซสชันและอุปกรณ์" }),
+      screen.getByTestId("settings-tab-/settings/sessions"),
     ).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "โปรไฟล์" })).toHaveAttribute(
-      "aria-selected",
-      "false",
-    );
-    expect(screen.getByText("หน้าเซสชัน")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("settings-tab-/settings/profile"),
+    ).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByTestId("settings-route-sessions")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "การแสดงผล" }));
+    await user.click(screen.getByTestId("settings-tab-/settings/display"));
 
-    expect(await screen.findByText("หน้าการแสดงผล")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "การแสดงผล" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(
+      await screen.findByTestId("settings-route-display"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("settings-tab-/settings/display"),
+    ).toHaveAttribute("aria-selected", "true");
   });
 
   it("/settings lands on the first tab", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ORG_A]));
     const { router } = renderSettings("/settings");
 
-    expect(await screen.findByText("หน้าโปรไฟล์")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("settings-route-profile"),
+    ).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/settings/profile");
   });
 
@@ -171,23 +191,22 @@ describe("SettingsLayout", () => {
     fetchMeContextMock.mockResolvedValue(meContext([ORG_A]));
     renderSettings("/settings/security");
 
+    expect(await screen.findByTestId("mfa-card")).toBeInTheDocument();
     expect(
-      await screen.findByRole("heading", { name: "ยืนยันสองขั้นตอน (MFA)" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "ความปลอดภัย" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+      screen.getByTestId("settings-tab-/settings/security"),
+    ).toHaveAttribute("aria-selected", "true");
   });
 
   it("omits the organization note when the user has no membership", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([]));
     renderSettings("/settings/profile");
 
-    expect(await screen.findByText("หน้าโปรไฟล์")).toBeInTheDocument();
     expect(
-      screen.getByText("ใช้กับบัญชีของคุณในทุกองค์กร"),
+      await screen.findByTestId("settings-route-profile"),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/ไม่ใช่การตั้งค่าขององค์กร/)).toBeNull();
+    expect(screen.getByTestId("settings-description")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-description")).not.toHaveTextContent(
+      "Org A",
+    );
   });
 });

@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
+import {
+  monitorDetailResponseSchema,
+  monitorWriteResponseSchema,
+} from "../../packages/api-contract/src/index.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
@@ -33,35 +37,14 @@ const toggleName = `alert-toggle-${run}`;
 const urlOf = (server: Target, path: string) =>
   `http://${host}:${String(server.port)}${path}`;
 
-type MonitorBody = {
-  monitor: {
-    id: string;
-    health: string;
-    alerts: {
-      failureThreshold: number;
-      downEnabled: boolean;
-      sslEnabled: boolean;
-      sslCautionDays: number;
-    };
-  };
-};
-
 type IncidentRow = { id: string; started_at: Date; down_notified: boolean };
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(person.email);
-  await page.locator("#login-password").fill(person.password);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(person.email);
+  await page.getByTestId("login-password").fill(person.password);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace/);
-}
-
-async function monitorIdByName(name: string): Promise<string> {
-  const result = await pool.query<{ id: string }>(
-    "select id from monitors where tenant_id = $1 and name = $2",
-    [org, name],
-  );
-  return result.rows[0]!.id;
 }
 
 async function openIncident(monitorId: string): Promise<IncidentRow | null> {
@@ -124,41 +107,64 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   await signIn(page, owner);
 
   await page.goto(`/organizations/${org}/monitors/new`);
-  await page.getByLabel("ชื่อมอนิเตอร์").fill(thresholdName);
+  await page.getByTestId("monitor-form-name").fill(thresholdName);
   await page
-    .getByLabel("URL", { exact: true })
+    .getByTestId("monitor-form-url")
     .fill(urlOf(targetThreshold, "/health"));
-  await page.getByRole("radio", { name: "1 นาที" }).click();
-  await page.getByLabel("แจ้งเมื่อล้มเหลวติดกัน").selectOption("3");
-  await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
-  await expect(
-    page.getByRole("heading", { name: thresholdName }),
-  ).toBeVisible();
-  const m1 = await monitorIdByName(thresholdName);
+  await page.getByTestId("monitor-form-interval-60").click();
+  await page.getByTestId("monitor-form-alert-threshold").selectOption("3");
+  const createdResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === monitorPath(org),
+  );
+  await page.getByTestId("monitor-form-save").click();
+  const createdReply = await createdResponse;
+  expect(createdReply.status()).toBe(201);
+  const createdMonitor = monitorWriteResponseSchema.parse(
+    await createdReply.json(),
+  ).monitor;
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(
+    thresholdName,
+  );
+  const m1 = createdMonitor.id;
+  expect(createdMonitor.name).toBe(thresholdName);
+  expect(createdMonitor.url).toBe(urlOf(targetThreshold, "/health"));
+  expect(createdMonitor.intervalSeconds).toBe(60);
+  expect(createdMonitor.version).toBe(1);
 
   const session = await signInApi(owner);
   const read1 = await session.request("GET", monitorPath(org, `/${m1}`));
   expect(read1.status).toBe(200);
-  expect((read1.body as MonitorBody).monitor.alerts.failureThreshold).toBe(3);
+  expect(monitorDetailResponseSchema.parse(read1.body).monitor.alerts).toEqual({
+    failureThreshold: 3,
+    downEnabled: true,
+    sslEnabled: true,
+    sslCautionDays: 30,
+  });
 
   const create2 = await session.request("POST", monitorPath(org), {
     ...basicConfig(toggleName, urlOf(targetToggle, "/health")),
     clientRequestId: randomUUID(),
   });
   expect(create2.status).toBe(201);
-  const m2 = (create2.body as MonitorBody).monitor.id;
+  const m2 = monitorWriteResponseSchema.parse(create2.body).monitor.id;
 
   await page.goto(`/organizations/${org}/monitors/${m2}/edit`);
-  await expect(
-    page.getByRole("heading", { name: `แก้ไข ${toggleName}` }),
-  ).toBeVisible();
-  await page.getByLabel("แจ้งเมื่อล่มและกลับมาปกติ").uncheck();
-  await page.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
-  await expect(page.getByText("บันทึกการแก้ไขแล้ว")).toBeVisible();
+  await expect(page.getByTestId("monitor-form-name")).toHaveValue(toggleName);
+  await page.getByTestId("monitor-form-alert-down").uncheck();
+  await page.getByTestId("monitor-form-save").click();
+  await expect(page.getByTestId("monitor-detail-notice")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(toggleName);
   const read2Before = await session.request("GET", monitorPath(org, `/${m2}`));
-  expect((read2Before.body as MonitorBody).monitor.alerts.downEnabled).toBe(
-    false,
-  );
+  const edited = monitorDetailResponseSchema.parse(read2Before.body).monitor;
+  expect(edited.alerts).toEqual({
+    failureThreshold: 2,
+    downEnabled: false,
+    sslEnabled: true,
+    sslCautionDays: 30,
+  });
+  expect(edited.version).toBe(2);
 
   targetToggle.setMode("down");
 
@@ -202,5 +208,7 @@ test("a threshold of 3 opens the incident only at the third failure, and a monit
   expect(await countInbox(m2, "MONITOR_DOWN")).toBe(0);
 
   const read2After = await session.request("GET", monitorPath(org, `/${m2}`));
-  expect((read2After.body as MonitorBody).monitor.health).toBe("down");
+  expect(
+    monitorDetailResponseSchema.parse(read2After.body).monitor.health,
+  ).toBe("down");
 });

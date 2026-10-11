@@ -144,7 +144,11 @@ function MonitorFacts({
   preferences: Preferences;
 }) {
   if (item.eventType === "MONITOR_DOWN") {
-    return <span>สาเหตุ: {downReason(item.reason)}</span>;
+    return (
+      <span data-testid="notification-reason" data-reason={item.reason}>
+        สาเหตุ: {downReason(item.reason)}
+      </span>
+    );
   }
   if (item.sslNotAfter === null) return null;
   return (
@@ -152,7 +156,7 @@ function MonitorFacts({
       {item.eventType === "MONITOR_SSL_EXPIRED"
         ? "ใบรับรองหมดอายุเมื่อ "
         : "ใบรับรองหมดอายุ "}
-      <time dateTime={item.sslNotAfter}>
+      <time data-testid="notification-ssl-expiry" dateTime={item.sslNotAfter}>
         {itemTime(item.sslNotAfter, preferences)}
       </time>
     </span>
@@ -266,8 +270,16 @@ function NotificationList({
       {items.map((item) => {
         const unread = item.readAt === null;
         return (
-          <li key={item.id}>
+          <li
+            data-testid={`notification-row-${item.id}`}
+            data-event-type={item.eventType}
+            data-scope={item.scope}
+            data-category={item.category}
+            data-read-at={item.readAt ?? ""}
+            key={item.id}
+          >
             <button
+              data-testid={`notification-open-${item.id}`}
               type="button"
               onClick={() => {
                 onOpen(item.id);
@@ -277,6 +289,7 @@ function NotificationList({
             >
               {unread ? (
                 <span
+                  data-testid="notification-unread"
                   aria-label="ยังไม่อ่าน"
                   role="img"
                   className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary"
@@ -296,6 +309,7 @@ function NotificationList({
                     <ItemIcon item={item} size={16} />
                   </span>
                   <span
+                    data-testid="notification-title"
                     className={`text-sm ${unread ? "font-semibold text-heading" : ""}`}
                   >
                     {itemTitle(item)}
@@ -323,6 +337,7 @@ function NotificationList({
             </button>
             {item.scope === "organization" && item.category === "monitor" ? (
               <Link
+                data-testid="notification-monitor-link"
                 to={monitorPath(item)}
                 onClick={onNavigate}
                 data-popover-item={popoverItems ? "" : undefined}
@@ -334,6 +349,7 @@ function NotificationList({
             ) : null}
             {item.scope === "organization" && item.category === "audit-log" ? (
               <Link
+                data-testid="notification-audit-link"
                 to={auditExportPath(item.organizationId)}
                 onClick={onNavigate}
                 data-popover-item={popoverItems ? "" : undefined}
@@ -389,8 +405,14 @@ export function NotificationRows({
         const title = dayLabel(group.first, preferences);
         const date = dayDate(group.first, preferences);
         return (
-          <section key={group.key} aria-labelledby={`inbox-day-${group.key}`}>
+          <section
+            data-testid={`notification-day-${group.key}`}
+            data-day-key={group.key}
+            key={group.key}
+            aria-labelledby={`inbox-day-${group.key}`}
+          >
             <SectionHeader
+              headingTestId="notification-day-title"
               id={`inbox-day-${group.key}`}
               title={title}
               meta={title === date ? undefined : <span>{date}</span>}
@@ -510,6 +532,7 @@ function NotificationsPageForOrganization({
   if (detailId !== null) {
     const backButton = (
       <Button
+        data-testid="notifications-back"
         variant="ghost"
         className="-ml-3 gap-1 self-start"
         onClick={closeDetail}
@@ -534,7 +557,11 @@ function NotificationsPageForOrganization({
       return (
         <Page>
           {backButton}
-          <PageState kind="error" message={problem(open.error)} />
+          <PageState
+            data-testid="notification-detail-error"
+            kind="error"
+            message={problem(open.error)}
+          />
         </Page>
       );
     }
@@ -546,11 +573,22 @@ function NotificationsPageForOrganization({
           scope={{ label: itemContext(detail)[0], tag: itemContext(detail)[1] }}
           title={itemTitle(detail)}
         />
-        <Card as="article">
+        <Card
+          data-testid={`notification-detail-${detail.id}`}
+          data-event-type={detail.eventType}
+          as="article"
+        >
           <dl className="grid gap-x-8 gap-y-1 p-6 text-sm sm:grid-cols-[max-content_1fr] sm:gap-y-4">
             <dt className="text-foreground-secondary">สถานะ</dt>
             <dd className="mb-3 sm:mb-0">
-              <StatusPill dot>
+              <StatusPill
+                data-testid={
+                  detail.readAt === null
+                    ? "notification-detail-unread"
+                    : "notification-detail-read"
+                }
+                dot
+              >
                 {detail.readAt === null ? "ยังไม่อ่าน" : "อ่านแล้ว"}
               </StatusPill>
             </dd>
@@ -564,7 +602,10 @@ function NotificationsPageForOrganization({
               <>
                 <dt className="text-foreground-secondary">อ่านเมื่อ</dt>
                 <dd className="mb-3 sm:mb-0">
-                  <time dateTime={detail.readAt}>
+                  <time
+                    data-testid="notification-detail-read-at"
+                    dateTime={detail.readAt}
+                  >
                     {itemTime(detail.readAt, preferences)}
                   </time>
                 </dd>
@@ -582,6 +623,7 @@ function NotificationsPageForOrganization({
                 <dt className="text-foreground-secondary">มอนิเตอร์</dt>
                 <dd className="mb-3 sm:mb-0">
                   <Link
+                    data-testid="notification-monitor-link"
                     to={monitorPath(detail)}
                     className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
@@ -591,7 +633,10 @@ function NotificationsPageForOrganization({
                       {detail.subject.monitorName}
                     </span>
                   </Link>{" "}
-                  <span className="text-foreground-secondary">
+                  <span
+                    data-testid="notification-monitor-name"
+                    className="text-foreground-secondary"
+                  >
                     ({detail.subject.monitorName})
                   </span>
                 </dd>
@@ -641,6 +686,8 @@ function NotificationsPageForOrganization({
       <Page>
         <PageHeader eyebrow="// inbox" scope={scope} title="การแจ้งเตือน" />
         <PageState
+          data-testid="notifications-list-error"
+          retryTestId="notifications-list-retry"
           kind="error"
           message={problem(list.error)}
           retryLabel="ลองใหม่"
@@ -669,6 +716,7 @@ function NotificationsPageForOrganization({
         }
         actions={
           <Button
+            data-testid="notifications-mark-all"
             variant="secondary"
             className="h-auto min-h-10 w-full max-w-full break-words whitespace-normal sm:w-auto"
             disabled={unreadCount === 0 || all.isPending}
@@ -682,12 +730,14 @@ function NotificationsPageForOrganization({
         }
       />
       {all.isError ? (
-        <Alert tone="error">
+        <Alert data-testid="notifications-mark-all-error" tone="error">
           ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
         </Alert>
       ) : null}
       {all.isSuccess && unreadCount === 0 ? (
-        <Notice tone="success">ทำเครื่องหมายว่าอ่านแล้วทั้งหมด</Notice>
+        <Notice data-testid="notifications-mark-all-success" tone="success">
+          ทำเครื่องหมายว่าอ่านแล้วทั้งหมด
+        </Notice>
       ) : null}
       <MockupFrame label="ตัวกรองและสรุปการแจ้งเตือน" issue={62}>
         <div className="flex flex-col gap-3 text-sm text-foreground-secondary">
@@ -738,6 +788,7 @@ function NotificationsPageForOrganization({
       <div>
         {items.length === 0 ? (
           <EmptyState
+            data-testid="notifications-empty"
             icon={<BellIcon size={20} />}
             title="ยังไม่มีการแจ้งเตือน"
             description="เหตุการณ์ด้านความปลอดภัยของบัญชี การเปลี่ยนแปลงขององค์กรและสถานะมอนิเตอร์จะแสดงที่นี่"
@@ -749,10 +800,13 @@ function NotificationsPageForOrganization({
               <div className="border-t border-foreground/10 p-2">
                 {nextPageError === null ? null : (
                   <div className="mb-2">
-                    <Alert tone="error">{problem(nextPageError)}</Alert>
+                    <Alert data-testid="notifications-next-error" tone="error">
+                      {problem(nextPageError)}
+                    </Alert>
                   </div>
                 )}
                 <Button
+                  data-testid="notifications-load-more"
                   variant="ghost"
                   className="w-full"
                   disabled={loadingNextPage}

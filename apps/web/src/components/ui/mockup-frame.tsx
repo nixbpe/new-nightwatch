@@ -11,7 +11,9 @@ export function MockupNotice({
   issue,
   issueUrl,
   className,
+  testId,
 }: {
+  testId?: string;
   issue: number;
   /** Defaults to this repository's issue `issue`. */
   issueUrl?: string;
@@ -19,6 +21,7 @@ export function MockupNotice({
 }) {
   return (
     <p
+      data-testid={testId === undefined ? undefined : "mockup-notice"}
       data-slot="mockup-notice"
       className={cn(
         "flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-secondary",
@@ -27,6 +30,7 @@ export function MockupNotice({
     >
       <span>{MOCKUP_NOTICE}</span>
       <a
+        data-testid={testId === undefined ? undefined : "mockup-issue"}
         href={issueUrl ?? `${ISSUES_URL}/${String(issue)}`}
         target="_blank"
         rel="noreferrer"
@@ -51,7 +55,9 @@ export function MockupFrame({
   issueUrl,
   className,
   children,
+  testId,
 }: {
+  testId?: string;
   /** What the sample shows, e.g. "ความพร้อมใช้งาน 30 วัน". */
   label: string;
   issue: number;
@@ -61,6 +67,7 @@ export function MockupFrame({
 }) {
   return (
     <div
+      data-testid={testId}
       role="group"
       aria-label={`ตัวอย่าง: ${label}`}
       data-slot="mockup-frame"
@@ -69,7 +76,7 @@ export function MockupFrame({
         className,
       )}
     >
-      <MockupNotice issue={issue} issueUrl={issueUrl} />
+      <MockupNotice testId={testId} issue={issue} issueUrl={issueUrl} />
       <div className="min-w-0">{children}</div>
     </div>
   );

@@ -96,13 +96,19 @@ const THAI = /[\u0e00-\u0e7f]/;
 export function Time({
   iso,
   format = formatTime,
+  testId,
 }: {
+  testId?: string;
   iso: string;
   format?: (iso: string) => string;
 }) {
   const text = format(iso);
   return (
-    <time dateTime={iso} className={THAI.test(text) ? "font-sans" : undefined}>
+    <time
+      data-testid={testId}
+      dateTime={iso}
+      className={THAI.test(text) ? "font-sans" : undefined}
+    >
       {text}
     </time>
   );

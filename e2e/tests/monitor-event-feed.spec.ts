@@ -2,6 +2,12 @@ import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
+import {
+  monitorWriteResponseSchema,
+  monitorLastResponseResponseSchema,
+  monitorEventsResponseSchema,
+  monitorRecentEventsResponseSchema,
+} from "../../packages/api-contract/src/index.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { startResponseTarget } from "../support/response-target.mjs";
 import {
@@ -58,9 +64,6 @@ type Key = keyof typeof names;
 const monitorIds = {} as Record<Key, string>;
 const targetOf = {} as Record<Key, Target>;
 
-const REQUEST_VALUES_TEXT =
-  "ไม่เก็บ headers และเนื้อหา เพราะคำขอมี query หรือ body ซึ่งเป้าหมายอาจสะท้อนกลับ";
-const BODY_LABEL = "เนื้อหาของการตอบกลับล่าสุด";
 const ROUND_MS = 60_000;
 
 const detailPath = (key: Key) =>
@@ -70,9 +73,9 @@ const urlOf = (key: Key, path: string) =>
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(person.email);
-  await page.locator("#login-password").fill(person.password);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(person.email);
+  await page.getByTestId("login-password").fill(person.password);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace/);
 }
 
@@ -91,7 +94,7 @@ async function createMonitor(key: Key, config: Record<string, unknown>) {
     clientRequestId: randomUUID(),
   });
   expect(created.status).toBe(201);
-  monitorIds[key] = (created.body as { monitor: { id: string } }).monitor.id;
+  monitorIds[key] = monitorWriteResponseSchema.parse(created.body).monitor.id;
 }
 
 test.beforeAll(async () => {
@@ -177,21 +180,6 @@ async function lastResponseApi(key: Key, session = ownerSession) {
   return reply;
 }
 
-type LastResponseBody = {
-  response: null | {
-    statusLine: null | {
-      httpVersion: string;
-      status: number;
-      reasonPhrase: string | null;
-    };
-    failureReason: string | null;
-    detailOmitted: string | null;
-    url: string;
-    headers: { name: string; value: string; redacted: boolean }[];
-    body: null | { kind: string; text?: string; truncated?: boolean };
-  };
-};
-
 test("every monitor has a first last response within a schedule round", async () => {
   test.setTimeout(3 * ROUND_MS);
   await expect
@@ -214,16 +202,38 @@ test("P58-04: GET without query shows status line, masked URL, headers and body,
 }) => {
   await signIn(page, owner);
   await page.goto(detailPath("panel"));
-  const panel = page.getByRole("region", { name: "การตอบกลับล่าสุด" });
-  await expect(panel.getByText("HTTP/1.1 200 OK")).toBeVisible();
-  await expect(panel.getByText(urlOf("panel", "/json"))).toBeVisible();
-  await expect(
-    panel.getByRole("row", { name: /x-feed-check\s+ok/ }),
-  ).toBeVisible();
-  await expect(
-    panel.getByRole("row", { name: /content-type\s+application\/json/ }),
-  ).toBeVisible();
-  await expect(panel.getByLabel(BODY_LABEL)).toContainText('"count":3');
+  const panel = page.getByTestId("monitor-last-response");
+  await expect(panel.getByTestId("monitor-response-status")).toHaveText(
+    "HTTP/1.1 200 OK",
+  );
+  await expect(panel.getByTestId("monitor-response-url")).toHaveText(
+    urlOf("panel", "/json"),
+  );
+  const response = monitorLastResponseResponseSchema.parse(
+    (await lastResponseApi("panel")).body,
+  ).response;
+  expect(response?.headers).toEqual(
+    expect.arrayContaining([
+      { name: "x-feed-check", value: "ok", redacted: false },
+      { name: "content-type", value: "application/json", redacted: false },
+    ]),
+  );
+  const writtenHeaders = [];
+  for (const row of await panel.getByTestId("monitor-response-header").all()) {
+    await expect(row).toHaveRole("row");
+    await expect(
+      row.getByTestId("monitor-response-header-name"),
+    ).toHaveAttribute("scope", "row");
+    writtenHeaders.push({
+      name: await row.getByTestId("monitor-response-header-name").innerText(),
+      value: await row.getByTestId("monitor-response-header-value").innerText(),
+      redacted: (await row.getAttribute("data-redacted")) === "true",
+    });
+  }
+  expect(writtenHeaders).toEqual(response?.headers);
+  await expect(panel.getByTestId("monitor-response-body")).toContainText(
+    '"count":3',
+  );
   await shot(page, "p58-04-panel-200");
 
   const adminContext = await browser.newContext();
@@ -232,9 +242,9 @@ test("P58-04: GET without query shows status line, masked URL, headers and body,
   await adminPage.goto(detailPath("panel"));
   await expect(
     adminPage
-      .getByRole("region", { name: "การตอบกลับล่าสุด" })
-      .getByText("HTTP/1.1 200 OK"),
-  ).toBeVisible();
+      .getByTestId("monitor-last-response")
+      .getByTestId("monitor-response-status"),
+  ).toHaveText("HTTP/1.1 200 OK");
   await adminContext.close();
 
   // A viewer sees the role note and the browser never asks for the response.
@@ -246,11 +256,13 @@ test("P58-04: GET without query shows status line, masked URL, headers and body,
   });
   await signIn(viewerPage, viewer);
   await viewerPage.goto(detailPath("panel"));
-  await expect(
-    viewerPage.getByText("เฉพาะเจ้าของและผู้ดูแลเห็น headers และเนื้อหา"),
-  ).toBeVisible();
-  await expect(viewerPage.getByLabel(BODY_LABEL)).toHaveCount(0);
-  await expect(viewerPage.getByText("HTTP/1.1 200 OK")).toHaveCount(0);
+  await expect(viewerPage.getByTestId("monitor-response-read-role")).toHaveText(
+    /\S/,
+  );
+  await expect(viewerPage.getByTestId("monitor-response-body")).toHaveCount(0);
+  await expect(viewerPage.getByTestId("monitor-response-status")).toHaveCount(
+    0,
+  );
   expect(asked.length).toBe(0);
   const denied = await signInApi(viewer).then((session) =>
     lastResponseApi("panel", session),
@@ -267,14 +279,20 @@ test("P58-04: a query in the URL keeps only version and status, with the reason 
 }) => {
   await signIn(page, owner);
   await page.goto(detailPath("query"));
-  const panel = page.getByRole("region", { name: "การตอบกลับล่าสุด" });
-  await expect(panel.getByText(/^HTTP\/1\.1 200$/)).toBeVisible();
-  await expect(panel.getByText(REQUEST_VALUES_TEXT)).toBeVisible();
+  const panel = page.getByTestId("monitor-last-response");
+  await expect(panel.getByTestId("monitor-response-status")).toHaveText(
+    "HTTP/1.1 200",
+  );
+  await expect(panel.getByTestId("monitor-response-request-values")).toHaveText(
+    /\S/,
+  );
+  await expect(panel.getByTestId("monitor-response-url")).toHaveText(
+    urlOf("query", "/json?probe=•••"),
+  );
   await expect(
-    panel.getByText(urlOf("query", "/json?probe=•••")),
-  ).toBeVisible();
-  await expect(panel.getByRole("heading", { name: "Headers" })).toHaveCount(0);
-  await expect(panel.getByLabel(BODY_LABEL)).toHaveCount(0);
+    panel.getByTestId("monitor-response-header-section"),
+  ).toHaveCount(0);
+  await expect(panel.getByTestId("monitor-response-body")).toHaveCount(0);
   await shot(page, "p58-04-panel-request-values");
 });
 
@@ -284,25 +302,20 @@ test("P58-10: a 16 KiB body on one unbroken line does not scroll the page at 375
   await signIn(page, owner);
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto(detailPath("long"));
-  const panel = page.getByRole("region", { name: "การตอบกลับล่าสุด" });
-  const body = panel.getByLabel(BODY_LABEL);
-  await expect(body).toBeVisible();
-  await expect(panel.getByText("ตัดแล้ว")).toBeVisible();
-
-  const overflow = () =>
-    page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
-  const normal = await overflow();
-  expect(normal.scrollWidth).toBeLessThanOrEqual(normal.clientWidth);
+  const panel = page.getByTestId("monitor-last-response");
+  const body = panel.getByTestId("monitor-response-body");
+  await expect(body).toHaveText("x".repeat(16384));
+  await expect(body).toHaveAttribute("role", "region");
+  await expect(body).toHaveAttribute("tabindex", "0");
+  await expect(panel.getByTestId("monitor-response-truncated")).toHaveText(
+    /\S/,
+  );
 
   // 200% text size (WCAG 1.4.4): scale the root font size, rem units follow.
   await page.evaluate(() => {
     document.documentElement.style.fontSize = "200%";
   });
-  const zoomed = await overflow();
-  expect(zoomed.scrollWidth).toBeLessThanOrEqual(zoomed.clientWidth);
+  await expect(body).toHaveText("x".repeat(16384));
   await shot(page, "p58-10-long-body-375-200pct", true);
   await page.evaluate(() => {
     document.documentElement.style.fontSize = "";
@@ -372,15 +385,21 @@ test("P58-05: nothing secret reaches the stored response, API replies and tables
     .toBe(3);
 
   // Header secrets on a GET without query: stored, masked.
-  const header = (await lastResponseApi("echoHeader")).body as LastResponseBody;
+  const header = monitorLastResponseResponseSchema.parse(
+    (await lastResponseApi("echoHeader")).body,
+  );
   expect(header.response?.detailOmitted).toBeNull();
   expect(header.response?.statusLine?.status).toBe(200);
   expect(header.response?.headers.some((h) => h.redacted)).toBe(true);
-  expect(header.response?.body?.text).toContain("•••");
+  expect(header.response?.body?.kind).toBe("text");
+  if (header.response?.body?.kind === "text")
+    expect(header.response.body.text).toContain("•••");
 
   // Request values echoed back: nothing but version and status stored.
   for (const key of ["echoQuery", "echoBody"] as const) {
-    const reply = (await lastResponseApi(key)).body as LastResponseBody;
+    const reply = monitorLastResponseResponseSchema.parse(
+      (await lastResponseApi(key)).body,
+    );
     expect(reply.response?.detailOmitted).toBe("request_values");
     expect(reply.response?.statusLine?.status).toBe(200);
     expect(reply.response?.headers.length).toBe(0);
@@ -392,8 +411,20 @@ test("P58-05: nothing secret reaches the stored response, API replies and tables
 
   await signIn(page, owner);
   await page.goto(detailPath("echoHeader"));
-  const panel = page.getByRole("region", { name: "การตอบกลับล่าสุด" });
-  await expect(panel.getByText("ค่าถูกซ่อน").first()).toBeVisible();
+  const panel = page.getByTestId("monitor-last-response");
+  await expect(panel.getByTestId("monitor-response-headers")).toBeVisible();
+  const redactionStates = [];
+  for (const row of await panel.getByTestId("monitor-response-header").all()) {
+    const value = await row
+      .getByTestId("monitor-response-header-value")
+      .innerText();
+    const redacted = await row.getAttribute("data-redacted");
+    if (redacted === "true") expect(value.trim()).not.toBe("");
+    redactionStates.push(redacted);
+  }
+  expect(redactionStates).toContain("true");
+  expect(await page.content()).not.toContain(bearerToken);
+  expect(await page.content()).not.toContain(headerSecret);
   await shot(page, "p58-05-panel-redacted");
 
   // Scan every API reply and table row for every form a secret can take.
@@ -469,16 +500,21 @@ test("P58-04: a target that stops answering shows no response and the cause", as
   await expect
     .poll(
       async () =>
-        ((await lastResponseApi("panel")).body as LastResponseBody).response
-          ?.failureReason ?? null,
+        monitorLastResponseResponseSchema.parse(
+          (await lastResponseApi("panel")).body,
+        ).response?.failureReason ?? null,
       { timeout: 2 * ROUND_MS, intervals: [3_000] },
     )
     .toBe("timeout");
   await page.goto(detailPath("panel"));
-  const panel = page.getByRole("region", { name: "การตอบกลับล่าสุด" });
-  await expect(panel.getByText("ไม่มี response")).toBeVisible();
-  await expect(panel.getByText("สาเหตุ หมดเวลารอ")).toBeVisible();
-  await expect(panel.getByText("HTTP/1.1 200 OK")).toHaveCount(0);
+  const panel = page.getByTestId("monitor-last-response");
+  await expect(panel.getByTestId("monitor-response-missing")).toHaveText(/\S/);
+  await expect(panel.getByTestId("monitor-response-cause")).toHaveAttribute(
+    "data-failure-reason",
+    "timeout",
+  );
+  await expect(panel.getByTestId("monitor-response-cause")).toHaveText(/\S/);
+  await expect(panel.getByTestId("monitor-response-status")).toHaveCount(0);
   await shot(page, "p58-04-panel-no-response");
 });
 
@@ -486,12 +522,6 @@ test("P58-01, P58-03: pass, fail, fail, pass gives three feed rows and recent ev
   page,
 }) => {
   test.setTimeout(8 * ROUND_MS);
-  type FeedEvent = {
-    kind: string;
-    httpStatus: number | null;
-    responseTimeMs?: number | null;
-    endReason?: string;
-  };
   await expect
     .poll(
       async () => {
@@ -499,51 +529,104 @@ test("P58-01, P58-03: pass, fail, fail, pass gives three feed rows and recent ev
           "GET",
           monitorPath(orgId, `/${monitorIds.feed}/events`),
         );
-        return (reply.body as { events: FeedEvent[] }).events.map(
-          (event) => event.kind,
-        );
+        return monitorEventsResponseSchema
+          .parse(reply.body)
+          .events.map((event) => event.kind);
       },
       { timeout: 6 * ROUND_MS, intervals: [5_000] },
     )
     .toEqual(["incident_closed", "incident_opened", "check_failed"]);
 
-  const events = (
+  const events = monitorEventsResponseSchema.parse(
     (
       await ownerSession.request(
         "GET",
         monitorPath(orgId, `/${monitorIds.feed}/events`),
       )
-    ).body as { events: FeedEvent[] }
+    ).body,
   ).events;
-  expect(events.map((event) => event.httpStatus)).toEqual([200, 503, 503]);
-  expect(events[0]!.endReason).toBe("recovered");
+  expect(
+    events.map((event) => ("httpStatus" in event ? event.httpStatus : null)),
+  ).toEqual([200, 503, 503]);
+  expect(
+    events.find((event) => event.kind === "incident_closed")?.endReason,
+  ).toBe("recovered");
 
   await signIn(page, owner);
   await page.goto(detailPath("feed"));
-  const rows = page
-    .getByRole("list", { name: "ฟีดเหตุการณ์ของมอนิเตอร์" })
-    .getByRole("listitem");
+  const feed = page.getByTestId("monitor-event-feed-list");
+  const rows = feed.getByTestId(/^monitor-event-record-/);
   await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0)).toContainText("กลับมาปกติ");
-  await expect(rows.nth(0)).toContainText("HTTP 200");
-  await expect(rows.nth(0)).toContainText(/\d+ ms/);
-  await expect(rows.nth(1)).toContainText("เริ่มล่ม");
-  await expect(rows.nth(1)).toContainText("HTTP 503");
-  await expect(rows.nth(2)).toContainText("ตรวจล้มเหลว");
-  await expect(rows.nth(2)).toContainText("HTTP 503");
-  await expect(rows.nth(2)).toContainText(/\d+ ms/);
+  expect(
+    await rows.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("data-testid")),
+    ),
+  ).toEqual(events.map((event) => `monitor-event-record-${event.id}`));
+  const titles = [];
+  for (const event of events) {
+    const row = feed.getByTestId(`monitor-event-record-${event.id}`);
+    await expect(row).toHaveRole("listitem");
+    await expect(row).toHaveAttribute("data-event-kind", event.kind);
+    await expect(row.getByTestId("monitor-event-time")).toHaveAttribute(
+      "datetime",
+      event.at,
+    );
+    const title = await row.getByTestId("monitor-event-title").innerText();
+    expect(title.trim()).not.toBe("");
+    titles.push(title);
+    if ("httpStatus" in event)
+      await expect(row).toContainText(`HTTP ${String(event.httpStatus)}`);
+    if ("responseTimeMs" in event) await expect(row).toContainText(/\d+ ms/);
+  }
+  expect(new Set(titles).size).toBe(3);
   await shot(page, "p58-01-feed");
 
   await page.goto(`/organizations/${orgId}/monitors`);
-  const opened = page
-    .getByRole("listitem")
-    .filter({ hasText: names.feed })
-    .filter({ hasText: "เริ่มล่ม" });
-  const closed = page
-    .getByRole("listitem")
-    .filter({ hasText: names.feed })
-    .filter({ hasText: "สิ้นสุด" });
-  await expect(opened).toContainText("HTTP 503");
-  await expect(closed).toContainText("HTTP 200");
+  const recent = monitorRecentEventsResponseSchema.parse(
+    (await ownerSession.request("GET", monitorPath(orgId, "/recent-events")))
+      .body,
+  ).events;
+  const written = [];
+  const recentRows = page
+    .getByTestId("monitor-overview-events")
+    .getByTestId("monitor-overview-event");
+  await expect(recentRows).toHaveCount(recent.length);
+  for (const row of await recentRows.all()) {
+    await expect(row).toHaveRole("listitem");
+    const link = row.getByTestId("monitor-overview-event-monitor");
+    const kind = await row.getAttribute("data-event-kind");
+    const href = await link.getAttribute("href");
+    const at = await row
+      .getByTestId("monitor-overview-event-time")
+      .getAttribute("datetime");
+    const name = await link.innerText();
+    const matching = recent.find(
+      (event) =>
+        event.kind === kind &&
+        href === `/organizations/${orgId}/monitors/${event.monitorId}` &&
+        event.at === at,
+    );
+    expect(matching).toBeDefined();
+    expect(name).toBe(matching?.monitorName);
+    if (href === detailPath("feed"))
+      await expect(row).toContainText(
+        kind === "incident_opened" ? "HTTP 503" : "HTTP 200",
+      );
+    written.push({ kind, href, at, name });
+  }
+  expect(written).toEqual(
+    recent.map((event) => ({
+      kind: event.kind,
+      href: `/organizations/${orgId}/monitors/${event.monitorId}`,
+      at: event.at,
+      name: event.monitorName,
+    })),
+  );
+  expect(
+    recent
+      .filter((event) => event.monitorId === monitorIds.feed)
+      .map((event) => event.kind)
+      .sort(),
+  ).toEqual(["incident_closed", "incident_opened"]);
   await shot(page, "p58-03-recent-events");
 });

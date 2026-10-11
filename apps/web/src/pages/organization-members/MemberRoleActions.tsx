@@ -245,6 +245,7 @@ export function MemberRoleActions({
   return (
     <div className="flex flex-wrap items-center justify-end gap-2 py-1 sm:flex-nowrap">
       <select
+        data-testid={`member-role-select-${member.id}`}
         {...{ [MEMBER_SELECT_ATTRIBUTE]: member.id }}
         aria-label={`บทบาทใหม่ของ ${member.name}`}
         className={cn(textInputClass, "h-8 w-32 shrink-0 py-0 text-xs")}
@@ -255,7 +256,11 @@ export function MemberRoleActions({
         }}
       >
         {roles.map((value) => (
-          <option key={value} value={value}>
+          <option
+            data-testid={`member-role-option-${value}`}
+            key={value}
+            value={value}
+          >
             {ROLE_LABELS[value]}
           </option>
         ))}
@@ -265,6 +270,7 @@ export function MemberRoleActions({
         variant="secondary"
         size="sm"
         disabled={pending || role === member.role}
+        data-testid={`member-role-save-${member.id}`}
         aria-label={`บันทึกบทบาทของ ${member.name}`}
         onClick={(event) => {
           onSave(member, role, event.currentTarget);

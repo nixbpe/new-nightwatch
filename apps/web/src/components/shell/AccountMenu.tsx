@@ -43,6 +43,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
     <div className="relative border-t border-foreground/10 p-2">
       <button
         ref={popover.triggerRef}
+        data-testid="shell-account-open"
         type="button"
         aria-haspopup="menu"
         aria-expanded={popover.open}
@@ -73,6 +74,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
       {popover.open ? (
         <div
           ref={popover.panelRef}
+          data-testid="shell-account-menu"
           role="menu"
           aria-label="บัญชีของฉัน"
           tabIndex={-1}
@@ -91,7 +93,10 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
             <div className="pb-3" />
           ) : (
             <div className="flex items-center gap-2 px-3 pt-2 pb-3 text-xs">
-              <StatusPill dot>
+              <StatusPill
+                data-testid={`shell-account-role-${activeOrg.role}`}
+                dot
+              >
                 {ROLE_LABELS[activeOrg.role] ?? activeOrg.role}
               </StatusPill>
               <span className="truncate text-foreground-secondary">
@@ -103,6 +108,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
           <div className="p-1">
             <Link
               role="menuitem"
+              data-testid="shell-account-settings"
               to="/settings/profile"
               onClick={popover.close}
               className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-foreground/5"
@@ -110,7 +116,10 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
               <SlidersIcon size={16} />
               <span className="flex-1">การตั้งค่าส่วนตัว</span>
             </Link>
-            <div className="flex items-center gap-2.5 px-2.5 py-2 text-sm text-foreground">
+            <div
+              data-testid="shell-account-theme"
+              className="flex items-center gap-2.5 px-2.5 py-2 text-sm text-foreground"
+            >
               <MonitorIcon size={16} />
               <span className="flex-1">ธีม</span>
               <ThemeSegmentedControl theme={theme} onChange={setTheme} />
@@ -121,6 +130,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
             <button
               type="button"
               role="menuitem"
+              data-testid="shell-account-sign-out"
               onClick={() => {
                 popover.close();
                 void authClient.signOut({
@@ -182,6 +192,7 @@ function ThemeSegmentedControl({
         return (
           <button
             key={option.value}
+            data-testid={`shell-theme-${option.value}`}
             type="button"
             aria-pressed={active}
             onClick={() => {

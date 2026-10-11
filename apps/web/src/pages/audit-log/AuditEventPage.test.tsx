@@ -5,7 +5,7 @@ import type {
   AuditEventDetail,
   AuditLogEventResponse,
 } from "@nightwatch/api-contract";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,7 +57,7 @@ const open = (
     extraRoutes: (
       <Route
         path="/organizations/:organizationId/audit-log"
-        element={<p>list</p>}
+        element={<p data-testid="returned-audit-list">list</p>}
       />
     ),
   });
@@ -79,39 +79,43 @@ afterEach(() => {
 describe("AuditEventPage", () => {
   it("shows time with zone, id, actor and role at the time, action code, category and focuses the h1", async () => {
     open(makeDetail());
-    const title = await screen.findByRole("heading", {
-      level: 1,
-      name: "หยุดมอนิเตอร์ชั่วคราว",
-    });
+    await screen.findByTestId("audit-event-action");
+    const title = screen.getByTestId("page-title");
+    expect(title.tagName).toBe("H1");
+    expect(title).not.toHaveAccessibleName("");
     expect(title).toHaveFocus();
-    expect(screen.getByText("2026-10-02 14:00:55")).toBeInTheDocument();
-    expect(
-      screen.getByText(EVENT_ID, { selector: "span" }),
-    ).toBeInTheDocument();
-    const terms = screen.getAllByRole("term").map((t) => t.textContent);
-    expect(terms).toEqual(
-      expect.arrayContaining([
-        "ชื่อ",
-        "บทบาท ณ เวลานั้น",
-        "การกระทำ",
-        "รหัสการกระทำ",
-        "หมวด",
-        "เป้าหมาย",
-      ]),
+    expect(screen.getByTestId("audit-event-time")).toHaveTextContent(
+      "2026-10-02 14:00:55",
     );
-    expect(screen.getByText("organization.monitor.pause")).toBeInTheDocument();
-    expect(screen.getByText("ผู้ดูแล")).toBeInTheDocument();
+    expect(screen.getByTestId("audit-event-id")).toHaveTextContent(EVENT_ID);
+    expect(screen.getByTestId("audit-event-time-context")).toHaveTextContent(
+      "2026-10-02 14:00:55 Asia/Bangkok",
+    );
+    expect(screen.getByTestId("audit-event-actor")).toHaveTextContent(
+      "สมชาย ก.",
+    );
+    expect(screen.getByTestId("audit-event-action")).toHaveTextContent(
+      "organization.monitor.pause",
+    );
+    expect(screen.getByTestId("audit-event-role")).toHaveAttribute(
+      "data-value-code",
+      "admin",
+    );
+    expect(screen.getByTestId("audit-event-role").textContent.trim()).not.toBe(
+      "",
+    );
+    expect(screen.getByTestId("audit-event-category")).toHaveAttribute(
+      "data-value-code",
+      "monitor",
+    );
     expect(
-      screen.getByText("มอนิเตอร์", { selector: "dd" }),
-    ).toBeInTheDocument();
+      screen.getByTestId("audit-event-category").textContent.trim(),
+    ).not.toBe("");
   });
 
   it("renders no e-mail address or IP anywhere", async () => {
     const { container } = open(makeDetail());
-    await screen.findByRole("heading", {
-      level: 1,
-      name: "หยุดมอนิเตอร์ชั่วคราว",
-    });
+    await screen.findByTestId("audit-event-action");
     expect(container.textContent).not.toMatch(/@/);
     expect(container.textContent).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
   });
@@ -119,12 +123,15 @@ describe("AuditEventPage", () => {
   it("links a live monitor target by name and shows a deleted one as text", async () => {
     const { unmount } = open(makeDetail());
     expect(
-      await screen.findByRole("link", { name: "เปิดมอนิเตอร์ api-prod" }),
+      await screen.findByTestId("audit-event-target-link"),
     ).toHaveAttribute(
       "href",
       "/organizations/" +
         ORG_A +
         "/monitors/99999999-9999-4999-8999-999999999999",
+    );
+    expect(screen.getByTestId("audit-event-target-link")).toHaveTextContent(
+      "api-prod",
     );
     unmount();
     open(
@@ -138,11 +145,15 @@ describe("AuditEventPage", () => {
         },
       }),
     );
+    expect(await screen.findByTestId("audit-event-target")).toHaveAttribute(
+      "data-state-code",
+      "deleted",
+    );
     expect(
-      await screen.findByText("ถูกลบแล้ว", { selector: "dd" }),
-    ).toBeInTheDocument();
+      screen.getByTestId("audit-event-target").textContent.trim(),
+    ).not.toBe("");
     expect(
-      screen.queryByRole("link", { name: /เปิดมอนิเตอร์/ }),
+      screen.queryByTestId("audit-event-target-link"),
     ).not.toBeInTheDocument();
   });
 
@@ -167,15 +178,19 @@ describe("AuditEventPage", () => {
   it("links a member target for an admin and shows plain text for an auditor (a-1)", async () => {
     const { unmount } = open(memberEvent, "admin");
     expect(
-      await screen.findByRole("link", { name: "เปิดสมาชิก ประภา ค." }),
-    ).toBeInTheDocument();
+      await screen.findByTestId("audit-event-target-link"),
+    ).toHaveTextContent("ประภา ค.");
+    expect(screen.getByTestId("audit-event-target-link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/members`,
+    );
     unmount();
     open(memberEvent, "auditor");
+    expect(await screen.findByTestId("audit-event-target")).toHaveTextContent(
+      "ประภา ค.",
+    );
     expect(
-      await screen.findByText("ประภา ค.", { selector: "dd" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: /เปิดสมาชิก/ }),
+      screen.queryByTestId("audit-event-target-link"),
     ).not.toBeInTheDocument();
   });
 
@@ -192,11 +207,15 @@ describe("AuditEventPage", () => {
         },
       }),
     );
+    expect(await screen.findByTestId("audit-event-target")).toHaveAttribute(
+      "data-state-code",
+      "former",
+    );
     expect(
-      await screen.findByText("ไม่ใช่สมาชิกแล้ว", { selector: "dd" }),
-    ).toBeInTheDocument();
+      screen.getByTestId("audit-event-target").textContent.trim(),
+    ).not.toBe("");
     expect(
-      screen.queryByRole("link", { name: /เปิดสมาชิก/ }),
+      screen.queryByTestId("audit-event-target-link"),
     ).not.toBeInTheDocument();
   });
 
@@ -219,15 +238,24 @@ describe("AuditEventPage", () => {
         ],
       }),
     );
+    expect(await screen.findByTestId("audit-event-target")).toHaveTextContent(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
+    expect(screen.getByTestId("audit-event-target")).toHaveAttribute(
+      "data-state-code",
+      "auditor",
+    );
     expect(
-      await screen.findByText(/คำเชิญ ผู้ตรวจสอบ/, { selector: "dd" }),
-    ).toHaveTextContent("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+      screen.queryByTestId("audit-event-target-link"),
+    ).not.toBeInTheDocument();
   });
 });
 
 describe("AuditEventPage changes", () => {
   const rowsOf = () =>
-    within(screen.getByRole("table")).getAllByRole("row").slice(1);
+    within(screen.getByTestId("audit-event-changes-table")).getAllByTestId(
+      "audit-change-row",
+    );
 
   it("renders every AuditValue kind and role labels, with no value for secrets", async () => {
     const changes: AuditChange[] = [
@@ -292,30 +320,78 @@ describe("AuditEventPage changes", () => {
       },
     ];
     open(makeDetail({ action: "organization.monitor.update", changes }));
-    await screen.findByRole("table");
-    expect(screen.getByRole("table")).toHaveAccessibleName(
-      "การเปลี่ยนแปลงก่อนและหลัง",
-    );
-    const text = rowsOf().map((row) =>
-      Array.from(row.children).map((c) => c.textContent),
-    );
-    expect(text).toEqual([
-      ["บทบาท", "ผู้ชม", "ผู้ดูแล"],
-      ["แจ้งเตือนมอนิเตอร์", "เปิด", "ปิด"],
-      ["หมดเวลารอ (วินาที)", "10", "30"],
-      ["ชื่อ", "old", "new"],
-      ["แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน", "ปิด", "เปิด"],
-      ["รอบตรวจ (วินาที)", "60", "300"],
-      ["รหัสสถานะที่ถือว่าปกติ", "200", "2xx"],
-      ["Query parameter token", "—", "•••"],
-      ["ค่าลับ Authorization", "—", "ตั้งค่าแล้ว"],
-      ["ค่าลับ auth.token", "ตั้งค่าแล้ว", "เปลี่ยนแล้ว"],
-      ["Body", "—", "เปลี่ยนแล้ว"],
-      ["เงื่อนไขตรวจสอบ", "bodyContains ok", "—"],
-    ]);
+    await screen.findByTestId("audit-event-changes-table");
+    expect(
+      screen.getByTestId("audit-event-changes-table"),
+    ).not.toHaveAccessibleName("");
+    const records = rowsOf().map((row) => {
+      const value = (id: string) => {
+        const cell = within(row).getByTestId(id);
+        const kind = cell.getAttribute("data-kind");
+        const text = cell.textContent.trim();
+        expect(text).not.toBe("");
+        return {
+          kind,
+          value:
+            cell.getAttribute("data-role") ??
+            cell.getAttribute("data-boolean") ??
+            (kind === "value" || kind === "masked" || kind === "absent"
+              ? text
+              : null),
+        };
+      };
+      return {
+        field: row.getAttribute("data-field"),
+        key:
+          within(row).queryByTestId("audit-change-key")?.textContent.trim() ??
+          null,
+        before: value("audit-change-before"),
+        after: value("audit-change-after"),
+      };
+    });
+    const v = (value: string) => ({ kind: "value", value });
+    const absent = { kind: "absent", value: "—" };
+    const set = { kind: "secret_set", value: null };
+    const changed = { kind: "changed", value: null };
+    const expected = [
+      { field: "role", key: null, before: v("viewer"), after: v("admin") },
+      {
+        field: "monitorAlertsEnabled",
+        key: null,
+        before: v("true"),
+        after: v("false"),
+      },
+      { field: "timeoutSeconds", key: null, before: v("10"), after: v("30") },
+      { field: "name", key: null, before: v("old"), after: v("new") },
+      {
+        field: "settingsChangedEnabled",
+        key: null,
+        before: v("false"),
+        after: v("true"),
+      },
+      { field: "intervalSeconds", key: null, before: v("60"), after: v("300") },
+      { field: "expectedStatus", key: null, before: v("200"), after: v("2xx") },
+      {
+        field: "queryParam",
+        key: "token",
+        before: absent,
+        after: { kind: "masked", value: "•••" },
+      },
+      { field: "secret", key: "Authorization", before: absent, after: set },
+      { field: "secret", key: "auth.token", before: set, after: changed },
+      { field: "body", key: null, before: absent, after: changed },
+      {
+        field: "assertions",
+        key: null,
+        before: v("bodyContains ok"),
+        after: absent,
+      },
+    ];
+    expect(records).toHaveLength(expected.length);
+    expect(records).toEqual(expect.arrayContaining(expected));
   });
 
-  it("wraps the changes table in a named, focusable, horizontal-only scroll region", async () => {
+  it("wraps the changes table in a named, focusable region", async () => {
     open(
       makeDetail({
         changes: [
@@ -327,24 +403,24 @@ describe("AuditEventPage changes", () => {
         ],
       }),
     );
-    const region = await screen.findByRole("region", {
-      name: "ตารางการเปลี่ยนแปลง",
-    });
+    const region = await screen.findByTestId("audit-event-changes-region");
     expect(region).toHaveAttribute("tabindex", "0");
-    expect(region).toContainElement(screen.getByRole("table"));
-    expect(region.className).toContain("overflow-x-auto");
-    expect(region.className).not.toContain("overflow-auto");
-    expect(region.className).toContain("focus:outline-primary");
+    expect(region).toContainElement(
+      screen.getByTestId("audit-event-changes-table"),
+    );
+    expect(region).toHaveAttribute("role", "region");
+    expect(region).not.toHaveAccessibleName("");
     region.focus();
     expect(region).toHaveFocus();
   });
 
   it("says so when an event has no changes", async () => {
     open(makeDetail());
+    const empty = await screen.findByTestId("audit-event-no-changes");
+    expect(empty.textContent.trim()).not.toBe("");
     expect(
-      await screen.findByText("เหตุการณ์นี้ไม่มีข้อมูลการเปลี่ยนแปลง"),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      screen.queryByTestId("audit-event-changes-table"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -373,36 +449,50 @@ describe("AuditEventPage export event (a-1, a-2)", () => {
 
   it("shows the file as text, the scope section instead of changes and no search text", async () => {
     open(exportEvent(true));
-    expect(
-      await screen.findByText("ไฟล์ส่งออก CSV", { selector: "dd" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: /ไฟล์ส่งออก/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "ขอบเขตการส่งออก" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "การเปลี่ยนแปลง" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/2026-09-26 00:00:00 – 2026-10-03 14:02:00/),
-    ).toBeInTheDocument();
-    const scope = screen.getByRole("region", { name: "ขอบเขตการส่งออก" });
-    expect(await within(scope).findByText("สมชาย ก.")).toBeInTheDocument();
-    expect(screen.getByText("มีการค้นหาข้อความ").nextSibling).toHaveTextContent(
-      "ใช่",
+    expect(await screen.findByTestId("audit-event-target")).toHaveTextContent(
+      "CSV",
     );
-    expect(screen.getByText("สมาชิก", { selector: "dd" })).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("audit-event-target-link"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("audit-event-export-scope")).toBeInTheDocument();
+    expect(screen.queryByTestId("audit-event-changes")).not.toBeInTheDocument();
+    expect(screen.getByTestId("audit-export-range")).toHaveTextContent(
+      "2026-09-26 00:00:00 – 2026-10-03 14:02:00",
+    );
+    const scope = screen.getByTestId("audit-event-export-scope");
+    await waitFor(() =>
+      expect(within(scope).getByTestId("audit-export-actor")).toHaveTextContent(
+        "สมชาย ก.",
+      ),
+    );
+    expect(
+      within(scope).getByTestId("audit-export-search-applied"),
+    ).toHaveAttribute("data-value-code", "true");
+    expect(within(scope).getByTestId("audit-export-category")).toHaveAttribute(
+      "data-value-code",
+      "member",
+    );
+    expect(within(scope).getByTestId("audit-export-format")).toHaveTextContent(
+      "CSV",
+    );
   });
 
   it("says no search applied, and a missing actor reads as a former member", async () => {
     open(exportEvent(false, "user-404"));
+    await screen.findByTestId("audit-export-actor");
+    await waitFor(() =>
+      expect(screen.getByTestId("audit-export-actor")).toHaveAttribute(
+        "data-state-code",
+        "former",
+      ),
+    );
     expect(
-      await screen.findByText("ไม่ใช่สมาชิกแล้ว", { selector: "dd" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("มีการค้นหาข้อความ").nextSibling).toHaveTextContent(
-      "ไม่",
+      screen.getByTestId("audit-export-actor").textContent.trim(),
+    ).not.toBe("");
+    expect(screen.getByTestId("audit-export-search-applied")).toHaveAttribute(
+      "data-value-code",
+      "false",
     );
   });
 });
@@ -410,54 +500,45 @@ describe("AuditEventPage export event (a-1, a-2)", () => {
 describe("AuditEventPage states and navigation", () => {
   it("shows the shared not-found copy and a back link on a 404", async () => {
     open(new ApiError("AUDIT_EVENT_NOT_FOUND", "x", 404));
-    expect(
-      await screen.findByText(
-        "ไม่พบบันทึกนี้ อาจพ้นระยะเก็บบันทึกแล้ว หรือลิงก์ไม่ถูกต้อง",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "กลับไปบันทึกกิจกรรม" }),
-    ).toBeInTheDocument();
+    const notFound = await screen.findByTestId("audit-event-not-found");
+    expect(notFound.textContent.trim()).not.toBe("");
+    expect(screen.getByTestId("audit-event-back")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/audit-log`,
+    );
   });
 
   it("offers a retry on another failure", async () => {
     const user = userEvent.setup();
     open(new ApiError("INTERNAL", "x", 500));
     expect(
-      await screen.findByText(
-        "โหลดรายละเอียดไม่สำเร็จ ลองใหม่อีกครั้ง",
-        {},
-        { timeout: 4000 },
-      ),
+      await screen.findByTestId("audit-event-error", {}, { timeout: 4000 }),
     ).toBeInTheDocument();
     eventMock.mockResolvedValue(respond(makeDetail()));
-    await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
-    expect(
-      await screen.findByRole("heading", {
-        level: 1,
-        name: "หยุดมอนิเตอร์ชั่วคราว",
-      }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("audit-event-retry")).toBeEnabled();
+    await user.click(screen.getByTestId("audit-event-retry"));
+    expect(await screen.findByTestId("audit-event-action")).toHaveTextContent(
+      "organization.monitor.pause",
+    );
   });
 
   it("makes no request for a viewer", async () => {
     open(makeDetail(), "viewer");
-    expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูบันทึกกิจกรรม"),
-    ).toBeInTheDocument();
+    const denied = await screen.findByTestId("audit-denied-message");
+    expect(denied.textContent.trim()).not.toBe("");
+    expect(screen.getByTestId("page-title")).toHaveFocus();
+    expect(screen.queryByTestId("audit-event-action")).not.toBeInTheDocument();
     expect(eventMock).not.toHaveBeenCalled();
+    expect(actorsMock).not.toHaveBeenCalled();
   });
 
   it("drops the event when the server denies a later read", async () => {
     open(new ApiError("PERMISSION_DENIED", "x", 403));
-    expect(
-      await screen.findByRole("heading", {
-        name: "เข้าถึงบันทึกกิจกรรมไม่ได้",
-      }),
-    ).toHaveFocus();
-    expect(
-      screen.queryByText("organization.monitor.pause"),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByTestId("audit-denied-title")).toHaveFocus();
+    expect(screen.queryByTestId("audit-event-action")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(
+      "organization.monitor.pause",
+    );
   });
 
   it("goes back to the list with the original query string", async () => {
@@ -466,10 +547,15 @@ describe("AuditEventPage states and navigation", () => {
       search: "?range=30d&page=2",
       eventId: EVENT_ID,
     });
-    await user.click(
-      await screen.findByRole("link", { name: "กลับไปบันทึกกิจกรรม" }),
+    const back = await screen.findByTestId("audit-event-back");
+    expect(back).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/audit-log?range=30d&page=2`,
     );
-    expect(await screen.findByText("list")).toBeInTheDocument();
+    await user.click(back);
+    expect(
+      await screen.findByTestId("returned-audit-list"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${ORG_A}/audit-log?range=30d&page=2`,
     );

@@ -54,20 +54,21 @@ describe("ForgotPasswordPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.type(screen.getByLabelText("อีเมล"), "member@example.com");
-    await user.click(
-      screen.getByRole("button", { name: "ส่งลิงก์ตั้งรหัสผ่านใหม่" }),
+    await user.type(
+      screen.getByTestId("forgot-password-email"),
+      "member@example.com",
     );
+    await user.click(screen.getByTestId("forgot-password-submit"));
 
     expect(
-      await screen.findByText(
-        /หากอีเมลนี้มีบัญชีในระบบ เราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้โดยเร็ว/,
-      ),
+      await screen.findByTestId("forgot-password-success"),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("อีเมล")).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "กลับไปเข้าสู่ระบบ" }),
-    ).toBeInTheDocument();
+    expect(requestPasswordResetMock).toHaveBeenCalledWith({
+      email: "member@example.com",
+      redirectTo: "/reset-password",
+    });
+    expect(screen.queryByTestId("forgot-password-email")).toBeNull();
+    expect(screen.getByTestId("forgot-password-login")).toBeInTheDocument();
   });
 
   it("a failed request keeps the form with a retryable error", async () => {
@@ -79,25 +80,29 @@ describe("ForgotPasswordPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.type(screen.getByLabelText("อีเมล"), "member@example.com");
-    await user.click(
-      screen.getByRole("button", { name: "ส่งลิงก์ตั้งรหัสผ่านใหม่" }),
+    await user.type(
+      screen.getByTestId("forgot-password-email"),
+      "member@example.com",
     );
+    await user.click(screen.getByTestId("forgot-password-submit"));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "ส่งอีเมลไม่สำเร็จ",
+    expect(await screen.findByTestId("forgot-password-error")).toBeVisible();
+    expect(screen.getByTestId("forgot-password-submit")).toBeEnabled();
+    expect(screen.getByTestId("forgot-password-email")).toHaveValue(
+      "member@example.com",
     );
-    expect(screen.getByLabelText("อีเมล")).toHaveValue("member@example.com");
     expect(screen.queryByTestId("location")).toBeNull();
 
     requestPasswordResetMock.mockResolvedValueOnce({ data: {}, error: null });
-    await user.click(
-      screen.getByRole("button", { name: "ส่งลิงก์ตั้งรหัสผ่านใหม่" }),
-    );
+    await user.click(screen.getByTestId("forgot-password-submit"));
 
-    expect(
-      await screen.findByText(/หากอีเมลนี้มีบัญชีในระบบ/),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("forgot-password-success")).toBeVisible();
+    expect(screen.queryByTestId("forgot-password-email")).toBeNull();
+    expect(requestPasswordResetMock).toHaveBeenCalledTimes(2);
+    expect(requestPasswordResetMock).toHaveBeenLastCalledWith({
+      email: "member@example.com",
+      redirectTo: "/reset-password",
+    });
   });
 
   it("an unexpected failure shows the generic error and keeps the form", async () => {
@@ -105,14 +110,16 @@ describe("ForgotPasswordPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.type(screen.getByLabelText("อีเมล"), "member@example.com");
-    await user.click(
-      screen.getByRole("button", { name: "ส่งลิงก์ตั้งรหัสผ่านใหม่" }),
+    await user.type(
+      screen.getByTestId("forgot-password-email"),
+      "member@example.com",
     );
+    await user.click(screen.getByTestId("forgot-password-submit"));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "เกิดข้อผิดพลาดที่ไม่คาดคิด กรุณาลองใหม่อีกครั้ง",
+    expect(await screen.findByTestId("forgot-password-error")).toBeVisible();
+    expect(screen.getByTestId("forgot-password-submit")).toBeEnabled();
+    expect(screen.getByTestId("forgot-password-email")).toHaveValue(
+      "member@example.com",
     );
-    expect(screen.getByLabelText("อีเมล")).toHaveValue("member@example.com");
   });
 });

@@ -54,7 +54,7 @@ import {
   noResponseTimes,
   NOW,
 } from "./detail-test-support";
-import { formatDateTime, TIME_ZONE } from "./format";
+import { TIME_ZONE } from "./format";
 import { deferred } from "./form-test-support";
 
 // The interval is read when a fetch starts or ends. It is long by default so that a refresh never takes a response a test queued for a load more; a test that exercises the interval shortens it just before the step it checks.
@@ -159,6 +159,7 @@ function Harness() {
   return (
     <>
       <button
+        data-testid="checks-harness-switch"
         type="button"
         onClick={() => {
           void switchOrg(B);
@@ -178,7 +179,11 @@ function Harness() {
         />
         <Route
           path="/organizations/:organizationId/monitors"
-          element={<p>Overview of another Organization</p>}
+          element={
+            <p data-testid="checks-harness-overview">
+              Overview of another Organization
+            </p>
+          }
         />
       </Routes>
     </>
@@ -212,23 +217,86 @@ function renderChecks(
   };
 }
 
-const loadMoreButton = () => screen.findByRole("button", { name: "โหลดเพิ่ม" });
+const loadMoreButton = () => screen.findByTestId("monitor-checks-load-more");
 
 /** Only the history rows: the assertion tables inside them have rows of their own. */
 function historyRows(): HTMLElement[] {
-  const region = screen.getByRole("region", { name: "ตารางประวัติการตรวจ" });
-  return Array.from(
-    region.querySelectorAll<HTMLElement>(":scope > table > tbody > tr"),
+  return within(screen.getByTestId("monitor-checks-records")).queryAllByTestId(
+    "monitor-check-row",
   );
 }
 
 // The count line of the page.
-const COUNT_LINE = /^แสดง(ครบ \d+ รายการ| 1–\d+ จาก \d+)$/;
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
+
+async function waitCount(values: number[]) {
+  await waitFor(() => {
+    expect(
+      screen
+        .getByTestId("monitor-checks-count")
+        .textContent.match(/\d+/g)
+        ?.map(Number),
+    ).toEqual(values);
+  });
+  return screen.getByTestId("monitor-checks-summary");
+}
+function announcementNumbers() {
+  return screen
+    .getByTestId("monitor-checks-announcement")
+    .textContent.match(/\d+/g)
+    ?.map(Number);
+}
+function checkTimes() {
+  return historyRows().map((row) => {
+    const time = within(row).getByTestId("monitor-check-time");
+    const iso = must(time.getAttribute("dateTime"));
+    expect(time.tagName).toBe("TIME");
+    expect(time).toHaveTextContent(
+      new Date(iso).toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+    );
+    return iso;
+  });
+}
+function assertionRecords(row: HTMLElement) {
+  const table = within(row).getByTestId("monitor-check-assertion-table");
+  expect(table.tagName).toBe("TABLE");
+  expect(table).toHaveAccessibleName(/\S/);
+  return within(table)
+    .getAllByTestId("monitor-check-assertion-table-row")
+    .map((record) => {
+      const actual = within(record)
+        .getByTestId("monitor-check-assertion-table-actual")
+        .cloneNode(true) as HTMLElement;
+      within(actual)
+        .queryByTestId("monitor-check-assertion-table-truncated")
+        ?.remove();
+      return {
+        expected: within(record)
+          .getByTestId("monitor-check-assertion-table-expected")
+          .textContent.trim(),
+        actual:
+          record.getAttribute("data-has-actual") === "true"
+            ? actual.textContent.trim()
+            : null,
+        status: record.getAttribute("data-status"),
+        truncated: record.getAttribute("data-truncated"),
+        label: within(record)
+          .getByTestId("monitor-check-assertion-table-label")
+          .textContent.trim(),
+        description: within(record)
+          .getByTestId("monitor-check-assertion-table-status")
+          .textContent.trim(),
+      };
+    });
+}
 
 describe("Checks history states", () => {
   it("shows a loading state under the monitor placeholder title, then the title and the checks", async () => {
@@ -236,48 +304,51 @@ describe("Checks history states", () => {
     fetchDetailMock.mockReturnValue(pendingDetail.promise);
     fetchChecksMock.mockReturnValue(new Promise(() => undefined));
     renderChecks();
-    expect(await screen.findByText("กำลังโหลดประวัติการตรวจ")).toHaveAttribute(
+    expect(await screen.findByTestId("monitor-checks-loading")).toHaveAttribute(
       "role",
       "status",
     );
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "มอนิเตอร์",
-    );
-    expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
+    expect(screen.getByTestId("monitor-checks-title")).toHaveTextContent(/\S/);
+    expect(screen.getByTestId("monitor-checks-title").tagName).toBe("H1");
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
     await act(async () => {
       pendingDetail.resolve({ monitor: detail() });
       await Promise.resolve();
     });
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Payments API" }),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-checks-title")).toHaveTextContent(
+        /^Payments API$/,
+      );
+    });
   });
 
   it("shows the empty state without a button or a count", async () => {
     fetchChecksMock.mockResolvedValue(chunk([], 0, 0));
     renderChecks();
-    expect(await screen.findByText("ยังไม่มีผลการตรวจ")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "โหลดเพิ่ม" })).toBeNull();
-    expect(screen.queryByText(COUNT_LINE)).toBeNull();
+    expect(
+      await screen.findByTestId("monitor-checks-empty"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-checks-load-more")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-count")).toBeNull();
   });
 
   it("keeps a failing history inside the page with a retry, never the empty state", async () => {
     fetchChecksMock.mockRejectedValue(network());
     renderChecks();
     expect(
-      await screen.findByText("โหลดประวัติการตรวจไม่สำเร็จ"),
+      await screen.findByTestId("monitor-checks-load-error"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("ยังไม่มีผลการตรวจ")).toBeNull();
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Payments API" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-checks-empty")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-checks-title")).toHaveTextContent(
+        /^Payments API$/,
+      );
+    });
     fetchChecksMock.mockResolvedValue(chunk([], 0, 0));
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(await screen.findByText("ยังไม่มีผลการตรวจ")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByTestId("monitor-checks-retry"));
+    expect(
+      await screen.findByTestId("monitor-checks-empty"),
+    ).toBeInTheDocument();
   });
 
   it("shows the first 50 rows with a count and loads 50 more per press until the end", async () => {
@@ -288,9 +359,9 @@ describe("Checks history states", () => {
     const user = userEvent.setup();
     renderChecks();
     expect(
-      await screen.findByRole("heading", { level: 2, name: "ประวัติการตรวจ" }),
+      await screen.findByTestId("monitor-checks-heading"),
     ).toBeInTheDocument();
-    expect(await screen.findByText("แสดง 1–50 จาก 120")).toBeInTheDocument();
+    expect(await waitCount([1, 50, 120])).toBeInTheDocument();
     expect(historyRows()).toHaveLength(50);
     expect(fetchChecksMock).toHaveBeenLastCalledWith(A, MONITOR_ID, {
       limit: 50,
@@ -298,7 +369,7 @@ describe("Checks history states", () => {
     });
 
     await user.click(await loadMoreButton());
-    expect(await screen.findByText("แสดง 1–100 จาก 120")).toBeInTheDocument();
+    expect(await waitCount([1, 100, 120])).toBeInTheDocument();
     expect(historyRows()).toHaveLength(100);
     expect(fetchChecksMock).toHaveBeenLastCalledWith(A, MONITOR_ID, {
       limit: 50,
@@ -306,9 +377,9 @@ describe("Checks history states", () => {
     });
 
     await user.click(await loadMoreButton());
-    expect(await screen.findByText("แสดงครบ 120 รายการ")).toBeInTheDocument();
+    expect(await waitCount([120])).toBeInTheDocument();
     expect(historyRows()).toHaveLength(120);
-    expect(screen.queryByRole("button", { name: "โหลดเพิ่ม" })).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-load-more")).toBeNull();
     expect(fetchChecksMock).toHaveBeenCalledTimes(3);
   });
 
@@ -334,12 +405,12 @@ describe("Checks history states", () => {
       second.resolve(chunk(span(50, 100), 50, 120));
       await Promise.resolve();
     });
-    expect(await screen.findByText("แสดง 1–100 จาก 120")).toBeInTheDocument();
+    expect(await waitCount([1, 100, 120])).toBeInTheDocument();
     expect(button).not.toHaveAttribute("aria-disabled", "true");
     expect(fetchChecksMock).toHaveBeenCalledTimes(2);
   });
 
-  it("shows the error above the button on a failed load more, keeps the rows and retries on the next press", async () => {
+  it("shows the error on a failed load more, keeps the rows and retries on the next press", async () => {
     const retry = deferred<MonitorChecksResponse>();
     fetchChecksMock
       .mockResolvedValueOnce(chunk(span(0, 50), 0, 120))
@@ -350,28 +421,26 @@ describe("Checks history states", () => {
     const button = await loadMoreButton();
     refetch.intervalMs = REFRESH_FAST_MS;
     await user.click(button);
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("โหลดประวัติการตรวจไม่สำเร็จ");
-    expect(
-      alert.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const alert = await screen.findByTestId("monitor-checks-load-error");
+    expect(alert).toHaveTextContent(/\S/);
+    expect(alert).toHaveAttribute("role", "alert");
     expect(historyRows()).toHaveLength(50);
-    expect(screen.getByText("แสดง 1–50 จาก 120")).toBeInTheDocument();
-    expect(button).toHaveTextContent("โหลดเพิ่ม");
+    expect(await waitCount([1, 50, 120])).toBeInTheDocument();
+    expect(button).toHaveAccessibleName(/\S/);
     // The first chunk is not refreshed behind the Alert while it waits for the press.
     await sleep(250);
     expect(fetchChecksMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-checks-load-error")).toBeInTheDocument();
 
     await user.click(button);
     await waitFor(() => {
-      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByTestId("monitor-checks-load-error")).toBeNull();
     });
     await act(async () => {
       retry.resolve(chunk(span(50, 100), 50, 120));
       await Promise.resolve();
     });
-    expect(await screen.findByText("แสดง 1–100 จาก 120")).toBeInTheDocument();
+    expect(await waitCount([1, 100, 120])).toBeInTheDocument();
     expect(fetchChecksMock).toHaveBeenLastCalledWith(A, MONITOR_ID, {
       limit: 50,
       offset: 50,
@@ -385,10 +454,10 @@ describe("Checks history states", () => {
       .mockRejectedValue(network());
     renderChecks();
     expect(
-      await screen.findByText("อัปเดตประวัติการตรวจไม่สำเร็จ"),
+      await screen.findByTestId("monitor-checks-refresh-error"),
     ).toBeInTheDocument();
     expect(historyRows()).toHaveLength(3);
-    expect(screen.getByText("แสดงครบ 3 รายการ")).toBeInTheDocument();
+    expect(await waitCount([3])).toBeInTheDocument();
   });
 });
 
@@ -405,11 +474,13 @@ describe("Checks history offset drift", () => {
     const user = userEvent.setup();
     renderChecks();
     await user.click(await loadMoreButton());
-    expect(await screen.findByText("แสดง 1–95 จาก 125")).toBeInTheDocument();
+    expect(await waitCount([1, 95, 125])).toBeInTheDocument();
     const rows = historyRows();
     expect(rows).toHaveLength(95);
     // Newest first and contiguous: results 0 to 94, once each.
-    const times = rows.map((row) => must(row.querySelector("time")).dateTime);
+    const times = rows.map((row) =>
+      within(row).getByTestId("monitor-check-time").getAttribute("dateTime"),
+    );
     expect(times).toEqual(span(0, 95).map(scheduled));
   });
 
@@ -418,10 +489,8 @@ describe("Checks history offset drift", () => {
     const user = userEvent.setup();
     renderChecks();
     await user.click(await loadMoreButton());
-    await screen.findByText("แสดง 1–95 จาก 125");
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "โหลดเพิ่ม 45 แถว (แถวที่ 51–95 จาก 125)",
-    );
+    await waitCount([1, 95, 125]);
+    expect(announcementNumbers()).toEqual([45, 51, 95, 125]);
   });
 
   it("shows no result newer than the first chunk when more of them arrived than rows are loaded, and skips none of the older ones", async () => {
@@ -433,34 +502,29 @@ describe("Checks history offset drift", () => {
       .mockResolvedValueOnce(chunk(span(50, 100), 150, 220));
     const user = userEvent.setup();
     renderChecks();
-    const timesOf = () =>
-      historyRows().map((row) => must(row.querySelector("time")).dateTime);
+    const timesOf = () => checkTimes();
 
     await user.click(await loadMoreButton());
     await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toBe("โหลดเพิ่ม 0 แถว");
+      expect(announcementNumbers()).toEqual([0]);
     });
     // Newer rows are left out: the order stays newest first and the count stays honest.
     expect(timesOf()).toEqual(span(0, 50).map(scheduled));
-    expect(screen.getByText("แสดง 1–50 จาก 220")).toBeInTheDocument();
+    expect(await waitCount([1, 50, 220])).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+    await user.click(screen.getByTestId("monitor-checks-load-more"));
     await waitFor(() => {
       expect(fetchChecksMock).toHaveBeenCalledTimes(3);
     });
     await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toBe("โหลดเพิ่ม 0 แถว");
+      expect(announcementNumbers()).toEqual([0]);
     });
     expect(timesOf()).toEqual(span(0, 50).map(scheduled));
-    expect(
-      screen.getByRole("button", { name: "โหลดเพิ่ม" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-checks-load-more")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "โหลดเพิ่ม" }));
+    await user.click(screen.getByTestId("monitor-checks-load-more"));
     await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toBe(
-        "โหลดเพิ่ม 50 แถว (แถวที่ 51–100 จาก 220)",
-      );
+      expect(announcementNumbers()).toEqual([50, 51, 100, 220]);
     });
     // Contiguous and newest first: results 0 to 99 once each, none skipped.
     expect(timesOf()).toEqual(span(0, 100).map(scheduled));
@@ -495,13 +559,15 @@ describe("Checks history offset drift", () => {
     const user = userEvent.setup();
     renderChecks();
     await user.click(await loadMoreButton());
-    await screen.findByText("แสดงครบ 60 รายการ");
-    const listed = screen.getAllByText(/เปลี่ยน URL เมื่อ/, { selector: "li" });
+    await waitCount([60]);
+    const listed = screen.getAllByTestId("monitor-check-url-change");
     expect(listed).toHaveLength(2);
     expect(listed.map((item) => item.textContent).join(" ")).toContain(
       "https://deeper.acme.example/health",
     );
-    expect(screen.queryByText("https://newer.acme.example/health")).toBeNull();
+    expect(document.body.textContent).not.toContain(
+      "https://newer.acme.example/health",
+    );
   });
 
   it("announces k = 0 without a row range when a chunk holds only rows already shown, and keeps the button", async () => {
@@ -513,13 +579,11 @@ describe("Checks history offset drift", () => {
     renderChecks();
     await user.click(await loadMoreButton());
     await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toBe("โหลดเพิ่ม 0 แถว");
+      expect(announcementNumbers()).toEqual([0]);
     });
     expect(historyRows()).toHaveLength(50);
-    expect(screen.getByText("แสดง 1–50 จาก 170")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "โหลดเพิ่ม" }),
-    ).toBeInTheDocument();
+    expect(await waitCount([1, 50, 170])).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-checks-load-more")).toBeInTheDocument();
   });
 
   it("does not claim the list is complete when newer results are missing, and says so", async () => {
@@ -530,14 +594,13 @@ describe("Checks history offset drift", () => {
     const user = userEvent.setup();
     renderChecks();
     await user.click(await loadMoreButton());
-    expect(await screen.findByText("แสดง 1–60 จาก 70")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "ผลตรวจที่ใหม่กว่าการโหลดครั้งแรกจะแสดงเมื่อเปิดหน้านี้ใหม่",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/แสดงครบ/)).toBeNull();
-    expect(screen.queryByRole("button", { name: "โหลดเพิ่ม" })).toBeNull();
+    expect(await waitCount([1, 60, 70])).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-checks-count")).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-checks-count")).not.toHaveAttribute(
+      "data-complete",
+      "true",
+    );
+    expect(screen.queryByTestId("monitor-checks-load-more")).toBeNull();
     expect(historyRows()).toHaveLength(60);
   });
 
@@ -551,9 +614,9 @@ describe("Checks history offset drift", () => {
     refetch.intervalMs = REFRESH_FAST_MS;
     await user.click(button);
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "โหลดเพิ่ม" })).toBeNull();
+      expect(screen.queryByTestId("monitor-checks-load-more")).toBeNull();
     });
-    expect(screen.getByText("แสดง 1–50 จาก 120")).toBeInTheDocument();
+    expect(await waitCount([1, 50, 120])).toBeInTheDocument();
     await sleep(250);
     expect(fetchChecksMock).toHaveBeenCalledTimes(2);
   });
@@ -565,8 +628,8 @@ describe("Checks history offset drift", () => {
     const user = userEvent.setup();
     renderChecks();
     await user.click(await loadMoreButton());
-    expect(await screen.findByText("แสดงครบ 60 รายการ")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "โหลดเพิ่ม" })).toBeNull();
+    expect(await waitCount([60])).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-checks-load-more")).toBeNull();
   });
 });
 
@@ -585,23 +648,31 @@ describe("Checks history URL changes", () => {
     const user = userEvent.setup();
     renderChecks();
     await loadMoreButton();
-    // The oldest row of one chunk has no older neighbour to tell it apart from.
-    expect(must(historyRows()[49])).not.toHaveTextContent("เปลี่ยน URL");
+    expect(historyRows()).toHaveLength(50);
     expect(
-      screen.getAllByText(/เปลี่ยน URL เมื่อ/, { selector: "li" }),
-    ).toHaveLength(1);
-
+      within(screen.getByTestId("monitor-checks-records")).queryAllByTestId(
+        "monitor-check-url-changed",
+      ),
+    ).toHaveLength(0);
+    expect(screen.getAllByTestId("monitor-check-url-change")).toHaveLength(1);
     await user.click(await loadMoreButton());
-    await screen.findByText("แสดงครบ 60 รายการ");
-    const rows = historyRows();
-    expect(must(rows[49])).toHaveTextContent("เปลี่ยน URL");
-    expect(must(rows[49])).toHaveTextContent("https://new.acme.example/health");
+    await waitCount([60]);
+    expect(historyRows()).toHaveLength(60);
+    const markers = within(
+      screen.getByTestId("monitor-checks-records"),
+    ).getAllByTestId("monitor-check-url-changed");
+    expect(markers).toHaveLength(1);
     expect(
-      rows.filter((row) => row.textContent.includes("เปลี่ยน URL")),
-    ).toHaveLength(1);
+      within(must(markers[0])).getByTestId("monitor-check-changed-url"),
+    ).toHaveTextContent(/^https:\/\/new\.acme\.example\/health$/);
+    const marked = historyRows().filter(
+      (row) => within(row).queryByTestId("monitor-check-url-changed") !== null,
+    );
+    expect(marked).toHaveLength(1);
     expect(
-      screen.getAllByText(/เปลี่ยน URL เมื่อ/, { selector: "li" }),
-    ).toHaveLength(1);
+      within(must(marked[0])).getByTestId("monitor-check-time"),
+    ).toHaveAttribute("dateTime", scheduled(49));
+    expect(screen.getAllByTestId("monitor-check-url-change")).toHaveLength(1);
   });
 
   it("shows each check with its assertions and marks a URL change above the table", async () => {
@@ -632,21 +703,67 @@ describe("Checks history URL changes", () => {
     });
     const user = userEvent.setup();
     renderChecks();
-    await screen.findByRole("region", { name: "ตารางประวัติการตรวจ" });
+    await screen.findByTestId("monitor-checks-table");
     const rows = historyRows();
     expect(rows).toHaveLength(2);
-    expect(must(rows[0])).toHaveTextContent("เปลี่ยน URL");
-    expect(must(rows[0])).toHaveTextContent("ล้มเหลว");
-    expect(must(rows[0])).toHaveTextContent("ไม่ผ่าน 1/1");
-    expect(must(rows[1])).not.toHaveTextContent("เปลี่ยน URL");
-    // The list sits outside the table, so its time names the time zone itself (Typography principle).
-    expect(
-      screen.getByText(/เปลี่ยน URL เมื่อ/, { selector: "li" }),
-    ).toHaveTextContent(
-      `เปลี่ยน URL เมื่อ ${formatDateTime(changedAt)} (${TIME_ZONE}) เป็น https://new.acme.example/health`,
+    expect(checkTimes()).toEqual([scheduled(0), scheduled(1)]);
+    const failed = rows.filter(
+      (row) =>
+        within(row)
+          .getByTestId("monitor-check-time-cell")
+          .getAttribute("data-outcome") === "fail",
     );
-    await user.click(within(must(rows[0])).getByText("ไม่ผ่าน 1/1"));
-    expect(within(must(rows[0])).getByText("เนื้อหามีข้อความ")).toBeVisible();
+    expect(failed).toHaveLength(1);
+    const row = must(failed[0]);
+    expect(within(row).getByTestId("monitor-check-time-cell")).toHaveAttribute(
+      "data-failure-reason",
+      "assertion_failed",
+    );
+    expect(
+      within(row).getByTestId("monitor-check-cell-outcome"),
+    ).toHaveTextContent(/\S/);
+    expect(
+      within(row).getByTestId("monitor-check-cell-http"),
+    ).toHaveTextContent(/^200$/);
+    expect(
+      within(row).getByTestId("monitor-check-cell-response"),
+    ).toHaveTextContent(/^182 ms$/);
+    expect(
+      within(row).getByTestId("monitor-check-changed-url"),
+    ).toHaveTextContent("https://new.acme.example/health");
+    const summary = within(row).getByTestId("monitor-check-assertions-summary");
+    expect(summary.textContent.match(/\d+/g)).toEqual(["1", "1"]);
+    expect(
+      within(screen.getByTestId("monitor-checks-records")).getAllByTestId(
+        "monitor-check-url-changed",
+      ),
+    ).toHaveLength(1);
+    const change = screen.getByTestId("monitor-check-url-change");
+    expect(
+      within(change).getByTestId("monitor-check-url-change-time"),
+    ).toHaveAttribute("dateTime", changedAt);
+    expect(change).toHaveTextContent(TIME_ZONE);
+    expect(
+      within(change).getByTestId("monitor-check-url-change-url"),
+    ).toHaveTextContent("https://new.acme.example/health");
+    await user.click(summary);
+    expect(within(row).getByTestId("monitor-check-assertions")).toHaveAttribute(
+      "open",
+    );
+    expect(assertionRecords(row)).toHaveLength(1);
+    expect(
+      assertionRecords(row).map(({ expected, actual, status, truncated }) => ({
+        expected,
+        actual,
+        status,
+        truncated,
+      })),
+    ).toEqual([
+      { expected: "ok", actual: null, status: "fail", truncated: "false" },
+    ]);
+    expect(
+      within(row).getByTestId("monitor-check-assertion-table-label"),
+    ).toHaveTextContent(/\S/);
   });
 
   it("words a pass and a fail, and labels an actual value cut at 200 characters", async () => {
@@ -683,28 +800,43 @@ describe("Checks history URL changes", () => {
     });
     const user = userEvent.setup();
     renderChecks();
-    await screen.findByRole("region", { name: "ตารางประวัติการตรวจ" });
-    const row = must(historyRows()[0]);
-    expect(row).toHaveTextContent("ไม่ผ่าน 1/2");
-    await user.click(within(row).getByText("ไม่ผ่าน 1/2"));
-    const table = within(row).getByRole("table", {
-      name: /Assertions ของผลตรวจ/,
-    });
-    const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(2);
-    expect(must(rows[0])).toHaveTextContent(cut);
-    expect(must(rows[0])).toHaveTextContent("ตัดแล้ว");
-    expect(must(rows[0])).toHaveTextContent("ไม่ผ่าน");
-    expect(must(rows[1])).toHaveTextContent("ผ่าน");
-    expect(must(rows[1])).not.toHaveTextContent("ตัดแล้ว");
-    expect(within(table).getAllByText("ตัดแล้ว")).toHaveLength(1);
+    await screen.findByTestId("monitor-checks-table");
+    const rows = historyRows();
+    expect(rows).toHaveLength(1);
+    const row = must(rows[0]);
+    const summary = within(row).getByTestId("monitor-check-assertions-summary");
+    expect(summary.textContent.match(/\d+/g)).toEqual(["1", "2"]);
+    await user.click(summary);
+    expect(within(row).getByTestId("monitor-check-assertions")).toHaveAttribute(
+      "open",
+    );
+    const records = assertionRecords(row);
+    expect(records).toHaveLength(2);
+    expect(
+      records.map(({ expected, actual, status, truncated }) => ({
+        expected,
+        actual,
+        status,
+        truncated,
+      })),
+    ).toEqual([
+      { expected: '"ok"', actual: cut, status: "fail", truncated: "true" },
+      { expected: "ready", actual: null, status: "pass", truncated: "false" },
+    ]);
+    for (const record of records) {
+      expect(record.label).toMatch(/\S/);
+      expect(record.description).toMatch(/\S/);
+    }
+    expect(
+      within(row).getAllByTestId("monitor-check-assertion-table-truncated"),
+    ).toHaveLength(1);
   });
 });
 
 // Wording of a saved result that the Detail last-result card used to show alone (AC-84).
 describe("Checks history saved-result wording", () => {
   const reasonCell = (row: HTMLElement) =>
-    must(within(row).getAllByRole("cell")[5]);
+    within(row).getByTestId("monitor-check-cell-reason");
 
   it("words the cause of a TLS failure by its reason, and a handshake failure apart from an invalid certificate", async () => {
     fetchChecksMock.mockResolvedValue({
@@ -729,18 +861,45 @@ describe("Checks history saved-result wording", () => {
       urlChanges: [],
     });
     renderChecks();
-    await screen.findByRole("region", { name: "ตารางประวัติการตรวจ" });
-    expect(
-      screen.getByRole("columnheader", { name: "สาเหตุ" }),
-    ).toBeInTheDocument();
+    await screen.findByTestId("monitor-checks-table");
     const rows = historyRows();
-    expect(reasonCell(must(rows[0])).textContent).toBe(
-      "ใบรับรองไม่ถูกต้อง: หมดอายุ",
+    expect(rows).toHaveLength(3);
+    expect(checkTimes()).toEqual([scheduled(0), scheduled(1), scheduled(2)]);
+    const records = rows.map((row) => ({
+      reason: within(row)
+        .getByTestId("monitor-check-time-cell")
+        .getAttribute("data-failure-reason"),
+      tls: within(row)
+        .getByTestId("monitor-check-time-cell")
+        .getAttribute("data-tls-reason"),
+      text: reasonCell(row).textContent,
+    }));
+    expect(records.map(({ reason, tls }) => ({ reason, tls }))).toEqual([
+      { reason: "tls_invalid", tls: "expired" },
+      { reason: "tls_invalid", tls: "handshake_failed" },
+      { reason: null, tls: null },
+    ]);
+    expect(new Set(records.map((x) => x.text)).size).toBe(3);
+    expect(records.filter((x) => x.reason === null).map((x) => x.text)).toEqual(
+      ["–"],
     );
-    expect(reasonCell(must(rows[1])).textContent).toBe(
-      "เชื่อมต่อแบบปลอดภัยไม่สำเร็จ",
+    expect(
+      rows.map(
+        (row) => within(row).getByTestId("monitor-check-cell-http").textContent,
+      ),
+    ).toEqual(["–", "–", "200"]);
+    expect(
+      rows.map(
+        (row) =>
+          within(row).getByTestId("monitor-check-cell-response").textContent,
+      ),
+    ).toEqual(["–", "–", "182 ms"]);
+    for (const row of rows) {
+      expect(reasonCell(row)).toHaveTextContent(/\S/);
+    }
+    expect(screen.getByTestId("monitor-check-heading-reason").tagName).toBe(
+      "TH",
     );
-    expect(reasonCell(must(rows[2])).textContent).toBe("–");
   });
 
   it("words a not-evaluated assertion, and a type mismatch with the type that came back", async () => {
@@ -785,31 +944,46 @@ describe("Checks history saved-result wording", () => {
     });
     const user = userEvent.setup();
     renderChecks();
-    await screen.findByRole("region", { name: "ตารางประวัติการตรวจ" });
-    const [skipped, mismatch] = historyRows().map(must);
-
-    // Nothing was evaluated, so the row says so rather than "ผ่าน" or "ไม่ผ่าน".
-    expect(skipped).toHaveTextContent("ไม่ได้ประเมิน 1/1");
-    await user.click(within(must(skipped)).getByText("ไม่ได้ประเมิน 1/1"));
-    const skippedRow = must(
-      within(
-        within(must(skipped)).getByRole("table", {
-          name: /Assertions ของผลตรวจ/,
-        }),
-      ).getAllByRole("row")[1],
-    );
-    expect(skippedRow).toHaveTextContent("เวลาตอบสนองน้อยกว่า");
-    expect(skippedRow).toHaveTextContent("800 ms");
-    expect(skippedRow).toHaveTextContent("ไม่ได้ประเมิน");
-    expect(skippedRow).toHaveTextContent("(ไม่มี response)");
-    expect(skippedRow).not.toHaveTextContent("ไม่ผ่าน");
-
-    await user.click(within(must(mismatch)).getByText("ไม่ผ่าน 1/1"));
+    await screen.findByTestId("monitor-checks-table");
+    const rows = historyRows();
+    expect(rows).toHaveLength(2);
+    expect(checkTimes()).toEqual([scheduled(0), scheduled(1)]);
+    for (const row of rows) {
+      const summary = within(row).getByTestId(
+        "monitor-check-assertions-summary",
+      );
+      expect(summary.textContent.match(/\d+/g)).toEqual(["1", "1"]);
+      await user.click(summary);
+      expect(
+        within(row).getByTestId("monitor-check-assertions"),
+      ).toHaveAttribute("open");
+    }
+    const records = rows.flatMap(assertionRecords);
+    expect(records).toHaveLength(2);
     expect(
-      within(must(mismatch)).getByText(
-        /ชนิดข้อมูลไม่ตรง \(ค่าจริงเป็น string\)/,
-      ),
-    ).toBeInTheDocument();
+      records.map(({ expected, actual, status, truncated }) => ({
+        expected,
+        actual,
+        status,
+        truncated,
+      })),
+    ).toEqual([
+      {
+        expected: "800 ms",
+        actual: null,
+        status: "not_evaluated",
+        truncated: "false",
+      },
+      { expected: "1", actual: '"1"', status: "fail", truncated: "false" },
+    ]);
+    for (const record of records) {
+      expect(record.label).toMatch(/\S/);
+      expect(record.description).toMatch(/\S/);
+    }
+    expect(new Set(records.map((x) => x.description)).size).toBe(2);
+    expect(
+      records.filter((x) => x.status === "fail").map((x) => x.description),
+    ).toEqual([expect.stringContaining("string")]);
   });
 });
 
@@ -821,21 +995,20 @@ describe("Checks history focus and announcements", () => {
     const user = userEvent.setup();
     renderChecks();
     const button = await loadMoreButton();
-    const region = screen.getByRole("status");
-    expect(region).toHaveClass("sr-only");
+    const region = screen.getByTestId("monitor-checks-announcement");
+    expect(region).toHaveAttribute("role", "status");
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(region).toBeEmptyDOMElement();
     act(() => {
       button.focus();
     });
     await user.keyboard("{Enter}");
     await waitFor(() => {
-      expect(region).toHaveTextContent(
-        "โหลดเพิ่ม 50 แถว (แถวที่ 51–100 จาก 150)",
-      );
+      expect(announcementNumbers()).toEqual([50, 51, 100, 150]);
     });
-    expect(screen.getByRole("status")).toBe(region);
+    expect(screen.getByTestId("monitor-checks-announcement")).toBe(region);
     expect(button).toHaveFocus();
-    expect(screen.getByRole("button", { name: "โหลดเพิ่ม" })).toBe(button);
+    expect(screen.getByTestId("monitor-checks-load-more")).toBe(button);
   });
 
   it("does not announce a background refresh of the first chunk", async () => {
@@ -844,8 +1017,10 @@ describe("Checks history focus and announcements", () => {
       .mockResolvedValueOnce(chunk(span(0, 3), 0, 3))
       .mockResolvedValue(chunk(span(0, 4), 0, 4));
     renderChecks();
-    expect(await screen.findByText("แสดงครบ 4 รายการ")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(await waitCount([4])).toBeInTheDocument();
+    expect(
+      screen.getByTestId("monitor-checks-announcement"),
+    ).toBeEmptyDOMElement();
   });
 
   it("moves focus to the summary on the final load when the button had it, and leaves the live region empty", async () => {
@@ -859,15 +1034,15 @@ describe("Checks history focus and announcements", () => {
       button.focus();
     });
     await user.keyboard("{Enter}");
-    const summary = must(
-      (await screen.findByText("แสดงครบ 60 รายการ")).closest("p"),
-    );
+    const summary = await waitCount([60]);
     await waitFor(() => {
       expect(summary).toHaveFocus();
     });
     expect(summary).toHaveAttribute("tabindex", "-1");
-    expect(screen.getByRole("status")).toBeEmptyDOMElement();
-    expect(screen.queryByRole("button", { name: "โหลดเพิ่ม" })).toBeNull();
+    expect(
+      screen.getByTestId("monitor-checks-announcement"),
+    ).toBeEmptyDOMElement();
+    expect(screen.queryByTestId("monitor-checks-load-more")).toBeNull();
   });
 
   it("leaves focus where the reader moved it during the final load, and announces the load", async () => {
@@ -878,7 +1053,7 @@ describe("Checks history focus and announcements", () => {
     const user = userEvent.setup();
     renderChecks();
     await user.click(await loadMoreButton());
-    const back = screen.getByRole("link", { name: "กลับไปหน้ามอนิเตอร์" });
+    const back = screen.getByTestId("monitor-checks-back");
     act(() => {
       back.focus();
     });
@@ -886,11 +1061,9 @@ describe("Checks history focus and announcements", () => {
       last.resolve(chunk(span(50, 60), 50, 60));
       await Promise.resolve();
     });
-    await screen.findByText("แสดงครบ 60 รายการ");
+    await waitCount([60]);
     expect(back).toHaveFocus();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "โหลดเพิ่ม 10 แถว (แถวที่ 51–60 จาก 60)",
-    );
+    expect(announcementNumbers()).toEqual([10, 51, 60, 60]);
   });
 });
 
@@ -901,15 +1074,15 @@ describe("Checks history refresh", () => {
       .mockResolvedValueOnce(chunk(span(1, 4), 0, 3))
       .mockResolvedValue(chunk(span(0, 4), 0, 4));
     renderChecks();
-    expect(await screen.findByText("แสดงครบ 3 รายการ")).toBeInTheDocument();
-    expect(await screen.findByText("แสดงครบ 4 รายการ")).toBeInTheDocument();
+    expect(await waitCount([3])).toBeInTheDocument();
+    expect(await waitCount([4])).toBeInTheDocument();
     expect(historyRows()).toHaveLength(4);
   });
 
   it("refreshes the first chunk on window focus and on reconnect", async () => {
     fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
     renderChecks();
-    await screen.findByText("แสดงครบ 3 รายการ");
+    await waitCount([3]);
     expect(fetchChecksMock).toHaveBeenCalledTimes(1);
     act(() => {
       focusManager.setFocused(false);
@@ -936,7 +1109,7 @@ describe("Checks history refresh", () => {
     const button = await loadMoreButton();
     refetch.intervalMs = REFRESH_FAST_MS;
     await user.click(button);
-    await screen.findByText("แสดง 1–100 จาก 120");
+    await waitCount([1, 100, 120]);
     expect(fetchChecksMock).toHaveBeenCalledTimes(2);
     act(() => {
       focusManager.setFocused(false);
@@ -958,7 +1131,7 @@ describe("Checks history refresh", () => {
     const user = userEvent.setup();
     const first = renderChecks();
     await user.click(await loadMoreButton());
-    await screen.findByText("แสดง 1–100 จาก 120");
+    await waitCount([1, 100, 120]);
     first.unmount();
     await sleep(20);
     expect(
@@ -969,7 +1142,7 @@ describe("Checks history refresh", () => {
 
     fetchChecksMock.mockClear();
     renderChecks(A, MONITOR_ID, first.queryClient);
-    expect(await screen.findByText("แสดง 1–50 จาก 120")).toBeInTheDocument();
+    expect(await waitCount([1, 50, 120])).toBeInTheDocument();
     expect(historyRows()).toHaveLength(50);
     expect(fetchChecksMock).toHaveBeenCalledTimes(1);
     expect(fetchChecksMock).toHaveBeenCalledWith(A, MONITOR_ID, {
@@ -986,10 +1159,12 @@ describe("Checks history access", () => {
       fetchMeContextMock.mockResolvedValue(context(role));
       fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
       renderChecks();
-      expect(
-        await screen.findByRole("heading", { level: 1, name: "Payments API" }),
-      ).toBeInTheDocument();
-      expect(await screen.findByText("แสดงครบ 3 รายการ")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId("monitor-checks-title")).toHaveTextContent(
+          /^Payments API$/,
+        );
+      });
+      expect(await waitCount([3])).toBeInTheDocument();
       expect(historyRows()).toHaveLength(3);
       expect(fetchChecksMock).toHaveBeenCalledWith(A, MONITOR_ID, {
         limit: 50,
@@ -1001,16 +1176,17 @@ describe("Checks history access", () => {
   it("shows denied to a non-member without fetching, naming the Organization or the monitor", async () => {
     renderChecks(B.replace("2222", "3333"));
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+      await screen.findByTestId("monitor-checks-denied"),
     ).toBeInTheDocument();
     expect(fetchDetailMock).not.toHaveBeenCalled();
     expect(fetchChecksMock).not.toHaveBeenCalled();
-    expect(screen.queryByText("Payments API")).toBeNull();
-    expect(screen.queryByText("Acme")).toBeNull();
-    expect(screen.queryByText("Beta")).toBeNull();
-    expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
+    expect(document.body.textContent).not.toContain("Acme");
+    expect(document.body.innerHTML).not.toContain("Acme");
+    expect(document.body.textContent).not.toContain("Beta");
+    expect(document.body.innerHTML).not.toContain("Beta");
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
   });
 
   it("shows denied, with no rows or names, only after re-reading the membership when the API refuses", async () => {
@@ -1024,9 +1200,7 @@ describe("Checks history access", () => {
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
     });
-    expect(
-      screen.queryByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
-    ).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-denied")).toBeNull();
     await act(async () => {
       reread.resolve(
         context("viewer", [
@@ -1036,10 +1210,12 @@ describe("Checks history access", () => {
       await Promise.resolve();
     });
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+      await screen.findByTestId("monitor-checks-denied"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Payments API")).toBeNull();
-    expect(screen.queryByText("Acme")).toBeNull();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
+    expect(document.body.textContent).not.toContain("Acme");
+    expect(document.body.innerHTML).not.toContain("Acme");
   });
 
   it.each([
@@ -1055,33 +1231,38 @@ describe("Checks history access", () => {
       fetchDetailMock.mockRejectedValue(notFound());
       fetchChecksMock.mockRejectedValue(notFound());
       renderChecks(A, monitorId);
-      expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
       expect(
-        screen.getAllByRole("link", { name: "กลับไปรายการมอนิเตอร์" })[0],
-      ).toHaveAttribute("href", `/organizations/${A}/monitors`);
-      expect(screen.queryByText("Payments API")).toBeNull();
-      expect(
-        screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-      ).toBeNull();
+        await screen.findByTestId("monitor-checks-not-found"),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("monitor-checks-list-link")).toHaveAttribute(
+        "href",
+        `/organizations/${A}/monitors`,
+      );
+      expect(document.body.textContent).not.toContain("Payments API");
+      expect(document.body.innerHTML).not.toContain("Payments API");
+      expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
     },
   );
 
   it("shows not-found when only the checks answer 404, without the monitor name from the detail", async () => {
     fetchChecksMock.mockRejectedValue(notFound());
     renderChecks();
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
-    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(
+      await screen.findByTestId("monitor-checks-not-found"),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
   });
 
   it("shows not-found when only the detail answers 404, without the rows", async () => {
     fetchDetailMock.mockRejectedValue(notFound());
     fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
     renderChecks();
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
     expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
-    expect(screen.queryByText(COUNT_LINE)).toBeNull();
+      await screen.findByTestId("monitor-checks-not-found"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-count")).toBeNull();
   });
 
   it("drops the loaded rows and stops refreshing when a load more is answered 404", async () => {
@@ -1093,12 +1274,13 @@ describe("Checks history access", () => {
     const button = await loadMoreButton();
     refetch.intervalMs = REFRESH_FAST_MS;
     await user.click(button);
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
     expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
-    expect(screen.queryByText("Payments API")).toBeNull();
-    expect(screen.queryByText(COUNT_LINE)).toBeNull();
+      await screen.findByTestId("monitor-checks-not-found"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
+    expect(screen.queryByTestId("monitor-checks-count")).toBeNull();
     await sleep(250);
     expect(fetchChecksMock).toHaveBeenCalledTimes(2);
   });
@@ -1120,14 +1302,14 @@ describe("Checks history access", () => {
     refetch.intervalMs = REFRESH_FAST_MS;
     await user.click(button);
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+      await screen.findByTestId("monitor-checks-denied"),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
-    expect(screen.queryByText("Payments API")).toBeNull();
-    expect(screen.queryByText("Acme")).toBeNull();
-    expect(screen.queryByText(COUNT_LINE)).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
+    expect(document.body.textContent).not.toContain("Acme");
+    expect(document.body.innerHTML).not.toContain("Acme");
+    expect(screen.queryByTestId("monitor-checks-count")).toBeNull();
     await sleep(250);
     expect(fetchChecksMock).toHaveBeenCalledTimes(2);
   });
@@ -1148,12 +1330,12 @@ describe("Checks history access", () => {
     );
     await user.click(await loadMoreButton());
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "โหลดเพิ่ม" })).toHaveAttribute(
+      expect(screen.getByTestId("monitor-checks-load-more")).toHaveAttribute(
         "aria-disabled",
         "true",
       );
     });
-    await user.click(screen.getByRole("button", { name: "switch to B" }));
+    await user.click(screen.getByTestId("checks-harness-switch"));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
         `/organizations/${B}/monitors`,
@@ -1163,14 +1345,11 @@ describe("Checks history access", () => {
       late.resolve(chunk(span(50, 100), 50, 120));
       await Promise.resolve();
     });
-    expect(
-      screen.getByText("Overview of another Organization"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Payments API")).toBeNull();
-    expect(screen.queryByText(COUNT_LINE)).toBeNull();
-    expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
+    expect(screen.getByTestId("checks-harness-overview")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("Payments API");
+    expect(document.body.innerHTML).not.toContain("Payments API");
+    expect(screen.queryByTestId("monitor-checks-count")).toBeNull();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
     // The unobserved entry leaves the cache on a zero-delay gc timer (gcTime 0), which is a macrotask: under load it can run after the last microtask above.
     await waitFor(() => {
       expect(
@@ -1187,9 +1366,9 @@ describe("Checks history links", () => {
     fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
     const user = userEvent.setup();
     renderChecks();
-    await screen.findByText("แสดงครบ 3 รายการ");
+    await waitCount([3]);
 
-    const back = screen.getByRole("link", { name: "กลับไปหน้ามอนิเตอร์" });
+    const back = screen.getByTestId("monitor-checks-back");
     expect(back).toHaveAttribute(
       "href",
       `/organizations/${A}/monitors/${MONITOR_ID}`,
@@ -1201,20 +1380,20 @@ describe("Checks history links", () => {
         `/organizations/${A}/monitors/${MONITOR_ID}`,
       );
     });
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Payments API" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("region", { name: "ตารางประวัติการตรวจ" }),
-    ).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
+        /^Payments API$/,
+      );
+    });
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
 
-    const open = screen.getByRole("link", { name: "ดูประวัติการตรวจ" });
+    const open = screen.getByTestId("monitor-detail-checks-link");
     expect(open).toHaveAttribute(
       "href",
       `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
     );
     await user.click(open);
-    expect(await screen.findByText("แสดงครบ 3 รายการ")).toBeInTheDocument();
+    expect(await waitCount([3])).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
     );

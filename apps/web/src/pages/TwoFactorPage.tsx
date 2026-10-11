@@ -71,6 +71,7 @@ export function TwoFactorPage() {
 
   return (
     <AuthPageFrame
+      data-testid="two-factor-page"
       eyebrow="// two-factor"
       title="ยืนยันตัวตนสองขั้นตอน"
       subtitle="เลือกวิธียืนยันและกรอกรหัสเพื่อเข้าสู่พื้นที่ทำงาน"
@@ -84,7 +85,11 @@ export function TwoFactorPage() {
         className="flex flex-col gap-4"
         noValidate
       >
-        {error === null ? null : <Alert tone="error">{error}</Alert>}
+        {error === null ? null : (
+          <Alert data-testid="two-factor-error" tone="error">
+            {error}
+          </Alert>
+        )}
         <form.Field name="mode">
           {(modeField) => (
             <fieldset className="flex flex-col gap-2">
@@ -95,6 +100,7 @@ export function TwoFactorPage() {
                   className="flex items-center gap-2 text-sm"
                 >
                   <input
+                    data-testid={`two-factor-mode-${option.value}`}
                     type="radio"
                     name="challenge-mode"
                     value={option.value}
@@ -133,6 +139,7 @@ export function TwoFactorPage() {
                   }
                 >
                   <Input
+                    data-testid="two-factor-code"
                     type="text"
                     name="challenge-code"
                     inputMode={mode === "recovery" ? "text" : "numeric"}
@@ -152,6 +159,7 @@ export function TwoFactorPage() {
                     }
                   />
                   <FieldValidationError
+                    data-testid="two-factor-code-error"
                     id={
                       mode === "recovery"
                         ? "two-factor-recovery-error"
@@ -168,6 +176,7 @@ export function TwoFactorPage() {
           {(field) => (
             <label className="flex items-center gap-2 text-sm">
               <input
+                data-testid="two-factor-trust-device"
                 type="checkbox"
                 name="trust-device"
                 checked={field.state.value}
@@ -184,7 +193,11 @@ export function TwoFactorPage() {
         <form.Subscribe
           selector={(state) => state.isSubmitting}
           children={(isSubmitting) => (
-            <SubmitButton pending={isSubmitting} pendingLabel="กำลังยืนยัน…">
+            <SubmitButton
+              data-testid="two-factor-submit"
+              pending={isSubmitting}
+              pendingLabel="กำลังยืนยัน…"
+            >
               ยืนยัน
             </SubmitButton>
           )}

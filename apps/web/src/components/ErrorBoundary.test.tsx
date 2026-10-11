@@ -21,10 +21,10 @@ describe("ErrorBoundary", () => {
   it("renders children when nothing throws", () => {
     render(
       <ErrorBoundary>
-        <p>calm</p>
+        <p data-testid="boundary-child">calm</p>
       </ErrorBoundary>,
     );
-    expect(screen.getByText("calm")).toBeInTheDocument();
+    expect(screen.getByTestId("boundary-child")).toBeInTheDocument();
   });
 
   it("shows the fallback with the error message when a child throws", () => {
@@ -33,10 +33,17 @@ describe("ErrorBoundary", () => {
         <Bomb />
       </ErrorBoundary>,
     );
-    expect(screen.getByText("เกิดข้อผิดพลาดที่ไม่คาดคิด")).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
-    expect(screen.getByRole("main")).toContainElement(
-      screen.getByRole("alert"),
+    expect(screen.getByTestId("render-error-title")).toBeInTheDocument();
+    expect(screen.getByTestId("render-error-message")).toHaveTextContent(
+      "kaboom",
+    );
+    expect(screen.getByTestId("render-error-message")).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(screen.getByTestId("render-error").tagName).toBe("MAIN");
+    expect(screen.getByTestId("render-error")).toContainElement(
+      screen.getByTestId("render-error-message"),
     );
   });
 
@@ -49,7 +56,9 @@ describe("ErrorBoundary", () => {
       </main>,
     );
     expect(screen.getAllByRole("main")).toHaveLength(1);
-    expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
+    expect(screen.getByTestId("render-error-message")).toHaveTextContent(
+      "kaboom",
+    );
   });
 
   it("retries rendering children when reset", async () => {
@@ -58,8 +67,10 @@ describe("ErrorBoundary", () => {
         <Bomb />
       </ErrorBoundary>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
+    await userEvent.click(screen.getByTestId("render-error-retry"));
     // Bomb throws again, so the fallback returns — proving the reset ran.
-    expect(screen.getByRole("alert")).toHaveTextContent("kaboom");
+    expect(screen.getByTestId("render-error-message")).toHaveTextContent(
+      "kaboom",
+    );
   });
 });

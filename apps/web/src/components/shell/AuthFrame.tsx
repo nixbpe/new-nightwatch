@@ -37,15 +37,19 @@ export function AuthPageFrame({
   eyebrow,
   title,
   subtitle,
+  "data-testid": testId,
+  subtitleTestId,
   children,
 }: {
+  "data-testid"?: string;
+  subtitleTestId?: string;
   eyebrow: string;
   title: string;
   subtitle?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div data-testid={testId} className="flex min-h-screen flex-col">
       <AuthHeader />
       <main className="flex flex-1 items-center justify-center p-4 sm:p-8">
         <Card className="w-full max-w-md p-6 sm:p-8">
@@ -54,7 +58,12 @@ export function AuthPageFrame({
             {title}
           </h1>
           {subtitle === undefined ? null : (
-            <p className="mt-2 text-sm text-foreground-secondary">{subtitle}</p>
+            <p
+              data-testid={subtitleTestId}
+              className="mt-2 text-sm text-foreground-secondary"
+            >
+              {subtitle}
+            </p>
           )}
           <div className="mt-6">{children}</div>
         </Card>

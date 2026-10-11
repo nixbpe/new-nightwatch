@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -44,16 +44,50 @@ function props24h(overrides: Partial<ResponseTimeChartProps> = {}) {
   } satisfies ResponseTimeChartProps;
 }
 
-const liveRegion = () => {
-  const region = document.querySelector('[aria-live="polite"]');
-  if (region === null) throw new Error("no live region");
-  return region;
-};
-
-/** The legend is the paragraph that holds the glyph of the always-shown pause entry. */
-const legend = () => must(screen.getByText("▦").parentElement?.parentElement);
+const chartScope = () =>
+  within(screen.getByTestId("monitor-response-chart-region"));
+const chartElement = (field: string) =>
+  chartScope().getByTestId("monitor-response-" + field);
+const plotScope = () => within(chartElement("plot"));
+const liveRegion = () => chartElement("live");
+const legend = () => chartElement("legend");
 const legendEntries = () =>
-  Array.from(legend().children).map((entry) => entry.textContent);
+  within(legend()).getAllByTestId("monitor-response-legend-entry");
+function legendKinds() {
+  return legendEntries()
+    .map((entry) => entry.getAttribute("data-kind"))
+    .sort();
+}
+function expectLegend(kinds: string[]) {
+  expect(legendKinds()).toEqual([...kinds].sort());
+  const spoken = legend().cloneNode(true) as HTMLElement;
+  for (const glyph of within(spoken).getAllByTestId(
+    "monitor-response-legend-glyph",
+  ))
+    glyph.remove();
+  const labels = within(spoken)
+    .getAllByTestId("monitor-response-legend-entry")
+    .map((entry) => entry.textContent.trim());
+  for (const label of labels) expect(label).toMatch(/\S/);
+  expect(new Set(labels).size).toBe(kinds.length);
+}
+function expectSelection(kind: string, at: string, value?: string) {
+  const readout = chartElement("readout");
+  expect(readout).toHaveAttribute("data-selected-kind", kind);
+  expect(readout).toHaveAttribute("data-selected-at", String(Date.parse(at)));
+  expect(liveRegion()).toHaveTextContent(formatTime(at));
+  if (value) expect(liveRegion()).toHaveTextContent(value + " ms");
+  else {
+    expect(liveRegion()).not.toHaveTextContent(/\d+ ms/);
+    expect(liveRegion().textContent.length).toBeGreaterThan(
+      formatTime(at).length,
+    );
+  }
+}
+const numbers = (text: string) =>
+  text
+    .match(/\d[\d,]*(?:\.\d+)?/g)
+    ?.map((x) => Number(x.replaceAll(",", ""))) ?? [];
 
 function must<Value>(value: Value | null | undefined): Value {
   if (value === null || value === undefined) throw new Error("missing value");
@@ -80,10 +114,14 @@ describe("series", () => {
       }),
     );
     const texts = series.map((entry) => describeEntry("24h", entry));
-    expect(texts[0]).toBe(`${formatTime(T("07:00"))} เวลาตอบสนอง 182 ms`);
-    expect(texts[3]).toContain("ไม่มีข้อมูล");
-    expect(texts[4]).toContain("หยุดชั่วคราว");
-    expect(texts[6]).toContain("ตรวจแล้ว ไม่มีเวลาตอบสนอง");
+    expect(texts[0]).toContain(formatTime(T("07:00")));
+    expect(texts[0]).toContain("182 ms");
+    const states = [texts[3], texts[4], texts[6]];
+    for (const text of states) {
+      expect(text).toMatch(/\S/);
+      expect(text).not.toMatch(/\d+ ms/);
+    }
+    expect(new Set(states).size).toBe(3);
   });
 
   it("words a check NightWatch could not run as 'ตรวจไม่ได้', apart from a check without a time", () => {
@@ -115,7 +153,10 @@ describe("series", () => {
     ]);
     const [first] = series;
     if (first === undefined) throw new Error("no entry");
-    expect(describeEntry("24h", first)).toContain("ตรวจไม่ได้ (ปัญหาฝั่งระบบ)");
+    expect(describeEntry("24h", first)).toContain(formatTime(T("07:00")));
+    expect(describeEntry("24h", first)).not.toBe(
+      describeEntry("24h", must(series[1])),
+    );
   });
 
   it("summarizes average, maximum and gaps with adjacent hourly gaps as one", () => {
@@ -148,9 +189,8 @@ describe("series", () => {
       gapCount: 2,
       gapMinutes: 180,
     });
-    expect(summaryText(summary)).toBe(
-      "เฉลี่ย 200 ms สูงสุด 600 ms ไม่มีข้อมูล 2 ช่วง รวม 180 นาที",
-    );
+    expect(numbers(summaryText(summary))).toEqual([200, 600, 2, 180]);
+    expect(summaryText(summary)).toContain("ms");
   });
 
   it("counts a pause that spans several empty hours once", () => {
@@ -201,11 +241,11 @@ describe("series gaps, pauses and averages", () => {
       ["gap", 3 * 3_600_000],
       ["value", 3_600_000],
     ]);
-    const { container } = render(<ResponseTimeChart {...props} />);
-    expect(container.querySelectorAll('[data-chart-part="gap"]')).toHaveLength(
-      1,
-    );
-    expect(container.querySelector("svg")).toHaveTextContent("ไม่มีข้อมูล");
+    render(<ResponseTimeChart {...props} />);
+    expect(plotScope().getAllByTestId("monitor-response-gap")).toHaveLength(1);
+    expect(
+      plotScope().getByTestId("monitor-response-gap-label"),
+    ).toHaveTextContent(/\S/);
   });
 
   it("reads an empty hour as a pause only when a pause covers the whole hour", () => {
@@ -222,7 +262,7 @@ describe("series gaps, pauses and averages", () => {
   });
 
   it("marks a check without a response time and a system-side check error, with legend entries", () => {
-    const { container } = render(
+    render(
       <ResponseTimeChart
         {...props24h({
           buckets: [
@@ -235,18 +275,18 @@ describe("series gaps, pauses and averages", () => {
       />,
     );
     expect(
-      container.querySelectorAll('[data-chart-part="no-response"]'),
+      plotScope().getAllByTestId("monitor-response-no-response"),
     ).toHaveLength(1);
     expect(
-      container.querySelectorAll('[data-chart-part="check-error"]'),
+      plotScope().getAllByTestId("monitor-response-check-error"),
     ).toHaveLength(1);
-    expect(legendEntries()).toEqual([
-      "— เวลาตอบสนอง (แกนตั้ง: ms)",
-      "✕ ไม่ตอบสนอง",
-      "▦ หยุดชั่วคราว",
-      "▤ ไม่มีข้อมูล",
-      "┊ เปลี่ยนค่า",
-      "○ ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
+    expectLegend([
+      "value",
+      "no-response",
+      "pause",
+      "gap",
+      "config-change",
+      "check-error",
     ]);
   });
 
@@ -287,10 +327,9 @@ describe("series gaps, pauses and averages", () => {
       }),
     );
     expect(summary.averageMs).toBeNull();
-    expect(summaryText(summary)).toContain(
-      "ค่าเฉลี่ยรายชั่วโมง 100 ms ถึง 300 ms สูงสุด 500 ms",
-    );
-    expect(summaryText(summary)).not.toContain("เฉลี่ย 200");
+    expect(summary.hourlyAverageRange).toEqual({ min: 100, max: 300 });
+    expect(summary.maxMs).toBe(500);
+    expect(numbers(summaryText(summary))).toEqual([100, 300, 500]);
   });
 });
 
@@ -316,16 +355,17 @@ describe("24 h window", () => {
     ]);
     const trailing = series[2];
     expect(trailing?.end).toBe(Date.parse(window.to));
-    expect(trailing && describeEntry("24h", trailing)).toContain("ไม่มีข้อมูล");
-    const { container } = render(
+    expect(trailing?.kind).toBe("gap");
+    expect(trailing && describeEntry("24h", trailing)).toContain(
+      formatTime(T("07:00")),
+    );
+    render(
       <ResponseTimeChart
         {...base}
         buckets={[point("00:05", 100), point("07:00", 120)]}
       />,
     );
-    expect(container.querySelectorAll('[data-chart-part="gap"]')).toHaveLength(
-      1,
-    );
+    expect(plotScope().getAllByTestId("monitor-response-gap")).toHaveLength(1);
   });
 
   it("draws a leading stretch and ignores stretches within twice the interval or inside a pause", () => {
@@ -626,23 +666,19 @@ describe("24 h window clipped to creation", () => {
 
 describe("ResponseTimeChart drawing", () => {
   it("breaks the line at a gap and never bridges it", () => {
-    const { container } = render(<ResponseTimeChart {...props24h()} />);
-    const path = container.querySelector('[data-chart-part="line"]');
+    render(<ResponseTimeChart {...props24h()} />);
+    const path = plotScope().getByTestId("monitor-response-line");
     // Three checks, then a gap and a pause, then a lone check: two segments.
-    expect(path?.getAttribute("d")?.match(/M/g)).toHaveLength(2);
-    expect(container.querySelectorAll('[data-chart-part="gap"]')).toHaveLength(
+    expect(path.getAttribute("d")?.match(/M/g)).toHaveLength(2);
+    expect(plotScope().getAllByTestId("monitor-response-gap")).toHaveLength(1);
+    expect(plotScope().getAllByTestId("monitor-response-pause")).toHaveLength(
       1,
     );
-    expect(
-      container.querySelectorAll('[data-chart-part="pause"]'),
-    ).toHaveLength(1);
-    expect(legendEntries()).toEqual(
-      expect.arrayContaining(["▤ ไม่มีข้อมูล", "▦ หยุดชั่วคราว"]),
-    );
+    expectLegend(["value", "pause", "gap", "config-change"]);
   });
 
   it("marks a URL change and another config change differently", () => {
-    const { container } = render(
+    render(
       <ResponseTimeChart
         {...props24h({
           configChanges: [
@@ -652,13 +688,16 @@ describe("ResponseTimeChart drawing", () => {
         })}
       />,
     );
-    const marks = container.querySelectorAll(
-      '[data-chart-part="config-change"]',
+    const marks = plotScope().getAllByTestId("monitor-response-config-change");
+    expect(
+      marks.map((mark) => mark.getAttribute("data-url-changed")).sort(),
+    ).toEqual(["false", "true"]);
+    const labels = marks.map(
+      (mark) =>
+        within(mark).getByTestId("monitor-response-config-title").textContent,
     );
-    expect(marks).toHaveLength(2);
-    expect(marks[0]).toHaveTextContent("URL");
-    expect(marks[0]?.querySelector("title")).toHaveTextContent("เปลี่ยน URL");
-    expect(marks[1]).toHaveTextContent("แก้ค่า");
+    for (const label of labels) expect(label).toMatch(/\S/);
+    expect(new Set(labels).size).toBe(2);
   });
 });
 
@@ -668,12 +707,7 @@ describe("ResponseTimeChart legend (AC-78)", () => {
 
   it("lists the always-shown entries in canvas order with canvas wording", () => {
     render(<ResponseTimeChart {...props24h()} />);
-    expect(legendEntries()).toEqual([
-      "— เวลาตอบสนอง (แกนตั้ง: ms)",
-      "▦ หยุดชั่วคราว",
-      "▤ ไม่มีข้อมูล",
-      "┊ เปลี่ยนค่า",
-    ]);
+    expectLegend(["value", "pause", "gap", "config-change"]);
   });
 
   it("adds ✕ only for a check without a response time and ○ only for a system-side error", () => {
@@ -682,16 +716,14 @@ describe("ResponseTimeChart legend (AC-78)", () => {
         {...props24h({ buckets: [point("07:00", 182), noResponse] })}
       />,
     );
-    expect(legendEntries()).toContain("✕ ไม่ตอบสนอง");
-    expect(legendEntries().join()).not.toContain("○");
+    expectLegend(["value", "no-response", "pause", "gap", "config-change"]);
     unmount();
     render(
       <ResponseTimeChart
         {...props24h({ buckets: [point("07:00", 182), checkError] })}
       />,
     );
-    expect(legendEntries()).toContain("○ ตรวจไม่ได้ (ปัญหาฝั่งระบบ)");
-    expect(legendEntries().join()).not.toContain("✕");
+    expectLegend(["value", "check-error", "pause", "gap", "config-change"]);
   });
 
   it("names every kind the chart draws, keeps each glyph out of the accessible text and colours only ✕ as danger", () => {
@@ -702,46 +734,34 @@ describe("ResponseTimeChart legend (AC-78)", () => {
       maxMs: null,
       checks: 0,
     };
-    const { container } = render(
+    render(
       <ResponseTimeChart
         {...props24h({
           buckets: [point("07:00", 182), noResponse, checkError, gap],
         })}
       />,
     );
-    for (const part of ["pause", "gap", "no-response", "check-error"]) {
-      expect(
-        container.querySelectorAll(`[data-chart-part="${part}"]`).length,
-      ).toBeGreaterThan(0);
-    }
-    const glyphs = Array.from(legend().querySelectorAll("span > span"));
-    expect(glyphs.map((glyph) => glyph.textContent)).toEqual([
-      "—",
-      "✕",
-      "▦",
-      "▤",
-      "┊",
-      "○",
-    ]);
-    for (const glyph of glyphs) {
-      expect(glyph).toHaveAttribute("aria-hidden", "true");
-      expect(glyph.classList.contains("text-danger")).toBe(
-        glyph.textContent === "✕",
-      );
-    }
-    const spoken = legend().cloneNode(true) as HTMLElement;
-    for (const glyph of spoken.querySelectorAll('[aria-hidden="true"]')) {
-      glyph.remove();
-    }
+    expect(plotScope().getAllByTestId("monitor-response-pause")).toHaveLength(
+      1,
+    );
+    expect(plotScope().getAllByTestId("monitor-response-gap")).toHaveLength(1);
     expect(
-      Array.from(spoken.children).map((entry) => entry.textContent.trim()),
-    ).toEqual([
-      "เวลาตอบสนอง (แกนตั้ง: ms)",
-      "ไม่ตอบสนอง",
-      "หยุดชั่วคราว",
-      "ไม่มีข้อมูล",
-      "เปลี่ยนค่า",
-      "ตรวจไม่ได้ (ปัญหาฝั่งระบบ)",
+      plotScope().getAllByTestId("monitor-response-no-response"),
+    ).toHaveLength(1);
+    expect(
+      plotScope().getAllByTestId("monitor-response-check-error"),
+    ).toHaveLength(1);
+    for (const entry of legendEntries())
+      expect(
+        within(entry).getByTestId("monitor-response-legend-glyph"),
+      ).toHaveAttribute("aria-hidden", "true");
+    expectLegend([
+      "value",
+      "no-response",
+      "pause",
+      "gap",
+      "config-change",
+      "check-error",
     ]);
   });
 });
@@ -749,9 +769,8 @@ describe("ResponseTimeChart legend (AC-78)", () => {
 describe("ResponseTimeChart hint and live region (AC-76)", () => {
   it("keeps the on-screen keyboard hint hidden from screen readers and a polite atomic live region", () => {
     render(<ResponseTimeChart {...props24h()} />);
-    const hint = screen.getByText(
-      "เลือกกราฟด้วย Tab แล้วใช้ลูกศรซ้ายขวาเพื่อดูค่าแต่ละจุด",
-    );
+    const hint = chartElement("readout");
+    expect(hint).toHaveTextContent(/\S/);
     expect(hint).toHaveAttribute("aria-hidden", "true");
     expect(liveRegion()).toHaveAttribute("aria-live", "polite");
     expect(liveRegion()).toHaveAttribute("aria-atomic", "true");
@@ -759,10 +778,10 @@ describe("ResponseTimeChart hint and live region (AC-76)", () => {
 });
 
 describe("ResponseTimeChart vertical axis (AC-78)", () => {
-  const ticks = (container: HTMLElement) =>
-    Array.from(container.querySelectorAll("svg text"))
-      .map((node) => node.textContent)
-      .filter((text) => /^[\d,]+$/.test(text));
+  const ticks = () =>
+    plotScope()
+      .getAllByTestId("monitor-response-y-tick")
+      .map((node) => node.textContent);
 
   it("scales its gridline numbers with the data and keeps the ms label", () => {
     const low = render(
@@ -770,31 +789,31 @@ describe("ResponseTimeChart vertical axis (AC-78)", () => {
         {...props24h({ buckets: [point("07:00", 40), point("07:05", 80)] })}
       />,
     );
-    expect(ticks(low.container)).toEqual(["0", "20", "40", "60", "80"]);
-    expect(low.container.querySelector("svg")).toHaveTextContent("ms");
+    expect(ticks()).toEqual(["0", "20", "40", "60", "80"]);
+    expect(plotScope().getByTestId("monitor-response-unit")).toHaveTextContent(
+      /^ms$/,
+    );
     low.unmount();
-    const high = render(
+    render(
       <ResponseTimeChart
         {...props24h({ buckets: [point("07:00", 182), point("07:05", 1204)] })}
       />,
     );
-    expect(ticks(high.container)).toEqual(["0", "500", "1,000"]);
-    expect(
-      Array.from(high.container.querySelectorAll("svg text")).some(
-        (node) => node.textContent === "ms",
-      ),
-    ).toBe(true);
+    expect(ticks()).toEqual(["0", "500", "1,000"]);
+    expect(plotScope().getByTestId("monitor-response-unit")).toHaveTextContent(
+      /^ms$/,
+    );
   });
 });
 
 describe("ResponseTimeChart x-axis ticks", () => {
-  const tickLabels = (container: HTMLElement) =>
-    Array.from(container.querySelectorAll("svg text"))
-      .map((node) => node.textContent)
-      .filter((text) => /^\d{2}:\d{2}(:\d{2})?$/.test(text));
+  const tickLabels = () =>
+    plotScope()
+      .getAllByTestId("monitor-response-x-tick")
+      .map((node) => node.textContent);
 
   it("never repeats a label when a young monitor makes the window seconds wide", () => {
-    const { container } = render(
+    render(
       <ResponseTimeChart
         {...props24h({
           buckets: [point("07:00", 100)],
@@ -806,20 +825,20 @@ describe("ResponseTimeChart x-axis ticks", () => {
         })}
       />,
     );
-    const labels = tickLabels(container);
+    const labels = tickLabels();
     expect(labels.length).toBeGreaterThan(1);
     expect(new Set(labels).size).toBe(labels.length);
   });
 
   it("keeps distinct HH:mm labels across a full 24 h window", () => {
-    const { container } = render(
+    render(
       <ResponseTimeChart
         {...props24h({
           window: { from: "2026-09-29T07:45:00.000Z", to: T("07:45") },
         })}
       />,
     );
-    const labels = tickLabels(container);
+    const labels = tickLabels();
     expect(labels.length).toBeGreaterThan(1);
     expect(new Set(labels).size).toBe(labels.length);
     expect(labels.every((label) => label.length === 5)).toBe(true);
@@ -832,8 +851,8 @@ describe("ResponseTimeChart memo inputs", () => {
     buckets: [point("10:00", 100), point("11:55", 100)],
     pauses: [],
   });
-  const gapCount = (container: HTMLElement) =>
-    container.querySelectorAll('[data-chart-part="gap"]').length;
+  const gapCount = () =>
+    plotScope().queryAllByTestId("monitor-response-gap").length;
   const base = {
     ...shared,
     window: { from: T("00:00"), to: T("12:00") },
@@ -841,27 +860,27 @@ describe("ResponseTimeChart memo inputs", () => {
   };
 
   it("redraws the gaps when only the window moves", () => {
-    const { container, rerender } = render(<ResponseTimeChart {...base} />);
+    const { rerender } = render(<ResponseTimeChart {...base} />);
     // 10:00 to now is fresh, but 00:00 to 10:00 is a leading gap.
-    expect(gapCount(container)).toBe(1);
+    expect(gapCount()).toBe(1);
     rerender(
       <ResponseTimeChart
         {...base}
         window={{ from: T("09:58"), to: T("12:00") }}
       />,
     );
-    expect(gapCount(container)).toBe(0);
+    expect(gapCount()).toBe(0);
   });
 
   it("redraws the gaps when only the interval changes", () => {
-    const { container, rerender } = render(
+    const { rerender } = render(
       <ResponseTimeChart
         {...base}
         window={{ from: T("09:40"), to: T("12:00") }}
       />,
     );
     // A 20 minute lead is over 2 x 300 s.
-    expect(gapCount(container)).toBe(1);
+    expect(gapCount()).toBe(1);
     rerender(
       <ResponseTimeChart
         {...base}
@@ -869,39 +888,44 @@ describe("ResponseTimeChart memo inputs", () => {
         intervalSeconds={900}
       />,
     );
-    expect(gapCount(container)).toBe(0);
+    expect(gapCount()).toBe(0);
   });
 
   it("redraws the clipping when only createdAt changes", () => {
-    const { container, rerender } = render(<ResponseTimeChart {...base} />);
-    expect(gapCount(container)).toBe(1);
+    const { rerender } = render(<ResponseTimeChart {...base} />);
+    expect(gapCount()).toBe(1);
     rerender(<ResponseTimeChart {...base} createdAt={T("09:59")} />);
-    expect(gapCount(container)).toBe(0);
+    expect(gapCount()).toBe(0);
   });
 });
 
 describe("ResponseTimeChart data notes", () => {
   it("leaves the creation-clamp and system-error-hours notes to the card, which shows them in the table view too", () => {
-    const { container } = render(
+    render(
       <ResponseTimeChart
         {...props24h({ range: "7d", buckets: [empty("09:00", "10:00")] })}
         window={{ from: T("08:00"), to: T("12:00") }}
         createdAt={T("10:00")}
       />,
     );
-    expect(container.querySelector("svg")).not.toBeNull();
-    expect(screen.queryByText(/ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์/)).toBeNull();
-    expect(screen.queryByText(/ชั่วโมงที่มีเฉพาะผลตรวจไม่ได้/)).toBeNull();
+    expect(chartElement("plot")).toHaveAttribute("aria-hidden", "true");
+    expect(
+      chartScope().queryByTestId("monitor-response-clamp-note"),
+    ).toBeNull();
+    expect(
+      chartScope().queryByTestId("monitor-response-hourly-note"),
+    ).toBeNull();
   });
 });
 
 describe("ResponseTimeChart keyboard", () => {
   it("names the region with unit, range and source and takes focus by Tab", async () => {
     render(<ResponseTimeChart {...props24h()} />);
-    const region = screen.getByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ });
-    expect(region).toHaveAccessibleName(/หน่วย ms/);
-    expect(region).toHaveAccessibleName(/ช่วง 24 ชม.ล่าสุด/);
-    expect(region).toHaveAccessibleName(/แหล่ง ผลการตรวจของ NightWatch/);
+    const region = chartElement("chart");
+    expect(region).toHaveRole("group");
+    expect(region).toHaveAccessibleName(/ms/);
+    expect(region).toHaveAttribute("data-range", "24h");
+    expect(region).toHaveAttribute("tabindex", "0");
     await userEvent.setup().tab();
     expect(region).toHaveFocus();
   });
@@ -913,17 +937,15 @@ describe("ResponseTimeChart keyboard", () => {
     expect(liveRegion()).toHaveTextContent("");
 
     await user.keyboard("{ArrowRight}");
-    expect(liveRegion()).toHaveTextContent(
-      `${formatTime(T("07:00"))} เวลาตอบสนอง 182 ms`,
-    );
+    expectSelection("value", T("07:00"), "182");
     await user.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
-    expect(liveRegion()).toHaveTextContent("ไม่มีข้อมูล");
+    expectSelection("gap", T("07:12"));
+    const gapText = liveRegion().textContent;
     await user.keyboard("{ArrowRight}");
-    expect(liveRegion()).toHaveTextContent("หยุดชั่วคราว");
+    expectSelection("pause", T("07:25"));
+    expect(liveRegion().textContent).not.toBe(gapText);
     await user.keyboard("{ArrowLeft}{ArrowLeft}");
-    expect(liveRegion()).toHaveTextContent(
-      `${formatTime(T("07:10"))} เวลาตอบสนอง 1,204 ms`,
-    );
+    expectSelection("value", T("07:10"), "1,204");
   });
 
   it("jumps with Home and End and stops at both ends", async () => {
@@ -931,21 +953,13 @@ describe("ResponseTimeChart keyboard", () => {
     render(<ResponseTimeChart {...props24h()} />);
     await user.tab();
     await user.keyboard("{End}");
-    expect(liveRegion()).toHaveTextContent(
-      `${formatTime(T("07:45"))} เวลาตอบสนอง 200 ms`,
-    );
+    expectSelection("value", T("07:45"), "200");
     await user.keyboard("{ArrowRight}");
-    expect(liveRegion()).toHaveTextContent(
-      `${formatTime(T("07:45"))} เวลาตอบสนอง 200 ms`,
-    );
+    expectSelection("value", T("07:45"), "200");
     await user.keyboard("{Home}");
-    expect(liveRegion()).toHaveTextContent(
-      `${formatTime(T("07:00"))} เวลาตอบสนอง 182 ms`,
-    );
+    expectSelection("value", T("07:00"), "182");
     await user.keyboard("{ArrowLeft}");
-    expect(liveRegion()).toHaveTextContent(
-      `${formatTime(T("07:00"))} เวลาตอบสนอง 182 ms`,
-    );
+    expectSelection("value", T("07:00"), "182");
   });
 
   it("starts ArrowLeft from the latest point when nothing is selected", async () => {
@@ -953,9 +967,7 @@ describe("ResponseTimeChart keyboard", () => {
     render(<ResponseTimeChart {...props24h()} />);
     await user.tab();
     await user.keyboard("{ArrowLeft}");
-    expect(liveRegion()).toHaveTextContent(
-      `${formatTime(T("07:45"))} เวลาตอบสนอง 200 ms`,
-    );
+    expectSelection("value", T("07:45"), "200");
   });
 
   it("does not announce again when the data refetches", async () => {

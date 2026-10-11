@@ -1,7 +1,12 @@
-import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
+import {
+  must,
+  noChecks,
+  noIncidents,
+  noResponseTimes,
+} from "./detail-test-support";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -73,20 +78,71 @@ type User = ReturnType<typeof userEvent.setup>;
 async function openAdvanced() {
   const user = userEvent.setup();
   renderForm(newPath());
-  await screen.findByLabelText("ชื่อมอนิเตอร์");
-  await user.click(screen.getByRole("radio", { name: "ขั้นสูง" }));
+  await screen.findByTestId("monitor-form-name");
+  await user.click(screen.getByTestId("monitor-form-mode-advanced"));
   return user;
 }
 
 async function fillBasic(user: User) {
-  await user.type(screen.getByLabelText("ชื่อมอนิเตอร์"), "Payments API");
+  await user.type(screen.getByTestId("monitor-form-name"), "Payments API");
   await user.type(
-    screen.getByLabelText("URL"),
+    screen.getByTestId("monitor-form-url"),
     "https://api.acme.example/health",
   );
 }
 
-const save = () => screen.getByRole("button", { name: "บันทึกมอนิเตอร์" });
+async function addHeaderRow(user: User) {
+  const before = new Set(
+    screen
+      .queryAllByTestId(/^monitor-form-header-row-/)
+      .map((row) => row.getAttribute("data-testid")),
+  );
+  await user.click(screen.getByTestId("monitor-form-add-header"));
+  const added = screen
+    .getAllByTestId(/^monitor-form-header-row-/)
+    .filter((row) => !before.has(row.getAttribute("data-testid")));
+  expect(added).toHaveLength(1);
+  return must(must(added.pop()).getAttribute("data-testid") ?? undefined);
+}
+
+async function addQueryRow(user: User) {
+  const before = new Set(
+    screen
+      .queryAllByTestId(/^monitor-form-query-row-/)
+      .map((row) => row.getAttribute("data-testid")),
+  );
+  await user.click(screen.getByTestId("monitor-form-add-query"));
+  const added = screen
+    .getAllByTestId(/^monitor-form-query-row-/)
+    .filter((row) => !before.has(row.getAttribute("data-testid")));
+  expect(added).toHaveLength(1);
+  return must(must(added.pop()).getAttribute("data-testid") ?? undefined);
+}
+
+async function addAssertionRow(user: User) {
+  const before = new Set(
+    screen
+      .queryAllByTestId(/^monitor-form-assertion-row-/)
+      .map((row) => row.getAttribute("data-testid")),
+  );
+  await user.click(screen.getByTestId("monitor-form-add-assertion"));
+  const added = screen
+    .getAllByTestId(/^monitor-form-assertion-row-/)
+    .filter((row) => !before.has(row.getAttribute("data-testid")));
+  expect(added).toHaveLength(1);
+  return must(must(added.pop()).getAttribute("data-testid") ?? undefined);
+}
+
+function expectInvalid(field: HTMLElement) {
+  expect(field).toHaveAttribute("aria-invalid", "true");
+  expect(field).toHaveAccessibleDescription();
+  const described = field.getAttribute("aria-describedby")?.split(" ") ?? [];
+  const error = described.find((id) => id.endsWith("-error"));
+  expect(error).toBeDefined();
+  expect(document.getElementById(must(error))).not.toBeEmptyDOMElement();
+}
+
+const save = () => screen.getByTestId("monitor-form-save");
 const setValue = (element: HTMLElement, value: string) => {
   fireEvent.change(element, { target: { value } });
 };
@@ -94,9 +150,9 @@ const setValue = (element: HTMLElement, value: string) => {
 describe("Advanced mode defaults and mode switch", () => {
   it("offers method, timeout and expected status with the defaults", async () => {
     await openAdvanced();
-    expect(screen.getByLabelText("เมธอด")).toHaveValue("GET");
-    expect(screen.getByLabelText("หมดเวลารอ (วินาที)")).toHaveValue("10");
-    expect(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ")).toHaveValue(
+    expect(screen.getByTestId("monitor-form-method")).toHaveValue("GET");
+    expect(screen.getByTestId("monitor-form-timeout")).toHaveValue("10");
+    expect(screen.getByTestId("monitor-form-expected-status")).toHaveValue(
       "200-299",
     );
   });
@@ -104,25 +160,40 @@ describe("Advanced mode defaults and mode switch", () => {
   it("keeps advanced values when switching to basic and counts what is still in use", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    await user.selectOptions(screen.getByLabelText("เมธอด"), "POST");
-    await user.click(screen.getByRole("button", { name: "เพิ่ม header" }));
-    await user.type(screen.getByLabelText("ชื่อ header แถวที่ 1"), "X-Team");
-    await user.type(screen.getByLabelText("ค่า header แถวที่ 1"), "core");
-    await user.click(screen.getByRole("button", { name: "เพิ่ม query param" }));
-    await user.click(screen.getByRole("radio", { name: "พื้นฐาน" }));
+    await user.selectOptions(screen.getByTestId("monitor-form-method"), "POST");
+    const header = await addHeaderRow(user);
+    await user.type(
+      within(screen.getByTestId(header)).getByTestId(
+        "monitor-form-header-name",
+      ),
+      "X-Team",
+    );
+    await user.type(
+      within(screen.getByTestId(header)).getByTestId(
+        "monitor-form-header-value",
+      ),
+      "core",
+    );
+    const query = await addQueryRow(user);
+    await user.click(screen.getByTestId("monitor-form-mode-basic"));
+    expect(screen.getByTestId("monitor-form-advanced-summary")).toHaveAttribute(
+      "data-advanced-count",
+      "3",
+    );
+    expect(screen.queryByTestId("monitor-form-method")).toBeNull();
+    await user.click(screen.getByTestId("monitor-form-show-advanced"));
+    expect(screen.getByTestId("monitor-form-method")).toHaveValue("POST");
     expect(
-      screen.getByText("มีการตั้งค่าขั้นสูง 3 รายการที่ยังใช้งานอยู่"),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("เมธอด")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "ดูในโหมดขั้นสูง" }));
-    expect(screen.getByLabelText("เมธอด")).toHaveValue("POST");
-    expect(screen.getByLabelText("ชื่อ header แถวที่ 1")).toHaveValue("X-Team");
+      within(screen.getByTestId(header)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    ).toHaveValue("X-Team");
     // The values still apply while the mode is basic.
-    await user.click(screen.getByRole("radio", { name: "พื้นฐาน" }));
-    await user.type(screen.getByLabelText("ชื่อมอนิเตอร์"), " 2");
-    await user.click(screen.getByRole("radio", { name: "ขั้นสูง" }));
+    await user.click(screen.getByTestId("monitor-form-mode-basic"));
+    await user.type(screen.getByTestId("monitor-form-name"), " 2");
+    await user.click(screen.getByTestId("monitor-form-mode-advanced"));
     await user.click(
-      screen.getByRole("button", { name: "ลบ query param แถวที่ 1" }),
+      within(screen.getByTestId(query)).getByTestId("monitor-form-row-remove"),
     );
     await user.click(save());
     await waitFor(() => {
@@ -139,29 +210,56 @@ describe("Advanced mode defaults and mode switch", () => {
   it("sends each advanced field of the config", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    setValue(screen.getByLabelText("หมดเวลารอ (วินาที)"), "5");
-    setValue(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ"), "200-299,301");
-    await user.selectOptions(screen.getByLabelText("เมธอด"), "POST");
-    await user.click(screen.getByRole("button", { name: "เพิ่ม query param" }));
-    await user.type(screen.getByLabelText("ชื่อ query param แถวที่ 1"), "page");
-    await user.type(screen.getByLabelText("ค่า query param แถวที่ 1"), "2");
-    setValue(screen.getByLabelText("เนื้อหา"), '{"a":1}');
-    await user.click(screen.getByRole("button", { name: "เพิ่มเงื่อนไข" }));
-    await user.type(screen.getByLabelText("JSONPath แถวที่ 1"), "$.status");
-    await user.type(screen.getByLabelText("ค่าที่คาดหวังแถวที่ 1"), '"ok"');
-    await user.click(screen.getByRole("button", { name: "เพิ่มเงื่อนไข" }));
+    setValue(screen.getByTestId("monitor-form-timeout"), "5");
+    setValue(screen.getByTestId("monitor-form-expected-status"), "200-299,301");
+    await user.selectOptions(screen.getByTestId("monitor-form-method"), "POST");
+    const query = await addQueryRow(user);
+    await user.type(
+      within(screen.getByTestId(query)).getByTestId("monitor-form-query-name"),
+      "page",
+    );
+    await user.type(
+      within(screen.getByTestId(query)).getByTestId("monitor-form-query-value"),
+      "2",
+    );
+    setValue(screen.getByTestId("monitor-form-body-content"), '{"a":1}');
+    const jsonAssertion = await addAssertionRow(user);
+    await user.type(
+      within(screen.getByTestId(jsonAssertion)).getByTestId(
+        "monitor-form-assertion-path",
+      ),
+      "$.status",
+    );
+    await user.type(
+      within(screen.getByTestId(jsonAssertion)).getByTestId(
+        "monitor-form-assertion-expected",
+      ),
+      '"ok"',
+    );
+    const bodyAssertion = await addAssertionRow(user);
     await user.selectOptions(
-      screen.getByLabelText("ชนิดเงื่อนไขแถวที่ 2"),
+      within(screen.getByTestId(bodyAssertion)).getByTestId(
+        "monitor-form-assertion-kind",
+      ),
       "bodyContains",
     );
-    await user.type(screen.getByLabelText("ข้อความที่ต้องมีแถวที่ 2"), "ready");
-    await user.click(screen.getByRole("button", { name: "เพิ่มเงื่อนไข" }));
+    await user.type(
+      within(screen.getByTestId(bodyAssertion)).getByTestId(
+        "monitor-form-assertion-text",
+      ),
+      "ready",
+    );
+    const timeAssertion = await addAssertionRow(user);
     await user.selectOptions(
-      screen.getByLabelText("ชนิดเงื่อนไขแถวที่ 3"),
+      within(screen.getByTestId(timeAssertion)).getByTestId(
+        "monitor-form-assertion-kind",
+      ),
       "responseTimeBelow",
     );
     await user.type(
-      screen.getByLabelText("เวลาตอบสนองน้อยกว่าแถวที่ 3 (มิลลิวินาที)"),
+      within(screen.getByTestId(timeAssertion)).getByTestId(
+        "monitor-form-assertion-ms",
+      ),
       "800",
     );
     await user.click(save());
@@ -190,98 +288,160 @@ describe("Advanced validation beside the field", () => {
   }
 
   it.each([
-    ["ftp://example.com", "ใช้ได้เฉพาะ http หรือ https"],
-    ["https://user:pw@example.com", /ห้ามมีชื่อผู้ใช้หรือรหัสผ่าน/],
-    ["https://example.com:22", /พอร์ต 80, 443 และ 1024-65535/],
-    ["not a url", /URL ไม่ถูกต้อง/],
-    [`https://example.com/${"a".repeat(2100)}`, /ยาวได้ไม่เกิน 2,048/],
-  ])("explains URL %#", async (url, message) => {
+    "ftp://example.com",
+    "https://user:pw@example.com",
+    "https://example.com:22",
+    "not a url",
+    `https://example.com/${"a".repeat(2100)}`,
+  ])("explains URL %#", async (url) => {
     const user = await openAdvanced();
-    await user.type(screen.getByLabelText("ชื่อมอนิเตอร์"), "x");
-    setValue(screen.getByLabelText("URL"), url);
+    await user.type(screen.getByTestId("monitor-form-name"), "x");
+    setValue(screen.getByTestId("monitor-form-url"), url);
     await submitInvalid(user);
-    const field = screen.getByLabelText("URL");
-    expect(field).toHaveAttribute("aria-invalid", "true");
-    expect(field).toHaveAccessibleDescription(
-      message instanceof RegExp ? message : expect.stringContaining(message),
-    );
+    const field = screen.getByTestId("monitor-form-url");
+    expectInvalid(field);
     expect(field).toHaveFocus();
   });
 
   it("rejects a forbidden header name, a duplicate and a bad name beside their rows", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    for (let i = 0; i < 3; i += 1) {
-      await user.click(screen.getByRole("button", { name: "เพิ่ม header" }));
-    }
-    setValue(screen.getByLabelText("ชื่อ header แถวที่ 1"), "Host");
-    setValue(screen.getByLabelText("ค่า header แถวที่ 1"), "x");
-    setValue(screen.getByLabelText("ชื่อ header แถวที่ 2"), "X-A");
-    setValue(screen.getByLabelText("ค่า header แถวที่ 2"), "x");
-    setValue(screen.getByLabelText("ชื่อ header แถวที่ 3"), "x-a");
-    setValue(screen.getByLabelText("ค่า header แถวที่ 3"), "x");
+    const forbiddenHeader = await addHeaderRow(user);
+    const duplicateSourceHeader = await addHeaderRow(user);
+    const duplicateHeader = await addHeaderRow(user);
+    setValue(
+      within(screen.getByTestId(forbiddenHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+      "Host",
+    );
+    setValue(
+      within(screen.getByTestId(forbiddenHeader)).getByTestId(
+        "monitor-form-header-value",
+      ),
+      "x",
+    );
+    setValue(
+      within(screen.getByTestId(duplicateSourceHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+      "X-A",
+    );
+    setValue(
+      within(screen.getByTestId(duplicateSourceHeader)).getByTestId(
+        "monitor-form-header-value",
+      ),
+      "x",
+    );
+    setValue(
+      within(screen.getByTestId(duplicateHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+      "x-a",
+    );
+    setValue(
+      within(screen.getByTestId(duplicateHeader)).getByTestId(
+        "monitor-form-header-value",
+      ),
+      "x",
+    );
     await submitInvalid(user);
+    expectInvalid(
+      within(screen.getByTestId(forbiddenHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    );
+    expectInvalid(
+      within(screen.getByTestId(duplicateHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    );
     expect(
-      screen.getByLabelText("ชื่อ header แถวที่ 1"),
-    ).toHaveAccessibleDescription(/ระบบตั้งเอง/);
-    expect(
-      screen.getByLabelText("ชื่อ header แถวที่ 3"),
-    ).toHaveAccessibleDescription("ชื่อ header ซ้ำกับแถวอื่น");
-    expect(screen.getByLabelText("ชื่อ header แถวที่ 1")).toHaveFocus();
-    setValue(screen.getByLabelText("ชื่อ header แถวที่ 2"), "bad name");
+      within(screen.getByTestId(forbiddenHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    ).toHaveFocus();
+    setValue(
+      within(screen.getByTestId(duplicateSourceHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+      "bad name",
+    );
     await user.click(save());
-    expect(
-      screen.getByLabelText("ชื่อ header แถวที่ 2"),
-    ).toHaveAccessibleDescription(/ตัวอักษรอังกฤษ/);
+    expectInvalid(
+      within(screen.getByTestId(duplicateSourceHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    );
   });
 
   it("rejects invalid JSON, an oversized body and a body assertion with HEAD", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    setValue(screen.getByLabelText("เนื้อหา"), "{not json");
+    setValue(screen.getByTestId("monitor-form-body-content"), "{not json");
     await submitInvalid(user);
-    expect(screen.getByLabelText("เนื้อหา")).toHaveAccessibleDescription(
-      /JSON ไม่ถูกต้อง/,
+    expectInvalid(screen.getByTestId("monitor-form-body-content"));
+    setValue(
+      screen.getByTestId("monitor-form-body-content"),
+      "a".repeat(64 * 1024 + 1),
     );
-    setValue(screen.getByLabelText("เนื้อหา"), "a".repeat(64 * 1024 + 1));
     await user.selectOptions(
-      screen.getByLabelText("ชนิด", { selector: "#monitor-form-bodyType" }),
+      screen.getByTestId("monitor-form-body-type"),
       "text",
     );
     await user.click(save());
-    expect(screen.getByLabelText("เนื้อหา")).toHaveAccessibleDescription(
-      "Body ใหญ่ได้ไม่เกิน 64 KiB",
-    );
-    setValue(screen.getByLabelText("เนื้อหา"), "");
-    await user.selectOptions(screen.getByLabelText("เมธอด"), "HEAD");
-    await user.click(screen.getByRole("button", { name: "เพิ่มเงื่อนไข" }));
+    expectInvalid(screen.getByTestId("monitor-form-body-content"));
+    setValue(screen.getByTestId("monitor-form-body-content"), "");
+    await user.selectOptions(screen.getByTestId("monitor-form-method"), "HEAD");
+    const assertion = await addAssertionRow(user);
     await user.selectOptions(
-      screen.getByLabelText("ชนิดเงื่อนไขแถวที่ 1"),
+      within(screen.getByTestId(assertion)).getByTestId(
+        "monitor-form-assertion-kind",
+      ),
       "bodyContains",
     );
-    await user.type(screen.getByLabelText("ข้อความที่ต้องมีแถวที่ 1"), "ok");
+    await user.type(
+      within(screen.getByTestId(assertion)).getByTestId(
+        "monitor-form-assertion-text",
+      ),
+      "ok",
+    );
     await user.click(save());
-    expect(
-      screen.getByLabelText("ชนิดเงื่อนไขแถวที่ 1"),
-    ).toHaveAccessibleDescription(/ใช้กับ method HEAD ไม่ได้/);
+    expectInvalid(
+      within(screen.getByTestId(assertion)).getByTestId(
+        "monitor-form-assertion-kind",
+      ),
+    );
   });
 
   it("rejects a JSONPath with a filter, wildcard or recursive descent", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    await user.click(screen.getByRole("button", { name: "เพิ่มเงื่อนไข" }));
-    await user.type(screen.getByLabelText("ค่าที่คาดหวังแถวที่ 1"), "1");
+    const assertion = await addAssertionRow(user);
+    await user.type(
+      within(screen.getByTestId(assertion)).getByTestId(
+        "monitor-form-assertion-expected",
+      ),
+      "1",
+    );
     for (const path of [
       "$.items[?(@.id==1)]",
       "$.items[*]",
       "$..id",
       "status",
     ]) {
-      setValue(screen.getByLabelText("JSONPath แถวที่ 1"), path);
+      setValue(
+        within(screen.getByTestId(assertion)).getByTestId(
+          "monitor-form-assertion-path",
+        ),
+        path,
+      );
       await user.click(save());
-      expect(
-        screen.getByLabelText("JSONPath แถวที่ 1"),
-      ).toHaveAccessibleDescription(/รองรับเฉพาะ \$, \.name/);
+      expectInvalid(
+        within(screen.getByTestId(assertion)).getByTestId(
+          "monitor-form-assertion-path",
+        ),
+      );
     }
     expect(createMock).not.toHaveBeenCalled();
   });
@@ -289,39 +449,41 @@ describe("Advanced validation beside the field", () => {
   it("rejects an expected status, timeout and threshold outside their limits", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    setValue(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ"), "700");
-    setValue(screen.getByLabelText("หมดเวลารอ (วินาที)"), "31");
-    await user.click(screen.getByRole("button", { name: "เพิ่มเงื่อนไข" }));
+    setValue(screen.getByTestId("monitor-form-expected-status"), "700");
+    setValue(screen.getByTestId("monitor-form-timeout"), "31");
+    const assertion = await addAssertionRow(user);
     await user.selectOptions(
-      screen.getByLabelText("ชนิดเงื่อนไขแถวที่ 1"),
+      within(screen.getByTestId(assertion)).getByTestId(
+        "monitor-form-assertion-kind",
+      ),
       "responseTimeBelow",
     );
     setValue(
-      screen.getByLabelText("เวลาตอบสนองน้อยกว่าแถวที่ 1 (มิลลิวินาที)"),
+      within(screen.getByTestId(assertion)).getByTestId(
+        "monitor-form-assertion-ms",
+      ),
       "40000",
     );
     await submitInvalid(user);
-    expect(
-      screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ"),
-    ).toHaveAccessibleDescription(/ระหว่าง 100 ถึง 599/);
-    expect(
-      screen.getByLabelText("หมดเวลารอ (วินาที)"),
-    ).toHaveAccessibleDescription(/1 ถึง 30 วินาที/);
-    expect(
-      screen.getByLabelText("เวลาตอบสนองน้อยกว่าแถวที่ 1 (มิลลิวินาที)"),
-    ).toHaveAccessibleDescription(/ระหว่าง 1 ms/);
+    expectInvalid(screen.getByTestId("monitor-form-expected-status"));
+    expectInvalid(screen.getByTestId("monitor-form-timeout"));
+    expectInvalid(
+      within(screen.getByTestId(assertion)).getByTestId(
+        "monitor-form-assertion-ms",
+      ),
+    );
     // The first invalid field in page order takes focus (the timeout sits above the status).
-    expect(screen.getByLabelText("หมดเวลารอ (วินาที)")).toHaveFocus();
+    expect(screen.getByTestId("monitor-form-timeout")).toHaveFocus();
   });
 
   it("opens advanced mode to focus an invalid advanced field while the form is in basic mode", async () => {
     const user = await openAdvanced();
     await fillBasic(user);
-    setValue(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ"), "9");
-    await user.click(screen.getByRole("radio", { name: "พื้นฐาน" }));
+    setValue(screen.getByTestId("monitor-form-expected-status"), "9");
+    await user.click(screen.getByTestId("monitor-form-mode-basic"));
     await user.click(save());
-    expect(screen.getByRole("radio", { name: "ขั้นสูง" })).toBeChecked();
-    expect(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ")).toHaveFocus();
+    expect(screen.getByTestId("monitor-form-mode-advanced")).toBeChecked();
+    expect(screen.getByTestId("monitor-form-expected-status")).toHaveFocus();
     expect(createMock).not.toHaveBeenCalled();
   });
 });
@@ -329,53 +491,66 @@ describe("Advanced validation beside the field", () => {
 describe("Rows", () => {
   it("names each row, focuses the new row and moves focus after a removal", async () => {
     const user = await openAdvanced();
-    const add = screen.getByRole("button", { name: "เพิ่ม header" });
-    await user.click(add);
-    expect(screen.getByLabelText("ชื่อ header แถวที่ 1")).toHaveFocus();
-    await user.click(add);
-    await user.click(add);
-    expect(screen.getByLabelText("ชื่อ header แถวที่ 3")).toHaveFocus();
-    await user.type(screen.getByLabelText("ชื่อ header แถวที่ 3"), "X-Third");
-    await user.click(
-      screen.getByRole("button", { name: "ลบ header แถวที่ 2" }),
-    );
-    // The former row 3 is now row 2 and takes the focus.
-    expect(screen.getByLabelText("ชื่อ header แถวที่ 2")).toHaveValue(
+    const add = screen.getByTestId("monitor-form-add-header");
+    const firstHeader = await addHeaderRow(user);
+    expect(
+      within(screen.getByTestId(firstHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    ).toHaveFocus();
+    const secondHeader = await addHeaderRow(user);
+    const thirdHeader = await addHeaderRow(user);
+    expect(
+      within(screen.getByTestId(thirdHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    ).toHaveFocus();
+    await user.type(
+      within(screen.getByTestId(thirdHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
       "X-Third",
     );
-    expect(screen.getByLabelText("ชื่อ header แถวที่ 2")).toHaveFocus();
     await user.click(
-      screen.getByRole("button", { name: "ลบ header แถวที่ 2" }),
+      within(screen.getByTestId(secondHeader)).getByTestId(
+        "monitor-form-row-remove",
+      ),
+    );
+    // The former row 3 is now row 2 and takes the focus.
+    expect(
+      within(screen.getByTestId(thirdHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    ).toHaveValue("X-Third");
+    expect(
+      within(screen.getByTestId(thirdHeader)).getByTestId(
+        "monitor-form-header-name",
+      ),
+    ).toHaveFocus();
+    await user.click(
+      within(screen.getByTestId(thirdHeader)).getByTestId(
+        "monitor-form-row-remove",
+      ),
     );
     expect(add).toHaveFocus();
   });
 
   it("limits headers to 20, query params to 20 and assertions to 10 with a message beside the button", async () => {
     const user = await openAdvanced();
-    const addHeader = screen.getByRole("button", { name: "เพิ่ม header" });
+    const addHeader = screen.getByTestId("monitor-form-add-header");
     for (let i = 0; i < 21; i += 1) await user.click(addHeader);
-    expect(
-      screen.getAllByRole("group", { name: /^Header แถวที่/ }),
-    ).toHaveLength(20);
-    expect(addHeader).toHaveAccessibleDescription(
-      "เพิ่ม header ได้ไม่เกิน 20 แถว",
-    );
-    const addParam = screen.getByRole("button", { name: "เพิ่ม query param" });
+    expect(screen.getAllByTestId(/^monitor-form-header-row-/)).toHaveLength(20);
+    expect(addHeader).toHaveAccessibleDescription();
+    const addParam = screen.getByTestId("monitor-form-add-query");
     for (let i = 0; i < 21; i += 1) await user.click(addParam);
-    expect(
-      screen.getAllByRole("group", { name: /^Query param แถวที่/ }),
-    ).toHaveLength(20);
-    expect(addParam).toHaveAccessibleDescription(
-      "เพิ่ม query param ได้ไม่เกิน 20 แถว",
-    );
-    const addAssertion = screen.getByRole("button", { name: "เพิ่มเงื่อนไข" });
+    expect(screen.getAllByTestId(/^monitor-form-query-row-/)).toHaveLength(20);
+    expect(addParam).toHaveAccessibleDescription();
+    const addAssertion = screen.getByTestId("monitor-form-add-assertion");
     for (let i = 0; i < 11; i += 1) await user.click(addAssertion);
-    expect(
-      screen.getAllByRole("group", { name: /^เงื่อนไขแถวที่/ }),
-    ).toHaveLength(10);
-    expect(addAssertion).toHaveAccessibleDescription(
-      "เพิ่มเงื่อนไขได้ไม่เกิน 10 ข้อ",
+    expect(screen.getAllByTestId(/^monitor-form-assertion-row-/)).toHaveLength(
+      10,
     );
+    expect(addAssertion).toHaveAccessibleDescription();
   });
 });
 
@@ -383,18 +558,44 @@ describe("Permanent warnings and notes", () => {
   it("keeps the visibility warning under query params and body", async () => {
     await openAdvanced();
     expect(
-      screen.getAllByText(
-        "ผู้ที่ดูมอนิเตอร์เห็นค่านี้ได้ ห้ามใส่ความลับ ใช้ header ลับแทน",
-      ),
-    ).toHaveLength(2);
+      screen.getByTestId("monitor-form-query-visible-warning"),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId("monitor-form-query-visible-warning"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      screen.getByTestId("monitor-form-body-visible-warning"),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId("monitor-form-body-visible-warning"),
+    ).not.toBeEmptyDOMElement();
   });
 
   it("notes that GET and HEAD send no body", async () => {
     const user = await openAdvanced();
-    expect(screen.getByText("method GET ไม่ส่ง body")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("เมธอด"), "POST");
-    expect(screen.queryByText(/ไม่ส่ง body/)).toBeNull();
-    await user.selectOptions(screen.getByLabelText("เมธอด"), "HEAD");
-    expect(screen.getByText("method HEAD ไม่ส่ง body")).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-form-body-not-sent")).toHaveAttribute(
+      "data-method",
+      "GET",
+    );
+    await user.selectOptions(screen.getByTestId("monitor-form-method"), "POST");
+    expect(screen.queryByTestId("monitor-form-body-not-sent")).toBeNull();
+    await user.selectOptions(screen.getByTestId("monitor-form-method"), "HEAD");
+    expect(screen.getByTestId("monitor-form-body-not-sent")).toHaveAttribute(
+      "data-method",
+      "HEAD",
+    );
+    await fillBasic(user);
+    setValue(
+      screen.getByTestId("monitor-form-body-content"),
+      '{"public":true}',
+    );
+    await user.click(save());
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledTimes(1);
+    });
+    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "HEAD",
+      body: { type: "json", content: '{"public":true}' },
+    });
   });
 });

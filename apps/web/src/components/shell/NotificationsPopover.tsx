@@ -104,6 +104,7 @@ export function NotificationsPopover() {
     <div className="relative">
       <button
         ref={popover.triggerRef}
+        data-testid="shell-notifications-open"
         type="button"
         aria-label="การแจ้งเตือน"
         aria-haspopup="dialog"
@@ -121,6 +122,7 @@ export function NotificationsPopover() {
         <BellIcon size={18} />
         {unreadCount ? (
           <span
+            data-testid="shell-notifications-unread-count"
             aria-label={`${String(unreadCount)} รายการยังไม่อ่าน`}
             // A Text-filled counter: the count is a fact, not a status colour.
             className="absolute -top-[7px] -right-[7px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-foreground px-[5px] font-mono text-[11px] leading-none font-semibold text-background"
@@ -132,6 +134,7 @@ export function NotificationsPopover() {
       {popover.open ? (
         <div
           ref={popover.panelRef}
+          data-testid="shell-notifications-dialog"
           role="dialog"
           aria-label="การแจ้งเตือน"
           tabIndex={-1}
@@ -140,6 +143,7 @@ export function NotificationsPopover() {
           <div className="flex shrink-0 items-center justify-between border-b border-foreground/10 px-4 py-3">
             <h2 className="text-sm font-semibold">การแจ้งเตือน</h2>
             <button
+              data-testid="shell-notifications-read-all"
               type="button"
               data-popover-item=""
               disabled={
@@ -172,6 +176,11 @@ export function NotificationsPopover() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             {open.isError || all.isError ? (
               <p
+                data-testid={
+                  open.isError
+                    ? "shell-notifications-open-error"
+                    : "shell-notifications-read-all-error"
+                }
                 role="alert"
                 className="border-b border-foreground/10 px-4 py-3 text-sm text-danger"
               >
@@ -186,6 +195,7 @@ export function NotificationsPopover() {
                   โหลดการแจ้งเตือนไม่สำเร็จ
                 </p>
                 <button
+                  data-testid="shell-notifications-admission-retry"
                   type="button"
                   data-popover-item=""
                   onClick={() => {
@@ -214,7 +224,10 @@ export function NotificationsPopover() {
                 โหลดการแจ้งเตือนไม่สำเร็จ
               </p>
             ) : list.data.items.length === 0 ? (
-              <p className="p-6 text-center text-sm text-foreground-secondary">
+              <p
+                data-testid="shell-notifications-empty"
+                className="p-6 text-center text-sm text-foreground-secondary"
+              >
                 ยังไม่มีการแจ้งเตือน
               </p>
             ) : (
@@ -256,6 +269,7 @@ export function NotificationsPopover() {
               <Link
                 onClick={popover.close}
                 data-popover-item=""
+                data-testid="shell-notifications-all"
                 to="/notifications"
                 className="text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >

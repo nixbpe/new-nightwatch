@@ -21,9 +21,20 @@ const HEALTH_TONES = {
 >;
 
 // Only `up` earns the primary tone and the check icon (CMP-01); every state is also written out.
-export function HealthPill({ health }: { health: MonitorHealthName }) {
+export function HealthPill({
+  health,
+  testId,
+}: {
+  health: MonitorHealthName;
+  testId?: string;
+}) {
   return (
-    <StatusPill tone={HEALTH_TONES[health]} dot={health !== "up"}>
+    <StatusPill
+      data-testid={testId}
+      data-health={health}
+      tone={HEALTH_TONES[health]}
+      dot={health !== "up"}
+    >
       {health === "up" ? <CheckIcon size={12} /> : null}
       {HEALTH_LABELS[health]}
     </StatusPill>

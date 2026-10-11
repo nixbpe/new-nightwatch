@@ -11,15 +11,18 @@ export function EmptyState({
   description,
   action,
   variant = "default",
+  "data-testid": testId,
 }: {
   icon?: ReactNode;
   title: string;
   description?: string;
   action?: ReactNode;
   variant?: "default" | "first-run";
+  "data-testid"?: string;
 }) {
   return (
     <div
+      data-testid={testId}
       className={cn(
         "flex flex-col items-center gap-3 rounded-md border border-foreground/10 bg-surface px-6 text-center",
         variant === "first-run" ? "py-12" : "py-8",

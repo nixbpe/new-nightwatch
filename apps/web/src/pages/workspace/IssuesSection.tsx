@@ -44,6 +44,9 @@ function IssueRow({
       : null;
   return (
     <Link
+      data-testid={`monitor-list-row-${row.id}`}
+      data-health={row.health}
+      data-ssl-level={row.ssl.level}
       to={`/organizations/${organizationId}/monitors/${row.id}`}
       className="grid grid-cols-[44px_minmax(0,1fr)] gap-4 p-5 text-foreground hover:surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary sm:grid-cols-[44px_minmax(0,1fr)_170px]"
     >
@@ -58,7 +61,12 @@ function IssueRow({
       </span>
       <span className="flex min-w-0 flex-col gap-1.5">
         <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-          <b className="text-[15px] font-semibold text-heading">{row.name}</b>
+          <b
+            data-testid="monitor-list-name"
+            className="text-[15px] font-semibold text-heading"
+          >
+            {row.name}
+          </b>
           {down ? (
             <StatusPill tone="danger" neutralLabel>
               {HEALTH_LABELS.down}
@@ -66,6 +74,8 @@ function IssueRow({
           ) : null}
           {ssl ? (
             <StatusPill
+              data-testid="monitor-list-ssl"
+              data-days-remaining={row.ssl.daysRemaining ?? ""}
               tone={row.ssl.level === "caution" ? "caution" : "danger"}
               neutralLabel
             >
@@ -73,16 +83,25 @@ function IssueRow({
             </StatusPill>
           ) : null}
         </span>
-        <span className="font-mono text-xs break-all text-foreground-secondary">
+        <span
+          data-testid="monitor-list-cell-url"
+          className="font-mono text-xs break-all text-foreground-secondary"
+        >
           {row.url}
         </span>
         {down && incident !== null ? (
-          <span className="text-[13px]">
+          <span
+            data-testid="monitor-list-incident"
+            data-reason={incident.reason}
+            className="text-[13px]"
+          >
             {incidentReasonLabel(incident.reason)}
             {row.consecutiveFailures > 0 ? (
               <>
                 {" · ล้มเหลว "}
-                <span className="font-mono">{row.consecutiveFailures}</span>
+                <span data-testid="monitor-list-failures" className="font-mono">
+                  {row.consecutiveFailures}
+                </span>
                 {" ครั้ง"}
               </>
             ) : null}
@@ -94,10 +113,20 @@ function IssueRow({
           <>
             <span>ล่มตั้งแต่</span>
             <b className="font-mono font-medium text-foreground">
-              <Time iso={incident.startedAt} format={formatTimeOrDate} />
+              <Time
+                testId="monitor-list-incident-time"
+                iso={incident.startedAt}
+                format={formatTimeOrDate}
+              />
             </b>
             {elapsed === null ? null : (
-              <span className="text-xs">{formatDuration(elapsed)}</span>
+              <span
+                data-testid="workspace-issue-duration"
+                data-duration-seconds={elapsed}
+                className="text-xs"
+              >
+                {formatDuration(elapsed)}
+              </span>
             )}
           </>
         ) : null}
@@ -105,14 +134,20 @@ function IssueRow({
           <b className="font-medium text-foreground">{sslDays}</b>
         ) : null}
         {!down && ssl && row.ssl.issuer !== null ? (
-          <span className="min-w-0 text-xs [overflow-wrap:anywhere]">
+          <span
+            data-testid="workspace-ssl-issuer"
+            className="min-w-0 text-xs [overflow-wrap:anywhere]"
+          >
             ผู้ออก {row.ssl.issuer}
           </span>
         ) : null}
         {!down && ssl && row.ssl.notAfter !== null ? (
           <span className="text-xs">
             หมดอายุ{" "}
-            <time dateTime={row.ssl.notAfter}>
+            <time
+              data-testid="workspace-ssl-expiry"
+              dateTime={row.ssl.notAfter}
+            >
               {formatDate(row.ssl.notAfter)}
             </time>
           </span>
@@ -133,7 +168,11 @@ export function IssuesSection({
 }) {
   const rows = problemRows(monitors);
   return (
-    <section aria-labelledby="overview-issues" className="flex flex-col">
+    <section
+      data-testid="workspace-issues"
+      aria-labelledby="overview-issues"
+      className="flex flex-col"
+    >
       <SectionHeader
         id="overview-issues"
         code="01"

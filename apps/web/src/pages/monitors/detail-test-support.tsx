@@ -99,10 +99,6 @@ export const noResponseTimes: Extract<
   configChanges: [],
 };
 
-export function sectionOf(element: HTMLElement): HTMLElement {
-  return must(element.closest("section"));
-}
-
 /** A healthy, checked, https monitor; tests override only what they exercise. */
 export function detail(overrides: Partial<Monitor> = {}): Monitor {
   return {
@@ -170,6 +166,7 @@ function Harness() {
   return (
     <>
       <button
+        data-testid="detail-harness-switch"
         type="button"
         onClick={() => {
           void switchOrg(B);
@@ -179,6 +176,7 @@ function Harness() {
       </button>
       <output data-testid="location">{useLocation().pathname}</output>
       <button
+        data-testid="detail-harness-open"
         type="button"
         onClick={() => {
           void navigate(`/organizations/${A}/monitors/${MONITOR_ID}`);

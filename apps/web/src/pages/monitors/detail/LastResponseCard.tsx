@@ -27,7 +27,10 @@ const BODY_OMITTED_TEXT = {
 } as const;
 
 const TRUNCATED_BADGE = (
-  <span className="rounded border border-foreground/20 px-1.5 py-0.5 text-xs text-foreground-secondary">
+  <span
+    data-testid="monitor-response-truncated"
+    className="rounded border border-foreground/20 px-1.5 py-0.5 text-xs text-foreground-secondary"
+  >
     ตัดแล้ว
   </span>
 );
@@ -43,6 +46,7 @@ function Shell({
 }) {
   return (
     <section
+      data-testid="monitor-last-response"
       aria-labelledby="detail-last-response"
       className="flex min-w-0 flex-col gap-4"
     >
@@ -65,11 +69,26 @@ function ResponseBody({ response }: { response: LastResponse }) {
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
         {statusLine === null ? (
           <>
-            <span className="font-medium">ไม่มี response</span>
-            {cause === null ? null : <span>สาเหตุ {cause}</span>}
+            <span
+              data-testid="monitor-response-missing"
+              className="font-medium"
+            >
+              ไม่มี response
+            </span>
+            {cause === null ? null : (
+              <span
+                data-testid="monitor-response-cause"
+                data-failure-reason={response.failureReason}
+              >
+                สาเหตุ {cause}
+              </span>
+            )}
           </>
         ) : (
-          <span className="font-mono font-medium">
+          <span
+            data-testid="monitor-response-status"
+            className="font-mono font-medium"
+          >
             {statusLine.httpVersion} {statusLine.status}
             {statusLine.reasonPhrase === null
               ? ""
@@ -78,28 +97,50 @@ function ResponseBody({ response }: { response: LastResponse }) {
         )}
       </p>
       <p className="text-xs text-foreground-secondary">
-        ตรวจเมื่อ <Time iso={response.checkedAt} format={formatTimeOrDate} /> (
-        {TIME_ZONE})
+        ตรวจเมื่อ{" "}
+        <Time
+          testId="monitor-response-time"
+          iso={response.checkedAt}
+          format={formatTimeOrDate}
+        />{" "}
+        ({TIME_ZONE})
       </p>
-      <p className="font-mono text-xs break-all text-foreground-secondary">
+      <p
+        data-testid="monitor-response-url"
+        className="font-mono text-xs break-all text-foreground-secondary"
+      >
         {response.url}
       </p>
       {detailOmitted === "request_values" ? (
-        <p className="text-xs text-foreground-secondary">
+        <p
+          data-testid="monitor-response-request-values"
+          className="text-xs text-foreground-secondary"
+        >
           {REQUEST_VALUES_TEXT}
         </p>
       ) : null}
       {statusLine !== null && detailOmitted === null ? (
         <>
-          <div className="flex flex-wrap items-center gap-2">
+          <div
+            data-testid="monitor-response-header-section"
+            className="flex flex-wrap items-center gap-2"
+          >
             <h3 className="text-sm font-medium">Headers</h3>
             {response.headersTruncated ? TRUNCATED_BADGE : null}
           </div>
           {response.headers.length === 0 ? (
-            <p className="text-xs text-foreground-secondary">ไม่มี headers</p>
+            <p
+              data-testid="monitor-response-no-headers"
+              className="text-xs text-foreground-secondary"
+            >
+              ไม่มี headers
+            </p>
           ) : (
             <div className="min-w-0 overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table
+                data-testid="monitor-response-headers"
+                className="w-full text-left text-xs"
+              >
                 <caption className="sr-only">
                   headers ของการตอบกลับล่าสุด
                 </caption>
@@ -117,15 +158,21 @@ function ResponseBody({ response }: { response: LastResponse }) {
                   {response.headers.map((header, index) => (
                     <tr
                       key={`${header.name}:${String(index)}`}
+                      data-testid="monitor-response-header"
+                      data-redacted={header.redacted}
                       className="border-t border-foreground/10 align-top"
                     >
                       <th
+                        data-testid="monitor-response-header-name"
                         scope="row"
                         className="py-1 pr-3 font-mono font-normal break-all"
                       >
                         {header.name}
                       </th>
-                      <td className="py-1 font-mono break-all">
+                      <td
+                        data-testid="monitor-response-header-value"
+                        className="py-1 font-mono break-all"
+                      >
                         {header.redacted ? (
                           <span className="font-sans text-foreground-secondary">
                             ค่าถูกซ่อน
@@ -140,13 +187,17 @@ function ResponseBody({ response }: { response: LastResponse }) {
               </table>
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-2">
+          <div
+            data-testid="monitor-response-body-section"
+            className="flex flex-wrap items-center gap-2"
+          >
             <h3 className="text-sm font-medium">เนื้อหา</h3>
             {body?.kind === "text" && body.truncated ? TRUNCATED_BADGE : null}
           </div>
           {body?.kind === "text" ? (
             <div className="min-w-0">
               <pre
+                data-testid="monitor-response-body"
                 role="region"
                 tabIndex={0}
                 aria-label="เนื้อหาของการตอบกลับล่าสุด"
@@ -156,13 +207,20 @@ function ResponseBody({ response }: { response: LastResponse }) {
               </pre>
             </div>
           ) : (
-            <p className="text-xs text-foreground-secondary">
+            <p
+              data-testid="monitor-response-body-omitted"
+              data-reason={body === null ? "no_body" : body.reason}
+              className="text-xs text-foreground-secondary"
+            >
               {body === null
                 ? BODY_OMITTED_TEXT.no_body
                 : BODY_OMITTED_TEXT[body.reason]}
             </p>
           )}
-          <p className="text-xs text-foreground-secondary">
+          <p
+            data-testid="monitor-response-target-disclosure"
+            className="text-xs text-foreground-secondary"
+          >
             {FROM_TARGET_TEXT}
           </p>
         </>
@@ -195,7 +253,10 @@ function LastResponsePanel({
   if (isDenied(query.error)) {
     return (
       <Shell code={code}>
-        <p className="text-sm text-foreground-secondary">
+        <p
+          data-testid="monitor-response-read-role"
+          className="text-sm text-foreground-secondary"
+        >
           {READ_ROLE_ONLY_TEXT}
         </p>
       </Shell>
@@ -205,12 +266,15 @@ function LastResponsePanel({
     <Shell code={code}>
       {data === undefined && query.isError ? (
         <>
-          <Alert tone="error">โหลดการตอบกลับล่าสุดไม่สำเร็จ</Alert>
+          <Alert data-testid="monitor-response-error" tone="error">
+            โหลดการตอบกลับล่าสุดไม่สำเร็จ
+          </Alert>
           <Button
             type="button"
             variant="secondary"
             size="sm"
             className="self-start"
+            data-testid="monitor-response-retry"
             onClick={() => void query.refetch()}
           >
             ลองอีกครั้ง
@@ -227,13 +291,20 @@ function LastResponsePanel({
         </div>
       ) : null}
       {data !== undefined && data.response === null ? (
-        <p className="text-sm text-foreground-secondary">ยังไม่มีผลตรวจ</p>
+        <p
+          data-testid="monitor-response-empty"
+          className="text-sm text-foreground-secondary"
+        >
+          ยังไม่มีผลตรวจ
+        </p>
       ) : null}
       {data?.response == null ? null : (
         <ResponseBody response={data.response} />
       )}
       {data !== undefined && query.isError ? (
-        <Alert tone="warning">อัปเดตการตอบกลับล่าสุดไม่สำเร็จ</Alert>
+        <Alert data-testid="monitor-response-refresh-error" tone="warning">
+          อัปเดตการตอบกลับล่าสุดไม่สำเร็จ
+        </Alert>
       ) : null}
     </Shell>
   );
@@ -252,7 +323,10 @@ export function LastResponseCard({
   if (!canRead) {
     return (
       <Shell code={rest.code}>
-        <p className="text-sm text-foreground-secondary">
+        <p
+          data-testid="monitor-response-read-role"
+          className="text-sm text-foreground-secondary"
+        >
           {READ_ROLE_ONLY_TEXT}
         </p>
       </Shell>

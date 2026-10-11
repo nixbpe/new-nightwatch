@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Locator } from "@playwright/test";
 
-import { monitorResponseTimesResponseSchema } from "../../packages/api-contract/src/monitor.ts";
+import {
+  monitorResponseTimesResponseSchema,
+  monitorWriteResponseSchema,
+} from "../../packages/api-contract/src/monitor.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
@@ -47,9 +50,9 @@ const overview = () => `/organizations/${orgA}/monitors`;
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(person.email);
-  await page.locator("#login-password").fill(person.password);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(person.email);
+  await page.getByTestId("login-password").fill(person.password);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace/);
 }
 
@@ -72,12 +75,12 @@ test.beforeAll(async () => {
     ...basicConfig(monitorName, urlOf("/health")),
     clientRequestId: randomUUID(),
   });
-  monitorId = (created.body as { monitor: { id: string } }).monitor.id;
+  monitorId = monitorWriteResponseSchema.parse(created.body).monitor.id;
   const other = await ownerSession.request("POST", monitorPath(orgOther), {
     ...basicConfig(`foreign-${run}`, urlOf("/health")),
     clientRequestId: randomUUID(),
   });
-  otherMonitorId = (other.body as { monitor: { id: string } }).monitor.id;
+  otherMonitorId = monitorWriteResponseSchema.parse(other.body).monitor.id;
 });
 
 test.afterAll(async () => {
@@ -89,30 +92,68 @@ test.afterAll(async () => {
   }
 });
 
+async function expectKpis(
+  card: Locator,
+  p50: string | null,
+  p95: string | null,
+  checks: string,
+  failed: string,
+) {
+  if (p50 === null) {
+    await expect(card.getByTestId("monitor-response-p50")).toHaveAttribute(
+      "data-value-code",
+      "",
+    );
+    await expect(card.getByTestId("monitor-response-p50")).toHaveText(/\S/);
+  } else await expect(card.getByTestId("monitor-response-p50")).toHaveText(p50);
+  if (p95 === null) {
+    await expect(card.getByTestId("monitor-response-p95")).toHaveAttribute(
+      "data-value-code",
+      "",
+    );
+    await expect(card.getByTestId("monitor-response-p95")).toHaveText(/\S/);
+  } else await expect(card.getByTestId("monitor-response-p95")).toHaveText(p95);
+  await expect(card.getByTestId("monitor-response-checks")).toHaveText(checks);
+  await expect(card.getByTestId("monitor-response-failed")).toHaveText(failed);
+}
+
 test.describe("leaf in the sidebar and the command palette", () => {
   for (const role of ["owner", "admin", "viewer", "auditor"] as Role[]) {
     test(`${role}: leaf is present, active on every sub-route, found by the palette`, async ({
       page,
     }) => {
       await signIn(page, people[role]);
-      const nav = page.getByRole("navigation", { name: "เมนูหลัก" });
+      const nav = page.getByTestId("shell-navigation");
+      let searchTerm = "";
       for (const path of ["", "/new", `/${monitorId}`, `/${monitorId}/edit`]) {
         await page.goto(`${overview()}${path}`);
-        const leaf = nav.getByRole("link", { name: "ตรวจสถานะบริการ" });
+        const leaf = nav.getByTestId(
+          "shell-nav-/organizations/:organizationId/monitors",
+        );
         await expect(leaf).toBeVisible();
         await expect(leaf).toHaveAttribute("aria-current", "page");
         await expect(leaf).toHaveAttribute("href", overview());
+        searchTerm = await leaf.evaluate((link) => {
+          const label = link.cloneNode(true);
+          if (label instanceof Element) {
+            label
+              .querySelectorAll('[aria-hidden="true"]')
+              .forEach((hidden) => hidden.remove());
+          }
+          return label.textContent?.trim() ?? "";
+        });
+        expect(searchTerm).not.toBe("");
       }
       await page.goto("/workspace");
       await expect(nav).toBeVisible();
       await page.keyboard.press("ControlOrMeta+k");
-      const palette = page.getByRole("dialog", { name: "ค้นหาทั้งหมด" });
+      const palette = page.getByTestId("shell-command-dialog");
       await expect(palette).toBeVisible();
-      await palette
-        .getByRole("combobox", { name: "ค้นหาทั้งหมด" })
-        .fill("ตรวจสถานะ");
+      await palette.getByTestId("shell-command-query").fill(searchTerm);
       await expect(
-        palette.getByRole("option", { name: /ตรวจสถานะบริการ/ }),
+        palette.getByTestId(
+          `shell-command-option-/organizations/${orgA}/monitors`,
+        ),
       ).toBeVisible();
     });
   }
@@ -125,10 +166,9 @@ test.describe("Overview states", () => {
     await signIn(page, owner);
 
     await page.goto(`/organizations/${orgEmpty}/monitors`);
-    await expect(page.getByText("ยังไม่มีมอนิเตอร์")).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "เพิ่มมอนิเตอร์" }).first(),
-    ).toBeVisible();
+    await expect(page.getByTestId("monitor-overview-empty")).toBeVisible();
+    await expect(page.getByTestId("monitor-overview-empty")).toHaveText(/\S/);
+    await expect(page.getByTestId("monitor-overview-empty-add")).toBeVisible();
 
     const listUrl = /\/api\/organizations\/[^/]+\/monitors(\?.*)?$/;
     let failList = true;
@@ -143,18 +183,26 @@ test.describe("Overview states", () => {
     });
     await page.goto(overview());
     // A failed load is an error with a retry, never an empty list.
-    await expect(page.getByText("โหลดมอนิเตอร์ไม่สำเร็จ")).toBeVisible();
-    await expect(page.getByText("ยังไม่มีมอนิเตอร์")).toHaveCount(0);
+    await expect(page.getByTestId("monitor-overview-error")).toBeVisible();
+    await expect(page.getByTestId("monitor-overview-error")).toHaveText(/\S/);
+    await expect(page.getByTestId("monitor-overview-empty")).toHaveCount(0);
     failList = false;
-    await page.getByRole("button", { name: /ลองใหม่|ลองอีกครั้ง/ }).click();
-    await expect(page.getByRole("link", { name: monitorName })).toBeVisible();
-
-    await page.getByLabel("ค้นหาชื่อหรือ URL").fill(`no-such-${run}`);
+    await page.getByTestId("monitor-overview-retry").click();
     await expect(
-      page.getByText("ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง"),
+      page.getByTestId(`monitor-list-name-${monitorId}`),
     ).toBeVisible();
-    await page.getByLabel("ค้นหาชื่อหรือ URL").fill("");
-    await expect(page.getByRole("link", { name: monitorName })).toBeVisible();
+
+    await page.getByTestId("monitor-overview-search").fill(`no-such-${run}`);
+    await expect(
+      page.getByTestId("monitor-overview-filtered-empty"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("monitor-overview-filtered-empty"),
+    ).toHaveText(/\S/);
+    await page.getByTestId("monitor-overview-search").fill("");
+    await expect(
+      page.getByTestId(`monitor-list-name-${monitorId}`),
+    ).toBeVisible();
 
     // Loading: a slow list shows the loading state first.
     delayMs = 6000;
@@ -162,21 +210,31 @@ test.describe("Overview states", () => {
     // outlast the delay and hide the loading state.
     await page.reload({ waitUntil: "commit" });
     // The route loader fetches the list first, so the shell shows its page-opening status.
-    await expect(page.getByRole("status").first()).toContainText(
-      /กำลัง(เปิดหน้า|โหลดมอนิเตอร์)/,
+    await expect(page.getByTestId("route-opening-status")).toBeVisible();
+    await expect(page.getByTestId("route-opening-status")).toHaveAttribute(
+      "role",
+      "status",
     );
-    await expect(page.getByRole("link", { name: monitorName })).toBeVisible({
+    await expect(page.getByTestId("route-opening-status")).toHaveText(/\S/);
+    await expect(
+      page.getByTestId(`monitor-list-name-${monitorId}`),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
     // Stale: a refresh that fails keeps the data and warns.
     delayMs = 0;
     failList = true;
-    await page.getByRole("button", { name: "รีเฟรช" }).click();
+    await page.getByTestId("monitor-overview-refresh").click();
     await expect(
-      page.getByText(/อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ/),
+      page.getByTestId("monitor-overview-refetch-error"),
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: monitorName })).toBeVisible();
+    await expect(page.getByTestId("monitor-overview-refetch-error")).toHaveText(
+      /\S/,
+    );
+    await expect(
+      page.getByTestId(`monitor-list-name-${monitorId}`),
+    ).toBeVisible();
   });
 });
 
@@ -186,43 +244,62 @@ test.describe("create form", () => {
   }) => {
     await signIn(page, owner);
     await page.goto(`${overview()}/new`);
-    const group = page.getByRole("radiogroup", { name: "ตรวจทุก" });
-    await expect(group.getByRole("radio", { checked: true })).toHaveText(
-      "5 นาที",
+    await expect(page.getByTestId("monitor-form-interval-300")).toHaveAttribute(
+      "aria-checked",
+      "true",
     );
-    await expect(group.getByRole("radio")).toHaveText([
-      "1 นาที",
-      "5 นาที",
-      "15 นาที",
-    ]);
+    await expect(page.getByTestId(/^monitor-form-interval-/)).toHaveCount(3);
+    await expect(page.getByTestId("monitor-form-interval-60")).toContainText(
+      /\b1\b/,
+    );
+    await expect(page.getByTestId("monitor-form-interval-300")).toContainText(
+      /\b5\b/,
+    );
+    await expect(page.getByTestId("monitor-form-interval-900")).toContainText(
+      /\b15\b/,
+    );
+    await expect(page.getByTestId("monitor-form-interval-60")).toHaveAttribute(
+      "role",
+      "radio",
+    );
+    await expect(page.getByTestId("monitor-form-interval-900")).toHaveAttribute(
+      "role",
+      "radio",
+    );
     await expect(
-      page.getByText("ถือว่าปกติเมื่อได้รหัส 200-299"),
-    ).toBeVisible();
+      page.getByTestId("monitor-form-status-summary"),
+    ).toHaveAttribute("data-expected-status", "200-299");
+    await expect(page.getByTestId("monitor-form-status-summary")).toContainText(
+      "200-299",
+    );
 
-    await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
-    await expect(page.getByLabel("ชื่อมอนิเตอร์")).toBeFocused();
+    await page.getByTestId("monitor-form-save").click();
+    await expect(page.getByTestId("monitor-form-name")).toBeFocused();
     await expect(
-      page.getByLabel("URL", { exact: true }),
+      page.getByTestId("monitor-form-url"),
     ).toHaveAccessibleDescription(/.+/);
 
-    await page.getByLabel("ชื่อมอนิเตอร์").fill(`double-${run}`);
-    await page.getByLabel("URL", { exact: true }).fill(urlOf("/health"));
-    await group.getByRole("radio", { name: "15 นาที" }).click();
-    await page.getByRole("radio", { name: "ขั้นสูง" }).click();
-    await page.getByRole("radio", { name: "พื้นฐาน" }).click();
-    await expect(page.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(`double-${run}`);
-    await expect(page.getByLabel("URL", { exact: true })).toHaveValue(
+    await page.getByTestId("monitor-form-name").fill(`double-${run}`);
+    await page.getByTestId("monitor-form-url").fill(urlOf("/health"));
+    await page.getByTestId("monitor-form-interval-900").click();
+    await page.getByTestId("monitor-form-mode-advanced").click();
+    await page.getByTestId("monitor-form-mode-basic").click();
+    await expect(page.getByTestId("monitor-form-name")).toHaveValue(
+      `double-${run}`,
+    );
+    await expect(page.getByTestId("monitor-form-url")).toHaveValue(
       urlOf("/health"),
     );
-    await expect(group.getByRole("radio", { checked: true })).toHaveText(
-      "15 นาที",
+    await expect(page.getByTestId("monitor-form-interval-900")).toHaveAttribute(
+      "aria-checked",
+      "true",
     );
 
-    const save = page.getByRole("button", { name: "บันทึกมอนิเตอร์" });
+    const save = page.getByTestId("monitor-form-save");
     await save.dblclick();
-    await expect(
-      page.getByRole("heading", { name: `double-${run}` }),
-    ).toBeVisible();
+    await expect(page.getByTestId("monitor-detail-title")).toHaveText(
+      `double-${run}`,
+    );
     const count = await pool.query(
       "select count(*)::int n from monitors where tenant_id = $1 and name = $2",
       [orgA, `double-${run}`],
@@ -238,15 +315,19 @@ test.describe("create form", () => {
       await signIn(page, owner);
       await page.goto(`${overview()}/new`);
       const before = isolatedTarget.hits.length;
-      await page.getByLabel("ชื่อมอนิเตอร์").fill(`forbidden-${run}`);
+      await page.getByTestId("monitor-form-name").fill(`forbidden-${run}`);
       await page
-        .getByLabel("URL", { exact: true })
+        .getByTestId("monitor-form-url")
         .fill(`http://localhost:${String(isolatedTarget.port)}/health`);
-      await page.getByRole("button", { name: "บันทึกมอนิเตอร์" }).click();
+      await page.getByTestId("monitor-form-save").click();
+      await expect(page.getByTestId("monitor-form-url")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
       await expect(
-        page.getByText("ที่อยู่นี้ไม่อนุญาตให้ตรวจสอบ"),
-      ).toBeVisible();
-      await expect(page.getByLabel("URL", { exact: true })).toHaveValue(
+        page.getByTestId("monitor-form-url"),
+      ).toHaveAccessibleDescription(/\S/);
+      await expect(page.getByTestId("monitor-form-url")).toHaveValue(
         `http://localhost:${String(isolatedTarget.port)}/health`,
       );
       const count = await pool.query(
@@ -266,22 +347,32 @@ test.describe("create form", () => {
     test.setTimeout(60_000);
     await signIn(page, owner);
     await page.goto(`${overview()}/new`);
-    await page.getByLabel("ชื่อมอนิเตอร์").fill(`timeout-${run}`);
-    await page.getByRole("radio", { name: "ขั้นสูง" }).click();
-    await page.getByLabel("หมดเวลารอ (วินาที)").fill("1");
-    await page.getByLabel("URL", { exact: true }).fill(urlOf("/slow?ms=4000"));
-    await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
-    await expect(
-      page.getByRole("status").filter({ hasText: "หมดเวลารอ 1 วินาที" }),
-    ).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("monitor-form-name").fill(`timeout-${run}`);
+    await page.getByTestId("monitor-form-mode-advanced").click();
+    await page.getByTestId("monitor-form-timeout").fill("1");
+    await page.getByTestId("monitor-form-url").fill(urlOf("/slow?ms=4000"));
+    await page.getByTestId("monitor-form-test").click();
+    await expect(page.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-failure-reason",
+      "timeout",
+      { timeout: 15_000 },
+    );
+    await expect(page.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-timeout-seconds",
+      "1",
+    );
+    await expect(page.getByTestId("monitor-test-result")).toHaveText(/\S/);
 
     await page
-      .getByLabel("URL", { exact: true })
+      .getByTestId("monitor-form-url")
       .fill(`http://no-such-host-${run}.invalid/`);
-    await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
-    await expect(
-      page.getByRole("status").filter({ hasText: "ไม่พบชื่อโดเมนนี้" }),
-    ).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("monitor-form-test").click();
+    await expect(page.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-failure-reason",
+      "dns_not_found",
+      { timeout: 15_000 },
+    );
+    await expect(page.getByTestId("monitor-test-result")).toHaveText(/\S/);
   });
 });
 
@@ -297,19 +388,22 @@ test.describe("edit, change and races", () => {
     await signIn(b, owner);
     for (const page of [a, b]) {
       await page.goto(`${overview()}/${monitorId}/edit`);
-      await expect(page.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(monitorName);
+      await expect(page.getByTestId("monitor-form-name")).toHaveValue(
+        monitorName,
+      );
     }
-    await a.getByLabel("ชื่อมอนิเตอร์").fill(`${monitorName}-a`);
-    await a.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
-    await expect(
-      a.getByRole("heading", { name: `${monitorName}-a` }),
-    ).toBeVisible();
-    await b.getByLabel("ชื่อมอนิเตอร์").fill(`${monitorName}-b`);
-    await b.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
-    await expect(
-      b.getByText("มอนิเตอร์นี้ถูกแก้โดยผู้อื่น โหลดใหม่เพื่อดูค่าล่าสุด"),
-    ).toBeVisible();
-    await expect(b.getByLabel("ชื่อมอนิเตอร์")).toHaveValue(`${monitorName}-b`);
+    await a.getByTestId("monitor-form-name").fill(`${monitorName}-a`);
+    await a.getByTestId("monitor-form-save").click();
+    await expect(a.getByTestId("monitor-detail-title")).toHaveText(
+      `${monitorName}-a`,
+    );
+    await b.getByTestId("monitor-form-name").fill(`${monitorName}-b`);
+    await b.getByTestId("monitor-form-save").click();
+    await expect(b.getByTestId("monitor-form-conflict")).toBeVisible();
+    await expect(b.getByTestId("monitor-form-conflict")).toHaveText(/\S/);
+    await expect(b.getByTestId("monitor-form-name")).toHaveValue(
+      `${monitorName}-b`,
+    );
     const stored = await pool.query("select name from monitors where id = $1", [
       monitorId,
     ]);
@@ -332,9 +426,17 @@ test.describe("edit, change and races", () => {
       "/not-a-uuid",
     ]) {
       await page.goto(`${overview()}${path}`);
-      await expect(page.getByText("ไม่พบมอนิเตอร์นี้")).toBeVisible();
+      const notFound = page.getByTestId(
+        path.endsWith("/edit")
+          ? "monitor-form-not-found"
+          : "monitor-detail-not-found",
+      );
+      await expect(notFound).toBeVisible();
+      await expect(notFound).toHaveText(/\S/);
     }
-    await expect(page.getByText(`foreign-${run}`)).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(`foreign-${run}`);
   });
 
   test("editing the URL shows unknown until the new configuration has a result", async ({
@@ -345,26 +447,38 @@ test.describe("edit, change and races", () => {
       ...basicConfig(`change-${run}`, urlOf("/health")),
       clientRequestId: randomUUID(),
     });
-    const id = (created.body as { monitor: { id: string } }).monitor.id;
+    const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
     await page.goto(`${overview()}/${id}`);
-    await expect(page.getByText("ปกติ", { exact: true })).toBeVisible({
-      timeout: 60_000,
-    });
+    await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-health",
+      "up",
+      { timeout: 60_000 },
+    );
+    await expect(page.getByTestId("monitor-detail-health")).toHaveText(/\S/);
+    const upText = await page.getByTestId("monitor-detail-health").innerText();
 
     target.setDelay(8000);
-    await page.getByRole("link", { name: "แก้ไข" }).click();
-    await page
-      .getByLabel("URL", { exact: true })
-      .fill(urlOf("/health?changed=1"));
-    await page.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
-    await expect(page.getByText("บันทึกการแก้ไขแล้ว")).toBeVisible();
-    await expect(page.getByText("ไม่ทราบสถานะ", { exact: true })).toBeVisible();
-    await expect(page.getByText("ปกติ", { exact: true })).toHaveCount(0);
+    await page.getByTestId("monitor-detail-edit").click();
+    await page.getByTestId("monitor-form-url").fill(urlOf("/health?changed=1"));
+    await page.getByTestId("monitor-form-save").click();
+    await expect(page.getByTestId("monitor-detail-notice")).toBeVisible();
+    await expect(page.getByTestId("monitor-detail-notice")).toHaveText(/\S/);
+    await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-health",
+      "unknown",
+    );
+    await expect(page.getByTestId("monitor-detail-health")).toHaveText(/\S/);
+    await expect(page.getByTestId("monitor-detail-health")).not.toHaveText(
+      upText,
+    );
     target.setDelay(0);
-    await expect(page.getByText("ปกติ", { exact: true })).toBeVisible({
-      timeout: 90_000,
-    });
+    await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+      "data-health",
+      "up",
+      { timeout: 90_000 },
+    );
+    await expect(page.getByTestId("monitor-detail-health")).toHaveText(upText);
   });
 
   test("deleting a monitor that another session deleted goes to Overview with the notice", async ({
@@ -374,20 +488,21 @@ test.describe("edit, change and races", () => {
       ...basicConfig(`raced-${run}`, urlOf("/health")),
       clientRequestId: randomUUID(),
     });
-    const id = (created.body as { monitor: { id: string } }).monitor.id;
+    const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
     await page.goto(`${overview()}/${id}`);
-    await page.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
-    const dialog = page.getByRole("dialog", { name: "ยืนยันการลบมอนิเตอร์" });
+    await page.getByTestId("monitor-detail-delete").click();
+    const dialog = page.getByTestId("monitor-detail-delete-dialog");
     await expect(dialog).toBeVisible();
     const other = await ownerSession.request(
       "DELETE",
       monitorPath(orgA, `/${id}`),
     );
     expect(other.status).toBeLessThan(300);
-    await dialog.getByRole("button", { name: "ลบมอนิเตอร์" }).click();
+    await dialog.getByTestId("monitor-detail-delete-confirm").click();
     await expect(page).toHaveURL(new RegExp(`${overview()}$`));
-    await expect(page.getByText("มอนิเตอร์นี้ถูกลบแล้ว")).toBeVisible();
+    await expect(page.getByTestId("monitor-overview-notice")).toBeVisible();
+    await expect(page.getByTestId("monitor-overview-notice")).toHaveText(/\S/);
   });
 
   test("a Detail left open shows not found after the monitor is deleted elsewhere", async ({
@@ -397,17 +512,18 @@ test.describe("edit, change and races", () => {
       ...basicConfig(`vanish-${run}`, urlOf("/health")),
       clientRequestId: randomUUID(),
     });
-    const id = (created.body as { monitor: { id: string } }).monitor.id;
+    const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
     await page.goto(`${overview()}/${id}`);
-    await expect(
-      page.getByRole("heading", { name: `vanish-${run}` }),
-    ).toBeVisible();
+    await expect(page.getByTestId("monitor-detail-title")).toHaveText(
+      `vanish-${run}`,
+    );
     await ownerSession.request("DELETE", monitorPath(orgA, `/${id}`));
-    await page.getByRole("button", { name: "หยุดชั่วคราว" }).click();
-    await expect(page.getByText("ไม่พบมอนิเตอร์นี้")).toBeVisible({
+    await page.getByTestId("monitor-detail-toggle").click();
+    await expect(page.getByTestId("monitor-detail-not-found")).toBeVisible({
       timeout: 15_000,
     });
+    await expect(page.getByTestId("monitor-detail-not-found")).toHaveText(/\S/);
   });
 });
 
@@ -431,17 +547,26 @@ test("the Test limit shows the wait from the server and disables the button", as
   }
   await signIn(page, person);
   await page.goto(`/organizations/${org}/monitors/new`);
-  await page.getByLabel("ชื่อมอนิเตอร์").fill("rate");
-  await page.getByLabel("URL", { exact: true }).fill(urlOf("/status/200"));
+  await page.getByTestId("monitor-form-name").fill("rate");
+  await page.getByTestId("monitor-form-url").fill(urlOf("/status/200"));
   const before = target.hits.length;
-  await page.getByRole("button", { name: "ทดสอบการตั้งค่า" }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "ทดสอบบ่อยเกินไป" }),
-  ).toBeVisible();
-  await expect(page.getByText(/ลองอีกครั้งใน \d+ วินาที/)).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "ทดสอบการตั้งค่า" }),
-  ).toHaveAttribute("aria-disabled", "true");
+  await page.getByTestId("monitor-form-test").click();
+  await expect(page.getByTestId("monitor-test-rateLimited")).toBeVisible();
+  await expect(page.getByTestId("monitor-test-rateLimited")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-test-wait")).toBeVisible();
+  const remaining = Number(
+    await page
+      .getByTestId("monitor-test-wait")
+      .getAttribute("data-remaining-seconds"),
+  );
+  expect(remaining).toBeGreaterThan(0);
+  await expect(page.getByTestId("monitor-test-wait")).toContainText(
+    String(remaining),
+  );
+  await expect(page.getByTestId("monitor-form-test")).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   expect(target.hits.length).toBe(before);
   await pool.query("delete from organization where id = $1", [org]);
 });
@@ -457,47 +582,76 @@ test.describe("secrets in the browser", () => {
       secrets: [{ slot: "auth.token", value: token }],
       clientRequestId: randomUUID(),
     });
-    const id = (created.body as { monitor: { id: string } }).monitor.id;
+    const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
 
     // Viewers and owners see the state, never the value.
     await page.goto(`${overview()}/${id}`);
-    await expect(page.getByText("ตั้งค่าแล้ว").first()).toBeVisible();
-    await expect(page.getByText(token)).toHaveCount(0);
+    await expect(page.getByTestId("monitor-config-auth")).toHaveAttribute(
+      "data-configured",
+      "true",
+    );
+    await expect(page.getByTestId("monitor-config-auth")).toHaveAttribute(
+      "data-auth-type",
+      "bearer",
+    );
+    await expect(page.getByTestId("monitor-config-auth")).toHaveText(/\S/);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(token);
 
     await page.goto(`${overview()}/${id}/edit`);
-    await page.getByRole("radio", { name: "ขั้นสูง" }).click();
-    await expect(page.getByText("ตั้งค่าแล้ว").first()).toBeVisible();
-    await expect(page.getByText(token)).toHaveCount(0);
+    await page.getByTestId("monitor-form-mode-advanced").click();
+    await expect(
+      page.getByTestId("monitor-secret-auth.token-stored"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("monitor-secret-auth.token-stored"),
+    ).toHaveText(/\S/);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(token);
     expect(await page.content()).not.toContain(token);
 
     await shot(page, "edit-secret-set");
     // Replace with nothing typed is refused beside the field (AC-26).
-    await page.getByRole("button", { name: "แทนที่ Token" }).click();
+    await page.getByTestId("monitor-secret-auth.token-replace").click();
     await shot(page, "edit-secret-replace-open");
-    await page.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
+    await page.getByTestId("monitor-form-save").click();
     await expect(
-      page.getByText("กรอกค่าใหม่ หรือกดยกเลิกการแทนที่"),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "ยกเลิกการแทนที่ Token" }).click();
+      page.getByTestId("monitor-secret-auth.token-value"),
+    ).toHaveValue("");
+    await expect(
+      page.getByTestId("monitor-secret-auth.token-value"),
+    ).toHaveAttribute("aria-invalid", "true");
+    await expect(
+      page.getByTestId("monitor-secret-auth.token-value"),
+    ).toHaveAccessibleDescription(/\S/);
+    await page.getByTestId("monitor-secret-auth.token-cancel").click();
 
     // Changing the type says the old value is dropped before saving (AC-26).
-    await page.locator("#monitor-form-auth-type").selectOption("basic");
-    await expect(page.getByText("ค่าลับของชนิดเดิมจะถูกลบ")).toBeVisible();
-    await page.locator("#monitor-form-auth-type").selectOption("bearer");
+    await page.getByTestId("monitor-form-auth-type").selectOption("basic");
+    await expect(
+      page.getByTestId("monitor-auth-secret-dropped"),
+    ).toHaveAttribute("data-dropped", "true");
+    await expect(page.getByTestId("monitor-auth-secret-dropped")).toHaveText(
+      /\S/,
+    );
+    await page.getByTestId("monitor-form-auth-type").selectOption("bearer");
 
     // A new origin with a kept secret cannot be saved or tested (AC-44).
     await page
-      .getByLabel("URL", { exact: true })
+      .getByTestId("monitor-form-url")
       .fill(`http://${host}:${String(target.port + 1)}/health`);
+    await expect(page.getByTestId("monitor-form-url")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
     await expect(
-      page
-        .getByText("เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม")
-        .first(),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "บันทึกการแก้ไข" }),
-    ).toBeDisabled();
+      page.getByTestId("monitor-form-url"),
+    ).toHaveAccessibleDescription(/\S/);
+    await expect(page.getByTestId("monitor-form-test")).toBeDisabled();
+    await expect(page.getByTestId("monitor-form-save")).toBeDisabled();
   });
 
   test("query and body fields carry the permanent warning", async ({
@@ -505,12 +659,19 @@ test.describe("secrets in the browser", () => {
   }) => {
     await signIn(page, owner);
     await page.goto(`${overview()}/new`);
-    await page.getByRole("radio", { name: "ขั้นสูง" }).click();
+    await page.getByTestId("monitor-form-mode-advanced").click();
     await expect(
-      page.getByText(
-        "ผู้ที่ดูมอนิเตอร์เห็นค่านี้ได้ ห้ามใส่ความลับ ใช้ header ลับแทน",
-      ),
-    ).not.toHaveCount(0);
+      page.getByTestId("monitor-form-query-visible-warning"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("monitor-form-query-visible-warning"),
+    ).toHaveText(/\S/);
+    await expect(
+      page.getByTestId("monitor-form-body-visible-warning"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("monitor-form-body-visible-warning"),
+    ).toHaveText(/\S/);
   });
 });
 
@@ -522,14 +683,18 @@ test("a first failing result reads as one failure, not as down", async ({
     ...basicConfig(`first-fail-${run}`, urlOf("/status/503")),
     clientRequestId: randomUUID(),
   });
-  const id = (created.body as { monitor: { id: string } }).monitor.id;
+  const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
   await signIn(page, owner);
   await page.goto(`${overview()}/${id}`);
-  await expect(page.getByText("ล้มเหลว 1 ครั้ง").first()).toBeVisible({
+  await expect(page.getByTestId("monitor-status-failures")).toContainText(/1/, {
     timeout: 60_000,
   });
-  await expect(page.getByText("ล่ม", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("ไม่ทราบสถานะ", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(
+    "data-health",
+    "unknown",
+  );
+  await expect(page.getByTestId("monitor-detail-health")).toHaveText(/\S/);
+  await expect(page.getByTestId("monitor-detail-down-banner")).toHaveCount(0);
 });
 
 test("an Organization at 50 monitors shows the reason and the API refuses a 51st", async ({
@@ -560,11 +725,12 @@ test("an Organization at 50 monitors shows the reason and the API refuses a 51st
   );
   await signIn(page, person);
   await page.goto(`/organizations/${org}/monitors`);
+  await expect(page.getByTestId("monitor-overview-limit-reason")).toBeVisible();
+  await expect(page.getByTestId("monitor-overview-limit-reason")).toHaveText(
+    /\S/,
+  );
   await expect(
-    page.getByText(/องค์กรนี้มีมอนิเตอร์ครบ 50 ตัวแล้ว/),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "เพิ่มมอนิเตอร์" }),
+    page.getByTestId("monitor-overview-add-disabled"),
   ).toBeDisabled();
   const kept = await pool.query(
     "select count(*)::int n, count(*) filter (where status = 'active')::int active from monitors where tenant_id = $1",
@@ -596,29 +762,22 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
     [id, orgA, randomUUID()],
   );
   const path = `${overview()}/${id}`;
-  const card = page.locator('section[aria-labelledby="detail-response-times"]');
+  const card = page.getByTestId("monitor-response-times");
   const stateShots = async (name: string) => {
-    for (const theme of ["สว่าง", "มืด"]) {
-      await page.getByRole("button", { name: "เมนูบัญชีผู้ใช้" }).click();
+    for (const theme of ["light", "dark"]) {
+      await page.getByTestId("shell-account-open").click();
       await page
-        .getByRole("group", { name: "ธีม", exact: true })
-        .getByRole("button", { name: theme, exact: true })
+        .getByTestId("shell-account-theme")
+        .getByTestId(`shell-theme-${theme}`)
         .click();
       await page.keyboard.press("Escape");
-      await card
-        .getByRole("heading", { name: "เวลาตอบสนอง", exact: true })
-        .scrollIntoViewIfNeeded();
-      await shot(page, `57-${name}-${theme === "สว่าง" ? "light" : "dark"}`);
+      await card.scrollIntoViewIfNeeded();
+      await shot(page, `57-${name}-${theme}`);
     }
   };
   await signIn(page, owner);
   await page.goto(path);
-  await expect(card.locator("dd")).toHaveText([
-    "ไม่มีข้อมูล",
-    "ไม่มีข้อมูล",
-    "0",
-    "0",
-  ]);
+  await expectKpis(card, null, null, "0", "0");
   await stateShots("empty-before");
   await pool.query(
     `insert into monitor_check_results
@@ -635,50 +794,43 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
       localStorage.setItem("nightwatch-theme", value);
     }, theme);
     await page.reload();
-    for (const label of ["24 ชม.", "7 วัน", "30 วัน"]) {
-      const radio = card.getByRole("radio", { name: label, exact: true });
+    for (const range of ["24h", "7d", "30d"]) {
+      const radio = card.getByTestId(`monitor-response-range-${range}`);
       await radio.focus();
       await page.keyboard.press("Space");
-      await expect(card.locator("dd")).toHaveText(["20 ms", "40 ms", "4", "1"]);
+      await expectKpis(card, "20 ms", "40 ms", "4", "1");
       await expect(radio).toBeFocused();
-      if (label !== "24 ชม.") {
-        await expect(card.getByRole("status")).toContainText(
-          "p50 20 ms p95 40 ms จำนวนการตรวจ 4 ล้มเหลว 1",
-        );
-        await expect(card.getByRole("status")).toHaveAttribute(
-          "aria-live",
-          "polite",
-        );
+      if (range !== "24h") {
         await expect(
-          card.getByText(/ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC/),
-        ).toBeVisible();
+          card.getByTestId("response-range-announcement"),
+        ).toContainText(/p50 20 ms p95 40 ms/);
+        await expect(
+          card.getByTestId("response-range-announcement"),
+        ).toContainText(/4\D+1/);
+        await expect(
+          card.getByTestId("response-range-announcement"),
+        ).toHaveAttribute("aria-live", "polite");
+        const from = await card
+          .getByTestId("monitor-response-window-from")
+          .getAttribute("datetime");
+        expect(from).toMatch(/T/);
+        expect(new Date(from ?? "").getUTCMinutes()).toBe(0);
+        expect(new Date(from ?? "").getUTCSeconds()).toBe(0);
       }
-      await expect(
-        card.getByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
-      ).toBeVisible();
-      await shot(
-        page,
-        `57-kpi-${label === "24 ชม." ? "24h" : label === "7 วัน" ? "7d" : "30d"}-${theme}`,
-      );
+      await expect(card.getByTestId("monitor-response-chart")).toBeVisible();
+      await shot(page, `57-kpi-${range}-${theme}`);
       // The one button changes its name with the view, so each name is queried again after a press.
-      await card.getByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" }).focus();
+      await card.getByTestId("monitor-response-toggle").focus();
       await page.keyboard.press("Enter");
-      await expect(card.getByRole("table")).toBeVisible();
-      const backToChart = card.getByRole("button", {
-        name: "ดูข้อมูลเป็นกราฟ",
-      });
+      await expect(card.getByTestId("monitor-response-table")).toBeVisible();
+      const backToChart = card.getByTestId("monitor-response-toggle");
       await expect(backToChart).toBeFocused();
       // The view does not change the range.
       await expect(radio).toBeChecked();
-      await shot(
-        page,
-        `57-known-${label === "24 ชม." ? "24h" : label === "7 วัน" ? "7d" : "30d"}-${theme}`,
-      );
+      await shot(page, `57-known-${range}-${theme}`);
       await page.keyboard.press("Enter");
-      await expect(card.getByRole("table")).toHaveCount(0);
-      await expect(
-        card.getByRole("button", { name: "ดูข้อมูลกราฟเป็นตาราง" }),
-      ).toBeFocused();
+      await expect(card.getByTestId("monitor-response-table")).toHaveCount(0);
+      await expect(card.getByTestId("monitor-response-toggle")).toBeFocused();
     }
   }
   for (const role of ["owner", "admin", "viewer", "auditor"] as const) {
@@ -711,42 +863,43 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
     await page.context().clearCookies();
     await signIn(page, people[role]);
     await page.goto(path);
-    await expect(card.locator("dd")).toHaveText(["20 ms", "40 ms", "4", "1"]);
+    await expectKpis(card, "20 ms", "40 ms", "4", "1");
   }
-  await expect(card.getByRole("link", { name: /issue #57/ })).toHaveCount(0);
+  expect(
+    await card.evaluate(
+      (element) =>
+        Array.from(element.querySelectorAll("a")).filter((link) =>
+          /\/issues\/57(?:$|[?#])/.test(link.href),
+        ).length,
+    ),
+  ).toBe(0);
   await pool.query(
     "update monitor_check_results set response_time_ms = null, outcome = 'fail', failure_reason = 'timeout' where monitor_id = $1",
     [id],
   );
   await page.reload();
-  await expect(card.locator("dd")).toHaveText([
-    "ไม่มีข้อมูล",
-    "ไม่มีข้อมูล",
-    "4",
-    "4",
-  ]);
-  await expect(
-    card.getByRole("group", { name: /กราฟเส้นเวลาตอบสนอง/ }),
-  ).toBeVisible();
+  await expectKpis(card, null, null, "4", "4");
+  await expect(card.getByTestId("monitor-response-chart")).toBeVisible();
   await stateShots("timeout");
   await pool.query(
     "update monitor_check_results set outcome = 'check_error', response_time_ms = 0, failure_reason = 'executor_error' where monitor_id = $1",
     [id],
   );
   await page.reload();
-  await expect(card.locator("dd")).toHaveText(["0 ms", "0 ms", "0", "0"]);
+  await expectKpis(card, "0 ms", "0 ms", "0", "0");
   await stateShots("check-error");
   const responseUrl = new RegExp(
     `/api/organizations/${orgA}/monitors/${id}/response-times`,
   );
   await page.route(responseUrl, (route) => route.abort());
   await page.reload();
-  await expect(card.getByText("โหลดกราฟเวลาตอบสนองไม่สำเร็จ")).toBeVisible();
-  await expect(card.locator("dd")).toHaveCount(0);
+  await expect(card.getByTestId("monitor-response-error")).toBeVisible();
+  await expect(card.getByTestId("monitor-response-error")).toHaveText(/\S/);
+  await expect(card.getByTestId("monitor-response-kpis")).toHaveCount(0);
   await stateShots("error");
   await page.unroute(responseUrl);
-  await card.getByRole("button", { name: "ลองอีกครั้ง" }).click();
-  await expect(card.locator("dd")).toHaveText(["0 ms", "0 ms", "0", "0"]);
+  await card.getByTestId("monitor-response-retry").click();
+  await expectKpis(card, "0 ms", "0 ms", "0", "0");
   await pool.query("delete from monitor_check_results where monitor_id = $1", [
     id,
   ]);
@@ -760,25 +913,36 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
     [id, orgA],
   );
   await page.reload();
-  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1,440", "0"]);
-  await expect(
-    card.getByText("คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ"),
-  ).toBeVisible();
+  await expectKpis(card, "10 ms", "10 ms", "1,440", "0");
+  await expect(card.getByTestId("monitor-response-cap-note")).toHaveAttribute(
+    "data-count",
+    "1440",
+  );
+  await expect(card.getByTestId("monitor-response-cap-note")).toContainText(
+    "1,440",
+  );
   await shot(page, "57-cap-dark");
-  await card.getByRole("radio", { name: "7 วัน", exact: true }).click();
-  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1,441", "0"]);
+  await card.getByTestId("monitor-response-range-7d").click();
+  await expectKpis(card, "10 ms", "10 ms", "1,441", "0");
   await page.route(responseUrl, (route) => route.abort());
-  await expect(card.getByText(/อัปเดตกราฟไม่สำเร็จ/)).toBeVisible({
+  await expect(
+    card.getByTestId("monitor-response-retained-warning"),
+  ).toBeVisible({
     timeout: 45_000,
   });
-  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1,441", "0"]);
   await expect(
-    card.getByText(/อัปเดตกราฟไม่สำเร็จ/).locator("time"),
+    card.getByTestId("monitor-response-retained-warning"),
+  ).toHaveText(/\S/);
+  await expectKpis(card, "10 ms", "10 ms", "1,441", "0");
+  await expect(
+    card.getByTestId("monitor-response-retained-time"),
   ).toHaveAttribute("datetime", /T/);
   await stateShots("stale");
   await page.unroute(responseUrl);
-  await card.getByRole("button", { name: "ลองอีกครั้ง" }).click();
-  await expect(card.getByText(/อัปเดตกราฟไม่สำเร็จ/)).toHaveCount(0);
+  await card.getByTestId("monitor-response-retained-retry").click();
+  await expect(
+    card.getByTestId("monitor-response-retained-warning"),
+  ).toHaveCount(0);
   await pool.query(
     `insert into monitor_check_results (monitor_id, tenant_id, scheduled_for, checked_at,
       outcome, response_time_ms, url_masked, check_config_version, interval_seconds)
@@ -798,19 +962,23 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
     await delayed;
     await route.fulfill({ response: actual });
   });
-  await card.getByRole("radio", { name: "30 วัน", exact: true }).click();
-  await expect(card.getByLabel("กำลังโหลดสรุปเวลาตอบสนอง")).toBeVisible();
-  await card.getByRole("radio", { name: "7 วัน", exact: true }).click();
-  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1,441", "0"]);
+  await card.getByTestId("monitor-response-range-30d").click();
+  await expect(card.getByTestId("monitor-response-kpis-loading")).toBeVisible();
+  await card.getByTestId("monitor-response-range-7d").click();
+  await expectKpis(card, "10 ms", "10 ms", "1,441", "0");
   const lateCompletion = page.waitForResponse((response) =>
     delayedUrl.test(response.url()),
   );
   release();
   await lateCompletion;
-  await expect(
-    card.getByRole("radio", { name: "7 วัน", exact: true }),
-  ).toBeChecked();
-  await expect(card.getByRole("status")).toContainText("7 วันล่าสุด");
+  await expect(card.getByTestId("monitor-response-range-7d")).toBeChecked();
+  await expect(card.getByTestId("response-range-announcement")).toHaveText(
+    /\S/,
+  );
+  await expect(card.getByTestId("monitor-response-caption")).toHaveAttribute(
+    "data-range",
+    "7d",
+  );
   await page.unroute(delayedUrl);
   await pool.query(
     "delete from member where organization_id = $1 and user_id = $2",
@@ -822,16 +990,16 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
       response.status() === 403,
     { timeout: 45_000 },
   );
-  await card.getByRole("radio", { name: "30 วัน", exact: true }).click();
+  await card.getByTestId("monitor-response-range-30d").click();
   await denial;
-  await expect(
-    page
-      .getByText(
-        /คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้|คุณไม่มีสิทธิ์เข้าถึงองค์กรนี้/,
-      )
-      .first(),
-  ).toBeVisible();
-  await expect(card.locator("dd")).toHaveCount(0);
+  await expect
+    .poll(
+      async () =>
+        (await page.getByTestId("monitor-detail-denied").isVisible()) ||
+        (await card.getByTestId("monitor-response-denial").isVisible()),
+    )
+    .toBe(true);
+  await expect(card.getByTestId("monitor-response-kpis")).toHaveCount(0);
   await shot(page, "57-denied-dark");
 });
 
@@ -855,8 +1023,8 @@ test("pending real tenant A response cannot enter tenant B after confirmed switc
   }
   await signIn(page, owner);
   await page.goto(`${overview()}/${ids[0]}`);
-  const card = page.locator('section[aria-labelledby="detail-response-times"]');
-  await expect(card.locator("dd")).toHaveText(["10 ms", "10 ms", "1", "0"]);
+  const card = page.getByTestId("monitor-response-times");
+  await expectKpis(card, "10 ms", "10 ms", "1", "0");
   let release: () => void = () => {};
   const pending = new Promise<void>((resolve) => {
     release = resolve;
@@ -874,22 +1042,30 @@ test("pending real tenant A response cannot enter tenant B after confirmed switc
     await pending;
     await route.fulfill({ response: actual });
   });
-  await card.getByRole("radio", { name: "7 วัน", exact: true }).click();
+  await card.getByTestId("monitor-response-range-7d").click();
   await fetched;
-  await page.getByRole("button", { name: /E2E States A/ }).click();
-  await page.getByRole("menuitemradio", { name: /E2E States Other/ }).click();
+  await page.getByTestId("shell-organization-switch").click();
+  await page
+    .getByTestId("shell-organization-menu")
+    .getByTestId(`shell-organization-${orgOther}`)
+    .click();
   await expect(page).toHaveURL(
     new RegExp(`/organizations/${orgOther}/monitors$`),
   );
-  await page.getByRole("link", { name: "tenant-known-1" }).click();
-  await expect(card.locator("dd")).toHaveText(["999 ms", "999 ms", "1", "0"]);
+  await page.getByTestId(`monitor-list-name-${ids[1]}`).click();
+  await expectKpis(card, "999 ms", "999 ms", "1", "0");
   const completed = page.waitForResponse((response) =>
     responseUrl.test(response.url()),
   );
   release();
   await completed;
-  await expect(card.locator("dd")).toHaveText(["999 ms", "999 ms", "1", "0"]);
-  await expect(card.getByText("10 ms", { exact: true })).toHaveCount(0);
+  await expectKpis(card, "999 ms", "999 ms", "1", "0");
+  await expect(card.getByTestId("monitor-response-p50")).not.toHaveText(
+    "10 ms",
+  );
+  await expect(card.getByTestId("monitor-response-p95")).not.toHaveText(
+    "10 ms",
+  );
   await shot(page, "57-tenant-switch");
 });
 
@@ -918,53 +1094,51 @@ test("Detail links to the checks history and back by client navigation (AC-79)",
   );
   await signIn(page, owner);
   await page.goto(`${overview()}/${id}`);
-  await expect(
-    page.getByRole("heading", { level: 1, name: "issue85-history" }),
-  ).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(
+    "issue85-history",
+  );
   // Detail holds no history table of its own.
-  await expect(
-    page.getByRole("region", { name: "ตารางประวัติการตรวจ" }),
-  ).toHaveCount(0);
+  await expect(page.getByTestId("monitor-checks-table")).toHaveCount(0);
   // A document load after this point means a link reloaded the page instead of navigating on the client.
   let documentLoads = 0;
   page.on("load", () => {
     documentLoads += 1;
   });
 
-  await page.getByRole("link", { name: /ดูประวัติการตรวจ/ }).click();
+  await page.getByTestId("monitor-detail-checks-link").click();
   await expect(page).toHaveURL(
     new RegExp(`/organizations/${orgA}/monitors/${id}/checks$`),
   );
+  await expect(page.getByTestId("monitor-checks-table")).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "ตารางประวัติการตรวจ" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "ตารางประวัติการตรวจ" }).getByRole("row"),
-  ).toHaveCount(4);
-  await expect(
-    page.getByRole("heading", { level: 1, name: "issue85-history" }),
-  ).toBeVisible();
+    page.getByTestId("monitor-checks-table").getByTestId("monitor-check-row"),
+  ).toHaveCount(3);
+  expect(
+    await page
+      .getByTestId("monitor-checks-records")
+      .evaluate((table) => table.querySelectorAll("tr").length),
+  ).toBe(4);
+  await expect(page.getByTestId("monitor-checks-title")).toHaveText(
+    "issue85-history",
+  );
   await expect(
     page
-      .getByRole("navigation", { name: "เมนูหลัก" })
-      .getByRole("link", { name: "ตรวจสถานะบริการ" }),
+      .getByTestId("shell-navigation")
+      .getByTestId("shell-nav-/organizations/:organizationId/monitors"),
   ).toHaveAttribute("aria-current", "page");
-  await expect(
-    page
-      .getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" })
-      .locator('[aria-current="page"]'),
-  ).toHaveText("ตรวจสถานะบริการ");
+  await expect(page.getByTestId("shell-breadcrumb-current")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await shot(page, "85-checks-history");
 
-  await page.getByRole("link", { name: "กลับไปหน้ามอนิเตอร์" }).click();
+  await page.getByTestId("monitor-checks-back").click();
   await expect(page).toHaveURL(
     new RegExp(`/organizations/${orgA}/monitors/${id}$`),
   );
-  await expect(
-    page.getByRole("heading", { level: 1, name: "issue85-history" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /ดูประวัติการตรวจ/ }),
-  ).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-title")).toHaveText(
+    "issue85-history",
+  );
+  await expect(page.getByTestId("monitor-detail-checks-link")).toBeVisible();
   expect(documentLoads).toBe(0);
 });

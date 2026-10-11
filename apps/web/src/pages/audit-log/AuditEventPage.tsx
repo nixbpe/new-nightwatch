@@ -103,6 +103,7 @@ function AuditEventForOrganization({
   const back = (
     <Button asChild variant="secondary">
       <Link
+        data-testid="audit-event-back"
         to={backTo}
         state={{ eventId, snapshot: state?.snapshot, search: state?.search }}
       >
@@ -126,7 +127,11 @@ function AuditEventForOrganization({
     return (
       <Page>
         {header("รายละเอียดบันทึกกิจกรรม")}
-        <PageState kind="loading" label="กำลังโหลดรายละเอียด" />
+        <PageState
+          data-testid="audit-event-loading"
+          kind="loading"
+          label="กำลังโหลดรายละเอียด"
+        />
       </Page>
     );
   }
@@ -135,6 +140,8 @@ function AuditEventForOrganization({
       <Page>
         {header("รายละเอียดบันทึกกิจกรรม")}
         <PageState
+          data-testid="audit-event-access-error"
+          retryTestId="audit-event-access-retry"
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูบันทึกกิจกรรมได้"
           onRetry={() => void access.retry()}
@@ -162,7 +169,7 @@ function AuditEventForOrganization({
       return (
         <Page>
           {header("รายละเอียดบันทึกกิจกรรม")}
-          <Card as="section" padding="md">
+          <Card data-testid="audit-event-not-found" as="section" padding="md">
             <p className="text-sm">{NOT_FOUND}</p>
           </Card>
         </Page>
@@ -173,12 +180,18 @@ function AuditEventForOrganization({
         {header("รายละเอียดบันทึกกิจกรรม")}
         {event.isError && !event.isFetching ? (
           <PageState
+            data-testid="audit-event-error"
+            retryTestId="audit-event-retry"
             kind="error"
             message="โหลดรายละเอียดไม่สำเร็จ ลองใหม่อีกครั้ง"
             onRetry={() => void event.refetch()}
           />
         ) : (
-          <PageState kind="loading" label="กำลังโหลดรายละเอียด" />
+          <PageState
+            data-testid="audit-event-loading"
+            kind="loading"
+            label="กำลังโหลดรายละเอียด"
+          />
         )}
       </Page>
     );
@@ -190,20 +203,31 @@ function AuditEventForOrganization({
       {header(
         AUDIT_ACTION_LABELS[detail.action],
         <>
-          <span>
-            <span className="font-mono">{time}</span> {preferences.timeZone}
+          <span data-testid="audit-event-time-context">
+            <span data-testid="audit-event-time" className="font-mono">
+              {time}
+            </span>{" "}
+            {preferences.timeZone}
           </span>
           <span>
             รหัสเหตุการณ์{" "}
-            <span className="font-mono break-all">{detail.id}</span>
+            <span data-testid="audit-event-id" className="font-mono break-all">
+              {detail.id}
+            </span>
           </span>
           <CopyId value={detail.id} />
         </>,
       )}
       <Section code="01" title="ผู้ดำเนินการ">
         <Fields>
-          <Field label="ชื่อ">{personName(detail.actor)}</Field>
-          <Field label="บทบาท ณ เวลานั้น">
+          <Field testId="audit-event-actor" label="ชื่อ">
+            {personName(detail.actor)}
+          </Field>
+          <Field
+            testId="audit-event-role"
+            valueCode={detail.actor.roleAtTime}
+            label="บทบาท ณ เวลานั้น"
+          >
             {roleLabel(detail.actor.roleAtTime)}
           </Field>
         </Fields>
@@ -211,11 +235,32 @@ function AuditEventForOrganization({
       <Section code="02" title="การกระทำและเป้าหมาย">
         <Fields>
           <Field label="การกระทำ">{AUDIT_ACTION_LABELS[detail.action]}</Field>
-          <Field label="รหัสการกระทำ">
+          <Field testId="audit-event-action" label="รหัสการกระทำ">
             <span className="font-mono">{detail.action}</span>
           </Field>
-          <Field label="หมวด">{AUDIT_CATEGORY_LABELS[detail.category]}</Field>
-          <Field label="เป้าหมาย">
+          <Field
+            testId="audit-event-category"
+            valueCode={detail.category}
+            label="หมวด"
+          >
+            {AUDIT_CATEGORY_LABELS[detail.category]}
+          </Field>
+          <Field
+            testId="audit-event-target"
+            valueCode={detail.target.type}
+            stateCode={
+              detail.target.type === "monitor"
+                ? detail.target.deleted
+                  ? "deleted"
+                  : "current"
+                : detail.target.type === "member"
+                  ? detail.target.membership
+                  : detail.target.type === "invitation"
+                    ? detail.target.role
+                    : detail.target.type
+            }
+            label="เป้าหมาย"
+          >
             <TargetValue
               organizationId={organizationId}
               detail={detail}
@@ -241,14 +286,20 @@ function Section({
   code,
   title,
   children,
+  testId,
 }: {
+  testId?: string;
   code: string;
   title: string;
   children: ReactNode;
 }) {
   const id = `audit-detail-${code}`;
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-4">
+    <section
+      data-testid={testId}
+      aria-labelledby={id}
+      className="flex flex-col gap-4"
+    >
       <SectionHeader id={id} code={code} title={title} />
       {children}
     </section>
@@ -263,11 +314,30 @@ function Fields({ children }: { children: ReactNode }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  children,
+  testId,
+  valueCode,
+  stateCode,
+}: {
+  label: string;
+  children: ReactNode;
+  testId?: string;
+  valueCode?: string;
+  stateCode?: string;
+}) {
   return (
     <>
       <dt className="text-foreground-secondary">{label}</dt>
-      <dd className="min-w-0 break-words">{children}</dd>
+      <dd
+        data-testid={testId}
+        data-value-code={valueCode}
+        data-state-code={stateCode}
+        className="min-w-0 break-words"
+      >
+        {children}
+      </dd>
     </>
   );
 }
@@ -277,6 +347,7 @@ function CopyId({ value }: { value: string }) {
   return (
     <>
       <Button
+        data-testid="audit-event-copy"
         type="button"
         variant="ghost"
         size="sm"
@@ -288,7 +359,11 @@ function CopyId({ value }: { value: string }) {
       >
         คัดลอก
       </Button>
-      <span role="status" className="sr-only">
+      <span
+        data-testid="audit-event-copy-status"
+        role="status"
+        className="sr-only"
+      >
         {copied ? "คัดลอกรหัสเหตุการณ์แล้ว" : ""}
       </span>
     </>
@@ -315,6 +390,7 @@ function TargetValue({
   ) {
     return (
       <Link
+        data-testid="audit-event-target-link"
         className={linkClass}
         to={`/organizations/${organizationId}/monitors/${target.monitorId}`}
         aria-label={`เปิดมอนิเตอร์ ${target.displayName}`}
@@ -331,6 +407,7 @@ function TargetValue({
   ) {
     return (
       <Link
+        data-testid="audit-event-target-link"
         className={linkClass}
         to={`/organizations/${organizationId}/members`}
         aria-label={`เปิดสมาชิก ${target.displayName}`}
@@ -354,19 +431,26 @@ function TargetValue({
 
 function ChangesSection({ detail }: { detail: AuditEventDetail }) {
   return (
-    <Section code="03" title="การเปลี่ยนแปลง">
+    <Section testId="audit-event-changes" code="03" title="การเปลี่ยนแปลง">
       {detail.changes.length === 0 ? (
-        <p className="text-sm text-foreground-secondary">
+        <p
+          data-testid="audit-event-no-changes"
+          className="text-sm text-foreground-secondary"
+        >
           เหตุการณ์นี้ไม่มีข้อมูลการเปลี่ยนแปลง
         </p>
       ) : (
         <div
+          data-testid="audit-event-changes-region"
           tabIndex={0}
           role="region"
           aria-label="ตารางการเปลี่ยนแปลง"
           className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
         >
-          <table className="w-full min-w-[480px] text-left text-sm">
+          <table
+            data-testid="audit-event-changes-table"
+            className="w-full min-w-[480px] text-left text-sm"
+          >
             <caption className="sr-only">การเปลี่ยนแปลงก่อนและหลัง</caption>
             <thead className="text-xs font-medium text-foreground-secondary">
               <tr>
@@ -384,6 +468,8 @@ function ChangesSection({ detail }: { detail: AuditEventDetail }) {
             <tbody>
               {detail.changes.map((change, index) => (
                 <tr
+                  data-testid="audit-change-row"
+                  data-field={change.field}
                   key={`${change.field}:${change.key ?? ""}:${index.toString()}`}
                   className="border-b border-foreground/10 last:border-0"
                 >
@@ -392,16 +478,49 @@ function ChangesSection({ detail }: { detail: AuditEventDetail }) {
                     {change.key === undefined ? null : (
                       <>
                         {" "}
-                        <span className="font-mono font-normal">
+                        <span
+                          data-testid="audit-change-key"
+                          className="font-mono font-normal"
+                        >
                           {change.key}
                         </span>
                       </>
                     )}
                   </th>
-                  <td className="px-4 py-2.5 align-top font-mono text-[13px] break-all">
+                  <td
+                    data-testid="audit-change-before"
+                    data-kind={change.before?.kind ?? "absent"}
+                    data-role={
+                      change.field === "role" && change.before?.kind === "value"
+                        ? String(change.before.value)
+                        : undefined
+                    }
+                    data-boolean={
+                      change.before?.kind === "value" &&
+                      typeof change.before.value === "boolean"
+                        ? String(change.before.value)
+                        : undefined
+                    }
+                    className="px-4 py-2.5 align-top font-mono text-[13px] break-all"
+                  >
                     {auditValueText(change.field, change.before)}
                   </td>
-                  <td className="px-4 py-2.5 align-top font-mono text-[13px] break-all">
+                  <td
+                    data-testid="audit-change-after"
+                    data-kind={change.after?.kind ?? "absent"}
+                    data-role={
+                      change.field === "role" && change.after?.kind === "value"
+                        ? String(change.after.value)
+                        : undefined
+                    }
+                    data-boolean={
+                      change.after?.kind === "value" &&
+                      typeof change.after.value === "boolean"
+                        ? String(change.after.value)
+                        : undefined
+                    }
+                    className="px-4 py-2.5 align-top font-mono text-[13px] break-all"
+                  >
                     {auditValueText(change.field, change.after)}
                   </td>
                 </tr>
@@ -439,24 +558,52 @@ function ExportScopeSection({
           : personName(found);
   }
   return (
-    <Section code="03" title="ขอบเขตการส่งออก">
+    <Section
+      testId="audit-event-export-scope"
+      code="03"
+      title="ขอบเขตการส่งออก"
+    >
       <Fields>
-        <Field label="รูปแบบ">{scope.format.toUpperCase()}</Field>
-        <Field label="ช่วงเวลา">
+        <Field testId="audit-export-format" label="รูปแบบ">
+          {scope.format.toUpperCase()}
+        </Field>
+        <Field testId="audit-export-range" label="ช่วงเวลา">
           <span className="font-mono">
             {stamp(scope.from, "ไม่ระบุ")} – {stamp(scope.to, "ไม่ระบุ")}
           </span>{" "}
           {preferences.timeZone}
         </Field>
-        <Field label="หมวด">
+        <Field
+          testId="audit-export-category"
+          valueCode={scope.categories.join(",")}
+          label="หมวด"
+        >
           {scope.categories.length === 0
             ? "ทั้งหมด"
             : scope.categories
                 .map((category) => AUDIT_CATEGORY_LABELS[category])
                 .join(", ")}
         </Field>
-        <Field label="ผู้ดำเนินการ">{actor}</Field>
-        <Field label="มีการค้นหาข้อความ">
+        <Field
+          testId="audit-export-actor"
+          stateCode={
+            scope.actorUserId === null
+              ? "all"
+              : actors === undefined
+                ? "loading"
+                : found === undefined
+                  ? "former"
+                  : "current"
+          }
+          label="ผู้ดำเนินการ"
+        >
+          {actor}
+        </Field>
+        <Field
+          testId="audit-export-search-applied"
+          valueCode={String(scope.searchApplied)}
+          label="มีการค้นหาข้อความ"
+        >
           {scope.searchApplied ? "ใช่" : "ไม่"}
         </Field>
       </Fields>

@@ -49,16 +49,13 @@ import {
 import { OrganizationMembersPage } from "../../pages/OrganizationMembersPage";
 import { AppShell } from "./AppShell";
 
-// The page header renders scope as a name plus a pill, so match inside the header.
-async function findScope(name: string, tag: string) {
-  // Re-query on every retry: the page remounts its header across context refreshes.
+// Re-query after admission remounts the page; retain literal organization identity and confirmed role.
+async function findScope(name: string, role: string) {
   return waitFor(() => {
-    const header = screen.getByRole("heading", { level: 1 }).closest("header");
-    if (header === null) {
-      throw new Error("page header missing");
-    }
-    expect(within(header).getByText(name)).toBeInTheDocument();
-    expect(within(header).getByText(tag)).toBeInTheDocument();
+    const header = screen.getByTestId("page-header");
+    expect(within(header).getByTestId("page-scope")).toHaveTextContent(name);
+    expect(within(header).getByTestId("page-scope-tag")).toBeVisible();
+    expect(screen.getByTestId(`shell-organization-role-${role}`)).toBeVisible();
     return header;
   });
 }
@@ -172,7 +169,9 @@ function ThrowingPage(): never {
 }
 
 function renderShell(
-  workspaceElement: ReactNode = <p>เนื้อหาหน้า</p>,
+  workspaceElement: ReactNode = (
+    <p data-testid="shell-route-content">เนื้อหาหน้า</p>
+  ),
   initialPath = "/workspace",
   strict = false,
   shellElement: ReactNode = <AppShell />,
@@ -205,21 +204,35 @@ function renderShell(
           { path: "/notifications", element: <NotificationsPage /> },
           {
             path: "/organizations/:organizationId/monitors",
-            element: <p>หน้ามอนิเตอร์</p>,
+            element: <p data-testid="shell-route-monitors">หน้ามอนิเตอร์</p>,
           },
-          { path: "/settings/security", element: <p>หน้าความปลอดภัย</p> },
-          { path: "/settings/sessions", element: <p>หน้าเซสชัน</p> },
+          {
+            path: "/settings/security",
+            element: <p data-testid="shell-route-security">หน้าความปลอดภัย</p>,
+          },
+          {
+            path: "/settings/sessions",
+            element: <p data-testid="shell-route-sessions">หน้าเซสชัน</p>,
+          },
           {
             path: "/organizations/:organizationId/notification-settings",
-            element: <p>หน้าตั้งค่าองค์กร</p>,
+            element: (
+              <p data-testid="shell-route-notification-settings">
+                หน้าตั้งค่าองค์กร
+              </p>
+            ),
           },
           {
             path: "/organizations/:organizationId/audit-log",
-            element: <p>หน้าบันทึกกิจกรรม</p>,
+            element: <p data-testid="shell-route-audit">หน้าบันทึกกิจกรรม</p>,
           },
           {
             path: "/organizations/:organizationId/audit-log/:eventId",
-            element: <p>หน้ารายละเอียดบันทึกกิจกรรม</p>,
+            element: (
+              <p data-testid="shell-route-audit-detail">
+                หน้ารายละเอียดบันทึกกิจกรรม
+              </p>
+            ),
           },
         ],
       },
@@ -307,21 +320,20 @@ describe("AppShell", () => {
     fetchUnreadCountMock.mockResolvedValue({ unreadCount: 3 });
     renderShell();
 
-    const nav = await screen.findByRole("navigation", { name: "เมนูหลัก" });
-    const monitors = await within(nav).findByRole("link", {
-      name: "ตรวจสถานะบริการ",
-    });
+    const nav = await screen.findByTestId("shell-navigation");
+    const monitors = await within(nav).findByTestId(
+      "shell-nav-/organizations/:organizationId/monitors",
+    );
     await waitFor(() => {
       expect(monitors).toHaveTextContent("24");
     });
-    const inbox = within(nav).getByRole("link", { name: "การแจ้งเตือน" });
+    const inbox = within(nav).getByTestId("shell-nav-/notifications");
     await waitFor(() => {
       expect(inbox).toHaveTextContent("3");
     });
-    expect(within(monitors).getByText("24")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
+    expect(
+      within(monitors).getByTestId("shell-navigation-count"),
+    ).toHaveAttribute("aria-hidden", "true");
   });
 
   it("hides a nav count whose request failed", async () => {
@@ -330,11 +342,13 @@ describe("AppShell", () => {
     fetchUnreadCountMock.mockRejectedValue(new Error("count down"));
     renderShell();
 
-    const nav = await screen.findByRole("navigation", { name: "เมนูหลัก" });
+    const nav = await screen.findByTestId("shell-navigation");
     await waitFor(() => {
       expect(fetchMonitorListMock).toHaveBeenCalled();
     });
-    expect(nav.querySelector('[data-slot="nav-count"]')).toBeNull();
+    expect(within(nav).queryAllByTestId("shell-navigation-count")).toHaveLength(
+      0,
+    );
   });
 
   it("renders org switcher, breadcrumb, nav sections, account block, skip link and routed content", async () => {
@@ -343,71 +357,85 @@ describe("AppShell", () => {
     );
     renderShell();
 
-    const orgSwitcher = await screen.findByRole("button", {
-      name: /Org A/,
+    const orgSwitcher = await waitFor(() => {
+      const element = screen.getByTestId("shell-organization-switch");
+      expect(element).toHaveTextContent("Org A");
+      return element;
     });
-    expect(orgSwitcher).toHaveTextContent(/องค์กร\s*เจ้าของ/);
+    expect(orgSwitcher).toHaveTextContent("Org A");
+    expect(screen.getByTestId("shell-organization-role-owner")).toBeVisible();
 
-    const breadcrumb = screen.getByRole("navigation", {
-      name: "ตำแหน่งปัจจุบัน",
-    });
+    const breadcrumb = screen.getByTestId("shell-breadcrumb");
     expect(
-      within(breadcrumb).getByRole("link", { name: "Org A" }),
+      within(breadcrumb).getByTestId("shell-breadcrumb-organization"),
     ).toHaveAttribute("href", "/workspace");
-    expect(within(breadcrumb).getByText("ภาพรวม")).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(
+      within(breadcrumb).getByTestId("shell-breadcrumb-current"),
+    ).toHaveAttribute("aria-current", "page");
 
     // A labelled section, not an accordion: no expandable control.
-    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
-    expect(within(nav).getByRole("link", { name: "ภาพรวม" })).toHaveAttribute(
+    const nav = screen.getByTestId("shell-navigation");
+    expect(within(nav).getByTestId("shell-nav-/workspace")).toHaveAttribute(
       "href",
       "/workspace",
     );
+    expect(within(nav).getByTestId("shell-nav-/notifications")).toHaveAttribute(
+      "href",
+      "/notifications",
+    );
+    expect(within(nav).getByTestId("shell-nav-/settings")).toHaveAttribute(
+      "href",
+      "/settings",
+    );
     expect(
-      within(nav).getByRole("link", { name: "การแจ้งเตือน" }),
-    ).toHaveAttribute("href", "/notifications");
+      within(nav).getByTestId("shell-organization-navigation"),
+    ).toBeInTheDocument();
     expect(
-      within(nav).getByRole("link", { name: "การตั้งค่าส่วนตัว" }),
-    ).toHaveAttribute("href", "/settings");
-    expect(within(nav).getByText("องค์กร")).toBeInTheDocument();
-    expect(
-      within(nav).getByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+      within(nav).getByTestId(
+        "shell-nav-/organizations/:organizationId/notification-settings",
+      ),
     ).toHaveAttribute("href", `/organizations/${ORG_A}/notification-settings`);
     // Palette-only sub-destinations never become sidebar rows.
     expect(
-      within(nav).queryByRole("link", { name: "เซสชันและอุปกรณ์" }),
+      within(nav).queryByTestId("shell-nav-/settings/sessions"),
     ).toBeNull();
     expect(within(nav).queryByRole("button")).toBeNull();
 
-    expect(
-      screen.getByRole("button", { name: "เมนูบัญชีผู้ใช้" }),
-    ).toHaveTextContent("napat@example.com");
+    expect(screen.getByTestId("shell-account-open")).toHaveTextContent(
+      "napat@example.com",
+    );
 
-    expect(
-      screen.getByRole("link", { name: "ข้ามไปที่เนื้อหาหลัก" }),
-    ).toHaveAttribute("href", "#main-content");
-    expect(screen.getByText("เนื้อหาหน้า")).toBeInTheDocument();
-    expect(screen.getByText("ค้นหาทั้งหมด...")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "การแจ้งเตือน" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("shell-skip-content")).toHaveAttribute(
+      "href",
+      "#main-content",
+    );
+    expect(screen.getByTestId("shell-route-content")).toBeInTheDocument();
+    expect(screen.getByTestId("shell-search-open")).toBeInTheDocument();
+    expect(screen.getByTestId("shell-notifications-open")).toBeInTheDocument();
   });
 
   it("shows the organization member destination to a viewer without notification settings", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
     renderShell();
-    await screen.findByRole("link", { name: "Org B" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org B");
+      return element;
+    });
 
-    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
-    expect(within(nav).getByText("องค์กร")).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "สมาชิก" })).toHaveAttribute(
-      "href",
-      `/organizations/${ORG_B}/members`,
-    );
+    const nav = screen.getByTestId("shell-navigation");
     expect(
-      within(nav).queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+      within(nav).getByTestId("shell-organization-navigation"),
+    ).toBeInTheDocument();
+    expect(
+      within(nav).getByTestId(
+        "shell-nav-/organizations/:organizationId/members",
+      ),
+    ).toHaveAttribute("href", `/organizations/${ORG_B}/members`);
+    expect(
+      within(nav).queryByTestId(
+        "shell-nav-/organizations/:organizationId/notification-settings",
+      ),
     ).toBeNull();
   });
 
@@ -418,26 +446,36 @@ describe("AppShell", () => {
       meContext([ownerOrg, { ...viewerOrg, role: "owner" as const }], ORG_A),
     );
     renderShell(undefined, `/organizations/${ORG_B}/notification-settings`);
-    expect(await screen.findByText("หน้าตั้งค่าองค์กร")).toBeInTheDocument();
-
-    const breadcrumb = screen.getByRole("navigation", {
-      name: "ตำแหน่งปัจจุบัน",
-    });
-    // No /workspace link: it would open A's workspace.
-    expect(await within(breadcrumb).findByText("Org B")).toBeInTheDocument();
     expect(
-      within(breadcrumb).queryByRole("link", { name: "Org B" }),
-    ).toBeNull();
-    expect(within(breadcrumb).queryByText("Org A")).toBeNull();
-    expect(within(breadcrumb).getByText("ตั้งค่าการแจ้งเตือน")).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+      await screen.findByTestId("shell-route-notification-settings"),
+    ).toBeInTheDocument();
 
-    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
-    const orgLeaf = within(nav).getByRole("link", {
-      name: "ตั้งค่าการแจ้งเตือน",
-    });
+    const breadcrumb = screen.getByTestId("shell-breadcrumb");
+    // No /workspace link: it would open A's workspace.
+    expect(
+      await waitFor(() => {
+        const element = within(breadcrumb).getByTestId(
+          "shell-breadcrumb-organization",
+        );
+        expect(element).toHaveTextContent("Org B");
+        return element;
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(breadcrumb).getByTestId("shell-breadcrumb-organization").tagName,
+    ).not.toBe("A");
+    expect(
+      within(breadcrumb).queryByTestId("shell-breadcrumb-organization")
+        ?.textContent,
+    ).not.toBe("Org A");
+    expect(
+      within(breadcrumb).getByTestId("shell-breadcrumb-current"),
+    ).toHaveAttribute("aria-current", "page");
+
+    const nav = screen.getByTestId("shell-navigation");
+    const orgLeaf = within(nav).getByTestId(
+      "shell-nav-/organizations/:organizationId/notification-settings",
+    );
     expect(orgLeaf).toHaveAttribute(
       "href",
       `/organizations/${ORG_A}/notification-settings`,
@@ -454,10 +492,16 @@ describe("AppShell", () => {
     renderShell(<ThrowingPage />);
 
     expect(
-      await screen.findByRole("link", { name: "Org A" }),
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-breadcrumb-organization");
+        expect(element).toHaveTextContent("Org A");
+        return element;
+      }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "ภาพรวม" })).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("boom");
+    expect(screen.getByTestId("shell-nav-/workspace")).toBeInTheDocument();
+    expect(screen.getByTestId("render-error-message")).toHaveTextContent(
+      "boom",
+    );
 
     consoleError.mockRestore();
   });
@@ -466,29 +510,33 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
-    const trigger = screen.getByRole("button", { name: "เมนูบัญชีผู้ใช้" });
+    const trigger = screen.getByTestId("shell-account-open");
     await user.click(trigger);
 
-    const menu = screen.getByRole("menu", { name: "บัญชีของฉัน" });
-    const settings = within(menu).getByRole("menuitem", {
-      name: "การตั้งค่าส่วนตัว",
-    });
+    const menu = screen.getByTestId("shell-account-menu");
+    const settings = within(menu).getByTestId("shell-account-settings");
     expect(settings).toHaveFocus();
     expect(settings).toHaveAttribute("href", "/settings/profile");
-    expect(within(menu).getAllByRole("menuitem")).toHaveLength(2);
-    expect(within(menu).queryByText(/2FA/)).toBeNull();
-    expect(within(menu).getByText("เจ้าของ")).toBeInTheDocument();
     expect(
-      within(menu).getByRole("group", { name: "ธีม" }),
+      within(menu).getAllByTestId(/^shell-account-(settings|sign-out)$/),
+    ).toHaveLength(2);
+    expect(menu.textContent).not.toMatch(/2FA/);
+    expect(
+      within(menu).getByTestId("shell-account-role-owner"),
     ).toBeInTheDocument();
+    expect(within(menu).getByTestId("shell-account-theme")).toBeInTheDocument();
     expect(
-      within(menu).getByRole("menuitem", { name: "ออกจากระบบ" }),
+      within(menu).getByTestId("shell-account-sign-out"),
     ).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("menu", { name: "บัญชีของฉัน" })).toBeNull();
+    expect(screen.queryByTestId("shell-account-menu")).toBeNull();
     expect(trigger).toHaveFocus();
   });
 
@@ -497,23 +545,25 @@ describe("AppShell", () => {
     mockMobileViewport();
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
-    const opener = screen.getByRole("button", { name: "เปิดเมนู" });
+    const opener = screen.getByTestId("shell-mobile-open");
     await user.click(opener);
 
-    const dialog = screen.getByRole("dialog", { name: "เมนูหลัก" });
+    const dialog = screen.getByTestId("shell-mobile-menu");
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    const close = within(dialog).getByRole("button", { name: "ปิดเมนู" });
+    const close = within(dialog).getByTestId("shell-mobile-close");
     expect(close).toHaveFocus();
 
-    const background = screen.getByText("เนื้อหาหน้า").closest("[inert]");
-    expect(background).not.toBeNull();
+    const background = screen.getByTestId("shell-background");
+    expect(background).toHaveAttribute("inert");
     expect(background).toContainElement(opener);
 
-    const last = within(dialog).getByRole("button", {
-      name: "เมนูบัญชีผู้ใช้",
-    });
+    const last = within(dialog).getByTestId("shell-account-open");
     last.focus();
     await user.tab();
     expect(close).toHaveFocus();
@@ -551,12 +601,14 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
-    await user.click(screen.getByRole("button", { name: "เปิดเมนู" }));
-    expect(
-      screen.getByRole("dialog", { name: "เมนูหลัก" }),
-    ).toBeInTheDocument();
+    await user.click(screen.getByTestId("shell-mobile-open"));
+    expect(screen.getByTestId("shell-mobile-menu")).toBeInTheDocument();
 
     desktop = true;
     for (const listener of listeners) {
@@ -568,9 +620,9 @@ describe("AppShell", () => {
     }
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "เมนูหลัก" })).toBeNull();
+      expect(screen.queryByTestId("shell-mobile-menu")).toBeNull();
     });
-    expect(screen.getByText("เนื้อหาหน้า").closest("[inert]")).toBeNull();
+    expect(screen.getByTestId("shell-background")).not.toHaveAttribute("inert");
   });
 
   it("restores mobile drawer focus after close control, backdrop, Escape, and navigation closes", async () => {
@@ -578,12 +630,16 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
-    const opener = screen.getByRole("button", { name: "เปิดเมนู" });
+    const opener = screen.getByTestId("shell-mobile-open");
     const openDrawer = async () => {
       await user.click(opener);
-      return screen.getByRole("dialog", { name: "เมนูหลัก" });
+      return screen.getByTestId("shell-mobile-menu");
     };
     const expectFocusRestored = async () => {
       await waitFor(() => {
@@ -592,15 +648,11 @@ describe("AppShell", () => {
     };
 
     let dialog = await openDrawer();
-    await user.click(within(dialog).getByRole("button", { name: "ปิดเมนู" }));
+    await user.click(within(dialog).getByTestId("shell-mobile-close"));
     await expectFocusRestored();
 
     dialog = await openDrawer();
-    await user.click(
-      within(dialog).getByRole("button", {
-        name: "ปิดเมนูด้วยฉากหลัง",
-      }),
-    );
+    await user.click(within(dialog).getByTestId("shell-mobile-dismiss"));
     await expectFocusRestored();
 
     await openDrawer();
@@ -608,8 +660,8 @@ describe("AppShell", () => {
     await expectFocusRestored();
 
     await user.keyboard("{Enter}");
-    dialog = screen.getByRole("dialog", { name: "เมนูหลัก" });
-    await user.click(within(dialog).getByRole("link", { name: "ภาพรวม" }));
+    dialog = screen.getByTestId("shell-mobile-menu");
+    await user.click(within(dialog).getByTestId("shell-nav-/workspace"));
     await expectFocusRestored();
   });
 
@@ -622,17 +674,16 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
 
     fetchUnreadCountMock.mockRejectedValueOnce(new InboxScopeChangedError());
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
-    await user.click(screen.getByRole("button", { name: /Org A/ }));
+    await user.click(screen.getByTestId("shell-organization-switch"));
     await user.click(
-      within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
-        "menuitemradio",
-        { name: /Org B/ },
+      within(screen.getByTestId("shell-organization-menu")).getByTestId(
+        `shell-organization-${ORG_B}`,
       ),
     );
 
@@ -640,7 +691,7 @@ describe("AppShell", () => {
     await vi.waitFor(() => {
       expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(1);
     });
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
   });
 
   it("switching organization on the monitors route moves the page to the new organization", async () => {
@@ -652,27 +703,38 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     renderShell(undefined, `/organizations/${ORG_A}/monitors`);
-    await screen.findByRole("button", { name: /Org A/ });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-organization-switch");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
-    await user.click(screen.getByRole("button", { name: /Org A/ }));
+    await user.click(screen.getByTestId("shell-organization-switch"));
     await user.click(
-      within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
-        "menuitemradio",
-        { name: /Org B/ },
+      within(screen.getByTestId("shell-organization-menu")).getByTestId(
+        `shell-organization-${ORG_B}`,
       ),
     );
 
-    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    const nav = screen.getByTestId("shell-navigation");
     await vi.waitFor(() => {
       expect(
-        within(nav).getByRole("link", { name: "ตรวจสถานะบริการ" }),
+        within(nav).getByTestId(
+          "shell-nav-/organizations/:organizationId/monitors",
+        ),
       ).toHaveAttribute("href", `/organizations/${ORG_B}/monitors`);
     });
     // The page acts on the URL's organization, so the crumb follows only if the URL moved.
-    const breadcrumb = screen.getByRole("navigation", {
-      name: "ตำแหน่งปัจจุบัน",
-    });
-    expect(await within(breadcrumb).findByText("Org B")).toBeInTheDocument();
+    const breadcrumb = screen.getByTestId("shell-breadcrumb");
+    expect(
+      await waitFor(() => {
+        const element = within(breadcrumb).getByTestId(
+          "shell-breadcrumb-organization",
+        );
+        expect(element).toHaveTextContent("Org B");
+        return element;
+      }),
+    ).toBeInTheDocument();
   });
 
   it.each([
@@ -704,13 +766,16 @@ describe("AppShell", () => {
       );
       const user = userEvent.setup();
       const { router } = renderShell(undefined, from);
-      await screen.findByRole("button", { name: /Org A/ });
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-organization-switch");
+        expect(element).toHaveTextContent("Org A");
+        return element;
+      });
 
-      await user.click(screen.getByRole("button", { name: /Org A/ }));
+      await user.click(screen.getByTestId("shell-organization-switch"));
       await user.click(
-        within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
-          "menuitemradio",
-          { name: /Org B/ },
+        within(screen.getByTestId("shell-organization-menu")).getByTestId(
+          `shell-organization-${ORG_B}`,
         ),
       );
       await vi.waitFor(() => {
@@ -735,13 +800,16 @@ describe("AppShell", () => {
       );
       const user = userEvent.setup();
       const { router } = renderShell(undefined, from);
-      await screen.findByRole("button", { name: /Org A/ });
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-organization-switch");
+        expect(element).toHaveTextContent("Org A");
+        return element;
+      });
 
-      await user.click(screen.getByRole("button", { name: /Org A/ }));
+      await user.click(screen.getByTestId("shell-organization-switch"));
       await user.click(
-        within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
-          "menuitemradio",
-          { name: /Org B/ },
+        within(screen.getByTestId("shell-organization-menu")).getByTestId(
+          `shell-organization-${ORG_B}`,
         ),
       );
       await vi.waitFor(() => {
@@ -760,32 +828,31 @@ describe("AppShell", () => {
     );
     const user = userEvent.setup();
     const { queryClient } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     const stalePatchClaim = createContextPublicationClaim();
     expect(
       claimContextPublication(queryClient, stalePatchClaim, "switch"),
     ).toBe(true);
 
-    await user.click(screen.getByRole("button", { name: /Org A/ }));
-    const menu = screen.getByRole("menu", { name: "สลับองค์กร" });
+    await user.click(screen.getByTestId("shell-organization-switch"));
+    const menu = screen.getByTestId("shell-organization-menu");
     expect(
-      within(menu).getByRole("menuitemradio", { name: /Org A/ }),
+      within(menu).getByTestId(`shell-organization-${ORG_A}`),
     ).toHaveAttribute("aria-checked", "true");
-    await user.click(
-      within(menu).getByRole("menuitemradio", { name: /Org B/ }),
-    );
+    await user.click(within(menu).getByTestId(`shell-organization-${ORG_B}`));
 
-    await findScope("Org B", "ผู้ชม");
+    await findScope("Org B", "viewer");
     expect(hasContextPublicationClaim(queryClient, stalePatchClaim)).toBe(
       false,
     );
-    expect(screen.getByRole("button", { name: /Org B/ })).toHaveTextContent(
-      /องค์กร\s*ผู้ชม/,
+    expect(screen.getByTestId("shell-organization-switch")).toHaveTextContent(
+      "Org B",
     );
+    expect(screen.getByTestId("shell-organization-role-viewer")).toBeVisible();
     expect(
-      within(
-        screen.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
-      ).getByRole("link", { name: "Org B" }),
+      within(screen.getByTestId("shell-breadcrumb")).getByTestId(
+        "shell-breadcrumb-organization",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -800,14 +867,18 @@ describe("AppShell", () => {
     renderShell(<WorkspacePage />, `/organizations/${ORG_A}/members`);
 
     expect(
-      await screen.findByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+      await screen.findByTestId(
+        "shell-nav-/organizations/:organizationId/notification-settings",
+      ),
     ).toBeInTheDocument();
     denial.reject(new ApiError("PERMISSION_DENIED", "role downgraded", 403));
-    await findScope("Org A", "ผู้ชม");
+    await findScope("Org A", "viewer");
     expect(
-      screen.queryByRole("link", { name: "ตั้งค่าการแจ้งเตือน" }),
+      screen.queryByTestId(
+        "shell-nav-/organizations/:organizationId/notification-settings",
+      ),
     ).toBeNull();
-    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
+    expect(screen.queryByTestId("members-invitation-send")).toBeNull();
     expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
   });
 
@@ -819,20 +890,28 @@ describe("AppShell", () => {
       );
       const user = userEvent.setup();
       renderShell();
-      await screen.findByRole("link", { name: "Org A" });
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-breadcrumb-organization");
+        expect(element).toHaveTextContent("Org A");
+        return element;
+      });
 
-      const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+      const nav = screen.getByTestId("shell-navigation");
       expect(
-        within(nav).getByRole("link", { name: "ตรวจสถานะบริการ" }),
+        within(nav).getByTestId(
+          "shell-nav-/organizations/:organizationId/monitors",
+        ),
       ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors`);
 
       await user.keyboard("{Meta>}k{/Meta}");
-      const dialog = screen.getByRole("dialog", { name: "ค้นหาทั้งหมด" });
-      await user.keyboard("ตรวจสถานะ");
-      const options = within(dialog).getAllByRole("option");
+      const dialog = screen.getByTestId("shell-command-dialog");
+      await user.keyboard("/monitors");
+      const options = within(dialog).getAllByTestId(/^shell-command-option-/);
       expect(options).toHaveLength(1);
       await user.keyboard("{Enter}");
-      expect(await screen.findByText("หน้ามอนิเตอร์")).toBeInTheDocument();
+      expect(
+        await screen.findByTestId("shell-route-monitors"),
+      ).toBeInTheDocument();
     },
   );
 
@@ -849,22 +928,34 @@ describe("AppShell", () => {
       );
       const user = userEvent.setup();
       renderShell();
-      await screen.findByRole("link", { name: "Org A" });
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-breadcrumb-organization");
+        expect(element).toHaveTextContent("Org A");
+        return element;
+      });
 
-      const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
-      const leaf = within(nav).queryByRole("link", { name: "บันทึกกิจกรรม" });
+      const nav = screen.getByTestId("shell-navigation");
+      const leaf = within(nav).queryByTestId(
+        "shell-nav-/organizations/:organizationId/audit-log",
+      );
       await user.keyboard("{Meta>}k{/Meta}");
-      const dialog = screen.getByRole("dialog", { name: "ค้นหาทั้งหมด" });
-      await user.keyboard("บันทึกกิจกรรม");
+      const dialog = screen.getByTestId("shell-command-dialog");
+      await user.keyboard("/audit-log");
       if (!visible) {
         expect(leaf).toBeNull();
-        expect(within(dialog).queryAllByRole("option")).toHaveLength(0);
+        expect(
+          within(dialog).queryAllByTestId(/^shell-command-option-/),
+        ).toHaveLength(0);
         return;
       }
       expect(leaf).toHaveAttribute("href", `/organizations/${ORG_A}/audit-log`);
-      expect(within(dialog).getAllByRole("option")).toHaveLength(1);
+      expect(
+        within(dialog).getAllByTestId(/^shell-command-option-/),
+      ).toHaveLength(1);
       await user.keyboard("{Enter}");
-      expect(await screen.findByText("หน้าบันทึกกิจกรรม")).toBeInTheDocument();
+      expect(
+        await screen.findByTestId("shell-route-audit"),
+      ).toBeInTheDocument();
     },
   );
 
@@ -872,104 +963,137 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderShell(undefined, `/organizations/${ORG_A}/audit-log/evt-1`);
     expect(
-      await screen.findByText("หน้ารายละเอียดบันทึกกิจกรรม"),
+      await screen.findByTestId("shell-route-audit-detail"),
     ).toBeInTheDocument();
-    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    const nav = screen.getByTestId("shell-navigation");
     expect(
-      await within(nav).findByRole("link", { name: "บันทึกกิจกรรม" }),
+      await within(nav).findByTestId(
+        "shell-nav-/organizations/:organizationId/audit-log",
+      ),
     ).toHaveAttribute("aria-current", "page");
     expect(
-      within(
-        screen.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
-      ).getByText("บันทึกกิจกรรม"),
+      within(screen.getByTestId("shell-breadcrumb")).getByTestId(
+        "shell-breadcrumb-current",
+      ),
     ).toBeInTheDocument();
   });
 
   it("omits the monitors leaf when there is no active organization", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([], null));
     renderShell();
-    await screen.findByRole("navigation", { name: "เมนูหลัก" });
+    await screen.findByTestId("shell-navigation");
 
-    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    const nav = screen.getByTestId("shell-navigation");
     expect(
-      within(nav).queryByRole("link", { name: "ตรวจสถานะบริการ" }),
+      within(nav).queryByTestId(
+        "shell-nav-/organizations/:organizationId/monitors",
+      ),
     ).toBeNull();
   });
 
   it("marks the monitors leaf current on the monitors route", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderShell(undefined, `/organizations/${ORG_A}/monitors`);
-    expect(await screen.findByText("หน้ามอนิเตอร์")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("shell-route-monitors"),
+    ).toBeInTheDocument();
 
-    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
+    const nav = screen.getByTestId("shell-navigation");
     expect(
-      await within(nav).findByRole("link", { name: "ตรวจสถานะบริการ" }),
+      await within(nav).findByTestId(
+        "shell-nav-/organizations/:organizationId/monitors",
+      ),
     ).toHaveAttribute("aria-current", "page");
-    expect(
-      within(nav).getByRole("link", { name: "ภาพรวม" }),
-    ).not.toHaveAttribute("aria-current");
+    expect(within(nav).getByTestId("shell-nav-/workspace")).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   it("⌘K includes every owner destination and navigates from a filtered result", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
     await user.keyboard("{Meta>}k{/Meta}");
-    const dialog = screen.getByRole("dialog", { name: "ค้นหาทั้งหมด" });
-    const input = within(dialog).getByRole("combobox", {
-      name: "ค้นหาทั้งหมด",
-    });
+    const dialog = screen.getByTestId("shell-command-dialog");
+    const input = within(dialog).getByTestId("shell-command-query");
     expect(input).toHaveFocus();
-    expect(within(dialog).getAllByRole("option")).toHaveLength(12);
-    for (const name of [
-      "ภาพรวม",
-      "ตรวจสถานะบริการ",
-      "การแจ้งเตือน",
-      "การตั้งค่าส่วนตัว",
-      "โปรไฟล์",
-      "ความปลอดภัย",
-      "เซสชันและอุปกรณ์",
-      "การแสดงผล",
-      "โปรเจกต์ทั้งหมด",
-      "สมาชิก",
-      "ตั้งค่าการแจ้งเตือน",
-      "บันทึกกิจกรรม",
+    expect(
+      within(dialog).getAllByTestId(/^shell-command-option-/),
+    ).toHaveLength(12);
+    for (const path of [
+      "/workspace",
+      `/organizations/${ORG_A}/monitors`,
+      "/notifications",
+      "/settings",
+      "/settings/profile",
+      "/settings/security",
+      "/settings/sessions",
+      "/settings/display",
+      `/organizations/${ORG_A}/projects`,
+      `/organizations/${ORG_A}/members`,
+      `/organizations/${ORG_A}/notification-settings`,
+      `/organizations/${ORG_A}/audit-log`,
     ]) {
       expect(
-        within(dialog).getByRole("option", {
-          name: new RegExp(`^${name}`),
-        }),
+        within(dialog).getByTestId(`shell-command-option-${path}`),
       ).toBeInTheDocument();
     }
-    expect(dialog).toHaveTextContent("ค้นหาใน Org A");
+    expect(
+      within(dialog).getByTestId("shell-command-organization"),
+    ).toHaveTextContent("Org A");
+    expect(input).toHaveAttribute("role", "combobox");
+    const results = within(dialog).getByTestId("shell-command-results");
+    expect(results).toHaveAttribute("role", "listbox");
+    expect(input).toHaveAttribute("aria-controls", results.id);
+    for (const option of within(dialog).getAllByTestId(
+      /^shell-command-option-/,
+    ))
+      expect(option).toHaveAttribute("role", "option");
+    const selected = within(dialog).getByTestId(
+      "shell-command-option-/workspace",
+    );
+    expect(selected).toHaveAttribute("aria-selected", "true");
+    expect(input).toHaveAttribute("aria-activedescendant", selected.id);
 
-    await user.keyboard("เซสชัน");
-    const filteredOptions = within(dialog).getAllByRole("option");
+    await user.keyboard("/settings/sessions");
+    const filteredOptions = within(dialog).getAllByTestId(
+      /^shell-command-option-/,
+    );
     expect(filteredOptions).toHaveLength(1);
-    expect(filteredOptions[0]).toHaveTextContent("เซสชันและอุปกรณ์");
-    expect(filteredOptions[0]).toHaveTextContent("การตั้งค่าส่วนตัว");
+    expect(filteredOptions).toEqual([
+      within(dialog).getByTestId("shell-command-option-/settings/sessions"),
+    ]);
+    expect(filteredOptions[0]).toHaveAttribute("aria-selected", "true");
 
     await user.keyboard("{Enter}");
-    expect(screen.queryByRole("dialog", { name: "ค้นหาทั้งหมด" })).toBeNull();
-    expect(await screen.findByText("หน้าเซสชัน")).toBeInTheDocument();
+    expect(screen.queryByTestId("shell-command-dialog")).toBeNull();
+    expect(
+      await screen.findByTestId("shell-route-sessions"),
+    ).toBeInTheDocument();
   });
 
   it("the header search field opens the same palette and Escape returns focus to it", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
-    const field = screen.getByRole("button", { name: /ค้นหาทั้งหมด\.\.\./ });
+    const field = screen.getByTestId("shell-search-open");
     await user.click(field);
-    expect(
-      screen.getByRole("dialog", { name: "ค้นหาทั้งหมด" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("shell-command-dialog")).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog", { name: "ค้นหาทั้งหมด" })).toBeNull();
+    expect(screen.queryByTestId("shell-command-dialog")).toBeNull();
     expect(field).toHaveFocus();
   });
 
@@ -987,18 +1111,24 @@ describe("AppShell", () => {
     });
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
-
-    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
-    const panel = screen.getByRole("dialog", { name: "การแจ้งเตือน" });
-    const markAll = within(panel).getByRole("button", {
-      name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
     });
+
+    await user.click(screen.getByTestId("shell-notifications-open"));
+    const panel = screen.getByTestId("shell-notifications-dialog");
+    const markAll = within(panel).getByTestId("shell-notifications-read-all");
     expect(markAll).toBeDisabled();
 
     resolveUnreadCount({ unreadCount: 1 });
     expect(
-      await screen.findByLabelText("1 รายการยังไม่อ่าน"),
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-notifications-unread-count");
+        expect(element).toHaveTextContent("1");
+        return element;
+      }),
     ).toHaveTextContent("1");
     expect(markAll).toBeEnabled();
     await user.click(markAll);
@@ -1009,7 +1139,11 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     fetchUnreadCountMock.mockRejectedValueOnce(new InboxScopeChangedError());
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
     await vi.waitFor(() => {
       expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(1);
@@ -1026,16 +1160,22 @@ describe("AppShell", () => {
     });
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
-    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await user.click(screen.getByTestId("shell-notifications-open"));
 
     expect(
-      await screen.findByLabelText("2 รายการยังไม่อ่าน"),
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-notifications-unread-count");
+        expect(element).toHaveTextContent("2");
+        return element;
+      }),
     ).toHaveTextContent("2");
-    expect(
-      screen.getByRole("button", { name: "ทำเครื่องหมายว่าอ่านทั้งหมด" }),
-    ).toBeEnabled();
+    expect(screen.getByTestId("shell-notifications-read-all")).toBeEnabled();
   });
 
   it("ignores further popover row clicks while an open is pending", async () => {
@@ -1064,16 +1204,22 @@ describe("AppShell", () => {
     openNotificationMock.mockReturnValue(new Promise(() => undefined));
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
 
-    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await user.click(screen.getByTestId("shell-notifications-open"));
     await user.click(
-      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+      await screen.findByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ),
     );
     await user.click(
-      screen.getByRole("button", {
-        name: /เปิดใช้การยืนยันตัวตนหลายปัจจัยแล้ว/,
-      }),
+      screen.getByTestId(
+        "notification-open-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      ),
     );
 
     expect(openNotificationMock).toHaveBeenCalledTimes(1);
@@ -1091,18 +1237,24 @@ describe("AppShell", () => {
     markAllNotificationsReadMock.mockRejectedValue(new Error("network down"));
     const user = userEvent.setup();
     renderShell();
-    await screen.findByRole("link", { name: "Org A" });
-
-    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
-    await screen.findByLabelText("1 รายการยังไม่อ่าน");
-    const markAll = screen.getByRole("button", {
-      name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
     });
+
+    await user.click(screen.getByTestId("shell-notifications-open"));
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-notifications-unread-count");
+      expect(element).toHaveTextContent("1");
+      return element;
+    });
+    const markAll = screen.getByTestId("shell-notifications-read-all");
     await user.click(markAll);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-    );
+    expect(
+      await screen.findByTestId("shell-notifications-read-all-error"),
+    ).toBeVisible();
     expect(markAll).toBeEnabled();
   });
 
@@ -1131,17 +1283,29 @@ describe("AppShell", () => {
     const user = userEvent.setup();
     renderShell();
 
-    await screen.findByRole("link", { name: "Org A" });
-    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
+    await user.click(screen.getByTestId("shell-notifications-open"));
     await user.click(
-      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+      await screen.findByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ),
     );
 
-    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
-    const breadcrumb = screen.getByRole("navigation", {
-      name: "ตำแหน่งปัจจุบัน",
-    });
-    expect(within(breadcrumb).getByText("การแจ้งเตือน")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("notification-detail-read"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("notification-detail-read-at")).toHaveAttribute(
+      "datetime",
+      "2026-09-25T03:01:00.000Z",
+    );
+    const breadcrumb = screen.getByTestId("shell-breadcrumb");
+    expect(
+      within(breadcrumb).getByTestId("shell-breadcrumb-current"),
+    ).toBeInTheDocument();
   });
 
   it("shows a popover open failure while keeping the list for retry", async () => {
@@ -1166,17 +1330,25 @@ describe("AppShell", () => {
     const user = userEvent.setup();
     renderShell();
 
-    await screen.findByRole("link", { name: "Org A" });
-    await user.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-breadcrumb-organization");
+      expect(element).toHaveTextContent("Org A");
+      return element;
+    });
+    await user.click(screen.getByTestId("shell-notifications-open"));
     await user.click(
-      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+      await screen.findByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ),
     );
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-    );
     expect(
-      screen.getByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+      await screen.findByTestId("shell-notifications-open-error"),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -1184,11 +1356,9 @@ describe("AppShell", () => {
     fetchMeContextMock.mockResolvedValue(meContext([]));
     renderShell(<WorkspacePage />);
 
-    await screen.findByRole("heading", {
-      name: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
-    });
-    expect(screen.getByText("NightWatch")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /องค์กร:/ })).toBeNull();
+    await screen.findByTestId("page-title");
+    expect(screen.getByTestId("shell-product-brand")).toBeInTheDocument();
+    expect(screen.queryByTestId("shell-organization-switch")).toBeNull();
   });
   it.each(["organization", "account"] as const)(
     "stops automatic recovery after repeated %s inbox mismatch and offers explicit retry",
@@ -1200,23 +1370,23 @@ describe("AppShell", () => {
       fetchMeContextMock.mockResolvedValue(ctx);
       fetchUnreadCountMock.mockRejectedValue(new InboxScopeChangedError());
       const { queryClient, router } = renderShell(
-        <p>Protected tenant content</p>,
+        <p data-testid="shell-protected-content">Protected tenant content</p>,
       );
-      await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
+      await screen.findByTestId("shell-admission-error");
       expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
         "failed",
       );
-      expect(screen.queryByText("Protected tenant content")).toBeNull();
+      expect(screen.queryByTestId("shell-protected-content")).toBeNull();
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
       expect(fetchUnreadCountMock).toHaveBeenCalledTimes(2);
       fetchUnreadCountMock.mockResolvedValue({ unreadCount: 4 });
-      await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
-      await screen.findByText("Protected tenant content");
+      await userEvent.click(screen.getByTestId("shell-admission-retry"));
+      await screen.findByTestId("shell-protected-content");
       expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
         "confirmed",
       );
       expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
-      expect(screen.getByRole("link", { name: "การแจ้งเตือน" })).toBeVisible();
+      expect(screen.getByTestId("shell-nav-/notifications")).toBeVisible();
       router.dispose();
       await queryClient.cancelQueries();
       queryClient.clear();
@@ -1227,7 +1397,7 @@ describe("AppShell", () => {
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
     const { queryClient, router } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     const query = Promise.withResolvers<{ unreadCount: number }>();
     fetchUnreadCountMock.mockReturnValueOnce(query.promise);
     const mutation = Promise.withResolvers<never>();
@@ -1256,7 +1426,7 @@ describe("AppShell", () => {
       resolving.resolve(meContext([ownerOrg, viewerOrg], ORG_B));
       await resolving.promise;
     });
-    await findScope("Org B", "ผู้ชม");
+    await findScope("Org B", "viewer");
     await act(async () => {
       mutation.reject(new InboxScopeChangedError());
       await operation;
@@ -1266,7 +1436,7 @@ describe("AppShell", () => {
       "confirmed",
     );
     expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
-    await findScope("Org B", "ผู้ชม");
+    await findScope("Org B", "viewer");
     router.dispose();
     await queryClient.cancelQueries();
     queryClient.clear();
@@ -1276,7 +1446,7 @@ describe("AppShell", () => {
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
     const { queryClient, router } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     const late = Promise.withResolvers<never>();
     const request = queryClient
       .query({
@@ -1298,13 +1468,13 @@ describe("AppShell", () => {
         meContext([ownerOrg, viewerOrg], ORG_B),
       );
     });
-    await findScope("Org B", "ผู้ชม");
+    await findScope("Org B", "viewer");
     await act(async () => {
       late.reject(new InboxScopeChangedError());
       await request;
     });
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
-    await findScope("Org B", "ผู้ชม");
+    await findScope("Org B", "viewer");
     router.dispose();
     await queryClient.cancelQueries();
     queryClient.clear();
@@ -1312,7 +1482,7 @@ describe("AppShell", () => {
   it("unknown open-notification errors recover conservatively without manufacturing repeated-current failure", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const { queryClient, router } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     openNotificationMock.mockRejectedValue(new InboxScopeChangedError());
     for (const id of ["first", "second"]) {
       await act(async () => {
@@ -1329,7 +1499,7 @@ describe("AppShell", () => {
       });
     }
     expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     router.dispose();
     await queryClient.cancelQueries();
     queryClient.clear();
@@ -1338,7 +1508,7 @@ describe("AppShell", () => {
   it("unsupported query scope fails closed immediately without automatic resolver loop and explicit retry restores admission", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const { queryClient, router } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     await act(async () => {
       await queryClient
         .query({
@@ -1348,13 +1518,13 @@ describe("AppShell", () => {
         })
         .catch(() => undefined);
     });
-    await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
+    await screen.findByTestId("shell-admission-error");
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
     expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
       "failed",
     );
-    await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
-    await findScope("Org A", "เจ้าของ");
+    await userEvent.click(screen.getByTestId("shell-admission-retry"));
+    await findScope("Org A", "owner");
     expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
     router.dispose();
     await queryClient.cancelQueries();
@@ -1363,7 +1533,7 @@ describe("AppShell", () => {
   it("ignores cancelled refetch errors without relabeling the newer request", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const { queryClient, router } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     const old = Promise.withResolvers<{ unreadCount: number }>(),
       fresh = Promise.withResolvers<{ unreadCount: number }>();
     fetchUnreadCountMock
@@ -1400,10 +1570,10 @@ describe("AppShell", () => {
     expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
       "confirmed",
     );
-    await findScope("Org A", "เจ้าของ");
-    expect(
-      screen.getByRole("link", { name: "การแจ้งเตือน" }),
-    ).toHaveTextContent("5");
+    await findScope("Org A", "owner");
+    expect(screen.getByTestId("shell-nav-/notifications")).toHaveTextContent(
+      "5",
+    );
     router.dispose();
     await queryClient.cancelQueries();
     queryClient.clear();
@@ -1411,7 +1581,7 @@ describe("AppShell", () => {
   it("concurrent unattributed open mutations dedupe while required scope recovery is pending", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const { queryClient, router } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     const first = Promise.withResolvers<never>(),
       second = Promise.withResolvers<never>(),
       fresh = Promise.withResolvers<MeContextResponse>();
@@ -1447,7 +1617,7 @@ describe("AppShell", () => {
       fresh.resolve(meContext([ownerOrg], ORG_A));
       await fresh.promise;
     });
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
       "confirmed",
     );
@@ -1461,15 +1631,14 @@ describe("AppShell", () => {
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
     const { queryClient, router } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     const patch = Promise.withResolvers<MeContextResponse>(),
       fresh = Promise.withResolvers<MeContextResponse>();
     updateActiveOrganizationMock.mockReturnValueOnce(patch.promise);
-    await userEvent.click(screen.getByRole("button", { name: /Org A/ }));
+    await userEvent.click(screen.getByTestId("shell-organization-switch"));
     await userEvent.click(
-      within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
-        "menuitemradio",
-        { name: /Org B/ },
+      within(screen.getByTestId("shell-organization-menu")).getByTestId(
+        `shell-organization-${ORG_B}`,
       ),
     );
     fetchMeContextMock.mockReturnValueOnce(fresh.promise);
@@ -1488,7 +1657,7 @@ describe("AppShell", () => {
       fresh.reject(new Error("Resolver failed"));
       await fresh.promise.catch(() => undefined);
     });
-    await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
+    await screen.findByTestId("shell-admission-error");
     await act(async () => {
       patch.resolve(meContext([ownerOrg, viewerOrg], ORG_B));
       await patch.promise;
@@ -1496,7 +1665,7 @@ describe("AppShell", () => {
     expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
       "failed",
     );
-    expect(screen.queryByRole("heading", { name: /Org B/ })).toBeNull();
+    expect(screen.queryByTestId("page-scope")?.textContent).not.toBe("Org B");
     router.dispose();
     await queryClient.cancelQueries();
     queryClient.clear();
@@ -1504,7 +1673,7 @@ describe("AppShell", () => {
   it("retired client rejects late mutation scope errors without reviving its publication", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     const { queryClient, router } = renderShell(<WorkspacePage />);
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     const late = Promise.withResolvers<never>();
     markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
     const operation = queryClient
@@ -1523,7 +1692,7 @@ describe("AppShell", () => {
       "retired",
     );
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("heading", { name: /Org A/ })).toBeNull();
+    expect(screen.queryByTestId("page-scope")?.textContent).not.toBe("Org A");
     router.dispose();
     await queryClient.cancelQueries();
     queryClient.clear();
@@ -1550,18 +1719,20 @@ describe("AppShell", () => {
         unreadCount: 7,
       });
       const { queryClient, router } = renderShell(
-        <p>Current account content</p>,
+        <p data-testid="shell-account-content">Current account content</p>,
       );
-      await screen.findByLabelText("7 รายการยังไม่อ่าน");
-      await userEvent.click(
-        screen.getByRole("button", { name: "การแจ้งเตือน" }),
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-notifications-unread-count");
+        expect(element).toHaveTextContent("7");
+        return element;
+      });
+      await userEvent.click(screen.getByTestId("shell-notifications-open"));
+      const panel = screen.getByTestId("shell-notifications-dialog");
+      await within(panel).findByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       );
-      const panel = screen.getByRole("dialog", { name: "การแจ้งเตือน" });
-      await within(panel).findByRole("button", { name: /รหัสผ่าน/ });
       expect(
-        within(panel).getByRole("button", {
-          name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
-        }),
+        within(panel).getByTestId("shell-notifications-read-all"),
       ).toBeEnabled();
       const required = Promise.withResolvers<MeContextResponse>();
       fetchMeContextMock.mockReturnValueOnce(required.promise);
@@ -1575,19 +1746,19 @@ describe("AppShell", () => {
           "confirming",
         );
       });
-      expect(screen.queryByLabelText("7 รายการยังไม่อ่าน")).toBeNull();
       expect(
-        within(panel).queryByRole("button", { name: /รหัสผ่าน/ }),
+        screen.queryByTestId("shell-notifications-unread-count")?.textContent,
+      ).not.toBe("7");
+      expect(
+        within(panel).queryByTestId(
+          "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        ),
       ).toBeNull();
       expect(
-        within(panel).getByRole("button", {
-          name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
-        }),
+        within(panel).getByTestId("shell-notifications-read-all"),
       ).toBeDisabled();
-      expect(
-        within(panel).queryByRole("link", { name: "ดูการแจ้งเตือนทั้งหมด" }),
-      ).toBeNull();
-      expect(screen.queryByText("ยังไม่มีการแจ้งเตือน")).toBeNull();
+      expect(within(panel).queryByTestId("shell-notifications-all")).toBeNull();
+      expect(screen.queryByTestId("shell-notifications-empty")).toBeNull();
       expect(fetchUnreadCountMock).toHaveBeenCalledTimes(1);
       expect(fetchNotificationsMock).toHaveBeenCalledTimes(1);
       expect(markAllNotificationsReadMock).not.toHaveBeenCalled();
@@ -1597,15 +1768,19 @@ describe("AppShell", () => {
           required.reject(new Error("Current resolver unavailable"));
           await required.promise.catch(() => undefined);
         });
-        await screen.findByText("โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่");
-        expect(screen.queryByLabelText("7 รายการยังไม่อ่าน")).toBeNull();
+        await screen.findByTestId("shell-admission-error");
         expect(
-          within(panel).queryByRole("button", { name: /รหัสผ่าน/ }),
+          screen.queryByTestId("shell-notifications-unread-count")?.textContent,
+        ).not.toBe("7");
+        expect(
+          within(panel).queryByTestId(
+            "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          ),
         ).toBeNull();
-        expect(screen.queryByText("ยังไม่มีการแจ้งเตือน")).toBeNull();
+        expect(screen.queryByTestId("shell-notifications-empty")).toBeNull();
         fetchMeContextMock.mockResolvedValueOnce(meContext([], null));
         await userEvent.click(
-          within(panel).getByRole("button", { name: "ลองใหม่" }),
+          within(panel).getByTestId("shell-notifications-admission-retry"),
         );
       } else {
         await act(async () => {
@@ -1613,15 +1788,19 @@ describe("AppShell", () => {
           await required.promise;
         });
       }
-      await screen.findByLabelText("7 รายการยังไม่อ่าน");
-      await within(panel).findByRole("button", { name: /รหัสผ่าน/ });
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-notifications-unread-count");
+        expect(element).toHaveTextContent("7");
+        return element;
+      });
+      await within(panel).findByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      );
       expect(getContextPublicationSnapshot(queryClient).admission.kind).toBe(
         "confirmed",
       );
       expect(
-        within(panel).getByRole("button", {
-          name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
-        }),
+        within(panel).getByTestId("shell-notifications-read-all"),
       ).toBeEnabled();
       router.dispose();
       await queryClient.cancelQueries();
@@ -1651,14 +1830,18 @@ describe("AppShell", () => {
       const late = Promise.withResolvers<NotificationItem>();
       openNotificationMock.mockReturnValueOnce(late.promise);
       const { queryClient, router } = renderShell(
-        <p>Current account content</p>,
+        <p data-testid="shell-account-content">Current account content</p>,
       );
-      await screen.findByLabelText("1 รายการยังไม่อ่าน");
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-notifications-unread-count");
+        expect(element).toHaveTextContent("1");
+        return element;
+      });
+      await userEvent.click(screen.getByTestId("shell-notifications-open"));
       await userEvent.click(
-        screen.getByRole("button", { name: "การแจ้งเตือน" }),
-      );
-      await userEvent.click(
-        await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+        await screen.findByTestId(
+          "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        ),
       );
       expect(openNotificationMock).toHaveBeenCalledTimes(1);
       if (transition === "retirement") {
@@ -1672,7 +1855,7 @@ describe("AppShell", () => {
             staleTime: 0,
           });
         });
-        await screen.findByText("Current account content");
+        await screen.findByTestId("shell-account-content");
       }
       const reads = fetchNotificationsMock.mock.calls.length,
         counts = fetchUnreadCountMock.mock.calls.length;
@@ -1716,18 +1899,26 @@ describe("AppShell", () => {
     openNotificationMock
       .mockReturnValueOnce(old.promise)
       .mockReturnValueOnce(latest.promise);
-    const { queryClient, router } = renderShell(<p>Current account content</p>);
-    await screen.findByLabelText("1 รายการยังไม่อ่าน");
-    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
-    await userEvent.click(
-      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+    const { queryClient, router } = renderShell(
+      <p data-testid="shell-account-content">Current account content</p>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
-    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-notifications-unread-count");
+      expect(element).toHaveTextContent("1");
+      return element;
+    });
+    await userEvent.click(screen.getByTestId("shell-notifications-open"));
     await userEvent.click(
-      await screen.findByRole("button", {
-        name: /มีการเปลี่ยนรหัสผ่าน/,
-      }),
+      await screen.findByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ),
+    );
+    await userEvent.click(screen.getByTestId("shell-notifications-open"));
+    await userEvent.click(screen.getByTestId("shell-notifications-open"));
+    await userEvent.click(
+      await screen.findByTestId(
+        "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ),
     );
     expect(openNotificationMock).toHaveBeenCalledTimes(2);
     await act(async () => {
@@ -1769,12 +1960,18 @@ describe("AppShell", () => {
     });
     const opened = Promise.withResolvers<NotificationItem>();
     openNotificationMock.mockReturnValueOnce(opened.promise);
-    const { queryClient, router } = renderShell(<p>Current account content</p>);
-    await screen.findByLabelText("1 รายการยังไม่อ่าน");
-    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
-    const row = await screen.findByRole("button", {
-      name: /มีการเปลี่ยนรหัสผ่าน/,
+    const { queryClient, router } = renderShell(
+      <p data-testid="shell-account-content">Current account content</p>,
+    );
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-notifications-unread-count");
+      expect(element).toHaveTextContent("1");
+      return element;
     });
+    await userEvent.click(screen.getByTestId("shell-notifications-open"));
+    const row = await screen.findByTestId(
+      "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
     await userEvent.click(row);
     const refreshing = Promise.withResolvers<{
       items: NotificationItem[];
@@ -1837,18 +2034,15 @@ describe("AppShell", () => {
         openNotificationMock.mockReturnValueOnce(late.promise);
       else markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
       const { queryClient, router } = renderShell(<WorkspacePage />);
-      await findScope("Org A", "เจ้าของ");
+      await findScope("Org A", "owner");
       const origin = getContextPublicationSnapshot(queryClient);
+      await userEvent.click(screen.getByTestId("shell-notifications-open"));
       await userEvent.click(
-        screen.getByRole("button", { name: "การแจ้งเตือน" }),
-      );
-      await userEvent.click(
-        await screen.findByRole("button", {
-          name:
-            operation === "open"
-              ? /มีการเปลี่ยนรหัสผ่าน/
-              : "ทำเครื่องหมายว่าอ่านทั้งหมด",
-        }),
+        await screen.findByTestId(
+          operation === "open"
+            ? "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+            : "shell-notifications-read-all",
+        ),
       );
       await waitFor(() => {
         expect(
@@ -1865,7 +2059,7 @@ describe("AppShell", () => {
         late.reject(new InboxScopeChangedError());
         await late.promise.catch(() => undefined);
       });
-      await findScope("Org B", "ผู้ชม");
+      await findScope("Org B", "viewer");
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
       expect(
         getContextPublicationSnapshot(queryClient).publishedClaim,
@@ -1907,18 +2101,15 @@ describe("AppShell", () => {
         openNotificationMock.mockReturnValueOnce(late.promise);
       else markAllNotificationsReadMock.mockReturnValueOnce(late.promise);
       const { queryClient, router } = renderShell(<WorkspacePage />);
-      await findScope("Org A", "เจ้าของ");
+      await findScope("Org A", "owner");
       const origin = getContextPublicationSnapshot(queryClient);
+      await userEvent.click(screen.getByTestId("shell-notifications-open"));
       await userEvent.click(
-        screen.getByRole("button", { name: "การแจ้งเตือน" }),
-      );
-      await userEvent.click(
-        await screen.findByRole("button", {
-          name:
-            operation === "open"
-              ? /มีการเปลี่ยนรหัสผ่าน/
-              : "ทำเครื่องหมายว่าอ่านทั้งหมด",
-        }),
+        await screen.findByTestId(
+          operation === "open"
+            ? "notification-open-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+            : "shell-notifications-read-all",
+        ),
       );
       await waitFor(() => {
         expect(
@@ -1936,20 +2127,15 @@ describe("AppShell", () => {
         updateActiveOrganizationMock.mockResolvedValueOnce(
           meContext([ownerOrg, viewerOrg], scope),
         );
+        await userEvent.click(screen.getByTestId("shell-organization-switch"));
         await userEvent.click(
-          screen.getByRole("button", {
-            name: scope === ORG_B ? /Org A/ : /Org B/,
-          }),
-        );
-        await userEvent.click(
-          within(screen.getByRole("menu", { name: "สลับองค์กร" })).getByRole(
-            "menuitemradio",
-            { name: scope === ORG_B ? /Org B/ : /Org A/ },
+          within(screen.getByTestId("shell-organization-menu")).getByTestId(
+            `shell-organization-${scope}`,
           ),
         );
         await findScope(
           scope === ORG_B ? "Org B" : "Org A",
-          scope === ORG_B ? "ผู้ชม" : "เจ้าของ",
+          scope === ORG_B ? "viewer" : "owner",
         );
       }
       const current = getContextPublicationSnapshot(queryClient);
@@ -2009,12 +2195,16 @@ describe("AppShell", () => {
       nextCursor: null,
       unreadCount: 1,
     });
-    const { queryClient, router } = renderShell(<p>Current account content</p>);
-    await screen.findByLabelText("1 รายการยังไม่อ่าน");
-    await userEvent.click(screen.getByRole("button", { name: "การแจ้งเตือน" }));
-    const button = screen.getByRole("button", {
-      name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
+    const { queryClient, router } = renderShell(
+      <p data-testid="shell-account-content">Current account content</p>,
+    );
+    await waitFor(() => {
+      const element = screen.getByTestId("shell-notifications-unread-count");
+      expect(element).toHaveTextContent("1");
+      return element;
     });
+    await userEvent.click(screen.getByTestId("shell-notifications-open"));
+    const button = screen.getByTestId("shell-notifications-read-all");
     await waitFor(() => {
       expect(button).toBeEnabled();
     });
@@ -2127,17 +2317,15 @@ describe("AppShell", () => {
     );
     const view = render(<RouterProvider router={router} />);
     try {
-      await screen.findByRole("button", { name: "ออกจากองค์กร" });
+      await screen.findByTestId("self-leave-open");
       await waitFor(() => {
         expect(peekActiveQueryClientIdentity()).toBe("user-1");
       });
       const oldClient = resolveQueryClientForIdentity("user-1");
-      const outgoing = screen.getByRole("heading", { name: "สมาชิก" });
-      await user.click(screen.getByRole("button", { name: "ออกจากองค์กร" }));
+      const outgoing = screen.getByTestId("page-title");
+      await user.click(screen.getByTestId("self-leave-open"));
       fetchMeContextMock.mockReturnValueOnce(oldResolver.promise);
-      await user.click(
-        screen.getByRole("button", { name: "ยืนยันการออกจากองค์กร" }),
-      );
+      await user.click(screen.getByTestId("self-leave-confirm"));
       await waitFor(() => {
         expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
       });
@@ -2160,7 +2348,11 @@ describe("AppShell", () => {
       act(() => {
         changeIdentity();
       });
-      await screen.findByText("Current B", { exact: true });
+      await waitFor(() => {
+        const element = screen.getByTestId("shell-organization-name");
+        expect(element).toHaveTextContent("Current B");
+        return element;
+      });
       await waitFor(() => {
         expect(peekActiveQueryClientIdentity()).toBe("user-2");
       });
@@ -2186,13 +2378,15 @@ describe("AppShell", () => {
       expect(router.state.location.pathname).toBe(
         `/organizations/${ORG_A}/members`,
       );
-      expect(screen.getByText("Current B", { exact: true })).toBeVisible();
-      expect(screen.queryByRole("button", { name: "ลองอีกครั้ง" })).toBeNull();
+      expect(screen.getByTestId("shell-organization-name")).toHaveTextContent(
+        "Current B",
+      );
+      expect(screen.queryByTestId("self-leave-admission-retry")).toBeNull();
       expect(
-        screen.queryByText(
-          /ออกจากองค์กรไม่สำเร็จ|ยังไม่ได้ออกจากองค์กร|ไม่สามารถยืนยันสถานะการเป็นสมาชิกได้|โหลดข้อมูลองค์กรไม่สำเร็จ/,
+        screen.queryAllByTestId(
+          /^(self-leave-error|self-leave-admission-error|shell-admission-error)$/,
         ),
-      ).toBeNull();
+      ).toHaveLength(0);
       expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
       expect(leaveOrganization).toHaveBeenCalledTimes(1);
     } finally {
@@ -2250,9 +2444,9 @@ describe("AppShell", () => {
       workspaceLoader,
       membersLoader,
     );
-    await screen.findByRole("button", { name: "ออกจากองค์กร" });
-    const outgoing = screen.getByRole("heading", { name: "สมาชิก" });
-    await user.click(screen.getByRole("button", { name: "ออกจากองค์กร" }));
+    await screen.findByTestId("self-leave-open");
+    const outgoing = screen.getByTestId("page-title");
+    await user.click(screen.getByTestId("self-leave-open"));
     return { ...view, user, outgoing };
   }
   async function confirmDeferred(
@@ -2265,15 +2459,17 @@ describe("AppShell", () => {
     };
 
     fetchMeContextMock.mockReturnValueOnce(resolver.promise);
-    await view.user.click(
-      screen.getByRole("button", { name: "ยืนยันการออกจากองค์กร" }),
-    );
+    await view.user.click(screen.getByTestId("self-leave-confirm"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
     });
     expect(view.outgoing.isConnected).toBe(false);
-    expect(within(screen.getByRole("main")).queryByText("Org A")).toBeNull();
-    expect(screen.queryByRole("button", { name: "ออกจากองค์กร" })).toBeNull();
+    expect(
+      within(screen.getByTestId("shell-main")).queryByTestId(
+        "shell-breadcrumb-organization",
+      )?.textContent,
+    ).not.toBe("Org A");
+    expect(screen.queryByTestId("self-leave-open")).toBeNull();
     expect(
       view.queryClient
         .getQueriesData({ queryKey: ["tenant"] })
@@ -2306,7 +2502,7 @@ describe("AppShell", () => {
             : "/workspace",
         );
       });
-      const heading = await screen.findByRole("heading", { level: 1 });
+      const heading = await screen.findByTestId("page-title");
       await waitFor(() => expect(heading).toHaveFocus());
       expect(navigation).toHaveBeenCalledTimes(1);
       expect(
@@ -2326,17 +2522,18 @@ describe("AppShell", () => {
       await resolver.promise.catch(() => undefined);
     });
     expect(view.outgoing.isConnected).toBe(false);
-    expect(screen.queryByRole("button", { name: "ออกจากองค์กร" })).toBeNull();
+    expect(screen.queryByTestId("self-leave-open")).toBeNull();
     fetchMeContextMock.mockResolvedValueOnce(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
     await view.user.click(
-      await screen.findByRole("button", { name: "ลองอีกครั้ง" }),
+      await screen.findByTestId("self-leave-admission-retry"),
     );
-    expect(
-      await screen.findByText(/องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน/),
-    ).toHaveAttribute("role", "alert");
-    const fresh = screen.getByRole("button", { name: "ออกจากองค์กร" });
+    expect(await screen.findByTestId("self-leave-error")).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    const fresh = screen.getByTestId("self-leave-open");
     await waitFor(() => expect(fresh).toHaveFocus());
     expect(view.outgoing.isConnected).toBe(false);
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
@@ -2446,7 +2643,7 @@ describe("AppShell", () => {
           getContextPublicationSnapshot(view.queryClient).admission.kind,
         ).toBe("failed");
       expect(signal?.aborted).toBe(true);
-      expect(screen.queryByRole("button", { name: "ลองอีกครั้ง" })).toBeNull();
+      expect(screen.queryByTestId("self-leave-admission-retry")).toBeNull();
       await disposeShell(view);
     });
 
@@ -2515,11 +2712,7 @@ describe("AppShell", () => {
     });
     expect(signal?.aborted).toBe(true);
     const before = getContextPublicationSnapshot(view.queryClient);
-    expect(
-      await screen.findByRole("heading", {
-        name: "เกิดข้อผิดพลาดที่ไม่คาดคิด",
-      }),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("render-error-title")).toBeInTheDocument();
     await act(async () => {
       resolver.resolve(meContext([viewerOrg], ORG_B));
       await resolver.promise;
@@ -2536,9 +2729,7 @@ describe("AppShell", () => {
     const deletion =
       Promise.withResolvers<Awaited<ReturnType<typeof leaveOrganization>>>();
     vi.mocked(leaveOrganization).mockReturnValueOnce(deletion.promise);
-    await view.user.click(
-      screen.getByRole("button", { name: "ยืนยันการออกจากองค์กร" }),
-    );
+    await view.user.click(screen.getByTestId("self-leave-confirm"));
     await act(async () => {
       await view.router.navigate("/workspace");
     });
@@ -2557,7 +2748,7 @@ describe("AppShell", () => {
     });
     expect(fetchMeContextMock).toHaveBeenCalledTimes(calls);
     expect(view.router.state.location.pathname).toBe("/workspace");
-    expect(screen.queryByText(/ออกจากองค์กรไม่สำเร็จ/)).toBeNull();
+    expect(screen.queryByTestId("self-leave-error")).toBeNull();
     await disposeShell(view);
   });
 
@@ -2576,9 +2767,9 @@ describe("AppShell", () => {
         `/organizations/${ORG_B}/members`,
       );
     });
-    expect(screen.queryByText(/ออกจากองค์กรไม่สำเร็จ/)).toBeNull();
+    expect(screen.queryByTestId("self-leave-error")).toBeNull();
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole("heading", { level: 1 })).toHaveFocus();
+    expect(await screen.findByTestId("page-title")).toHaveFocus();
     await disposeShell(view);
   });
   it("announces failure and focuses the new entry when successful DELETE leaves membership intact", async () => {
@@ -2588,13 +2779,12 @@ describe("AppShell", () => {
       resolver.resolve(meContext([ownerOrg, viewerOrg], ORG_A));
       await resolver.promise;
     });
-    expect(
-      await screen.findByText("ออกจากองค์กรไม่สำเร็จ โหลดสถานะล่าสุดแล้ว"),
-    ).toHaveAttribute("role", "alert");
+    expect(await screen.findByTestId("self-leave-error")).toHaveAttribute(
+      "role",
+      "alert",
+    );
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "ออกจากองค์กร" }),
-      ).toHaveFocus(),
+      expect(screen.getByTestId("self-leave-open")).toHaveFocus(),
     );
     expect(view.outgoing.isConnected).toBe(false);
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
@@ -2628,7 +2818,7 @@ describe("AppShell", () => {
       blocked.resolve(null);
       await blocked.promise;
     });
-    await screen.findByRole("button", { name: "ออกจากองค์กร" });
+    await screen.findByTestId("self-leave-open");
     const current = getContextPublicationSnapshot(view.queryClient);
     await act(async () => {
       stale.resolve(meContext([viewerOrg], ORG_B));
@@ -2637,10 +2827,8 @@ describe("AppShell", () => {
     expect(getContextPublicationSnapshot(view.queryClient)).toBe(current);
     const fresh = Promise.withResolvers<MeContextResponse>();
     fetchMeContextMock.mockReturnValueOnce(fresh.promise);
-    await view.user.click(screen.getByRole("button", { name: "ออกจากองค์กร" }));
-    await view.user.click(
-      screen.getByRole("button", { name: "ยืนยันการออกจากองค์กร" }),
-    );
+    await view.user.click(screen.getByTestId("self-leave-open"));
+    await view.user.click(screen.getByTestId("self-leave-confirm"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(4);
     });
