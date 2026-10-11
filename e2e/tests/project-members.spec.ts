@@ -17,7 +17,7 @@ import {
 
 // Web side of F-002: an owner adds Organization members to a Project, changes
 // roles, meets the last-admin rule and removes a member; a Project member sees
-// no controls; an Organization member outside the Project gets not-found.
+// no controls; an Organization member outside the Project is sent back to the Project list with a notice.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -241,13 +241,18 @@ test.describe("other viewers", () => {
     expect((await projectRoles())[people.viewer.userId]).toBe("member");
   });
 
-  test("an Organization member outside the Project gets the not-found state", async ({
+  test("an Organization member outside the Project is sent back to the list with a notice", async ({
     page,
   }) => {
     await signIn(page, people.outsider);
     await page.goto(membersUrl());
-    await expect(page.getByTestId("project-members-not-found")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/organizations/${org}/projects$`));
+    await expect(
+      page.getByTestId("projects-notice-role-changed"),
+    ).toBeVisible();
     await expect(page.getByTestId("project-members-table")).toHaveCount(0);
+    // The lost Project is neither in the list nor anywhere on the page.
+    await expect(page.getByTestId(`project-row-${projectId}`)).toHaveCount(0);
     await expect(page.getByText(`Payments ${run}`)).toHaveCount(0);
   });
 });

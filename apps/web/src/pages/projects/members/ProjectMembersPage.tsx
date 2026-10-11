@@ -135,13 +135,6 @@ function ProjectMembers({
   // Project query of the Organization goes, the list included, so the list
   // page fetches fresh and cannot offer the lost Project; it announces why.
   const redirected = useRef(false);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
   useEffect(() => {
     if (!notFound || denied || redirected.current) return;
     redirected.current = true;
@@ -149,11 +142,14 @@ function ProjectMembers({
       leftProject === null
         ? PROJECT_GONE_NOTICE
         : `คุณออกจากโปรเจกต์ ${leftProject} แล้ว`;
+    // The context reload may remount this page, so the redirect does not
+    // depend on this instance; it only yields to a navigation made meanwhile.
+    const here = window.location.pathname;
     void refreshMembershipContext().finally(() => {
       queryClient.removeQueries({
         queryKey: projectQueryKeys.all(organizationId),
       });
-      if (!mounted.current) return;
+      if (window.location.pathname !== here) return;
       void navigate(`/organizations/${organizationId}/projects`, {
         replace: true,
         state: { projectNotice },
