@@ -10,7 +10,7 @@ import { EmptyState } from "../../components/shell/EmptyState";
 import { GridIcon, SearchIcon } from "../../components/shell/icons";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
-import { Input } from "../../components/ui";
+import { Alert, Input } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";
 import {
@@ -32,7 +32,11 @@ import { usePreferences } from "../../lib/preferences";
 import { ROLE_LABELS } from "../../lib/roles";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { isDenied } from "../workspace/rows";
-import { ProjectFormDialog } from "./ProjectFormDialog";
+import {
+  LIMIT_REACHED_MESSAGE,
+  ProjectFormDialog,
+  type StaleReason,
+} from "./ProjectFormDialog";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const VIEW_OPTIONS = [
@@ -41,7 +45,8 @@ const VIEW_OPTIONS = [
 ] as const;
 type View = (typeof VIEW_OPTIONS)[number]["value"];
 
-const LIMIT_TEXT = `องค์กรมีโปรเจกต์ครบ ${String(PROJECT_LIMIT_PER_ORGANIZATION)} โปรเจกต์แล้ว ลบโปรเจกต์ที่ไม่ใช้ก่อนสร้างใหม่`;
+const ROLE_CHANGED =
+  "สิทธิ์ของคุณในองค์กรเปลี่ยนไป รายการถูกโหลดใหม่ตามสิทธิ์ปัจจุบัน";
 const DELETE_FAILED = "ลบโปรเจกต์ไม่สำเร็จ ลองอีกครั้ง";
 
 type Dialog =
@@ -103,7 +108,10 @@ function ProjectsForOrganization({
   const [announcement, setAnnouncement] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [deletion, setDeletion] = useState<Deletion | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{
+    text: string;
+    kind: "saved" | "role-changed";
+  } | null>(null);
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
   >("idle");
@@ -151,7 +159,11 @@ function ProjectsForOrganization({
 
   // Only a filter or search change announces; a refetch leaves the text alone.
   useEffect(() => {
-    if (projects === undefined || !filtered) return;
+    if (projects === undefined) return;
+    if (!filtered) {
+      setAnnouncement("");
+      return;
+    }
     setAnnouncement(
       `พบ ${String(visible.length)} จาก ${String(projects.length)}`,
     );
@@ -162,12 +174,21 @@ function ProjectsForOrganization({
     setQ("");
     setView("all");
     setAnnouncement("");
+    // The clear button unmounts with the no-results state; keep focus on a stable control.
+    searchRef.current?.focus();
   };
 
   const reload = () => {
     void queryClient.invalidateQueries({
       queryKey: projectQueryKeys.all(organizationId),
     });
+  };
+
+  // A denied write means the role changed: reload the list and the context, then say so.
+  const roleChanged = () => {
+    reload();
+    void refreshMembershipContext();
+    setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
   };
 
   const confirmDelete = async () => {
@@ -180,17 +201,22 @@ function ProjectsForOrganization({
         queryKey: projectQueryKeys.all(organizationId),
       });
       setDeletion(null);
-      setNotice(`ลบโปรเจกต์ ${project.name} แล้ว`);
+      setNotice({ text: `ลบโปรเจกต์ ${project.name} แล้ว`, kind: "saved" });
     } catch (error) {
-      if (
-        error instanceof ApiError &&
-        (error.code === "PROJECT_NOT_FOUND" ||
+      if (error instanceof ApiError) {
+        if (
           error.code === "PERMISSION_DENIED" ||
-          error.code === "MEMBERSHIP_DENIED")
-      ) {
-        setDeletion(null);
-        reload();
-        return;
+          error.code === "MEMBERSHIP_DENIED"
+        ) {
+          setDeletion(null);
+          roleChanged();
+          return;
+        }
+        if (error.code === "PROJECT_NOT_FOUND") {
+          setDeletion(null);
+          reload();
+          return;
+        }
       }
       setDeletion({
         project,
@@ -221,7 +247,13 @@ function ProjectsForOrganization({
         titleRef={heading}
         titleTabIndex={-1}
       />
-      {notice === null ? null : <Notice tone="success">{notice}</Notice>}
+      {notice === null ? null : notice.kind === "role-changed" ? (
+        <Alert tone="info" role="status">
+          {notice.text}
+        </Alert>
+      ) : list.isError ? null : (
+        <Notice tone="success">{notice.text}</Notice>
+      )}
     </>
   );
 
@@ -302,7 +334,7 @@ function ProjectsForOrganization({
         id="project-limit-reason"
         className="text-xs text-foreground-secondary"
       >
-        {LIMIT_TEXT}
+        {LIMIT_REACHED_MESSAGE}
       </span>
       <Button type="button" disabled aria-describedby="project-limit-reason">
         สร้างโปรเจกต์
@@ -484,6 +516,11 @@ function ProjectsForOrganization({
   return (
     <Page>
       {header(actions, status)}
+      {list.isError ? (
+        <Alert tone="warning">
+          อัปเดตรายการไม่สำเร็จ กำลังแสดงรายการที่โหลดไว้ก่อนหน้า
+        </Alert>
+      ) : null}
       {body}
       {dialog === null ? null : (
         <ProjectFormDialog
@@ -493,17 +530,20 @@ function ProjectsForOrganization({
           fallbackFocus={heading}
           onSaved={(saved) => {
             setDialog(null);
-            setNotice(
-              dialog.kind === "edit"
-                ? `บันทึกโปรเจกต์ ${saved.name} แล้ว`
-                : `สร้างโปรเจกต์ ${saved.name} แล้ว`,
-            );
+            setNotice({
+              text:
+                dialog.kind === "edit"
+                  ? `บันทึกโปรเจกต์ ${saved.name} แล้ว`
+                  : `สร้างโปรเจกต์ ${saved.name} แล้ว`,
+              kind: "saved",
+            });
           }}
           onCancel={() => {
             setDialog(null);
           }}
-          onStale={() => {
+          onStale={(reason: StaleReason) => {
             setDialog(null);
+            if (reason === "denied") roleChanged();
           }}
         />
       )}

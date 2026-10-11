@@ -1,5 +1,6 @@
 import {
   createProjectRequestSchema,
+  PROJECT_LIMIT_PER_ORGANIZATION,
   updateProjectRequestSchema,
   type ProjectSummary,
 } from "@nightwatch/api-contract";
@@ -35,8 +36,7 @@ const FOCUSABLE = [
 ].join(",");
 
 export const SLUG_TAKEN_MESSAGE = "slug นี้ถูกใช้แล้วในองค์กร";
-export const LIMIT_REACHED_MESSAGE =
-  "องค์กรมีโปรเจกต์ครบ 50 โปรเจกต์แล้ว ลบโปรเจกต์ที่ไม่ใช้ก่อนสร้างใหม่";
+export const LIMIT_REACHED_MESSAGE = `องค์กรมีโปรเจกต์ครบ ${String(PROJECT_LIMIT_PER_ORGANIZATION)} โปรเจกต์แล้ว ลบโปรเจกต์ที่ไม่ใช้ก่อนสร้างใหม่`;
 const FAILED_MESSAGE = "บันทึกไม่สำเร็จ ลองอีกครั้ง";
 const NAME_MESSAGE = "ใส่ชื่อโปรเจกต์ 1 ถึง 80 ตัวอักษร";
 const SLUG_MESSAGE = "slug ยาว 3 ถึง 40 ตัว ใช้ a-z, 0-9 และ - เท่านั้น";
@@ -64,6 +64,8 @@ function toFieldErrors(
   return errors;
 }
 
+export type StaleReason = "denied" | "not-found";
+
 /** Create and edit share one modal; the slug is fixed after creation (AC-03). */
 export function ProjectFormDialog({
   organizationId,
@@ -82,7 +84,7 @@ export function ProjectFormDialog({
   onSaved: (saved: ProjectSummary) => void;
   onCancel: () => void;
   /** The role or the project changed under the user: close and reload the list. */
-  onStale: () => void;
+  onStale: (reason: StaleReason) => void;
 }) {
   const queryClient = useQueryClient();
   const titleId = useId();
@@ -130,11 +132,11 @@ export function ProjectFormDialog({
     if (!inFlight.current) onCancel();
   };
 
-  const stale = () => {
+  const stale = (reason: StaleReason) => {
     void queryClient.invalidateQueries({
       queryKey: projectQueryKeys.all(organizationId),
     });
-    onStale();
+    onStale(reason);
   };
 
   const handleError = (error: unknown) => {
@@ -153,8 +155,10 @@ export function ProjectFormDialog({
         return;
       case "PERMISSION_DENIED":
       case "MEMBERSHIP_DENIED":
+        stale("denied");
+        return;
       case "PROJECT_NOT_FOUND":
-        stale();
+        stale("not-found");
         return;
       default:
         setFormError(FAILED_MESSAGE);

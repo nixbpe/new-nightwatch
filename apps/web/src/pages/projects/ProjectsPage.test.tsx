@@ -256,6 +256,10 @@ describe("empty states (AC-06, AC-07)", () => {
     expect(screen.queryByText("ยังไม่มีโปรเจกต์")).toBeNull();
     await user.click(screen.getByRole("button", { name: "ล้างตัวกรอง" }));
     expect(await screen.findByText("Secret")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    expect(screen.getByRole("status", { name: "ผลการกรอง" })).toHaveTextContent(
+      "",
+    );
   });
 });
 
@@ -595,5 +599,70 @@ describe("delete (AC-08)", () => {
     await waitFor(() => {
       expect(fetchListMock.mock.calls.length).toBeGreaterThan(callsBefore);
     });
+  });
+});
+
+describe("role changed under the user", () => {
+  const ROLE_CHANGED =
+    "สิทธิ์ของคุณในองค์กรเปลี่ยนไป รายการถูกโหลดใหม่ตามสิทธิ์ปัจจุบัน";
+
+  it.each(["edit", "delete"] as const)(
+    "reloads the list and the role after a denied %s",
+    async (action) => {
+      const user = userEvent.setup();
+      const target = project({ name: "Payments", myRole: "admin" });
+      fetchListMock.mockResolvedValueOnce({ projects: [target] });
+      renderPage();
+      const opener = await screen.findByRole("button", {
+        name: `${action === "edit" ? "แก้ไข" : "ลบ"} Payments`,
+      });
+      fetchMeContextMock.mockResolvedValue(context("viewer"));
+      fetchListMock.mockResolvedValue({ projects: [target] });
+      const denied = new ApiError("PERMISSION_DENIED", "no", 403);
+      updateMock.mockRejectedValue(denied);
+      deleteMock.mockRejectedValue(denied);
+
+      await user.click(opener);
+      const dialog = await screen.findByRole("dialog");
+      await user.click(
+        within(dialog).getByRole("button", {
+          name: action === "edit" ? "บันทึก" : "ลบโปรเจกต์",
+        }),
+      );
+
+      expect(await screen.findByText(ROLE_CHANGED)).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("button", { name: "สร้างโปรเจกต์" }),
+        ).toBeNull();
+        expect(screen.queryByRole("button", { name: /^ลบ / })).toBeNull();
+      });
+      expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(1);
+    },
+  );
+});
+
+describe("stale list", () => {
+  it("warns when a refetch fails after a successful load and drops the success notice", async () => {
+    const user = userEvent.setup();
+    fetchListMock.mockResolvedValueOnce({
+      projects: [project({ name: "Old" })],
+    });
+    renderPage();
+    const dialog = await openCreate(user);
+    createMock.mockResolvedValue(project({ name: "Fresh" }));
+    fetchListMock.mockRejectedValue(new ApiError("HTTP_500", "boom", 500));
+    await user.type(within(dialog).getByLabelText("ชื่อโปรเจกต์"), "Fresh");
+    await user.type(within(dialog).getByLabelText("slug"), "fresh");
+    await user.click(
+      within(dialog).getByRole("button", { name: "สร้างโปรเจกต์" }),
+    );
+
+    expect(
+      await screen.findByText(/อัปเดตรายการไม่สำเร็จ/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Old")).toBeInTheDocument();
+    expect(screen.queryByText("สร้างโปรเจกต์ Fresh แล้ว")).toBeNull();
   });
 });
