@@ -33,6 +33,7 @@ import {
   OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
+import { fetchProjectList, projectQueryKeys } from "../api/projects";
 import { authClient } from "../auth-client";
 import { formatAuditDate, readPreferences } from "../preferences";
 import {
@@ -231,6 +232,37 @@ export async function monitorsOverviewLoader({
     .query({
       queryKey: monitorQueryKeys.list(organizationId, listParams),
       queryFn: () => fetchMonitorList(organizationId, listParams),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
+  return null;
+}
+
+// Same membership check as the Overview loader; the whole project list is one request.
+export async function projectsLoader({
+  params,
+  request,
+}: LoaderFunctionArgs): Promise<null | Response> {
+  const sessionOrRedirect = await gateVerifiedSession(request);
+  if (sessionOrRedirect instanceof Response) {
+    return sessionOrRedirect;
+  }
+  const organizationId = params.organizationId;
+  if (organizationId === undefined) {
+    return null;
+  }
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  if (
+    context?.organizations.some(
+      (organization) => organization.id === organizationId,
+    ) !== true
+  ) {
+    return null;
+  }
+  await resolveQueryClientForIdentity(sessionOrRedirect.user.id)
+    .query({
+      queryKey: projectQueryKeys.list(organizationId),
+      queryFn: () => fetchProjectList(organizationId),
       staleTime: "static",
     })
     .catch(() => undefined);

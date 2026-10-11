@@ -922,7 +922,7 @@ describe("AppShell", () => {
       name: "ค้นหาทั้งหมด",
     });
     expect(input).toHaveFocus();
-    expect(within(dialog).getAllByRole("option")).toHaveLength(11);
+    expect(within(dialog).getAllByRole("option")).toHaveLength(12);
     for (const name of [
       "ภาพรวม",
       "ตรวจสถานะบริการ",
@@ -932,6 +932,7 @@ describe("AppShell", () => {
       "ความปลอดภัย",
       "เซสชันและอุปกรณ์",
       "การแสดงผล",
+      "โปรเจกต์ทั้งหมด",
       "สมาชิก",
       "ตั้งค่าการแจ้งเตือน",
       "บันทึกกิจกรรม",

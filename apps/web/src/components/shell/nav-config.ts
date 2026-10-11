@@ -58,6 +58,11 @@ export const NAV_ITEMS: NavItem[] = [
     label: "องค์กร",
     children: [
       {
+        label: "โปรเจกต์ทั้งหมด",
+        icon: "grid",
+        path: "/organizations/:organizationId/projects",
+      },
+      {
         label: "สมาชิก",
         icon: "users",
         path: "/organizations/:organizationId/members",
