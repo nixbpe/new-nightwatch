@@ -766,7 +766,6 @@ function ProjectMembers({
           projectName={project.name}
           opener={adding.opener}
           fallbackFocus={heading}
-          memberIds={members.map((member) => member.userId)}
           onAdded={async ({ added, already, role }) => {
             const reloaded = await refresh();
             // Only people this request added count; the rest were in already.

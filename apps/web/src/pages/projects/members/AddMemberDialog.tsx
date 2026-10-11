@@ -66,7 +66,6 @@ export function AddMemberDialog({
   projectName,
   opener,
   fallbackFocus,
-  memberIds,
   onAdded,
   onCancel,
   onStale,
@@ -77,8 +76,6 @@ export function AddMemberDialog({
   projectName: string;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
-  /** Who was in the Project when the dialog's request was built. */
-  memberIds: readonly string[];
   onAdded: (result: AddResult) => Promise<void>;
   onCancel: () => void;
   onStale: (reason: AddStaleReason) => void;
@@ -158,15 +155,14 @@ export function AddMemberDialog({
     setSubmitting(true);
     setFormError(null);
     try {
-      const { members } = await addProjectMembers(organizationId, projectId, {
-        userIds: selected,
-        role,
-      });
-      const before = new Set(memberIds);
-      const after = new Set(members.map((member) => member.userId));
-      const added = selected.filter(
-        (id) => !before.has(id) && after.has(id),
-      ).length;
+      // The API reports who its inserts actually added; the rest were in already.
+      const { addedUserIds } = await addProjectMembers(
+        organizationId,
+        projectId,
+        { userIds: selected, role },
+      );
+      const inserted = new Set(addedUserIds);
+      const added = selected.filter((id) => inserted.has(id)).length;
       await onAdded({ added, already: selected.length - added, role });
     } catch (error) {
       if (error instanceof ApiError) {

@@ -31,7 +31,6 @@ import {
   fetchProjectDetail,
   fetchProjectMemberCandidates,
   fetchProjectMembers,
-  projectQueryKeys,
   removeProjectMember,
   updateProjectMemberRole,
 } from "../../../lib/api/projects";
@@ -571,7 +570,7 @@ describe("add member dialog", () => {
     const user = userEvent.setup();
     addMock.mockImplementation((_org, _project, body) => {
       roster = [...roster, ...body.userIds.map((id) => member(id, body.role))];
-      return Promise.resolve({ members: roster });
+      return Promise.resolve({ members: roster, addedUserIds: body.userIds });
     });
     renderPage();
     const dialog = await openDialog(user);
@@ -606,25 +605,18 @@ describe("add member dialog", () => {
     expect(screen.getByTestId("project-members-add")).toHaveFocus();
   });
 
-  // Another admin adds kitti after the picks were made; the page list refetches,
-  // then the request succeeds with kitti's existing role kept (ON CONFLICT DO NOTHING).
-  async function otherAdminAddsKitti() {
-    roster = [...roster, member("kitti", "admin")];
-    await queryClients[0]?.invalidateQueries({
-      queryKey: projectQueryKeys.members(A, P),
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId("project-members-shown")).toHaveTextContent(
-        /4\D+4/,
-      );
-    });
-  }
-
+  // Another admin adds kitti after the picks were made, and this page's list has
+  // not refetched: the API keeps kitti's role (ON CONFLICT DO NOTHING) and its
+  // addedUserIds names only the insert that happened.
   it("counts only the people this request added when another admin added some first", async () => {
     const user = userEvent.setup();
     addMock.mockImplementation(() => {
-      roster = [...roster, member("pakorn", "member")];
-      return Promise.resolve({ members: roster });
+      roster = [
+        ...roster,
+        member("kitti", "admin"),
+        member("pakorn", "member"),
+      ];
+      return Promise.resolve({ members: roster, addedUserIds: ["pakorn"] });
     });
     renderPage();
     const dialog = await openDialog(user);
@@ -634,7 +626,6 @@ describe("add member dialog", () => {
     await user.click(
       candidate(dialog, "pakorn").getByTestId("add-member-checkbox"),
     );
-    await otherAdminAddsKitti();
     await user.click(within(dialog).getByTestId("add-member-submit"));
     const notice = await screen.findByTestId("project-members-notice-saved");
     expect(notice).toHaveTextContent("เพิ่ม 1 คนเป็นสมาชิกแล้ว");
@@ -643,13 +634,15 @@ describe("add member dialog", () => {
 
   it("does not report a success when everyone picked was already in the project", async () => {
     const user = userEvent.setup();
-    addMock.mockImplementation(() => Promise.resolve({ members: roster }));
+    addMock.mockImplementation(() => {
+      roster = [...roster, member("kitti", "admin")];
+      return Promise.resolve({ members: roster, addedUserIds: [] });
+    });
     renderPage();
     const dialog = await openDialog(user);
     await user.click(
       candidate(dialog, "kitti").getByTestId("add-member-checkbox"),
     );
-    await otherAdminAddsKitti();
     await user.click(within(dialog).getByTestId("add-member-submit"));
     expect(
       await screen.findByTestId("project-members-notice-stale"),
@@ -712,7 +705,7 @@ describe("add member dialog", () => {
 
   it("picks the admin role with the arrow keys and sends it", async () => {
     const user = userEvent.setup();
-    addMock.mockResolvedValue({ members: roster });
+    addMock.mockResolvedValue({ members: roster, addedUserIds: ["napa"] });
     renderPage();
     const dialog = await openDialog(user);
     await user.click(
