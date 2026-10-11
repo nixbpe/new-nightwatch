@@ -53,6 +53,14 @@ describe("changeText", () => {
         after: { kind: "value", value: "admin" },
       }),
     ).toBe("role: viewer → admin");
+    // A Project role change reads the same way: the export keeps role codes.
+    expect(
+      changeText({
+        field: "role",
+        before: { kind: "value", value: "member" },
+        after: { kind: "value", value: "admin" },
+      }),
+    ).toBe("role: member → admin");
     expect(
       changeText({
         field: "queryParam",

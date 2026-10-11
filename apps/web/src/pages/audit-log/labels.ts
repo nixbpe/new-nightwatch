@@ -17,8 +17,11 @@ export function personName(person: AuditActor | AuditActorOption): string {
     : person.displayName;
 }
 
+// Project roles: "admin" shares the Organization label; "member" exists only here.
+const PROJECT_ROLE_LABELS: Record<string, string> = { member: "สมาชิก" };
+
 export function roleLabel(role: string): string {
-  return ROLE_LABELS[role] ?? role;
+  return ROLE_LABELS[role] ?? PROJECT_ROLE_LABELS[role] ?? role;
 }
 
 export function actorText(actor: AuditActor): string {

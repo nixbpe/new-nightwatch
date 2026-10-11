@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { targetText } from "./labels";
+import { auditValueText, targetText } from "./labels";
 
 const projectId = crypto.randomUUID();
 
@@ -72,5 +72,14 @@ describe("targetText for a Project member", () => {
 
   it("keeps the Organization member target unchanged", () => {
     expect(targetText(member)).toBe("Somchai");
+  });
+});
+
+describe("auditValueText for a Project role change", () => {
+  it("labels the Project roles, not the raw code", () => {
+    const value = (raw: string) => ({ kind: "value" as const, value: raw });
+    expect(auditValueText("role", value("member"))).toBe("สมาชิก");
+    expect(auditValueText("role", value("admin"))).toBe("ผู้ดูแล");
+    expect(auditValueText("role", value("viewer"))).toBe("ผู้ชม");
   });
 });

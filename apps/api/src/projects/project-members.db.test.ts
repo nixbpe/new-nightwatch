@@ -465,10 +465,11 @@ describe("change role and remove (AC-05, AC-06, AC-09)", () => {
     },
   );
 
-  // Both requests wait on the Project row, so each starts its work only after
-  // the other has finished or is about to; whichever runs second must see the
-  // first's result. Actors are Organization Owner and Admin (not Project
-  // members), so the loser's rejection is the last-admin rule, not a lost permission.
+  // Both requests wait on the Project row, so whichever runs second must see
+  // the first's result. Each caller picks its actors: the demotion and
+  // removal races use the Organization Owner and Admin (not Project members),
+  // so the loser's rejection is the last-admin rule, not a lost permission.
+  // The self-demotion race uses the two Project administrators themselves.
   async function race(
     first: (projectId: string) => ReturnType<typeof ctx.call>,
     second: (projectId: string) => ReturnType<typeof ctx.call>,
