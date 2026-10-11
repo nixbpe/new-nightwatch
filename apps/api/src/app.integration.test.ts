@@ -135,6 +135,7 @@ describe("request completion logging", () => {
   it("redacts organization namespace audit inputs in actual completion logs", async () => {
     const organizationId = "11111111-1111-4111-8111-111111111111";
     const memberId = "22222222-2222-4222-8222-222222222222";
+    const projectId = "33333333-3333-4333-8333-333333333333";
     const logLines: string[] = [];
     const app = makeApp({
       logger: createLogger(
@@ -171,6 +172,14 @@ describe("request completion logging", () => {
       {
         input: `/api/organizations/${organizationId}/invitations`,
         expected: "/api/organizations/:organizationId/invitations",
+      },
+      {
+        input: `/api/organizations/${organizationId}/projects`,
+        expected: "/api/organizations/:organizationId/projects",
+      },
+      {
+        input: `/api/organizations/${organizationId}/projects/${projectId}`,
+        expected: "/api/organizations/:organizationId/projects/:projectId",
       },
       {
         input: `/api/organizations/${organizationId}//members//${memberId}/role`,
@@ -345,6 +354,7 @@ describe("request completion logging", () => {
       if (!paths[index]?.expected.includes(":")) continue;
       expect(JSON.stringify(completion)).not.toContain(organizationId);
       expect(JSON.stringify(completion)).not.toContain(memberId);
+      expect(JSON.stringify(completion)).not.toContain(projectId);
     }
   });
 });

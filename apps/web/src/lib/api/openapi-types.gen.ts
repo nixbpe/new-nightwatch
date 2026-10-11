@@ -5091,9 +5091,9 @@ export interface paths {
                                 /** Format: date-time */
                                 occurredAt: string;
                                 /** @enum {string} */
-                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log";
+                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5107,6 +5107,13 @@ export interface paths {
                                     type: "monitor";
                                     /** Format: uuid */
                                     monitorId: string;
+                                    displayName: string | null;
+                                    deleted: boolean;
+                                } | {
+                                    /** @enum {string} */
+                                    type: "project";
+                                    /** Format: uuid */
+                                    projectId: string;
                                     displayName: string | null;
                                     deleted: boolean;
                                 } | {
@@ -5250,9 +5257,9 @@ export interface paths {
                                 /** Format: date-time */
                                 occurredAt: string;
                                 /** @enum {string} */
-                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log";
+                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project";
                                 /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export";
+                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete";
                                 actor: {
                                     userId: string;
                                     displayName: string | null;
@@ -5266,6 +5273,13 @@ export interface paths {
                                     type: "monitor";
                                     /** Format: uuid */
                                     monitorId: string;
+                                    displayName: string | null;
+                                    deleted: boolean;
+                                } | {
+                                    /** @enum {string} */
+                                    type: "project";
+                                    /** Format: uuid */
+                                    projectId: string;
                                     displayName: string | null;
                                     deleted: boolean;
                                 } | {
@@ -5295,7 +5309,7 @@ export interface paths {
                                 };
                                 changes: {
                                     /** @enum {string} */
-                                    field: "role" | "monitorAlertsEnabled" | "settingsChangedEnabled" | "name" | "url" | "method" | "intervalSeconds" | "timeoutSeconds" | "header" | "queryParam" | "body" | "authType" | "apiKeyHeaderName" | "expectedStatus" | "assertions" | "secret" | "alertFailureThreshold" | "alertDownEnabled" | "alertSslEnabled" | "alertSslCautionDays";
+                                    field: "role" | "monitorAlertsEnabled" | "settingsChangedEnabled" | "name" | "description" | "url" | "method" | "intervalSeconds" | "timeoutSeconds" | "header" | "queryParam" | "body" | "authType" | "apiKeyHeaderName" | "expectedStatus" | "assertions" | "secret" | "alertFailureThreshold" | "alertDownEnabled" | "alertSslEnabled" | "alertSslCautionDays";
                                     key?: string;
                                     before: ({
                                         /** @enum {string} */
@@ -5331,7 +5345,7 @@ export interface paths {
                                     format: "csv" | "json";
                                     from: string | null;
                                     to: string | null;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log")[];
+                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
                                     actorUserId: string | null;
                                     searchApplied: boolean;
                                 };
@@ -5572,7 +5586,7 @@ export interface paths {
                                     from: string;
                                     /** Format: date-time */
                                     to: string;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log")[];
+                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
                                     actorUserId: string | null;
                                     q: string | null;
                                 };
@@ -5677,7 +5691,7 @@ export interface paths {
                             from: string;
                             /** Format: date-time */
                             to: string;
-                            categories?: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log")[];
+                            categories?: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
                             actorUserId?: string;
                             q?: string;
                         };
@@ -5706,7 +5720,7 @@ export interface paths {
                                     from: string;
                                     /** Format: date-time */
                                     to: string;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log")[];
+                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
                                     actorUserId: string | null;
                                     q: string | null;
                                 };
@@ -5984,6 +5998,509 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the Projects the user can see */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Projects, ordered by name */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            projects: {
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                                slug: string;
+                                description: string | null;
+                                memberCount: number;
+                                /** @enum {string|null} */
+                                myRole: "admin" | "member" | null;
+                                /** Format: date-time */
+                                updatedAt: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Invalid project input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or permission is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a Project; the creator becomes its administrator */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        slug: string;
+                        description?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Created Project */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            slug: string;
+                            description: string | null;
+                            memberCount: number;
+                            /** @enum {string|null} */
+                            myRole: "admin" | "member" | null;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        };
+                    };
+                };
+                /** @description Invalid project input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or permission is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The slug is taken in the Organization, or the Organization is at its Project limit */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_SLUG_TAKEN";
+                                message: string;
+                                details: {
+                                    /** @enum {string} */
+                                    field: "slug";
+                                };
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_LIMIT_REACHED";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{organizationId}/projects/{projectId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a Project and everything that belongs to it */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid project input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or permission is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change the name or description of a Project (idempotent) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    organizationId: string;
+                    projectId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        description?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description The Project, changed or as it was */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            slug: string;
+                            description: string | null;
+                            memberCount: number;
+                            /** @enum {string|null} */
+                            myRole: "admin" | "member" | null;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        };
+                    };
+                };
+                /** @description Invalid project input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "INVALID_INPUT";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or permission is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/health": {
