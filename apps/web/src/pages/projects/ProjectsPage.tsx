@@ -115,6 +115,12 @@ function ProjectsForOrganization({
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
   >("idle");
+  // Set while a denied write waits for the list to reload: the list's update
+  // times when it was denied.
+  const [roleReload, setRoleReload] = useState<{
+    dataUpdatedAt: number;
+    errorUpdatedAt: number;
+  } | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -186,31 +192,44 @@ function ProjectsForOrganization({
 
   // Reloads the list and says so only once the list shows the result; a failed
   // reload leaves the stale list warning to speak for the page.
-  const reloadThenNotify = async (
-    next: NonNullable<typeof notice>,
-    cancelRefetch = true,
-  ) => {
+  const reloadThenNotify = async (text: string) => {
     const reloaded = await queryClient
       .invalidateQueries(
         { queryKey: projectQueryKeys.all(organizationId) },
-        { throwOnError: true, cancelRefetch },
+        { throwOnError: true },
       )
       .then(
         () => true,
         () => false,
       );
-    setNotice(reloaded ? next : null);
+    setNotice(reloaded ? { text, kind: "saved" } : null);
   };
 
   // A denied write means the role changed. The context refresh cancels tenant
-  // queries and refetches them itself when the Organization role changed, so
-  // the list reloads after it and joins that fetch instead of repeating it.
+  // queries, and removes them when the Organization role changed so the list
+  // query is rebuilt and refetched by its observer. The notice therefore waits
+  // for the list's own next result instead of the invalidation promise.
+  useEffect(() => {
+    if (roleReload === null) return;
+    if (list.dataUpdatedAt > roleReload.dataUpdatedAt) {
+      setRoleReload(null);
+      setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
+    } else if (list.errorUpdatedAt > roleReload.errorUpdatedAt) {
+      setRoleReload(null);
+    }
+  }, [roleReload, list.dataUpdatedAt, list.errorUpdatedAt]);
+
   const roleChanged = () => {
     setNotice(null);
+    setRoleReload({
+      dataUpdatedAt: list.dataUpdatedAt,
+      errorUpdatedAt: list.errorUpdatedAt,
+    });
     void refreshMembershipContext().finally(() => {
-      void reloadThenNotify(
-        { text: ROLE_CHANGED, kind: "role-changed" },
-        false,
+      // Joins the observer's refetch when the query was rebuilt.
+      void queryClient.invalidateQueries(
+        { queryKey: projectQueryKeys.all(organizationId) },
+        { cancelRefetch: false },
       );
     });
   };
@@ -245,10 +264,7 @@ function ProjectsForOrganization({
       });
       return;
     }
-    await reloadThenNotify({
-      text: `ลบโปรเจกต์ ${project.name} แล้ว`,
-      kind: "saved",
-    });
+    await reloadThenNotify(`ลบโปรเจกต์ ${project.name} แล้ว`);
     setDeletion(null);
   };
 
@@ -554,13 +570,11 @@ function ProjectsForOrganization({
           opener={dialog.opener}
           fallbackFocus={heading}
           onSaved={async (saved) => {
-            await reloadThenNotify({
-              text:
-                dialog.kind === "edit"
-                  ? `บันทึกโปรเจกต์ ${saved.name} แล้ว`
-                  : `สร้างโปรเจกต์ ${saved.name} แล้ว`,
-              kind: "saved",
-            });
+            await reloadThenNotify(
+              dialog.kind === "edit"
+                ? `บันทึกโปรเจกต์ ${saved.name} แล้ว`
+                : `สร้างโปรเจกต์ ${saved.name} แล้ว`,
+            );
             setDialog(null);
           }}
           onCancel={() => {
