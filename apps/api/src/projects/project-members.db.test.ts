@@ -667,6 +667,50 @@ describe("permissions (AC-07, AC-08)", () => {
         .status,
     ).toBe(401);
   });
+
+  it("denies a role that no longer normalizes by the action, not the lock", async () => {
+    const legacy = await ctx.createUser("pmember-legacy-role");
+    const memberId = `pmember-legacy-${ctx.run}`;
+    await ctx.owner.sql.query(
+      "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'member')",
+      [memberId, org.id, legacy],
+    );
+    try {
+      const projectId = await projectWith(org, [
+        [org.users.viewer, "admin"],
+        [legacy, "admin"],
+      ]);
+      const read = await ctx.call(
+        legacy,
+        "GET",
+        `${base(org, projectId)}/members`,
+      );
+      expect(read.status).toBe(403);
+      expect(errorCode(read)).toBe("MEMBERSHIP_DENIED");
+      // Candidates take the read lock but are a management action.
+      const manage = await Promise.all([
+        ctx.call(legacy, "GET", `${base(org, projectId)}/member-candidates`),
+        add(org, legacy, projectId, {
+          userIds: [org.users.auditor],
+          role: "member",
+        }),
+      ]);
+      for (const response of manage) {
+        expect(response.status).toBe(403);
+        expect(errorCode(response)).toBe("PERMISSION_DENIED");
+      }
+      expect(await rolesOf(projectId)).toEqual({
+        [org.users.viewer]: "admin",
+        [legacy]: "admin",
+      });
+    } finally {
+      await ctx.owner.sql.query(
+        "delete from project_members where tenant_id = $1 and user_id = $2",
+        [org.id, legacy],
+      );
+      await ctx.owner.sql.query("delete from member where id = $1", [memberId]);
+    }
+  });
 });
 
 describe("read", () => {

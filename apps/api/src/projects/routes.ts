@@ -8,15 +8,17 @@ import { requireVerifiedSession } from "../me/service";
 import { projectRouteDeclarations as routes } from "./contract";
 import {
   addProjectMembers,
+  listMemberCandidates,
+  listProjectMembers,
+  removeProjectMember,
+  updateProjectMember,
+} from "./members";
+import {
   createProject,
   deleteProject,
   getProject,
-  listMemberCandidates,
-  listProjectMembers,
   listProjects,
-  removeProjectMember,
   updateProject,
-  updateProjectMember,
 } from "./service";
 
 export type ProjectRouteDeps = {
