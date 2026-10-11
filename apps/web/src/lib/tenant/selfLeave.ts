@@ -1,6 +1,7 @@
 import type { MeContextResponse } from "@nightwatch/api-contract";
 
-export type SelfLeaveAttempt = "responded" | "last-owner" | "other-failure";
+export type SelfLeaveAttempt =
+  "responded" | "last-owner" | "last-project-admin" | "other-failure";
 export type SelfLeaveOrigin = Readonly<{
   signal: AbortSignal;
   isCurrent: () => boolean;
@@ -9,6 +10,8 @@ export type SelfLeaveInput = Readonly<{
   organizationId: string;
   origin: SelfLeaveOrigin;
   attempt: SelfLeaveAttempt;
+  /** Server text for `last-project-admin`, which names the Projects. */
+  message?: string;
 }>;
 export type SelfLeaveView =
   | { kind: "idle" }
@@ -16,7 +19,8 @@ export type SelfLeaveView =
   | {
       kind: "not-left";
       organizationId: string;
-      notice: "last-owner" | "other";
+      notice: "last-owner" | "last-project-admin" | "other";
+      message?: string;
     };
 
 export function selfLeaveDestination(

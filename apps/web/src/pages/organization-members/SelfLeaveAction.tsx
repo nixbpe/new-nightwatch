@@ -165,7 +165,9 @@ export function useSelfLeave({
     setNotice(
       selfLeave.notice === "last-owner"
         ? "องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน คุณยังไม่ได้ออกจากองค์กร และโหลดสถานะล่าสุดแล้ว"
-        : "ออกจากองค์กรไม่สำเร็จ โหลดสถานะล่าสุดแล้ว",
+        : selfLeave.notice === "last-project-admin" && selfLeave.message
+          ? selfLeave.message
+          : "ออกจากองค์กรไม่สำเร็จ โหลดสถานะล่าสุดแล้ว",
     );
     restoreFocus.current = true;
     inFlight.current = false;
@@ -201,6 +203,10 @@ export function useSelfLeave({
     setConfirmation(null);
     // The outcome of a failed DELETE is unknown (it may have committed), so the
     // server-confirmed context decides in both cases.
+    const projectAdminMessage =
+      failure instanceof ApiError && failure.code === "LAST_PROJECT_ADMIN"
+        ? failure.message
+        : null;
     await settleSelfLeave({
       organizationId,
       origin,
@@ -209,7 +215,10 @@ export function useSelfLeave({
           ? "responded"
           : failure instanceof ApiError && failure.code === "LAST_OWNER"
             ? "last-owner"
-            : "other-failure",
+            : projectAdminMessage !== null
+              ? "last-project-admin"
+              : "other-failure",
+      message: projectAdminMessage ?? undefined,
     });
   }
 

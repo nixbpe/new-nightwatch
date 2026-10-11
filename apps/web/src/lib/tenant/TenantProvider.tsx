@@ -76,7 +76,8 @@ type SelfLeaveRecord =
       kind: "not-left";
       source: SelfLeaveSource;
       binding: ConfirmationBinding;
-      notice: "last-owner" | "other";
+      notice: "last-owner" | "last-project-admin" | "other";
+      message?: string;
     };
 type ConfirmationOutcome =
   | {
@@ -405,7 +406,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         kind: "not-left",
         source,
         binding: outcome.binding,
-        notice: input.attempt === "last-owner" ? "last-owner" : "other",
+        notice:
+          input.attempt === "last-owner" ||
+          input.attempt === "last-project-admin"
+            ? input.attempt
+            : "other",
+        message: input.message,
       });
     } else {
       setSelfLeave({
@@ -469,6 +475,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
             kind: "not-left",
             organizationId: renderedSelfLeave.source.organizationId,
             notice: renderedSelfLeave.notice,
+            message: renderedSelfLeave.message,
           }
         : {
             kind: renderedSelfLeave.kind,

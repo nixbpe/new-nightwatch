@@ -348,6 +348,25 @@ it("explains LAST_OWNER, refreshes context, retains the organization and returns
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
 });
 
+it("shows the server message naming the Projects on LAST_PROJECT_ADMIN and keeps the organization", async () => {
+  const message =
+    "ออกจากองค์กรไม่ได้ ต้องตั้งผู้ดูแลคนอื่นก่อนในโปรเจกต์: Alpha, Beta";
+  vi.mocked(leaveOrganization).mockRejectedValue(
+    new ApiError("LAST_PROJECT_ADMIN", message, 409),
+  );
+  const user = await renderAs("viewer");
+  await user.click(entry());
+  await user.click(confirmButton());
+  expect(await screen.findByTestId("self-leave-error")).toHaveTextContent(
+    message,
+  );
+  expect(leaveOrganization).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId("location")).toHaveTextContent(
+    `/organizations/${A}/members`,
+  );
+  await waitFor(() => expect(entry()).toBeEnabled());
+});
+
 it("announces another failure, refreshes the context and never replays the DELETE", async () => {
   vi.mocked(leaveOrganization).mockRejectedValue(
     new ApiError("INTERNAL_ERROR", "boom", 500),
