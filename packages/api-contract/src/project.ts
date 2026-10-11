@@ -58,7 +58,7 @@ export const projectOrganizationParamsSchema = z.object({
 });
 /** A malformed id answers 404 like a missing one, so it is parsed in the service. */
 export const projectParamsSchema = projectOrganizationParamsSchema.extend({
-  projectId: z.string().max(64),
+  projectId: z.string(),
 });
 
 export const PROJECT_ERROR_CODES = [

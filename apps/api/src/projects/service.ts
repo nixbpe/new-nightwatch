@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   PROJECT_LIMIT_PER_ORGANIZATION,
   type CreateProjectRequest,
@@ -70,6 +72,19 @@ function isOrganizationAdmin(role: OrganizationRole | null): boolean {
   return role === "owner" || role === "admin";
 }
 
+async function memberRole(
+  client: PoolClient,
+  identity: Identity,
+): Promise<string> {
+  const member = await client.query<{ role: string }>(
+    "select role from member where organization_id = $1 and user_id = $2",
+    [identity.organizationId, identity.actorUserId],
+  );
+  const role = member.rows[0]?.role;
+  if (role === undefined) membershipDenied();
+  return role;
+}
+
 // Lock order shared by every Project write: organization row, then the
 // per-Organization advisory lock (create only), then the projects row
 // (update and delete). The role is read after the organization lock because it
@@ -84,13 +99,7 @@ async function enterOrganization(
     [identity.organizationId],
   );
   if (organization.rows.length === 0) membershipDenied();
-  const member = await client.query<{ role: string }>(
-    "select role from member where organization_id = $1 and user_id = $2",
-    [identity.organizationId, identity.actorUserId],
-  );
-  const raw = member.rows[0]?.role;
-  if (raw === undefined) membershipDenied();
-  const role = normalizeOrganizationRole(raw);
+  const role = normalizeOrganizationRole(await memberRole(client, identity));
   if (role === null) {
     throw new AppError(
       403,
@@ -165,13 +174,9 @@ export async function listProjects(
     database,
     identity.organizationId,
     async (client) => {
-      const member = await client.query<{ role: string }>(
-        "select role from member where organization_id = $1 and user_id = $2",
-        [identity.organizationId, identity.actorUserId],
+      const seesAll = isOrganizationAdmin(
+        normalizeOrganizationRole(await memberRole(client, identity)),
       );
-      const raw = member.rows[0]?.role;
-      if (raw === undefined) membershipDenied();
-      const seesAll = isOrganizationAdmin(normalizeOrganizationRole(raw));
       const result = await client.query<ProjectRow>(
         `${SUMMARY_SELECT}${seesAll ? "" : " and me.user_id is not null"}
          order by p.name, p.id`,
@@ -217,21 +222,19 @@ export async function createProject(
           "องค์กรนี้มีโปรเจกต์ครบจำนวนสูงสุดแล้ว",
         );
       }
-      let projectId: string;
+      const projectId = randomUUID();
       try {
-        const inserted = await client.query<{ id: string }>(
-          `insert into projects (tenant_id, name, slug, description)
-           values ($1, $2, $3, $4) returning id`,
+        await client.query(
+          `insert into projects (id, tenant_id, name, slug, description)
+           values ($1, $2, $3, $4, $5)`,
           [
+            projectId,
             input.organizationId,
             input.input.name,
             input.input.slug,
             input.input.description ?? null,
           ],
         );
-        const id = inserted.rows[0]?.id;
-        if (!id) throw new Error("project insert returned no row");
-        projectId = id;
       } catch (error) {
         const failure = error as { code?: string; constraint?: string };
         if (
