@@ -1,7 +1,7 @@
 import type { ProjectMember, ProjectRole } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useNavigation, useParams } from "react-router";
 
 import { SearchIcon } from "../../../components/shell/icons";
 import { initialsOf } from "../../../components/shell/initials";
@@ -66,6 +66,10 @@ export function ProjectMembersPage() {
     />
   );
 }
+
+// The last navigation state any instance of this page saw. The context reload
+// can remount the page, and a per-instance ref would be lost with it.
+let latestNavigationState: "idle" | "loading" | "submitting" = "idle";
 
 function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.code === "PROJECT_NOT_FOUND";
@@ -135,6 +139,10 @@ function ProjectMembers({
   // Project query of the Organization goes, the list included, so the list
   // page fetches fresh and cannot offer the lost Project; it announces why.
   const redirected = useRef(false);
+  const navigation = useNavigation();
+  useEffect(() => {
+    latestNavigationState = navigation.state;
+  }, [navigation.state]);
   useEffect(() => {
     if (!notFound || denied || redirected.current) return;
     redirected.current = true;
@@ -143,13 +151,16 @@ function ProjectMembers({
         ? PROJECT_GONE_NOTICE
         : `คุณออกจากโปรเจกต์ ${leftProject} แล้ว`;
     // The context reload may remount this page, so the redirect does not
-    // depend on this instance; it only yields to a navigation made meanwhile.
+    // depend on this instance. It yields to a navigation the user started
+    // meanwhile: finished (the pathname moved) or still loading (the data
+    // router moves the location only after the destination's loader).
     const here = window.location.pathname;
     void refreshMembershipContext().finally(() => {
       queryClient.removeQueries({
         queryKey: projectQueryKeys.all(organizationId),
       });
-      if (window.location.pathname !== here) return;
+      if (window.location.pathname !== here || latestNavigationState !== "idle")
+        return;
       void navigate(`/organizations/${organizationId}/projects`, {
         replace: true,
         state: { projectNotice },

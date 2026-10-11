@@ -255,6 +255,40 @@ test.describe("other viewers", () => {
     await expect(page.getByTestId(`project-row-${projectId}`)).toHaveCount(0);
     await expect(page.getByText(`Payments ${run}`)).toHaveCount(0);
   });
+
+  test("a Project administrator removed from the Project is sent back to a list without it", async ({
+    page,
+  }) => {
+    const promote = await ownerSession.request(
+      "PATCH",
+      `${membersApi()}/${people.viewer.userId}`,
+      { role: "admin" },
+    );
+    expect(promote.status).toBe(200);
+    await signIn(page, people.viewer);
+    // The list and the members page are both cached before access is lost.
+    await page.goto(`/organizations/${org}/projects`);
+    await expect(page.getByTestId(`project-row-${projectId}`)).toBeVisible();
+    await page.getByTestId("project-members-link").click();
+    await expect(page.getByTestId("project-members-table")).toBeVisible();
+
+    const removed = await ownerSession.request(
+      "DELETE",
+      `${membersApi()}/${people.viewer.userId}`,
+    );
+    expect(removed.status).toBe(204);
+    // The next write answers 404, which reloads the Project and redirects.
+    await page
+      .getByTestId(`project-member-row-${people.viewer.userId}`)
+      .getByTestId("project-member-role-select")
+      .selectOption("member");
+
+    await expect(page).toHaveURL(new RegExp(`/organizations/${org}/projects$`));
+    await expect(
+      page.getByTestId("projects-notice-role-changed"),
+    ).toBeVisible();
+    await expect(page.getByTestId(`project-row-${projectId}`)).toHaveCount(0);
+  });
 });
 
 for (const theme of ["light", "dark"] as const) {

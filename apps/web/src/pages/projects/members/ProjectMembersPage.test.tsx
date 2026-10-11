@@ -408,6 +408,72 @@ describe("states", () => {
     expect(meMock.mock.calls.length).toBeGreaterThan(contextCalls);
   });
 
+  it("does not cancel a navigation the user started while the context reload was pending", async () => {
+    const gone = new ApiError("PROJECT_NOT_FOUND", "missing", 404);
+    detailMock.mockRejectedValue(gone);
+    membersMock.mockRejectedValue(gone);
+    let finishReload: (value: MeContextResponse) => void = () => undefined;
+    meMock.mockResolvedValueOnce(context("owner"));
+    meMock.mockImplementationOnce(
+      () =>
+        new Promise<MeContextResponse>((resolve) => {
+          finishReload = resolve;
+        }),
+    );
+    let finishLoader: (value: null) => void = () => undefined;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    });
+    bindQueryClientIdentity(queryClient, ME);
+    queryClients.push(queryClient);
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/organizations/:organizationId/projects/:projectId/members",
+          element: <ProjectMembersPage />,
+        },
+        {
+          path: "/organizations/:organizationId/projects",
+          element: <ProjectsPage />,
+        },
+        {
+          path: "/elsewhere",
+          loader: () =>
+            new Promise<null>((resolve) => {
+              finishLoader = resolve;
+            }),
+          element: <p data-testid="elsewhere">elsewhere</p>,
+        },
+      ],
+      { initialEntries: [`/organizations/${A}/projects/${P}/members`] },
+    );
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider>
+          <RouterProvider router={router} />
+        </TenantProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(meMock).toHaveBeenCalledTimes(2);
+    });
+    // The user picks another page; its loader has not finished yet.
+    void router.navigate("/elsewhere");
+    await waitFor(() => {
+      expect(router.state.navigation.state).toBe("loading");
+    });
+    await act(async () => {
+      finishReload(context("owner"));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    await act(async () => {
+      finishLoader(null);
+    });
+    expect(await screen.findByTestId("elsewhere")).toBeVisible();
+    expect(router.state.location.pathname).toBe("/elsewhere");
+    expect(screen.queryByTestId("projects-notice-role-changed")).toBeNull();
+  });
+
   it("shows denied for an organization the user does not belong to, without a request", async () => {
     renderPage(B);
     expect(
