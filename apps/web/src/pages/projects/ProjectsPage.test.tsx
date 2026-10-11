@@ -95,6 +95,7 @@ beforeEach(() => {
   fetchMeContextMock.mockResolvedValue(context("owner"));
 });
 
+let lastRouter: ReturnType<typeof createMemoryRouter>;
 function renderPage(organizationId = A, state?: unknown) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -114,6 +115,7 @@ function renderPage(organizationId = A, state?: unknown) {
       ],
     },
   );
+  lastRouter = router;
   return render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -914,5 +916,24 @@ describe("a Project that answers 404 (AC-05)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("page-title")).toHaveFocus();
     });
+    // The heading reads the notice after its name, so focus announces it.
+    expect(screen.getByTestId("page-title")).toHaveAccessibleDescription(
+      "ไม่พบโปรเจกต์นี้",
+    );
+  });
+
+  it("drops the carried notice from history after reading it, so reload or back does not replay it", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, { projectNotice: "ไม่พบโปรเจกต์นี้" });
+    expect(
+      await screen.findByTestId("projects-notice-role-changed"),
+    ).toBeVisible();
+    await waitFor(() => {
+      expect(lastRouter.state.location.state).toBeNull();
+    });
+    expect(lastRouter.state.location.pathname).toBe(
+      `/organizations/${A}/projects`,
+    );
+    expect(screen.getByTestId("projects-notice-role-changed")).toBeVisible();
   });
 });

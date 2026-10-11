@@ -68,6 +68,7 @@ export function PageHeader({
   actions,
   titleRef,
   titleTabIndex,
+  titleDescribedBy,
   titleClassName,
   titleTestId = "page-title",
   scopeTestId = "page-scope",
@@ -85,6 +86,8 @@ export function PageHeader({
   actions?: ReactNode;
   titleRef?: Ref<HTMLHeadingElement>;
   titleTabIndex?: number;
+  /** Id of a notice the heading's accessible description should read after its name. */
+  titleDescribedBy?: string;
   titleClassName?: string;
 }) {
   return (
@@ -126,6 +129,7 @@ export function PageHeader({
           )}
           ref={titleRef}
           tabIndex={titleTabIndex}
+          aria-describedby={titleDescribedBy}
         >
           {title}
         </h1>

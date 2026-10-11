@@ -9,6 +9,7 @@ import type {
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -30,6 +31,7 @@ import { fetchMeContext, updateActiveOrganization } from "../../../lib/api/me";
 import {
   addProjectMembers,
   fetchProjectDetail,
+  fetchProjectList,
   fetchProjectMemberCandidates,
   fetchProjectMembers,
   projectQueryKeys,
@@ -37,6 +39,7 @@ import {
   updateProjectMemberRole,
 } from "../../../lib/api/projects";
 import { TenantProvider, useTenant } from "../../../lib/tenant/TenantProvider";
+import { ProjectsPage } from "../ProjectsPage";
 import { PROJECT_GONE_NOTICE, ProjectMembersPage } from "./ProjectMembersPage";
 
 guardUnassignedNetwork();
@@ -49,6 +52,7 @@ vi.mock("../../../lib/api/me", async (importOriginal) => ({
 vi.mock("../../../lib/api/projects", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchProjectDetail: vi.fn(),
+  fetchProjectList: vi.fn(),
   fetchProjectMembers: vi.fn(),
   fetchProjectMemberCandidates: vi.fn(),
   addProjectMembers: vi.fn(),
@@ -58,6 +62,7 @@ vi.mock("../../../lib/api/projects", async (importOriginal) => ({
 
 const meMock = vi.mocked(fetchMeContext);
 const detailMock = vi.mocked(fetchProjectDetail);
+const listMock = vi.mocked(fetchProjectList);
 const membersMock = vi.mocked(fetchProjectMembers);
 const candidatesMock = vi.mocked(fetchProjectMemberCandidates);
 const addMock = vi.mocked(addProjectMembers);
@@ -128,6 +133,7 @@ afterEach(async () => {
   vi.resetAllMocks();
 });
 beforeEach(() => {
+  listMock.mockResolvedValue({ projects: [] });
   meMock.mockResolvedValue(context("owner"));
   myRole = "admin";
   roster = [
@@ -169,21 +175,11 @@ beforeEach(() => {
   });
 });
 
-// Stands in for the list page: shows where a 404 sent the user and the notice it carried.
-function ProjectListStub() {
-  const state = useLocation().state as { projectNotice?: string } | null;
-  return (
-    <>
-      <p data-testid="harness-projects">projects</p>
-      <p data-testid="harness-notice">{state?.projectNotice}</p>
-    </>
-  );
-}
-
 let lastQueryClient: QueryClient;
 function renderPage(organizationId = A) {
+  // The app's 30 s staleTime: a cached list is not refetched on mount by itself.
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
   });
   lastQueryClient = queryClient;
   bindQueryClientIdentity(queryClient, ME);
@@ -196,7 +192,7 @@ function renderPage(organizationId = A) {
       },
       {
         path: "/organizations/:organizationId/projects",
-        element: <ProjectListStub />,
+        element: <ProjectsPage />,
       },
     ],
     {
@@ -346,10 +342,9 @@ describe("states", () => {
     detailMock.mockRejectedValue(error);
     membersMock.mockRejectedValue(error);
     renderPage();
-    expect(await screen.findByTestId("harness-projects")).toBeInTheDocument();
-    expect(screen.getByTestId("harness-notice")).toHaveTextContent(
-      PROJECT_GONE_NOTICE,
-    );
+    expect(
+      await screen.findByTestId("projects-notice-role-changed"),
+    ).toHaveTextContent(PROJECT_GONE_NOTICE);
     expect(screen.queryByTestId("project-members-table")).toBeNull();
     expect(
       lastQueryClient.getQueryCache().findAll({
@@ -372,12 +367,45 @@ describe("states", () => {
     detailMock.mockRejectedValue(gone);
     membersMock.mockRejectedValue(gone);
     await user.selectOptions(select("thanakorn"), "admin");
-    expect(await screen.findByTestId("harness-projects")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("projects-notice-role-changed"),
+    ).toBeVisible();
     expect(
       lastQueryClient.getQueryCache().findAll({
         queryKey: projectQueryKeys.project(A, P),
       }),
     ).toEqual([]);
+  });
+
+  it("refetches a cached list that still holds the lost Project, so its row is gone (AC-03, AC-05)", async () => {
+    renderPage();
+    await loaded();
+    const stale = {
+      id: P,
+      name: "Payments Platform",
+      slug: "payments-platform",
+      description: null,
+      memberCount: 2,
+      myRole: null,
+      updatedAt: "2026-10-10T07:32:00.000Z",
+    };
+    lastQueryClient.setQueryData(projectQueryKeys.list(A), {
+      projects: [stale],
+    });
+    const contextCalls = meMock.mock.calls.length;
+    const gone = new ApiError("PROJECT_NOT_FOUND", "missing", 404);
+    detailMock.mockRejectedValue(gone);
+    membersMock.mockRejectedValue(gone);
+    // A plain refetch, not a failed write: nothing else invalidates the list.
+    await act(async () => {
+      await lastQueryClient.refetchQueries({
+        queryKey: projectQueryKeys.detail(A, P),
+      });
+    });
+    expect(await screen.findByTestId("projects-empty-first-run")).toBeVisible();
+    expect(screen.queryByTestId(`project-row-${P}`)).toBeNull();
+    expect(listMock).toHaveBeenCalled();
+    expect(meMock.mock.calls.length).toBeGreaterThan(contextCalls);
   });
 
   it("shows denied for an organization the user does not belong to, without a request", async () => {
@@ -482,11 +510,13 @@ describe("self changes", () => {
     await loaded();
     await user.click(within(row(ME)).getByTestId("project-member-remove"));
     await user.click(screen.getByTestId("project-member-remove-confirm"));
-    expect(await screen.findByTestId("harness-projects")).toBeVisible();
+    expect(
+      await screen.findByTestId("projects-notice-role-changed"),
+    ).toBeVisible();
     expect(removeMock).toHaveBeenCalledWith(A, P, ME);
-    expect(screen.getByTestId("harness-notice")).toHaveTextContent(
-      /^คุณออกจากโปรเจกต์ .+ แล้ว$/,
-    );
+    expect(
+      screen.getByTestId("projects-notice-role-changed"),
+    ).toHaveTextContent(/^คุณออกจากโปรเจกต์ .+ แล้ว$/);
   });
 
   it("keeps the organization owner on the page after removing themself", async () => {
@@ -506,7 +536,6 @@ describe("self changes", () => {
         "none",
       );
     });
-    expect(screen.queryByTestId("project-members-left")).toBeNull();
   });
 });
 

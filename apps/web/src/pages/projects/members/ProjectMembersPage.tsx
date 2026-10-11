@@ -33,6 +33,7 @@ import { isDenied } from "../../workspace/rows";
 import { AddMemberDialog, type AddStaleReason } from "./AddMemberDialog";
 import { PROJECT_ROLE_DESCRIPTIONS, PROJECT_ROLE_LABELS } from "./roles";
 
+// The same notice for a missing Project and one the user cannot see (AC-08).
 export const PROJECT_GONE_NOTICE =
   "ไม่พบโปรเจกต์นี้ หรือคุณไม่มีสิทธิ์เข้าถึงโปรเจกต์นี้แล้ว";
 export const LAST_ADMIN_CHANGE_MESSAGE =
@@ -111,7 +112,7 @@ function ProjectMembers({
   >("idle");
   const heading = useRef<HTMLHeadingElement>(null);
   const refocusUserId = useRef<string | null>(null);
-  // Set when the user removes themself and loses access: says so instead of a bare not-found.
+  // Set when the user removes themself and loses access: the list notice says so.
   const [leftProject, setLeftProject] = useState<string | null>(null);
 
   const detail = useQuery({
@@ -129,21 +130,34 @@ function ProjectMembers({
 
   const notFound = isNotFound(detail.error) || isNotFound(membersQuery.error);
   const denied = isDenied(detail.error) || isDenied(membersQuery.error);
-  // A 404 means the Project is gone or no longer visible to this user: forget
-  // what was cached for it and go back to the list, which announces why.
+  // A 404 means the Project is gone or no longer visible to this user. The
+  // context reloads first (the role may have changed), then every cached
+  // Project query of the Organization goes, the list included, so the list
+  // page fetches fresh and cannot offer the lost Project; it announces why.
+  const redirected = useRef(false);
+  const mounted = useRef(true);
   useEffect(() => {
-    if (!notFound || denied) return;
-    queryClient.removeQueries({
-      queryKey: projectQueryKeys.project(organizationId, projectId),
-    });
-    void navigate(`/organizations/${organizationId}/projects`, {
-      replace: true,
-      state: {
-        projectNotice:
-          leftProject === null
-            ? PROJECT_GONE_NOTICE
-            : `คุณออกจากโปรเจกต์ ${leftProject} แล้ว`,
-      },
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!notFound || denied || redirected.current) return;
+    redirected.current = true;
+    const projectNotice =
+      leftProject === null
+        ? PROJECT_GONE_NOTICE
+        : `คุณออกจากโปรเจกต์ ${leftProject} แล้ว`;
+    void refreshMembershipContext().finally(() => {
+      queryClient.removeQueries({
+        queryKey: projectQueryKeys.all(organizationId),
+      });
+      if (!mounted.current) return;
+      void navigate(`/organizations/${organizationId}/projects`, {
+        replace: true,
+        state: { projectNotice },
+      });
     });
   }, [
     notFound,
@@ -152,7 +166,7 @@ function ProjectMembers({
     queryClient,
     navigate,
     organizationId,
-    projectId,
+    refreshMembershipContext,
   ]);
   useEffect(() => {
     if (!denied || contextRefresh !== "idle") return;
@@ -172,10 +186,6 @@ function ProjectMembers({
     (target ?? heading.current)?.focus();
     refocusUserId.current = null;
   }, [pendingRole]);
-
-  useEffect(() => {
-    if (leftProject !== null) heading.current?.focus();
-  }, [leftProject]);
 
   const orgRole = organization?.role;
   const canManage =
@@ -371,7 +381,7 @@ function ProjectMembers({
       </Page>
     );
   }
-  if (mePending || contextRefresh === "refreshing") {
+  if (mePending || contextRefresh === "refreshing" || (notFound && !denied)) {
     return (
       <Page>
         {header()}
@@ -415,45 +425,6 @@ function ProjectMembers({
           alertTestId="project-members-denied-alert"
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูโปรเจกต์ขององค์กรนี้"
-        />
-      </Page>
-    );
-  }
-  if (leftProject !== null) {
-    return (
-      <Page>
-        <PageHeader
-          eyebrow="// MEMBERS"
-          title="สมาชิกโปรเจกต์"
-          titleRef={heading}
-          titleTabIndex={-1}
-        />
-        <PageState
-          data-testid="project-members-left"
-          kind="denied"
-          tone="info"
-          message={`คุณออกจากโปรเจกต์ ${leftProject} แล้ว`}
-          action={backLink}
-        />
-      </Page>
-    );
-  }
-  if (notFound) {
-    // Same state for a missing Project and one the user cannot see (AC-08).
-    return (
-      <Page>
-        <PageHeader
-          eyebrow="// MEMBERS"
-          title="สมาชิกโปรเจกต์"
-          titleRef={heading}
-          titleTabIndex={-1}
-        />
-        <PageState
-          data-testid="project-members-not-found"
-          kind="denied"
-          tone="info"
-          message="ไม่พบโปรเจกต์นี้"
-          action={backLink}
         />
       </Page>
     );

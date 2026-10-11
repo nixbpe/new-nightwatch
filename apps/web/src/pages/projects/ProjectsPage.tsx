@@ -4,7 +4,7 @@ import {
 } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { EmptyState } from "../../components/shell/EmptyState";
 import { GridIcon, SearchIcon } from "../../components/shell/icons";
@@ -117,7 +117,9 @@ function ProjectsForOrganization({
   );
   const isMember = organization !== undefined;
   // Set by the Project pages when they send the user back after a 404.
-  const arrivalNotice = projectNoticeOf(useLocation().state);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const arrivalNotice = projectNoticeOf(location.state);
 
   const [view, setView] = useState<View>("all");
   const [searchText, setSearchText] = useState("");
@@ -139,9 +141,13 @@ function ProjectsForOrganization({
   const heading = useRef<HTMLHeadingElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   // Arriving with a notice moves focus to the heading, so it is read first.
+  // The notice is read once into state, then dropped from history so a reload
+  // or back/forward does not replay it.
   useEffect(() => {
-    if (arrivalNotice !== null) heading.current?.focus();
-  }, [arrivalNotice]);
+    if (arrivalNotice === null) return;
+    heading.current?.focus();
+    void navigate(location.pathname, { replace: true, state: null });
+  }, [arrivalNotice, navigate, location.pathname]);
 
   const list = useQuery({
     queryKey: projectQueryKeys.list(organizationId),
@@ -298,9 +304,13 @@ function ProjectsForOrganization({
         actions={actions}
         titleRef={heading}
         titleTabIndex={-1}
+        titleDescribedBy={
+          notice?.kind === "role-changed" ? "projects-notice" : undefined
+        }
       />
       {notice === null ? null : notice.kind === "role-changed" ? (
         <Alert
+          id="projects-notice"
           data-testid="projects-notice-role-changed"
           tone="info"
           role="status"
