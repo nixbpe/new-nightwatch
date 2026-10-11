@@ -136,6 +136,7 @@ describe("request completion logging", () => {
     const organizationId = "11111111-1111-4111-8111-111111111111";
     const memberId = "22222222-2222-4222-8222-222222222222";
     const projectId = "33333333-3333-4333-8333-333333333333";
+    const searchTerm = "somchai.secret@example.test";
     const logLines: string[] = [];
     const app = makeApp({
       logger: createLogger(
@@ -180,6 +181,26 @@ describe("request completion logging", () => {
       {
         input: `/api/organizations/${organizationId}/projects/${projectId}`,
         expected: "/api/organizations/:organizationId/projects/:projectId",
+      },
+      {
+        input: `/api/organizations/${organizationId}/projects/${projectId}/members`,
+        expected:
+          "/api/organizations/:organizationId/projects/:projectId/members",
+      },
+      {
+        input: `/api/organizations/${organizationId}/projects/${projectId}/members/${memberId}`,
+        expected:
+          "/api/organizations/:organizationId/projects/:projectId/members/:userId",
+      },
+      {
+        input: `/api/organizations/${organizationId}/projects/${projectId}/member-candidates?q=${searchTerm}`,
+        expected:
+          "/api/organizations/:organizationId/projects/:projectId/member-candidates",
+      },
+      {
+        input: `/api/organizations/${organizationId}/projects/${projectId}/members/${memberId}/extra`,
+        expected:
+          "/api/organizations/:organizationId/projects/:projectId/members/:userId/:segment",
       },
       {
         input: `/api/organizations/${organizationId}//members//${memberId}/role`,
@@ -356,6 +377,8 @@ describe("request completion logging", () => {
       expect(JSON.stringify(completion)).not.toContain(memberId);
       expect(JSON.stringify(completion)).not.toContain(projectId);
     }
+    // The search term of member-candidates is personal data: no log line has it.
+    expect(logLines.join("\n")).not.toContain(searchTerm);
   });
 });
 
