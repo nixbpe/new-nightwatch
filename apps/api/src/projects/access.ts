@@ -10,7 +10,11 @@ export type ProjectAccess =
   | { kind: "none" };
 
 // Only the actions that have a route today; later features add their own.
-export type ProjectAction = "project.update" | "project.delete";
+export type ProjectAction =
+  | "project.read"
+  | "project.update"
+  | "project.delete"
+  | "project.members.manage";
 
 type Grant = "allow" | "deny";
 
@@ -18,6 +22,11 @@ const PROJECT_PERMISSIONS: Record<
   ProjectAction,
   { orgAdmin: Grant; projectAdmin: Grant; projectMember: Grant }
 > = {
+  "project.read": {
+    orgAdmin: "allow",
+    projectAdmin: "allow",
+    projectMember: "allow",
+  },
   "project.update": {
     orgAdmin: "allow",
     projectAdmin: "allow",
@@ -26,6 +35,12 @@ const PROJECT_PERMISSIONS: Record<
   "project.delete": {
     orgAdmin: "allow",
     projectAdmin: "deny",
+    projectMember: "deny",
+  },
+  // Also guards member-candidates, which lists Organization member emails.
+  "project.members.manage": {
+    orgAdmin: "allow",
+    projectAdmin: "allow",
     projectMember: "deny",
   },
 };
