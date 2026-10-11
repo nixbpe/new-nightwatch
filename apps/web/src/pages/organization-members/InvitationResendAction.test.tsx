@@ -1,3 +1,4 @@
+import { formatDateTime, readPreferences } from "../../lib/preferences";
 import type {
   InvitationResendResponse,
   PendingInvitation,
@@ -111,20 +112,24 @@ function renderSection() {
 }
 
 const resendButton = (n: number) =>
-  screen.getByRole("button", { name: `ส่งซ้ำคำเชิญถึง ${emailOf(n)}` });
+  screen.getByTestId(`invitation-resend-${publicId(n)}`);
 const confirmButton = () =>
-  within(screen.getByRole("dialog")).getByRole("button", {
-    name: "ยืนยันการส่งคำเชิญซ้ำ",
-  });
-const heading = () =>
-  screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ });
-const sectionStatus = () =>
-  screen
-    .getAllByRole("status")
-    .find((node) => node.closest("section") !== null) as HTMLElement;
-const textStatusCount = () =>
-  screen.getAllByRole("status").filter((node) => node.textContent !== "")
-    .length;
+  within(screen.getByTestId(/^invitation-(cancel|resend)-dialog$/)).getByTestId(
+    "invitation-resend-confirm",
+  );
+const heading = () => screen.getByTestId("pending-invitations-heading");
+const sectionStatus = () => {
+  const node = screen.getByTestId("pending-invitations-status");
+  expect(node).toHaveAttribute("role", "status");
+  return node;
+};
+const textStatusCount = () => {
+  const nodes = screen.getAllByTestId(
+    /^(pending-invitations-status|confirmation-pending)$/,
+  );
+  for (const node of nodes) expect(node).toHaveAttribute("role", "status");
+  return nodes.filter((node) => node.textContent !== "").length;
+};
 
 async function openAndConfirm(
   user: ReturnType<typeof userEvent.setup>,
@@ -139,20 +144,29 @@ describe("invitation resend", () => {
     serve(range(2));
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
+    const row = screen.getByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      within(row).getByTestId("pending-invitation-sent-at"),
+    ).toHaveAttribute("datetime", invitation(1).sentAt);
+    expect(
+      within(row).getByTestId("pending-invitation-expires-at"),
+    ).toHaveAttribute("datetime", invitation(1).expiresAt);
     await user.click(resendButton(1));
 
-    const dialog = screen.getByRole("dialog", {
-      name: "ยืนยันการส่งคำเชิญซ้ำ",
-    });
+    const dialog = screen.getByTestId(/^invitation-(cancel|resend)-dialog$/);
     expect(dialog).toHaveTextContent(emailOf(1));
-    expect(dialog).toHaveTextContent("ผู้ชม");
+    expect(
+      within(dialog).getByTestId("pending-invitation-confirm-role-viewer"),
+    ).toBeVisible();
     expect(dialog).toHaveTextContent("Acme");
-    expect(dialog).toHaveTextContent(
-      "ลิงก์เชิญเดิมจะใช้ไม่ได้ ระบบส่งลิงก์ใหม่ที่มีอายุ 48 ชั่วโมง",
-    );
-    expect(document.body.innerHTML).not.toContain(publicId(1));
+    expect(dialog).toHaveAttribute("role", "dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAccessibleDescription();
+    expect(document.body.textContent).not.toContain(publicId(1));
     expect(document.body.innerHTML).not.toMatch(/https?:\/\//);
     expect(resendRequest).not.toHaveBeenCalled();
   });
@@ -161,16 +175,22 @@ describe("invitation resend", () => {
     serve(range(2));
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await user.click(resendButton(2));
-    await user.click(screen.getByRole("button", { name: "กลับ" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByTestId("confirmation-cancel"));
+    expect(
+      screen.queryByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeNull();
     expect(resendButton(2)).toHaveFocus();
 
     await user.click(resendButton(1));
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.queryByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeNull();
     expect(resendButton(1)).toHaveFocus();
     expect(resendRequest).not.toHaveBeenCalled();
     expect(fetchList).toHaveBeenCalledTimes(1);
@@ -183,24 +203,30 @@ describe("invitation resend", () => {
     resendRequest.mockReturnValue(held.promise);
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await user.click(resendButton(2));
     await user.dblClick(confirmButton());
     expect(resendRequest).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("dialog")).toHaveTextContent("กำลังส่ง…");
     expect(
-      within(screen.getByRole("dialog")).getByRole("button", {
-        name: "กำลังส่ง…",
-      }),
+      screen.getByTestId("confirmation-pending"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      within(
+        screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
+      ).getByTestId("invitation-resend-confirm"),
     ).toBeDisabled();
     expect(textStatusCount()).toBe(1);
     expect(resendButton(1)).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(1)}` }),
+      screen.getByTestId(`invitation-cancel-${publicId(1)}`),
     ).toBeDisabled();
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(
+      screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeVisible();
 
     // The server confirmed; the refetched first page has not arrived.
     const refreshed = Promise.withResolvers<PendingInvitationListResponse>();
@@ -209,9 +235,15 @@ describe("invitation resend", () => {
     await waitFor(() => {
       expect(fetchList).toHaveBeenCalledTimes(2);
     });
-    expect(screen.queryByText("ส่งคำเชิญซ้ำแล้ว")).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(sectionStatus()).toHaveTextContent("กำลังส่ง…");
+    expect(
+      screen.queryByTestId("pending-invitations-resend-success"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeNull();
+    expect(
+      screen.getByTestId("pending-invitations-resend-pending"),
+    ).not.toBeEmptyDOMElement();
 
     refreshed.resolve({
       organizationId: A,
@@ -220,9 +252,18 @@ describe("invitation resend", () => {
       activeLimit: 100,
       page: { limit: 50, offset: 0, total: 3 },
     });
-    expect(await screen.findByText("ส่งคำเชิญซ้ำแล้ว")).toBeVisible();
-    expect(sectionStatus()).toHaveTextContent("ส่งคำเชิญซ้ำแล้ว");
-    expect(heading()).toHaveTextContent("(3 จาก 100)");
+    expect(
+      await screen.findByTestId("pending-invitations-resend-success"),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId("pending-invitations-resend-success"),
+    ).toBeVisible();
+    expect(screen.getByTestId("pending-invitations-count")).toHaveTextContent(
+      "3",
+    );
+    expect(screen.getByTestId("pending-invitations-limit")).toHaveTextContent(
+      "100",
+    );
     expect(resendRequest).toHaveBeenCalledTimes(1);
     expect(resendRequest).toHaveBeenCalledWith(A, publicId(2));
   });
@@ -232,14 +273,18 @@ describe("invitation resend", () => {
     resendRequest.mockResolvedValue(resent("failed"));
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 1);
 
     expect(
-      await screen.findByText("ส่งคำเชิญซ้ำแล้ว แต่อีเมลส่งไม่สำเร็จ"),
+      await screen.findByTestId("pending-invitations-resend-warning"),
     ).toBeVisible();
-    expect(screen.queryByText("ส่งคำเชิญซ้ำแล้ว")).toBeNull();
+    expect(
+      screen.queryByTestId("pending-invitations-resend-success"),
+    ).toBeNull();
     expect(resendRequest).toHaveBeenCalledTimes(1);
   });
 
@@ -257,27 +302,42 @@ describe("invitation resend", () => {
       });
       const user = userEvent.setup();
       renderSection();
-      await screen.findByText(emailOf(1));
-      await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-      await screen.findByText(emailOf(55));
+      expect(
+        await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).toHaveTextContent(emailOf(1));
+      await user.click(screen.getByTestId("pending-invitations-next"));
+      expect(
+        await screen.findByTestId(`pending-invitation-row-${publicId(55)}`),
+      ).toHaveTextContent(emailOf(55));
 
       await openAndConfirm(user, 55);
 
-      await screen.findByText(
+      await screen.findByTestId(
         dispatch === "accepted"
-          ? "ส่งคำเชิญซ้ำแล้ว"
-          : "ส่งคำเชิญซ้ำแล้ว แต่อีเมลส่งไม่สำเร็จ",
+          ? "pending-invitations-resend-success"
+          : "pending-invitations-resend-warning",
       );
       expect(fetchList.mock.calls.map((call) => call[2])).toEqual([0, 50, 0]);
-      const rows = screen.getAllByRole("row").slice(1);
-      expect(rows[0]).toHaveTextContent(emailOf(55));
+
+      expect(
+        screen
+          .getAllByTestId(/^pending-invitation-row-/)
+          .map((row) => row.getAttribute("data-testid"))[0],
+      ).toBe(`pending-invitation-row-${publicId(55)}`);
+      expect(
+        screen.getByTestId(`pending-invitation-row-${publicId(55)}`),
+      ).toHaveTextContent(emailOf(55));
       const button = resendButton(55);
       await waitFor(() => {
         expect(button).toHaveFocus();
       });
       expect(button).toHaveAttribute("aria-disabled", "true");
       expect(button).not.toBeDisabled();
-      expect(button).toHaveAccessibleDescription(/^ส่งซ้ำได้อีกครั้งเมื่อ .+/);
+      expect(button).toHaveAccessibleDescription();
+      expect(resendButton(55)).toHaveAttribute(
+        "aria-describedby",
+        screen.getByTestId(`invitation-cooldown-${publicId(55)}`).id,
+      );
     },
   );
 
@@ -285,11 +345,15 @@ describe("invitation resend", () => {
     serve(range(2), new Set([1]));
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await user.click(resendButton(1));
 
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.queryByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeNull();
     expect(resendRequest).not.toHaveBeenCalled();
     expect(resendButton(2)).not.toHaveAttribute("aria-disabled");
   });
@@ -298,13 +362,17 @@ describe("invitation resend", () => {
     serve(range(2), new Set([1]));
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     resendButton(1).focus();
     await user.keyboard("{Enter}");
     await user.keyboard(" ");
 
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.queryByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeNull();
     expect(resendRequest).not.toHaveBeenCalled();
   });
 
@@ -337,9 +405,7 @@ describe("invitation resend", () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
     expect(resendButton(1)).not.toHaveAttribute("aria-disabled");
-    expect(
-      screen.queryByText(/ส่งซ้ำได้อีกครั้งเมื่อ/, { selector: "span" }),
-    ).toBeNull();
+    expect(screen.queryByTestId(/^invitation-cooldown-/)).toBeNull();
   });
 
   it("enables every cooling row at its own deadline, not only the earliest", async () => {
@@ -399,18 +465,26 @@ describe("invitation resend", () => {
     ],
   ])(
     "shows one message without an email, refreshes and never shows success for %o",
-    async (failure, message) => {
+    async (failure) => {
       serve(range(2));
       resendRequest.mockRejectedValue(failure);
       const user = userEvent.setup();
       renderSection();
-      await screen.findByText(emailOf(1));
+      expect(
+        await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).toHaveTextContent(emailOf(1));
 
       await openAndConfirm(user, 2);
 
-      expect(await screen.findByText(message)).toBeVisible();
+      expect(
+        await screen.findByTestId("pending-invitations-resend-error"),
+      ).toBeVisible();
+      if (failure.code === "INVITATION_LIMIT_REACHED")
+        expect(sectionStatus().textContent.match(/\d+/g)).toEqual(["100"]);
       expect(sectionStatus()).not.toHaveTextContent("@");
-      expect(screen.queryByText(/ส่งคำเชิญซ้ำแล้ว/)).toBeNull();
+      expect(
+        screen.queryByTestId(/^pending-invitations-resend-(success|warning)$/),
+      ).toBeNull();
       expect(resendRequest).toHaveBeenCalledTimes(1);
       expect(fetchList).toHaveBeenCalledTimes(2);
       expect(fetchList.mock.calls.map((call) => call[2])).toEqual([0, 0]);
@@ -430,15 +504,26 @@ describe("invitation resend", () => {
     );
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 1);
 
     await waitFor(() => {
-      expect(sectionStatus()).toHaveTextContent(/^ส่งซ้ำได้อีกครั้งเมื่อ .+/);
+      expect(
+        screen.getByTestId("pending-invitations-resend-error"),
+      ).toHaveTextContent(
+        formatDateTime(new Date("2026-10-01T08:05:00.000Z"), readPreferences()),
+      );
     });
     expect(sectionStatus()).not.toHaveTextContent("@");
-    expect(screen.getByText(emailOf(1), { selector: "td" })).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
     expect(fetchList).toHaveBeenCalledTimes(2);
   });
 
@@ -449,12 +534,14 @@ describe("invitation resend", () => {
     );
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 1);
 
     expect(
-      await screen.findByText("ส่งคำเชิญซ้ำไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"),
+      await screen.findByTestId("pending-invitations-resend-error"),
     ).toBeVisible();
   });
 
@@ -467,14 +554,22 @@ describe("invitation resend", () => {
     });
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 1);
 
-    expect(await screen.findByText("ไม่พบคำเชิญนี้แล้ว")).toBeVisible();
-    expect(screen.queryByText(emailOf(1), { selector: "td" })).toBeNull();
+    expect(
+      await screen.findByTestId("pending-invitations-resend-error"),
+    ).toBeVisible();
+    expect(
+      screen.queryByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeNull();
     expect(resendRequest).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/ส่งคำเชิญซ้ำแล้ว/)).toBeNull();
+    expect(
+      screen.queryByTestId(/^pending-invitations-resend-(success|warning)$/),
+    ).toBeNull();
     await waitFor(() => {
       // The resent row is gone, so focus falls back to the heading.
       expect(heading()).toHaveFocus();
@@ -486,7 +581,9 @@ describe("invitation resend", () => {
     resendRequest.mockResolvedValue(resent());
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await user.click(resendButton(1));
     fetchList.mockRejectedValueOnce(
@@ -494,8 +591,12 @@ describe("invitation resend", () => {
     );
     await user.click(confirmButton());
 
-    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
-    expect(screen.queryByText(/ส่งคำเชิญซ้ำแล้ว/)).toBeNull();
+    expect(
+      await screen.findByTestId("pending-invitations-load-error"),
+    ).toBeVisible();
+    expect(
+      screen.queryByTestId(/^pending-invitations-resend-(success|warning)$/),
+    ).toBeNull();
     await waitFor(() => {
       expect(heading()).toHaveFocus();
     });
@@ -509,14 +610,18 @@ describe("invitation resend", () => {
       const user = userEvent.setup();
       const { queryClient } = renderSection();
       queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, { marker: true });
-      await screen.findByText(emailOf(1));
+      expect(
+        await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).toHaveTextContent(emailOf(1));
 
       await openAndConfirm(user, 1);
 
       expect(
-        await screen.findByText("ส่งคำเชิญซ้ำไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"),
+        await screen.findByTestId("pending-invitations-resend-error"),
       ).toBeVisible();
-      expect(screen.queryByText(/ส่งคำเชิญซ้ำแล้ว/)).toBeNull();
+      expect(
+        screen.queryByTestId(/^pending-invitations-resend-(success|warning)$/),
+      ).toBeNull();
       await waitFor(() => {
         expect(refreshMembershipContext).toHaveBeenCalledTimes(1);
       });
@@ -540,32 +645,46 @@ describe("invitation resend", () => {
       page: { limit: 50, offset: 0, total: 2 },
     });
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(within(rows[0] as HTMLElement).queryByRole("button")).toBeNull();
     expect(
-      within(rows[0] as HTMLElement).getByText("เฉพาะเจ้าของจัดการได้"),
+      within(
+        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).queryAllByTestId(/^invitation-(cancel|resend)-/),
+    ).toHaveLength(0);
+    expect(
+      within(
+        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).getByTestId("invitation-owner-only"),
     ).toBeVisible();
     expect(
-      within(rows[1] as HTMLElement).getByRole("button", {
-        name: `ส่งซ้ำคำเชิญถึง ${emailOf(2)}`,
-      }),
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
+    expect(
+      within(
+        screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
+      ).getByTestId(`invitation-resend-${publicId(2)}`),
     ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
+    ).toHaveTextContent(emailOf(2));
   });
 
   async function cancelThenResend(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByTestId(`invitation-cancel-${publicId(3)}`));
     await user.click(
-      screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(3)}` }),
+      within(
+        screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
+      ).getByTestId("invitation-cancel-confirm"),
     );
-    await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", {
-        name: "ยืนยันการยกเลิกคำเชิญ",
-      }),
-    );
-    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`);
+    await screen.findByTestId("pending-invitations-cancel-success");
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(3));
     await openAndConfirm(user, 1);
-    await screen.findByText("ส่งคำเชิญซ้ำแล้ว");
+    await screen.findByTestId("pending-invitations-resend-success");
   }
 
   it("keeps the resend notice when a cancel dialog is opened and dismissed with กลับ or Escape", async () => {
@@ -574,18 +693,22 @@ describe("invitation resend", () => {
     resendRequest.mockResolvedValue(resent());
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
     await cancelThenResend(user);
 
     for (const dismiss of ["back", "escape"]) {
-      await user.click(
-        screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(2)}` }),
-      );
+      await user.click(screen.getByTestId(`invitation-cancel-${publicId(2)}`));
       if (dismiss === "back")
-        await user.click(screen.getByRole("button", { name: "กลับ" }));
+        await user.click(screen.getByTestId("confirmation-cancel"));
       else await user.keyboard("{Escape}");
-      expect(sectionStatus()).toHaveTextContent("ส่งคำเชิญซ้ำแล้ว");
-      expect(sectionStatus()).not.toHaveTextContent("ยกเลิกคำเชิญถึง");
+      expect(
+        screen.getByTestId("pending-invitations-resend-success"),
+      ).toBeVisible();
+      expect(
+        screen.queryByTestId("pending-invitations-cancel-success"),
+      ).toBeNull();
     }
   });
 
@@ -595,29 +718,35 @@ describe("invitation resend", () => {
     resendRequest.mockResolvedValue(resent());
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
     // Resend first, then cancel, so the cancel notice is the current one.
     await openAndConfirm(user, 1);
-    await screen.findByText("ส่งคำเชิญซ้ำแล้ว");
+    await screen.findByTestId("pending-invitations-resend-success");
+    await user.click(screen.getByTestId(`invitation-cancel-${publicId(3)}`));
     await user.click(
-      screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(3)}` }),
+      within(
+        screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
+      ).getByTestId("invitation-cancel-confirm"),
     );
-    await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", {
-        name: "ยืนยันการยกเลิกคำเชิญ",
-      }),
-    );
-    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`);
+    await screen.findByTestId("pending-invitations-cancel-success");
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(3));
 
     for (const dismiss of ["back", "escape"]) {
       await user.click(resendButton(2));
       if (dismiss === "back")
-        await user.click(screen.getByRole("button", { name: "กลับ" }));
+        await user.click(screen.getByTestId("confirmation-cancel"));
       else await user.keyboard("{Escape}");
-      expect(sectionStatus()).toHaveTextContent(
-        `ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`,
-      );
-      expect(sectionStatus()).not.toHaveTextContent("ส่งคำเชิญซ้ำแล้ว");
+      expect(sectionStatus()).toHaveTextContent(emailOf(3));
+      expect(
+        screen.getByTestId("pending-invitations-cancel-success"),
+      ).toBeVisible();
+      expect(
+        screen.queryByTestId("pending-invitations-resend-success"),
+      ).toBeNull();
     }
   });
 
@@ -627,23 +756,30 @@ describe("invitation resend", () => {
     resendRequest.mockResolvedValue(resent());
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
+    await user.click(screen.getByTestId(`invitation-cancel-${publicId(3)}`));
     await user.click(
-      screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(3)}` }),
-    );
-    await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", {
-        name: "ยืนยันการยกเลิกคำเชิญ",
-      }),
+      within(
+        screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
+      ).getByTestId("invitation-cancel-confirm"),
     );
     expect(
-      await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`),
+      await screen.findByTestId("pending-invitations-cancel-success"),
     ).toBeVisible();
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(3));
 
     await openAndConfirm(user, 1);
 
-    expect(await screen.findByText("ส่งคำเชิญซ้ำแล้ว")).toBeVisible();
-    expect(sectionStatus()).not.toHaveTextContent("ยกเลิกคำเชิญถึง");
+    expect(
+      await screen.findByTestId("pending-invitations-resend-success"),
+    ).toBeVisible();
+    expect(
+      screen.queryByTestId("pending-invitations-cancel-success"),
+    ).toBeNull();
   });
 });

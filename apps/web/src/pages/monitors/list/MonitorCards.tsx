@@ -22,18 +22,39 @@ function Sparkline({ points }: { points: Row["responseSparkline"] }) {
   const values = points.map((point) => point.avgMs);
   const known = values.filter((value): value is number => value !== null);
   if (known.length === 0) {
-    return <span className="text-xs text-foreground-secondary">{NO_DATA}</span>;
+    return (
+      <span
+        data-testid="monitor-list-spark-empty"
+        className="text-xs text-foreground-secondary"
+      >
+        {NO_DATA}
+      </span>
+    );
   }
   const max = Math.max(...known);
   const missing = values.length - known.length;
   return (
     <>
-      <span aria-hidden="true" className="mt-1 flex h-7 items-end gap-0.5">
+      <span
+        data-testid="monitor-list-sparkline"
+        aria-hidden="true"
+        className="mt-1 flex h-7 items-end gap-0.5"
+      >
         {values.map((value, index) =>
           value === null ? (
-            <i key={index} data-empty="true" className="flex-1" />
+            <i
+              data-testid="monitor-list-spark-slot"
+              data-hour-start={points[index]?.hourStart}
+              data-avg-ms=""
+              key={index}
+              data-empty="true"
+              className="flex-1"
+            />
           ) : (
             <i
+              data-testid="monitor-list-spark-slot"
+              data-hour-start={points[index]?.hourStart}
+              data-avg-ms={value}
               key={index}
               className="flex-1 rounded-[1px] bg-foreground-secondary/60"
               style={{
@@ -43,7 +64,7 @@ function Sparkline({ points }: { points: Row["responseSparkline"] }) {
           ),
         )}
       </span>
-      <span className="sr-only">
+      <span data-testid="monitor-list-spark-description" className="sr-only">
         เวลาตอบสนองเฉลี่ยรายชั่วโมงจากผลตรวจของมอนิเตอร์นี้ 24 ชม. ล่าสุด สูงสุด{" "}
         {formatNumber(max)} ms ไม่มีข้อมูล {missing} ชั่วโมง
       </span>
@@ -62,6 +83,7 @@ export function MonitorCards({
 }) {
   return (
     <HairlineGrid
+      data-testid="monitor-overview-cards"
       as="ul"
       className="grid-cols-1 lg:grid-cols-2 lg:[&>li:last-child:nth-child(odd)]:col-span-2"
     >
@@ -69,6 +91,7 @@ export function MonitorCards({
         const initials = initialsOf(row.name);
         return (
           <li
+            data-testid={`monitor-list-row-${row.id}`}
             key={row.id}
             className="flex min-h-[148px] gap-4 p-5 hover:surface-hover"
           >
@@ -84,35 +107,54 @@ export function MonitorCards({
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 <Link
+                  data-testid={`monitor-list-name-${row.id}`}
                   to={`/organizations/${organizationId}/monitors/${row.id}`}
                   className="text-[15px] font-semibold text-heading underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   {row.name}
                 </Link>
-                <HealthPill health={row.health} />
+                <HealthPill testId="monitor-list-health" health={row.health} />
               </div>
               <div className="flex items-baseline gap-x-1.5 font-mono text-xs text-foreground-secondary">
-                <span className="shrink-0">{row.method}</span>
-                <span className="min-w-0 break-all">{row.url}</span>
+                <span
+                  data-testid="monitor-list-cell-method"
+                  className="shrink-0"
+                >
+                  {row.method}
+                </span>
+                <span
+                  data-testid="monitor-list-cell-url"
+                  className="min-w-0 break-all"
+                >
+                  {row.url}
+                </span>
               </div>
-              <span className="inline-flex h-[22px] w-fit items-center rounded-full border border-foreground/20 px-2.5 text-xs text-foreground-secondary">
+              <span
+                data-testid="monitor-list-cell-interval"
+                className="inline-flex h-[22px] w-fit items-center rounded-full border border-foreground/20 px-2.5 text-xs text-foreground-secondary"
+              >
                 <IntervalText seconds={row.intervalSeconds} />
               </span>
               <StatusDetail row={row} />
               <Sparkline points={row.responseSparkline} />
               <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 text-xs text-foreground-secondary">
                 <SslLabel
+                  testId="monitor-list-ssl"
                   level={row.ssl.level}
                   daysRemaining={row.ssl.daysRemaining}
                   className="text-xs"
                 />
                 {row.lastCheckAt === null ? (
-                  <span>{NO_DATA}</span>
+                  <span data-testid="monitor-list-check-empty">{NO_DATA}</span>
                 ) : (
                   <>
                     <span>
                       ตรวจล่าสุด{" "}
-                      <Time iso={row.lastCheckAt} format={formatTimeOrDate} />
+                      <Time
+                        testId="monitor-list-check-time"
+                        iso={row.lastCheckAt}
+                        format={formatTimeOrDate}
+                      />
                     </span>
                     <span>({TIME_ZONE})</span>
                   </>
@@ -122,6 +164,7 @@ export function MonitorCards({
             <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
               <span className="sr-only">ตอบสนอง</span>
               <span
+                data-testid="monitor-list-cell-responseTime"
                 className={cn(
                   "text-lg font-medium text-heading tabular-nums",
                   row.lastResponseTimeMs !== null && "font-mono",
@@ -132,7 +175,10 @@ export function MonitorCards({
                   : `${formatNumber(row.lastResponseTimeMs)} ms`}
               </span>
               <span className="text-xs text-foreground-secondary">30 วัน</span>
-              <span className="text-xs text-foreground-secondary">
+              <span
+                data-testid="monitor-list-cell-d30"
+                className="text-xs text-foreground-secondary"
+              >
                 <Uptime window={row.uptime.d30} />
               </span>
             </div>

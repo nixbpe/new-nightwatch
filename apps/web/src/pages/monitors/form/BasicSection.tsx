@@ -30,6 +30,7 @@ export function BasicSection({
     <Card as="section" aria-labelledby="monitor-form-basic" padding="md">
       <SectionHeader id="monitor-form-basic" code="01" title="ข้อมูลพื้นฐาน" />
       <TextControl
+        data-testid="monitor-form-name"
         path="name"
         label="ชื่อมอนิเตอร์"
         value={values.name}
@@ -40,6 +41,7 @@ export function BasicSection({
         }}
       />
       <TextControl
+        data-testid="monitor-form-url"
         path="url"
         label="URL"
         inputMode="url"
@@ -64,6 +66,7 @@ export function BasicSection({
           ตรวจทุก
         </span>
         <SegmentedControl
+          optionTestId={(value) => `monitor-form-interval-${value}`}
           label="ตรวจทุก"
           disabled={disabled}
           value={String(values.intervalSeconds)}
@@ -75,7 +78,10 @@ export function BasicSection({
       </div>
       <p className="text-xs text-foreground-secondary">
         ประมาณ{" "}
-        <span className="font-mono font-medium text-foreground">
+        <span
+          data-testid="monitor-form-calls-per-day"
+          className="font-mono font-medium text-foreground"
+        >
           {formatNumber(Math.round(86400 / values.intervalSeconds))}
         </span>{" "}
         ครั้งต่อวัน
@@ -87,6 +93,7 @@ export function BasicSection({
       )}
       {advanced ? (
         <TextControl
+          data-testid="monitor-form-timeout"
           path="timeoutSeconds"
           label="หมดเวลารอ (วินาที)"
           inputMode="numeric"
@@ -100,13 +107,26 @@ export function BasicSection({
         />
       ) : null}
       <ul className="flex flex-col gap-1 text-sm text-foreground-secondary">
-        <li>
+        <li
+          data-testid="monitor-form-down-summary"
+          data-failure-threshold={values.alerts.failureThreshold}
+        >
           {intervalText(values.intervalSeconds)} ถือว่าล่มเมื่อล้มเหลวติดกัน{" "}
           {values.alerts.failureThreshold} ครั้ง
         </li>
-        <li>ถือว่าปกติเมื่อได้รหัส {values.expectedStatus.trim()}</li>
+        <li
+          data-testid="monitor-form-status-summary"
+          data-expected-status={values.expectedStatus.trim()}
+        >
+          ถือว่าปกติเมื่อได้รหัส {values.expectedStatus.trim()}
+        </li>
         {advanced ? null : (
-          <li>หมดเวลารอ {values.timeoutSeconds.trim()} วินาที</li>
+          <li
+            data-testid="monitor-form-timeout-summary"
+            data-timeout-seconds={values.timeoutSeconds.trim()}
+          >
+            หมดเวลารอ {values.timeoutSeconds.trim()} วินาที
+          </li>
         )}
       </ul>
     </Card>

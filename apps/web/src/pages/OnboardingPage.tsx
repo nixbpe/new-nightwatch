@@ -115,15 +115,27 @@ export function OnboardingPage() {
   }, [tokenPhase, sessionPending, user, invitationId, navigate, queryClient]);
 
   if (tokenPhase === "running") {
-    return <FullPageLoading label="กำลังยืนยันอีเมลของคุณ…" />;
+    return (
+      <FullPageLoading
+        data-testid="onboarding-verifying"
+        label="กำลังยืนยันอีเมลของคุณ…"
+      />
+    );
   }
 
   if (tokenPhase === "failed") {
     return (
-      <AuthPageFrame eyebrow="// onboarding" title="ยืนยันอีเมลไม่สำเร็จ">
+      <AuthPageFrame
+        data-testid="onboarding-page"
+        eyebrow="// onboarding"
+        title="ยืนยันอีเมลไม่สำเร็จ"
+      >
         <div className="flex flex-col gap-4">
-          <Alert tone="error">{tokenError}</Alert>
+          <Alert data-testid="onboarding-error" tone="error">
+            {tokenError}
+          </Alert>
           <Button
+            data-testid="onboarding-verify-email"
             type="button"
             className="w-full"
             onClick={() => {
@@ -133,6 +145,7 @@ export function OnboardingPage() {
             ส่งอีเมลยืนยันใหม่
           </Button>
           <Button
+            data-testid="onboarding-login"
             type="button"
             variant="secondary"
             className="w-full"
@@ -151,5 +164,10 @@ export function OnboardingPage() {
     return <PostAuthRedirect />;
   }
 
-  return <FullPageLoading label="กำลังตั้งค่าบัญชีของคุณ…" />;
+  return (
+    <FullPageLoading
+      data-testid="onboarding-loading"
+      label="กำลังตั้งค่าบัญชีของคุณ…"
+    />
+  );
 }

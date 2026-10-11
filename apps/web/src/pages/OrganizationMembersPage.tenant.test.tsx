@@ -7,7 +7,7 @@ import type {
   OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   MemoryRouter,
@@ -94,6 +94,7 @@ function RepublishSameOrganization({
 }) {
   return (
     <button
+      data-testid="test-members-republish-a"
       type="button"
       onClick={() => {
         const claim = createContextPublicationClaim();
@@ -111,13 +112,22 @@ function TenantView() {
   const navigate = useNavigate();
   return (
     <>
-      <button type="button" onClick={() => void switchOrg(B)}>
+      <button
+        data-testid="test-members-confirm-b"
+        type="button"
+        onClick={() => void switchOrg(B)}
+      >
         confirm B
       </button>
-      <button type="button" onClick={() => void switchOrg(A)}>
+      <button
+        data-testid="test-members-confirm-a"
+        type="button"
+        onClick={() => void switchOrg(A)}
+      >
         confirm A
       </button>
       <button
+        data-testid="test-members-navigate-b"
         type="button"
         onClick={() => void navigate(`/organizations/${B}/members`)}
       >
@@ -155,31 +165,36 @@ it("keeps the invitation pending and its draft after same-organization publicati
       </TenantProvider>
     </QueryClientProvider>,
   );
-  expect(await screen.findByText("Ada")).toBeInTheDocument();
-  await user.type(
-    screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
-    "a-draft@example.test",
-  );
-  await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-  await user.click(screen.getByRole("button", { name: "republish A" }));
-  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
-    "a-draft@example.test",
-  );
+  expect(await screen.findByTestId("member-row-member-1")).toBeInTheDocument();
   expect(
-    screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
-  ).toBeDisabled();
+    within(screen.getByTestId("member-row-member-1")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent("Ada");
+  await user.type(
+    screen.getByTestId("members-invitation-email"),
+    "a-draft@example.test",
+  );
+  await user.click(screen.getByTestId("members-invitation-send"));
+  await user.click(screen.getByTestId("test-members-republish-a"));
+  expect(screen.getByTestId("members-invitation-email")).toHaveValue(
+    "a-draft@example.test",
+  );
+  expect(screen.getByTestId("members-invitation-send")).toBeDisabled();
   await act(async () => {
     post.resolve({ created: true, emailDispatch: "failed" });
     await post.promise;
   });
-  expect(
-    screen.getByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
-  ).toHaveAttribute("role", "status");
-  await user.click(screen.getByRole("button", { name: "republish A" }));
-  expect(
-    screen.getByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ"),
-  ).toHaveAttribute("role", "status");
-  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue("");
+  expect(screen.getByTestId("members-invitation-warning")).toHaveAttribute(
+    "role",
+    "status",
+  );
+  await user.click(screen.getByTestId("test-members-republish-a"));
+  expect(screen.getByTestId("members-invitation-warning")).toHaveAttribute(
+    "role",
+    "status",
+  );
+  expect(screen.getByTestId("members-invitation-email")).toHaveValue("");
 });
 
 it("keeps a bookmarked organization draft when another active organization is republished", async () => {
@@ -202,9 +217,9 @@ it("keeps a bookmarked organization draft when another active organization is re
       </TenantProvider>
     </QueryClientProvider>,
   );
-  const email = await screen.findByLabelText("อีเมลของผู้ได้รับเชิญ");
+  const email = await screen.findByTestId("members-invitation-email");
   await user.type(email, "bookmarked@example.test");
-  await user.click(screen.getByRole("button", { name: "republish A" }));
+  await user.click(screen.getByTestId("test-members-republish-a"));
   expect(email).toHaveValue("bookmarked@example.test");
   expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
 });
@@ -249,36 +264,50 @@ it("keeps the bookmarked invitation draft when its organization becomes active a
       </TenantProvider>
     </QueryClientProvider>,
   );
-  expect(await screen.findByText("Bea")).toBeInTheDocument();
-  expect(screen.queryByText("Ada")).toBeNull();
+  expect(await screen.findByTestId("member-row-member-b")).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("member-row-member-b")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent("Bea");
+  expect(screen.queryByTestId("member-row-member-1")).toBeNull();
   expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
-  const email = screen.getByLabelText("อีเมลของผู้ได้รับเชิญ");
+  const email = screen.getByTestId("members-invitation-email");
   await user.type(email, "b-draft@example.test");
-  await user.selectOptions(screen.getByLabelText("บทบาท"), "admin");
-  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await user.selectOptions(
+    screen.getByTestId("members-invitation-role"),
+    "admin",
+  );
+  await user.click(screen.getByTestId("test-members-confirm-b"));
   await waitFor(() =>
     expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
   );
   expect(screen.getByTestId("location")).toHaveTextContent(
     `/organizations/${B}/members`,
   );
-  expect(
-    screen.getByRole("heading", { name: "เชิญสมาชิกเข้าสู่ Beta" }),
-  ).toBeInTheDocument();
-  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+  expect(screen.getByTestId("members-invitation-heading")).toBeInTheDocument();
+  expect(screen.getByTestId("members-invitation-heading")).toHaveTextContent(
+    "Beta",
+  );
+  expect(screen.getByTestId("members-invitation-email")).toHaveValue(
     "b-draft@example.test",
   );
-  expect(screen.getByLabelText("บทบาท")).toHaveValue("admin");
-  await user.click(screen.getByRole("button", { name: "navigate B" }));
+  expect(screen.getByTestId("members-invitation-role")).toHaveValue("admin");
+  await user.click(screen.getByTestId("test-members-navigate-b"));
   expect(screen.getByTestId("location")).toHaveTextContent(
     `/organizations/${B}/members`,
   );
-  expect(screen.getByText("Bea")).toBeInTheDocument();
-  expect(screen.queryByText("Ada")).toBeNull();
-  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+  expect(screen.getByTestId("member-row-member-b")).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("member-row-member-b")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent("Bea");
+  expect(screen.queryByTestId("member-row-member-1")).toBeNull();
+  expect(screen.getByTestId("members-invitation-email")).toHaveValue(
     "b-draft@example.test",
   );
-  expect(screen.getByLabelText("บทบาท")).toHaveValue("admin");
+  expect(screen.getByTestId("members-invitation-role")).toHaveValue("admin");
 });
 
 it("retains the origin after denied switch and rejects its old completion after switching away and back", async () => {
@@ -304,36 +333,41 @@ it("retains the origin after denied switch and rejects its old completion after 
       </TenantProvider>
     </QueryClientProvider>,
   );
-  expect(await screen.findByText("Ada")).toBeInTheDocument();
+  expect(await screen.findByTestId("member-row-member-1")).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("member-row-member-1")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent("Ada");
   await user.type(
-    screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+    screen.getByTestId("members-invitation-email"),
     "a-draft@example.test",
   );
-  await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
-  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await user.click(screen.getByTestId("members-invitation-send"));
+  await user.click(screen.getByTestId("test-members-confirm-b"));
   await waitFor(() => {
     expect(vi.mocked(updateActiveOrganization)).toHaveBeenCalledTimes(1);
   });
   expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
-  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+  expect(screen.getByTestId("members-invitation-email")).toHaveValue(
     "a-draft@example.test",
   );
-  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await user.click(screen.getByTestId("test-members-confirm-b"));
   await waitFor(() =>
     expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
   );
-  expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "confirm A" }));
+  expect(screen.queryByTestId("members-invitation-email")).toBeNull();
+  await user.click(screen.getByTestId("test-members-confirm-a"));
   await waitFor(() =>
     expect(screen.getByTestId("active-scope")).toHaveTextContent(A),
   );
-  expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+  expect(screen.queryByTestId("members-invitation-email")).toBeNull();
   await act(async () => {
     post.resolve({ created: true, emailDispatch: "failed" });
     await post.promise;
   });
-  expect(screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ")).toBeNull();
-  expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+  expect(screen.queryByTestId("members-invitation-warning")).toBeNull();
+  expect(screen.queryByTestId("members-invitation-email")).toBeNull();
 });
 
 afterEach(() => vi.resetAllMocks());
@@ -372,37 +406,38 @@ it("retires the invitation after confirmed tenant change while the origin route 
       </TenantProvider>
     </QueryClientProvider>,
   );
-  expect(await screen.findByText("Ada")).toBeInTheDocument();
+  expect(await screen.findByTestId("member-row-member-1")).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("member-row-member-1")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent("Ada");
   await user.type(
-    screen.getByLabelText("อีเมลของผู้ได้รับเชิญ"),
+    screen.getByTestId("members-invitation-email"),
     "a-draft@example.test",
   );
-  await user.click(screen.getByRole("button", { name: "ส่งคำเชิญ" }));
+  await user.click(screen.getByTestId("members-invitation-send"));
   expect(vi.mocked(createInvitation)).toHaveBeenCalledWith(A, {
     email: "a-draft@example.test",
     role: "viewer",
   });
-  expect(
-    screen.getByRole("button", { name: "กำลังส่งคำเชิญ…" }),
-  ).toBeDisabled();
+  expect(screen.getByTestId("members-invitation-send")).toBeDisabled();
   expect(screen.getByTestId("active-scope")).toHaveTextContent(A);
   expect(screen.getByTestId("location")).toHaveTextContent(
     `/organizations/${A}/members`,
   );
-  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await user.click(screen.getByTestId("test-members-confirm-b"));
   await waitFor(() =>
     expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
   );
   expect(screen.getByTestId("location")).toHaveTextContent(
     `/organizations/${A}/members`,
   );
-  expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
-  expect(
-    screen.queryByRole("heading", { name: "เชิญสมาชิกเข้าสู่ Acme" }),
-  ).toBeNull();
-  expect(screen.getByRole("button", { name: "confirm B" })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "navigate B" }));
-  const bEmail = await screen.findByLabelText("อีเมลของผู้ได้รับเชิญ");
+  expect(screen.queryByTestId("members-invitation-email")).toBeNull();
+  expect(screen.queryByTestId("members-invitation-heading")).toBeNull();
+  expect(screen.getByTestId("test-members-confirm-b")).toBeInTheDocument();
+  await user.click(screen.getByTestId("test-members-navigate-b"));
+  const bEmail = await screen.findByTestId("members-invitation-email");
   await user.type(bEmail, "b-draft@example.test");
   expect(screen.getByTestId("location")).toHaveTextContent(
     `/organizations/${B}/members`,
@@ -412,18 +447,19 @@ it("retires the invitation after confirmed tenant change while the origin route 
     post.resolve({ created: true, emailDispatch: "failed" });
     await post.promise;
   });
-  expect(screen.queryByText("สร้างคำเชิญแล้ว แต่อีเมลส่งไม่สำเร็จ")).toBeNull();
+  expect(screen.queryByTestId("members-invitation-warning")).toBeNull();
   expect(
-    screen.queryByRole("heading", { name: "เชิญสมาชิกเข้าสู่ Acme" }),
-  ).toBeNull();
-  expect(
-    screen.getByRole("heading", { name: "เชิญสมาชิกเข้าสู่ Beta" }),
-  ).toBeInTheDocument();
+    screen.getByTestId("members-invitation-heading"),
+  ).not.toHaveTextContent("Acme");
+  expect(screen.getByTestId("members-invitation-heading")).toBeInTheDocument();
+  expect(screen.getByTestId("members-invitation-heading")).toHaveTextContent(
+    "Beta",
+  );
   expect(screen.getByTestId("active-scope")).toHaveTextContent(B);
   expect(screen.getByTestId("location")).toHaveTextContent(
     `/organizations/${B}/members`,
   );
-  expect(screen.getByLabelText("อีเมลของผู้ได้รับเชิญ")).toHaveValue(
+  expect(screen.getByTestId("members-invitation-email")).toHaveValue(
     "b-draft@example.test",
   );
   expect(vi.mocked(createInvitation)).toHaveBeenCalledTimes(1);
@@ -491,21 +527,28 @@ it.each([
       </QueryClientProvider>,
     );
     await user.click(
-      await screen.findByRole("button", {
-        name: "ยกเลิกคำเชิญถึง a-only@example.test",
-      }),
+      await screen.findByTestId(
+        "invitation-cancel-00000000-0000-4000-8000-000000000001",
+      ),
     );
-    await user.click(
-      screen.getByRole("button", { name: "ยืนยันการยกเลิกคำเชิญ" }),
-    );
+    await user.click(screen.getByTestId("invitation-cancel-confirm"));
     expect(cancelInvitation).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "confirm B" }));
+    await user.click(screen.getByTestId("test-members-confirm-b"));
     await waitFor(() =>
       expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
     );
-    await user.click(screen.getByRole("button", { name: "navigate B" }));
-    expect(await screen.findByText("b-only@example.test")).toBeInTheDocument();
+    await user.click(screen.getByTestId("test-members-navigate-b"));
+    expect(
+      await screen.findByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toHaveTextContent("b-only@example.test");
     const listCalls = vi.mocked(fetchPendingInvitations).mock.calls.length;
     const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
 
@@ -517,9 +560,24 @@ it.each([
       await Promise.resolve();
     });
 
-    expect(screen.getByText("b-only@example.test")).toBeInTheDocument();
-    expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว|ไม่สำเร็จ/)).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toHaveTextContent("b-only@example.test");
+    expect(
+      screen.queryByTestId(/^pending-invitations-cancel-(success|error)$/),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId(
+        /^(invitation-(cancel|resend)|member-(role|revoke)|self-leave)-dialog$/,
+      ),
+    ).toBeNull();
     expect(vi.mocked(fetchPendingInvitations).mock.calls).toHaveLength(
       listCalls,
     );
@@ -600,21 +658,28 @@ it.each([
       </QueryClientProvider>,
     );
     await user.click(
-      await screen.findByRole("button", {
-        name: "ส่งซ้ำคำเชิญถึง a-only@example.test",
-      }),
+      await screen.findByTestId(
+        "invitation-resend-00000000-0000-4000-8000-000000000001",
+      ),
     );
-    await user.click(
-      screen.getByRole("button", { name: "ยืนยันการส่งคำเชิญซ้ำ" }),
-    );
+    await user.click(screen.getByTestId("invitation-resend-confirm"));
     expect(resendInvitation).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "confirm B" }));
+    await user.click(screen.getByTestId("test-members-confirm-b"));
     await waitFor(() =>
       expect(screen.getByTestId("active-scope")).toHaveTextContent(B),
     );
-    await user.click(screen.getByRole("button", { name: "navigate B" }));
-    expect(await screen.findByText("b-only@example.test")).toBeInTheDocument();
+    await user.click(screen.getByTestId("test-members-navigate-b"));
+    expect(
+      await screen.findByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toHaveTextContent("b-only@example.test");
     const listCalls = vi.mocked(fetchPendingInvitations).mock.calls.length;
     const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
 
@@ -626,9 +691,26 @@ it.each([
       await Promise.resolve();
     });
 
-    expect(screen.getByText("b-only@example.test")).toBeInTheDocument();
-    expect(screen.queryByText(/ส่งคำเชิญซ้ำ|ไม่สำเร็จ/)).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "pending-invitation-row-00000000-0000-4000-8000-000000000001",
+      ),
+    ).toHaveTextContent("b-only@example.test");
+    expect(
+      screen.queryByTestId(
+        /^pending-invitations-resend-(success|error|warning)$/,
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId(
+        /^(invitation-(cancel|resend)|member-(role|revoke)|self-leave)-dialog$/,
+      ),
+    ).toBeNull();
     expect(vi.mocked(fetchPendingInvitations).mock.calls).toHaveLength(
       listCalls,
     );

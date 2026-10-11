@@ -85,7 +85,9 @@ export function SecretControl({
   disabled,
   secrets,
   onType,
+  "data-testid": testId,
 }: {
+  "data-testid"?: string;
   path: string;
   slot: string;
   label: ReactNode;
@@ -115,6 +117,7 @@ export function SecretControl({
       <Field label={label} error={error} errorId={errorId(path)}>
         <Input
           ref={ref}
+          data-testid={testId}
           id={fieldId(path)}
           type="password"
           autoComplete="new-password"
@@ -239,12 +242,14 @@ export function TextareaControl({
 
 /** One editable row: a legend and remove button that name the row, so a screen reader hears which one. */
 export function RowShell({
+  "data-testid": testId,
   legend,
   removeLabel,
   onRemove,
   disabled,
   children,
 }: {
+  "data-testid"?: string;
   legend: string;
   removeLabel: string;
   onRemove?: () => void;
@@ -252,7 +257,10 @@ export function RowShell({
   children: ReactNode;
 }) {
   return (
-    <fieldset className="flex flex-col gap-3 rounded-md border border-foreground/10 p-3">
+    <fieldset
+      data-testid={testId}
+      className="flex flex-col gap-3 rounded-md border border-foreground/10 p-3"
+    >
       <legend className="px-1 text-xs text-foreground-secondary">
         {legend}
       </legend>
@@ -260,6 +268,7 @@ export function RowShell({
       {onRemove === undefined ? null : (
         <div>
           <Button
+            data-testid="monitor-form-row-remove"
             type="button"
             variant="ghost"
             size="sm"
@@ -279,12 +288,14 @@ export function RowShell({
 
 /** Add button with its limit message beside it (AC-16). */
 export function AddRowButton({
+  "data-testid": testId,
   id,
   label,
   limitMessage,
   onAdd,
   disabled,
 }: {
+  "data-testid"?: string;
   id: string;
   label: string;
   limitMessage: string | null;
@@ -294,6 +305,7 @@ export function AddRowButton({
   return (
     <div className="flex flex-col items-start gap-1">
       <Button
+        data-testid={testId}
         id={id}
         type="button"
         variant="secondary"

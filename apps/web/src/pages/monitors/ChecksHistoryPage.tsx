@@ -144,12 +144,30 @@ const columns: DataTableColumn<Row>[] = [
     key: "time",
     header: `เวลา (${TIME_ZONE})`,
     cell: ({ check, urlChanged }) => (
-      <span className="flex flex-col py-1.5">
-        <Time iso={check.checkedAt} format={formatDateTime} />
+      <span
+        data-testid="monitor-check-time-cell"
+        data-outcome={check.outcome}
+        data-failure-reason={check.failureReason}
+        data-tls-reason={check.tlsReason}
+
+        data-url-changed={urlChanged}
+        className="flex flex-col py-1.5"
+      >
+        <Time
+          testId="monitor-check-time"
+          iso={check.checkedAt}
+          format={formatDateTime}
+        />
         {urlChanged ? (
-          <span className="mt-1 flex flex-col items-start gap-1">
+          <span
+            data-testid="monitor-check-url-changed"
+            className="mt-1 flex flex-col items-start gap-1"
+          >
             <StatusPill tone="caution">เปลี่ยน URL</StatusPill>
-            <span className="font-mono text-xs break-all text-foreground-secondary">
+            <span
+              data-testid="monitor-check-changed-url"
+              className="font-mono text-xs break-all text-foreground-secondary"
+            >
               {check.url}
             </span>
           </span>
@@ -192,10 +210,16 @@ const columns: DataTableColumn<Row>[] = [
       const summary = assertionSummary(check.assertions);
       if (summary === null) return "–";
       return (
-        <details>
-          <summary className="cursor-pointer">{summary}</summary>
+        <details data-testid="monitor-check-assertions">
+          <summary
+            data-testid="monitor-check-assertions-summary"
+            className="cursor-pointer"
+          >
+            {summary}
+          </summary>
           <div className="mt-2">
             <AssertionTable
+              testId="monitor-check-assertion-table"
               caption={`Assertions ของผลตรวจ ${formatDateTime(check.checkedAt)}`}
               rows={check.assertions.map((item, index) =>
                 assertionRowFromResult(item, index),
@@ -314,6 +338,7 @@ function ChecksHistoryForMonitor({
   const header = (title: ReactNode = "มอนิเตอร์") => (
     <>
       <Link
+        data-testid="monitor-checks-back"
         to={`${overviewPath}/${monitorId}`}
         className="inline-flex min-h-6 items-center gap-1.5 self-start text-xs text-foreground-secondary underline-offset-4 hover:text-foreground hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
@@ -321,6 +346,7 @@ function ChecksHistoryForMonitor({
         กลับไปหน้ามอนิเตอร์
       </Link>
       <PageHeader
+        titleTestId="monitor-checks-title"
         scope={
           organization === undefined || readDenied
             ? undefined
@@ -355,6 +381,8 @@ function ChecksHistoryForMonitor({
         {header()}
         <PageState
           kind="error"
+          data-testid="monitor-checks-admission-error"
+          retryTestId="monitor-checks-admission-retry"
           message="ไม่สามารถยืนยันสิทธิ์ดูมอนิเตอร์ได้"
           retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
@@ -369,10 +397,12 @@ function ChecksHistoryForMonitor({
         {header()}
         <PageState
           kind="denied"
+          data-testid="monitor-checks-denied"
           message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
           action={
             organization === undefined ? undefined : (
               <Button
+                data-testid="monitor-checks-data-retry"
                 type="button"
                 variant="secondary"
                 onClick={() => {
@@ -395,11 +425,14 @@ function ChecksHistoryForMonitor({
         {header()}
         <PageState
           kind="denied"
+          data-testid="monitor-checks-not-found"
           tone="info"
           message="ไม่พบมอนิเตอร์นี้"
           action={
             <Button asChild variant="secondary">
-              <Link to={overviewPath}>กลับไปรายการมอนิเตอร์</Link>
+              <Link data-testid="monitor-checks-list-link" to={overviewPath}>
+                กลับไปรายการมอนิเตอร์
+              </Link>
             </Button>
           }
         />
@@ -477,17 +510,28 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
   const refetchFailed = checks.isError && !checks.isFetchNextPageError;
 
   return (
-    <section aria-labelledby="checks-history" className="flex flex-col gap-4">
-      <SectionHeader id="checks-history" title="ประวัติการตรวจ" />
+    <section
+      data-testid="monitor-checks-history"
+      aria-labelledby="checks-history"
+      className="flex flex-col gap-4"
+    >
+      <SectionHeader
+        headingTestId="monitor-checks-heading"
+        id="checks-history"
+        title="ประวัติการตรวจ"
+      />
       <div className="flex flex-col gap-3">
         {data === undefined && checks.isError ? (
           <>
-            <Alert tone="error">โหลดประวัติการตรวจไม่สำเร็จ</Alert>
+            <Alert data-testid="monitor-checks-load-error" tone="error">
+              โหลดประวัติการตรวจไม่สำเร็จ
+            </Alert>
             <Button
               type="button"
               variant="secondary"
               size="sm"
               className="self-start"
+              data-testid="monitor-checks-retry"
               onClick={() => void checks.refetch()}
             >
               ลองอีกครั้ง
@@ -496,7 +540,11 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
         ) : null}
         {data === undefined && !checks.isError ? (
           <div aria-busy="true" className="flex flex-col gap-3">
-            <p role="status" className="sr-only">
+            <p
+              data-testid="monitor-checks-loading"
+              role="status"
+              className="sr-only"
+            >
               กำลังโหลดประวัติการตรวจ
             </p>
             <Skeleton className="h-4 w-64 max-w-full" />
@@ -504,23 +552,47 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
           </div>
         ) : null}
         {accumulated !== null && shown === 0 ? (
-          <p className="text-sm text-foreground-secondary">ยังไม่มีผลการตรวจ</p>
+          <p
+            data-testid="monitor-checks-empty"
+            className="text-sm text-foreground-secondary"
+          >
+            ยังไม่มีผลการตรวจ
+          </p>
         ) : null}
         {accumulated !== null && shown > 0 ? (
           <>
             {accumulated.urlChanges.length === 0 ? null : (
               <ul className="flex flex-col gap-1 text-xs text-foreground-secondary">
                 {accumulated.urlChanges.map((change) => (
-                  <li key={`${change.at} ${change.url}`}>
+                  <li
+                    data-testid="monitor-check-url-change"
+                    key={`${change.at} ${change.url}`}
+                  >
                     เปลี่ยน URL เมื่อ{" "}
-                    <Time iso={change.at} format={formatDateTime} /> (
-                    {TIME_ZONE}) เป็น{" "}
-                    <span className="font-mono break-all">{change.url}</span>
+                    <Time
+                      testId="monitor-check-url-change-time"
+                      iso={change.at}
+                      format={formatDateTime}
+                    />{" "}
+                    ({TIME_ZONE}) เป็น{" "}
+                    <span
+                      data-testid="monitor-check-url-change-url"
+                      className="font-mono break-all"
+                    >
+                      {change.url}
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
             <DataTable
+              data-testid="monitor-checks-table"
+              tableTestId="monitor-checks-records"
+              rowTestId={() => "monitor-check-row"}
+              cellTestId={(column) => `monitor-check-cell-${column.key}`}
+              columnHeaderTestId={(column) =>
+                `monitor-check-heading-${column.key}`
+              }
               ariaLabel="ตารางประวัติการตรวจ"
               className="max-h-none"
               columns={columns}
@@ -528,27 +600,34 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
               rowKey={({ check }) => check.scheduledFor}
             />
             {loadMoreFailed ? (
-              <Alert tone="error">โหลดประวัติการตรวจไม่สำเร็จ</Alert>
+              <Alert data-testid="monitor-checks-load-error" tone="error">
+                โหลดประวัติการตรวจไม่สำเร็จ
+              </Alert>
             ) : null}
             <div className="flex flex-wrap items-center justify-between gap-4">
               <p
+                data-testid="monitor-checks-summary"
                 ref={summary}
                 tabIndex={-1}
                 className={`flex w-fit flex-col gap-1 rounded-[4px] text-xs text-foreground-secondary tabular-nums ${TITLE_FOCUS_CLASS}`}
               >
-                <span>
+                <span
+                  data-testid="monitor-checks-count"
+                  data-complete={!hasNext && shown >= total}
+                >
                   {!hasNext && shown >= total
                     ? `แสดงครบ ${String(shown)} รายการ`
                     : `แสดง 1–${String(shown)} จาก ${String(total)}`}
                 </span>
                 {!hasNext && shown < total ? (
-                  <span>
+                  <span data-testid="monitor-checks-newer-omitted">
                     ผลตรวจที่ใหม่กว่าการโหลดครั้งแรกจะแสดงเมื่อเปิดหน้านี้ใหม่
                   </span>
                 ) : null}
               </p>
               {hasNext ? (
                 <Button
+                  data-testid="monitor-checks-load-more"
                   ref={button}
                   type="button"
                   variant="secondary"
@@ -563,13 +642,19 @@ function ChecksHistorySection({ checks }: { checks: ChecksQuery }) {
                 </Button>
               ) : null}
             </div>
-            <p role="status" className="sr-only">
+            <p
+              data-testid="monitor-checks-announcement"
+              role="status"
+              className="sr-only"
+            >
               {announcement}
             </p>
           </>
         ) : null}
         {accumulated !== null && refetchFailed ? (
-          <Alert tone="warning">อัปเดตประวัติการตรวจไม่สำเร็จ</Alert>
+          <Alert data-testid="monitor-checks-refresh-error" tone="warning">
+            อัปเดตประวัติการตรวจไม่สำเร็จ
+          </Alert>
         ) : null}
       </div>
     </section>

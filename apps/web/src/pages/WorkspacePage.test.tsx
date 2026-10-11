@@ -28,16 +28,19 @@ import { formatDate } from "./monitors/format";
 import { WorkspacePage } from "./WorkspacePage";
 import type { MonitorRow } from "./workspace/rows";
 
-// The page header renders scope as a name plus a pill, so match inside the header.
-async function findScope(name: string, tag: string) {
-  // Re-query on every retry: the page remounts its header across context refreshes.
+async function findScope(name: string, role: string) {
   return waitFor(() => {
-    const header = screen.getByRole("heading", { level: 1 }).closest("header");
-    if (header === null) {
-      throw new Error("page header missing");
-    }
-    expect(within(header).getByText(name)).toBeInTheDocument();
-    expect(within(header).getByText(tag)).toBeInTheDocument();
+    const header = screen.getByTestId("page-header");
+    expect(within(header).getByTestId("page-scope")).toHaveTextContent(
+      new RegExp(`^${name}$`),
+    );
+    expect(within(header).getByTestId("workspace-identity")).toHaveAttribute(
+      "data-member-role",
+      role,
+    );
+    expect(
+      within(header).getByTestId("page-scope-tag"),
+    ).not.toBeEmptyDOMElement();
     return header;
   });
 }
@@ -249,7 +252,9 @@ function renderDeniedMembershipPage() {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[`/organizations/${ORG_A}/members`]}>
         <TenantProvider>
-          <Link to="/workspace">ไปภาพรวม</Link>
+          <Link data-testid="workspace-return" to="/workspace">
+            ไปภาพรวม
+          </Link>
           <Routes>
             <Route
               path="/organizations/:organizationId/members"
@@ -281,15 +286,16 @@ describe("WorkspacePage context states", () => {
     fetchMeContextMock.mockImplementation(() => pending.promise);
     renderPage();
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "กำลังโหลดข้อมูลองค์กร…",
+    expect(screen.getByTestId("workspace-context-loading")).toHaveAttribute(
+      "aria-busy",
+      "true",
     );
 
     pending.resolve(meContext([ownerOrg], ORG_A));
 
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
     await waitFor(() => {
-      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryByTestId("workspace-context-loading")).toBeNull();
     });
   });
 
@@ -303,19 +309,20 @@ describe("WorkspacePage context states", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("heading", { name: "โหลดข้อมูลองค์กรไม่สำเร็จ" }),
+      await screen.findByTestId("workspace-context-error"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(
-      screen.queryByRole("heading", {
-        name: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
-      }),
-    ).toBeNull();
+    expect(screen.getByTestId("page-title")).toHaveRole("heading");
+    expect(screen.getByTestId("page-title")).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("workspace-context-alert")).toHaveRole("alert");
+    expect(screen.getByTestId("workspace-context-alert")).toHaveTextContent(
+      "server exploded",
+    );
+    expect(screen.queryByTestId("workspace-context-loading")).toBeNull();
+    expect(screen.queryByTestId("workspace-access-needed")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
+    await user.click(screen.getByTestId("workspace-context-retry"));
 
-    await findScope("Org A", "เจ้าของ");
+    await findScope("Org A", "owner");
   });
 
   it("a successful context with zero memberships shows the access-needed state", async () => {
@@ -324,13 +331,15 @@ describe("WorkspacePage context states", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("heading", {
-        name: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
-      }),
+      await screen.findByTestId("workspace-access-needed"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/ยังไม่เป็นสมาชิกขององค์กรใด/)).toBeInTheDocument();
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
+    expect(screen.getByTestId("workspace-access-needed")).toHaveTextContent(
+      "user@example.com",
+    );
+    expect(screen.getByTestId("page-title")).toHaveRole("heading");
+    expect(screen.getByTestId("page-title")).not.toBeEmptyDOMElement();
+    expect(screen.queryByTestId("workspace-context-loading")).toBeNull();
+    expect(screen.queryByTestId("members-invitation-send")).toBeNull();
   });
 
   it.each([
@@ -338,19 +347,19 @@ describe("WorkspacePage context states", () => {
       name: "B",
       error: new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
       retryContext: meContext([viewerOrg], ORG_B),
-      expected: ["Org B", "ผู้ชม"] as const,
+      expected: ["Org B", "viewer"] as const,
     },
     {
       name: "downgraded role",
       error: new ApiError("PERMISSION_DENIED", "role downgraded", 403),
       retryContext: meContext([{ ...ownerOrg, role: "viewer" }], ORG_A),
-      expected: ["Org A", "ผู้ชม"] as const,
+      expected: ["Org A", "viewer"] as const,
     },
     {
       name: "no-access",
       error: new ApiError("MEMBERSHIP_DENIED", "membership revoked", 403),
       retryContext: meContext([]),
-      expected: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
+      expected: "access-needed",
     },
   ])(
     "withholds the denied organization until retry confirms $name",
@@ -364,35 +373,34 @@ describe("WorkspacePage context states", () => {
       const queryClient = renderDeniedMembershipPage();
 
       expect(
-        await screen.findByRole("button", { name: "ลองอีกครั้ง" }),
+        await screen.findByTestId("members-admission-retry"),
       ).toBeInTheDocument();
-      expect(screen.queryByText("Org A · org-a")).toBeNull();
-      expect(screen.queryByText("สมาชิกทั้งหมด 51 คน")).toBeNull();
+      expect(screen.queryByTestId("page-scope")).toBeNull();
+      expect(document.body.textContent).not.toContain("Org A · org-a");
+      expect(document.body.textContent).not.toContain("Cached member");
+      expect(document.body.innerHTML).not.toContain("cached@example.test");
+      expect(screen.queryByTestId("members-total")).toBeNull();
       expect(
         queryClient.getQueryData(["tenant", "members", ORG_A]),
       ).toBeUndefined();
       expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
 
-      await user.click(screen.getByRole("link", { name: "ไปภาพรวม" }));
+      await user.click(screen.getByTestId("workspace-return"));
       expect(
-        await screen.findByRole("heading", {
-          name: "โหลดข้อมูลองค์กรไม่สำเร็จ",
-        }),
+        await screen.findByTestId("workspace-context-error"),
       ).toBeInTheDocument();
 
-      await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
+      await user.click(screen.getByTestId("workspace-context-retry"));
 
       if (typeof expected === "string") {
-        expect(await screen.findByText(expected)).toBeInTheDocument();
+        expect(
+          await screen.findByTestId("workspace-access-needed"),
+        ).toBeInTheDocument();
       } else {
         await findScope(expected[0], expected[1]);
       }
-      expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
-      expect(
-        screen.queryByRole("heading", {
-          name: "โหลดข้อมูลองค์กรไม่สำเร็จ",
-        }),
-      ).toBeNull();
+      expect(screen.queryByTestId("members-invitation-send")).toBeNull();
+      expect(screen.queryByTestId("workspace-context-error")).toBeNull();
       expect(fetchOrganizationMembersMock).toHaveBeenCalledOnce();
     },
   );
@@ -411,9 +419,9 @@ describe("WorkspacePage organization views", () => {
   it("an owner sees overview without the removed invitation form", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
-    await findScope("Org A", "เจ้าของ");
-    expect(screen.queryByRole("button", { name: "ส่งคำเชิญ" })).toBeNull();
-    expect(screen.queryByLabelText("อีเมลของผู้ได้รับเชิญ")).toBeNull();
+    await findScope("Org A", "owner");
+    expect(screen.queryByTestId("members-invitation-send")).toBeNull();
+    expect(screen.queryByTestId("members-invitation-email")).toBeNull();
   });
 });
 
@@ -425,80 +433,103 @@ describe("WorkspacePage overview content", () => {
     sessionState.data = null;
   });
 
-  it("shows the eyebrow, status line, stats and the problem monitors", async () => {
+  it("shows identity, freshness, stats and the problem monitors", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
-
-    expect(
-      await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("// overview")).toBeInTheDocument();
-    const heading = screen.getByRole("heading", {
-      level: 1,
-      name: "ภาพรวม",
-    });
-    expect(heading).toBeInTheDocument();
-    // A fresh, successfully loaded list shows the live indicator beside "ข้อมูล ณ".
-    const header = heading.closest("header");
-    expect(header).not.toBeNull();
-    const liveDot = (header as HTMLElement).querySelector(".live-pulse");
-    expect(liveDot).toBeInTheDocument();
-    expect(liveDot).toHaveAttribute("aria-hidden", "true");
-    const stats = screen.getByRole("region", { name: "สรุปสถานะ" });
-    expect(within(stats).getAllByRole("link")).toHaveLength(4);
-    const issues = screen
-      .getByRole("heading", { name: "ต้องดูตอนนี้" })
-      .closest("section");
-    expect(issues).not.toBeNull();
-    expect(
-      within(issues as HTMLElement).getByText("api-payments"),
-    ).toBeInTheDocument();
-    expect(
-      within(issues as HTMLElement).getByText("portal"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "เพิ่มมอนิเตอร์" }),
-    ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/new`);
+    const issues = await screen.findByTestId("workspace-issues");
+    await findScope(ownerOrg.name, ownerOrg.role);
+    expect(screen.getByTestId("workspace-identity")).toHaveAttribute(
+      "data-organization-id",
+      ownerOrg.id,
+    );
+    expect(screen.getByTestId("workspace-slug")).toHaveTextContent(/^org-a$/);
+    expect(screen.getByTestId("page-title")).toHaveRole("heading");
+    expect(screen.getByTestId("page-title")).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("workspace-fresh")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(screen.getByTestId("workspace-as-of")).toHaveAttribute(
+      "datetime",
+      "2026-10-02T05:00:00.000Z",
+    );
+    const stats = screen.getByTestId("workspace-stats");
+    expect(stats).toHaveRole("region");
+    expect(stats).toHaveAccessibleName();
+    for (const [kind, value] of [
+      ["up", 1],
+      ["down", 1],
+      ["ssl", 1],
+      ["paused", 0],
+    ] as const) {
+      const tile = within(stats).getByTestId(`workspace-stat-${kind}`);
+      expect(tile).toHaveAttribute("href", `/organizations/${ORG_A}/monitors`);
+      expect(
+        within(tile)
+          .getByTestId("workspace-stat-value")
+          .textContent.match(/\d+/g),
+      ).toEqual([String(value), "3"]);
+    }
+    expect(within(issues).getAllByTestId(/^monitor-list-row-/)).toHaveLength(2);
+    for (const monitor of monitorList().monitors) {
+      const row = within(issues).getByTestId(`monitor-list-row-${monitor.id}`);
+      expect(within(row).getByTestId("monitor-list-name").textContent).toBe(
+        monitor.name,
+      );
+      expect(within(row).getByTestId("monitor-list-cell-url").textContent).toBe(
+        monitor.url,
+      );
+      expect(row).toHaveAttribute(
+        "href",
+        `/organizations/${ORG_A}/monitors/${monitor.id}`,
+      );
+      expect(row).toHaveAttribute("data-health", monitor.health);
+    }
+    expect(screen.getByTestId("workspace-add")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/monitors/new`,
+    );
   });
 
   it("marks every remaining sample region as an example with its issue link", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
-
-    await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" });
-    const samples = screen.getAllByRole("group", { name: /^ตัวอย่าง: / });
-    expect(samples).toHaveLength(2);
-    const issues = samples.map((sample) =>
-      within(sample)
-        .getByRole("link", { name: /ดู issue #/ })
-        .getAttribute("href"),
-    );
-    expect(issues.map((href) => /(\d+)$/.exec(href ?? "")?.[1])).toEqual(
-      expect.arrayContaining(["56", "63"]),
-    );
-    // Only the real expiry line carries a date; no sample region does.
-    for (const sample of samples) {
-      expect(within(sample).queryByText(/\d{1,2} ต\.ค\. \d{4}/)).toBeNull();
-    }
-    for (const sample of samples) {
+    await screen.findByTestId("workspace-issues");
+    for (const [hook, issue] of [
+      ["workspace-uptime-example", 56],
+      ["workspace-events-example", 63],
+    ] as const) {
+      const sample = screen.getByTestId(hook);
+      expect(sample).toHaveRole("group");
+      expect(sample).toHaveAccessibleName();
       expect(
-        within(sample).getByText("ตัวอย่าง · ยังไม่เชื่อมข้อมูลจริง"),
-      ).toBeInTheDocument();
-      expect(
-        within(sample).getByRole("link", { name: /ดู issue #/ }),
-      ).toHaveAttribute("target", "_blank");
+        within(sample).getByTestId("mockup-notice"),
+      ).not.toBeEmptyDOMElement();
+      const link = within(sample).getByTestId("mockup-issue");
+      expect(link).toHaveAttribute(
+        "href",
+        `https://github.com/nixbpe/new-nightwatch/issues/${String(issue)}`,
+      );
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noreferrer");
+      expect(sample.getElementsByTagName("time")).toHaveLength(0);
     }
+    expect(screen.getByTestId("workspace-ssl-expiry")).toHaveAttribute(
+      "datetime",
+      "2026-10-14T05:00:00.000Z",
+    );
   });
 
   it("a viewer sees no add button", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
     renderPage();
 
-    await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" });
-    expect(screen.queryByRole("link", { name: "เพิ่มมอนิเตอร์" })).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "ดูมอนิเตอร์ทั้งหมด" }),
-    ).toBeInTheDocument();
+    await screen.findByTestId("workspace-issues");
+    expect(screen.queryByTestId("workspace-add")).toBeNull();
+    expect(screen.getByTestId("workspace-monitors")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_B}/monitors`,
+    );
   });
 
   it("measures the outage against the server's dataAsOf, not the client clock", async () => {
@@ -510,11 +541,15 @@ describe("WorkspacePage overview content", () => {
     try {
       fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
       renderPage();
-      const issues = (
-        await screen.findByRole("heading", { name: "ต้องดูตอนนี้" })
-      ).closest("section") as HTMLElement;
-      expect(within(issues).getByText("1 ชั่วโมง")).toBeInTheDocument();
-      expect(within(issues).queryByText("1 วัน")).toBeNull();
+      const issues = await screen.findByTestId("workspace-issues");
+      const row = within(issues).getByTestId(`monitor-list-row-${MONITOR_A}`);
+      const duration = within(row).getByTestId("workspace-issue-duration");
+      expect(duration).toHaveAttribute("data-duration-seconds", "3600");
+      expect(duration).toHaveTextContent(/^1 ชั่วโมง$/);
+      expect(duration.textContent.match(/\d+/g)).toEqual(["1"]);
+      expect(
+        within(row).getByTestId("monitor-list-incident-time"),
+      ).toHaveAttribute("datetime", "2026-10-02T04:00:00.000Z");
     } finally {
       vi.useRealTimers();
     }
@@ -529,7 +564,7 @@ describe("WorkspacePage overview content", () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
 
-    expect(await screen.findByText("ยังไม่มีมอนิเตอร์")).toBeInTheDocument();
+    expect(await screen.findByTestId("workspace-empty")).toBeInTheDocument();
   });
 
   it("a failed list offers a retry", async () => {
@@ -540,12 +575,10 @@ describe("WorkspacePage overview content", () => {
     renderPage();
 
     expect(
-      await screen.findByText("โหลดมอนิเตอร์ไม่สำเร็จ"),
+      await screen.findByTestId("workspace-list-error"),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(
-      await screen.findByRole("heading", { level: 2, name: "ต้องดูตอนนี้" }),
-    ).toBeInTheDocument();
+    await user.click(screen.getByTestId("workspace-list-retry"));
+    expect(await screen.findByTestId("workspace-issues")).toBeInTheDocument();
   });
 });
 
@@ -564,12 +597,14 @@ describe("WorkspacePage denied list", () => {
     );
     renderPage();
 
-    expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("workspace-denied")).toBeInTheDocument();
     expect(fetchMeContextMock.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText("Org A")).toBeNull();
-    expect(screen.queryByText("api-payments")).toBeNull();
+    expect(screen.queryByTestId("page-scope")).toBeNull();
+    expect(document.body.textContent).not.toContain("Org A");
+    expect(
+      screen.queryAllByTestId(`monitor-list-row-${MONITOR_A}`),
+    ).toHaveLength(0);
+    expect(document.body.textContent).not.toContain("api-payments");
   });
 
   it("a denied refetch after a successful load drops the cached monitors", async () => {
@@ -592,16 +627,27 @@ describe("WorkspacePage denied list", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(await screen.findAllByText("api-payments")).not.toHaveLength(0);
+    expect(
+      await within(
+        await screen.findByTestId("workspace-issues"),
+      ).findAllByTestId(`monitor-list-row-${MONITOR_A}`),
+    ).not.toHaveLength(0);
     const callsBefore = fetchMeContextMock.mock.calls.length;
 
     await queryClient.refetchQueries({ queryKey: monitorQueryKeys.all(ORG_A) });
 
+    expect(await screen.findByTestId("workspace-denied")).toBeInTheDocument();
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("api-payments")).toBeNull();
-    expect(screen.queryByText("portal")).toBeNull();
+      screen.queryAllByTestId(`monitor-list-row-${MONITOR_A}`),
+    ).toHaveLength(0);
+    expect(
+      screen.queryAllByTestId(`monitor-list-row-${MONITOR_B}`),
+    ).toHaveLength(0);
+    expect(document.body.textContent).not.toContain("api-payments");
+    expect(document.body.textContent).not.toContain("portal");
+    expect(document.body.innerHTML).not.toContain(
+      "https://api-payments.example.com/health",
+    );
     await waitFor(() => {
       expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(callsBefore);
     });
@@ -652,45 +698,54 @@ describe("WorkspacePage overview details", () => {
     fetchMonitorListMock.mockResolvedValue(list);
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
-    const issues = (
-      await screen.findByRole("heading", { name: "ต้องดูตอนนี้" })
-    ).closest("section") as HTMLElement;
-    const row = (name: string) =>
-      within(issues).getByText(name).closest("a") as HTMLElement;
-
-    const portal = within(row("portal"));
-    const issuer = portal.getByText("ผู้ออก Let's Encrypt R11");
-    expect(issuer).toHaveClass("[overflow-wrap:anywhere]");
-    const expiry = portal.getByText(formatDate(notAfter));
-    expect(expiry).toHaveAttribute("datetime", notAfter);
-    expect(expiry.parentElement).toHaveTextContent(
-      `หมดอายุ ${formatDate(notAfter)}`,
+    const issues = await screen.findByTestId("workspace-issues");
+    const row = (monitor: MonitorRow) =>
+      within(within(issues).getByTestId(`monitor-list-row-${monitor.id}`));
+    for (const monitor of list.monitors) {
+      const scope = row(monitor);
+      const issuer = scope.queryByTestId("workspace-ssl-issuer"),
+        expiry = scope.queryByTestId("workspace-ssl-expiry");
+      expect(scope.getByTestId("monitor-list-name").textContent).toBe(
+        monitor.name,
+      );
+      if (monitor.health === "down" || monitor.ssl.issuer === null)
+        expect(issuer).toBeNull();
+      else expect(issuer).toHaveTextContent(monitor.ssl.issuer);
+      if (monitor.health === "down" || monitor.ssl.notAfter === null)
+        expect(expiry).toBeNull();
+      else {
+        expect(expiry).toHaveAttribute("datetime", notAfter);
+        expect(expiry).toHaveTextContent(formatDate(notAfter));
+      }
+    }
+    const down = within(
+      within(issues).getByTestId(`monitor-list-row-${MONITOR_A}`),
     );
-
-    expect(within(row("bare")).queryByText(/ผู้ออก|หมดอายุ \d/)).toBeNull();
-    const issuerOnly = within(row("issuer-only"));
-    expect(issuerOnly.getByText("ผู้ออก Only CA")).toBeInTheDocument();
-    expect(issuerOnly.queryByText(/หมดอายุ \d/)).toBeNull();
-    const dateOnly = within(row("date-only"));
-    expect(dateOnly.queryByText(/ผู้ออก/)).toBeNull();
-    expect(dateOnly.getByText(formatDate(notAfter))).toBeInTheDocument();
-
-    const down = within(row("api-payments"));
-    expect(down.queryByText(/Down CA/)).toBeNull();
-    expect(down.queryByText(formatDate(notAfter))).toBeNull();
-    expect(down.getByText("หมดอายุใน 12 วัน")).toBeInTheDocument();
+    expect(down.getByTestId("monitor-list-ssl")).toHaveAttribute(
+      "data-days-remaining",
+      "12",
+    );
+    expect(
+      down.getByTestId("monitor-list-ssl").textContent.match(/\d+/g),
+    ).toEqual(["12"]);
+    expect(down.queryByTestId("workspace-ssl-issuer")).toBeNull();
+    expect(
+      within(issues).getByTestId(`monitor-list-row-${MONITOR_A}`).textContent,
+    ).not.toContain("Down CA");
   });
 
   it("writes the expiry date exactly as the monitor detail SSL card does", async () => {
     fetchMonitorListMock.mockResolvedValue(monitorList());
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
-    const issues = (
-      await screen.findByRole("heading", { name: "ต้องดูตอนนี้" })
-    ).closest("section") as HTMLElement;
-    const workspaceDate = issues.querySelector(
-      'time[datetime="2026-10-14T05:00:00.000Z"]',
-    )?.textContent;
+    const issues = await screen.findByTestId("workspace-issues");
+    const workspaceTime = within(issues).getByTestId("workspace-ssl-expiry");
+    const workspaceDate = workspaceTime.textContent;
+    expect(workspaceTime).toHaveAttribute(
+      "datetime",
+      "2026-10-14T05:00:00.000Z",
+    );
+    expect(workspaceDate).toBe(formatDate("2026-10-14T05:00:00.000Z"));
     const card = render(
       <SslCard
         ssl={{
@@ -704,19 +759,20 @@ describe("WorkspacePage overview details", () => {
       />,
     );
     expect(workspaceDate).toBeTruthy();
-    expect(card.container.querySelector("time")?.textContent).toBe(
-      workspaceDate,
-    );
+    expect(
+      within(card.container).getByTestId("monitor-detail-ssl-expiry")
+        .textContent,
+    ).toBe(workspaceDate);
   });
 
   it("limit reached disables add with its reason", async () => {
     fetchMonitorListMock.mockResolvedValue(monitorList(50));
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
-    const add = await screen.findByRole("button", { name: "เพิ่มมอนิเตอร์" });
+    const add = await screen.findByTestId("workspace-add-disabled");
     expect(add).toBeDisabled();
     expect(add).toHaveAttribute("aria-describedby", "monitor-limit-reason");
-    expect(screen.getByText(/ครบ 50 ตัวแล้ว/)).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-limit-reason")).toBeInTheDocument();
   });
 
   it("shows tile values, expired note and orders down before SSL rows", async () => {
@@ -736,20 +792,28 @@ describe("WorkspacePage overview details", () => {
     fetchMonitorListMock.mockResolvedValue(list);
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
     renderPage();
-    const stats = await screen.findByRole("region", { name: "สรุปสถานะ" });
-    const [, downTile, sslTile] = within(stats).getAllByRole("link");
+    const stats = await screen.findByTestId("workspace-stats");
+    const downTile = within(stats).getByTestId("workspace-stat-down");
+    const sslTile = within(stats).getByTestId("workspace-stat-ssl");
     expect(downTile).toHaveTextContent("api-payments");
-    expect(sslTile).toHaveTextContent("2");
-    expect(sslTile).toHaveTextContent("หมดอายุแล้ว 1");
-    const issues = screen
-      .getByRole("heading", { name: "ต้องดูตอนนี้" })
-      .closest("section") as HTMLElement;
+    expect(
+      within(sslTile)
+        .getByTestId("workspace-stat-value")
+        .textContent.match(/\d+/g),
+    ).toEqual(["2", "3"]);
+    expect(sslTile).toHaveAttribute("data-expired-count", "1");
+    expect(sslTile.textContent.match(/\d+/g)).toEqual([
+      "2",
+      "3",
+      "1",
+      "30",
+      "7",
+    ]);
+    const issues = screen.getByTestId("workspace-issues");
     const names = within(issues)
-      .getAllByRole("listitem")
-      .map((li) => li.textContent);
-    expect(names.findIndex((t) => t.includes("api-payments"))).toBeLessThan(
-      names.findIndex((t) => t.includes("portal")),
-    );
+      .getAllByTestId("monitor-list-name")
+      .map((node) => node.textContent);
+    expect(names).toEqual(["api-payments", "legacy", "portal"]);
   });
 
   it("renders no-data uptime, populated events and the stale warning", async () => {
@@ -788,27 +852,41 @@ describe("WorkspacePage overview details", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    const events = (
-      await screen.findByRole("heading", { name: "เหตุการณ์ล่าสุด" })
-    ).closest("section") as HTMLElement;
-    expect(
-      await within(events).findByRole("link", { name: "api-payments" }),
-    ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/${MONITOR_A}`);
-    expect(events).toHaveTextContent(
-      "เริ่มล่ม สาเหตุ ไม่พบชื่อโดเมน · HTTP 503",
+    const events = await screen.findByTestId("workspace-events");
+    const link = await within(events).findByTestId("workspace-event-monitor");
+    expect(link).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/monitors/${MONITOR_A}`,
     );
-    expect(screen.getAllByText("ไม่มีข้อมูล").length).toBeGreaterThan(0);
-
+    expect(link.textContent).toBe("api-payments");
+    const event = within(events).getByTestId("workspace-event");
+    expect(event).toHaveAttribute("data-event-kind", "incident_opened");
+    expect(event).toHaveAttribute("data-reason", "dns_not_found");
+    expect(
+      within(event).getByTestId("monitor-event-http-status"),
+    ).toHaveTextContent(/^HTTP 503$/);
+    expect(within(event).getByTestId("workspace-event-time")).toHaveAttribute(
+      "datetime",
+      "2026-10-02T04:00:00.000Z",
+    );
+    const uptime = within(screen.getByTestId("workspace-uptime"));
+    const portal = within(uptime.getByTestId(`monitor-list-row-${MONITOR_B}`));
+    expect(
+      portal.getByTestId("monitor-list-cell-d30"),
+    ).not.toBeEmptyDOMElement();
+    expect(portal.getByTestId("monitor-list-cell-d30")).not.toHaveTextContent(
+      /\d/,
+    );
+    expect(
+      portal.getByTestId("monitor-list-cell-responseTime"),
+    ).toHaveTextContent(/^120 ms$/);
     await queryClient.refetchQueries({ queryKey: monitorQueryKeys.all(ORG_A) });
     expect(
-      await screen.findByText(/อัปเดตข้อมูลไม่สำเร็จ/),
+      await screen.findByTestId("workspace-refetch-error"),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("portal").length).toBeGreaterThan(0);
-    // A failed background refetch keeps the cached (now stale) data on screen,
-    // so the live indicator must not keep pulsing beside it (CMP-01, MOT-01).
-    const heading = screen.getByRole("heading", { level: 1, name: "ภาพรวม" });
-    const header = heading.closest("header");
-    expect(header).not.toBeNull();
-    expect((header as HTMLElement).querySelector(".live-pulse")).toBeNull();
+    expect(
+      portal.getByTestId(`monitor-list-name-${MONITOR_B}`).textContent,
+    ).toBe("portal");
+    expect(screen.queryByTestId("workspace-fresh")).toBeNull();
   });
 });

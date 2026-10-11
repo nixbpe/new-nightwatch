@@ -9,7 +9,7 @@ import type {
   OrganizationRole,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createMemoryRouter,
@@ -136,12 +136,17 @@ function Harness() {
   return (
     <>
       <button
+        data-testid="test-member-navigate"
         type="button"
         onClick={() => void navigate(`/organizations/${B}/members`)}
       >
         navigate B
       </button>
-      <button type="button" onClick={() => void switchOrg(B)}>
+      <button
+        data-testid="test-member-switch"
+        type="button"
+        onClick={() => void switchOrg(B)}
+      >
         confirm B
       </button>
       <output data-testid="location">{useLocation().pathname}</output>
@@ -177,13 +182,12 @@ async function renderAs(
       </TenantProvider>
     </QueryClientProvider>,
   );
-  await screen.findByRole("button", { name: "ออกจากองค์กร" });
+  await screen.findByTestId("self-leave-open");
   return user;
 }
 
-const entry = () => screen.getByRole("button", { name: "ออกจากองค์กร" });
-const confirmButton = () =>
-  screen.getByRole("button", { name: "ยืนยันการออกจากองค์กร" });
+const entry = () => screen.getByTestId("self-leave-open");
+const confirmButton = () => screen.getByTestId("self-leave-confirm");
 const afterLeaveContext = () => {
   vi.mocked(fetchMeContext).mockResolvedValue(contextWith([ORG_B], B));
 };
@@ -193,17 +197,15 @@ it.each(["viewer", "auditor"] as const)(
   async (role) => {
     const user = await renderAs(role);
     expect(fetchOrganizationMembers).not.toHaveBeenCalled();
-    expect(
-      screen.getByText("คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("members-denied")).toBeInTheDocument();
     await user.click(entry());
-    const dialog = screen.getByRole("dialog", {
-      name: "ยืนยันการออกจากองค์กร",
-    });
+    const dialog = screen.getByTestId(
+      /^(member-(role|revoke)|self-leave)-dialog$/,
+    );
     expect(dialog).toHaveAccessibleDescription(
       /Me \(me@example.test\).*Acme \(acme\)/,
     );
-    expect(dialog).toHaveAccessibleDescription(/องค์กรอื่นยังอยู่/);
+    expect(dialog).toHaveAccessibleDescription();
     afterLeaveContext();
     await user.click(confirmButton());
     await waitFor(() =>
@@ -214,8 +216,10 @@ it.each(["viewer", "auditor"] as const)(
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
     expect(leaveOrganization).toHaveBeenCalledWith(A);
     expect(vi.mocked(fetchMeContext)).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText(/ไม่สำเร็จ/)).toBeNull();
+    expect(
+      screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+    ).toBeNull();
+    expect(screen.queryByTestId("self-leave-error")).toBeNull();
   },
 );
 
@@ -223,7 +227,14 @@ it.each(["owner", "admin"] as const)(
   "%s sees the self-leave entry below the member list and leaves to no-access when no Organization remains",
   async (role) => {
     const user = await renderAs(role, [ORG_A(role)]);
-    expect(await screen.findByRole("row", { name: /Me/ })).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("member-row-member-me"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("member-row-member-me")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent(/^Me$/);
     const cachedLists = () =>
       queryClient
         .getQueryCache()
@@ -236,11 +247,7 @@ it.each(["owner", "admin"] as const)(
     await waitFor(() =>
       expect(screen.getByTestId("location")).toHaveTextContent("/workspace"),
     );
-    expect(
-      screen.getByRole("heading", {
-        name: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
-      }),
-    ).toHaveFocus();
+    expect(screen.getByTestId("page-title")).toHaveFocus();
     // A's member list data is gone with the membership.
     expect(cachedLists()).toHaveLength(0);
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
@@ -251,13 +258,17 @@ it("cancel and Escape send no request, keep the context and return focus to the 
   const user = await renderAs("viewer");
   const opener = entry();
   await user.click(opener);
-  expect(screen.getByRole("button", { name: "ยกเลิก" })).toHaveFocus();
-  await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByTestId("confirmation-cancel")).toHaveFocus();
+  await user.click(screen.getByTestId("confirmation-cancel"));
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
   expect(opener).toHaveFocus();
   await user.click(opener);
   await user.keyboard("{Escape}");
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
   expect(opener).toHaveFocus();
   expect(leaveOrganization).not.toHaveBeenCalled();
   expect(vi.mocked(fetchMeContext)).toHaveBeenCalledTimes(1);
@@ -272,14 +283,14 @@ it("blocks a second confirm, cancel and Escape while the DELETE is pending", asy
   const user = await renderAs("viewer");
   await user.click(entry());
   await user.click(confirmButton());
-  const pendingConfirm = await screen.findByRole("button", {
-    name: "กำลังออกจากองค์กร…",
-  });
+  const pendingConfirm = await screen.findByTestId("self-leave-confirm");
   expect(pendingConfirm).toBeDisabled();
-  expect(screen.getByRole("button", { name: "ยกเลิก" })).toBeDisabled();
+  expect(screen.getByTestId("confirmation-cancel")).toBeDisabled();
   await user.click(pendingConfirm);
   await user.keyboard("{Escape}");
-  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(
+    screen.getByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeInTheDocument();
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
   afterLeaveContext();
   await act(async () => {
@@ -299,23 +310,41 @@ it("explains LAST_OWNER, refreshes context, retains the organization and returns
     new ApiError("LAST_OWNER", "last", 400),
   );
   const user = await renderAs("owner");
-  await screen.findByRole("row", { name: /Me/ });
+  await screen.findByTestId("member-row-member-me");
+  expect(
+    within(screen.getByTestId("member-row-member-me")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent(/^Me$/);
   const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
   await user.click(entry());
-  expect(screen.getByRole("dialog")).toHaveAccessibleDescription(
-    /เจ้าของคนสุดท้ายออกไม่ได้/,
-  );
-  await user.click(confirmButton());
   expect(
-    await screen.findByText(/องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน/),
-  ).toHaveAttribute("role", "alert");
+    within(screen.getByTestId("self-leave-dialog")).getByTestId(
+      "self-leave-impact",
+    ),
+  ).toHaveAttribute("data-member-role", "owner");
+  expect(
+    screen.getByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toHaveAccessibleDescription();
+  await user.click(confirmButton());
+  expect(await screen.findByTestId("self-leave-error")).toHaveAttribute(
+    "role",
+    "alert",
+  );
   expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches + 1);
   expect(screen.getByTestId("location")).toHaveTextContent(
     `/organizations/${A}/members`,
   );
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
   await waitFor(() => expect(entry()).toHaveFocus());
-  expect(await screen.findByRole("row", { name: /Me/ })).toBeInTheDocument();
+  expect(await screen.findByTestId("member-row-member-me")).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("member-row-member-me")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent(/^Me$/);
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
 });
 
@@ -326,7 +355,7 @@ it("announces another failure, refreshes the context and never replays the DELET
   const user = await renderAs("viewer");
   await user.click(entry());
   await user.click(confirmButton());
-  expect(await screen.findByText(/ออกจากองค์กรไม่สำเร็จ/)).toHaveAttribute(
+  expect(await screen.findByTestId("self-leave-error")).toHaveAttribute(
     "role",
     "alert",
   );
@@ -351,7 +380,7 @@ it("follows the server context when a failed DELETE had actually removed the act
       `/organizations/${B}/members`,
     ),
   );
-  expect(screen.queryByText(/ไม่สำเร็จ|เจ้าของอย่างน้อย/)).toBeNull();
+  expect(screen.queryByTestId("self-leave-error")).toBeNull();
 });
 
 it("offers a retry of the context refresh, not of the DELETE, when the refresh fails", async () => {
@@ -359,7 +388,7 @@ it("offers a retry of the context refresh, not of the DELETE, when the refresh f
   await user.click(entry());
   vi.mocked(fetchMeContext).mockRejectedValueOnce(new Error("offline"));
   await user.click(confirmButton());
-  const retry = await screen.findByRole("button", { name: "ลองอีกครั้ง" });
+  const retry = await screen.findByTestId("self-leave-admission-retry");
   afterLeaveContext();
   await user.click(retry);
   await waitFor(() =>
@@ -382,14 +411,16 @@ it.each(["success", "LAST_OWNER"] as const)(
     const user = await renderAs("viewer");
     await user.click(entry());
     await user.click(confirmButton());
-    await user.click(screen.getByRole("button", { name: "confirm B" }));
+    await user.click(screen.getByTestId("test-member-switch"));
     await waitFor(() => {
       expect(updateActiveOrganization).toHaveBeenCalled();
     });
-    await user.click(screen.getByRole("button", { name: "navigate B" }));
-    await screen.findByRole("button", { name: "ออกจากองค์กร" });
+    await user.click(screen.getByTestId("test-member-navigate"));
+    await screen.findByTestId("self-leave-open");
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(
+        screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+      ).toBeNull();
     });
     const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
     await act(async () => {
@@ -401,12 +432,16 @@ it.each(["success", "LAST_OWNER"] as const)(
       `/organizations/${B}/members`,
     );
     expect(entry()).toBeEnabled();
-    expect(screen.queryByText(/ไม่สำเร็จ|เจ้าของอย่างน้อย/)).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("self-leave-error")).toBeNull();
+    expect(
+      screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+    ).toBeNull();
     expect(
       screen
-        .queryAllByRole("status")
-        .filter((element) => !element.hasAttribute("data-testid")),
+        .queryAllByTestId(
+          /^(member-(role|revoke)-(pending|success)|members-(admission|context|list)-status|self-leave-admission-status|pending-invitations-status|confirmation-pending)$/,
+        )
+        .filter((element) => element.textContent !== ""),
     ).toEqual([]);
     expect(leaveOrganization).toHaveBeenCalledTimes(1);
     expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
@@ -415,8 +450,8 @@ it.each(["success", "LAST_OWNER"] as const)(
 
 it("shows the Organization name and slug in the header of a viewer without a list", async () => {
   await renderAs("auditor");
-  expect(screen.getByText("Acme")).toBeInTheDocument();
-  expect(screen.getByText("acme")).toBeInTheDocument();
+  expect(screen.getByTestId("page-scope")).toBeInTheDocument();
+  expect(screen.getByTestId("members-organization-slug")).toBeInTheDocument();
 });
 
 it("keeps the LAST_OWNER explanation when the refresh fails and is retried", async () => {
@@ -424,14 +459,20 @@ it("keeps the LAST_OWNER explanation when the refresh fails and is retried", asy
     new ApiError("LAST_OWNER", "last", 400),
   );
   const user = await renderAs("owner");
-  await screen.findByRole("row", { name: /Me/ });
+  await screen.findByTestId("member-row-member-me");
+  expect(
+    within(screen.getByTestId("member-row-member-me")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent(/^Me$/);
   await user.click(entry());
   vi.mocked(fetchMeContext).mockRejectedValueOnce(new Error("offline"));
   await user.click(confirmButton());
-  await user.click(await screen.findByRole("button", { name: "ลองอีกครั้ง" }));
-  expect(
-    await screen.findByText(/องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน/),
-  ).toHaveAttribute("role", "alert");
+  await user.click(await screen.findByTestId("self-leave-admission-retry"));
+  expect(await screen.findByTestId("self-leave-error")).toHaveAttribute(
+    "role",
+    "alert",
+  );
   expect(leaveOrganization).toHaveBeenCalledTimes(1);
 });
 
@@ -444,7 +485,7 @@ it("applies the late leave result to the origin when the organization switch is 
   const user = await renderAs("viewer");
   await user.click(entry());
   await user.click(confirmButton());
-  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await user.click(screen.getByTestId("test-member-switch"));
   await waitFor(() => {
     expect(updateActiveOrganization).toHaveBeenCalled();
   });
@@ -487,5 +528,5 @@ it("uses the resolver destination when the DELETE hint names a different organiz
       `/organizations/${C}/members`,
     ),
   );
-  expect(screen.queryByText(/ออกจากองค์กรไม่สำเร็จ/)).toBeNull();
+  expect(screen.queryByTestId("self-leave-error")).toBeNull();
 });

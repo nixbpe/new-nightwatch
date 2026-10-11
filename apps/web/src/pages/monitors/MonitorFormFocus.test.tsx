@@ -156,7 +156,9 @@ async function openForm(
                   return result;
                 }
               : undefined,
-            element: <h1>Scope overview</h1>,
+            element: (
+              <h1 data-testid="test-monitor-scope-overview">Scope overview</h1>
+            ),
           },
         ],
       },
@@ -173,7 +175,9 @@ async function openForm(
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  const name = await screen.findByLabelText("ชื่อมอนิเตอร์");
+  const name = await screen.findByTestId("monitor-form-name");
+  expect(name).toHaveAccessibleName();
+  expect(screen.getByTestId("monitor-form-url")).toHaveAccessibleName();
   fireEvent.change(name, { target: { value: "private edited name" } });
   name.focus();
   return client;
@@ -186,25 +190,39 @@ function refreshOnFocus() {
   });
 }
 function withdrawn() {
-  expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
-  expect(screen.queryByLabelText("URL")).toBeNull();
-  expect(screen.queryByDisplayValue("private edited name")).toBeNull();
-  expect(screen.queryByText("https://api.acme.example/health")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-name")).toBeNull();
+  expect(screen.queryByTestId("monitor-form-url")).toBeNull();
+  // Disclosure predicate only: never use these controls to locate a component.
+  const controls = document.querySelectorAll<
+    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+  >("input, textarea, select");
+  expect(
+    Array.from(controls).some(
+      (control) => control.value === "private edited name",
+    ),
+  ).toBe(false);
+  expect(document.body.textContent).not.toContain(
+    "https://api.acme.example/health",
+  );
 }
-const headerToggle = () =>
-  screen.getByRole("button", { name: /^(ย่อ|ขยาย)เมนู$/ });
-const searchButton = () => screen.getByRole("button", { name: "ค้นหาทั้งหมด" });
+const headerToggle = () => screen.getByTestId("shell-sidebar-toggle");
+const searchButton = () => screen.getByTestId("shell-search-open");
 async function focusShell(
   owner: "header" | "palette",
   user: ReturnType<typeof userEvent.setup>,
 ) {
   if (owner === "header") {
     const button = headerToggle();
+    expect(button).toHaveRole("button");
+    expect(button).toHaveAccessibleName();
     button.focus();
     return button;
   }
   await user.click(searchButton());
-  return screen.findByRole("combobox", { name: "ค้นหาทั้งหมด" });
+  const query = await screen.findByTestId("shell-command-query");
+  expect(query).toHaveRole("combobox");
+  expect(query).toHaveAccessibleName();
+  return query;
 }
 it.each(["header", "palette"] as const)(
   "CR88-02 native %s retains focus through pending, failure and explicit retry confirmation",
@@ -226,19 +244,19 @@ it.each(["header", "palette"] as const)(
       pending.reject(new Error("confirmation unavailable"));
       await pending.promise.catch(() => undefined);
     });
-    await screen.findByRole("button", { name: "ลองอีกครั้ง" });
+    await screen.findByTestId("monitor-form-admission-retry");
     withdrawn();
     expect(shellFocus).toHaveFocus();
     if (owner === "palette") {
       await user.tab();
       expect(shellFocus).toHaveFocus();
       await user.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog", { name: "ค้นหาทั้งหมด" })).toBeNull();
+      expect(screen.queryByTestId("shell-command-dialog")).toBeNull();
       expect(searchButton()).toHaveFocus();
     }
     const retry = Promise.withResolvers<MeContextResponse>();
     vi.mocked(fetchMeContext).mockReturnValueOnce(retry.promise);
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    await user.click(screen.getByTestId("monitor-form-admission-retry"));
     shellFocus = await focusShell(owner, user);
     withdrawn();
     expect(shellFocus).toHaveFocus();
@@ -246,7 +264,7 @@ it.each(["header", "palette"] as const)(
       retry.resolve(context());
       await retry.promise;
     });
-    expect(await screen.findByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+    expect(await screen.findByTestId("monitor-form-name")).toHaveValue(
       "private edited name",
     );
     expect(shellFocus).toHaveFocus();
@@ -255,7 +273,7 @@ it.each(["header", "palette"] as const)(
       expect(shellFocus).toHaveFocus();
       await user.keyboard("{Escape}");
       expect(searchButton()).toHaveFocus();
-      expect(screen.queryByRole("dialog", { name: "ค้นหาทั้งหมด" })).toBeNull();
+      expect(screen.queryByTestId("shell-command-dialog")).toBeNull();
     }
   },
 );
@@ -269,13 +287,13 @@ it.each(["header", "palette"] as const)(
     vi.mocked(updateMonitor).mockRejectedValueOnce(
       new ApiError("PERMISSION_DENIED", "Denied", 403),
     );
-    await user.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(getContextPublicationSnapshot(client).admission.kind).toBe(
         "confirming",
       );
     });
-    const heading = screen.getByRole("heading", { name: "แก้ไขมอนิเตอร์" });
+    const heading = screen.getByTestId("monitor-form-title");
     expect(heading).toHaveFocus();
     withdrawn();
     const shellFocus = await focusShell(owner, user);
@@ -288,7 +306,7 @@ it.each(["header", "palette"] as const)(
       pending.resolve(context());
       await pending.promise;
     });
-    expect(await screen.findByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+    expect(await screen.findByTestId("monitor-form-name")).toHaveValue(
       "private edited name",
     );
     expect(shellFocus).toHaveFocus();
@@ -308,7 +326,7 @@ it("CR88-02 external focus use cancels stale recovery even after that live heade
       "confirming",
     );
   });
-  expect(screen.getByRole("heading", { name: "แก้ไขมอนิเตอร์" })).toHaveFocus();
+  expect(screen.getByTestId("monitor-form-title")).toHaveFocus();
   headerToggle().focus();
   headerToggle().blur();
   expect(document.body).toHaveFocus();
@@ -316,14 +334,14 @@ it("CR88-02 external focus use cancels stale recovery even after that live heade
     pending.resolve(context());
     await pending.promise;
   });
-  await screen.findByLabelText("ชื่อมอนิเตอร์");
+  await screen.findByTestId("monitor-form-name");
   expect(document.body).toHaveFocus();
 });
 it("CR88-02 native local field focus recovers after withdrawn failure and keyboard retry", async () => {
   const user = userEvent.setup(),
     client = await openForm(),
     pending = Promise.withResolvers<MeContextResponse>();
-  screen.getByLabelText("URL").focus();
+  screen.getByTestId("monitor-form-url").focus();
   vi.mocked(fetchMeContext).mockReturnValueOnce(pending.promise);
   refreshOnFocus();
   await waitFor(() => {
@@ -331,18 +349,18 @@ it("CR88-02 native local field focus recovers after withdrawn failure and keyboa
       "confirming",
     );
   });
-  expect(screen.getByRole("heading", { name: "แก้ไขมอนิเตอร์" })).toHaveFocus();
+  expect(screen.getByTestId("monitor-form-title")).toHaveFocus();
   withdrawn();
   await act(async () => {
     pending.reject(new Error("confirmation unavailable"));
     await pending.promise.catch(() => undefined);
   });
-  const retry = await screen.findByRole("button", { name: "ลองอีกครั้ง" });
+  const retry = await screen.findByTestId("monitor-form-admission-retry");
   retry.focus();
   vi.mocked(fetchMeContext).mockResolvedValueOnce(context());
   await user.keyboard("{Enter}");
-  expect(await screen.findByLabelText("URL")).toHaveFocus();
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+  expect(await screen.findByTestId("monitor-form-url")).toHaveFocus();
+  expect(screen.getByTestId("monitor-form-name")).toHaveValue(
     "private edited name",
   );
 });
@@ -377,8 +395,8 @@ it.each(["create", "edit"] as const)(
       .mockReturnValueOnce(pending.promise)
       .mockReturnValue(new Promise<MeContextResponse>(() => {}));
     try {
-      await user.click(screen.getByRole("button", { name: /Acme/ }));
-      await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+      await user.click(screen.getByTestId("shell-organization-switch"));
+      await user.click(screen.getByTestId(`shell-organization-${B}`));
       await waitFor(() => {
         expect(getContextPublicationSnapshot(client).admission.kind).toBe(
           "confirming",
@@ -391,12 +409,14 @@ it.each(["create", "edit"] as const)(
         await pending.promise;
       });
       expect(navigate).toHaveBeenCalledTimes(1);
-      await screen.findByRole("heading", { name: "Scope overview" });
+      expect(
+        await screen.findByTestId("test-monitor-scope-overview"),
+      ).toHaveTextContent(/^Scope overview$/);
       expect(router.state.location.pathname).toBe(
         `/organizations/${B}/monitors`,
       );
       expect(fetchMeContext).toHaveBeenCalledTimes(2);
-      expect(screen.queryByDisplayValue("private edited name")).toBeNull();
+      expect(screen.queryByTestId("monitor-form-name")).toBeNull();
     } finally {
       stopRouter();
       stopPublication();
@@ -439,21 +459,23 @@ it.each(["create", "edit"] as const)(
     );
     const { router } = must(resources.at(-1));
     const navigate = vi.spyOn(router, "navigate");
-    const switchTo = async (from: string, to: string) => {
-      await user.click(screen.getByRole("button", { name: new RegExp(from) }));
-      await user.click(
-        screen.getByRole("menuitemradio", { name: new RegExp(to) }),
+    const switchTo = async (targetId: string, expectedName: string) => {
+      await user.click(screen.getByTestId("shell-organization-switch"));
+      await user.click(screen.getByTestId(`shell-organization-${targetId}`));
+      await waitFor(() =>
+        expect(screen.getByTestId("shell-organization-name")).toHaveTextContent(
+          expectedName,
+        ),
       );
-      await screen.findByRole("button", { name: new RegExp(to) });
     };
-    await switchTo("Acme", "Beta");
+    await switchTo(B, "Beta");
     await waitFor(() => {
       expect(router.state.navigation.location?.pathname).toBe(
         `/organizations/${B}/monitors`,
       );
     });
     withdrawn();
-    await switchTo("Beta", "Acme");
+    await switchTo(A, "Acme");
     await waitFor(() => {
       expect(router.state.navigation.location?.pathname).toBe(
         `/organizations/${A}/monitors`,
@@ -468,7 +490,7 @@ it.each(["create", "edit"] as const)(
     expect(router.state.navigation.location?.pathname).toBe(
       `/organizations/${A}/monitors`,
     );
-    await switchTo("Acme", "Gamma");
+    await switchTo(C, "Gamma");
     await waitFor(() => {
       expect(router.state.navigation.location?.pathname).toBe(
         `/organizations/${C}/monitors`,
@@ -487,17 +509,21 @@ it.each(["create", "edit"] as const)(
       c.resolve(undefined);
       await c.promise;
     });
-    await screen.findByRole("heading", { name: "Scope overview" });
+    expect(
+      await screen.findByTestId("test-monitor-scope-overview"),
+    ).toHaveTextContent(/^Scope overview$/);
     expect(router.state.location.pathname).toBe(`/organizations/${C}/monitors`);
     await act(async () => {
       await router.navigate(
         `/organizations/${A}/monitors/${mode === "edit" ? `${MONITOR_ID}/edit` : "new"}`,
       );
     });
-    expect(await screen.findByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+    expect(await screen.findByTestId("monitor-form-name")).toHaveValue(
       mode === "create" ? "" : "Payments API",
     );
-    expect(screen.queryByDisplayValue("private edited name")).toBeNull();
+    expect(screen.getByTestId("monitor-form-name")).not.toHaveValue(
+      "private edited name",
+    );
     expect(active).toBe(C);
   },
 );
@@ -515,16 +541,18 @@ it("CR88-R3 an existing member bookmark stays at its original URL until a genuin
     ...context(),
     lastActiveTenantId: B,
   });
-  await user.click(screen.getByRole("button", { name: /Acme/ }));
-  await user.click(screen.getByRole("menuitemradio", { name: /Beta/ }));
+  await user.click(screen.getByTestId("shell-organization-switch"));
+  await user.click(screen.getByTestId(`shell-organization-${B}`));
   expect(navigate).not.toHaveBeenCalled();
-  expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+  expect(screen.getByTestId("monitor-form-name")).toHaveValue(
     "private edited name",
   );
   vi.mocked(updateActiveOrganization).mockResolvedValueOnce(context());
-  await user.click(screen.getByRole("button", { name: /Beta/ }));
-  await user.click(screen.getByRole("menuitemradio", { name: /Acme/ }));
-  await screen.findByRole("heading", { name: "Scope overview" });
+  await user.click(screen.getByTestId("shell-organization-switch"));
+  await user.click(screen.getByTestId(`shell-organization-${A}`));
+  expect(
+    await screen.findByTestId("test-monitor-scope-overview"),
+  ).toHaveTextContent(/^Scope overview$/);
   expect(router.state.location.pathname).toBe(`/organizations/${A}/monitors`);
   expect(navigate).toHaveBeenCalledTimes(1);
 });

@@ -103,19 +103,39 @@ function Probe() {
       <span data-testid="server-active">
         server:{serverActiveOrgId ?? "none"}
       </span>
-      <button type="button" onClick={() => void switchOrg("org-a")}>
+      <button
+        data-testid="switch-org-a"
+        type="button"
+        onClick={() => void switchOrg("org-a")}
+      >
         switch-a
       </button>
-      <button type="button" onClick={() => void switchOrg("org-b")}>
+      <button
+        data-testid="switch-org-b"
+        type="button"
+        onClick={() => void switchOrg("org-b")}
+      >
         switch-b
       </button>
-      <button type="button" onClick={() => void switchOrg("org-c")}>
+      <button
+        data-testid="switch-org-unknown"
+        type="button"
+        onClick={() => void switchOrg("org-c")}
+      >
         switch-unknown
       </button>
-      <button type="button" onClick={() => void retryMe()}>
+      <button
+        data-testid="retry-context"
+        type="button"
+        onClick={() => void retryMe()}
+      >
         retry
       </button>
-      <button type="button" onClick={() => void refreshMembershipContext()}>
+      <button
+        data-testid="refresh-membership"
+        type="button"
+        onClick={() => void refreshMembershipContext()}
+      >
         refresh membership
       </button>
     </div>
@@ -154,10 +174,10 @@ describe("TenantProvider", () => {
         defaultOptions: { queries: { retry: false } },
       });
       renderProvider(queryClient);
-      await screen.findByText("org-b");
-      await userEvent.click(
-        screen.getByRole("button", { name: "refresh membership" }),
+      await waitFor(() =>
+        expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
       );
+      await userEvent.click(screen.getByTestId("refresh-membership"));
       await waitFor(() => {
         expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
       });
@@ -196,7 +216,7 @@ describe("TenantProvider", () => {
           ...me,
           lastActiveTenantId: "org-a",
         });
-        await userEvent.click(screen.getByRole("button", { name: "retry" }));
+        await userEvent.click(screen.getByTestId("retry-context"));
         await waitFor(() => {
           expect(screen.getByTestId("active")).toHaveTextContent("org-a");
         });
@@ -213,7 +233,9 @@ describe("TenantProvider", () => {
       defaultOptions: { queries: { retry: false } },
     });
     renderProvider(queryClient);
-    await screen.findByText("org-b");
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+    );
     act(() => {
       void queryClient
         .query({
@@ -241,7 +263,7 @@ describe("TenantProvider", () => {
       ...me,
       lastActiveTenantId: "org-a",
     });
-    await userEvent.click(screen.getByRole("button", { name: "retry" }));
+    await userEvent.click(screen.getByTestId("retry-context"));
     await waitFor(() =>
       expect(screen.getByTestId("active")).toHaveTextContent("org-a"),
     );
@@ -259,7 +281,9 @@ describe("TenantProvider", () => {
         defaultOptions: { queries: { retry: false } },
       });
       renderProvider(queryClient);
-      await screen.findByText("org-b");
+      await waitFor(() =>
+        expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+      );
       let tenantSignal: AbortSignal | undefined;
       const tenantRequest = queryClient
         .query({
@@ -285,9 +309,7 @@ describe("TenantProvider", () => {
           organizations: [],
           lastActiveTenantId: null,
         });
-        await userEvent.click(
-          screen.getByRole("button", { name: "refresh membership" }),
-        );
+        await userEvent.click(screen.getByTestId("refresh-membership"));
         await waitFor(() =>
           expect(screen.getByTestId("pending")).toHaveTextContent("false"),
         );
@@ -317,7 +339,9 @@ describe("TenantProvider", () => {
   it("prefers lastActiveTenantId over the first membership", async () => {
     fetchMeContextMock.mockResolvedValue(me);
     renderProvider();
-    expect(await screen.findByText("org-b")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+    );
     expect(screen.getByTestId("server-active")).toHaveTextContent(
       "server:org-b",
     );
@@ -348,7 +372,7 @@ describe("TenantProvider", () => {
       expect(screen.getByTestId("pending")).toHaveTextContent("false"),
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
+    await userEvent.click(screen.getByTestId("switch-org-a"));
 
     await waitFor(() => {
       expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
@@ -367,9 +391,11 @@ describe("TenantProvider", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["tenant", "org-b", "widgets"], { stale: true });
     renderProvider(queryClient);
-    await screen.findByText("org-b");
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+    );
 
-    await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
+    await userEvent.click(screen.getByTestId("switch-org-a"));
 
     await waitFor(() => {
       expect(screen.getByTestId("active")).toHaveTextContent("org-a");
@@ -400,9 +426,11 @@ describe("TenantProvider", () => {
       })
       .catch(() => undefined);
     renderProvider(queryClient);
-    await screen.findByText("org-b");
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+    );
 
-    await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
+    await userEvent.click(screen.getByTestId("switch-org-a"));
     await waitFor(() => {
       expect(screen.getByTestId("server-active")).toHaveTextContent(
         "server:org-a",
@@ -436,17 +464,17 @@ describe("TenantProvider", () => {
     const queryClient = new QueryClient();
     renderProvider(queryClient);
     const user = userEvent.setup();
-    await screen.findByText("org-b");
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+    );
 
-    await user.click(screen.getByRole("button", { name: "switch-a" }));
+    await user.click(screen.getByTestId("switch-org-a"));
     await waitFor(() => {
       expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
         organizationId: "org-a",
       });
     });
-    await user.click(
-      screen.getByRole("button", { name: "refresh membership" }),
-    );
+    await user.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(queryClient.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(
         revokedContext,
@@ -490,10 +518,12 @@ describe("TenantProvider", () => {
     const queryClient = new QueryClient();
     renderProvider(queryClient);
     const user = userEvent.setup();
-    await screen.findByText("org-c");
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-c"),
+    );
 
-    await user.click(screen.getByRole("button", { name: "switch-a" }));
-    await user.click(screen.getByRole("button", { name: "switch-b" }));
+    await user.click(screen.getByTestId("switch-org-a"));
+    await user.click(screen.getByTestId("switch-org-b"));
     await waitFor(() => {
       expect(updateActiveOrganizationMock).toHaveBeenCalledOnce();
       expect(updateActiveOrganizationMock).toHaveBeenCalledWith({
@@ -537,10 +567,12 @@ describe("TenantProvider", () => {
     const queryClient = new QueryClient();
     renderProvider(queryClient);
     const user = userEvent.setup();
-    await screen.findByText("org-c");
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-c"),
+    );
 
-    await user.click(screen.getByRole("button", { name: "switch-a" }));
-    await user.click(screen.getByRole("button", { name: "switch-b" }));
+    await user.click(screen.getByTestId("switch-org-a"));
+    await user.click(screen.getByTestId("switch-org-b"));
     switchA.resolve({ ...initialContext, lastActiveTenantId: "org-a" });
     await waitFor(() => {
       expect(updateActiveOrganizationMock).toHaveBeenNthCalledWith(2, {
@@ -570,9 +602,11 @@ describe("TenantProvider", () => {
     );
     const queryClient = new QueryClient();
     renderProvider(queryClient);
-    await screen.findByText("org-b");
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+    );
 
-    await userEvent.click(screen.getByRole("button", { name: "switch-a" }));
+    await userEvent.click(screen.getByTestId("switch-org-a"));
 
     await waitFor(() => {
       expect(updateActiveOrganizationMock).toHaveBeenCalled();
@@ -584,11 +618,11 @@ describe("TenantProvider", () => {
   it("ignores switches to organizations the user does not belong to", async () => {
     fetchMeContextMock.mockResolvedValue(me);
     renderProvider();
-    await screen.findByText("org-b");
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "switch-unknown" }),
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
     );
+
+    await userEvent.click(screen.getByTestId("switch-org-unknown"));
 
     await waitFor(() => {
       expect(screen.getByTestId("active")).toHaveTextContent("org-b");
@@ -619,11 +653,11 @@ describe("TenantProvider", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["tenant", "org-a", "members"], { stale: true });
     renderProvider(queryClient);
-    await screen.findByText("org-a");
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "refresh membership" }),
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-a"),
     );
+
+    await userEvent.click(screen.getByTestId("refresh-membership"));
 
     await waitFor(() => {
       expect(screen.getByTestId("active")).toHaveTextContent("none");
@@ -635,9 +669,7 @@ describe("TenantProvider", () => {
       queryClient.getQueryData(["tenant", "org-a", "members"]),
     ).toBeUndefined();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "refresh membership" }),
-    );
+    await userEvent.click(screen.getByTestId("refresh-membership"));
 
     await waitFor(() => {
       expect(screen.getByTestId("active")).toHaveTextContent("org-b");
@@ -678,9 +710,7 @@ describe("TenantProvider", () => {
     renderProvider(queryClient);
     const user = userEvent.setup();
 
-    await user.click(
-      screen.getByRole("button", { name: "refresh membership" }),
-    );
+    await user.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(screen.getByTestId("active")).toHaveTextContent("org-b");
     });
@@ -721,17 +751,15 @@ describe("TenantProvider", () => {
     });
     renderProvider(queryClient);
     const user = userEvent.setup();
-    await screen.findByText("org-b");
-
-    await user.click(
-      screen.getByRole("button", { name: "refresh membership" }),
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
     );
+
+    await user.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
     });
-    await user.click(
-      screen.getByRole("button", { name: "refresh membership" }),
-    );
+    await user.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
     });
@@ -779,11 +807,11 @@ describe("TenantProvider", () => {
     publishActiveQueryClient(me.user.id, queryClient);
     renderProvider(queryClient);
     const user = userEvent.setup();
-    await screen.findByText("org-b");
-
-    await user.click(
-      screen.getByRole("button", { name: "refresh membership" }),
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
     );
+
+    await user.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
     });
@@ -825,11 +853,11 @@ describe("TenantProvider", () => {
     publishActiveQueryClient(me.user.id, queryClient);
     renderProvider(queryClient);
     const user = userEvent.setup();
-    await screen.findByText("org-b");
-
-    await user.click(
-      screen.getByRole("button", { name: "refresh membership" }),
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
     );
+
+    await user.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId("active")).toHaveTextContent("none");
@@ -865,11 +893,11 @@ describe("TenantProvider", () => {
     });
     publishActiveQueryClient(me.user.id, queryClient);
     renderProvider(queryClient);
-    await screen.findByText("org-b");
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "refresh membership" }),
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
     );
+
+    await userEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId("active")).toHaveTextContent("none");
@@ -883,9 +911,7 @@ describe("TenantProvider", () => {
       expect(publishContextPublication(queryClient, loaderClaim, me)).toBe(
         true,
       );
-      fireEvent.click(
-        screen.getByRole("button", { name: "refresh membership" }),
-      );
+      fireEvent.click(screen.getByTestId("refresh-membership"));
     });
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
@@ -945,7 +971,9 @@ describe("TenantProvider", () => {
       .mockResolvedValueOnce(me)
       .mockImplementationOnce(() => stalledRefresh.promise);
     const view = renderProvider(oldClient);
-    await screen.findByText("org-b");
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+    );
     bindQueryClientIdentity(newClient, "user-1");
     const newClientClaim = createContextPublicationClaim();
     claimContextPublication(newClient, newClientClaim, "bootstrap");
@@ -958,10 +986,10 @@ describe("TenantProvider", () => {
         </TenantProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText("org-b");
-    await userEvent.click(
-      screen.getByRole("button", { name: "refresh membership" }),
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
     );
+    await userEvent.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(screen.getByTestId("active")).toHaveTextContent("none");
     });
@@ -994,17 +1022,15 @@ describe("TenantProvider", () => {
     });
     renderProvider(queryClient);
     const user = userEvent.setup();
-    await screen.findByText("org-b");
-
-    await user.click(
-      screen.getByRole("button", { name: "refresh membership" }),
+    await waitFor(() =>
+      expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
     );
+
+    await user.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
     });
-    await user.click(
-      screen.getByRole("button", { name: "refresh membership" }),
-    );
+    await user.click(screen.getByTestId("refresh-membership"));
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(3);
     });
@@ -1037,11 +1063,13 @@ describe("TenantProvider", () => {
         defaultOptions: { queries: { retry: false } },
       });
       renderProvider(queryClient);
-      await screen.findByText("org-b");
+      await waitFor(() =>
+        expect(screen.getByTestId("active")).toHaveTextContent("org-b"),
+      );
       await userEvent.click(
-        screen.getByRole("button", {
-          name: operation === "switch" ? "switch-a" : "refresh membership",
-        }),
+        screen.getByTestId(
+          operation === "switch" ? "switch-org-a" : "refresh-membership",
+        ),
       );
       await waitFor(() => {
         if (operation === "switch")
@@ -1070,11 +1098,13 @@ describe("TenantProvider", () => {
       new QueryClient({ defaultOptions: { queries: { retry: false } } }),
     );
 
-    expect(await screen.findByText("server exploded")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("error")).toHaveTextContent("server exploded"),
+    );
     expect(screen.getByTestId("pending")).toHaveTextContent("false");
     expect(screen.getByTestId("active")).toHaveTextContent("none");
 
-    await userEvent.click(screen.getByRole("button", { name: "retry" }));
+    await userEvent.click(screen.getByTestId("retry-context"));
 
     await waitFor(() => {
       expect(screen.getByTestId("active")).toHaveTextContent("org-b");

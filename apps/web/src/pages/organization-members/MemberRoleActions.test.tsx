@@ -149,12 +149,17 @@ function Harness() {
   return (
     <>
       <button
+        data-testid="test-member-navigate"
         type="button"
         onClick={() => void navigate(`/organizations/${B}/members`)}
       >
         navigate B
       </button>
-      <button type="button" onClick={() => void switchOrg(B)}>
+      <button
+        data-testid="test-member-switch"
+        type="button"
+        onClick={() => void switchOrg(B)}
+      >
         confirm B
       </button>
       <output data-testid="location">{useLocation().pathname}</output>
@@ -184,105 +189,122 @@ async function renderAs(role: OrganizationRole) {
       </TenantProvider>
     </QueryClientProvider>,
   );
-  await screen.findByText("Ann");
+  expect(await screen.findByTestId("member-row-member-ann")).toHaveTextContent(
+    "Ann",
+  );
+  expect(
+    within(screen.getByTestId("member-row-member-ann")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent(/^Ann$/);
   return user;
 }
 
-const pillFor = (name: string) =>
-  screen
-    .getByRole("row", { name: new RegExp(name) })
-    .querySelector('[data-slot="status-pill"]');
+const pillFor = (memberId: string) =>
+  within(screen.getByTestId(`member-row-${memberId}`)).getByTestId(
+    "member-current-role",
+  );
 // The submit finishes after its refresh branch: pending text gone, control enabled.
-const submitSettled = (name: string) =>
+const submitSettled = (memberId: string) =>
   waitFor(() => {
-    expect(screen.queryByText(/กำลังบันทึกบทบาทของ/)).toBeNull();
-    expect(roleSelect(name)).toBeEnabled();
+    expect(screen.queryByTestId("member-role-pending")).toBeNull();
+    expect(roleSelect(memberId)).toBeEnabled();
   });
-const save = (name: string) =>
-  screen.getByRole("button", { name: `บันทึกบทบาทของ ${name}` });
-const roleSelect = (name: string) =>
-  screen.getByRole("combobox", { name: `บทบาทใหม่ของ ${name}` });
+const save = (memberId: string) =>
+  screen.getByTestId(`member-role-save-${memberId}`);
+const roleSelect = (memberId: string) =>
+  screen.getByTestId(`member-role-select-${memberId}`);
 
 it("saves a non-owner change directly, without a dialog, and reports success only after the refetch shows the role", async () => {
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
-  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toHaveAttribute(
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
+  expect(await screen.findByTestId("member-role-success")).toHaveAttribute(
     "role",
     "status",
   );
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   expect(updateOrganizationMemberRole).toHaveBeenCalledWith(
     A,
     "member-ann",
     "auditor",
   );
-  expect(pillFor("Ann")).toHaveTextContent("ผู้ตรวจสอบ");
+  expect(pillFor("member-ann")).toHaveAttribute("data-member-role", "auditor");
   // Initial load plus the post-PATCH refetch.
   expect(listCalls).toEqual([A, A]);
   // Keyboard focus returns to the same member's control after the list reloads.
-  await waitFor(() => expect(roleSelect("Ann")).toHaveFocus());
+  await waitFor(() => expect(roleSelect("member-ann")).toHaveFocus());
 });
 
 it("asks owners to confirm owner-involved changes, and cancel sends no request", async () => {
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "owner");
-  const opener = save("Ann");
+  await user.selectOptions(roleSelect("member-ann"), "owner");
+  const opener = save("member-ann");
   await user.click(opener);
-  const dialog = screen.getByRole("dialog", {
-    name: "ยืนยันการเปลี่ยนบทบาท",
-  });
+  const dialog = screen.getByTestId(
+    /^(member-(role|revoke)|self-leave)-dialog$/,
+  );
   expect(dialog).toHaveAccessibleDescription(/Ann.*Acme \(acme\)/);
-  expect(screen.getByRole("button", { name: "ยกเลิก" })).toHaveFocus();
+  expect(screen.getByTestId("confirmation-cancel")).toHaveFocus();
   expect(updateOrganizationMemberRole).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
-  expect(screen.queryByRole("dialog")).toBeNull();
+  await user.click(screen.getByTestId("confirmation-cancel"));
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
   expect(opener).toHaveFocus();
   expect(updateOrganizationMemberRole).not.toHaveBeenCalled();
   expect(listCalls).toEqual([A]);
 
   // Demoting an owner also needs confirmation; Escape cancels.
-  await user.selectOptions(roleSelect("Boss"), "admin");
-  await user.click(save("Boss"));
-  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  await user.selectOptions(roleSelect("member-boss"), "admin");
+  await user.click(save("member-boss"));
+  expect(
+    screen.getByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeInTheDocument();
   await user.keyboard("{Escape}");
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
   expect(updateOrganizationMemberRole).not.toHaveBeenCalled();
 });
 
 it("confirms an owner-involved change with one PATCH", async () => {
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "owner");
-  await user.click(save("Ann"));
-  const confirm = screen.getByRole("button", {
-    name: "ยืนยันการเปลี่ยนบทบาท",
-  });
+  await user.selectOptions(roleSelect("member-ann"), "owner");
+  await user.click(save("member-ann"));
+  const confirm = screen.getByTestId("member-role-confirm");
   await user.click(confirm);
-  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  expect(await screen.findByTestId("member-role-success")).toBeInTheDocument();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   expect(updateOrganizationMemberRole).toHaveBeenCalledWith(
     A,
     "member-ann",
     "owner",
   );
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
   // The table reloads behind the dialog; focus must land on a live control.
-  await waitFor(() => expect(roleSelect("Ann")).toHaveFocus());
+  await waitFor(() => expect(roleSelect("member-ann")).toHaveFocus());
   expect(document.body).not.toHaveFocus();
 });
 
 it("shows admins no controls for owners and no owner option elsewhere", async () => {
   const user = await renderAs("admin");
-  expect(screen.queryByRole("combobox", { name: /Boss/ })).toBeNull();
-  const options = within(roleSelect("Ann"))
-    .getAllByRole("option")
-    .map((option) => option.textContent);
-  expect(options).toEqual(["ผู้ดูแล", "ผู้ชม", "ผู้ตรวจสอบ"]);
-  await user.selectOptions(roleSelect("Ann"), "admin");
-  await user.click(save("Ann"));
-  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByTestId("member-role-select-member-boss")).toBeNull();
+  const options = within(roleSelect("member-ann"))
+    .getAllByTestId(/^member-role-option-/)
+    .map((option) => option.getAttribute("value"));
+  expect(new Set(options)).toEqual(new Set(["admin", "viewer", "auditor"]));
+  await user.selectOptions(roleSelect("member-ann"), "admin");
+  await user.click(save("member-ann"));
+  expect(await screen.findByTestId("member-role-success")).toBeInTheDocument();
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
 });
 
 it("blocks duplicate submits and pagination while a role save is pending", async () => {
@@ -293,15 +315,16 @@ it("blocks duplicate submits and pagination while a role save is pending", async
     return Promise.resolve(listFor(id, 120));
   });
   const user = await renderAs("owner");
-  expect(screen.getByRole("button", { name: "ถัดไป" })).toBeEnabled();
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
-  expect(
-    screen.getByText("กำลังบันทึกบทบาทของ Ann เป็น ผู้ตรวจสอบ…"),
-  ).toHaveAttribute("role", "status");
-  expect(save("Ann")).toBeDisabled();
-  expect(roleSelect("Ann")).toBeDisabled();
-  expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
+  expect(screen.getByTestId("members-next")).toBeEnabled();
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
+  expect(screen.getByTestId("member-role-pending")).toHaveAttribute(
+    "role",
+    "status",
+  );
+  expect(save("member-ann")).toBeDisabled();
+  expect(roleSelect("member-ann")).toBeDisabled();
+  expect(screen.getByTestId("members-next")).toBeDisabled();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   await act(async () => {
     roles["member-ann"] = "auditor";
@@ -315,8 +338,8 @@ it("blocks duplicate submits and pagination while a role save is pending", async
     });
     await pending.promise;
   });
-  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "ถัดไป" })).toBeEnabled();
+  expect(await screen.findByTestId("member-role-success")).toBeInTheDocument();
+  expect(screen.getByTestId("members-next")).toBeEnabled();
 });
 
 it("explains LAST_OWNER, refreshes the latest roles and shows no success", async () => {
@@ -324,25 +347,26 @@ it("explains LAST_OWNER, refreshes the latest roles and shows no success", async
     new ApiError("LAST_OWNER", "last", 400),
   );
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Boss"), "viewer");
-  await user.click(save("Boss"));
-  await user.click(
-    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
-  );
-  expect(
-    await screen.findByText(/องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน/),
-  ).toBeInTheDocument();
-  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+  await user.selectOptions(roleSelect("member-boss"), "viewer");
+  await user.click(save("member-boss"));
+  await user.click(screen.getByTestId("member-role-confirm"));
+  expect(await screen.findByTestId("member-role-error")).toBeInTheDocument();
+  expect(screen.queryByTestId("member-role-success")).toBeNull();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   expect(listCalls).toEqual([A, A]);
-  expect(pillFor("Boss")).toHaveTextContent("เจ้าของ");
+  expect(pillFor("member-boss")).toHaveAttribute("data-member-role", "owner");
   // Focus stays on the member's own controls (opener or its select).
   await waitFor(() => {
     expect(
       screen
-        .getByRole("row", { name: /Boss/ })
+        .getByTestId("member-row-member-boss")
         .contains(document.activeElement),
     ).toBe(true);
+    expect(
+      within(screen.getByTestId("member-row-member-boss")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent(/^Boss$/);
   });
   expect(document.body).not.toHaveFocus();
 });
@@ -363,12 +387,12 @@ it("reports a persisted role that differs from the requested one instead of succ
     },
   );
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
-  expect(
-    await screen.findByText(/บทบาทของสมาชิกถูกเปลี่ยนโดยผู้อื่น/),
-  ).toBeInTheDocument();
-  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
+  expect(await screen.findByTestId("member-role-error")).toBeInTheDocument();
+  expect(screen.queryByTestId("member-role-success")).toBeNull();
+  expect(pillFor("member-ann")).toHaveAttribute("data-member-role", "admin");
+  expect(roleSelect("member-ann")).toHaveValue("admin");
 });
 
 it("shows no success when an owner demotes themselves and loses list access", async () => {
@@ -383,11 +407,9 @@ it("shows no success when an owner demotes themselves and loses list access", as
       { id: B, name: "Beta", slug: "beta", role: "owner" },
     ],
   });
-  await user.selectOptions(roleSelect("Me"), "viewer");
-  await user.click(save("Me"));
-  await user.click(
-    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
-  );
+  await user.selectOptions(roleSelect("member-me"), "viewer");
+  await user.click(save("member-me"));
+  await user.click(screen.getByTestId("member-role-confirm"));
   await waitFor(() => {
     expect(updateOrganizationMemberRole).toHaveBeenCalledWith(
       A,
@@ -396,9 +418,11 @@ it("shows no success when an owner demotes themselves and loses list access", as
     );
   });
   await waitFor(() =>
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    expect(
+      screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+    ).not.toBeInTheDocument(),
   );
-  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+  expect(screen.queryByTestId("member-role-success")).toBeNull();
 });
 
 it.each(["success", "LAST_OWNER"] as const)(
@@ -412,20 +436,25 @@ it.each(["success", "LAST_OWNER"] as const)(
       lastActiveTenantId: B,
     });
     const user = await renderAs("owner");
-    await user.selectOptions(roleSelect("Ann"), "owner");
-    await user.click(save("Ann"));
-    await user.click(
-      screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
-    );
+    await user.selectOptions(roleSelect("member-ann"), "owner");
+    await user.click(save("member-ann"));
+    await user.click(screen.getByTestId("member-role-confirm"));
     expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole("button", { name: "confirm B" }));
+    await user.click(screen.getByTestId("test-member-switch"));
     await waitFor(() => {
       expect(updateActiveOrganization).toHaveBeenCalled();
     });
-    await user.click(screen.getByRole("button", { name: "navigate B" }));
-    await screen.findByText("Bea");
+    await user.click(screen.getByTestId("test-member-navigate"));
+    await screen.findByTestId("member-row-member-b");
+    expect(
+      within(screen.getByTestId("member-row-member-b")).getByTestId(
+        "member-name",
+      ),
+    ).toHaveTextContent(/^Bea$/);
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(
+        screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+      ).toBeNull();
     });
     const listCallsBeforeLateResponse = [...listCalls];
     expect(listCallsBeforeLateResponse.filter((id) => id === B)).toHaveLength(
@@ -446,23 +475,28 @@ it.each(["success", "LAST_OWNER"] as const)(
       }
       await pending.promise.catch(() => undefined);
     });
-    expect(pillFor("Bea")).toHaveTextContent("ผู้ชม");
-    expect(roleSelect("Bea")).toBeEnabled();
-    expect(save("Bea")).toBeDisabled();
-    await user.selectOptions(roleSelect("Bea"), "auditor");
-    expect(save("Bea")).toBeEnabled();
+    expect(pillFor("member-b")).toHaveAttribute("data-member-role", "viewer");
+    expect(roleSelect("member-b")).toBeEnabled();
+    expect(save("member-b")).toBeDisabled();
+    await user.selectOptions(roleSelect("member-b"), "auditor");
+    expect(save("member-b")).toBeEnabled();
     // Only the harness's own location output may carry status text; the invitation
     // section's region stays mounted and empty.
     expect(
       screen
-        .queryAllByRole("status")
-        .filter(
-          (element) =>
-            !element.hasAttribute("data-testid") && element.textContent !== "",
-        ),
+        .queryAllByTestId(
+          /^(member-(role|revoke)-(pending|success)|members-(admission|context|list)-status|self-leave-admission-status|pending-invitations-status|confirmation-pending)$/,
+        )
+        .filter((element) => element.textContent !== ""),
     ).toEqual([]);
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.queryByTestId(
+        /^(member-(role|revoke)-error|self-leave-error|members-(admission|context|list)-error|members-denied|self-leave-admission-error)$/,
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+    ).toBeNull();
     expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
     expect(listCalls).toEqual(listCallsBeforeLateResponse);
   },
@@ -472,14 +506,16 @@ it("ignores Escape while a confirmed change is pending", async () => {
   const pending = Promise.withResolvers<OrganizationMemberRoleUpdateResponse>();
   vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "owner");
-  await user.click(save("Ann"));
-  await user.click(
-    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
-  );
+  await user.selectOptions(roleSelect("member-ann"), "owner");
+  await user.click(save("member-ann"));
+  await user.click(screen.getByTestId("member-role-confirm"));
   await user.keyboard("{Escape}");
-  expect(screen.getByRole("dialog")).toBeInTheDocument();
-  expect(screen.getByRole("dialog")).toHaveFocus();
+  expect(
+    screen.getByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toHaveFocus();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
   await act(async () => {
     roles["member-ann"] = "owner";
@@ -493,8 +529,10 @@ it("ignores Escape while a confirmed change is pending", async () => {
     });
     await pending.promise;
   });
-  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(await screen.findByTestId("member-role-success")).toBeInTheDocument();
+  expect(
+    screen.queryByTestId(/^(member-(role|revoke)|self-leave)-dialog$/),
+  ).toBeNull();
 });
 
 it("reenables pagination after a confirmed switch retires the origin operation while its route remains", async () => {
@@ -509,26 +547,23 @@ it("reenables pagination after a confirmed switch retires the origin operation w
     lastActiveTenantId: B,
   });
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
-  expect(screen.getByRole("button", { name: "ถัดไป" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
+  expect(screen.getByTestId("members-next")).toBeDisabled();
+  await user.click(screen.getByTestId("test-member-switch"));
   await waitFor(() => {
     expect(updateActiveOrganization).toHaveBeenCalled();
   });
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "ถัดไป" })).toBeEnabled(),
-  );
+  await waitFor(() => expect(screen.getByTestId("members-next")).toBeEnabled());
   expect(screen.getByTestId("location")).toHaveTextContent(
     `/organizations/${A}/members`,
   );
   expect(
     screen
-      .queryAllByRole("status")
-      .filter(
-        (element) =>
-          !element.hasAttribute("data-testid") && element.textContent !== "",
-      ),
+      .queryAllByTestId(
+        /^(member-(role|revoke)-(pending|success)|members-(admission|context|list)-status|self-leave-admission-status|pending-invitations-status|confirmation-pending)$/,
+      )
+      .filter((element) => element.textContent !== ""),
   ).toEqual([]);
 });
 
@@ -537,13 +572,13 @@ it("keeps the origin role change pending and applies its result when the organiz
   vi.mocked(updateOrganizationMemberRole).mockReturnValue(pending.promise);
   vi.mocked(updateActiveOrganization).mockRejectedValue(new Error("denied"));
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
-  await user.click(screen.getByRole("button", { name: "confirm B" }));
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
+  await user.click(screen.getByTestId("test-member-switch"));
   await waitFor(() => {
     expect(updateActiveOrganization).toHaveBeenCalled();
   });
-  expect(save("Ann")).toBeDisabled();
+  expect(save("member-ann")).toBeDisabled();
   await act(async () => {
     roles["member-ann"] = "auditor";
     pending.resolve({
@@ -556,7 +591,7 @@ it("keeps the origin role change pending and applies its result when the organiz
     });
     await pending.promise;
   });
-  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  expect(await screen.findByTestId("member-role-success")).toBeInTheDocument();
 });
 
 it.each([
@@ -584,14 +619,19 @@ it.each([
     },
     /ไม่สามารถยืนยันบทบาทได้/,
   ],
-])("shows an error and no success for %s", async (_name, patch, message) => {
+])("shows an error and no success for %s", async (_name, patch) => {
   vi.mocked(updateOrganizationMemberRole).mockImplementation(patch);
   const user = await renderAs("owner");
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
-  expect(await screen.findByText(message)).toBeInTheDocument();
-  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
+  expect(await screen.findByTestId("member-role-error")).toBeInTheDocument();
+  expect(screen.queryByTestId("member-role-success")).toBeNull();
   expect(updateOrganizationMemberRole).toHaveBeenCalledTimes(1);
+  if (_name === "a member missing from the refetched list") {
+    expect(screen.queryByTestId("member-row-member-ann")).toBeNull();
+  } else {
+    expect(pillFor("member-ann")).toHaveAttribute("data-member-role", "viewer");
+  }
 });
 
 it("does not refresh membership context when another member changes on a page without the actor", async () => {
@@ -605,10 +645,10 @@ it("does not refresh membership context when another member changes on a page wi
   });
   const user = await renderAs("owner");
   const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
-  expect(await screen.findByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
-  await submitSettled("Ann");
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
+  expect(await screen.findByTestId("member-role-success")).toBeInTheDocument();
+  await submitSettled("member-ann");
   expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
 });
 
@@ -617,8 +657,8 @@ it("refreshes membership context when another member changes and the actor's lis
   const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
   // Another session demoted the actor; the refetched list shows the new role.
   roles["member-me"] = "admin";
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
   await waitFor(() => {
     expect(vi.mocked(fetchMeContext).mock.calls.length).toBeGreaterThan(
       contextFetches,
@@ -632,26 +672,20 @@ it("does not refresh membership context when the actor's own role change fails",
   );
   const user = await renderAs("owner");
   const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
-  await user.selectOptions(roleSelect("Me"), "admin");
-  await user.click(save("Me"));
-  await user.click(
-    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
-  );
-  expect(
-    await screen.findByText(/องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน/),
-  ).toBeInTheDocument();
-  await submitSettled("Me");
+  await user.selectOptions(roleSelect("member-me"), "admin");
+  await user.click(save("member-me"));
+  await user.click(screen.getByTestId("member-role-confirm"));
+  expect(await screen.findByTestId("member-role-error")).toBeInTheDocument();
+  await submitSettled("member-me");
   expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
 });
 
 it("refreshes membership context when the actor changes their own role", async () => {
   const user = await renderAs("owner");
   const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
-  await user.selectOptions(roleSelect("Me"), "admin");
-  await user.click(save("Me"));
-  await user.click(
-    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
-  );
+  await user.selectOptions(roleSelect("member-me"), "admin");
+  await user.click(save("member-me"));
+  await user.click(screen.getByTestId("member-role-confirm"));
   await waitFor(() => {
     expect(vi.mocked(fetchMeContext).mock.calls.length).toBeGreaterThan(
       contextFetches,
@@ -659,16 +693,12 @@ it("refreshes membership context when the actor changes their own role", async (
   });
 });
 
-const RESTRICTED = "คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้";
-
 async function changeOwnRoleToAdmin(
   user: Awaited<ReturnType<typeof renderAs>>,
 ) {
-  await user.selectOptions(roleSelect("Me"), "admin");
-  await user.click(save("Me"));
-  await user.click(
-    screen.getByRole("button", { name: "ยืนยันการเปลี่ยนบทบาท" }),
-  );
+  await user.selectOptions(roleSelect("member-me"), "admin");
+  await user.click(save("member-me"));
+  await user.click(screen.getByTestId("member-role-confirm"));
 }
 
 it("shows loading, never a restricted state, while context refreshes after an own role change", async () => {
@@ -677,38 +707,50 @@ it("shows loading, never a restricted state, while context refreshes after an ow
   vi.mocked(fetchMeContext).mockReturnValue(refresh.promise);
   await changeOwnRoleToAdmin(user);
   expect(
-    await screen.findByText("กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"),
+    await screen.findByTestId("members-admission-loading"),
   ).toBeInTheDocument();
-  expect(screen.queryByText(RESTRICTED)).toBeNull();
+  expect(screen.queryByTestId("members-denied")).toBeNull();
   await act(async () => {
     refresh.resolve(contextFor("admin"));
     await refresh.promise;
   });
-  expect(await screen.findByText("Ann")).toBeInTheDocument();
-  expect(screen.queryByText(RESTRICTED)).toBeNull();
-  expect(screen.getByText("บันทึกบทบาทแล้ว")).toBeInTheDocument();
+  expect(
+    await screen.findByTestId("member-row-member-ann"),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("member-row-member-ann")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent(/^Ann$/);
+  expect(screen.queryByTestId("members-denied")).toBeNull();
+  expect(screen.getByTestId("member-role-success")).toBeInTheDocument();
   // The table unmounted during the refresh; focus must return to a live control.
-  await waitFor(() => expect(roleSelect("Me")).toHaveFocus());
+  await waitFor(() => expect(roleSelect("member-me")).toHaveFocus());
 });
 
 it("shows a retryable error, not a restricted state, when the context refresh fails after an own role change", async () => {
   const user = await renderAs("owner");
   vi.mocked(fetchMeContext).mockRejectedValue(new Error("network"));
   await changeOwnRoleToAdmin(user);
-  const retry = await screen.findByRole("button", { name: "ลองอีกครั้ง" });
-  expect(
-    screen.getByText("ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"),
-  ).toBeInTheDocument();
-  expect(screen.queryByText(RESTRICTED)).toBeNull();
+  const retry = await screen.findByTestId("members-admission-retry");
+  expect(screen.getByTestId("members-admission-error")).toBeInTheDocument();
+  expect(screen.queryByTestId("members-denied")).toBeNull();
   const failedFetches = vi.mocked(fetchMeContext).mock.calls.length;
   vi.mocked(fetchMeContext).mockResolvedValue(contextFor("admin"));
   await user.click(retry);
-  expect(await screen.findByText("Ann")).toBeInTheDocument();
+  expect(
+    await screen.findByTestId("member-row-member-ann"),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("member-row-member-ann")).getByTestId(
+      "member-name",
+    ),
+  ).toHaveTextContent(/^Ann$/);
   expect(vi.mocked(fetchMeContext).mock.calls.length).toBeGreaterThan(
     failedFetches,
   );
-  expect(screen.queryByText(RESTRICTED)).toBeNull();
-  await waitFor(() => expect(roleSelect("Me")).toHaveFocus());
+  expect(screen.queryByTestId("members-denied")).toBeNull();
+  await waitFor(() => expect(roleSelect("member-me")).toHaveFocus());
 });
 
 async function saveAnnAsAuditorWithActorOffPage(failure: Error) {
@@ -723,8 +765,8 @@ async function saveAnnAsAuditorWithActorOffPage(failure: Error) {
   vi.mocked(updateOrganizationMemberRole).mockRejectedValue(failure);
   const user = await renderAs("owner");
   const contextFetches = vi.mocked(fetchMeContext).mock.calls.length;
-  await user.selectOptions(roleSelect("Ann"), "auditor");
-  await user.click(save("Ann"));
+  await user.selectOptions(roleSelect("member-ann"), "auditor");
+  await user.click(save("member-ann"));
   return { contextFetches };
 }
 
@@ -732,15 +774,15 @@ it("refreshes membership context once when a PERMISSION_DENIED PATCH leaves the 
   const { contextFetches } = await saveAnnAsAuditorWithActorOffPage(
     new ApiError("PERMISSION_DENIED", "denied", 403),
   );
-  expect(await screen.findByText(/บันทึกบทบาทไม่สำเร็จ/)).toBeInTheDocument();
+  expect(await screen.findByTestId("member-role-error")).toBeInTheDocument();
   await waitFor(() => {
     expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(
       contextFetches + 1,
     );
   });
-  await submitSettled("Ann");
+  await submitSettled("member-ann");
   expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches + 1);
-  expect(screen.queryByText("บันทึกบทบาทแล้ว")).toBeNull();
+  expect(screen.queryByTestId("member-role-success")).toBeNull();
 });
 
 it.each([
@@ -748,9 +790,7 @@ it.each([
   ["a generic failure", new Error("boom")],
 ])("does not refresh membership context for %s", async (_name, failure) => {
   const { contextFetches } = await saveAnnAsAuditorWithActorOffPage(failure);
-  expect(
-    await screen.findByText(/ไม่สำเร็จ|เจ้าของอย่างน้อย/),
-  ).toBeInTheDocument();
-  await submitSettled("Ann");
+  expect(await screen.findByTestId("member-role-error")).toBeInTheDocument();
+  await submitSettled("member-ann");
   expect(vi.mocked(fetchMeContext).mock.calls).toHaveLength(contextFetches);
 });

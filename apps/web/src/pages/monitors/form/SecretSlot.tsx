@@ -25,7 +25,11 @@ export function SecretSlot({
   onReplace,
   onCancel,
   onType,
+  testId = `monitor-secret-${slot}`,
+  valueTestId = `${testId}-value`,
 }: {
+  testId?: string;
+  valueTestId?: string;
   slot: string;
   path: string;
   label: string;
@@ -44,9 +48,15 @@ export function SecretSlot({
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm">
             <span className="font-medium">{label}</span>{" "}
-            <span className="text-foreground-secondary">{SECRET_SET_TEXT}</span>
+            <span
+              data-testid={`${testId}-stored`}
+              className="text-foreground-secondary"
+            >
+              {SECRET_SET_TEXT}
+            </span>
           </span>
           <Button
+            data-testid={`${testId}-replace`}
             id={replaceButtonId(path)}
             type="button"
             variant="secondary"
@@ -63,7 +73,12 @@ export function SecretSlot({
           </Button>
         </div>
         {error === undefined ? null : (
-          <span id={errorId(path)} role="alert" className="text-sm text-danger">
+          <span
+            data-testid={`${testId}-error`}
+            id={errorId(path)}
+            role="alert"
+            className="text-sm text-danger"
+          >
             {error}
           </span>
         )}
@@ -73,6 +88,7 @@ export function SecretSlot({
   return (
     <div className="flex flex-col items-start gap-2">
       <SecretControl
+        data-testid={valueTestId}
         path={path}
         slot={slot}
         label={label}
@@ -84,6 +100,7 @@ export function SecretSlot({
       />
       {stored ? (
         <Button
+          data-testid={`${testId}-cancel`}
           type="button"
           variant="ghost"
           size="sm"

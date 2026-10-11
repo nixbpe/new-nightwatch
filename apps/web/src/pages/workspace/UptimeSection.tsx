@@ -32,7 +32,11 @@ export function UptimeSection({
 }) {
   const rows = monitors.slice(0, ROW_LIMIT);
   return (
-    <section aria-labelledby="overview-uptime" className="flex flex-col">
+    <section
+      data-testid="workspace-uptime"
+      aria-labelledby="overview-uptime"
+      className="flex flex-col"
+    >
       <SectionHeader
         id="overview-uptime"
         code="03"
@@ -68,9 +72,10 @@ export function UptimeSection({
             {rows.map((row) => {
               const { percent, coveragePercent } = row.uptime.d30;
               return (
-                <tr key={row.id}>
+                <tr data-testid={`monitor-list-row-${row.id}`} key={row.id}>
                   <td className={TD}>
                     <Link
+                      data-testid={`monitor-list-name-${row.id}`}
                       to={`/organizations/${organizationId}/monitors/${row.id}`}
                       className="font-medium text-heading underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
@@ -80,7 +85,10 @@ export function UptimeSection({
                       {hostOf(row.url)}
                     </span>
                   </td>
-                  <td className={cn(TD, "text-right tabular-nums")}>
+                  <td
+                    data-testid="monitor-list-cell-d30"
+                    className={cn(TD, "text-right tabular-nums")}
+                  >
                     {percent === null ? (
                       NO_DATA
                     ) : (
@@ -98,6 +106,7 @@ export function UptimeSection({
                     ) : null}
                   </td>
                   <td
+                    data-testid="monitor-list-cell-responseTime"
                     className={cn(
                       TD,
                       "text-right text-foreground-secondary tabular-nums",
@@ -161,6 +170,7 @@ const LEGEND: { cell: Cell; label: string }[] = [
 function UptimeStripMockup() {
   return (
     <MockupFrame
+      testId="workspace-uptime-example"
       label="แถบความพร้อมใช้งานรายวันและเวลาตอบสนองเฉลี่ย"
       issue={56}
       className="mt-4"

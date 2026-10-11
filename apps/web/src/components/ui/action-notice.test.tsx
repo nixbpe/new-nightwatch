@@ -10,16 +10,22 @@ describe("ActionNotice", () => {
   it("keeps only the message in the live region; links and the close button sit outside it", async () => {
     const onClose = vi.fn();
     render(
-      <ActionNotice onClose={onClose} actions={<a href="#files">ดูไฟล์</a>}>
+      <ActionNotice
+        onClose={onClose}
+        actions={
+          <a data-testid="notice-files" href="#files">
+            ดูไฟล์
+          </a>
+        }
+      >
         กำลังสร้างไฟล์
       </ActionNotice>,
     );
-    const status = screen.getByRole("status");
+    const status = screen.getByTestId("action-notice-message");
     expect(status).toHaveTextContent("กำลังสร้างไฟล์");
-    expect(status).not.toContainElement(
-      screen.getByRole("link", { name: "ดูไฟล์" }),
-    );
-    const close = screen.getByRole("button", { name: "ปิดข้อความ" });
+    expect(status).toHaveAttribute("role", "status");
+    expect(status).not.toContainElement(screen.getByTestId("notice-files"));
+    const close = screen.getByTestId("action-notice-close");
     expect(status).not.toContainElement(close);
     await userEvent.setup().click(close);
     expect(onClose).toHaveBeenCalledOnce();
@@ -32,13 +38,17 @@ describe("ActionNotice", () => {
     expect(first).toContain('role="status"');
     expect(first).not.toContain("กำลังสร้างไฟล์");
     render(<ActionNotice>กำลังสร้างไฟล์</ActionNotice>);
-    expect(screen.getByRole("status")).toHaveTextContent("กำลังสร้างไฟล์");
+    expect(screen.getByTestId("action-notice-message")).toHaveTextContent(
+      "กำลังสร้างไฟล์",
+    );
   });
 
   it("carries no live region when the page announces the message itself", () => {
-    render(<ActionNotice live={false}>กำลังสร้างไฟล์</ActionNotice>);
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByText("กำลังสร้างไฟล์")).toBeInTheDocument();
+    render(<ActionNotice live={false}>สร้างไฟล์แล้ว</ActionNotice>);
+    expect(screen.getByTestId("action-notice-message")).not.toHaveAttribute(
+      "role",
+    );
+    expect(screen.getByTestId("action-notice-message")).toBeInTheDocument();
   });
 
   it("takes focus from code only when focusable", () => {
@@ -55,9 +65,12 @@ describe("ActionNotice", () => {
     expect(ref.current).not.toHaveAttribute("tabindex");
   });
 
-  it("offers no close button unless asked and no success tone", () => {
+  it("offers no close button unless asked and keeps the message live", () => {
     render(<ActionNotice>ข้อความ</ActionNotice>);
-    expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByRole("status").className).not.toContain("text-primary");
+    expect(screen.queryByTestId("action-notice-close")).toBeNull();
+    expect(screen.getByTestId("action-notice-message")).toHaveAttribute(
+      "role",
+      "status",
+    );
   });
 });

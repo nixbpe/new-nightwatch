@@ -188,21 +188,31 @@ describe("AcceptInvitationPage", () => {
     signUpEmailMock.mockResolvedValue({ data: {}, error: null });
     renderPage();
 
-    await screen.findByText("สร้างบัญชีจากคำเชิญ");
-    await userEvent.type(screen.getByLabelText("ชื่อที่แสดง"), "สมชาย ใจดี");
+    await screen.findByTestId("invitation-signup-page");
     await userEvent.type(
-      screen.getByLabelText("รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)"),
+      screen.getByTestId("invitation-signup-name"),
+      "สมชาย ใจดี",
+    );
+    await userEvent.type(
+      screen.getByTestId("invitation-signup-password"),
       "super-secret-1",
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "สร้างบัญชีและรอการยืนยันอีเมล" }),
-    );
+    await userEvent.click(screen.getByTestId("invitation-signup-submit"));
 
     // Signup routes to the resend hub with the invitation remembered for post-verification acceptance.
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/verify-email",
     );
     expect(readInvitation()).toBe("inv-123");
+    expect(signUpEmailMock).toHaveBeenCalledWith(
+      {
+        name: "สมชาย ใจดี",
+        email: "new@example.com",
+        password: "super-secret-1",
+        callbackURL: "/onboarding?invitationId=inv-123",
+      },
+      { headers: { "X-Invitation-ID": "inv-123" } },
+    );
   });
 
   it("returns from login automatically and keeps the invitation until explicit acceptance succeeds", async () => {
@@ -222,19 +232,17 @@ describe("AcceptInvitationPage", () => {
     const user = userEvent.setup();
     const page = renderPage();
 
-    await user.click(
-      await screen.findByRole("link", { name: "เข้าสู่ระบบเพื่อรับคำเชิญ" }),
-    );
-    await screen.findByRole("heading", { name: "เข้าสู่ระบบ" });
+    await user.click(await screen.findByTestId("invitation-login"));
+    await screen.findByTestId("login-page");
 
-    await user.type(screen.getByLabelText("อีเมล"), "new@example.com");
-    await user.type(screen.getByLabelText("รหัสผ่าน"), "super-secret-1");
-    await user.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+    await user.type(screen.getByTestId("login-email"), "new@example.com");
+    await user.type(screen.getByTestId("login-password"), "super-secret-1");
+    await user.click(screen.getByTestId("login-submit"));
     page.resolveSession();
 
     // The remounted anonymous guard must resume the invitation while the original sign-in still awaits.
     expect(
-      await screen.findByRole("heading", { name: "ยอมรับคำเชิญ" }),
+      await screen.findByTestId("invitation-accept-page"),
     ).toBeInTheDocument();
     expect(readInvitation()).toBe("inv-123");
     expect(acceptInvitationMock).not.toHaveBeenCalled();
@@ -242,13 +250,11 @@ describe("AcceptInvitationPage", () => {
       signIn.resolve({ data: sessionStore.get().data, error: null });
       await signIn.promise;
     });
-    expect(
-      screen.getByRole("heading", { name: "ยอมรับคำเชิญ" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("invitation-accept-page")).toBeInTheDocument();
 
     const client = resolveQueryClientForIdentity("user-1");
     client.setQueryData(["tenant", "old-org", "retired"], { old: true });
-    await user.click(screen.getByRole("button", { name: "เข้าร่วมองค์กร" }));
+    await user.click(screen.getByTestId("invitation-accept"));
     expect(readInvitation()).toBe("inv-123");
     expect(screen.queryByTestId("location")).toBeNull();
     await act(async () => {
@@ -279,13 +285,15 @@ describe("AcceptInvitationPage", () => {
       user: { id: "user-1", email: "new@example.com", emailVerified: true },
     });
     renderPage();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }),
-    );
-    expect(await screen.findByRole("alert")).toHaveTextContent("ครบ 1,000 คน");
+    await userEvent.click(await screen.findByTestId("invitation-accept"));
+    expect(await screen.findByTestId("invitation-accept-error")).toBeVisible();
     await waitFor(() =>
-      expect(screen.getByRole("alert").parentElement).toHaveFocus(),
+      expect(screen.getByTestId("invitation-accept-error-focus")).toHaveFocus(),
     );
+    expect(acceptInvitationMock).toHaveBeenCalledWith("inv-123");
+    expect(screen.getByTestId("invitation-accept")).toBeEnabled();
+    expect(screen.queryByTestId("invitation-workspace")).toBeNull();
+    expect(screen.queryByTestId("location")).toBeNull();
     expect(updateActiveOrganizationMock).not.toHaveBeenCalled();
   });
 
@@ -300,16 +308,14 @@ describe("AcceptInvitationPage", () => {
       user: { id: "user-1", email: "new@example.com", emailVerified: true },
     });
     renderPage();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }),
+    await userEvent.click(await screen.findByTestId("invitation-accept"));
+    expect(await screen.findByTestId("invitation-accept-error")).toBeVisible();
+    expect(screen.getByTestId("invitation-workspace")).toHaveAttribute(
+      "href",
+      "/workspace",
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "เลือกองค์กรไม่สำเร็จ",
-    );
-    expect(screen.queryByRole("button", { name: "เข้าร่วมองค์กร" })).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "ไปหน้าองค์กร" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId("invitation-accept")).toBeNull();
+    expect(screen.getByTestId("invitation-workspace")).toBeInTheDocument();
     expect(acceptInvitationMock).toHaveBeenCalledTimes(1);
   });
 
@@ -329,9 +335,7 @@ describe("AcceptInvitationPage", () => {
       renderPage();
       const client = resolveQueryClientForIdentity("user-1");
       client.setQueryData(ME_CONTEXT_QUERY_KEY, context);
-      await userEvent.click(
-        await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }),
-      );
+      await userEvent.click(await screen.findByTestId("invitation-accept"));
       await waitFor(() => {
         if (phase === "switch")
           expect(updateActiveOrganizationMock).toHaveBeenCalledTimes(1);
@@ -345,8 +349,12 @@ describe("AcceptInvitationPage", () => {
         });
         await completion.promise;
       });
-      expect(await screen.findByRole("alert")).toHaveTextContent(
-        "เลือกองค์กรไม่สำเร็จ",
+      expect(
+        await screen.findByTestId("invitation-accept-error"),
+      ).toBeVisible();
+      expect(screen.getByTestId("invitation-workspace")).toHaveAttribute(
+        "href",
+        "/workspace",
       );
       expect(client.getQueryData(ME_CONTEXT_QUERY_KEY)).toEqual(context);
       expect(screen.queryByTestId("location")).toBeNull();
@@ -364,9 +372,7 @@ describe("AcceptInvitationPage", () => {
       user: { id: "user-1", email: "new@example.com", emailVerified: true },
     });
     const { router } = renderPage();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "เข้าร่วมองค์กร" }),
-    );
+    await userEvent.click(await screen.findByTestId("invitation-accept"));
     await act(async () => {
       await router.navigate("/workspace");
     });
@@ -393,9 +399,16 @@ describe("AcceptInvitationPage", () => {
     renderPage();
 
     expect(
-      await screen.findByText("บัญชีนี้ไม่ตรงกับคำเชิญ"),
+      await screen.findByTestId("invitation-wrong-account"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "เข้าร่วมองค์กร" })).toBeNull();
+    expect(screen.queryByTestId("invitation-accept")).toBeNull();
+    expect(screen.getByTestId("invitation-recipient")).toHaveTextContent(
+      "new@example.com",
+    );
+    expect(screen.getByTestId("invitation-recipient")).toHaveTextContent(
+      "other@example.com",
+    );
+    expect(acceptInvitationMock).not.toHaveBeenCalled();
   });
 
   it("fails safely when the invitation preview cannot be loaded", async () => {
@@ -405,15 +418,15 @@ describe("AcceptInvitationPage", () => {
     renderPage();
 
     expect(
-      await screen.findByText(
-        "ไม่พบคำเชิญนี้ ตรวจสอบลิงก์จากอีเมลอีกครั้งหรือติดต่อผู้เชิญ",
-      ),
+      await screen.findByTestId("invitation-preview-error"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "ไปที่หน้าเข้าสู่ระบบ" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "สร้างบัญชีและรอการยืนยันอีเมล" }),
-    ).toBeNull();
+    expect(screen.getByTestId("invitation-login")).toBeInTheDocument();
+    expect(screen.queryByTestId("invitation-signup-submit")).toBeNull();
+    expect(screen.getByTestId("invitation-login")).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(acceptInvitationMock).not.toHaveBeenCalled();
+    expect(signUpEmailMock).not.toHaveBeenCalled();
   });
 });

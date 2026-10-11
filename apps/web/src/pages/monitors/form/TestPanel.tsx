@@ -226,6 +226,7 @@ export function TestPanel({
       />
       <div>
         <Button
+          data-testid="monitor-form-test"
           id="monitor-form-test-button"
           type="button"
           variant="secondary"
@@ -255,11 +256,40 @@ export function TestPanel({
         </p>
       )}
       {/* In the DOM from the first render so a result is announced; the countdown sits outside it. */}
-      <div role="status" className="text-sm font-medium">
+      <div
+        data-testid={`monitor-test-${state.kind}`}
+        data-outcome={
+          state.kind === "result" ? state.result.outcome : undefined
+        }
+        data-failure-reason={
+          state.kind === "result" ? state.result.failureReason : undefined
+        }
+        data-tls-reason={
+          state.kind === "result" ? state.result.tlsReason : undefined
+        }
+        data-timeout-seconds={
+          state.kind === "result"
+            ? (state.sent.timeoutSeconds ?? 10)
+            : undefined
+        }
+        data-failed-assertions={
+          state.kind === "result"
+            ? state.result.assertions.filter((item) => item.status === "fail")
+                .length
+            : undefined
+        }
+        data-assertion-count={
+          state.kind === "result" ? state.result.assertions.length : undefined
+        }
+        role="status"
+        className="text-sm font-medium"
+      >
         {statusText}
       </div>
       {waiting ? (
         <p
+          data-testid="monitor-test-wait"
+          data-remaining-seconds={remaining}
           id="monitor-form-test-wait"
           className="text-sm text-foreground-secondary"
         >
@@ -267,7 +297,9 @@ export function TestPanel({
         </p>
       ) : null}
       {state.kind === "serviceError" ? (
-        <Alert tone="error">ทดสอบไม่สำเร็จ ลองอีกครั้ง</Alert>
+        <Alert data-testid="monitor-test-service-error" tone="error">
+          ทดสอบไม่สำเร็จ ลองอีกครั้ง
+        </Alert>
       ) : null}
       {state.kind === "result" ? (
         <ResultDetails result={state.result} sent={state.sent} stale={stale} />
@@ -315,17 +347,35 @@ function ResultDetails({
   return (
     <div className="flex flex-col gap-3">
       {stale ? (
-        <p className="text-sm text-caution">ผลนี้ไม่ตรงกับค่าปัจจุบัน</p>
+        <p data-testid="monitor-test-stale" className="text-sm text-caution">
+          ผลนี้ไม่ตรงกับค่าปัจจุบัน
+        </p>
       ) : null}
       <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         {result.httpStatus === null ? null : (
-          <span>รหัสสถานะ {result.httpStatus}</span>
+          <span
+            data-testid="monitor-test-http-status"
+            data-http-status={result.httpStatus}
+          >
+            รหัสสถานะ {result.httpStatus}
+          </span>
         )}
         {result.responseTimeMs === null ? null : (
-          <span>เวลาตอบสนอง {formatNumber(result.responseTimeMs)} ms</span>
+          <span
+            data-testid="monitor-test-response-time"
+            data-response-time-ms={result.responseTimeMs}
+          >
+            เวลาตอบสนอง {formatNumber(result.responseTimeMs)} ms
+          </span>
         )}
         {result.ssl.level === "no_data" ? null : (
-          <span>
+          <span
+            data-testid="monitor-test-ssl"
+            data-level={result.ssl.level}
+            data-days-remaining={result.ssl.daysRemaining}
+            data-issuer={result.ssl.issuer}
+            data-host={result.ssl.host}
+          >
             SSL:{" "}
             <SslLabel
               level={result.ssl.level}
@@ -338,15 +388,25 @@ function ResultDetails({
           </span>
         )}
       </p>
-      <p className="font-mono text-xs break-all text-foreground-secondary">
+      <p
+        data-testid="monitor-test-result-url"
+        className="font-mono text-xs break-all text-foreground-secondary"
+      >
         {result.url}
       </p>
       {result.evaluatedFromPrefix ? (
-        <p className="text-xs text-foreground-secondary">
+        <p
+          data-testid="monitor-test-evaluated-prefix"
+          className="text-xs text-foreground-secondary"
+        >
           {EVALUATED_FROM_PREFIX_TEXT}
         </p>
       ) : null}
-      <AssertionTable caption="ผลการทดสอบต่อเงื่อนไข" rows={rows} />
+      <AssertionTable
+        testId="monitor-test-assertions"
+        caption="ผลการทดสอบต่อเงื่อนไข"
+        rows={rows}
+      />
     </div>
   );
 }

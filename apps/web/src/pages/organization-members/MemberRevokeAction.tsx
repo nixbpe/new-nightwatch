@@ -203,6 +203,7 @@ export function MemberRevokeButton({
   if (!canRevoke(actorRole, actorUserId, member)) return null;
   return (
     <Button
+      data-testid={`member-revoke-${member.id}`}
       {...{ [REVOKE_ATTRIBUTE]: member.id }}
       type="button"
       variant="outline"

@@ -21,14 +21,24 @@ export function DataTable<Row>({
   columns,
   rows,
   rowKey,
+  rowTestId,
+  tableTestId,
+  cellTestId,
+  columnHeaderTestId,
   rowActions,
   empty,
   className,
+  "data-testid": testId,
 }: {
+  "data-testid"?: string;
   ariaLabel: string;
   columns: DataTableColumn<Row>[];
   rows: Row[];
   rowKey: (row: Row) => string;
+  rowTestId?: (row: Row) => string;
+  tableTestId?: string;
+  cellTestId?: (column: DataTableColumn<Row>) => string;
+  columnHeaderTestId?: (column: DataTableColumn<Row>) => string;
   /** Trailing cell reserved for row actions (role changes, revoke). */
   rowActions?: (row: Row) => ReactNode;
   /** Shown as one full-width row when `rows` is empty. */
@@ -38,6 +48,7 @@ export function DataTable<Row>({
   const columnCount = columns.length + (rowActions === undefined ? 0 : 1);
   return (
     <div
+      data-testid={testId}
       tabIndex={0}
       role="region"
       aria-label={ariaLabel}
@@ -46,12 +57,16 @@ export function DataTable<Row>({
         className,
       )}
     >
-      <table className="w-full min-w-[560px] text-left text-sm">
+      <table
+        data-testid={tableTestId}
+        className="w-full min-w-[560px] text-left text-sm"
+      >
         <thead className="sticky top-0 z-10 bg-surface text-xs font-medium text-foreground-secondary">
           <tr>
             {columns.map((column) => (
               <th
                 key={column.key}
+                data-testid={columnHeaderTestId?.(column)}
                 scope="col"
                 style={
                   column.width === undefined
@@ -88,10 +103,12 @@ export function DataTable<Row>({
           {rows.map((row) => (
             <tr
               key={rowKey(row)}
+              data-testid={rowTestId?.(row)}
               className="border-b border-foreground/10 transition-colors duration-100 last:border-0 hover:surface-hover"
             >
               {columns.map((column) => (
                 <td
+                  data-testid={cellTestId?.(column)}
                   key={column.key}
                   className={cn(
                     "h-11 px-4 align-middle",
@@ -117,19 +134,27 @@ export function DataTable<Row>({
 
 // "Showing a–b of n" plus quiet previous/next; the page supplies the words.
 export function DataTablePagination({
+  "data-testid": testId,
   ariaLabel,
   summary,
+  summaryTestId,
   previousLabel,
   nextLabel,
+  previousTestId,
+  nextTestId,
   hasPrevious,
   hasNext,
   onPrevious,
   onNext,
 }: {
   ariaLabel: string;
+  "data-testid"?: string;
   summary: ReactNode;
+  summaryTestId?: string;
   previousLabel: string;
   nextLabel: string;
+  previousTestId?: string;
+  nextTestId?: string;
   hasPrevious: boolean;
   hasNext: boolean;
   onPrevious: () => void;
@@ -137,10 +162,14 @@ export function DataTablePagination({
 }) {
   return (
     <nav
+      data-testid={testId}
       aria-label={ariaLabel}
       className="flex flex-wrap items-center justify-between gap-4"
     >
-      <p className="text-xs text-foreground-secondary tabular-nums">
+      <p
+        data-testid={summaryTestId}
+        className="text-xs text-foreground-secondary tabular-nums"
+      >
         {summary}
       </p>
       <div className="flex gap-2">
@@ -148,6 +177,7 @@ export function DataTablePagination({
           type="button"
           variant="secondary"
           size="sm"
+          data-testid={previousTestId}
           disabled={!hasPrevious}
           onClick={onPrevious}
         >
@@ -157,6 +187,7 @@ export function DataTablePagination({
           type="button"
           variant="secondary"
           size="sm"
+          data-testid={nextTestId}
           disabled={!hasNext}
           onClick={onNext}
         >

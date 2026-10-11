@@ -256,6 +256,8 @@ function OrganizationMembersPageForOrganization({
         <PageHeader title="สมาชิกองค์กร" />
         <PageState
           kind="loading"
+          data-testid="members-admission-loading"
+          statusTestId="members-admission-status"
           label="กำลังตรวจสอบสิทธิ์ดูรายชื่อสมาชิก"
           layout="table"
           visibleLabel
@@ -270,6 +272,9 @@ function OrganizationMembersPageForOrganization({
         <PageState
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"
+          data-testid="members-admission-error"
+          alertTestId="members-admission-alert"
+          retryTestId="members-admission-retry"
           retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshAfterAuthorizationDenied()}
         />
@@ -280,7 +285,13 @@ function OrganizationMembersPageForOrganization({
     return (
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
-        <PageState kind="loading" label="กำลังโหลดสมาชิก" layout="table" />
+        <PageState
+          data-testid="members-context-loading"
+          statusTestId="members-context-status"
+          kind="loading"
+          label="กำลังโหลดสมาชิก"
+          layout="table"
+        />
       </Page>
     );
   }
@@ -291,6 +302,9 @@ function OrganizationMembersPageForOrganization({
         <PageState
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูรายชื่อสมาชิกได้"
+          data-testid="members-context-error"
+          alertTestId="members-context-alert"
+          retryTestId="members-context-retry"
           retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
         />
@@ -302,6 +316,8 @@ function OrganizationMembersPageForOrganization({
       <Page>
         <PageHeader title="สมาชิกองค์กร" />
         <PageState
+          alertTestId="members-denied-alert"
+          data-testid="members-denied"
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"
         />
@@ -333,7 +349,13 @@ function OrganizationMembersPageForOrganization({
           title="สมาชิก"
           status={
             <span>
-              slug <span className="font-mono">{organization.slug}</span>
+              slug{" "}
+              <span
+                data-testid="members-organization-slug"
+                className="font-mono"
+              >
+                {organization.slug}
+              </span>
             </span>
           }
           actions={selfLeaveAction}
@@ -343,6 +365,8 @@ function OrganizationMembersPageForOrganization({
         />
         {selfLeaveSection}
         <PageState
+          alertTestId="members-denied-alert"
+          data-testid="members-denied"
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูรายชื่อสมาชิกขององค์กรนี้"
         />
@@ -354,6 +378,8 @@ function OrganizationMembersPageForOrganization({
     directory = (
       <PageState
         kind="loading"
+        data-testid="members-list-loading"
+        statusTestId="members-list-status"
         label="กำลังโหลดสมาชิก"
         layout="table"
         rows={5}
@@ -363,12 +389,16 @@ function OrganizationMembersPageForOrganization({
     directory = (
       <PageState
         kind="error"
+        data-testid="members-list-error"
+        alertTestId="members-list-alert"
+        retryTestId="members-list-retry"
         message="โหลดสมาชิกไม่สำเร็จ"
         retryLabel="ลองอีกครั้ง"
         onRetry={() => void retryAfterListFailure()}
         actions={
           offset > 0 ? (
             <Button
+              data-testid="members-previous"
               type="button"
               variant="secondary"
               onClick={() => {
@@ -391,6 +421,8 @@ function OrganizationMembersPageForOrganization({
     directory = (
       <>
         <DataTable
+          data-testid="members-table"
+          rowTestId={(m) => `member-row-${m.id}`}
           ariaLabel="ตารางสมาชิก"
           columns={[
             {
@@ -408,9 +440,17 @@ function OrganizationMembersPageForOrganization({
                       {initials}
                     </span>
                     <span className="flex min-w-0 flex-col">
-                      <span className="font-medium text-heading">{m.name}</span>
+                      <span
+                        data-testid="member-name"
+                        className="font-medium text-heading"
+                      >
+                        {m.name}
+                      </span>
                       {m.userId === me?.user.id ? (
-                        <span className="text-xs text-foreground-secondary">
+                        <span
+                          data-testid="member-current-actor"
+                          className="text-xs text-foreground-secondary"
+                        >
                           คุณ
                         </span>
                       ) : null}
@@ -424,7 +464,12 @@ function OrganizationMembersPageForOrganization({
               header: "อีเมล",
               mono: true,
               cell: (m) => (
-                <span className="text-foreground-secondary">{m.email}</span>
+                <span
+                  data-testid="member-email"
+                  className="text-foreground-secondary"
+                >
+                  {m.email}
+                </span>
               ),
             },
             {
@@ -432,7 +477,11 @@ function OrganizationMembersPageForOrganization({
               header: "บทบาท",
               width: "160px",
               cell: (m) => (
-                <StatusPill tone={m.role === "owner" ? "primary" : "neutral"}>
+                <StatusPill
+                  data-testid="member-current-role"
+                  data-member-role={m.role}
+                  tone={m.role === "owner" ? "primary" : "neutral"}
+                >
                   {ROLE_LABELS[m.role] ?? m.role}
                 </StatusPill>
               ),
@@ -473,6 +522,9 @@ function OrganizationMembersPageForOrganization({
           empty={`สมาชิกทั้งหมด ${String(data.page.total)} คน`}
         />
         <DataTablePagination
+          summaryTestId="members-pagination-summary"
+          previousTestId="members-previous"
+          nextTestId="members-next"
           ariaLabel="หน้าสมาชิก"
           summary={
             <>
@@ -508,16 +560,22 @@ function OrganizationMembersPageForOrganization({
         status={
           <>
             <span>
-              slug <span className="font-mono">{organization.slug}</span>
+              slug{" "}
+              <span
+                data-testid="members-organization-slug"
+                className="font-mono"
+              >
+                {organization.slug}
+              </span>
             </span>
             {!list.isFetching && !list.isError && !invalidPage && list.data ? (
-              <span>
+              <span data-testid="members-total-count">
                 สมาชิกทั้งหมด{" "}
-                <span className="font-mono">
+                <span data-testid="members-total" className="font-mono">
                   {list.data.page.total.toLocaleString("en-US")}
                 </span>{" "}
                 /{" "}
-                <span className="font-mono">
+                <span data-testid="members-limit" className="font-mono">
                   {list.data.memberLimit.toLocaleString("en-US")}
                 </span>{" "}
                 คน
@@ -547,6 +605,8 @@ function OrganizationMembersPageForOrganization({
       />
       {revoke.scopeCurrent && revoke.confirmation !== null ? (
         <ConfirmDialog
+          data-testid="member-revoke-dialog"
+          confirmTestId="member-revoke-confirm"
           title="ยืนยันการถอนสมาชิก"
           description={
             <>
@@ -575,6 +635,8 @@ function OrganizationMembersPageForOrganization({
       actorRole === "owner" &&
       roleChange.confirmation !== null ? (
         <ConfirmDialog
+          data-testid="member-role-dialog"
+          confirmTestId="member-role-confirm"
           title="ยืนยันการเปลี่ยนบทบาท"
           description={
             <>
@@ -608,6 +670,7 @@ function OrganizationMembersPageForOrganization({
       >
         <SectionHeader
           id="members-directory-title"
+          headingTestId="members-directory-heading"
           code="02"
           title="รายชื่อสมาชิก"
           meta={
@@ -619,23 +682,35 @@ function OrganizationMembersPageForOrganization({
           }
         />
         {roleChange.pendingText !== null ? (
-          <Notice tone="pending">{roleChange.pendingText}</Notice>
+          <Notice data-testid="member-role-pending" tone="pending">
+            {roleChange.pendingText}
+          </Notice>
         ) : null}
         {roleChange.scopeCurrent && roleChange.notice !== null ? (
           roleChange.notice.tone === "success" ? (
-            <Notice tone="success">{roleChange.notice.text}</Notice>
+            <Notice data-testid="member-role-success" tone="success">
+              {roleChange.notice.text}
+            </Notice>
           ) : (
-            <Alert tone="error">{roleChange.notice.text}</Alert>
+            <Alert data-testid="member-role-error" tone="error">
+              {roleChange.notice.text}
+            </Alert>
           )
         ) : null}
         {revoke.pendingText !== null ? (
-          <Notice tone="pending">{revoke.pendingText}</Notice>
+          <Notice data-testid="member-revoke-pending" tone="pending">
+            {revoke.pendingText}
+          </Notice>
         ) : null}
         {revoke.scopeCurrent && revoke.notice !== null ? (
           revoke.notice.tone === "success" ? (
-            <Notice tone="success">{revoke.notice.text}</Notice>
+            <Notice data-testid="member-revoke-success" tone="success">
+              {revoke.notice.text}
+            </Notice>
           ) : (
-            <Alert tone="error">{revoke.notice.text}</Alert>
+            <Alert data-testid="member-revoke-error" tone="error">
+              {revoke.notice.text}
+            </Alert>
           )
         ) : null}
         {directory}

@@ -28,9 +28,17 @@ export function StatusDetail({ row }: { row: Row }) {
   const lines: ReactNode[] = [];
   if (row.health === "down" && row.openIncident !== null) {
     lines.push(
-      <span key="incident">
+      <span
+        data-testid="monitor-list-incident"
+        data-reason={row.openIncident.reason}
+        key="incident"
+      >
         ตั้งแต่{" "}
-        <Time iso={row.openIncident.startedAt} format={formatTimeOrDate} />{" "}
+        <Time
+          testId="monitor-list-incident-time"
+          iso={row.openIncident.startedAt}
+          format={formatTimeOrDate}
+        />{" "}
         สาเหตุ {incidentReasonLabel(row.openIncident.reason)}
       </span>,
     );
@@ -38,18 +46,36 @@ export function StatusDetail({ row }: { row: Row }) {
   if (row.health === "unknown") {
     if (row.healthReason === "stale" && row.lastCheckAt !== null) {
       lines.push(
-        <span key="reason">
+        <span
+          data-testid="monitor-list-reason"
+          data-health-reason={row.healthReason}
+          key="reason"
+        >
           {HEALTH_REASON_LABELS.stale}ตั้งแต่{" "}
-          <Time iso={row.lastCheckAt} format={formatTimeOrDate} />
+          <Time
+            testId="monitor-list-reason-time"
+            iso={row.lastCheckAt}
+            format={formatTimeOrDate}
+          />
         </span>,
       );
     } else if (row.healthReason !== null) {
       lines.push(
-        <span key="reason">{HEALTH_REASON_LABELS[row.healthReason]}</span>,
+        <span
+          data-testid="monitor-list-reason"
+          data-health-reason={row.healthReason}
+          key="reason"
+        >
+          {HEALTH_REASON_LABELS[row.healthReason]}
+        </span>,
       );
     }
     if (row.lastKnownDown) {
-      lines.push(<span key="down">ล่าสุดทราบว่าล่ม</span>);
+      lines.push(
+        <span data-testid="monitor-list-last-known-down" key="down">
+          ล่าสุดทราบว่าล่ม
+        </span>,
+      );
     }
   }
   const failing =
@@ -58,7 +84,11 @@ export function StatusDetail({ row }: { row: Row }) {
       (row.health === "unknown" && row.healthReason === null));
   if (failing) {
     lines.push(
-      <span key="failures" className="font-medium text-caution">
+      <span
+        data-testid="monitor-list-failures"
+        key="failures"
+        className="font-medium text-caution"
+      >
         ล้มเหลว {row.consecutiveFailures} ครั้ง
       </span>,
     );
@@ -76,9 +106,14 @@ export function Uptime({ window }: { window: Row["uptime"]["h24"] }) {
     return <span className="whitespace-nowrap">{NO_DATA}</span>;
   return (
     <span className="flex flex-col whitespace-nowrap">
-      <span className="font-mono">{formatPercent(window.percent)}%</span>
+      <span data-testid="monitor-list-uptime-value" className="font-mono">
+        {formatPercent(window.percent)}%
+      </span>
       {window.coveragePercent < 100 ? (
-        <span className="text-xs text-foreground-secondary">
+        <span
+          data-testid="monitor-list-coverage"
+          className="text-xs text-foreground-secondary"
+        >
           ครอบคลุม {formatPercent(window.coveragePercent)}%
         </span>
       ) : null}
@@ -99,7 +134,7 @@ export function MonitorTable({
       header: `สถานะ (${TIME_ZONE})`,
       cell: (row) => (
         <span className="flex flex-col items-start py-1.5">
-          <HealthPill health={row.health} />
+          <HealthPill testId="monitor-list-health" health={row.health} />
           <StatusDetail row={row} />
         </span>
       ),
@@ -109,6 +144,7 @@ export function MonitorTable({
       header: "ชื่อ",
       cell: (row) => (
         <Link
+          data-testid={`monitor-list-name-${row.id}`}
           to={`/organizations/${organizationId}/monitors/${row.id}`}
           className="block min-w-32 max-w-[240px] font-medium text-primary underline-offset-4 hover:underline"
         >
@@ -169,6 +205,7 @@ export function MonitorTable({
       header: "SSL",
       cell: (row) => (
         <SslLabel
+          testId="monitor-list-ssl"
           level={row.ssl.level}
           daysRemaining={row.ssl.daysRemaining}
           className="whitespace-nowrap"
@@ -182,12 +219,21 @@ export function MonitorTable({
         row.lastCheckAt === null ? (
           <span className="whitespace-nowrap">{NO_DATA}</span>
         ) : (
-          <Time iso={row.lastCheckAt} format={formatTimeOrDate} />
+          <Time
+            testId="monitor-list-check-time"
+            iso={row.lastCheckAt}
+            format={formatTimeOrDate}
+          />
         ),
     },
   ];
   return (
     <DataTable
+      data-testid="monitor-overview-table-region"
+      tableTestId="monitor-overview-table"
+      rowTestId={(row) => `monitor-list-row-${row.id}`}
+      cellTestId={(column) => `monitor-list-cell-${column.key}`}
+      columnHeaderTestId={(column) => `monitor-list-heading-${column.key}`}
       ariaLabel="ตารางมอนิเตอร์"
       columns={columns}
       rows={monitors}

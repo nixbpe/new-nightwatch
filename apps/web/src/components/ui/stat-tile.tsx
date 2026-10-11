@@ -15,7 +15,9 @@ export function StatTile({
   total,
   note,
   term = false,
+  valueTestId,
 }: {
+  valueTestId?: string;
   /** Background class of the 7 px dot, e.g. `bg-danger`. */
   dot: string;
   label: string;
@@ -36,7 +38,10 @@ export function StatTile({
         />
         {label}
       </Label>
-      <Value className="flex items-baseline gap-2 font-mono tabular-nums">
+      <Value
+        data-testid={valueTestId}
+        className="flex items-baseline gap-2 font-mono tabular-nums"
+      >
         <span className="text-[40px] leading-none font-medium text-heading">
           {value}
         </span>

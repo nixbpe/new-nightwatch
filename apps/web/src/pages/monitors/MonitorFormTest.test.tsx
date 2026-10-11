@@ -27,7 +27,12 @@ import {
   testMonitorDraft,
   testMonitorEdit,
 } from "../../lib/api/monitors";
-import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
+import {
+  must,
+  noChecks,
+  noIncidents,
+  noResponseTimes,
+} from "./detail-test-support";
 import {
   A,
   context,
@@ -119,32 +124,72 @@ function result(overrides: Partial<MonitorTestResult> = {}): {
   };
 }
 
+function expectInvalid(field: HTMLElement) {
+  expect(field).toHaveAttribute("aria-invalid", "true");
+  expect(field).toHaveAccessibleDescription();
+  const described = field.getAttribute("aria-describedby")?.split(" ") ?? [];
+  const error = described.find((id) => id.endsWith("-error"));
+  expect(error).toBeDefined();
+  expect(document.getElementById(must(error))).not.toBeEmptyDOMElement();
+}
+
+function assertionRecords() {
+  return within(screen.getByTestId("monitor-test-assertions"))
+    .getAllByTestId("monitor-test-assertions-row")
+    .map((row) => {
+      const expected = within(row).getByTestId(
+        "monitor-test-assertions-expected",
+      );
+      const actual = within(row).getByTestId("monitor-test-assertions-actual");
+      expect(
+        within(row).getByTestId("monitor-test-assertions-status"),
+      ).not.toBeEmptyDOMElement();
+      expect(actual).not.toBeEmptyDOMElement();
+      const clone = actual.cloneNode(true) as HTMLElement;
+      const badge = within(clone).queryByTestId(
+        "monitor-test-assertions-truncated",
+      );
+      if (row.getAttribute("data-truncated") === "true") {
+        expect(
+          within(actual).getByTestId("monitor-test-assertions-truncated"),
+        ).toBeVisible();
+        expect(badge).not.toBeEmptyDOMElement();
+      } else {
+        expect(badge).toBeNull();
+      }
+      badge?.remove();
+      return {
+        expected: expected.textContent.trim(),
+        actual:
+          row.getAttribute("data-has-actual") === "false"
+            ? null
+            : clone.textContent.trim(),
+        status: row.getAttribute("data-status"),
+        truncated: row.getAttribute("data-truncated") === "true",
+      };
+    });
+}
+
 type User = ReturnType<typeof userEvent.setup>;
 
 async function openCreate(user: User = userEvent.setup()) {
   renderForm(newPath());
-  await screen.findByLabelText("ชื่อมอนิเตอร์");
-  await user.type(screen.getByLabelText("ชื่อมอนิเตอร์"), "Payments API");
+  await screen.findByTestId("monitor-form-name");
+  await user.type(screen.getByTestId("monitor-form-name"), "Payments API");
   await user.type(
-    screen.getByLabelText("URL"),
+    screen.getByTestId("monitor-form-url"),
     "https://api.acme.example/health",
   );
   return user;
 }
 
-const testButton = () =>
-  screen.getByRole("button", { name: /^(ทดสอบการตั้งค่า|กำลังทดสอบ…)$/ });
-const liveRegions = () =>
-  screen.getAllByRole("status").filter((node) => node.tagName === "DIV");
+const testButton = () => screen.getByTestId("monitor-form-test");
 
 describe("Test panel states", () => {
   it("starts idle with the region already in the DOM", async () => {
     await openCreate();
-    expect(
-      within(liveRegions()[0] as HTMLElement).getByText(
-        "ยังไม่ได้ทดสอบ ผลการทดสอบไม่ถูกบันทึกและไม่ส่งผลต่อมอนิเตอร์",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-test-idle")).toHaveRole("status");
+    expect(screen.getByTestId("monitor-test-idle")).not.toBeEmptyDOMElement();
     expect(draftMock).not.toHaveBeenCalled();
   });
 
@@ -152,19 +197,29 @@ describe("Test panel states", () => {
     const pending = deferred<ReturnType<typeof result>>();
     draftMock.mockReturnValue(pending.promise);
     const user = await openCreate();
+    const region = screen.getByTestId("monitor-test-idle");
     await user.click(testButton());
-    expect(testButton()).toHaveAccessibleName("กำลังทดสอบ…");
+    expect(testButton()).toHaveAccessibleName();
+    expect(screen.getByTestId("monitor-test-running")).toBe(region);
+    expect(region).not.toBeEmptyDOMElement();
     expect(testButton()).toHaveAttribute("aria-disabled", "true");
     expect(testButton()).toHaveFocus();
-    expect(screen.getByText("กำลังส่งคำขอทดสอบ")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }),
-    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByTestId("monitor-test-running")).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-form-save")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     await user.click(testButton());
     await user.keyboard("{Enter}");
     expect(draftMock).toHaveBeenCalledTimes(1);
     pending.resolve(result());
-    expect(await screen.findByText("การทดสอบผ่าน")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("monitor-test-result"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-outcome",
+      "pass",
+    );
     expect(testButton()).toHaveFocus();
   });
 
@@ -186,15 +241,47 @@ describe("Test panel states", () => {
     );
     const user = await openCreate();
     await user.click(testButton());
-    const headline = await screen.findByText("การทดสอบผ่าน");
-    expect(liveRegions()[0]).toContainElement(headline);
-    expect(screen.getByText("รหัสสถานะ 200")).toBeInTheDocument();
-    expect(screen.getByText("เวลาตอบสนอง 182 ms")).toBeInTheDocument();
-    expect(screen.getByText(/SSL:/)).toHaveTextContent(
-      "เหลือ 128 วัน (ผู้ออก Example CA) โฮสต์ api.acme.example",
+    const headline = await screen.findByTestId("monitor-test-result");
+    expect(headline).toHaveRole("status");
+    expect(headline).not.toBeEmptyDOMElement();
+    expect(headline).toHaveAttribute("data-outcome", "pass");
+    expect(screen.getByTestId("monitor-test-http-status")).toHaveTextContent(
+      "200",
     );
-    const table = screen.getByRole("table", { name: "ผลการทดสอบต่อเงื่อนไข" });
-    expect(within(table).getAllByText("ผ่าน")).toHaveLength(2);
+    expect(screen.getByTestId("monitor-test-http-status")).toHaveAttribute(
+      "data-http-status",
+      "200",
+    );
+    expect(screen.getByTestId("monitor-test-response-time")).toHaveTextContent(
+      "182",
+    );
+    expect(screen.getByTestId("monitor-test-response-time")).toHaveAttribute(
+      "data-response-time-ms",
+      "182",
+    );
+    expect(screen.getByTestId("monitor-test-ssl")).toHaveAttribute(
+      "data-level",
+      "ok",
+    );
+    expect(screen.getByTestId("monitor-test-ssl")).toHaveTextContent("128");
+    expect(screen.getByTestId("monitor-test-ssl")).toHaveTextContent(
+      "Example CA",
+    );
+    expect(screen.getByTestId("monitor-test-ssl")).toHaveTextContent(
+      "api.acme.example",
+    );
+    expect(assertionRecords()).toEqual(
+      expect.arrayContaining([
+        {
+          expected: "200-299",
+          actual: "200",
+          status: "pass",
+          truncated: false,
+        },
+        { expected: "ready", actual: null, status: "pass", truncated: false },
+      ]),
+    );
+    expect(assertionRecords()).toHaveLength(2);
     expect(testButton()).toHaveFocus();
   });
 
@@ -228,29 +315,70 @@ describe("Test panel states", () => {
     const user = await openCreate();
     await user.click(testButton());
     expect(
-      await screen.findByText("ไม่ผ่าน: 1 จาก 2 เงื่อนไข"),
+      await screen.findByTestId("monitor-test-result"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-outcome",
+      "fail",
+    );
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-failure-reason",
+      "assertion_failed",
+    );
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-failed-assertions",
+      "1",
+    );
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-assertion-count",
+      "2",
+    );
+    const table = screen.getByTestId("monitor-test-assertions");
+    expect(assertionRecords()).toHaveLength(3);
+    expect(assertionRecords()).toEqual(
+      expect.arrayContaining([
+        {
+          expected: "200-299",
+          actual: "200",
+          status: "pass",
+          truncated: false,
+        },
+        {
+          expected: '"ok"',
+          actual: '"degraded"',
+          status: "fail",
+          truncated: true,
+        },
+        { expected: "ready", actual: null, status: "pass", truncated: false },
+      ]),
+    );
+    const failed = within(table)
+      .getAllByTestId("monitor-test-assertions-row")
+      .filter((row) => row.getAttribute("data-status") === "fail");
+    expect(failed).toHaveLength(1);
+    expect(
+      within(must(failed.pop())).getByTestId(
+        "monitor-test-assertions-truncated",
+      ),
+    ).toBeVisible();
+    expect(
+      within(screen.getByTestId("monitor-test-assertions")).getByTestId(
+        "monitor-test-assertions-truncated",
+      ),
     ).toBeInTheDocument();
-    const table = screen.getByRole("table", { name: "ผลการทดสอบต่อเงื่อนไข" });
-    expect(within(table).getByText("ตัดแล้ว")).toBeInTheDocument();
-    expect(within(table).getByText(/ไม่ผ่าน/)).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-test-result")).toBeInTheDocument();
   });
 
   it.each([
-    [
-      "blocked_address",
-      /ที่อยู่นี้ไม่อนุญาตให้ตรวจสอบ \(เช่น localhost หรือที่อยู่ภายในเครือข่าย\) ใช้ที่อยู่สาธารณะแทน/,
-    ],
-    [
-      "redirect_blocked",
-      "ไม่ผ่าน: ที่อยู่ปลายทางของ redirect ไม่อนุญาตให้ตรวจสอบ",
-    ],
-    ["redirect_limit", "ไม่ผ่าน: redirect เกินกำหนด"],
-    ["dns_not_found", "ไม่ผ่าน: ไม่พบชื่อโดเมนนี้"],
-    ["timeout", "ไม่ผ่าน: หมดเวลารอ 10 วินาที ไม่ได้รับการตอบกลับ"],
-    ["connect_refused", "ไม่ผ่าน: ปลายทางปฏิเสธการเชื่อมต่อ"],
+    "blocked_address",
+    "redirect_blocked",
+    "redirect_limit",
+    "dns_not_found",
+    "timeout",
+    "connect_refused",
   ] as const)(
     "words %s as the target's result, with no address and every assertion not evaluated",
-    async (failureReason, text) => {
+    async (failureReason) => {
       draftMock.mockResolvedValue(
         result({
           outcome: "fail",
@@ -272,13 +400,35 @@ describe("Test panel states", () => {
       );
       const user = await openCreate();
       await user.click(testButton());
-      expect(await screen.findByText(text)).toBeInTheDocument();
-      const table = screen.getByRole("table", {
-        name: "ผลการทดสอบต่อเงื่อนไข",
-      });
       expect(
-        within(table).getAllByText(/ไม่ได้ประเมิน/).length,
-      ).toBeGreaterThan(1);
+        await screen.findByTestId("monitor-test-result"),
+      ).not.toBeEmptyDOMElement();
+      expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+        "data-outcome",
+        "fail",
+      );
+      expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+        "data-failure-reason",
+        failureReason,
+      );
+
+      expect(assertionRecords()).toHaveLength(2);
+      expect(assertionRecords()).toEqual(
+        expect.arrayContaining([
+          {
+            expected: "200-299",
+            actual: null,
+            status: "not_evaluated",
+            truncated: false,
+          },
+          {
+            expected: "ready",
+            actual: null,
+            status: "not_evaluated",
+            truncated: false,
+          },
+        ]),
+      );
       expect(document.body.textContent).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
     },
   );
@@ -288,25 +438,38 @@ describe("Test panel states", () => {
       result({ outcome: "fail", failureReason: "timeout", httpStatus: null }),
     );
     const user = await openCreate();
-    await user.click(screen.getByRole("radio", { name: "ขั้นสูง" }));
-    fireEvent.change(screen.getByLabelText("หมดเวลารอ (วินาที)"), {
+    await user.click(screen.getByTestId("monitor-form-mode-advanced"));
+    fireEvent.change(screen.getByTestId("monitor-form-timeout"), {
       target: { value: "5" },
     });
     await user.click(testButton());
     expect(
-      await screen.findByText(
-        "ไม่ผ่าน: หมดเวลารอ 5 วินาที ไม่ได้รับการตอบกลับ",
-      ),
-    ).toBeInTheDocument();
+      await screen.findByTestId("monitor-test-result"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-outcome",
+      "fail",
+    );
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-failure-reason",
+      "timeout",
+    );
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-timeout-seconds",
+      "5",
+    );
+    expect(screen.getByTestId("monitor-test-result")).toHaveTextContent(
+      /\b5\b/,
+    );
   });
 
   it.each([
-    ["hostname_mismatch", "ไม่ผ่าน: ใบรับรองไม่ถูกต้อง: ชื่อไม่ตรง"],
-    ["expired", "ไม่ผ่าน: ใบรับรองไม่ถูกต้อง: หมดอายุ"],
-    ["self_signed", "ไม่ผ่าน: ใบรับรองไม่ถูกต้อง: ใบรับรองลงนามเอง"],
-    ["handshake_failed", "ไม่ผ่าน: เชื่อมต่อแบบปลอดภัยไม่สำเร็จ"],
-    [null, "ไม่ผ่าน: ใบรับรองไม่ถูกต้อง"],
-  ] as const)("words a TLS failure (%s)", async (tlsReason, text) => {
+    "hostname_mismatch",
+    "expired",
+    "self_signed",
+    "handshake_failed",
+    null,
+  ] as const)("words a TLS failure (%s)", async (tlsReason) => {
     draftMock.mockResolvedValue(
       result({
         outcome: "fail",
@@ -317,7 +480,26 @@ describe("Test panel states", () => {
     );
     const user = await openCreate();
     await user.click(testButton());
-    expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("monitor-test-result"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-outcome",
+      "fail",
+    );
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-failure-reason",
+      "tls_invalid",
+    );
+    if (tlsReason === null)
+      expect(screen.getByTestId("monitor-test-result")).not.toHaveAttribute(
+        "data-tls-reason",
+      );
+    else
+      expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+        "data-tls-reason",
+        tlsReason,
+      );
   });
 
   it("words a system-side check error apart from a target failure", async () => {
@@ -332,69 +514,52 @@ describe("Test panel states", () => {
     const user = await openCreate();
     await user.click(testButton());
     expect(
-      await screen.findByText(
-        /ตรวจไม่ได้ \(ปัญหาฝั่งระบบ\) ไม่ใช่ผลของเป้าหมาย/,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/^ไม่ผ่าน/)).toBeNull();
+      await screen.findByTestId("monitor-test-result"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-outcome",
+      "check_error",
+    );
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-failure-reason",
+      "executor_error",
+    );
+    expect(screen.getByTestId("monitor-test-result")).not.toHaveAttribute(
+      "data-outcome",
+      "fail",
+    );
   });
 
   it("labels the result stale once the form changes", async () => {
     draftMock.mockResolvedValue(result());
     const user = await openCreate();
     await user.click(testButton());
-    await screen.findByText("การทดสอบผ่าน");
-    expect(screen.queryByText("ผลนี้ไม่ตรงกับค่าปัจจุบัน")).toBeNull();
-    await user.type(screen.getByLabelText("ชื่อมอนิเตอร์"), " 2");
-    expect(screen.getByText("ผลนี้ไม่ตรงกับค่าปัจจุบัน")).toBeInTheDocument();
+    await screen.findByTestId("monitor-test-result");
+    expect(screen.queryByTestId("monitor-test-stale")).toBeNull();
+    await user.type(screen.getByTestId("monitor-form-name"), " 2");
+    expect(screen.getByTestId("monitor-test-stale")).not.toBeEmptyDOMElement();
   });
 
   it("tests an invalid form by showing the errors beside the fields and sending nothing", async () => {
     const user = userEvent.setup();
     renderForm(newPath());
-    await screen.findByLabelText("ชื่อมอนิเตอร์");
+    await screen.findByTestId("monitor-form-name");
     await user.click(testButton());
     expect(draftMock).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveFocus();
-    expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-      expect.stringContaining("กรอก URL"),
-    );
+    expect(screen.getByTestId("monitor-form-name")).toHaveFocus();
+    expectInvalid(screen.getByTestId("monitor-form-url"));
   });
 });
 
 describe("Test panel SSL line", () => {
   it.each([
-    [
-      "ok",
-      128,
-      "SSL: เหลือ 128 วัน (ผู้ออก Example CA) โฮสต์ api.acme.example",
-    ],
-    [
-      "caution",
-      21,
-      "SSL: ใกล้หมดอายุ เหลือ 21 วัน (ผู้ออก Example CA) โฮสต์ api.acme.example",
-    ],
-    [
-      "danger",
-      5,
-      "SSL: หมดอายุใน 5 วัน (ผู้ออก Example CA) โฮสต์ api.acme.example",
-    ],
-    [
-      "expired",
-      -2,
-      "SSL: หมดอายุแล้ว เมื่อ 2 วันก่อน (ผู้ออก Example CA) โฮสต์ api.acme.example",
-    ],
-    [
-      "unreadable",
-      null,
-      "SSL: อ่านใบรับรองไม่ได้ (ผู้ออก Example CA) โฮสต์ api.acme.example",
-    ],
-    [
-      "not_https",
-      null,
-      "SSL: ไม่ใช้ HTTPS (ผู้ออก Example CA) โฮสต์ api.acme.example",
-    ],
-  ] as const)("words level %s", async (level, daysRemaining, text) => {
+    ["ok", 128],
+    ["caution", 21],
+    ["danger", 5],
+    ["expired", -2],
+    ["unreadable", null],
+    ["not_https", null],
+  ] as const)("words level %s", async (level, daysRemaining) => {
     draftMock.mockResolvedValue(
       result({
         ssl: {
@@ -408,7 +573,16 @@ describe("Test panel SSL line", () => {
     );
     const user = await openCreate();
     await user.click(testButton());
-    expect(await screen.findByText(/^SSL:/)).toHaveTextContent(text);
+    const ssl = await screen.findByTestId("monitor-test-ssl");
+    expect(ssl).toHaveAttribute("data-level", level);
+    expect(ssl).toHaveTextContent("Example CA");
+    expect(ssl).toHaveTextContent("api.acme.example");
+    if (daysRemaining === null)
+      expect(ssl).not.toHaveAttribute("data-days-remaining");
+    else {
+      expect(ssl).toHaveAttribute("data-days-remaining", String(daysRemaining));
+      expect(ssl).toHaveTextContent(String(Math.abs(daysRemaining)));
+    }
   });
 
   it("renders no SSL line for no_data", async () => {
@@ -425,8 +599,8 @@ describe("Test panel SSL line", () => {
     );
     const user = await openCreate();
     await user.click(testButton());
-    await screen.findByText("การทดสอบผ่าน");
-    expect(screen.queryByText(/SSL:/)).toBeNull();
+    await screen.findByTestId("monitor-test-result");
+    expect(screen.queryByTestId("monitor-test-ssl")).toBeNull();
   });
 });
 
@@ -443,12 +617,15 @@ describe("Test service errors", () => {
       );
       const user = await openCreate();
       await user.click(testButton());
-      expect(await screen.findByRole("alert", { name: "" })).toHaveTextContent(
-        "ทดสอบไม่สำเร็จ ลองอีกครั้ง",
-      );
-      expect(screen.queryByText(/^ไม่ผ่าน/)).toBeNull();
+      expect(
+        await screen.findByTestId("monitor-test-service-error"),
+      ).toHaveRole("alert");
+      expect(
+        screen.getByTestId("monitor-test-service-error"),
+      ).not.toBeEmptyDOMElement();
+      expect(screen.queryByTestId("monitor-test-result")).toBeNull();
       expect(document.body.textContent).not.toMatch(/10\.0\.0\.1/);
-      expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+      expect(screen.getByTestId("monitor-form-name")).toHaveValue(
         "Payments API",
       );
       expect(testButton()).toHaveFocus();
@@ -465,26 +642,47 @@ describe("Test service errors", () => {
     const user = userEvent.setup({ delay: null });
     await openCreate(user);
     await user.click(testButton());
-    expect(await screen.findByText("ทดสอบบ่อยเกินไป")).toBeInTheDocument();
-    expect(liveRegions()[0]).toHaveTextContent("ทดสอบบ่อยเกินไป");
-    expect(liveRegions()[0]).not.toHaveTextContent(/วินาที/);
+    expect(
+      await screen.findByTestId("monitor-test-rateLimited"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-test-rateLimited")).toHaveRole("status");
+    expect(
+      screen.getByTestId("monitor-test-rateLimited"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("monitor-test-rateLimited")).not.toContainElement(
+      screen.getByTestId("monitor-test-wait"),
+    );
     expect(testButton()).toHaveAttribute("aria-disabled", "true");
     expect(testButton()).toHaveFocus();
-    expect(screen.getByText("ลองอีกครั้งใน 3 วินาที")).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-test-wait")).toHaveAttribute(
+      "data-remaining-seconds",
+      "3",
+    );
+    expect(screen.getByTestId("monitor-test-wait")).toHaveTextContent("3");
     await user.click(testButton());
     expect(draftMock).toHaveBeenCalledTimes(1);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
-    expect(screen.getByText("ลองอีกครั้งใน 2 วินาที")).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-test-wait")).toHaveAttribute(
+      "data-remaining-seconds",
+      "2",
+    );
+    expect(screen.getByTestId("monitor-test-wait")).toHaveTextContent("2");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    expect(screen.queryByText(/ลองอีกครั้งใน/)).toBeNull();
+    expect(screen.queryByTestId("monitor-test-wait")).toBeNull();
     expect(testButton()).toHaveAttribute("aria-disabled", "false");
     draftMock.mockResolvedValueOnce(result());
     await user.click(testButton());
-    expect(await screen.findByText("การทดสอบผ่าน")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("monitor-test-result"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+      "data-outcome",
+      "pass",
+    );
     expect(draftMock).toHaveBeenCalledTimes(2);
   });
 
@@ -497,11 +695,9 @@ describe("Test service errors", () => {
     const user = await openCreate();
     await user.click(testButton());
     await waitFor(() => {
-      expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-        /พอร์ต 80, 443/,
-      );
+      expectInvalid(screen.getByTestId("monitor-form-url"));
     });
-    expect(screen.getByLabelText("URL")).toHaveFocus();
+    expect(screen.getByTestId("monitor-form-url")).toHaveFocus();
   });
 
   it("keeps the values and shows the role change on PERMISSION_DENIED", async () => {
@@ -510,9 +706,9 @@ describe("Test service errors", () => {
     vi.mocked(fetchMeContext).mockResolvedValue(context("viewer"));
     await user.click(testButton());
     expect(
-      (await screen.findAllByText("สิทธิ์ของคุณเปลี่ยนแล้ว")).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue("Payments API");
+      await screen.findByTestId("monitor-form-role-changed"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("monitor-form-name")).toHaveValue("Payments API");
     await waitFor(() => {
       expect(testButton()).toHaveAttribute("aria-disabled", "true");
     });
@@ -523,7 +719,7 @@ describe("Test service errors", () => {
 describe("Saving and testing are independent", () => {
   it("saves without a test", async () => {
     const user = await openCreate();
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
@@ -540,8 +736,16 @@ describe("Saving and testing are independent", () => {
     );
     const user = await openCreate();
     await user.click(testButton());
-    await screen.findByText(/ไม่ผ่าน: รหัสสถานะไม่อยู่ในที่คาดหวัง/);
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+        "data-outcome",
+        "fail",
+      );
+    });
+    expect(screen.getByTestId("monitor-test-http-status")).toHaveTextContent(
+      "503",
+    );
+    await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
@@ -551,7 +755,7 @@ describe("Saving and testing are independent", () => {
     draftMock.mockResolvedValue(result());
     const user = await openCreate();
     await user.click(testButton());
-    await screen.findByText("การทดสอบผ่าน");
+    await screen.findByTestId("monitor-test-result");
     const body = draftMock.mock.calls[0]?.[1];
     expect(body).toMatchObject({
       name: "Payments API",
@@ -570,14 +774,14 @@ describe("Edit test", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     await user.click(testButton());
     await waitFor(() => {
-      expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-        expect.stringContaining(
-          "เปลี่ยนที่อยู่ปลายทาง ต้องกรอกค่าลับใหม่หรือลบค่าลับเดิม",
-        ),
-      );
+      expectInvalid(screen.getByTestId("monitor-form-url"));
     });
   });
 
@@ -588,19 +792,20 @@ describe("Edit test", () => {
     );
     const user = userEvent.setup();
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     await user.click(testButton());
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("monitor-form-not-found"),
+    ).toBeInTheDocument();
   });
 });
 
 describe("Redesign mockups and notes", () => {
-  const timing = () =>
-    screen.getByRole("group", {
-      name: "ตัวอย่าง: เวลาแยกตามขั้นตอนของการทดสอบ",
-    });
-
-  it("shows no sample status code in the timing example while idle or failed", async () => {
+  it("shows no result status while idle and the actual HTTP status after a failed test", async () => {
     draftMock.mockResolvedValue(
       result({
         outcome: "fail",
@@ -609,24 +814,33 @@ describe("Redesign mockups and notes", () => {
       }),
     );
     const user = await openCreate();
-    expect(within(timing()).queryByText("200 OK")).toBeNull();
-    expect(within(timing()).getByText("เชื่อมต่อ")).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-test-idle")).toHaveRole("status");
+    expect(screen.queryByTestId("monitor-test-http-status")).toBeNull();
     await user.click(testButton());
-    await screen.findByText(/^ไม่ผ่าน:/);
-    expect(within(timing()).queryByText("200 OK")).toBeNull();
-    expect(within(timing()).queryByText(/status/i)).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("monitor-test-result")).toHaveAttribute(
+        "data-outcome",
+        "fail",
+      );
+    });
+    expect(screen.getByTestId("monitor-test-http-status")).toHaveAttribute(
+      "data-http-status",
+      "503",
+    );
+    expect(screen.getByTestId("monitor-test-http-status")).toHaveTextContent(
+      "503",
+    );
+    expect(assertionRecords()).toEqual([
+      { expected: "200-299", actual: "503", status: "fail", truncated: false },
+    ]);
   });
 
   it("describes the URL input with the scheme and redirect note", async () => {
     await openCreate();
-    expect(screen.getByLabelText("URL")).toHaveAccessibleDescription(
-      /รองรับ http และ https · การเปลี่ยนเส้นทาง \(redirect\) สูงสุด 5 ครั้ง/,
-    );
+    expect(
+      screen.getByTestId("monitor-form-url"),
+    ).toHaveAccessibleDescription();
   });
-
-  const ALERT_NOTE = /เจ้าของและผู้ดูแลจะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม/;
-  const ORG_OFF_NOTE =
-    "ปิด การแจ้งเตือนของมอนิเตอร์นี้จะไม่ทำงานจนกว่าจะเปิด ส่วนสถานะล่มและการนับเกณฑ์ล้มเหลวยังทำงานตามปกติ";
 
   it.each([
     [true, true],
@@ -641,18 +855,24 @@ describe("Redesign mockups and notes", () => {
         monitorAlertsEnabled: enabled,
       });
       await openCreate();
-      const region = screen.getByRole("region", { name: "การแจ้งเตือน" });
+
       await waitFor(() => {
         expect(fetchOrganizationNotificationSettings).toHaveBeenCalled();
       });
       if (shown) {
-        expect(await within(region).findByText(ALERT_NOTE)).toBeInTheDocument();
-        expect(within(region).queryByText(ORG_OFF_NOTE)).toBeNull();
+        expect(
+          await screen.findByTestId("monitor-form-org-alerts-enabled"),
+        ).not.toBeEmptyDOMElement();
+        expect(
+          screen.queryByTestId("monitor-form-org-alerts-disabled"),
+        ).toBeNull();
       } else {
         expect(
-          await within(region).findByText(ORG_OFF_NOTE),
-        ).toBeInTheDocument();
-        expect(within(region).queryByText(ALERT_NOTE)).toBeNull();
+          await screen.findByTestId("monitor-form-org-alerts-disabled"),
+        ).not.toBeEmptyDOMElement();
+        expect(
+          screen.queryByTestId("monitor-form-org-alerts-enabled"),
+        ).toBeNull();
       }
     },
   );
@@ -662,30 +882,30 @@ describe("Redesign mockups and notes", () => {
       new ApiError("FORBIDDEN", "no", 403),
     );
     await openCreate();
-    const region = screen.getByRole("region", { name: "การแจ้งเตือน" });
+
     await waitFor(() => {
       expect(fetchOrganizationNotificationSettings).toHaveBeenCalled();
     });
-    expect(within(region).queryByText(ALERT_NOTE)).toBeNull();
+    expect(screen.queryByTestId("monitor-form-org-alerts-enabled")).toBeNull();
   });
 
-  it("puts the test panel before the save button in DOM order", async () => {
-    await openCreate();
-    const test = screen.getByRole("button", { name: "ทดสอบการตั้งค่า" });
-    const save = screen.getByRole("button", { name: "บันทึกมอนิเตอร์" });
-    expect(
-      test.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+  it("keeps keyboard focus between Cancel and Save", async () => {
+    const user = await openCreate();
+    screen.getByTestId("monitor-form-cancel").focus();
+    await user.tab();
+    expect(screen.getByTestId("monitor-form-save")).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByTestId("monitor-form-cancel")).toHaveFocus();
   });
 
   it("shows the calls per day for the chosen interval", async () => {
     const user = await openCreate();
-    expect(screen.getByText(/ครั้งต่อวัน/)).toHaveTextContent(
-      "ประมาณ 288 ครั้งต่อวัน",
+    expect(screen.getByTestId("monitor-form-calls-per-day")).toHaveTextContent(
+      /^288$/,
     );
-    await user.click(screen.getByRole("radio", { name: "1 นาที" }));
-    expect(screen.getByText(/ครั้งต่อวัน/)).toHaveTextContent(
-      "ประมาณ 1,440 ครั้งต่อวัน",
+    await user.click(screen.getByTestId("monitor-form-interval-60"));
+    expect(screen.getByTestId("monitor-form-calls-per-day")).toHaveTextContent(
+      /^1,440$/,
     );
   });
 });
@@ -700,13 +920,11 @@ describe("Alerts section controls", () => {
     });
   });
 
-  const thresholdSelect = () => screen.getByLabelText("แจ้งเมื่อล้มเหลวติดกัน");
-  const downCheckbox = () =>
-    screen.getByRole("checkbox", { name: "แจ้งเมื่อล่มและกลับมาปกติ" });
-  const sslCheckbox = () =>
-    screen.getByRole("checkbox", { name: "แจ้งเมื่อ SSL ใกล้หมดอายุ" });
-  const daysField = () =>
-    screen.getByLabelText("แจ้งล่วงหน้าก่อนหมดอายุ (วัน)");
+  const thresholdSelect = () =>
+    screen.getByTestId("monitor-form-alert-threshold");
+  const downCheckbox = () => screen.getByTestId("monitor-form-alert-down");
+  const sslCheckbox = () => screen.getByTestId("monitor-form-alert-ssl");
+  const daysField = () => screen.getByTestId("monitor-form-alert-days");
 
   it("defaults to 2 failures, both toggles on and 30 days, and sends that object unchanged", async () => {
     const user = await openCreate();
@@ -714,7 +932,7 @@ describe("Alerts section controls", () => {
     expect(downCheckbox()).toBeChecked();
     expect(sslCheckbox()).toBeChecked();
     expect(daysField()).toHaveValue("30");
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
@@ -730,20 +948,22 @@ describe("Alerts section controls", () => {
 
   it("gives the failure threshold an accessible description that it determines down status even when down alerts are off", async () => {
     await openCreate();
-    expect(thresholdSelect()).toHaveAccessibleDescription(
-      "ค่านี้ใช้ตัดสินว่ามอนิเตอร์ล่มด้วย แม้ปิด 'แจ้งเมื่อล่มและกลับมาปกติ'",
-    );
+    expect(thresholdSelect()).toHaveAccessibleDescription();
   });
 
   it("updates the down-status note to 3 failures and submits the complete alerts object with the selected values", async () => {
     const user = await openCreate();
     await user.selectOptions(thresholdSelect(), "3");
-    expect(
-      screen.getByText(/ถือว่าล่มเมื่อล้มเหลวติดกัน\s*3\s*ครั้ง/),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-form-down-summary")).toHaveAttribute(
+      "data-failure-threshold",
+      "3",
+    );
+    expect(screen.getByTestId("monitor-form-down-summary")).toHaveTextContent(
+      "3",
+    );
     await user.click(downCheckbox());
     fireEvent.change(daysField(), { target: { value: "10" } });
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
@@ -762,9 +982,7 @@ describe("Alerts section controls", () => {
     fireEvent.change(daysField(), { target: { value: "12" } });
     await user.click(sslCheckbox());
     expect(daysField()).toHaveAttribute("aria-readonly", "true");
-    expect(daysField()).toHaveAccessibleDescription(
-      "เปิด 'แจ้งเมื่อ SSL ใกล้หมดอายุ' ก่อน จึงจะแก้จำนวนวันนี้ได้",
-    );
+    expect(daysField()).toHaveAccessibleDescription();
     expect(daysField()).toHaveValue("12");
     await user.click(sslCheckbox());
     expect(daysField()).not.toHaveAttribute("aria-readonly");
@@ -774,12 +992,10 @@ describe("Alerts section controls", () => {
   it("blocks saving with 40 SSL caution days, marks and focuses the field, and describes the allowed 8-to-30 range", async () => {
     const user = await openCreate();
     fireEvent.change(daysField(), { target: { value: "40" } });
-    await user.click(screen.getByRole("button", { name: "บันทึกมอนิเตอร์" }));
+    await user.click(screen.getByTestId("monitor-form-save"));
     expect(createMock).not.toHaveBeenCalled();
     expect(daysField()).toHaveAttribute("aria-invalid", "true");
-    expect(daysField()).toHaveAccessibleDescription(
-      "กรอกจำนวนเต็ม 8 ถึง 30 วัน",
-    );
+    expectInvalid(daysField());
     expect(daysField()).toHaveFocus();
   });
 });

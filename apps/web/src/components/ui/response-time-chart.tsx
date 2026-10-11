@@ -207,8 +207,14 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
   const label = `กราฟเส้นเวลาตอบสนอง หน่วย ms ช่วง ${RANGE_LABELS[range]} แหล่ง ผลการตรวจของ NightWatch เวลาตามเขตเวลา ${TIME_ZONE} ใช้ลูกศรซ้ายขวา Home และ End เพื่อดูค่าแต่ละจุด`;
 
   return (
-    <div ref={ref} className="flex flex-col gap-2">
+    <div
+      data-testid="monitor-response-chart-region"
+      ref={ref}
+      className="flex flex-col gap-2"
+    >
       <div
+        data-testid="monitor-response-chart"
+        data-range={range}
         role="group"
         aria-label={label}
         tabIndex={0}
@@ -216,6 +222,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
         className="rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <svg
+          data-testid="monitor-response-plot"
           aria-hidden="true"
           focusable="false"
           width={width}
@@ -252,6 +259,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                 className="stroke-foreground/10"
               />
               <text
+                data-testid="monitor-response-y-tick"
                 x={left - 8}
                 y={y(tick)}
                 dy="0.32em"
@@ -263,6 +271,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
             </g>
           ))}
           <text
+            data-testid="monitor-response-unit"
             x={left - 8}
             y={10}
             textAnchor="end"
@@ -272,6 +281,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
           </text>
           {xTicks.map((tick) => (
             <text
+              data-testid="monitor-response-x-tick"
               key={tick.at.getTime()}
               x={x(tick.at)}
               y={bottom + 16}
@@ -296,6 +306,9 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
               <g key={`pause-${pause.from}`}>
                 <rect
                   data-chart-part="pause"
+                  data-testid="monitor-response-pause"
+                  data-from={pause.from}
+                  data-to={pause.to}
                   x={start}
                   y={MARGIN.top}
                   width={w}
@@ -323,6 +336,9 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                 <g key={entry.key}>
                   <rect
                     data-chart-part="gap"
+                    data-testid="monitor-response-gap"
+                    data-at={entry.at}
+                    data-end={entry.end}
                     x={start}
                     y={MARGIN.top}
                     width={w}
@@ -341,6 +357,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                         className="fill-surface"
                       />
                       <text
+                        data-testid="monitor-response-gap-label"
                         x={start + 8}
                         y={MARGIN.top + 15}
                         className="fill-foreground-secondary text-xs"
@@ -355,8 +372,13 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
           {props.configChanges.map((change) => {
             const at = x(new Date(change.at));
             return (
-              <g key={change.at} data-chart-part="config-change">
-                <title>
+              <g
+                key={change.at}
+                data-chart-part="config-change"
+                data-testid="monitor-response-config-change"
+                data-url-changed={change.urlChanged}
+              >
+                <title data-testid="monitor-response-config-title">
                   {change.urlChanged ? "เปลี่ยน URL" : "แก้ไขการตั้งค่า"}
                 </title>
                 <line
@@ -388,6 +410,7 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
           {path === null ? null : (
             <path
               data-chart-part="line"
+              data-testid="monitor-response-line"
               d={path}
               fill="none"
               strokeWidth="2"
@@ -416,6 +439,8 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                 <path
                   key={entry.key}
                   data-chart-part="no-response"
+                  data-testid="monitor-response-no-response"
+                  data-at={entry.at}
                   d={`M${String(cx - 4)},${String(cy - 4)}L${String(cx + 4)},${String(cy + 4)}M${String(cx - 4)},${String(cy + 4)}L${String(cx + 4)},${String(cy - 4)}`}
                   strokeWidth="2"
                   className="stroke-danger"
@@ -424,6 +449,8 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                 <circle
                   key={entry.key}
                   data-chart-part="check-error"
+                  data-testid="monitor-response-check-error"
+                  data-at={entry.at}
                   cx={cx}
                   cy={cy}
                   r="4"
@@ -467,7 +494,13 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
           )}
         </svg>
       </div>
-      <p aria-hidden="true" className="min-h-5 text-sm text-foreground">
+      <p
+        data-testid="monitor-response-readout"
+        data-selected-kind={selected?.kind}
+        data-selected-at={selected?.at}
+        aria-hidden="true"
+        className="min-h-5 text-sm text-foreground"
+      >
         {selected === undefined
           ? "เลือกกราฟด้วย Tab แล้วใช้ลูกศรซ้ายขวาเพื่อดูค่าแต่ละจุด"
           : `${describeEntry(range, selected)}${
@@ -476,33 +509,72 @@ export function ResponseTimeChart(props: ResponseTimeChartProps) {
                 : ` (${selected.changes.some((c) => c.urlChanged) ? "เปลี่ยน URL" : "แก้ไขการตั้งค่า"})`
             }`}
       </p>
-      <p aria-live="polite" aria-atomic="true" className="sr-only">
+      <p
+        data-testid="monitor-response-live"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
         <span key={live.count}>{live.text}</span>
       </p>
-      <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-secondary">
-        <span>
-          <span aria-hidden="true">—</span> เวลาตอบสนอง (แกนตั้ง: ms)
+      <p
+        data-testid="monitor-response-legend"
+        className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-secondary"
+      >
+        <span data-testid="monitor-response-legend-entry" data-kind="value">
+          <span data-testid="monitor-response-legend-glyph" aria-hidden="true">
+            —
+          </span>{" "}
+          เวลาตอบสนอง (แกนตั้ง: ms)
         </span>
         {series.some((entry) => entry.kind === "no-response") ? (
-          <span>
-            <span aria-hidden="true" className="text-danger">
+          <span
+            data-testid="monitor-response-legend-entry"
+            data-kind="no-response"
+          >
+            <span
+              data-testid="monitor-response-legend-glyph"
+              aria-hidden="true"
+              className="text-danger"
+            >
               ✕
             </span>{" "}
             ไม่ตอบสนอง
           </span>
         ) : null}
-        <span>
-          <span aria-hidden="true">▦</span> หยุดชั่วคราว
+        <span data-testid="monitor-response-legend-entry" data-kind="pause">
+          <span data-testid="monitor-response-legend-glyph" aria-hidden="true">
+            ▦
+          </span>{" "}
+          หยุดชั่วคราว
         </span>
-        <span>
-          <span aria-hidden="true">▤</span> ไม่มีข้อมูล
+        <span data-testid="monitor-response-legend-entry" data-kind="gap">
+          <span data-testid="monitor-response-legend-glyph" aria-hidden="true">
+            ▤
+          </span>{" "}
+          ไม่มีข้อมูล
         </span>
-        <span>
-          <span aria-hidden="true">┊</span> เปลี่ยนค่า
+        <span
+          data-testid="monitor-response-legend-entry"
+          data-kind="config-change"
+        >
+          <span data-testid="monitor-response-legend-glyph" aria-hidden="true">
+            ┊
+          </span>{" "}
+          เปลี่ยนค่า
         </span>
         {series.some((entry) => entry.kind === "check-error") ? (
-          <span>
-            <span aria-hidden="true">○</span> ตรวจไม่ได้ (ปัญหาฝั่งระบบ)
+          <span
+            data-testid="monitor-response-legend-entry"
+            data-kind="check-error"
+          >
+            <span
+              data-testid="monitor-response-legend-glyph"
+              aria-hidden="true"
+            >
+              ○
+            </span>{" "}
+            ตรวจไม่ได้ (ปัญหาฝั่งระบบ)
           </span>
         ) : null}
       </p>

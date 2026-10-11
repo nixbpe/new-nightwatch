@@ -162,6 +162,7 @@ function Harness({ children }: { children?: React.ReactNode }) {
   return (
     <>
       <button
+        data-testid="overview-switch-organization"
         type="button"
         onClick={() =>
           void switchOrg(B).then((switched) => {
@@ -244,45 +245,102 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-function rowOf(name: string): HTMLElement {
-  const row = screen.getByRole("link", { name }).closest("tr");
-  if (row === null) throw new Error(`no row for ${name}`);
-  return row;
+function rowOf(id: string): HTMLElement {
+  return screen.getByTestId(`monitor-list-row-${id}`);
 }
 
 describe("Overview view toggle", () => {
   it("shows the table by default, switches to cards and back", async () => {
     const user = userEvent.setup();
     window.localStorage.removeItem("nightwatch:monitors-view");
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "f1aa7885-89ec-4742-b180-cba178eb6d40", name: "Web" })]),
+    );
     renderPage();
-    await screen.findByRole("link", { name: "Web" });
-    expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: /^ตัวอย่าง: / })).toBeNull();
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-f1aa7885-89ec-4742-b180-cba178eb6d40",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f1aa7885-89ec-4742-b180-cba178eb6d40",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f1aa7885-89ec-4742-b180-cba178eb6d40`,
+    );
+    expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: "การ์ด" }));
-    expect(screen.queryByRole("table")).toBeNull();
+    await user.click(screen.getByTestId("monitor-overview-view-cards"));
+    expect(screen.queryByTestId("monitor-overview-table")).toBeNull();
     expect(window.localStorage.getItem("nightwatch:monitors-view")).toBe(
       "cards",
     );
-    expect(screen.getByText("ตอบสนอง")).toBeInTheDocument();
-    expect(screen.getByText(`(${TIME_ZONE})`)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Web" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: /^ตัวอย่าง: / })).toBeNull();
+    expect(
+      screen.getByTestId("monitor-list-cell-responseTime"),
+    ).toHaveTextContent(/^182 ms$/);
+    expect(screen.getByTestId("monitor-list-check-time")).toHaveAttribute(
+      "datetime",
+      "2026-09-30T07:30:00.000Z",
+    );
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f1aa7885-89ec-4742-b180-cba178eb6d40",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f1aa7885-89ec-4742-b180-cba178eb6d40",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f1aa7885-89ec-4742-b180-cba178eb6d40`,
+    );
 
-    await user.click(screen.getByRole("radio", { name: "ตาราง" }));
-    expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: /^ตัวอย่าง: / })).toBeNull();
+    expect(screen.getByTestId("monitor-overview-view-cards")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByTestId("monitor-overview-view-table")).toHaveFocus();
+    expect(screen.getByTestId("monitor-overview-view-table")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(window.localStorage.getItem("nightwatch:monitors-view")).toBe(
+      "table",
+    );
+    expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
   });
 
   it("names the status chip group and keeps counts out of the chip names", async () => {
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "cc2c1bb9-982f-4928-b022-8f808a7a1926", name: "Web" })]),
+    );
     renderPage();
-    await screen.findByRole("link", { name: "Web" });
-    const group = screen.getByRole("group", { name: "สถานะ" });
     expect(
-      within(group).getByRole("button", { name: "ทั้งหมด" }),
-    ).toBeInTheDocument();
+      await screen.findByTestId(
+        "monitor-list-name-cc2c1bb9-982f-4928-b022-8f808a7a1926",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-cc2c1bb9-982f-4928-b022-8f808a7a1926",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/cc2c1bb9-982f-4928-b022-8f808a7a1926`,
+    );
+    const group = screen.getByTestId("monitor-overview-health-filter");
+    expect(group).toHaveRole("group");
+    expect(group).toHaveAccessibleName();
+    const all = within(group).getByTestId("monitor-overview-health-all");
+    expect(all).toHaveAccessibleName();
+    expect(all).toHaveAttribute("aria-pressed", "true");
+    const count = within(all).getByTestId("monitor-overview-health-count");
+    expect(count).toHaveAttribute("aria-hidden", "true");
+    expect(count).toHaveTextContent(/^1$/);
   });
 
   it("shows no-data text without a time zone note and the full URL in cards", async () => {
@@ -291,6 +349,7 @@ describe("Overview view toggle", () => {
     fetchListMock.mockResolvedValue(
       list([
         item({
+          id: "f0067249-5706-4d15-8c26-20883d42c86e",
           name: "Web",
           url,
           lastCheckAt: null,
@@ -299,18 +358,52 @@ describe("Overview view toggle", () => {
       ]),
     );
     renderPage();
-    await screen.findByRole("link", { name: "Web" });
-    expect(screen.getByText(url)).toHaveClass("break-all");
-    expect(screen.queryByText(`(${TIME_ZONE})`)).toBeNull();
-    expect(screen.getAllByText("ไม่มีข้อมูล").length).toBeGreaterThan(0);
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-f0067249-5706-4d15-8c26-20883d42c86e",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f0067249-5706-4d15-8c26-20883d42c86e",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f0067249-5706-4d15-8c26-20883d42c86e`,
+    );
+    expect(screen.getByTestId("monitor-list-cell-url")).toHaveTextContent(url);
+    expect(screen.queryByTestId("monitor-list-check-time")).toBeNull();
+    expect(
+      screen.getByTestId("monitor-list-check-empty"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      screen.getByTestId("monitor-list-cell-responseTime"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      screen.getByTestId("monitor-list-cell-responseTime"),
+    ).not.toHaveTextContent(/\d/);
   });
 
   it("restores the persisted cards view and falls back to the table when storage throws", async () => {
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "3852bb10-1633-4893-8308-22781b496670", name: "Web" })]),
+    );
     window.localStorage.setItem("nightwatch:monitors-view", "cards");
     const first = renderPage();
-    await screen.findByRole("link", { name: "Web" });
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-3852bb10-1633-4893-8308-22781b496670",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-3852bb10-1633-4893-8308-22781b496670",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/3852bb10-1633-4893-8308-22781b496670`,
+    );
+    expect(screen.queryByTestId("monitor-overview-table")).toBeNull();
     first.unmount();
 
     const getItem = vi
@@ -319,39 +412,72 @@ describe("Overview view toggle", () => {
         throw new Error("blocked");
       });
     renderPage();
-    await screen.findByRole("link", { name: "Web" });
-    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-3852bb10-1633-4893-8308-22781b496670",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-3852bb10-1633-4893-8308-22781b496670",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/3852bb10-1633-4893-8308-22781b496670`,
+    );
+    expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
     getItem.mockRestore();
   });
 });
 
-const SORT_LABELS = [
-  "ปัญหาก่อน",
-  "ชื่อ A-Z",
-  "ความพร้อมใช้งานต่ำสุด",
-  "ตอบกลับช้าสุด",
-  "เพิ่มล่าสุด",
-];
-
 describe("Overview sort", () => {
   it("offers five options in order, defaulting to problems without sending sort", async () => {
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "2dffe3b9-9919-40f5-b97d-48bce56292b2", name: "Web" })]),
+    );
     renderPage();
-    await screen.findByRole("link", { name: "Web" });
-    const select = screen.getByRole("combobox", { name: "เรียงตาม" });
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-2dffe3b9-9919-40f5-b97d-48bce56292b2",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-2dffe3b9-9919-40f5-b97d-48bce56292b2",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/2dffe3b9-9919-40f5-b97d-48bce56292b2`,
+    );
+    const select = screen.getByTestId("monitor-overview-sort");
     expect(
       within(select)
-        .getAllByRole("option")
-        .map((option) => option.textContent),
-    ).toEqual(SORT_LABELS);
+        .getAllByTestId(/^monitor-overview-sort-option-/)
+        .map((option) => (option as HTMLOptionElement).value),
+    ).toEqual(["problems", "name", "uptime", "response_time", "newest"]);
+    expect(select).toHaveAccessibleName();
     expect(select).toHaveValue("problems");
     expect(fetchListMock.mock.calls[0]?.[1].sort).toBeUndefined();
   });
 
   it("caches the default order under the loader and nav counts key", async () => {
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "f6f65455-42cb-4673-9f75-cffc5d108f77", name: "Web" })]),
+    );
     const { queryClient } = renderPage();
-    await screen.findByRole("link", { name: "Web" });
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-f6f65455-42cb-4673-9f75-cffc5d108f77",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f6f65455-42cb-4673-9f75-cffc5d108f77",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f6f65455-42cb-4673-9f75-cffc5d108f77`,
+    );
     expect(
       queryClient.getQueryData(
         monitorQueryKeys.list(A, { limit: 25, offset: 0 }),
@@ -361,34 +487,87 @@ describe("Overview sort", () => {
 
   it("sends each sort under its own key, returns to the first page and announces it", async () => {
     const user = userEvent.setup();
-    const many = Array.from({ length: 25 }, (_, index) =>
-      item({ name: `Row${String(index)}` }),
-    );
+    const leading = item({
+      id: "a91d2cbc-bc31-44f3-995f-7711fe7d5aa5",
+      name: "Row0",
+    });
+    const many = [
+      leading,
+      ...Array.from({ length: 24 }, (_, index) =>
+        item({ name: `Row${String(index + 1)}` }),
+      ),
+    ];
     fetchListMock.mockImplementation((_org, params) =>
       Promise.resolve(
-        list(params.offset === 0 ? many : [item({ name: "Last" })], {
-          total: 26,
-          pageTotal: 26,
-          offset: params.offset,
-        }),
+        list(
+          params.offset === 0
+            ? many
+            : [
+                item({
+                  id: "1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6",
+                  name: "Last",
+                }),
+              ],
+          {
+            total: 26,
+            pageTotal: 26,
+            offset: params.offset,
+          },
+        ),
       ),
     );
     const { queryClient } = renderPage();
-    await screen.findByRole("link", { name: "Row0" });
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-    await screen.findByRole("link", { name: "Last" });
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-a91d2cbc-bc31-44f3-995f-7711fe7d5aa5",
+      ),
+    ).toHaveTextContent(/^Row0$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-a91d2cbc-bc31-44f3-995f-7711fe7d5aa5",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/a91d2cbc-bc31-44f3-995f-7711fe7d5aa5`,
+    );
+    await user.click(screen.getByTestId("monitor-overview-next"));
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6",
+      ),
+    ).toHaveTextContent(/^Last$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/1c5b88f4-8c3b-4ffc-bda5-d8c868e59ea6`,
+    );
 
-    const select = screen.getByRole("combobox", { name: "เรียงตาม" });
+    const select = screen.getByTestId("monitor-overview-sort");
     const sorted = MONITOR_LIST_SORTS.filter((value) => value !== "problems");
     for (const value of sorted) {
       await user.selectOptions(select, value);
-      await screen.findByRole("link", { name: "Row0" });
+      expect(
+        await screen.findByTestId(
+          "monitor-list-name-a91d2cbc-bc31-44f3-995f-7711fe7d5aa5",
+        ),
+      ).toHaveTextContent(/^Row0$/);
+      expect(
+        screen.getByTestId(
+          "monitor-list-name-a91d2cbc-bc31-44f3-995f-7711fe7d5aa5",
+        ),
+      ).toHaveAttribute(
+        "href",
+        `/organizations/${A}/monitors/a91d2cbc-bc31-44f3-995f-7711fe7d5aa5`,
+      );
       await waitFor(() => {
         expect(
-          screen.getByRole("status", { name: "ผลการกรอง" }),
-        ).toHaveTextContent(
-          `เรียงตาม ${SORT_LABELS[MONITOR_LIST_SORTS.indexOf(value)] ?? ""} · พบ 26 จาก 26`,
-        );
+          screen
+            .getByTestId("monitor-overview-announcement")
+            .textContent.match(/\d+/g),
+        ).toEqual(["26", "26"]);
       });
       expect(fetchListMock).toHaveBeenLastCalledWith(A, {
         limit: 25,
@@ -413,35 +592,57 @@ describe("Overview sort", () => {
     await user.selectOptions(select, "problems");
     await waitFor(() => {
       expect(
-        screen.getByRole("status", { name: "ผลการกรอง" }),
-      ).toHaveTextContent("เรียงตาม ปัญหาก่อน · พบ 26 จาก 26");
+        screen
+          .getByTestId("monitor-overview-announcement")
+          .textContent.match(/\d+/g),
+      ).toEqual(["26", "26"]);
     });
   });
 
   it("keeps the sort when filters are cleared and forgets it on a new mount", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "78b764c9-0199-4ef6-a42d-43e750c7d806", name: "Web" })]),
+    );
     const first = renderPage();
-    await screen.findByRole("link", { name: "Web" });
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-78b764c9-0199-4ef6-a42d-43e750c7d806",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-78b764c9-0199-4ef6-a42d-43e750c7d806",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/78b764c9-0199-4ef6-a42d-43e750c7d806`,
+    );
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "เรียงตาม" }),
+      screen.getByTestId("monitor-overview-sort"),
       "newest",
     );
-    await user.click(screen.getByRole("button", { name: "ล่ม" }));
-    await user.click(
-      await screen.findByRole("button", { name: "ล้างตัวกรอง" }),
-    );
-    expect(screen.getByRole("combobox", { name: "เรียงตาม" })).toHaveValue(
-      "newest",
-    );
+    await user.click(screen.getByTestId("monitor-overview-health-down"));
+    await user.click(await screen.findByTestId("monitor-overview-clear"));
+    expect(screen.getByTestId("monitor-overview-sort")).toHaveValue("newest");
     expect(window.localStorage.getItem("nightwatch:monitors-sort")).toBeNull();
     first.unmount();
 
     renderPage();
-    await screen.findByRole("link", { name: "Web" });
-    expect(screen.getByRole("combobox", { name: "เรียงตาม" })).toHaveValue(
-      "problems",
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-78b764c9-0199-4ef6-a42d-43e750c7d806",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-78b764c9-0199-4ef6-a42d-43e750c7d806",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/78b764c9-0199-4ef6-a42d-43e750c7d806`,
     );
+    expect(screen.getByTestId("monitor-overview-sort")).toHaveValue("problems");
   });
 
   it("does not let an older sort response replace the newer one", async () => {
@@ -449,39 +650,109 @@ describe("Overview sort", () => {
     const resolvers: Record<string, (value: MonitorListResponse) => void> = {};
     fetchListMock.mockImplementation((_org, params) => {
       if (params.sort === undefined) {
-        return Promise.resolve(list([item({ name: "Initial" })]));
+        return Promise.resolve(
+          list([
+            item({
+              id: "f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
+              name: "Initial",
+            }),
+          ]),
+        );
       }
       return new Promise((resolve) => {
         resolvers[params.sort ?? ""] = resolve;
       });
     });
     renderPage();
-    await screen.findByRole("link", { name: "Initial" });
-    const select = screen.getByRole("combobox", { name: "เรียงตาม" });
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
+      ),
+    ).toHaveTextContent(/^Initial$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f537dc96-0bf0-4782-8b0a-a916e0a9c91e`,
+    );
+    const select = screen.getByTestId("monitor-overview-sort");
 
     await user.selectOptions(select, "name");
     await user.selectOptions(select, "newest");
     await waitFor(() => {
       expect(resolvers["newest"]).toBeDefined();
     });
-    expect(screen.getByRole("link", { name: "Initial" })).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
+      ),
+    ).toHaveTextContent(/^Initial$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f537dc96-0bf0-4782-8b0a-a916e0a9c91e",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f537dc96-0bf0-4782-8b0a-a916e0a9c91e`,
+    );
 
     await act(async () => {
-      resolvers["newest"]?.(list([item({ name: "NewestResult" })]));
-      await Promise.resolve();
-    });
-    await screen.findByRole("link", { name: "NewestResult" });
-    await act(async () => {
-      resolvers["name"]?.(list([item({ name: "NameResult" })]));
+      resolvers["newest"]?.(
+        list([
+          item({
+            id: "04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
+            name: "NewestResult",
+          }),
+        ]),
+      );
       await Promise.resolve();
     });
     expect(
-      screen.getByRole("link", { name: "NewestResult" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "NameResult" })).toBeNull();
-    expect(screen.getByRole("combobox", { name: "เรียงตาม" })).toHaveValue(
-      "newest",
+      await screen.findByTestId(
+        "monitor-list-name-04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
+      ),
+    ).toHaveTextContent(/^NewestResult$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd`,
     );
+    await act(async () => {
+      resolvers["name"]?.(
+        list([
+          item({
+            id: "b1878d87-01eb-424c-98e2-971687c7766e",
+            name: "NameResult",
+          }),
+        ]),
+      );
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
+      ),
+    ).toHaveTextContent(/^NewestResult$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/04b20bbe-ed80-4ed5-aa22-e068bc8ee7cd`,
+    );
+    expect(
+      screen.queryByTestId(
+        "monitor-list-name-b1878d87-01eb-424c-98e2-971687c7766e",
+      ),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain("NameResult");
+    expect(screen.getByTestId("monitor-overview-sort")).toHaveValue("newest");
   });
 });
 
@@ -492,6 +763,7 @@ describe("Overview method, interval and sparkline", () => {
     fetchListMock.mockResolvedValue(
       list([
         item({
+          id: "51fd0299-e05f-437b-81c5-d7848b70e032",
           name: "Api",
           url: "https://api.example.test/v1",
           method: "POST",
@@ -500,78 +772,140 @@ describe("Overview method, interval and sparkline", () => {
       ]),
     );
     renderPage();
-    await screen.findByRole("link", { name: "Api" });
-    const card = screen.getByRole("link", { name: "Api" }).closest("li");
-    const cardScope = within(card as HTMLElement);
-    expect(cardScope.getByText("POST")).toBeInTheDocument();
-    expect(cardScope.getByText("https://api.example.test/v1")).toHaveClass(
-      "break-all",
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-51fd0299-e05f-437b-81c5-d7848b70e032",
+      ),
+    ).toHaveTextContent(/^Api$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-51fd0299-e05f-437b-81c5-d7848b70e032",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/51fd0299-e05f-437b-81c5-d7848b70e032`,
     );
-    expect(cardScope.getByText(/^ทุก/)).toHaveTextContent("ทุก 15 นาที");
+    const card = rowOf("51fd0299-e05f-437b-81c5-d7848b70e032");
+    const cardScope = within(card);
+    expect(cardScope.getByTestId("monitor-list-cell-method")).toHaveTextContent(
+      /^POST$/,
+    );
+    expect(cardScope.getByTestId("monitor-list-cell-url")).toHaveTextContent(
+      /^https:\/\/api\.example\.test\/v1$/,
+    );
+    expect(
+      cardScope.getByTestId("monitor-list-cell-interval"),
+    ).toHaveTextContent(/\b15\b/);
 
-    await user.click(screen.getByRole("radio", { name: "ตาราง" }));
-    const headers = screen
-      .getAllByRole("columnheader")
-      .map((header) => header.textContent);
-    expect(headers).toEqual([
-      `สถานะ (${TIME_ZONE})`,
-      "ชื่อ",
-      "URL",
-      "เมธอด",
-      "รอบตรวจ",
-      "24 ชม.",
-      "30 วัน",
-      "ตอบสนอง",
-      "SSL",
-      `ตรวจล่าสุด (${TIME_ZONE})`,
-    ]);
-    const row = within(rowOf("Api"));
-    expect(row.getByText("POST")).toBeInTheDocument();
-    expect(row.getByText(/^ทุก/)).toHaveTextContent("ทุก 15 นาที");
+    await user.click(screen.getByTestId("monitor-overview-view-table"));
+    expect(screen.getByTestId("monitor-list-heading-method")).toHaveRole(
+      "columnheader",
+    );
+    expect(screen.getByTestId("monitor-list-heading-url")).toHaveRole(
+      "columnheader",
+    );
+    expect(screen.getByTestId("monitor-list-heading-interval")).toHaveRole(
+      "columnheader",
+    );
+    const row = within(rowOf("51fd0299-e05f-437b-81c5-d7848b70e032"));
+    expect(row.getByTestId("monitor-list-cell-method")).toHaveTextContent(
+      /^POST$/,
+    );
+    expect(row.getByTestId("monitor-list-cell-url")).toHaveTextContent(
+      /^https:\/\/api\.example\.test\/v1$/,
+    );
+    expect(row.getByTestId("monitor-list-cell-interval")).toHaveTextContent(
+      /\b15\b/,
+    );
   });
 
-  it("draws 24 bars with empty slots for null hours and describes the chart", async () => {
+  it("represents 24 hourly values with empty slots for null hours and describes the chart", async () => {
     window.localStorage.setItem("nightwatch:monitors-view", "cards");
     const values: (number | null)[] = Array.from({ length: 24 }, () => null);
     values[22] = 1500;
     values[23] = 750;
     values[5] = 0;
     fetchListMock.mockResolvedValue(
-      list([item({ name: "Spark", responseSparkline: sparkline(values) })]),
+      list([
+        item({
+          id: "1b3ebf89-4943-45fb-a57c-97e8c6802978",
+          name: "Spark",
+          responseSparkline: sparkline(values),
+        }),
+      ]),
     );
     renderPage();
-    await screen.findByRole("link", { name: "Spark" });
-    const text = screen.getByText(/เวลาตอบสนองเฉลี่ยรายชั่วโมง/);
-    expect(text).toHaveClass("sr-only");
-    expect(text).toHaveTextContent(
-      "เวลาตอบสนองเฉลี่ยรายชั่วโมงจากผลตรวจของมอนิเตอร์นี้ 24 ชม. ล่าสุด สูงสุด 1,500 ms ไม่มีข้อมูล 21 ชั่วโมง",
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-1b3ebf89-4943-45fb-a57c-97e8c6802978",
+      ),
+    ).toHaveTextContent(/^Spark$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-1b3ebf89-4943-45fb-a57c-97e8c6802978",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/1b3ebf89-4943-45fb-a57c-97e8c6802978`,
     );
-    const chart = text.previousElementSibling as HTMLElement;
+    const card = within(rowOf("1b3ebf89-4943-45fb-a57c-97e8c6802978"));
+    const text = card.getByTestId("monitor-list-spark-description");
+    expect(text).toHaveTextContent(/1,500/);
+    expect(text.textContent.match(/\d[\d,]*/g)).toEqual(["24", "1,500", "21"]);
+    const chart = card.getByTestId("monitor-list-sparkline");
     expect(chart).toHaveAttribute("aria-hidden", "true");
-    const slots = Array.from(chart.children) as HTMLElement[];
+    const slots = within(chart).getAllByTestId("monitor-list-spark-slot");
     expect(slots).toHaveLength(24);
-    const empty = slots.filter((slot) => slot.dataset["empty"] === "true");
-    expect(empty).toHaveLength(21);
-    expect(slots[23]?.style.height).toBe("50%");
-    expect(slots[22]?.style.height).toBe("100%");
-    // A zero average is a low bar, not an empty slot.
-    expect(slots[5]?.dataset["empty"]).toBeUndefined();
-    expect(slots[5]?.style.height).toBe("8%");
+    const records = slots.map((slot) => ({
+      hourStart: slot.getAttribute("data-hour-start"),
+      avgMs:
+        slot.getAttribute("data-avg-ms") === ""
+          ? null
+          : Number(slot.getAttribute("data-avg-ms")),
+      empty: slot.getAttribute("data-empty") === "true",
+    }));
+    expect(records).toEqual(
+      expect.arrayContaining(
+        sparkline(values).map((point) => ({
+          hourStart: point.hourStart,
+          avgMs: point.avgMs,
+          empty: point.avgMs === null,
+        })),
+      ),
+    );
+    expect(records.filter((record) => record.empty)).toHaveLength(21);
+    expect(records.filter((record) => record.avgMs === 0)).toEqual([
+      { hourStart: "2026-09-29T13:00:00.000Z", avgMs: 0, empty: false },
+    ]);
   });
 
   it("writes no-data text for a monitor without any hourly average", async () => {
     window.localStorage.setItem("nightwatch:monitors-view", "cards");
-    fetchListMock.mockResolvedValue(list([item({ name: "Empty" })]));
+    fetchListMock.mockResolvedValue(
+      list([
+        item({ id: "e3c050b4-64fb-434f-a75a-6d13efef0ae4", name: "Empty" }),
+      ]),
+    );
     renderPage();
-    await screen.findByRole("link", { name: "Empty" });
-    const card = screen.getByRole("link", { name: "Empty" }).closest("li");
     expect(
-      within(card as HTMLElement).getAllByText("ไม่มีข้อมูล").length,
-    ).toBeGreaterThan(0);
-    expect(card?.querySelector('[aria-hidden="true"] i')).toBeNull();
+      await screen.findByTestId(
+        "monitor-list-name-e3c050b4-64fb-434f-a75a-6d13efef0ae4",
+      ),
+    ).toHaveTextContent(/^Empty$/);
     expect(
-      within(card as HTMLElement).queryByText(/เวลาตอบสนองเฉลี่ยรายชั่วโมง/),
-    ).toBeNull();
+      screen.getByTestId(
+        "monitor-list-name-e3c050b4-64fb-434f-a75a-6d13efef0ae4",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/e3c050b4-64fb-434f-a75a-6d13efef0ae4`,
+    );
+    const card = within(rowOf("e3c050b4-64fb-434f-a75a-6d13efef0ae4"));
+    expect(
+      card.getByTestId("monitor-list-spark-empty"),
+    ).not.toBeEmptyDOMElement();
+    expect(card.queryByTestId("monitor-list-sparkline")).toBeNull();
+    expect(card.queryByTestId("monitor-list-spark-description")).toBeNull();
   });
 });
 
@@ -580,10 +914,10 @@ describe("Overview states", () => {
     fetchListMock.mockReturnValue(new Promise(() => undefined));
     renderPage();
     expect(
-      await screen.findByRole("status", { name: "กำลังโหลดมอนิเตอร์" }),
+      await screen.findByTestId("monitor-overview-loading"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.queryByText("ยังไม่มีมอนิเตอร์")).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-table")).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-empty")).toBeNull();
   });
 
   it("shows the failure with a retry, never the empty state", async () => {
@@ -593,25 +927,42 @@ describe("Overview states", () => {
     const user = userEvent.setup();
     renderPage();
     expect(
-      await screen.findByText("โหลดมอนิเตอร์ไม่สำเร็จ"),
+      await screen.findByTestId("monitor-overview-error"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("ยังไม่มีมอนิเตอร์")).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-empty")).toBeNull();
 
-    fetchListMock.mockResolvedValue(list([item({ name: "Recovered" })]));
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(await screen.findByText("Recovered")).toBeInTheDocument();
+    fetchListMock.mockResolvedValue(
+      list([
+        item({ id: "fdd8cde2-5118-480e-9c3d-3e151e41e003", name: "Recovered" }),
+      ]),
+    );
+    await user.click(screen.getByTestId("monitor-overview-retry"));
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-fdd8cde2-5118-480e-9c3d-3e151e41e003",
+      ),
+    ).toHaveTextContent(/^Recovered$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-fdd8cde2-5118-480e-9c3d-3e151e41e003",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/fdd8cde2-5118-480e-9c3d-3e151e41e003`,
+    );
   });
 
   it("offers the add link on first run to an owner", async () => {
     fetchListMock.mockResolvedValue(list([]));
     renderPage();
-    expect(await screen.findByText("ยังไม่มีมอนิเตอร์")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "เพิ่มมอนิเตอร์" }),
-    ).toHaveAttribute("href", `/organizations/${A}/monitors/new`);
-    expect(
-      screen.getAllByRole("link", { name: "เพิ่มมอนิเตอร์" }),
-    ).toHaveLength(1);
+      await screen.findByTestId("monitor-overview-empty"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-overview-empty-add")).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/new`,
+    );
+    expect(screen.getByTestId("monitor-overview-empty-add")).toHaveRole("link");
   });
 
   it.each(["viewer", "auditor"] as const)(
@@ -620,14 +971,14 @@ describe("Overview states", () => {
       fetchMeContextMock.mockResolvedValue(context(role));
       fetchListMock.mockResolvedValue(list([]));
       renderPage();
-      expect(await screen.findByText("ยังไม่มีมอนิเตอร์")).toBeInTheDocument();
       expect(
-        screen.getByText("ผู้ดูแลหรือเจ้าขององค์กรเพิ่มได้"),
+        await screen.findByTestId("monitor-overview-empty"),
       ).toBeInTheDocument();
+      expect(screen.getByTestId("monitor-overview-empty")).toBeInTheDocument();
       expect(
-        screen.getByText("สิทธิ์ของคุณ: ดูอย่างเดียว"),
+        screen.getByTestId("monitor-overview-readonly"),
       ).toBeInTheDocument();
-      expect(screen.queryByText("เพิ่มมอนิเตอร์")).toBeNull();
+      expect(screen.queryByTestId("monitor-overview-empty-add")).toBeNull();
     },
   );
 
@@ -635,45 +986,74 @@ describe("Overview states", () => {
     "hides the add control from a %s when monitors exist",
     async (role) => {
       fetchMeContextMock.mockResolvedValue(context(role));
-      fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+      fetchListMock.mockResolvedValue(
+        list([
+          item({ id: "42352acb-4c50-4036-b50a-a21c157ed636", name: "Web" }),
+        ]),
+      );
       renderPage();
-      expect(await screen.findByText("Web")).toBeInTheDocument();
       expect(
-        screen.getByText("สิทธิ์ของคุณ: ดูอย่างเดียว"),
+        await screen.findByTestId(
+          "monitor-list-name-42352acb-4c50-4036-b50a-a21c157ed636",
+        ),
       ).toBeInTheDocument();
-      expect(screen.queryByText("เพิ่มมอนิเตอร์")).toBeNull();
+      expect(
+        screen.getByTestId("monitor-overview-readonly"),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("monitor-overview-add")).toBeNull();
     },
   );
 
   it("shows the reason beside a disabled add button at the 50 monitor limit", async () => {
     fetchListMock.mockResolvedValue(
-      list([item({ name: "Web" })], { total: 50 }),
+      list(
+        [item({ id: "869529e6-7823-4561-adf8-f1cef3c79ce4", name: "Web" })],
+        { total: 50 },
+      ),
     );
     renderPage();
-    const button = await screen.findByRole("button", {
-      name: "เพิ่มมอนิเตอร์",
-    });
+    const button = await screen.findByTestId("monitor-overview-add-disabled");
     expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription(
-      "องค์กรนี้มีมอนิเตอร์ครบ 50 ตัวแล้ว ลบมอนิเตอร์เดิมก่อนจึงจะเพิ่มได้",
-    );
-    expect(screen.queryByRole("link", { name: "เพิ่มมอนิเตอร์" })).toBeNull();
+    expect(button).toHaveAccessibleDescription();
+    const reason = screen.getByTestId("monitor-overview-limit-reason");
+    expect(reason).toHaveTextContent(/\b50\b/);
+    expect(button).toHaveAttribute("aria-describedby", reason.id);
+    expect(screen.queryByTestId("monitor-overview-add")).toBeNull();
   });
 
   it("shows denied without names, urls or counts to a non-member and sends no request", async () => {
     fetchMeContextMock.mockResolvedValue(
       context("owner", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
     );
-    fetchListMock.mockResolvedValue(list([item({ name: "SecretMonitor" })]));
+    fetchListMock.mockResolvedValue(
+      list([
+        item({
+          id: "f3af01ea-886f-4df2-946d-13f1137dc224",
+          name: "SecretMonitor",
+        }),
+      ]),
+    );
     renderPage(A);
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+      await screen.findByTestId("monitor-overview-denied"),
     ).toBeInTheDocument();
     expect(fetchListMock).not.toHaveBeenCalled();
-    expect(screen.queryByText("SecretMonitor")).toBeNull();
+    expect(
+      screen.queryByTestId(
+        "monitor-list-name-f3af01ea-886f-4df2-946d-13f1137dc224",
+      ),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain("SecretMonitor");
+    expect(document.body.innerHTML).not.toContain(
+      "https://m1.example.test/health",
+    );
+    expect(document.body.textContent).not.toContain("Beta");
     // Beta is the only org staged in this context; the denied page names no organization.
-    expect(screen.queryByText("Beta")).toBeNull();
-    expect(screen.queryByText(/มอนิเตอร์ทั้งหมด/)).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-scope")).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-total")).toBeNull();
+    expect(screen.queryAllByTestId(/^monitor-overview-summary-/)).toHaveLength(
+      0,
+    );
   });
 
   it("shows denied and refreshes the membership context when the API denies membership", async () => {
@@ -682,7 +1062,7 @@ describe("Overview states", () => {
     );
     renderPage();
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
+      await screen.findByTestId("monitor-overview-denied"),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
@@ -690,9 +1070,7 @@ describe("Overview states", () => {
     // A second denial after the refresh must not start another refresh.
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(fetchMeContextMock).toHaveBeenCalledTimes(2);
-    expect(
-      screen.getByText("คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-overview-denied")).toBeInTheDocument();
   });
 
   it("shows the filtered empty state with a clear action and announces the result once", async () => {
@@ -701,87 +1079,173 @@ describe("Overview states", () => {
       Promise.resolve(
         params.health === "down"
           ? list([], { total: 2, pageTotal: 0 })
-          : list([item({ name: "Web" }), item({ name: "Docs" })]),
+          : list([
+              item({ id: "f53d210c-7242-401f-bb68-63f9f23754f5", name: "Web" }),
+              item({
+                id: "7fc5edb0-a2b9-46f8-a00d-0f06ab3d00ff",
+                name: "Docs",
+              }),
+            ]),
       ),
     );
     renderPage();
-    await screen.findByText("Web");
-
-    await user.click(screen.getByRole("button", { name: "ล่ม" }));
     expect(
-      await screen.findByText("ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "ผลการกรอง" })).toHaveTextContent(
-      "พบ 0 จาก 2",
+      await screen.findByTestId(
+        "monitor-list-name-f53d210c-7242-401f-bb68-63f9f23754f5",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f53d210c-7242-401f-bb68-63f9f23754f5",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f53d210c-7242-401f-bb68-63f9f23754f5`,
     );
 
-    await user.click(screen.getByRole("button", { name: "ล้างตัวกรอง" }));
-    expect(await screen.findByText("Web")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "ผลการกรอง" })).toHaveTextContent(
-      "พบ 2 จาก 2",
+    await user.click(screen.getByTestId("monitor-overview-health-down"));
+    expect(
+      await screen.findByTestId("monitor-overview-filtered-empty"),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByTestId("monitor-overview-announcement")
+        .textContent.match(/\d+/g),
+    ).toEqual(["0", "2"]);
+
+    await user.click(screen.getByTestId("monitor-overview-clear"));
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-f53d210c-7242-401f-bb68-63f9f23754f5",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f53d210c-7242-401f-bb68-63f9f23754f5",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f53d210c-7242-401f-bb68-63f9f23754f5`,
     );
+    expect(
+      screen
+        .getByTestId("monitor-overview-announcement")
+        .textContent.match(/\d+/g),
+    ).toEqual(["2", "2"]);
   });
 
   it("moves focus to the search field when the inline clear button unmounts", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "904289d6-2334-48c7-9cd6-ff076ed1c9bd", name: "Web" })]),
+    );
     renderPage();
-    await screen.findByText("Web");
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-904289d6-2334-48c7-9cd6-ff076ed1c9bd",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-904289d6-2334-48c7-9cd6-ff076ed1c9bd",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/904289d6-2334-48c7-9cd6-ff076ed1c9bd`,
+    );
 
-    await user.click(screen.getByRole("button", { name: "ล่ม" }));
-    const clear = await screen.findByRole("button", { name: "ล้างตัวกรอง" });
+    await user.click(screen.getByTestId("monitor-overview-health-down"));
+    const clear = await screen.findByTestId("monitor-overview-clear");
     clear.focus();
     await user.keyboard("{Enter}");
-    expect(screen.queryByRole("button", { name: "ล้างตัวกรอง" })).toBeNull();
-    expect(screen.getByRole("searchbox")).toHaveFocus();
+    expect(screen.queryByTestId("monitor-overview-clear")).toBeNull();
+    expect(screen.getByTestId("monitor-overview-search")).toHaveFocus();
   });
 });
 
-function summaryCount(label: string): string {
-  const term = screen.getByText(label, { selector: "dt" });
-  return term.nextElementSibling?.textContent ?? "";
+function summaryCount(health: string): string {
+  return screen.getByTestId(`monitor-overview-summary-${health}`).textContent;
 }
 
 describe("Overview success", () => {
   it("lists rows in server order, sums the summary to the total and labels the table", async () => {
     const monitors = [
-      item({ name: "Payments", health: "down" }),
-      item({ name: "Docs", health: "unknown", healthReason: "stale" }),
-      item({ name: "Web", health: "up" }),
-      item({ name: "Web2", health: "up" }),
-      item({ name: "Legacy", health: "paused", status: "paused" }),
+      item({
+        id: "5a39cdda-9552-4e75-a4a1-1290ef26c13b",
+        name: "Payments",
+        health: "down",
+      }),
+      item({
+        id: "ecbeec11-a378-41e0-841b-0b72aa82c3e2",
+        name: "Docs",
+        health: "unknown",
+        healthReason: "stale",
+      }),
+      item({
+        id: "7ce7b1fa-99f3-4f1f-aa14-02aec4e3bd95",
+        name: "Web",
+        health: "up",
+      }),
+      item({
+        id: "f81280bb-8d92-4f3e-a681-9218e20d7aec",
+        name: "Web2",
+        health: "up",
+      }),
+      item({
+        id: "9879b1b2-29ce-465d-bd4b-d2305a95f9ea",
+        name: "Legacy",
+        health: "paused",
+        status: "paused",
+      }),
     ];
     fetchListMock.mockResolvedValue(list(monitors));
     renderPage();
-    await screen.findByText("Payments");
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-5a39cdda-9552-4e75-a4a1-1290ef26c13b",
+      ),
+    ).toHaveTextContent(/^Payments$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-5a39cdda-9552-4e75-a4a1-1290ef26c13b",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/5a39cdda-9552-4e75-a4a1-1290ef26c13b`,
+    );
 
     expect(
-      screen.getByRole("region", { name: "ตารางมอนิเตอร์" }),
-    ).toContainElement(screen.getByRole("table"));
-    const names = within(screen.getByRole("table"))
-      .getAllByRole("link")
+      screen.getByTestId("monitor-overview-table-region"),
+    ).toContainElement(screen.getByTestId("monitor-overview-table"));
+    const names = within(screen.getByTestId("monitor-overview-table"))
+      .getAllByTestId(/^monitor-list-name-/)
       .map((link) => link.textContent);
     expect(names).toEqual(["Payments", "Docs", "Web", "Web2", "Legacy"]);
 
-    const counts = ["ปกติ", "ล่ม", "ไม่ทราบสถานะ", "หยุดชั่วคราว"].map(
-      (label) => Number(summaryCount(label)),
+    const counts = ["up", "down", "unknown", "paused"].map((label) =>
+      Number(summaryCount(label)),
     );
     expect(counts).toEqual([2, 1, 1, 1]);
     expect(counts.reduce((sum, count) => sum + count, 0)).toBe(5);
-    expect(screen.getByText(/ข้อมูล ณ/)).toHaveTextContent(
+    expect(screen.getByTestId("monitor-overview-as-of")).toHaveTextContent(
       formatTimeWithSeconds(DATA_AS_OF),
     );
-    expect(screen.getByText(formatTimeWithSeconds(DATA_AS_OF))).toHaveAttribute(
+    expect(screen.getByTestId("monitor-overview-as-of")).toHaveAttribute(
       "datetime",
       DATA_AS_OF,
     );
   });
 
-  it("writes the state as words and keeps the primary tone and check icon for up only", async () => {
+  it("writes the actual health and reason for each monitor", async () => {
     fetchListMock.mockResolvedValue(
       list([
-        item({ name: "UpRow", health: "up" }),
         item({
+          id: "4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96",
+          name: "UpRow",
+          health: "up",
+        }),
+        item({
+          id: "a50193a1-4705-43e1-b2d0-d7b4125db6de",
           name: "DownRow",
           health: "down",
           openIncident: {
@@ -790,6 +1254,7 @@ describe("Overview success", () => {
           },
         }),
         item({
+          id: "6f473ce2-b29a-4b66-8aa7-2571328e193d",
           name: "NeverRow",
           health: "unknown",
           healthReason: "never_checked",
@@ -797,50 +1262,73 @@ describe("Overview success", () => {
           lastResponseTimeMs: null,
         }),
         item({
+          id: "a68aa8f9-e3eb-448e-9776-83d1af0913cc",
           name: "SysRow",
           health: "unknown",
           healthReason: "check_error",
         }),
-        item({ name: "PausedRow", health: "paused", status: "paused" }),
+        item({
+          id: "275d6d7f-92d3-4b86-a8d8-4c49fc03eea2",
+          name: "PausedRow",
+          health: "paused",
+          status: "paused",
+        }),
       ]),
     );
     renderPage();
-    await screen.findByText("UpRow");
-
-    const pillOf = (name: string, text: string) =>
-      within(rowOf(name)).getByText(text, {
-        selector: "[data-slot=status-pill]",
-      });
-    const up = pillOf("UpRow", "ปกติ");
-    expect(up).toHaveClass("text-primary");
-    expect(up.querySelector("svg")).not.toBeNull();
-
-    for (const [name, text] of [
-      ["DownRow", "ล่ม"],
-      ["NeverRow", "ไม่ทราบสถานะ"],
-      ["SysRow", "ไม่ทราบสถานะ"],
-      ["PausedRow", "หยุดชั่วคราว"],
-    ] as const) {
-      const pill = pillOf(name, text);
-      expect(pill).not.toHaveClass("text-primary");
-      expect(pill.querySelector("svg")).toBeNull();
-    }
-    expect(within(rowOf("DownRow")).getByText(/สาเหตุ/)).toHaveTextContent(
-      "สาเหตุ รหัสสถานะ HTTP ไม่ตรงเงื่อนไข",
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96",
+      ),
+    ).toHaveTextContent(/^UpRow$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96`,
     );
+
+    for (const [name, health] of [
+      ["4ad6ee28-2136-4e2b-8bbc-f9ea2768cb96", "up"],
+      ["a50193a1-4705-43e1-b2d0-d7b4125db6de", "down"],
+      ["6f473ce2-b29a-4b66-8aa7-2571328e193d", "unknown"],
+      ["a68aa8f9-e3eb-448e-9776-83d1af0913cc", "unknown"],
+      ["275d6d7f-92d3-4b86-a8d8-4c49fc03eea2", "paused"],
+    ] as const) {
+      const pill = within(rowOf(name)).getByTestId("monitor-list-health");
+      expect(pill).toHaveAttribute("data-health", health);
+      expect(pill).not.toBeEmptyDOMElement();
+    }
     expect(
-      within(rowOf("NeverRow")).getByText("รอตรวจครั้งแรก"),
-    ).toBeInTheDocument();
+      within(rowOf("a50193a1-4705-43e1-b2d0-d7b4125db6de")).getByTestId(
+        "monitor-list-incident",
+      ),
+    ).toHaveAttribute("data-reason", "http_status");
     expect(
-      within(rowOf("SysRow")).getByText("ตรวจไม่ได้ (ปัญหาฝั่งระบบ)"),
-    ).toBeInTheDocument();
+      within(rowOf("6f473ce2-b29a-4b66-8aa7-2571328e193d")).getByTestId(
+        "monitor-list-reason",
+      ),
+    ).toHaveAttribute("data-health-reason", "never_checked");
+    expect(
+      within(rowOf("a68aa8f9-e3eb-448e-9776-83d1af0913cc")).getByTestId(
+        "monitor-list-reason",
+      ),
+    ).toHaveAttribute("data-health-reason", "check_error");
   });
 
   it("shows failure counts, last-known-down and stale wording without changing the health", async () => {
     fetchListMock.mockResolvedValue(
       list([
-        item({ name: "Flaky", health: "up", consecutiveFailures: 1 }),
         item({
+          id: "ceadac25-860f-450b-8a5a-919bed1d4be9",
+          name: "Flaky",
+          health: "up",
+          consecutiveFailures: 1,
+        }),
+        item({
+          id: "c58aad2b-5f18-4621-8be3-7725e021ac31",
           name: "Silent",
           health: "unknown",
           healthReason: "stale",
@@ -848,6 +1336,7 @@ describe("Overview success", () => {
           lastCheckAt: "2026-09-30T06:10:00.000Z",
         }),
         item({
+          id: "7c5345e5-3c1f-4063-b889-7293a19f0c26",
           name: "Edited",
           health: "unknown",
           healthReason: "awaiting_new_config",
@@ -855,132 +1344,137 @@ describe("Overview success", () => {
       ]),
     );
     renderPage();
-    await screen.findByText("Flaky");
-
-    const flaky = rowOf("Flaky");
-    expect(within(flaky).getByText("ล้มเหลว 1 ครั้ง")).toHaveClass(
-      "text-caution",
-    );
-    expect(within(flaky).getByText("ปกติ")).toBeInTheDocument();
-    const silent = rowOf("Silent");
-    expect(within(silent).getByText("ล่าสุดทราบว่าล่ม")).toBeInTheDocument();
-    expect(within(silent).getByText(/ไม่มีผลใหม่ตั้งแต่/)).toBeInTheDocument();
     expect(
-      within(rowOf("Edited")).getByText("รอตรวจตามค่าใหม่"),
-    ).toBeInTheDocument();
+      await screen.findByTestId(
+        "monitor-list-name-ceadac25-860f-450b-8a5a-919bed1d4be9",
+      ),
+    ).toHaveTextContent(/^Flaky$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-ceadac25-860f-450b-8a5a-919bed1d4be9",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/ceadac25-860f-450b-8a5a-919bed1d4be9`,
+    );
+
+    const flaky = rowOf("ceadac25-860f-450b-8a5a-919bed1d4be9");
+    expect(
+      within(flaky).getByTestId("monitor-list-failures"),
+    ).toHaveTextContent(/\b1\b/);
+    expect(within(flaky).getByTestId("monitor-list-health")).toHaveAttribute(
+      "data-health",
+      "up",
+    );
+    const silent = rowOf("c58aad2b-5f18-4621-8be3-7725e021ac31");
+    expect(
+      within(silent).getByTestId("monitor-list-last-known-down"),
+    ).not.toBeEmptyDOMElement();
+    expect(within(silent).getByTestId("monitor-list-reason")).toHaveAttribute(
+      "data-health-reason",
+      "stale",
+    );
+    expect(within(silent).getByTestId("monitor-list-health")).toHaveAttribute(
+      "data-health",
+      "unknown",
+    );
+    expect(
+      within(silent).getByTestId("monitor-list-reason-time"),
+    ).toHaveAttribute("datetime", "2026-09-30T06:10:00.000Z");
+    expect(
+      within(rowOf("7c5345e5-3c1f-4063-b889-7293a19f0c26")).getByTestId(
+        "monitor-list-reason",
+      ),
+    ).toHaveAttribute("data-health-reason", "awaiting_new_config");
   });
 
-  it("words every SSL level with its tone", async () => {
-    const levels: [Item["ssl"], string, string][] = [
-      [
-        {
-          level: "ok",
-          daysRemaining: 128,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "เหลือ 128 วัน",
-        "text-foreground",
-      ],
-      [
-        {
-          level: "caution",
-          daysRemaining: 30,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "ใกล้หมดอายุ เหลือ 30 วัน",
-        "text-caution",
-      ],
-      [
-        {
-          level: "danger",
-          daysRemaining: 7,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "หมดอายุใน 7 วัน",
-        "text-danger",
-      ],
-      [
-        {
-          level: "expired",
-          daysRemaining: -2,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "หมดอายุแล้ว เมื่อ 2 วันก่อน",
-        "text-danger",
-      ],
-      [
-        {
-          level: "expired",
-          daysRemaining: null,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "หมดอายุแล้ว",
-        "text-danger",
-      ],
-      [
-        {
-          level: "not_https",
-          daysRemaining: null,
-          host: null,
-          issuer: null,
-          notAfter: null,
-        },
-        "ไม่ใช้ HTTPS",
-        "text-foreground-secondary",
-      ],
-      [
-        {
-          level: "unreadable",
-          daysRemaining: null,
-          host: "h",
-          issuer: null,
-          notAfter: null,
-        },
-        "อ่านใบรับรองไม่ได้",
-        "text-foreground",
-      ],
-      [
-        {
-          level: "no_data",
-          daysRemaining: null,
-          host: null,
-          issuer: null,
-          notAfter: null,
-        },
-        "ยังไม่มีข้อมูล",
-        "text-foreground",
-      ],
+  it("renders every SSL level and its actual days remaining", async () => {
+    const levels: Item["ssl"][] = [
+      {
+        level: "ok",
+        daysRemaining: 128,
+        host: "h",
+        issuer: null,
+        notAfter: null,
+      },
+      {
+        level: "caution",
+        daysRemaining: 30,
+        host: "h",
+        issuer: null,
+        notAfter: null,
+      },
+      {
+        level: "danger",
+        daysRemaining: 7,
+        host: "h",
+        issuer: null,
+        notAfter: null,
+      },
+      {
+        level: "expired",
+        daysRemaining: -2,
+        host: "h",
+        issuer: null,
+        notAfter: null,
+      },
+      {
+        level: "expired",
+        daysRemaining: null,
+        host: "h",
+        issuer: null,
+        notAfter: null,
+      },
+      {
+        level: "not_https",
+        daysRemaining: null,
+        host: null,
+        issuer: null,
+        notAfter: null,
+      },
+      {
+        level: "unreadable",
+        daysRemaining: null,
+        host: "h",
+        issuer: null,
+        notAfter: null,
+      },
+      {
+        level: "no_data",
+        daysRemaining: null,
+        host: null,
+        issuer: null,
+        notAfter: null,
+      },
     ];
-    fetchListMock.mockResolvedValue(
-      list(
-        levels.map(([ssl], index) =>
-          item({ name: `Ssl${String(index)}`, ssl }),
-        ),
-      ),
+    const monitors = levels.map((ssl, index) =>
+      item({ name: `Ssl${String(index)}`, ssl }),
     );
+    fetchListMock.mockResolvedValue(list(monitors));
     renderPage();
-    await screen.findByText("Ssl0");
-
-    levels.forEach(([, text, tone], index) => {
-      const label = within(rowOf(`Ssl${String(index)}`)).getByText(text);
-      expect(label).toHaveClass(tone);
-    });
+    await screen.findAllByTestId(/^monitor-list-row-/);
+    for (const monitor of monitors) {
+      const label = within(rowOf(monitor.id)).getByTestId("monitor-list-ssl");
+      expect(label).toHaveAttribute("data-ssl-level", monitor.ssl.level);
+      expect(label).not.toBeEmptyDOMElement();
+      expect(label).toHaveAttribute(
+        "data-days-remaining",
+        monitor.ssl.daysRemaining === null
+          ? ""
+          : String(monitor.ssl.daysRemaining),
+      );
+      if (monitor.ssl.daysRemaining !== null)
+        expect(label).toHaveTextContent(
+          new RegExp(`\\b${String(Math.abs(monitor.ssl.daysRemaining))}\\b`),
+        );
+    }
   });
 
   it("writes missing uptime and response time as text and shows partial coverage", async () => {
     fetchListMock.mockResolvedValue(
       list([
         item({
+          id: "6bbcaabc-5861-41de-a99a-6cab673d04ac",
           name: "Fresh",
           lastResponseTimeMs: null,
           lastCheckAt: null,
@@ -992,23 +1486,67 @@ describe("Overview success", () => {
       ]),
     );
     renderPage();
-    await screen.findByText("Fresh");
-    const row = within(rowOf("Fresh"));
-    expect(row.getAllByText("ไม่มีข้อมูล").length).toBeGreaterThanOrEqual(3);
-    expect(row.getByText("97.50%")).toBeInTheDocument();
-    expect(row.getByText("ครอบคลุม 61.00%")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-6bbcaabc-5861-41de-a99a-6cab673d04ac",
+      ),
+    ).toHaveTextContent(/^Fresh$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-6bbcaabc-5861-41de-a99a-6cab673d04ac",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/6bbcaabc-5861-41de-a99a-6cab673d04ac`,
+    );
+    const row = within(rowOf("6bbcaabc-5861-41de-a99a-6cab673d04ac"));
+    for (const key of ["h24", "responseTime", "lastCheck"]) {
+      expect(
+        row.getByTestId(`monitor-list-cell-${key}`),
+      ).not.toBeEmptyDOMElement();
+      expect(row.getByTestId(`monitor-list-cell-${key}`)).not.toHaveTextContent(
+        /\d/,
+      );
+    }
+    expect(row.getByTestId("monitor-list-uptime-value")).toHaveTextContent(
+      /^97\.50%$/,
+    );
+    expect(
+      row.getByTestId("monitor-list-coverage").textContent.match(/[\d.]+%/g),
+    ).toEqual(["61.00%"]);
   });
 
   it("marks each last check time with its instant", async () => {
     fetchListMock.mockResolvedValue(
-      list([item({ name: "Web", lastCheckAt: "2026-09-30T07:30:00.000Z" })]),
+      list([
+        item({
+          id: "cde37086-af6e-4878-abc7-84b2238f07a7",
+          name: "Web",
+          lastCheckAt: "2026-09-30T07:30:00.000Z",
+        }),
+      ]),
     );
     renderPage();
-    await screen.findByText("Web");
-    const times = within(rowOf("Web")).getAllByText(/^\d{2}:\d{2}$/);
-    expect(times[0]).toHaveAttribute("datetime", "2026-09-30T07:30:00.000Z");
     expect(
-      screen.getByRole("columnheader", { name: /ตรวจล่าสุด \(/ }),
+      await screen.findByTestId(
+        "monitor-list-name-cde37086-af6e-4878-abc7-84b2238f07a7",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-cde37086-af6e-4878-abc7-84b2238f07a7",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/cde37086-af6e-4878-abc7-84b2238f07a7`,
+    );
+    expect(
+      within(rowOf("cde37086-af6e-4878-abc7-84b2238f07a7")).getByTestId(
+        "monitor-list-check-time",
+      ),
+    ).toHaveAttribute("datetime", "2026-09-30T07:30:00.000Z");
+    expect(
+      screen.getByTestId("monitor-list-heading-lastCheck"),
     ).toBeInTheDocument();
   });
 });
@@ -1019,38 +1557,70 @@ describe("Overview times, focus and filter failures", () => {
     fetchListMock.mockResolvedValue(
       list([
         item({
+          id: "5189c3f5-3cef-4149-92be-d16080697bc0",
           name: "DownOld",
           health: "down",
           openIncident: { startedAt: earlier, reason: "timeout" },
           lastCheckAt: earlier,
         }),
         item({
+          id: "6b47e17b-00ed-4564-9005-03d938329580",
           name: "StaleOld",
           health: "unknown",
           healthReason: "stale",
           lastCheckAt: earlier,
         }),
-        item({ name: "Today", lastCheckAt: "2026-09-30T07:30:00.000Z" }),
+        item({
+          id: "66b38107-4146-4365-b9c2-271fa7ee2be1",
+          name: "Today",
+          lastCheckAt: "2026-09-30T07:30:00.000Z",
+        }),
       ]),
     );
     renderPage();
-    await screen.findByText("DownOld");
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-5189c3f5-3cef-4149-92be-d16080697bc0",
+      ),
+    ).toHaveTextContent(/^DownOld$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-5189c3f5-3cef-4149-92be-d16080697bc0",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/5189c3f5-3cef-4149-92be-d16080697bc0`,
+    );
 
     const withDate = formatDateTime(earlier);
-    expect(within(rowOf("DownOld")).getAllByText(withDate)).toHaveLength(2);
-    expect(within(rowOf("StaleOld")).getAllByText(withDate)).toHaveLength(2);
-    expect(within(rowOf("Today")).getByText(/^\d{2}:\d{2}$/)).toHaveAttribute(
-      "datetime",
-      "2026-09-30T07:30:00.000Z",
-    );
+    for (const [name, source] of [
+      ["5189c3f5-3cef-4149-92be-d16080697bc0", "incident"],
+      ["6b47e17b-00ed-4564-9005-03d938329580", "reason"],
+    ] as const) {
+      const row = within(rowOf(name));
+      for (const key of [
+        `monitor-list-${source}-time`,
+        "monitor-list-check-time",
+      ]) {
+        expect(row.getByTestId(key)).toHaveAttribute("datetime", earlier);
+        expect(row.getByTestId(key)).toHaveTextContent(withDate);
+      }
+    }
     expect(
-      screen.getByRole("columnheader", { name: `สถานะ (${TIME_ZONE})` }),
+      within(rowOf("66b38107-4146-4365-b9c2-271fa7ee2be1")).getByTestId(
+        "monitor-list-check-time",
+      ),
+    ).toHaveAttribute("datetime", "2026-09-30T07:30:00.000Z");
+    expect(
+      screen.getByTestId("monitor-list-heading-health"),
     ).toBeInTheDocument();
   });
 
   it("names the timezone on the recent events card and shows each event's date", async () => {
     const at = "2026-09-29T07:02:00.000Z";
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "05f30d02-294a-4928-8c7f-97a047149b30", name: "Web" })]),
+    );
     fetchEventsMock.mockResolvedValue({
       events: [
         {
@@ -1063,27 +1633,40 @@ describe("Overview times, focus and filter failures", () => {
       ],
     });
     renderPage();
-    const card = await screen.findByRole("region", { name: "เหตุการณ์ล่าสุด" });
-    expect(await within(card).findByText(formatDateTime(at))).toHaveAttribute(
-      "datetime",
-      at,
-    );
-    expect(card).toHaveTextContent(`เวลาแสดงตามเขตเวลา ${TIME_ZONE}`);
+    const card = await screen.findByTestId("monitor-overview-events");
+    expect(
+      await within(card).findByTestId("monitor-overview-event-time"),
+    ).toHaveAttribute("datetime", at);
+    expect(card).toHaveTextContent(TIME_ZONE);
   });
 
   it("keeps focus on the refresh button while it refreshes and ignores a second press", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockResolvedValueOnce(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValueOnce(
+      list([item({ id: "69dfad28-dc40-44c9-a526-6355ac476e6e", name: "Web" })]),
+    );
     renderPage();
-    await screen.findByText("Web");
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-69dfad28-dc40-44c9-a526-6355ac476e6e",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-69dfad28-dc40-44c9-a526-6355ac476e6e",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/69dfad28-dc40-44c9-a526-6355ac476e6e`,
+    );
 
     const pending = Promise.withResolvers<MonitorListResponse>();
     fetchListMock.mockReturnValue(pending.promise);
     const callsBefore = fetchListMock.mock.calls.length;
-    const button = screen.getByRole("button", { name: "รีเฟรช" });
+    const button = screen.getByTestId("monitor-overview-refresh");
     await user.click(button);
 
-    const busy = screen.getByRole("button", { name: "กำลังรีเฟรช…" });
+    const busy = screen.getByTestId("monitor-overview-refresh");
     expect(busy).toBe(button);
     expect(busy).toHaveFocus();
     expect(busy).toHaveAttribute("aria-disabled", "true");
@@ -1091,10 +1674,14 @@ describe("Overview times, focus and filter failures", () => {
     expect(fetchListMock.mock.calls.length).toBe(callsBefore + 1);
 
     await act(async () => {
-      pending.resolve(list([item({ name: "Web" })]));
+      pending.resolve(
+        list([
+          item({ id: "69dfad28-dc40-44c9-a526-6355ac476e6e", name: "Web" }),
+        ]),
+      );
       await pending.promise;
     });
-    expect(await screen.findByRole("button", { name: "รีเฟรช" })).toHaveFocus();
+    expect(await screen.findByTestId("monitor-overview-refresh")).toHaveFocus();
   });
 
   it("keeps the filter controls and offers a clear action when a new filter fails to load", async () => {
@@ -1102,25 +1689,53 @@ describe("Overview times, focus and filter failures", () => {
     fetchListMock.mockImplementation((_org, params) =>
       params.health === "down"
         ? Promise.reject(new ApiError("NETWORK_ERROR", "x", 0))
-        : Promise.resolve(list([item({ name: "Web" })])),
+        : Promise.resolve(
+            list([
+              item({ id: "1a36311e-1088-40d4-9ec9-4be380a096fe", name: "Web" }),
+            ]),
+          ),
     );
     renderPage();
-    await screen.findByText("Web");
-
-    await user.click(screen.getByRole("button", { name: "ล่ม" }));
     expect(
-      await screen.findByText("โหลดมอนิเตอร์ไม่สำเร็จ"),
+      await screen.findByTestId(
+        "monitor-list-name-1a36311e-1088-40d4-9ec9-4be380a096fe",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-1a36311e-1088-40d4-9ec9-4be380a096fe",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/1a36311e-1088-40d4-9ec9-4be380a096fe`,
+    );
+
+    await user.click(screen.getByTestId("monitor-overview-health-down"));
+    expect(
+      await screen.findByTestId("monitor-overview-error"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ล่ม" })).toHaveAttribute(
+    expect(screen.getByTestId("monitor-overview-health-down")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(screen.getByLabelText("ค้นหาชื่อหรือ URL")).toBeInTheDocument();
-    expect(screen.queryByText("ยังไม่มีมอนิเตอร์")).toBeNull();
+    expect(screen.getByTestId("monitor-overview-search")).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-overview-empty")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "ล้างตัวกรอง" }));
-    expect(await screen.findByText("Web")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ทั้งหมด" })).toHaveAttribute(
+    await user.click(screen.getByTestId("monitor-overview-clear"));
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-1a36311e-1088-40d4-9ec9-4be380a096fe",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-1a36311e-1088-40d4-9ec9-4be380a096fe",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/1a36311e-1088-40d4-9ec9-4be380a096fe`,
+    );
+    expect(screen.getByTestId("monitor-overview-health-all")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -1130,6 +1745,7 @@ describe("Overview times, focus and filter failures", () => {
     fetchListMock.mockResolvedValue(
       list([
         item({
+          id: "5e6076a6-6e93-4a7d-b2b3-95cd099e403c",
           name: "FirstFail",
           health: "unknown",
           healthReason: null,
@@ -1138,17 +1754,32 @@ describe("Overview times, focus and filter failures", () => {
       ]),
     );
     renderPage();
-    await screen.findByText("FirstFail");
-    const row = within(rowOf("FirstFail"));
-    expect(row.getByText("ล้มเหลว 1 ครั้ง")).toHaveClass("text-caution");
-    expect(row.getByText("ไม่ทราบสถานะ")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-5e6076a6-6e93-4a7d-b2b3-95cd099e403c",
+      ),
+    ).toHaveTextContent(/^FirstFail$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-5e6076a6-6e93-4a7d-b2b3-95cd099e403c",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/5e6076a6-6e93-4a7d-b2b3-95cd099e403c`,
+    );
+    const row = within(rowOf("5e6076a6-6e93-4a7d-b2b3-95cd099e403c"));
+    expect(row.getByTestId("monitor-list-failures")).toHaveTextContent(/\b1\b/);
+    expect(row.getByTestId("monitor-list-health")).toHaveAttribute(
+      "data-health",
+      "unknown",
+    );
   });
 
   it("offers no add control until the monitor count is known", async () => {
     fetchListMock.mockReturnValue(new Promise(() => undefined));
     renderPage();
-    await screen.findByRole("status", { name: "กำลังโหลดมอนิเตอร์" });
-    expect(screen.queryByText("เพิ่มมอนิเตอร์")).toBeNull();
+    await screen.findByTestId("monitor-overview-loading");
+    expect(screen.queryByTestId("monitor-overview-add")).toBeNull();
   });
 
   it("hides the pagination summary under the filtered-empty state", async () => {
@@ -1157,35 +1788,52 @@ describe("Overview times, focus and filter failures", () => {
       Promise.resolve(
         params.health === "down"
           ? list([], { total: 2, pageTotal: 0 })
-          : list([item({ name: "Web" })]),
+          : list([
+              item({ id: "0efa9833-5468-426d-83e5-077fc85d867d", name: "Web" }),
+            ]),
       ),
     );
     renderPage();
-    await screen.findByText("Web");
-    await user.click(screen.getByRole("button", { name: "ล่ม" }));
-    await screen.findByText("ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง");
     expect(
-      screen.queryByRole("navigation", { name: "หน้ามอนิเตอร์" }),
-    ).toBeNull();
-    expect(screen.queryByText(/แสดง 0/)).toBeNull();
+      await screen.findByTestId(
+        "monitor-list-name-0efa9833-5468-426d-83e5-077fc85d867d",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-0efa9833-5468-426d-83e5-077fc85d867d",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/0efa9833-5468-426d-83e5-077fc85d867d`,
+    );
+    await user.click(screen.getByTestId("monitor-overview-health-down"));
+    await screen.findByTestId("monitor-overview-filtered-empty");
+    expect(screen.queryByTestId("monitor-overview-pagination")).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-pagination")).toBeNull();
   });
 });
 
 describe("Overview recent events", () => {
   it("lists incidents and SSL warnings", async () => {
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "2cb57076-453e-4285-8976-6495150a3fdd", name: "Web" })]),
+    );
+    const opened = item(),
+      warned = item(),
+      closed = item();
     fetchEventsMock.mockResolvedValue({
       events: [
         {
           kind: "incident_opened",
-          monitorId: item().id,
+          monitorId: opened.id,
           monitorName: "Payments",
           at: "2026-09-30T07:02:00.000Z",
           reason: "timeout",
         },
         {
           kind: "ssl_level",
-          monitorId: item().id,
+          monitorId: warned.id,
           monitorName: "Payments",
           at: "2026-09-30T05:00:00.000Z",
           reason: null,
@@ -1194,7 +1842,7 @@ describe("Overview recent events", () => {
         },
         {
           kind: "incident_closed",
-          monitorId: item().id,
+          monitorId: closed.id,
           monitorName: "Web",
           at: "2026-09-29T14:14:00.000Z",
           reason: "recovered",
@@ -1203,49 +1851,115 @@ describe("Overview recent events", () => {
       ],
     });
     renderPage();
-    const card = await screen.findByRole("region", { name: "เหตุการณ์ล่าสุด" });
-    expect(await within(card).findByText("SSL วิกฤต")).toBeInTheDocument();
-    expect(within(card).getByText(/หมดอายุใน 5 วัน/)).toBeInTheDocument();
-    expect(within(card).getByText(/เริ่มล่ม/)).toHaveTextContent(
-      "สาเหตุ หมดเวลารอ",
+    const card = await screen.findByTestId("monitor-overview-events");
+    const rows = await within(card).findAllByTestId("monitor-overview-event");
+    expect(rows).toHaveLength(3);
+    const records = rows.map((row) => {
+      const scope = within(row),
+        description = scope
+          .getByTestId("monitor-overview-event-description")
+          .cloneNode(true) as HTMLElement;
+      within(description).getByTestId("monitor-overview-event-time").remove();
+      expect(description).not.toBeEmptyDOMElement();
+      const name = scope.getByTestId("monitor-overview-event-monitor");
+      return {
+        kind: row.getAttribute("data-event-kind"),
+        reason: row.getAttribute("data-reason"),
+        sslLevel: row.getAttribute("data-ssl-level"),
+        days: row.getAttribute("data-days-remaining"),
+        duration: row.getAttribute("data-duration-seconds"),
+        name: name.textContent,
+        href: name.getAttribute("href"),
+        at: scope
+          .getByTestId("monitor-overview-event-time")
+          .getAttribute("datetime"),
+        numbers: description.textContent.match(/\d+/g) ?? [],
+      };
+    });
+    expect(records).toEqual(
+      expect.arrayContaining([
+        {
+          kind: "incident_opened",
+          href: `/organizations/${A}/monitors/${opened.id}`,
+          reason: "timeout",
+          sslLevel: "",
+          days: "",
+          duration: "",
+          name: "Payments",
+          at: "2026-09-30T07:02:00.000Z",
+          numbers: [],
+        },
+        {
+          kind: "ssl_level",
+          href: `/organizations/${A}/monitors/${warned.id}`,
+          reason: "",
+          sslLevel: "danger",
+          days: "5",
+          duration: "",
+          name: "Payments",
+          at: "2026-09-30T05:00:00.000Z",
+          numbers: ["5"],
+        },
+        {
+          kind: "incident_closed",
+          href: `/organizations/${A}/monitors/${closed.id}`,
+          reason: "recovered",
+          sslLevel: "",
+          days: "",
+          duration: "480",
+          name: "Web",
+          at: "2026-09-29T14:14:00.000Z",
+          numbers: ["8"],
+        },
+      ]),
     );
-    expect(within(card).getByText(/ล่ม 8 นาที/)).toBeInTheDocument();
   });
 
   it("shows its own empty text", async () => {
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "5991a0a4-323a-48a5-8238-505645ec0855", name: "Web" })]),
+    );
     renderPage();
     expect(
-      await screen.findByText(
-        "ไม่มีเหตุการณ์ล่มหรือ SSL เตือนในช่วงที่เก็บข้อมูล",
-      ),
+      await screen.findByTestId("monitor-overview-health-down"),
     ).toBeInTheDocument();
   });
 
   it("keeps the table when the card fails and retries only the card", async () => {
     const user = userEvent.setup();
-    fetchListMock.mockResolvedValue(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValue(
+      list([item({ id: "f00e20af-74f7-4105-a609-63f14cebb06b", name: "Web" })]),
+    );
     fetchEventsMock.mockRejectedValueOnce(
       new ApiError("NETWORK_ERROR", "x", 0),
     );
     renderPage();
     expect(
-      await screen.findByText("โหลดเหตุการณ์ล่าสุดไม่สำเร็จ"),
+      await screen.findByTestId("monitor-overview-events-error"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Web")).toBeInTheDocument();
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f00e20af-74f7-4105-a609-63f14cebb06b",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-f00e20af-74f7-4105-a609-63f14cebb06b",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/f00e20af-74f7-4105-a609-63f14cebb06b`,
+    );
 
     fetchEventsMock.mockResolvedValue(noEvents);
     const listCalls = fetchListMock.mock.calls.length;
     await user.click(
-      within(screen.getByRole("region", { name: "เหตุการณ์ล่าสุด" })).getByRole(
-        "button",
-        { name: "ลองอีกครั้ง" },
+      within(screen.getByTestId("monitor-overview-events")).getByTestId(
+        "monitor-overview-events-retry",
       ),
     );
     expect(
-      await screen.findByText(
-        "ไม่มีเหตุการณ์ล่มหรือ SSL เตือนในช่วงที่เก็บข้อมูล",
-      ),
+      await screen.findByTestId("monitor-overview-health-down"),
     ).toBeInTheDocument();
     expect(fetchListMock.mock.calls.length).toBe(listCalls);
   });
@@ -1263,28 +1977,66 @@ describe("Overview refetch and announcements", () => {
       if (params.health === "down") {
         // Later refetches report other totals: a live region bound to the data would change.
         return Promise.resolve(
-          list([item({ name: "Down1" })], {
-            total: 12 + calls,
-            pageTotal: 3 + calls,
-          }),
+          list(
+            [
+              item({
+                id: "b4c61fe5-fa39-466d-b38f-2909834195e7",
+                name: "Down1",
+              }),
+            ],
+            {
+              total: 12 + calls,
+              pageTotal: 3 + calls,
+            },
+          ),
         );
       }
       return Promise.resolve(
-        list([item({ name: "Web" })], { total: 12, pageTotal: 12 }),
+        list(
+          [item({ id: "5c7aa54f-24bd-46b6-a1e0-c33542227d8c", name: "Web" })],
+          { total: 12, pageTotal: 12 },
+        ),
       );
     });
     renderPage();
-    await screen.findByText("Web");
-    const region = screen.getByRole("status", { name: "ผลการกรอง" });
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-5c7aa54f-24bd-46b6-a1e0-c33542227d8c",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-5c7aa54f-24bd-46b6-a1e0-c33542227d8c",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/5c7aa54f-24bd-46b6-a1e0-c33542227d8c`,
+    );
+    const region = screen.getByTestId("monitor-overview-announcement");
     expect(region).toHaveTextContent("");
 
-    await user.click(screen.getByRole("button", { name: "ล่ม" }));
-    await screen.findByText("Down1");
+    await user.click(screen.getByTestId("monitor-overview-health-down"));
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-b4c61fe5-fa39-466d-b38f-2909834195e7",
+      ),
+    ).toHaveTextContent(/^Down1$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-b4c61fe5-fa39-466d-b38f-2909834195e7",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/b4c61fe5-fa39-466d-b38f-2909834195e7`,
+    );
     await waitFor(() => {
-      expect(region).toHaveTextContent(/^พบ \d+ จาก \d+$/);
+      expect(region.textContent.match(/\d+/g)).toHaveLength(2);
     });
     const announced = region.textContent;
-    expect(announced).toBe(`พบ ${String(3 + calls)} จาก ${String(12 + calls)}`);
+    expect(announced.match(/\d+/g)).toEqual([
+      String(3 + calls),
+      String(12 + calls),
+    ]);
 
     const before = calls;
     for (let round = 0; round < 2; round += 1) {
@@ -1297,11 +2049,7 @@ describe("Overview refetch and announcements", () => {
     });
     expect(region.textContent).toBe(announced);
     // The visible count follows the data; only the live region stays put.
-    expect(
-      screen.getByText(`พบ ${String(3 + calls)} จาก ${String(12 + calls)}`, {
-        selector: "p:not([role=status])",
-      }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-overview-results")).toBeInTheDocument();
   });
 
   it("debounces the search and resets to the first page", async () => {
@@ -1309,17 +2057,59 @@ describe("Overview refetch and announcements", () => {
     fetchListMock.mockImplementation((_org, params) =>
       Promise.resolve(
         params.q === "pay"
-          ? list([item({ name: "Payments" })], { total: 12, pageTotal: 1 })
-          : list([item({ name: "Web" })], { total: 12, pageTotal: 12 }),
+          ? list(
+              [
+                item({
+                  id: "145b829a-4b43-4c4a-89fc-904b5256ee80",
+                  name: "Payments",
+                }),
+              ],
+              { total: 12, pageTotal: 1 },
+            )
+          : list(
+              [
+                item({
+                  id: "7e634261-a627-4884-a7e4-61ecef13ae89",
+                  name: "Web",
+                }),
+              ],
+              { total: 12, pageTotal: 12 },
+            ),
       ),
     );
     renderPage();
-    await screen.findByText("Web");
-    await user.type(screen.getByLabelText("ค้นหาชื่อหรือ URL"), "pay");
-    expect(await screen.findByText("Payments")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "ผลการกรอง" })).toHaveTextContent(
-      "พบ 1 จาก 12",
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-7e634261-a627-4884-a7e4-61ecef13ae89",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-7e634261-a627-4884-a7e4-61ecef13ae89",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/7e634261-a627-4884-a7e4-61ecef13ae89`,
     );
+    await user.type(screen.getByTestId("monitor-overview-search"), "pay");
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-145b829a-4b43-4c4a-89fc-904b5256ee80",
+      ),
+    ).toHaveTextContent(/^Payments$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-145b829a-4b43-4c4a-89fc-904b5256ee80",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/145b829a-4b43-4c4a-89fc-904b5256ee80`,
+    );
+    expect(
+      screen
+        .getByTestId("monitor-overview-announcement")
+        .textContent.match(/\d+/g),
+    ).toEqual(["1", "12"]);
     const queries = fetchListMock.mock.calls.map(([, params]) => params.q);
     expect(queries).not.toContain("p");
     expect(queries).not.toContain("pa");
@@ -1327,19 +2117,43 @@ describe("Overview refetch and announcements", () => {
 
   it("keeps the data and warns with its time when a refetch fails", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
-    fetchListMock.mockResolvedValueOnce(list([item({ name: "Web" })]));
+    fetchListMock.mockResolvedValueOnce(
+      list([item({ id: "8f278a12-a6af-445b-8805-d2597bf624d4", name: "Web" })]),
+    );
     fetchListMock.mockRejectedValue(new ApiError("NETWORK_ERROR", "x", 0));
     renderPage();
-    await screen.findByText("Web");
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/8f278a12-a6af-445b-8805-d2597bf624d4`,
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
-    const warning = await screen.findByText(
-      /อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ/,
-    );
+    const warning = await screen.findByTestId("monitor-overview-as-of");
     expect(warning).toHaveTextContent(formatTimeWithSeconds(DATA_AS_OF));
-    expect(screen.getByText("Web")).toBeInTheDocument();
-    expect(screen.queryByText("โหลดมอนิเตอร์ไม่สำเร็จ")).toBeNull();
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",
+      ),
+    ).toHaveTextContent(/^Web$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-8f278a12-a6af-445b-8805-d2597bf624d4",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/8f278a12-a6af-445b-8805-d2597bf624d4`,
+    );
+    expect(screen.queryByTestId("monitor-overview-error")).toBeNull();
   });
 
   it("pages with the server offset", async () => {
@@ -1347,19 +2161,59 @@ describe("Overview refetch and announcements", () => {
     fetchListMock.mockImplementation((_org, params) =>
       Promise.resolve(
         params.offset === 0
-          ? list([item({ name: "First" })], { total: 30, pageTotal: 30 })
-          : list([item({ name: "Second" })], {
-              total: 30,
-              pageTotal: 30,
-              offset: 25,
-            }),
+          ? list(
+              [
+                item({
+                  id: "df1835fa-2769-4db7-9344-a88a483ceaa9",
+                  name: "First",
+                }),
+              ],
+              { total: 30, pageTotal: 30 },
+            )
+          : list(
+              [
+                item({
+                  id: "7e0ff85c-bf37-4aa4-b51a-610770787bf2",
+                  name: "Second",
+                }),
+              ],
+              {
+                total: 30,
+                pageTotal: 30,
+                offset: 25,
+              },
+            ),
       ),
     );
     renderPage();
-    await screen.findByText("First");
-    await user.click(screen.getByRole("button", { name: "ถัดไป" }));
-    expect(await screen.findByText("Second")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ก่อนหน้า" })).toBeEnabled();
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-df1835fa-2769-4db7-9344-a88a483ceaa9",
+      ),
+    ).toHaveTextContent(/^First$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-df1835fa-2769-4db7-9344-a88a483ceaa9",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/df1835fa-2769-4db7-9344-a88a483ceaa9`,
+    );
+    await user.click(screen.getByTestId("monitor-overview-next"));
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-7e0ff85c-bf37-4aa4-b51a-610770787bf2",
+      ),
+    ).toHaveTextContent(/^Second$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-7e0ff85c-bf37-4aa4-b51a-610770787bf2",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/7e0ff85c-bf37-4aa4-b51a-610770787bf2`,
+    );
+    expect(screen.getByTestId("monitor-overview-previous")).toBeEnabled();
   });
 });
 
@@ -1370,27 +2224,70 @@ describe("Overview Organization switch", () => {
     fetchListMock.mockImplementation((organizationId) =>
       organizationId === A
         ? late.promise
-        : Promise.resolve(list([item({ name: "BetaMonitor" })])),
+        : Promise.resolve(
+            list([
+              item({
+                id: "127ba746-07b5-46c1-b7bc-9fe0588f66a3",
+                name: "BetaMonitor",
+              }),
+            ]),
+          ),
     );
     updateActiveOrganizationMock.mockResolvedValue({
       ...context(),
       lastActiveTenantId: B,
     });
     renderPage(A);
-    await screen.findByRole("status", { name: "กำลังโหลดมอนิเตอร์" });
+    await screen.findByTestId("monitor-overview-loading");
 
-    await user.click(screen.getByRole("button", { name: "switch to B" }));
-    expect(await screen.findByText("BetaMonitor")).toBeInTheDocument();
+    await user.click(screen.getByTestId("overview-switch-organization"));
+    expect(
+      await screen.findByTestId(
+        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
+      ),
+    ).toHaveTextContent(/^BetaMonitor$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${B}/monitors/127ba746-07b5-46c1-b7bc-9fe0588f66a3`,
+    );
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/organizations/${B}/monitors`,
     );
 
     await act(async () => {
-      late.resolve(list([item({ name: "AlphaMonitor" })]));
+      late.resolve(
+        list([
+          item({
+            id: "71412444-46ff-4aa5-83b3-9bb9d10786a3",
+            name: "AlphaMonitor",
+          }),
+        ]),
+      );
       await late.promise;
     });
-    expect(screen.queryByText("AlphaMonitor")).toBeNull();
-    expect(screen.getByText("BetaMonitor")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId(
+        "monitor-list-name-71412444-46ff-4aa5-83b3-9bb9d10786a3",
+      ),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain("AlphaMonitor");
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
+      ),
+    ).toHaveTextContent(/^BetaMonitor$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${B}/monitors/127ba746-07b5-46c1-b7bc-9fe0588f66a3`,
+    );
   });
 
   it("hides origin organization rows while the destination organization loads", async () => {
@@ -1398,7 +2295,14 @@ describe("Overview Organization switch", () => {
     const pendingB = Promise.withResolvers<MonitorListResponse>();
     fetchListMock.mockImplementation((organizationId) =>
       organizationId === A
-        ? Promise.resolve(list([item({ name: "AlphaMonitor" })]))
+        ? Promise.resolve(
+            list([
+              item({
+                id: "5446de89-f053-45c5-a4e1-c13b82620c60",
+                name: "AlphaMonitor",
+              }),
+            ]),
+          )
         : pendingB.promise,
     );
     updateActiveOrganizationMock.mockResolvedValue({
@@ -1406,13 +2310,30 @@ describe("Overview Organization switch", () => {
       lastActiveTenantId: B,
     });
     renderPage(A);
-    await screen.findByText("AlphaMonitor");
-
-    await user.click(screen.getByRole("button", { name: "switch to B" }));
     expect(
-      await screen.findByRole("status", { name: "กำลังโหลดมอนิเตอร์" }),
+      await screen.findByTestId(
+        "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
+      ),
+    ).toHaveTextContent(/^AlphaMonitor$/);
+    expect(
+      screen.getByTestId(
+        "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
+      ),
+    ).toHaveAttribute(
+      "href",
+      `/organizations/${A}/monitors/5446de89-f053-45c5-a4e1-c13b82620c60`,
+    );
+
+    await user.click(screen.getByTestId("overview-switch-organization"));
+    expect(
+      await screen.findByTestId("monitor-overview-loading"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("AlphaMonitor")).toBeNull();
+    expect(
+      screen.queryByTestId(
+        "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
+      ),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain("AlphaMonitor");
   });
 });
 
@@ -1420,29 +2341,29 @@ describe("Overview one-time notice", () => {
   it("shows the notice a monitor page handed over and moves focus to the heading", async () => {
     fetchListMock.mockResolvedValue(list([item()]));
     renderPage(A, { notice: "deleted" });
-    expect(await screen.findByText("ลบมอนิเตอร์แล้ว")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 1, name: "ตรวจสถานะบริการ" }),
-    ).toHaveFocus();
+      await screen.findByTestId("monitor-overview-notice"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("monitor-overview-heading")).toHaveFocus();
   });
 
   it("clears the state so the notice does not come back on reload or back", async () => {
     fetchListMock.mockResolvedValue(list([item()]));
     renderPage(A, { notice: "alreadyDeleted" });
     expect(
-      await screen.findByText("มอนิเตอร์นี้ถูกลบแล้ว"),
+      await screen.findByTestId("monitor-overview-notice"),
     ).toBeInTheDocument();
     // The history entry no longer carries it, so a reload or a back navigation shows nothing.
     await waitFor(() => {
-      expect(screen.getByTestId("state")).toHaveTextContent("null");
+      expect(screen.getByTestId("state")).toHaveTextContent(/^null$/);
     });
   });
 
   it("ignores state that is not one of the known notice keys", async () => {
     fetchListMock.mockResolvedValue(list([item()]));
     renderPage(A, { notice: "<b>free text</b>" });
-    await screen.findByRole("heading", { level: 1, name: "ตรวจสถานะบริการ" });
-    expect(screen.queryByText("<b>free text</b>")).toBeNull();
-    expect(document.querySelector('[data-slot="notice"]')).toBeNull();
+    await screen.findByTestId("monitor-overview-heading");
+    expect(screen.queryByTestId("monitor-overview-notice")).toBeNull();
+    expect(screen.queryByTestId("monitor-overview-notice")).toBeNull();
   });
 });

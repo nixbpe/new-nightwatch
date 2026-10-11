@@ -159,12 +159,14 @@ export function AppShell() {
   };
 
   return (
-    <div className="flex h-dvh">
+    <div data-testid="app-shell" className="flex h-dvh">
       <div
+        data-testid="shell-background"
         inert={mobileOpen && !isDesktop ? true : undefined}
         className="flex min-w-0 flex-1"
       >
         <a
+          data-testid="shell-skip-content"
           href="#main-content"
           className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-2 focus-visible:left-2 focus-visible:z-50 focus-visible:rounded-md focus-visible:bg-primary focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-on-primary"
         >
@@ -172,6 +174,7 @@ export function AppShell() {
         </a>
 
         <aside
+          data-testid="shell-sidebar"
           id="app-sidebar"
           className={`hidden flex-shrink-0 border-r border-foreground/10 bg-background transition-[width] duration-150 ease-out sm:block ${
             collapsed ? "w-14" : "w-60"
@@ -195,6 +198,7 @@ export function AppShell() {
             }}
           />
           <main
+            data-testid="shell-main"
             id="main-content"
             tabIndex={-1}
             className={`relative flex-1 overflow-y-auto focus:outline-none ${
@@ -216,11 +220,14 @@ export function AppShell() {
                     ) : mePending ? (
                       <PageState
                         kind="loading"
+                        data-testid="shell-admission-loading"
                         label="กำลังโหลดข้อมูลองค์กร…"
                       />
                     ) : me === undefined ? (
                       <PageState
                         kind="error"
+                        data-testid="shell-admission-error"
+                        retryTestId="shell-admission-retry"
                         message="โหลดข้อมูลองค์กรไม่สำเร็จ กรุณาลองใหม่"
                         onRetry={() => void retryMe()}
                       />
@@ -240,6 +247,7 @@ export function AppShell() {
       {mobileOpen && !isDesktop ? (
         <div
           ref={mobileDrawerRef}
+          data-testid="shell-mobile-menu"
           role="dialog"
           aria-modal="true"
           aria-label="เมนูหลัก"
@@ -250,6 +258,7 @@ export function AppShell() {
           <button
             type="button"
             tabIndex={-1}
+            data-testid="shell-mobile-dismiss"
             aria-label="ปิดเมนูด้วยฉากหลัง"
             onClick={closeMobileMenu}
             className="absolute inset-0 bg-scrim"
@@ -257,6 +266,7 @@ export function AppShell() {
           <div className="absolute inset-y-0 left-0 w-64 bg-surface shadow-modal">
             <button
               ref={mobileCloseButtonRef}
+              data-testid="shell-mobile-close"
               type="button"
               aria-label="ปิดเมนู"
               onClick={closeMobileMenu}

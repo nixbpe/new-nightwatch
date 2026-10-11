@@ -43,18 +43,27 @@ export function AuditTable({
     "h-11 border-b border-foreground/10 px-4 font-medium whitespace-nowrap";
   return (
     <div
+      data-testid="audit-events-region"
       tabIndex={0}
       role="region"
       aria-label="ตารางบันทึกกิจกรรม"
       className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
     >
-      <table className="w-full min-w-[720px] text-left text-sm">
+      <table
+        data-testid="audit-events-table"
+        className="w-full min-w-[720px] text-left text-sm"
+      >
         <caption className="sr-only">
           บันทึกกิจกรรมขององค์กร เรียงจากใหม่สุดก่อน
         </caption>
         <thead className="sticky top-0 z-10 bg-surface text-xs font-medium text-foreground-secondary">
           <tr>
-            <th scope="col" className={headerClass}>
+            <th
+              data-testid="audit-events-time-heading"
+              data-time-zone={preferences.timeZone}
+              scope="col"
+              className={headerClass}
+            >
               เวลา ({preferences.timeZone})
             </th>
             <th scope="col" className={headerClass}>
@@ -77,11 +86,14 @@ export function AuditTable({
             const action = AUDIT_ACTION_LABELS[event.action];
             return (
               <tr
+                data-testid={`audit-event-record-${event.id}`}
+                data-category={event.category}
                 key={event.id}
                 className="border-b border-foreground/10 transition-colors duration-100 last:border-0 hover:surface-hover"
               >
                 <td className="h-11 px-4 align-middle font-mono text-[13px] whitespace-nowrap">
                   <Link
+                    data-testid="audit-event-row-link"
                     ref={(element) => {
                       registerLink(event.id, element);
                     }}
@@ -93,11 +105,26 @@ export function AuditTable({
                     {time}
                   </Link>
                 </td>
-                <td className="h-11 px-4 align-middle">
+                <td
+                  data-testid="audit-event-row-actor"
+                  data-member-role={event.actor.roleAtTime}
+                  data-membership={event.actor.membership}
+                  className="h-11 px-4 align-middle"
+                >
                   {actorText(event.actor)}
                 </td>
-                <td className="h-11 px-4 align-middle">{action}</td>
-                <td className="h-11 px-4 align-middle">
+                <td
+                  data-testid="audit-event-row-action"
+                  data-action-code={event.action}
+                  className="h-11 px-4 align-middle"
+                >
+                  {action}
+                </td>
+                <td
+                  data-testid="audit-event-row-target"
+                  data-target-type={event.target.type}
+                  className="h-11 px-4 align-middle"
+                >
                   {targetText(event.target)}
                 </td>
               </tr>

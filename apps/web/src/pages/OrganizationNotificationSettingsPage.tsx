@@ -79,7 +79,13 @@ function OrganizationNotificationSettingsForOrganization({
       status={
         organization === undefined ? undefined : (
           <span>
-            slug <span className="font-mono">{organization.slug}</span>
+            slug{" "}
+            <span
+              data-testid="organization-notifications-slug"
+              className="font-mono"
+            >
+              {organization.slug}
+            </span>
           </span>
         )
       }
@@ -90,7 +96,12 @@ function OrganizationNotificationSettingsForOrganization({
     return (
       <Page width="form">
         {header}
-        <PageState kind="loading" label="กำลังโหลดการตั้งค่า…" />
+        <PageState
+          data-testid="organization-notifications-loading"
+          statusTestId="organization-notifications-status"
+          kind="loading"
+          label="กำลังโหลดการตั้งค่า…"
+        />
       </Page>
     );
   if (settings.isError)
@@ -103,11 +114,16 @@ function OrganizationNotificationSettingsForOrganization({
         ) ? (
           <PageState
             kind="denied"
+            data-testid="organization-notifications-denied"
+            alertTestId="organization-notifications-denied-alert"
             message="คุณไม่มีสิทธิ์จัดการการตั้งค่านี้"
           />
         ) : (
           <PageState
             kind="error"
+            data-testid="organization-notifications-load-error"
+            alertTestId="organization-notifications-load-alert"
+            retryTestId="organization-notifications-load-retry"
             message="โหลดการตั้งค่าไม่สำเร็จ"
             retryLabel="ลองใหม่"
             onRetry={() => void settings.refetch()}
@@ -128,6 +144,8 @@ function OrganizationNotificationSettingsForOrganization({
       {header}
       <Card
         as="section"
+        data-testid="organization-notifications-settings"
+        data-organization-id={settingsData.organizationId}
         aria-labelledby="notification-settings-card-title"
         padding="md"
       >
@@ -137,7 +155,15 @@ function OrganizationNotificationSettingsForOrganization({
         />
         {save.isError ? (
           <div className="flex flex-col gap-3">
-            <Alert tone="error">
+            <Alert
+              data-testid={
+                save.error instanceof ApiError &&
+                save.error.code === "SETTINGS_VERSION_CONFLICT"
+                  ? "organization-notifications-version-conflict"
+                  : "organization-notifications-save-error"
+              }
+              tone="error"
+            >
               {save.error instanceof ApiError &&
               save.error.code === "SETTINGS_VERSION_CONFLICT"
                 ? "การตั้งค่าถูกเปลี่ยนโดยผู้อื่น กรุณาโหลดใหม่"
@@ -145,6 +171,7 @@ function OrganizationNotificationSettingsForOrganization({
             </Alert>
             <div>
               <Button
+                data-testid="organization-notifications-save-retry"
                 type="button"
                 variant="secondary"
                 size="sm"
@@ -164,6 +191,7 @@ function OrganizationNotificationSettingsForOrganization({
         ) : null}
         <label className="flex items-start gap-3">
           <input
+            data-testid="organization-notifications-settings-changed"
             type="checkbox"
             checked={settingsChanged}
             onChange={(event) => {
@@ -185,6 +213,7 @@ function OrganizationNotificationSettingsForOrganization({
         </label>
         <label className="flex items-start gap-3">
           <input
+            data-testid="organization-notifications-monitor-alerts"
             type="checkbox"
             checked={monitorAlerts}
             onChange={(event) => {
@@ -205,8 +234,14 @@ function OrganizationNotificationSettingsForOrganization({
           </span>
         </label>
         <CardFooter variant="split">
-          <Notice tone="success">{save.isSuccess ? "บันทึกแล้ว" : null}</Notice>
+          <Notice
+            data-testid="organization-notifications-success"
+            tone="success"
+          >
+            {save.isSuccess ? "บันทึกแล้ว" : null}
+          </Notice>
           <Button
+            data-testid="organization-notifications-save"
             type="button"
             wrap
             disabled={!changed || save.isPending}

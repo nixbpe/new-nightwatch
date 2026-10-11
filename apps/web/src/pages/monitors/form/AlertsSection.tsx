@@ -43,25 +43,38 @@ export function AlertsSection({
   });
   const alerts = values.alerts;
   return (
-    <Card as="section" aria-labelledby="monitor-form-alerts" padding="md">
+    <Card
+      data-testid="monitor-form-alerts"
+      as="section"
+      aria-labelledby="monitor-form-alerts"
+      padding="md"
+    >
       <SectionHeader
         id="monitor-form-alerts"
         code={code}
         title="การแจ้งเตือน"
       />
       {admitted && settings.data?.monitorAlertsEnabled === true ? (
-        <p className="text-sm text-foreground-secondary">
+        <p
+          data-testid="monitor-form-org-alerts-enabled"
+          className="text-sm text-foreground-secondary"
+        >
           เจ้าของและผู้ดูแลจะได้รับการแจ้งเตือนเมื่อมอนิเตอร์ล่ม
           กลับมาทำงานหลังจากที่แจ้งว่าล่มแล้ว และเมื่อใบรับรอง SSL
           ใกล้หมดอายุหรือหมดอายุ
         </p>
       ) : null}
       {admitted && settings.data?.monitorAlertsEnabled === false ? (
-        <p role="status" className="text-sm text-foreground-secondary">
+        <p
+          data-testid="monitor-form-org-alerts-disabled"
+          role="status"
+          className="text-sm text-foreground-secondary"
+        >
           {ORG_ALERTS_OFF_MESSAGE}
         </p>
       ) : null}
       <SelectControl
+        data-testid="monitor-form-alert-threshold"
         path="alerts.failureThreshold"
         label="แจ้งเมื่อล้มเหลวติดกัน"
         value={String(alerts.failureThreshold)}
@@ -87,6 +100,7 @@ export function AlertsSection({
       </SelectControl>
       <label className={CHECKBOX_CARD}>
         <input
+          data-testid="monitor-form-alert-down"
           type="checkbox"
           checked={alerts.downEnabled}
           aria-disabled={disabled}
@@ -103,6 +117,7 @@ export function AlertsSection({
       </label>
       <label className={CHECKBOX_CARD}>
         <input
+          data-testid="monitor-form-alert-ssl"
           type="checkbox"
           checked={alerts.sslEnabled}
           aria-disabled={disabled}
@@ -118,6 +133,7 @@ export function AlertsSection({
         <span className="font-medium">แจ้งเมื่อ SSL ใกล้หมดอายุ</span>
       </label>
       <TextControl
+        data-testid="monitor-form-alert-days"
         path="alerts.sslCautionDays"
         label="แจ้งล่วงหน้าก่อนหมดอายุ (วัน)"
         inputMode="numeric"

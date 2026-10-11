@@ -303,6 +303,7 @@ function AuditLogForOrganization({
       <Page>
         <PageHeader eyebrow="// audit-log" title={TITLE} />
         <PageState
+          data-testid="audit-admission-loading"
           kind="loading"
           label="กำลังโหลดบันทึกกิจกรรม"
           layout="table"
@@ -328,7 +329,10 @@ function AuditLogForOrganization({
     return (
       <Page>
         <PageHeader eyebrow="// audit-log" title={TITLE} />
-        <AuditDenied message={DENIED_MESSAGES[code ?? "PERMISSION_DENIED"]} />
+        <AuditDenied
+          denialCode={code ?? "PERMISSION_DENIED"}
+          message={DENIED_MESSAGES[code ?? "PERMISSION_DENIED"]}
+        />
       </Page>
     );
   }
@@ -374,19 +378,33 @@ function AuditLogForOrganization({
     );
   } else if (loading || pastEnd) {
     body = (
-      <PageState kind="loading" label="กำลังโหลดบันทึกกิจกรรม" layout="table" />
+      <PageState
+        data-testid="audit-list-loading"
+        statusTestId="audit-list-loading-status"
+        kind="loading"
+        label="กำลังโหลดบันทึกกิจกรรม"
+        layout="table"
+      />
     );
   } else if (data === undefined) {
     body = (
       <PageState
         kind="error"
+        data-testid="audit-list-error"
+        retryTestId="audit-list-retry"
+        alertTestId="audit-list-error-alert"
         message="โหลดบันทึกกิจกรรมไม่สำเร็จ ตัวกรองของคุณยังอยู่ ลองใหม่อีกครั้ง"
         onRetry={() => void list.refetch()}
       />
     );
   } else if (data.page.total === 0) {
     body = (
-      <Card padding="md">
+      <Card
+        padding="md"
+        data-testid={noData ? "audit-empty" : "audit-no-matches"}
+        data-retained-date={retainedDay}
+        data-total={data.page.total}
+      >
         <p className="text-sm">
           {!noData
             ? "ไม่พบบันทึกที่ตรงกับตัวกรองนี้ ลองขยายช่วงเวลาหรือล้างตัวกรอง"
@@ -398,6 +416,7 @@ function AuditLogForOrganization({
               type="button"
               variant="secondary"
               size="sm"
+              data-testid="audit-no-matches-clear"
               onClick={() => {
                 clearFilters();
               }}
@@ -423,6 +442,9 @@ function AuditLogForOrganization({
           registerLink={registerLink}
         />
         <DataTablePagination
+          summaryTestId="audit-page-summary"
+          previousTestId="audit-page-previous"
+          nextTestId="audit-page-next"
           ariaLabel="หน้าบันทึกกิจกรรม"
           summary={
             <>
@@ -457,22 +479,31 @@ function AuditLogForOrganization({
           <>
             {totalText === null ? null : (
               <span>
-                ทั้งหมด <span className="font-mono">{totalText}</span> รายการ
+                ทั้งหมด{" "}
+                <span data-testid="audit-total" className="font-mono">
+                  {totalText}
+                </span>{" "}
+                รายการ
               </span>
             )}
             {retainedDay === undefined ? null : (
               <span>
-                เก็บย้อนหลังถึง <span className="font-mono">{retainedDay}</span>
+                เก็บย้อนหลังถึง{" "}
+                <span data-testid="audit-retained-date" className="font-mono">
+                  {retainedDay}
+                </span>
               </span>
             )}
             <span>
               เวลาแสดงตาม{" "}
-              <span className="font-mono">{preferences.timeZone}</span>
+              <span data-testid="audit-time-zone" className="font-mono">
+                {preferences.timeZone}
+              </span>
             </span>
             {data === undefined ? null : (
               <span>
                 โหลดเมื่อ{" "}
-                <span className="font-mono">
+                <span data-testid="audit-loaded-at" className="font-mono">
                   {formatAuditTime(new Date(data.asOf), preferences)}
                 </span>
               </span>
@@ -483,6 +514,7 @@ function AuditLogForOrganization({
           <>
             <Button
               type="button"
+              data-testid="audit-refresh"
               variant="secondary"
               aria-disabled={
                 loading || rangeError !== undefined ? true : undefined
@@ -500,6 +532,8 @@ function AuditLogForOrganization({
             </Button>
             {exp.canExport ? (
               <Button
+                data-testid="audit-export-open"
+                data-in-progress={exp.inProgress}
                 ref={exportButton}
                 type="button"
                 aria-disabled={exportBlocked ? true : undefined}
@@ -516,16 +550,37 @@ function AuditLogForOrganization({
           </>
         }
       />
-      <p role="status" data-slot="export-announcement" className="sr-only">
+      <p
+        data-testid="audit-export-announcement"
+        role="status"
+        data-slot="export-announcement"
+        className="sr-only"
+      >
         {exp.canExport && exp.requestedNotice ? REQUESTED_ANNOUNCEMENT : ""}
       </p>
       {exp.canExport && exportReason !== null ? (
-        <p id={exportReasonId} className="text-sm text-foreground-secondary">
+        <p
+          data-testid="audit-export-reason"
+          data-blocked-reason={
+            exp.inProgress
+              ? "in-progress"
+              : rangeError !== undefined
+                ? "invalid-range"
+                : loading || pastEnd
+                  ? "loading"
+                  : data === undefined
+                    ? "failed"
+                    : "empty"
+          }
+          id={exportReasonId}
+          className="text-sm text-foreground-secondary"
+        >
           {exportReason}
         </p>
       ) : null}
       {exp.canExport && exp.requestedNotice ? (
         <ActionNotice
+          data-testid="audit-export-requested-notice"
           live={false}
           onClose={() => {
             exp.dismissRequestedNotice();
@@ -533,6 +588,7 @@ function AuditLogForOrganization({
           }}
           actions={
             <a
+              data-testid="audit-export-show-jobs"
               href={`#${MY_EXPORTS_ID}`}
               onClick={(event) => {
                 event.preventDefault();
@@ -546,6 +602,7 @@ function AuditLogForOrganization({
         >
           กำลังสร้างไฟล์ เราจะแจ้งใน{" "}
           <Link
+            data-testid="audit-export-notifications-link"
             to="/notifications"
             className="text-primary underline-offset-4 hover:underline"
           >
@@ -560,6 +617,7 @@ function AuditLogForOrganization({
         className="flex flex-col gap-4"
       >
         <SectionHeader
+          headingTestId="audit-filters-title"
           id="audit-filters-title"
           code="01"
           title="ตัวกรอง"
@@ -584,6 +642,7 @@ function AuditLogForOrganization({
         className="flex flex-col gap-4"
       >
         <SectionHeader
+          headingTestId="audit-list-title"
           id="audit-list-title"
           code="02"
           title="รายการ"
@@ -591,11 +650,19 @@ function AuditLogForOrganization({
           headingTabIndex={-1}
           headingClassName={`w-fit rounded-[4px] ${TITLE_FOCUS_CLASS}`}
         />
-        <p role="status" className="sr-only">
+        <p
+          data-testid="audit-list-count-status"
+          role="status"
+          className="sr-only"
+        >
           {data === undefined || pastEnd ? "" : `พบ ${totalText ?? ""} รายการ`}
         </p>
         {exp.revoked ? (
-          <ActionNotice focusable ref={exp.permissionNotice}>
+          <ActionNotice
+            data-testid="audit-export-permission-notice"
+            focusable
+            ref={exp.permissionNotice}
+          >
             {PERMISSION_CHANGED}
           </ActionNotice>
         ) : null}
@@ -627,6 +694,7 @@ function AuditLogForOrganization({
       ) : null}
       {exp.dialog !== null && data !== undefined ? (
         <ExportDialog
+          categoryCode={filters.categories.join(",")}
           scope={{
             loadedAt: formatAuditTime(new Date(data.asOf), preferences),
             timeZone: preferences.timeZone,

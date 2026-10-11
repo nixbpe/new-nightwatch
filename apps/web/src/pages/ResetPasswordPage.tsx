@@ -55,12 +55,17 @@ export function ResetPasswordPage() {
     return (
       <AuthPageFrame eyebrow="// reset password" title="ตั้งรหัสผ่านใหม่">
         <div className="flex flex-col gap-4">
-          <Alert tone="error">
+          <Alert data-testid="reset-password-invalid-link" tone="error">
             ลิงก์นี้ไม่ถูกต้องหรือไม่สมบูรณ์
             กรุณาขอลิงก์ตั้งรหัสผ่านใหม่จากอีเมล
           </Alert>
           <Button asChild className="w-full">
-            <Link to="/forgot-password">ขอลิงก์ใหม่</Link>
+            <Link
+              data-testid="reset-password-request-link"
+              to="/forgot-password"
+            >
+              ขอลิงก์ใหม่
+            </Link>
           </Button>
         </div>
       </AuthPageFrame>
@@ -83,9 +88,13 @@ export function ResetPasswordPage() {
         noValidate
       >
         {error === null ? null : (
-          <Alert tone="error">
+          <Alert data-testid="reset-password-error" tone="error">
             {error}{" "}
-            <Link to="/forgot-password" className="font-medium underline">
+            <Link
+              data-testid="reset-password-request-link"
+              to="/forgot-password"
+              className="font-medium underline"
+            >
               ขอลิงก์ใหม่
             </Link>
           </Alert>
@@ -116,6 +125,7 @@ export function ResetPasswordPage() {
           {(field) => (
             <Field label="รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)">
               <Input
+                data-testid="reset-password-password"
                 type="password"
                 name="new-password"
                 autoComplete="new-password"
@@ -133,6 +143,7 @@ export function ResetPasswordPage() {
               />
               <FieldValidationError
                 id="reset-password-password-error"
+                data-testid="reset-password-password-error"
                 errors={field.state.meta.errors}
               />
             </Field>
@@ -164,6 +175,7 @@ export function ResetPasswordPage() {
           {(field) => (
             <Field label="ยืนยันรหัสผ่านใหม่">
               <Input
+                data-testid="reset-password-confirm"
                 type="password"
                 name="confirm-password"
                 autoComplete="new-password"
@@ -181,6 +193,7 @@ export function ResetPasswordPage() {
               />
               <FieldValidationError
                 id="reset-password-confirm-error"
+                data-testid="reset-password-confirm-error"
                 errors={field.state.meta.errors}
               />
             </Field>
@@ -189,7 +202,11 @@ export function ResetPasswordPage() {
         <form.Subscribe
           selector={(state) => state.isSubmitting}
           children={(isSubmitting) => (
-            <SubmitButton pending={isSubmitting} pendingLabel="กำลังบันทึก…">
+            <SubmitButton
+              data-testid="reset-password-submit"
+              pending={isSubmitting}
+              pendingLabel="กำลังบันทึก…"
+            >
               บันทึกรหัสผ่านใหม่
             </SubmitButton>
           )}

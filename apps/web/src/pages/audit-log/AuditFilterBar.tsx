@@ -28,7 +28,9 @@ function Chip({
   busy,
   onPress,
   children,
+  testId,
 }: {
+  testId?: string;
   pressed: boolean;
   busy: boolean;
   onPress: () => void;
@@ -36,6 +38,7 @@ function Chip({
 }) {
   return (
     <Button
+      data-testid={testId}
       type="button"
       size="sm"
       variant="secondary"
@@ -96,6 +99,7 @@ export function AuditFilterBar({
   return (
     <div className="flex flex-col gap-3">
       <form
+        data-testid="audit-filter-search-form"
         onSubmit={submitSearch}
         role="search"
         className="flex flex-wrap items-end gap-2"
@@ -103,6 +107,7 @@ export function AuditFilterBar({
         <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
           ค้นหา
           <Input
+            data-testid="audit-filter-search"
             type="search"
             value={draft}
             maxLength={AUDIT_SEARCH_MAX_LENGTH}
@@ -113,6 +118,7 @@ export function AuditFilterBar({
           />
         </label>
         <Button
+          data-testid="audit-filter-search-submit"
           type="submit"
           variant="secondary"
           aria-disabled={busy ? true : undefined}
@@ -124,6 +130,7 @@ export function AuditFilterBar({
         <div role="group" aria-label="ช่วงเวลา" className="flex gap-2">
           {RANGE_OPTIONS.map((option) => (
             <Chip
+              testId={`audit-filter-range-${option.value}`}
               key={option.value}
               pressed={filters.range === option.value}
               busy={busy}
@@ -142,6 +149,7 @@ export function AuditFilterBar({
         <div role="group" aria-label="หมวด" className="flex flex-wrap gap-2">
           {AUDIT_CATEGORIES.map((category) => (
             <Chip
+              testId={`audit-filter-category-${category}`}
               key={category}
               pressed={filters.categories.includes(category)}
               busy={busy}
@@ -156,6 +164,7 @@ export function AuditFilterBar({
         <label className="flex items-center gap-2 text-sm">
           ผู้ดำเนินการ
           <select
+            data-testid="audit-filter-actor"
             value={filters.actor ?? ""}
             aria-disabled={busy ? true : undefined}
             onChange={(event) => {
@@ -164,12 +173,21 @@ export function AuditFilterBar({
             }}
             className="h-10 max-w-56 rounded-md border border-control-border bg-surface px-2 text-sm focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <option value="">ทั้งหมด</option>
+            <option data-testid="audit-actor-all" value="">
+              ทั้งหมด
+            </option>
             {actorKnown || filters.actor === undefined ? null : (
-              <option value={filters.actor}>ผู้ดำเนินการที่เลือก</option>
+              <option data-testid="audit-actor-selected" value={filters.actor}>
+                ผู้ดำเนินการที่เลือก
+              </option>
             )}
             {actors.map((actor) => (
-              <option key={actor.userId} value={actor.userId}>
+              <option
+                data-testid={`audit-actor-${actor.userId}`}
+                data-membership={actor.membership}
+                key={actor.userId}
+                value={actor.userId}
+              >
                 {personName(actor)}
               </option>
             ))}
@@ -182,6 +200,7 @@ export function AuditFilterBar({
             วันเริ่ม
             <Input
               type="date"
+              data-testid="audit-filter-from"
               value={filters.from ?? ""}
               aria-invalid={customError === undefined ? undefined : true}
               aria-describedby={customError === undefined ? undefined : errorId}
@@ -195,6 +214,7 @@ export function AuditFilterBar({
             วันสิ้นสุด
             <Input
               type="date"
+              data-testid="audit-filter-to"
               value={filters.to ?? ""}
               aria-invalid={
                 customError === "start-after-end" ? true : undefined
@@ -209,17 +229,27 @@ export function AuditFilterBar({
             />
           </label>
           {customError === undefined ? null : (
-            <p id={errorId} role="alert" className="text-sm text-danger">
+            <p
+              data-testid="audit-filter-range-error"
+              data-error-code={customError}
+              data-retained-date={retainedDay}
+              id={errorId}
+              role="alert"
+              className="text-sm text-danger"
+            >
               {CUSTOM_ERROR_TEXT[customError](retainedDay)}
             </p>
           )}
         </div>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-foreground-secondary">
-        <p>ตัวกรองที่ใช้: {describeFilters(filters, actors)}</p>
+        <p data-testid="audit-filter-summary" data-range={filters.range}>
+          ตัวกรองที่ใช้: {describeFilters(filters, actors)}
+        </p>
         <Button
           type="button"
           size="sm"
+          data-testid="audit-filter-clear"
           variant="ghost"
           aria-disabled={busy || !hasActiveFilters(filters) ? true : undefined}
           onClick={() => {

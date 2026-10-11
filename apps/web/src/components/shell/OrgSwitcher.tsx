@@ -53,10 +53,16 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
       {collapsed ? null : (
         <>
           <span className="min-w-0 flex-1 text-start">
-            <span className="block truncate text-sm font-semibold text-foreground">
+            <span
+              data-testid="shell-organization-name"
+              className="block truncate text-sm font-semibold text-foreground"
+            >
               {activeOrg.name}
             </span>
-            <span className="block truncate text-xs text-foreground-secondary">
+            <span
+              data-testid={`shell-organization-role-${activeOrg.role}`}
+              className="block truncate text-xs text-foreground-secondary"
+            >
               องค์กร <span className="ps-1">{roleLabel}</span>
             </span>
           </span>
@@ -78,6 +84,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
       {canSwitch ? (
         <button
           ref={popover.triggerRef}
+          data-testid="shell-organization-switch"
           type="button"
           aria-haspopup="menu"
           aria-expanded={popover.open}
@@ -98,6 +105,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
       {popover.open ? (
         <div
           ref={popover.panelRef}
+          data-testid="shell-organization-menu"
           role="menu"
           aria-label="สลับองค์กร"
           tabIndex={-1}
@@ -111,6 +119,7 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
             return (
               <button
                 key={org.id}
+                data-testid={`shell-organization-${org.id}`}
                 type="button"
                 role="menuitemradio"
                 aria-checked={active}

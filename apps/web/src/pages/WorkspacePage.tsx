@@ -37,7 +37,11 @@ export function WorkspacePage() {
     return (
       <Page>
         <PageHeader title="ภาพรวม" />
-        <PageState kind="loading" label="กำลังโหลดข้อมูลองค์กร…" />
+        <PageState
+          data-testid="workspace-context-loading"
+          kind="loading"
+          label="กำลังโหลดข้อมูลองค์กร…"
+        />
       </Page>
     );
   }
@@ -48,6 +52,9 @@ export function WorkspacePage() {
       <Page>
         <PageHeader title="โหลดข้อมูลองค์กรไม่สำเร็จ" />
         <PageState
+          data-testid="workspace-context-error"
+          alertTestId="workspace-context-alert"
+          retryTestId="workspace-context-retry"
           kind="error"
           message={
             meError?.message ||
@@ -121,11 +128,14 @@ function OrganizationOverview({
     actions = (
       <>
         <Button asChild variant="secondary">
-          <Link to={monitorsPath}>ดูมอนิเตอร์ทั้งหมด</Link>
+          <Link data-testid="workspace-monitors" to={monitorsPath}>
+            ดูมอนิเตอร์ทั้งหมด
+          </Link>
         </Button>
         {canWrite && limitReached ? (
           <>
             <span
+              data-testid="workspace-limit-reason"
               id="monitor-limit-reason"
               className="text-xs text-foreground-secondary"
             >
@@ -133,6 +143,7 @@ function OrganizationOverview({
               ลบมอนิเตอร์เดิมก่อนจึงจะเพิ่มได้
             </span>
             <Button
+              data-testid="workspace-add-disabled"
               type="button"
               disabled
               aria-describedby="monitor-limit-reason"
@@ -143,7 +154,9 @@ function OrganizationOverview({
         ) : null}
         {canWrite && !limitReached ? (
           <Button asChild>
-            <Link to={`${monitorsPath}/new`}>เพิ่มมอนิเตอร์</Link>
+            <Link data-testid="workspace-add" to={`${monitorsPath}/new`}>
+              เพิ่มมอนิเตอร์
+            </Link>
           </Button>
         ) : null}
       </>
@@ -156,9 +169,14 @@ function OrganizationOverview({
       <Page>
         <PageHeader eyebrow="// overview" title="ภาพรวม" />
         {contextRefresh === "refreshing" ? (
-          <PageState kind="loading" label="กำลังตรวจสอบสิทธิ์ดูมอนิเตอร์" />
+          <PageState
+            data-testid="workspace-admission-loading"
+            kind="loading"
+            label="กำลังตรวจสอบสิทธิ์ดูมอนิเตอร์"
+          />
         ) : (
           <PageState
+            data-testid="workspace-denied"
             kind="denied"
             message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
           />
@@ -181,8 +199,15 @@ function OrganizationOverview({
         // Names are not unique across organizations, so the slug stays visible.
         status={
           <>
-            <span>
-              slug <span className="font-mono">{organization.slug}</span>
+            <span
+              data-testid="workspace-identity"
+              data-organization-id={organization.id}
+              data-member-role={organization.role}
+            >
+              slug{" "}
+              <span data-testid="workspace-slug" className="font-mono">
+                {organization.slug}
+              </span>
             </span>
             {data === undefined ? null : (
               <>
@@ -193,6 +218,7 @@ function OrganizationOverview({
                 <span className="inline-flex items-center gap-1.5">
                   {list.isError ? null : (
                     <span
+                      data-testid="workspace-fresh"
                       aria-hidden="true"
                       className="live-pulse size-[6px] shrink-0 rounded-full bg-primary"
                     />
@@ -201,6 +227,7 @@ function OrganizationOverview({
                     ข้อมูล ณ{" "}
                     <span className="font-mono">
                       <Time
+                        testId="workspace-as-of"
                         iso={data.dataAsOf}
                         format={formatTimeWithSeconds}
                       />
@@ -216,6 +243,8 @@ function OrganizationOverview({
       {data === undefined ? (
         list.isError ? (
           <PageState
+            data-testid="workspace-list-error"
+            retryTestId="workspace-list-retry"
             kind="error"
             message="โหลดมอนิเตอร์ไม่สำเร็จ"
             retryLabel="ลองอีกครั้ง"
@@ -223,6 +252,7 @@ function OrganizationOverview({
           />
         ) : (
           <PageState
+            data-testid="workspace-list-loading"
             kind="loading"
             label="กำลังโหลดมอนิเตอร์"
             layout="table"
@@ -231,6 +261,7 @@ function OrganizationOverview({
         )
       ) : firstRun ? (
         <EmptyState
+          data-testid="workspace-empty"
           variant="first-run"
           icon={<ActivityIcon size={20} />}
           title="ยังไม่มีมอนิเตอร์"
@@ -242,7 +273,12 @@ function OrganizationOverview({
           action={
             canWrite ? (
               <Button asChild>
-                <Link to={`${monitorsPath}/new`}>เพิ่มมอนิเตอร์</Link>
+                <Link
+                  data-testid="workspace-empty-add"
+                  to={`${monitorsPath}/new`}
+                >
+                  เพิ่มมอนิเตอร์
+                </Link>
               </Button>
             ) : undefined
           }
@@ -250,9 +286,13 @@ function OrganizationOverview({
       ) : (
         <>
           {list.isError ? (
-            <Alert tone="warning">
+            <Alert data-testid="workspace-refetch-error" tone="warning">
               อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ{" "}
-              <Time iso={data.dataAsOf} format={formatTimeWithSeconds} />
+              <Time
+                testId="workspace-refetch-time"
+                iso={data.dataAsOf}
+                format={formatTimeWithSeconds}
+              />
             </Alert>
           ) : null}
           <StatStrip
@@ -292,6 +332,7 @@ function AccessNeeded({ email }: { email: string }) {
         titleClassName="outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       />
       <PageState
+        data-testid="workspace-access-needed"
         kind="denied"
         tone="info"
         message={
@@ -303,6 +344,7 @@ function AccessNeeded({ email }: { email: string }) {
         }
         action={
           <Button
+            data-testid="workspace-sign-out"
             type="button"
             variant="secondary"
             onClick={() => {

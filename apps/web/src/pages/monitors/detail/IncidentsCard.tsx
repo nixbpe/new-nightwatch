@@ -32,14 +32,23 @@ const columns: DataTableColumn<Incident>[] = [
   {
     key: "start",
     header: `เริ่ม (${TIME_ZONE})`,
-    cell: (row) => <Time iso={row.startedAt} format={formatDateTime} />,
+    cell: (row) => (
+      <Time
+        testId="monitor-incident-start"
+        iso={row.startedAt}
+        format={formatDateTime}
+      />
+    ),
   },
   {
     key: "end",
     header: "สิ้นสุด",
     cell: (row) =>
       row.endedAt === null ? (
-        <span className="flex flex-wrap items-center gap-2">
+        <span
+          data-testid="monitor-incident-open"
+          className="flex flex-wrap items-center gap-2"
+        >
           ยังไม่สิ้นสุด
           <StatusPill tone="danger" neutralLabel>
             กำลังเกิดอยู่
@@ -98,7 +107,11 @@ export function IncidentsCard({
     data !== undefined &&
     data.page.offset + data.incidents.length < data.page.total;
   return (
-    <section aria-labelledby="detail-incidents" className="flex flex-col gap-4">
+    <section
+      data-testid="monitor-incidents"
+      aria-labelledby="detail-incidents"
+      className="flex flex-col gap-4"
+    >
       <SectionHeader id="detail-incidents" title="เหตุการณ์" />
       <div className="flex flex-col gap-3">
         {data === undefined && incidents.isError ? (
@@ -125,13 +138,20 @@ export function IncidentsCard({
           </div>
         ) : null}
         {data !== undefined && data.page.total === 0 ? (
-          <p className="text-sm text-foreground-secondary">
+          <p
+            data-testid="monitor-incidents-empty"
+            className="text-sm text-foreground-secondary"
+          >
             ไม่มีเหตุการณ์ล่มในช่วงที่มีข้อมูล
           </p>
         ) : null}
         {data !== undefined && data.page.total > 0 ? (
           <>
             <DataTable
+              data-testid="monitor-incidents-region"
+              tableTestId="monitor-incidents-table"
+              rowTestId={(row) => `monitor-incident-${row.id}`}
+              cellTestId={(column) => `monitor-incident-cell-${column.key}`}
               ariaLabel="ตารางเหตุการณ์"
               columns={columns}
               rows={data.incidents}
@@ -139,6 +159,10 @@ export function IncidentsCard({
             />
             {hasPrevious || hasNext ? (
               <DataTablePagination
+                data-testid="monitor-incidents-pagination"
+                previousTestId="monitor-incidents-previous"
+                nextTestId="monitor-incidents-next"
+                summaryTestId="monitor-incidents-summary"
                 ariaLabel="หน้าเหตุการณ์"
                 summary={
                   <>

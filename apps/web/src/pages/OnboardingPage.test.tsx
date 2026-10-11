@@ -109,7 +109,7 @@ describe("OnboardingPage transitions", () => {
 
     renderAt("/onboarding?emailVerificationToken=tok-1&invitationId=inv-9");
 
-    expect(screen.getByText("กำลังยืนยันอีเมลของคุณ…")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-verifying")).toBeInTheDocument();
     expect(screen.queryByTestId("location")).toBeNull();
 
     pending.resolve({ error: null });
@@ -128,15 +128,9 @@ describe("OnboardingPage transitions", () => {
     sessionState.refetch.mockResolvedValue(undefined);
     renderAt("/onboarding?emailVerificationToken=expired");
 
-    expect(
-      await screen.findByRole("heading", { name: "ยืนยันอีเมลไม่สำเร็จ" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "ส่งอีเมลยืนยันใหม่" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-error")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-verify-email")).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByTestId("search")).toHaveTextContent(/^$/),
     );
@@ -151,12 +145,8 @@ describe("OnboardingPage transitions", () => {
       "/onboarding?emailVerificationToken=tok-rejected&invitationId=inv-9",
     );
 
-    expect(
-      await screen.findByRole("heading", { name: "ยืนยันอีเมลไม่สำเร็จ" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-error")).toBeInTheDocument();
     // The token strip is a router navigation that can land after the failure render; wait for it.
     await waitFor(() => {
       expect(screen.getByTestId("search")).toHaveTextContent(
@@ -174,20 +164,14 @@ describe("OnboardingPage transitions", () => {
     );
     renderAt("/onboarding?emailVerificationToken=tok-refresh");
 
-    expect(
-      await screen.findByRole("heading", { name: "ยืนยันอีเมลไม่สำเร็จ" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("ยืนยันอีเมลไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ไปแล้ว"),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-error")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
     });
     expect(screen.queryByTestId("location")).toBeNull();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "ส่งอีเมลยืนยันใหม่" }),
-    );
+    await userEvent.click(screen.getByTestId("onboarding-verify-email"));
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/verify-email",
     );

@@ -123,6 +123,7 @@ export function DisplayPage() {
           </p>
         </div>
         <SegmentedControl
+          optionTestId={(value) => `display-theme-${value}`}
           label="ธีม"
           value={theme}
           options={THEME_OPTIONS}
@@ -142,7 +143,9 @@ export function DisplayPage() {
         </div>
 
         {saved ? (
-          <Alert tone="success">บันทึกแล้ว ใช้กับเบราว์เซอร์นี้</Alert>
+          <Alert data-testid="display-saved" tone="success">
+            บันทึกแล้ว ใช้กับเบราว์เซอร์นี้
+          </Alert>
         ) : null}
 
         <div className="grid max-w-3xl gap-4 sm:grid-cols-2">
@@ -151,13 +154,16 @@ export function DisplayPage() {
               ภาษา
             </Label>
             <select
+              data-testid="display-language"
               id={ids.language}
               value={draft.language}
               disabled
               aria-describedby={`${ids.language}-help`}
               className={textInputClass}
             >
-              <option value="th">ไทย</option>
+              <option data-testid="display-language-th" value="th">
+                ไทย
+              </option>
             </select>
             <p
               id={`${ids.language}-help`}
@@ -171,6 +177,7 @@ export function DisplayPage() {
               โซนเวลา
             </Label>
             <select
+              data-testid="display-time-zone"
               id={ids.timeZone}
               value={draft.timeZone}
               onChange={(event) => {
@@ -180,7 +187,11 @@ export function DisplayPage() {
               className={textInputClass}
             >
               {zones.map((zone) => (
-                <option key={zone.id} value={zone.id}>
+                <option
+                  data-testid={`display-zone-${zone.id}`}
+                  key={zone.id}
+                  value={zone.id}
+                >
                   {zone.label}
                 </option>
               ))}
@@ -197,6 +208,7 @@ export function DisplayPage() {
               รูปแบบเวลา
             </Label>
             <select
+              data-testid="display-hour-cycle"
               id={ids.hourCycle}
               value={draft.hourCycle}
               onChange={(event) => {
@@ -219,6 +231,7 @@ export function DisplayPage() {
               วันแรกของสัปดาห์
             </Label>
             <select
+              data-testid="display-week-start"
               id={ids.weekStart}
               value={draft.weekStart}
               onChange={(event) => {
@@ -242,6 +255,7 @@ export function DisplayPage() {
           <Button
             type="button"
             variant="ghost"
+            data-testid="display-cancel"
             disabled={!dirty}
             onClick={() => {
               setDraft(preferences);
@@ -252,6 +266,7 @@ export function DisplayPage() {
           </Button>
           <Button
             type="button"
+            data-testid="display-save"
             disabled={!dirty}
             onClick={() => {
               save(draft);

@@ -37,7 +37,11 @@ export function ConfirmDialog({
   fallbackFocus,
   onCancel,
   onConfirm,
+  "data-testid": testId,
+  confirmTestId,
 }: {
+  "data-testid"?: string;
+  confirmTestId?: string;
   title: string;
   description: ReactNode;
   confirmLabel: string;
@@ -119,6 +123,7 @@ export function ConfirmDialog({
     <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
       <div
         ref={dialog}
+        data-testid={testId}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -136,12 +141,17 @@ export function ConfirmDialog({
         >
           {description}
         </div>
-        <p role="status" className="mt-3 text-sm text-foreground-secondary">
+        <p
+          data-testid="confirmation-pending"
+          role="status"
+          className="mt-3 text-sm text-foreground-secondary"
+        >
           {pending ? pendingLabel : null}
         </p>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
             ref={cancel}
+            data-testid="confirmation-cancel"
             type="button"
             variant="secondary"
             wrap
@@ -152,6 +162,7 @@ export function ConfirmDialog({
           </Button>
           <Button
             type="button"
+            data-testid={confirmTestId}
             variant={confirmVariant}
             wrap
             disabled={pending}

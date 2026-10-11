@@ -153,34 +153,35 @@ describe("NotificationsPage", () => {
     });
     renderPage();
 
-    const rows = await screen.findAllByRole("listitem");
-    expect(rows).toHaveLength(5);
-    const titles = [
-      "มอนิเตอร์ Checkout ล่ม",
-      "มอนิเตอร์ Checkout กลับมาทำงานแล้ว",
-      "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุ (เหลือไม่เกิน 25 วัน)",
-      "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุมาก (เหลือไม่เกิน 7 วัน)",
-      "ใบรับรอง SSL ของ Checkout หมดอายุแล้ว",
-    ];
-    rows.forEach((row, index) => {
+    expect(await screen.findAllByTestId(/^notification-row-/)).toHaveLength(5);
+    for (const item of monitorNotifications) {
+      const row = screen.getByTestId(`notification-row-${item.id}`);
+      expect(row).toHaveAttribute("data-event-type", item.eventType);
+      expect(row).toHaveAttribute("data-category", "monitor");
+      expect(within(row).getByTestId("notification-title")).toHaveTextContent(
+        "Checkout",
+      );
       expect(
-        within(row).getByText(titles[index] as string),
-      ).toBeInTheDocument();
-      expect(within(row).getByText("มอนิเตอร์")).toBeInTheDocument();
-      expect(row.querySelector("svg")).not.toBeNull();
-      expect(
-        within(row).getByRole("link", { name: "เปิดมอนิเตอร์ Checkout" }),
+        within(row).getByTestId("notification-monitor-link"),
       ).toHaveAttribute(
         "href",
         `/organizations/${ORG_A}/monitors/${MONITOR_ID}`,
       );
-    });
+    }
     expect(
-      within(rows[0] as HTMLElement).getByText(/หมดเวลารอการตอบกลับ/),
-    ).toBeInTheDocument();
+      within(
+        screen.getByTestId(
+          "notification-row-10000000-0000-4000-8000-000000000001",
+        ),
+      ).getByTestId("notification-reason"),
+    ).toHaveAttribute("data-reason", "timeout");
     expect(
-      within(rows[4] as HTMLElement).getByText(/ใบรับรองหมดอายุเมื่อ/),
-    ).toBeInTheDocument();
+      within(
+        screen.getByTestId(
+          "notification-row-10000000-0000-4000-8000-000000000005",
+        ),
+      ).getByTestId("notification-ssl-expiry"),
+    ).toHaveAttribute("datetime", "2026-09-25T00:00:00.000Z");
   });
 
   it("shows 10 days remaining in the SSL caution title when sslNotAfter is 10 days after occurredAt", async () => {
@@ -200,10 +201,12 @@ describe("NotificationsPage", () => {
     });
     renderPage();
     expect(
-      await screen.findByText(
-        "ใบรับรอง SSL ของ Checkout ใกล้หมดอายุ (เหลือไม่เกิน 10 วัน)",
-      ),
-    ).toBeInTheDocument();
+      await within(
+        await screen.findByTestId(
+          "notification-row-10000000-0000-4000-8000-000000000006",
+        ),
+      ).findByTestId("notification-title"),
+    ).toHaveTextContent(/\b10\b/);
   });
 
   it("shows audit export results with their title, category, icon and a link to the export list", async () => {
@@ -214,22 +217,19 @@ describe("NotificationsPage", () => {
       unreadCount: 2,
     });
     renderPage();
-    const rows = await screen.findAllByRole("listitem");
-    const expected = [
-      "ไฟล์ส่งออกบันทึกกิจกรรมพร้อมดาวน์โหลด",
-      "สร้างไฟล์ส่งออกไม่สำเร็จ",
-    ];
-    rows.forEach((row, index) => {
+    expect(await screen.findAllByTestId(/^notification-row-/)).toHaveLength(2);
+    for (const item of auditNotifications) {
+      const row = screen.getByTestId(`notification-row-${item.id}`);
+      expect(row).toHaveAttribute("data-event-type", item.eventType);
+      expect(row).toHaveAttribute("data-scope", "organization");
+      expect(row).toHaveAttribute("data-category", "audit-log");
       expect(
-        within(row).getByText(expected[index] as string),
-      ).toBeInTheDocument();
-      expect(within(row).getByText("องค์กร")).toBeInTheDocument();
-      expect(within(row).getByText("บันทึกกิจกรรม")).toBeInTheDocument();
-      expect(row.querySelector("svg")).not.toBeNull();
+        within(row).getByTestId("notification-title"),
+      ).not.toBeEmptyDOMElement();
       expect(
-        within(row).getByRole("link", { name: "เปิดบันทึกกิจกรรม" }),
+        within(row).getByTestId("notification-audit-link"),
       ).toHaveAttribute("href", `/organizations/${ORG_A}/audit-log#my-exports`);
-    });
+    }
   });
 
   it("opens an audit export notification with a link to the export list", async () => {
@@ -248,12 +248,16 @@ describe("NotificationsPage", () => {
     renderPage();
 
     await user.click(
-      await screen.findByRole("button", {
-        name: /ไฟล์ส่งออกบันทึกกิจกรรมพร้อมดาวน์โหลด/,
-      }),
+      await screen.findByTestId(`notification-open-${ready.id}`),
     );
 
-    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("notification-detail-read"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("notification-detail-read-at")).toHaveAttribute(
+      "datetime",
+      "2026-09-25T03:01:00.000Z",
+    );
   });
 
   it("opens a monitor notification with its subject, reason and link", async () => {
@@ -271,16 +275,27 @@ describe("NotificationsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(
-      await screen.findByRole("button", { name: /มอนิเตอร์ Checkout ล่ม/ }),
-    );
+    await user.click(await screen.findByTestId(`notification-open-${down.id}`));
 
-    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
-    expect(screen.getByText(/หมดเวลารอการตอบกลับ/)).toBeInTheDocument();
-    expect(screen.getByText("(Checkout)")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "เปิดมอนิเตอร์ Checkout" }),
-    ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors/${MONITOR_ID}`);
+      await screen.findByTestId("notification-detail-read"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("notification-detail-read-at")).toHaveAttribute(
+      "datetime",
+      "2026-09-25T03:01:00.000Z",
+    );
+    expect(screen.getByTestId("notification-reason")).toHaveAttribute(
+      "data-reason",
+      "timeout",
+    );
+    expect(screen.getByTestId("notification-reason")).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("notification-monitor-name")).toHaveTextContent(
+      "Checkout",
+    );
+    expect(screen.getByTestId("notification-monitor-link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/monitors/${MONITOR_ID}`,
+    );
   });
 
   it("clears an open detail when the server-confirmed organization changes", async () => {
@@ -300,14 +315,22 @@ describe("NotificationsPage", () => {
     const view = renderPage();
 
     await user.click(
-      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+      await screen.findByTestId(`notification-open-${notification.id}`),
     );
-    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("notification-detail-read"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("notification-detail-read-at")).toHaveAttribute(
+      "datetime",
+      "2026-09-25T03:01:00.000Z",
+    );
 
     serverActiveOrgId = ORG_B;
     view.rerender(page(view.queryClient));
 
-    expect(screen.queryByText("อ่านแล้ว")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("notification-detail-read"),
+    ).not.toBeInTheDocument();
   });
 
   it("ignores an old organization open completion after the organization changes", async () => {
@@ -328,14 +351,16 @@ describe("NotificationsPage", () => {
     const view = renderPage();
 
     await user.click(
-      await screen.findByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+      await screen.findByTestId(`notification-open-${notification.id}`),
     );
     serverActiveOrgId = ORG_B;
     view.rerender(page(view.queryClient));
     resolveOpen({ ...notification, readAt: "2026-09-25T03:01:00.000Z" });
 
     await waitFor(() => {
-      expect(screen.queryByText("อ่านแล้ว")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("notification-detail-read"),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -372,8 +397,12 @@ describe("NotificationsPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("ไม่พบการแจ้งเตือนนี้")).toBeInTheDocument();
-    expect(screen.queryByText("ยังไม่อ่าน")).not.toBeInTheDocument();
+    expect(
+      await screen.findByTestId("notification-detail-error"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("notification-detail-unread"),
+    ).not.toBeInTheDocument();
   });
 
   it("loads a next page and keeps mark-all enabled for server-global unread items", async () => {
@@ -416,21 +445,23 @@ describe("NotificationsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const markAll = await screen.findByRole("button", {
-      name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
-    });
+    const markAll = await screen.findByTestId("notifications-mark-all");
     expect(markAll).toBeEnabled();
-    await user.click(
-      screen.getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
+    await user.click(screen.getByTestId("notifications-load-more"));
+    const next = await screen.findByTestId(
+      `notification-open-${pageTwoUnread.id}`,
     );
-    await user.click(
-      await screen.findByRole("button", { name: /Unread page two/ }),
-    );
+    expect(next).toHaveTextContent("Unread page two");
+    await user.click(next);
 
-    expect(await screen.findByText("อ่านแล้ว")).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: "กลับไปที่การแจ้งเตือน" }),
+    expect(
+      await screen.findByTestId("notification-detail-read"),
+    ).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("notification-detail-read-at")).toHaveAttribute(
+      "datetime",
+      "2026-09-25T03:02:00.000Z",
     );
+    await user.click(screen.getByTestId("notifications-back"));
     await user.click(markAll);
   });
 
@@ -471,24 +502,20 @@ describe("NotificationsPage", () => {
     const user = userEvent.setup();
     const { queryClient } = renderPage();
 
-    await user.click(
-      await screen.findByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
-    );
+    await user.click(await screen.findByTestId("notifications-load-more"));
     expect(
-      await screen.findByRole("button", { name: /Stale page two/ }),
-    ).toBeInTheDocument();
+      await screen.findByTestId(`notification-open-${pageTwo.id}`),
+    ).toHaveTextContent("Stale page two");
 
     firstPageVersion = 2;
     await act(() => queryClient.refetchQueries({ type: "active" }));
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: /Stale page two/ }),
+        screen.queryByTestId(`notification-open-${pageTwo.id}`),
       ).not.toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("notifications-load-more")).toBeInTheDocument();
   });
 
   it("shows a next-page failure, keeps loaded rows and retries", async () => {
@@ -524,26 +551,22 @@ describe("NotificationsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const loadMore = await screen.findByRole("button", {
-      name: "โหลดการแจ้งเตือนเพิ่มเติม",
-    });
+    const loadMore = await screen.findByTestId("notifications-load-more");
     await user.click(loadMore);
 
     expect(
-      await screen.findByText("โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"),
+      await screen.findByTestId("notifications-next-error"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ }),
+      screen.getByTestId(`notification-open-${notification.id}`),
     ).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
-    );
+    await user.click(screen.getByTestId("notifications-load-more"));
     expect(
-      await screen.findByRole("button", { name: /Retried page two/ }),
-    ).toBeInTheDocument();
+      await screen.findByTestId(`notification-open-${pageTwo.id}`),
+    ).toHaveTextContent("Retried page two");
     expect(
-      screen.queryByText("โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"),
+      screen.queryByTestId("notifications-next-error"),
     ).not.toBeInTheDocument();
   });
 
@@ -581,36 +604,35 @@ describe("NotificationsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(
-      await screen.findByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
+    await user.click(await screen.findByTestId("notifications-load-more"));
+    const unreadRow = await screen.findByTestId(
+      `notification-open-${pageTwo.id}`,
     );
-    const unreadRow = await screen.findByRole("button", {
-      name: /Unread page two/,
-    });
-    expect(within(unreadRow).getByLabelText("ยังไม่อ่าน")).toBeInTheDocument();
+    expect(unreadRow).toHaveTextContent("Unread page two");
+    expect(
+      within(unreadRow).getByTestId("notification-unread"),
+    ).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: "ทำเครื่องหมายว่าอ่านทั้งหมด" }),
-    );
+    await user.click(screen.getByTestId("notifications-mark-all"));
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "ทำเครื่องหมายว่าอ่านทั้งหมด" }),
-      ).toBeDisabled();
+      expect(screen.getByTestId("notifications-mark-all")).toBeDisabled();
     });
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: /Unread page two/ }),
+        screen.queryByTestId(`notification-open-${pageTwo.id}`),
       ).not.toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" }),
+    await user.click(screen.getByTestId("notifications-load-more"));
+    const readRow = await screen.findByTestId(
+      `notification-open-${pageTwo.id}`,
     );
-    const readRow = await screen.findByRole("button", {
-      name: /Unread page two/,
-    });
+    expect(readRow).toHaveTextContent("Unread page two");
     expect(
-      within(readRow).queryByLabelText("ยังไม่อ่าน"),
+      screen.getByTestId(`notification-row-${pageTwo.id}`),
+    ).toHaveAttribute("data-read-at", pageTwoReadAt);
+    expect(
+      within(readRow).queryByTestId("notification-unread"),
     ).not.toBeInTheDocument();
   });
 
@@ -627,17 +649,11 @@ describe("NotificationsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
-      }),
-    );
+    await user.click(await screen.findByTestId("notifications-mark-all"));
 
     expect(markAllNotificationsReadMock.mock.calls[0]?.[0]).toBe(ORG_A);
     expect(
-      await screen.findByText(
-        "ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-      ),
+      await screen.findByTestId("notifications-mark-all-error"),
     ).toBeInTheDocument();
   });
 
@@ -649,14 +665,16 @@ describe("NotificationsPage", () => {
       unreadCount: 0,
     });
     renderPage();
-    expect(await screen.findByText("ยังไม่มีการแจ้งเตือน")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("notifications-empty"),
+    ).toBeInTheDocument();
 
     fetchNotificationsMock.mockReset();
     fetchNotificationsMock.mockRejectedValue(new Error("offline"));
     renderPage();
     expect(
-      await screen.findByText("โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"),
-    ).toBeInTheDocument();
+      await screen.findByTestId("notifications-list-error"),
+    ).not.toBeEmptyDOMElement();
   });
 
   describe("day grouping", () => {
@@ -684,7 +702,7 @@ describe("NotificationsPage", () => {
         unreadCount: 1,
       });
       renderPage();
-      await screen.findAllByRole("heading", { level: 2 });
+      await screen.findAllByTestId(/^notification-day-\d/);
     }
     afterEach(() => {
       vi.useRealTimers();
@@ -712,19 +730,30 @@ describe("NotificationsPage", () => {
         "2026-10-02T05:00:00.000Z",
       );
 
-      const headings = screen
-        .getAllByRole("heading", { level: 2 })
-        .map((h) => h.textContent);
-      expect(headings[0]).toBe("วันนี้");
-      expect(headings[1]).toBe("เมื่อวาน");
-      expect(headings[2]).toMatch(/25.*2569/);
-      const today = screen.getByRole("region", { name: "วันนี้" });
-      expect(within(today).getAllByRole("button")).toHaveLength(1);
-      // an older day shows its date once, not as title and meta
-      const older = screen.getAllByRole("region")[2];
       expect(
-        within(older as HTMLElement).getAllByText(/^25.*2569$/),
-      ).toHaveLength(1);
+        screen
+          .getAllByTestId(/^notification-day-\d/)
+          .map((group) => group.getAttribute("data-day-key")),
+      ).toEqual(["2026-10-02", "2026-10-01", "2026-09-25"]);
+      for (const [day, id] of [
+        ["2026-10-02", "a0000000-0000-4000-8000-000000000001"],
+        ["2026-10-01", "a0000000-0000-4000-8000-000000000002"],
+        ["2026-09-25", "a0000000-0000-4000-8000-000000000003"],
+      ] as const) {
+        const group = screen.getByTestId(`notification-day-${day}`);
+        expect(group).toHaveRole("region");
+        expect(
+          within(group).getByTestId("notification-day-title"),
+        ).not.toBeEmptyDOMElement();
+        expect(
+          within(group).getByTestId(`notification-open-${id}`),
+        ).toBeInTheDocument();
+      }
+      expect(
+        within(screen.getByTestId("notification-day-2026-09-25")).getByTestId(
+          "notification-day-title",
+        ),
+      ).toHaveTextContent(/25.*2569/);
     });
 
     it("splits items at local midnight, not UTC midnight", async () => {
@@ -746,15 +775,16 @@ describe("NotificationsPage", () => {
       );
 
       expect(
-        within(screen.getByRole("region", { name: "วันนี้" })).getAllByRole(
-          "button",
+        within(screen.getByTestId("notification-day-2026-10-02")).getByTestId(
+          "notification-open-a0000000-0000-4000-8000-000000000001",
         ),
-      ).toHaveLength(1);
+      ).toBeInTheDocument();
       expect(
-        within(screen.getByRole("region", { name: "เมื่อวาน" })).getAllByRole(
-          "button",
+        within(screen.getByTestId("notification-day-2026-10-01")).getByTestId(
+          "notification-open-a0000000-0000-4000-8000-000000000002",
         ),
-      ).toHaveLength(1);
+      ).toBeInTheDocument();
+      expect(screen.getAllByTestId(/^notification-day-\d/)).toHaveLength(2);
     });
 
     it("labels yesterday by calendar date across a DST change", async () => {
@@ -776,7 +806,14 @@ describe("NotificationsPage", () => {
       );
 
       expect(
-        screen.getByRole("heading", { level: 2, name: "เมื่อวาน" }),
+        within(screen.getByTestId("notification-day-2026-11-01")).getByTestId(
+          "notification-open-a0000000-0000-4000-8000-000000000002",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("notification-day-2026-11-02")).getByTestId(
+          "notification-open-a0000000-0000-4000-8000-000000000001",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -785,8 +822,10 @@ describe("NotificationsPage", () => {
       await renderItems([notification], "2026-09-25T05:00:00.000Z");
 
       expect(
-        screen.getByRole("img", { name: "ยังไม่อ่าน" }),
-      ).toBeInTheDocument();
+        within(
+          screen.getByTestId(`notification-row-${notification.id}`),
+        ).getByTestId("notification-unread"),
+      ).toHaveRole("img");
     });
 
     it("renders no day headings when groupByDay is off", () => {
@@ -796,7 +835,7 @@ describe("NotificationsPage", () => {
         </MemoryRouter>,
       );
       expect(
-        screen.queryByRole("heading", { level: 2 }),
+        screen.queryByTestId("notification-day-title"),
       ).not.toBeInTheDocument();
     });
   });

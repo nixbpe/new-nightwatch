@@ -101,6 +101,7 @@ function SummaryStrip({
       {SUMMARY_ORDER.map((health) => (
         <div key={health} className={STAT_TILE_CLASS}>
           <StatTile
+            valueTestId={`monitor-overview-summary-${health}`}
             term
             dot={SUMMARY_DOT[health]}
             label={HEALTH_LABELS[health]}
@@ -121,6 +122,7 @@ function OverviewLoading() {
         ))}
       </div>
       <PageState
+        data-testid="monitor-overview-loading"
         kind="loading"
         label="กำลังโหลดมอนิเตอร์"
         layout="table"
@@ -239,13 +241,19 @@ function OverviewForOrganization({
                 tag: ROLE_LABELS[organization.role] ?? organization.role,
               }
         }
+        titleTestId="monitor-overview-heading"
+        scopeTestId="monitor-overview-scope"
         title="ตรวจสถานะบริการ"
         status={status}
         actions={actions}
         titleRef={heading}
         titleTabIndex={-1}
       />
-      {notice === null ? null : <Notice tone="success">{notice}</Notice>}
+      {notice === null ? null : (
+        <Notice data-testid="monitor-overview-notice" tone="success">
+          {notice}
+        </Notice>
+      )}
     </>
   );
 
@@ -262,6 +270,8 @@ function OverviewForOrganization({
       <Page>
         {header()}
         <PageState
+          data-testid="monitor-overview-context-error"
+          retryTestId="monitor-overview-context-retry"
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูมอนิเตอร์ได้"
           retryLabel="ลองอีกครั้ง"
@@ -276,6 +286,7 @@ function OverviewForOrganization({
       <Page>
         {header()}
         <PageState
+          data-testid="monitor-overview-denied"
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
         />
@@ -295,25 +306,38 @@ function OverviewForOrganization({
     actions = limitReached ? (
       <>
         <span
+          data-testid="monitor-overview-limit-reason"
           id="monitor-limit-reason"
           className="text-xs text-foreground-secondary"
         >
           องค์กรนี้มีมอนิเตอร์ครบ {data.summary.limit} ตัวแล้ว
           ลบมอนิเตอร์เดิมก่อนจึงจะเพิ่มได้
         </span>
-        <Button type="button" disabled aria-describedby="monitor-limit-reason">
+        <Button
+          data-testid="monitor-overview-add-disabled"
+          type="button"
+          disabled
+          aria-describedby="monitor-limit-reason"
+        >
           เพิ่มมอนิเตอร์
         </Button>
       </>
     ) : (
       <Button asChild>
-        <Link to={addPath}>เพิ่มมอนิเตอร์</Link>
+        <Link data-testid="monitor-overview-add" to={addPath}>
+          เพิ่มมอนิเตอร์
+        </Link>
       </Button>
     );
   }
-  const status = canWrite ? undefined : <span>สิทธิ์ของคุณ: ดูอย่างเดียว</span>;
+  const status = canWrite ? undefined : (
+    <span data-testid="monitor-overview-readonly">
+      สิทธิ์ของคุณ: ดูอย่างเดียว
+    </span>
+  );
   const viewToggle = (
     <SegmentedControl
+      optionTestId={(value) => `monitor-overview-view-${value}`}
       label="รูปแบบการแสดงผล"
       value={view}
       options={VIEW_OPTIONS}
@@ -328,6 +352,7 @@ function OverviewForOrganization({
     <Label className="flex w-fit max-w-full flex-col gap-2 text-sm">
       เรียงตาม
       <select
+        data-testid="monitor-overview-sort"
         className={textInputClass}
         value={sort}
         onChange={(event) => {
@@ -342,7 +367,11 @@ function OverviewForOrganization({
         }}
       >
         {MONITOR_LIST_SORTS.map((value) => (
-          <option key={value} value={value}>
+          <option
+            data-testid={`monitor-overview-sort-option-${value}`}
+            key={value}
+            value={value}
+          >
             {SORT_LABELS[value]}
           </option>
         ))}
@@ -390,6 +419,7 @@ function OverviewForOrganization({
             <SearchIcon size={18} />
           </span>
           <Input
+            data-testid="monitor-overview-search"
             type="search"
             ref={searchRef}
             value={searchText}
@@ -405,6 +435,7 @@ function OverviewForOrganization({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-xs text-foreground-secondary">สถานะ</span>
         <div
+          data-testid="monitor-overview-health-filter"
           role="group"
           aria-label="สถานะ"
           className="flex flex-1 flex-wrap gap-2"
@@ -413,6 +444,7 @@ function OverviewForOrganization({
             const pressed = chip.value === health;
             return (
               <button
+                data-testid={`monitor-overview-health-${chip.value ?? "all"}`}
                 key={chip.value ?? "all"}
                 type="button"
                 aria-pressed={pressed}
@@ -430,7 +462,11 @@ function OverviewForOrganization({
               >
                 {chip.label}
                 {chip.count === undefined ? null : (
-                  <span aria-hidden="true" className="font-mono text-xs">
+                  <span
+                    data-testid="monitor-overview-health-count"
+                    aria-hidden="true"
+                    className="font-mono text-xs"
+                  >
                     {chip.count}
                   </span>
                 )}
@@ -440,6 +476,7 @@ function OverviewForOrganization({
         </div>
         {showClear && filtered ? (
           <Button
+            data-testid="monitor-overview-clear"
             type="button"
             variant="ghost"
             size="sm"
@@ -454,7 +491,10 @@ function OverviewForOrganization({
         ) : null}
       </div>
       {data === undefined ? null : (
-        <p className="text-xs text-foreground-secondary tabular-nums">
+        <p
+          data-testid="monitor-overview-results"
+          className="text-xs text-foreground-secondary tabular-nums"
+        >
           พบ {data.page.total} จาก {data.summary.total}
         </p>
       )}
@@ -470,6 +510,8 @@ function OverviewForOrganization({
           <>
             {filterControls(false)}
             <PageState
+              data-testid="monitor-overview-error"
+              retryTestId="monitor-overview-retry"
               kind="error"
               message="โหลดมอนิเตอร์ไม่สำเร็จ"
               retryLabel="ลองอีกครั้ง"
@@ -477,6 +519,7 @@ function OverviewForOrganization({
               actions={
                 filtered ? (
                   <Button
+                    data-testid="monitor-overview-clear"
                     type="button"
                     variant="secondary"
                     onClick={clearFilters}
@@ -502,6 +545,7 @@ function OverviewForOrganization({
           มอนิเตอร์ทั้งหมด <span className="font-mono text-foreground">0</span>
         </p>
         <EmptyState
+          data-testid="monitor-overview-empty"
           variant="first-run"
           icon={<ActivityIcon size={20} />}
           title="ยังไม่มีมอนิเตอร์"
@@ -513,7 +557,9 @@ function OverviewForOrganization({
           action={
             canWrite ? (
               <Button asChild>
-                <Link to={addPath}>เพิ่มมอนิเตอร์</Link>
+                <Link data-testid="monitor-overview-empty-add" to={addPath}>
+                  เพิ่มมอนิเตอร์
+                </Link>
               </Button>
             ) : undefined
           }
@@ -532,6 +578,7 @@ function OverviewForOrganization({
         <>
           {actions}
           <Button
+            data-testid="monitor-overview-refresh"
             type="button"
             variant="secondary"
             aria-disabled={refreshing}
@@ -546,7 +593,7 @@ function OverviewForOrganization({
         </>,
         <>
           {status}
-          <span>
+          <span data-testid="monitor-overview-total">
             มอนิเตอร์ทั้งหมด{" "}
             <span className="font-mono">{data.summary.total}</span>
           </span>
@@ -556,29 +603,48 @@ function OverviewForOrganization({
           <span>
             ข้อมูล ณ{" "}
             <span className="font-mono">
-              <Time iso={data.dataAsOf} format={formatTimeWithSeconds} />
+              <Time
+                testId="monitor-overview-as-of"
+                iso={data.dataAsOf}
+                format={formatTimeWithSeconds}
+              />
             </span>{" "}
             ({TIME_ZONE})
           </span>
         </>,
       )}
       {list.isError ? (
-        <Alert tone="warning">
+        <Alert data-testid="monitor-overview-refetch-error" tone="warning">
           อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ{" "}
-          <Time iso={data.dataAsOf} format={formatTimeWithSeconds} />
+          <Time
+            testId="monitor-overview-refetch-time"
+            iso={data.dataAsOf}
+            format={formatTimeWithSeconds}
+          />
         </Alert>
       ) : null}
       <SummaryStrip summary={data.summary} />
       {filterControls(!(page.total === 0 && filtered), sortControl)}
-      <p role="status" aria-label="ผลการกรอง" className="sr-only">
+      <p
+        data-testid="monitor-overview-announcement"
+        role="status"
+        aria-label="ผลการกรอง"
+        className="sr-only"
+      >
         <span key={announcement.count}>{announcement.text}</span>
       </p>
       {page.total === 0 && filtered ? (
         <EmptyState
           icon={<ActivityIcon size={20} />}
+          data-testid="monitor-overview-filtered-empty"
           title="ไม่พบมอนิเตอร์ที่ตรงกับตัวกรอง"
           action={
-            <Button type="button" variant="secondary" onClick={clearFilters}>
+            <Button
+              data-testid="monitor-overview-clear"
+              type="button"
+              variant="secondary"
+              onClick={clearFilters}
+            >
               ล้างตัวกรอง
             </Button>
           }
@@ -600,6 +666,9 @@ function OverviewForOrganization({
       )}
       {page.total === 0 ? null : (
         <DataTablePagination
+          summaryTestId="monitor-overview-pagination"
+          previousTestId="monitor-overview-previous"
+          nextTestId="monitor-overview-next"
           ariaLabel="หน้ามอนิเตอร์"
           summary={
             <>

@@ -83,9 +83,18 @@ function EventRow({
   event: MonitorRecentEvent;
 }) {
   return (
-    <li className={ROW_CLASS}>
+    <li
+      data-testid="workspace-event"
+      data-event-kind={event.kind}
+      data-reason={event.reason ?? ""}
+      className={ROW_CLASS}
+    >
       <span className="pt-0.5 font-mono text-xs text-foreground-secondary">
-        <Time iso={event.at} format={formatTimeOrDate} />
+        <Time
+          testId="workspace-event-time"
+          iso={event.at}
+          format={formatTimeOrDate}
+        />
       </span>
       <span className="flex items-baseline gap-2 text-sm">
         <span
@@ -97,12 +106,16 @@ function EventRow({
         />
         <span className="min-w-0">
           <Link
+            data-testid="workspace-event-monitor"
             to={`/organizations/${organizationId}/monitors/${event.monitorId}`}
             className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             {event.monitorName}
           </Link>{" "}
-          <span className="text-foreground-secondary">
+          <span
+            data-testid="workspace-event-description"
+            className="text-foreground-secondary"
+          >
             <EventText event={event} />
           </span>
         </span>
@@ -172,7 +185,11 @@ export function EventsSection({ organizationId }: { organizationId: string }) {
     );
   }
   return (
-    <section aria-labelledby="overview-events" className="flex flex-col">
+    <section
+      data-testid="workspace-events"
+      aria-labelledby="overview-events"
+      className="flex flex-col"
+    >
       <SectionHeader
         id="overview-events"
         code="02"
@@ -229,7 +246,11 @@ function Latin({ children }: { children: ReactNode }) {
 function EventsMockups() {
   return (
     <div className="mt-4 flex flex-col gap-4">
-      <MockupFrame label="กิจกรรมขององค์กรในเหตุการณ์ล่าสุด" issue={63}>
+      <MockupFrame
+        testId="workspace-events-example"
+        label="กิจกรรมขององค์กรในเหตุการณ์ล่าสุด"
+        issue={63}
+      >
         <ol>
           <SampleRow
             text="เชิญ n.p@acme.example เป็นสมาชิก"

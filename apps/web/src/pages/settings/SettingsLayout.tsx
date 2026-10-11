@@ -24,6 +24,7 @@ export function SettingsLayout() {
   return (
     <Page width="form">
       <PageHeader
+        descriptionTestId="settings-description"
         scope={
           mePending
             ? { label: <Skeleton className="h-3 w-40 align-middle" /> }
@@ -47,6 +48,7 @@ export function SettingsLayout() {
 
       <div className="border-b border-foreground/10">
         <nav
+          data-testid="settings-tabs"
           role="tablist"
           aria-label="หมวดการตั้งค่า"
           className="-mb-px flex flex-wrap gap-x-2"
@@ -57,6 +59,7 @@ export function SettingsLayout() {
             return (
               <NavLink
                 key={tab.path}
+                data-testid={`settings-tab-${tab.path}`}
                 id={tabId(tab.path)}
                 to={tab.path}
                 role="tab"
@@ -78,6 +81,7 @@ export function SettingsLayout() {
       </div>
 
       <div
+        data-testid="settings-panel"
         role="tabpanel"
         aria-labelledby={
           activeTab === undefined ? undefined : tabId(activeTab.path)

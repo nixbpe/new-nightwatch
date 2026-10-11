@@ -73,7 +73,13 @@ export function DetailPage() {
 function DetailLoading() {
   return (
     <>
-      <PageState kind="loading" label="กำลังโหลดมอนิเตอร์" layout="lines" />
+      <PageState
+        data-testid="monitor-detail-loading"
+        statusTestId="monitor-detail-loading-status"
+        kind="loading"
+        label="กำลังโหลดมอนิเตอร์"
+        layout="lines"
+      />
       <Skeleton className="h-32 w-full" />
       <Skeleton className="h-40 w-full" />
     </>
@@ -84,18 +90,31 @@ function StateAlerts({ monitor }: { monitor: Monitor }) {
   return (
     <>
       {monitor.health === "paused" ? (
-        <Alert tone="info" role="status">
+        <Alert data-testid="monitor-detail-paused" tone="info" role="status">
           มอนิเตอร์นี้หยุดตรวจอยู่ จะไม่มีการแจ้งเตือน
         </Alert>
       ) : null}
       {monitor.health === "unknown" && monitor.healthReason === "stale" ? (
-        <Alert tone="warning" role="status">
+        <Alert
+          data-testid="monitor-detail-stale-note"
+          tone="warning"
+          role="status"
+        >
           ยังไม่มีผลตรวจใหม่ ข้อมูลอาจไม่ตรงกับสถานะปัจจุบัน
         </Alert>
       ) : null}
       {monitor.healthReason === "awaiting_new_config" ? (
-        <Alert tone="info" role="status">
-          แก้ไขเมื่อ <Time iso={monitor.updatedAt} format={formatTimeOrDate} />{" "}
+        <Alert
+          data-testid="monitor-detail-awaiting-config"
+          tone="info"
+          role="status"
+        >
+          แก้ไขเมื่อ{" "}
+          <Time
+            testId="monitor-detail-updated-time"
+            iso={monitor.updatedAt}
+            format={formatTimeOrDate}
+          />{" "}
           รอผลตรวจตามค่าใหม่
           {monitor.lastKnownDown ? " ล่าสุดทราบว่าล่ม" : null}
         </Alert>
@@ -278,6 +297,7 @@ function DetailForMonitor({
   ) => (
     <>
       <Link
+        data-testid="monitor-detail-back"
         to={overviewPath}
         className="inline-flex min-h-6 items-center gap-1.5 self-start text-xs text-foreground-secondary underline-offset-4 hover:text-foreground hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
@@ -285,6 +305,8 @@ function DetailForMonitor({
         กลับไปรายการมอนิเตอร์
       </Link>
       <PageHeader
+        titleTestId="monitor-detail-title"
+        scopeTestId="monitor-detail-scope"
         scope={
           organization === undefined
             ? undefined
@@ -314,7 +336,9 @@ function DetailForMonitor({
       <Page>
         {header()}
         {actionError === null ? null : (
-          <Alert tone="error">{actionError}</Alert>
+          <Alert data-testid="monitor-detail-action-error" tone="error">
+            {actionError}
+          </Alert>
         )}
         <DetailLoading />
       </Page>
@@ -326,6 +350,8 @@ function DetailForMonitor({
         {header()}
         <PageState
           kind="error"
+          data-testid="monitor-detail-admission-error"
+          retryTestId="monitor-detail-admission-retry"
           message="ไม่สามารถยืนยันสิทธิ์ดูมอนิเตอร์ได้"
           retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
@@ -340,6 +366,7 @@ function DetailForMonitor({
         {header()}
         <PageState
           kind="denied"
+          data-testid="monitor-detail-denied"
           message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
         />
       </Page>
@@ -351,11 +378,17 @@ function DetailForMonitor({
         {header()}
         <PageState
           kind="denied"
+          data-testid="monitor-detail-not-found"
           tone="info"
           message="ไม่พบมอนิเตอร์นี้"
           action={
             <Button asChild variant="secondary">
-              <Link to={overviewPath}>กลับไปรายการมอนิเตอร์</Link>
+              <Link
+                data-testid="monitor-detail-not-found-back"
+                to={overviewPath}
+              >
+                กลับไปรายการมอนิเตอร์
+              </Link>
             </Button>
           }
         />
@@ -369,6 +402,9 @@ function DetailForMonitor({
         {detail.isError ? (
           <PageState
             kind="error"
+            data-testid="monitor-detail-load-error"
+            alertTestId="monitor-detail-load-alert"
+            retryTestId="monitor-detail-load-retry"
             message="โหลดมอนิเตอร์ไม่สำเร็จ"
             retryLabel="ลองอีกครั้ง"
             onRetry={() => void detail.refetch()}
@@ -390,6 +426,9 @@ function DetailForMonitor({
   const actions = canWrite ? (
     <>
       <Button
+        data-testid="monitor-detail-toggle"
+        data-status={monitor.status}
+        data-in-progress={busy}
         type="button"
         variant="secondary"
         aria-disabled={busy}
@@ -409,6 +448,7 @@ function DetailForMonitor({
       <Button
         type="button"
         variant="secondary"
+        data-testid="monitor-detail-delete"
         onClick={(event) => {
           setDeleteDialog({ opener: event.currentTarget });
         }}
@@ -416,7 +456,12 @@ function DetailForMonitor({
         ลบมอนิเตอร์
       </Button>
       <Button asChild>
-        <Link to={`${overviewPath}/${monitorId}/edit`}>แก้ไข</Link>
+        <Link
+          data-testid="monitor-detail-edit"
+          to={`${overviewPath}/${monitorId}/edit`}
+        >
+          แก้ไข
+        </Link>
       </Button>
     </>
   ) : undefined;
@@ -428,23 +473,34 @@ function DetailForMonitor({
   const status = (
     <>
       <span
+        data-testid="monitor-detail-health"
+        data-health={monitor.health}
+        data-health-reason={monitor.healthReason}
+        data-fresh={fresh}
+        data-incident-open={monitor.openIncident !== null}
+        data-last-check-at={monitor.lastCheckAt ?? ""}
         className={cn("inline-flex rounded-full", badgeGlow && "glow-danger")}
       >
         <HealthPill health={monitor.health} />
       </span>
-      {line === null || bannerShown ? null : <span>{line}</span>}
+      {line === null || bannerShown ? null : (
+        <span data-testid="monitor-detail-health-reason">{line}</span>
+      )}
       <span className="break-all">
         <span className="font-mono">{monitor.method}</span>{" "}
-        <span className="font-mono">{monitor.url}</span>
+        <span data-testid="monitor-detail-url" className="font-mono">
+          {monitor.url}
+        </span>
       </span>
       <IntervalText seconds={monitor.intervalSeconds} />
       {monitor.lastCheckAt === null ? (
-        <span>รอตรวจครั้งแรก</span>
+        <span data-testid="monitor-detail-first-check">รอตรวจครั้งแรก</span>
       ) : (
         <span>
           ตรวจล่าสุด{" "}
           <span className="font-mono">
             <Time
+              testId="monitor-detail-last-check"
               iso={monitor.lastCheckAt}
               format={formatTimeWithSecondsOrDate}
             />
@@ -452,7 +508,14 @@ function DetailForMonitor({
           ({TIME_ZONE})
         </span>
       )}
-      {canWrite ? null : <span>สิทธิ์ของคุณ: ดูอย่างเดียว</span>}
+      {canWrite ? null : (
+        <span
+          data-testid="monitor-detail-read-only"
+          data-role={organization.role}
+        >
+          สิทธิ์ของคุณ: ดูอย่างเดียว
+        </span>
+      )}
     </>
   );
   const shownNotice = notice ?? flashNotice;
@@ -461,18 +524,28 @@ function DetailForMonitor({
     <Page>
       {header(actions, status, monitor.name)}
       {shownNotice === null ? null : (
-        <Notice tone="success">{shownNotice}</Notice>
+        <Notice data-testid="monitor-detail-notice" tone="success">
+          {shownNotice}
+        </Notice>
       )}
       {busy ? (
         <Notice tone="pending">
           {paused ? "กำลังเริ่มการตรวจต่อ" : "กำลังหยุดการตรวจ"}
         </Notice>
       ) : null}
-      {actionError === null ? null : <Alert tone="error">{actionError}</Alert>}
+      {actionError === null ? null : (
+        <Alert data-testid="monitor-detail-action-error" tone="error">
+          {actionError}
+        </Alert>
+      )}
       {detail.isError ? (
-        <Alert tone="warning">
+        <Alert data-testid="monitor-detail-refresh-error" tone="warning">
           อัปเดตข้อมูลไม่สำเร็จ กำลังแสดงข้อมูล ณ{" "}
-          <Time iso={monitor.dataAsOf} format={formatTimeWithSeconds} />
+          <Time
+            testId="monitor-detail-retained-time"
+            iso={monitor.dataAsOf}
+            format={formatTimeWithSeconds}
+          />
         </Alert>
       ) : null}
       <StateAlerts monitor={monitor} />
@@ -497,14 +570,23 @@ function DetailForMonitor({
             monitorId={monitorId}
           />
         </div>
-        <aside className="flex min-w-0 flex-col gap-6">
+        <aside
+          data-testid="monitor-detail-config-region"
+          className="flex min-w-0 flex-col gap-6"
+        >
           <Card className="p-4">
             <Link
+              data-testid="monitor-detail-checks-link"
               to={`${overviewPath}/${monitorId}/checks`}
               className="inline-flex min-h-6 items-center gap-1.5 self-start rounded-[4px] text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               ดูประวัติการตรวจ
-              <span aria-hidden="true">→</span>
+              <span
+                data-testid="monitor-detail-checks-arrow"
+                aria-hidden="true"
+              >
+                →
+              </span>
             </Link>
           </Card>
           <ConfigCard monitor={monitor} />
@@ -523,6 +605,8 @@ function DetailForMonitor({
       </div>
       {deleteDialog === null ? null : (
         <ConfirmDialog
+          data-testid="monitor-detail-delete-dialog"
+          confirmTestId="monitor-detail-delete-confirm"
           title="ยืนยันการลบมอนิเตอร์"
           description={
             <>

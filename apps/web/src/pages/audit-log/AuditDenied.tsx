@@ -3,14 +3,27 @@ import { useEffect, useRef } from "react";
 import { Card } from "../../components/ui/card";
 
 // Step 15: the card heading takes focus so a screen reader announces why the rows went away.
-export function AuditDenied({ message }: { message: string }) {
+export function AuditDenied({
+  message,
+  denialCode,
+}: {
+  message: string;
+  denialCode?: string;
+}) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus();
   }, []);
   return (
-    <Card as="section" padding="md" aria-labelledby="audit-denied-title">
+    <Card
+      data-testid="audit-denied"
+      data-denial-code={denialCode}
+      as="section"
+      padding="md"
+      aria-labelledby="audit-denied-title"
+    >
       <h2
+        data-testid="audit-denied-title"
         id="audit-denied-title"
         ref={heading}
         tabIndex={-1}
@@ -18,7 +31,12 @@ export function AuditDenied({ message }: { message: string }) {
       >
         เข้าถึงบันทึกกิจกรรมไม่ได้
       </h2>
-      <p className="text-sm text-foreground-secondary">{message}</p>
+      <p
+        data-testid="audit-denied-message"
+        className="text-sm text-foreground-secondary"
+      >
+        {message}
+      </p>
     </Card>
   );
 }

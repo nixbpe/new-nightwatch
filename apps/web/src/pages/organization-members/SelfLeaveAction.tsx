@@ -82,12 +82,16 @@ export function SelfLeaveRouteBoundary({ children }: { children: ReactNode }) {
         {selfLeave.kind === "confirming" ? (
           <PageState
             kind="loading"
+            data-testid="self-leave-admission-loading"
+            statusTestId="self-leave-admission-status"
             label="กำลังยืนยันการออกจากองค์กร"
             visibleLabel
           />
         ) : selfLeave.kind === "refresh-failed" ? (
           <PageState
             kind="error"
+            data-testid="self-leave-admission-error"
+            retryTestId="self-leave-admission-retry"
             message="ไม่สามารถยืนยันสถานะการเป็นสมาชิกได้"
             retryLabel="ลองอีกครั้ง"
             onRetry={() => void retrySelfLeave(origin)}
@@ -242,6 +246,7 @@ export function SelfLeaveButton({
 }) {
   return (
     <Button
+      data-testid="self-leave-open"
       {...{ [LEAVE_ATTRIBUTE]: "" }}
       type="button"
       variant="secondary"
@@ -271,10 +276,14 @@ export function SelfLeaveSection({
   return (
     <>
       {selfLeave.notice !== null ? (
-        <Alert tone="error">{selfLeave.notice}</Alert>
+        <Alert data-testid="self-leave-error" tone="error">
+          {selfLeave.notice}
+        </Alert>
       ) : null}
       {selfLeave.confirmation !== null ? (
         <ConfirmDialog
+          data-testid="self-leave-dialog"
+          confirmTestId="self-leave-confirm"
           title="ยืนยันการออกจากองค์กร"
           description={
             <>
@@ -282,7 +291,11 @@ export function SelfLeaveSection({
                 {actor === undefined ? "คุณ" : `${actor.name} (${actor.email})`}{" "}
                 กำลังออกจากองค์กร {organization.name} ({organization.slug})
               </p>
-              <p className="mt-2">
+              <p
+                data-testid="self-leave-impact"
+                data-member-role={organization.role}
+                className="mt-2"
+              >
                 คุณจะเข้าถึงองค์กรนี้ไม่ได้ทันที
                 แต่บัญชีและสมาชิกภาพในองค์กรอื่นยังอยู่
                 {organization.role === "owner"

@@ -54,6 +54,7 @@ export function AssertionsSection({
         title="เงื่อนไขตรวจสอบ (Assertions)"
       />
       <TextControl
+        data-testid="monitor-form-expected-status"
         path="expectedStatus"
         label="รหัสสถานะที่ถือว่าปกติ"
         value={values.expectedStatus}
@@ -72,6 +73,7 @@ export function AssertionsSection({
         return (
           <RowShell
             key={assertion.key}
+            data-testid={`monitor-form-assertion-row-${assertion.key}`}
             legend={`เงื่อนไขแถวที่ ${row}`}
             removeLabel={`ลบเงื่อนไขแถวที่ ${row}`}
             disabled={disabled}
@@ -89,6 +91,7 @@ export function AssertionsSection({
             }}
           >
             <SelectControl
+              data-testid="monitor-form-assertion-kind"
               path={`${path}.kind`}
               label="ชนิด"
               ariaLabel={`ชนิดเงื่อนไขแถวที่ ${row}`}
@@ -109,6 +112,7 @@ export function AssertionsSection({
             {assertion.kind === "jsonPathEquals" ? (
               <>
                 <TextControl
+                  data-testid="monitor-form-assertion-path"
                   path={`${path}.path`}
                   label="JSONPath"
                   ariaLabel={`JSONPath แถวที่ ${row}`}
@@ -127,6 +131,7 @@ export function AssertionsSection({
                   }}
                 />
                 <TextControl
+                  data-testid="monitor-form-assertion-expected"
                   path={`${path}.expected`}
                   label="ค่าที่คาดหวัง"
                   ariaLabel={`ค่าที่คาดหวังแถวที่ ${row}`}
@@ -149,6 +154,7 @@ export function AssertionsSection({
             ) : null}
             {assertion.kind === "bodyContains" ? (
               <TextControl
+                data-testid="monitor-form-assertion-text"
                 path={`${path}.text`}
                 label="ข้อความที่ต้องมี"
                 ariaLabel={`ข้อความที่ต้องมีแถวที่ ${row}`}
@@ -166,6 +172,7 @@ export function AssertionsSection({
             ) : null}
             {assertion.kind === "responseTimeBelow" ? (
               <TextControl
+                data-testid="monitor-form-assertion-ms"
                 path={`${path}.ms`}
                 label="น้อยกว่า (มิลลิวินาที)"
                 ariaLabel={`เวลาตอบสนองน้อยกว่าแถวที่ ${row} (มิลลิวินาที)`}
@@ -187,6 +194,7 @@ export function AssertionsSection({
         );
       })}
       <AddRowButton
+        data-testid="monitor-form-add-assertion"
         id={ADD_ID}
         label="เพิ่มเงื่อนไข"
         limitMessage={

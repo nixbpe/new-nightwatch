@@ -79,6 +79,8 @@ function MonitorFormForOrganization({
 
   const header = (
     <PageHeader
+      titleTestId="monitor-form-title"
+      scopeTestId="monitor-form-scope"
       scope={
         organization === undefined
           ? undefined
@@ -92,6 +94,7 @@ function MonitorFormForOrganization({
       {header}
       <PageState
         kind="denied"
+        data-testid="monitor-form-denied"
         message={DENIED_MESSAGE}
         action={
           <Button asChild variant="secondary">
@@ -117,6 +120,8 @@ function MonitorFormForOrganization({
         {meError !== null ? (
           <PageState
             kind="error"
+            data-testid="monitor-form-admission-error"
+            retryTestId="monitor-form-admission-retry"
             message="ไม่สามารถยืนยันสิทธิ์ของคุณได้"
             retryLabel="ลองอีกครั้ง"
             onRetry={() => void refreshMembershipContext()}
@@ -160,6 +165,8 @@ function MonitorFormForOrganization({
         {header}
         <PageState
           kind="error"
+          data-testid="monitor-form-admission-error"
+          retryTestId="monitor-form-admission-retry"
           message="ไม่สามารถยืนยันสิทธิ์ของคุณได้"
           retryLabel="ลองอีกครั้ง"
           onRetry={() => void refreshMembershipContext()}
@@ -182,6 +189,7 @@ function MonitorFormForOrganization({
         {header}
         <PageState
           kind="denied"
+          data-testid="monitor-form-not-found"
           tone="info"
           message="ไม่พบมอนิเตอร์นี้"
           action={
@@ -202,6 +210,8 @@ function MonitorFormForOrganization({
       {detail.isError ? (
         <PageState
           kind="error"
+          data-testid="monitor-form-load-error"
+          retryTestId="monitor-form-load-retry"
           message="โหลดการตั้งค่าไม่สำเร็จ"
           retryLabel="ลองอีกครั้ง"
           onRetry={() => void detail.refetch()}

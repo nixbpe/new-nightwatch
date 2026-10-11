@@ -205,19 +205,19 @@ function renderAt(routes: RouteObject[], entry: string) {
 const anonOnly: RouteObject = {
   path: "/anon-only",
   loader: requireAnonLoader,
-  element: <div>anon-area</div>,
+  element: <div data-testid="anon-area">anon-area</div>,
 };
 
 const protectedWorkspace: RouteObject = {
   path: "/workspace",
   loader: workspaceLoader,
-  element: <div>protected-area</div>,
+  element: <div data-testid="protected-area">protected-area</div>,
 };
 
 const protectedNotifications: RouteObject = {
   path: "/notifications",
   loader: notificationsLoader,
-  element: <div>notifications-area</div>,
+  element: <div data-testid="notifications-area">notifications-area</div>,
 };
 
 describe("requireAnonLoader (anonymous-only gate)", () => {
@@ -230,7 +230,7 @@ describe("requireAnonLoader (anonymous-only gate)", () => {
   it("renders anonymous content for visitors without a session", async () => {
     renderAt([anonOnly], "/anon-only");
 
-    expect(await screen.findByText("anon-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("anon-area")).toBeInTheDocument();
     expect(screen.queryByTestId("location")).toBeNull();
   });
 
@@ -241,7 +241,7 @@ describe("requireAnonLoader (anonymous-only gate)", () => {
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/workspace",
     );
-    expect(screen.queryByText("anon-area")).toBeNull();
+    expect(screen.queryByTestId("anon-area")).toBeNull();
   });
 
   it("resumes the remembered return with query and hash and consumes it once", async () => {
@@ -290,7 +290,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     expect(screen.getByTestId("from")).toHaveTextContent(
       "/workspace?tab=security",
     );
-    expect(screen.queryByText("protected-area")).toBeNull();
+    expect(screen.queryByTestId("protected-area")).toBeNull();
   });
 
   it("redirects / to /workspace and remembers /workspace as the bounce origin", async () => {
@@ -308,7 +308,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     expect(await screen.findByTestId("location")).toHaveTextContent(
       "/verify-email",
     );
-    expect(screen.queryByText("protected-area")).toBeNull();
+    expect(screen.queryByTestId("protected-area")).toBeNull();
     expect(fetchMeContextMock).not.toHaveBeenCalled();
   });
 
@@ -318,7 +318,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
         {
           path: "/settings/security",
           loader: settingsLoader,
-          element: <div>security-area</div>,
+          element: <div data-testid="security-area">security-area</div>,
         },
       ],
       "/settings/security",
@@ -326,7 +326,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/login");
     expect(screen.getByTestId("from")).toHaveTextContent("/settings/security");
-    expect(screen.queryByText("security-area")).toBeNull();
+    expect(screen.queryByTestId("security-area")).toBeNull();
   });
 
   it("admits a verified session and stages the prefetched me/context for its identity", async () => {
@@ -334,7 +334,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     fetchMeContextMock.mockResolvedValue(meContext);
     renderAt([protectedWorkspace], "/workspace");
 
-    expect(await screen.findByText("protected-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
     // The prefetch landed in a client staged for THIS identity, never a shared singleton.
     const staged = peekStagedQueryClient();
@@ -355,7 +355,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     });
     renderAt([protectedNotifications], "/notifications");
 
-    expect(await screen.findByText("notifications-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("notifications-area")).toBeInTheDocument();
     const staged = peekStagedQueryClient();
     expect(staged?.identity).toBe(VERIFIED.id);
     expect(staged?.client.getQueryData(notificationQueryKey(null))).toEqual({
@@ -391,14 +391,18 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
         {
           path: "/organizations/:organizationId/notification-settings",
           loader: notificationSettingsLoader,
-          element: <div>notification-settings-area</div>,
+          element: (
+            <div data-testid="notification-settings-area">
+              notification-settings-area
+            </div>
+          ),
         },
       ],
       "/organizations/11111111-1111-4111-8111-111111111111/notification-settings",
     );
 
     expect(
-      await screen.findByText("notification-settings-area"),
+      await screen.findByTestId("notification-settings-area"),
     ).toBeInTheDocument();
     expect(
       peekStagedQueryClient()?.client.getQueryData(
@@ -420,7 +424,7 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
     renderAt([protectedWorkspace], "/workspace");
 
     expect(
-      await screen.findByText("protected-area", undefined, { timeout: 3000 }),
+      await screen.findByTestId("protected-area", undefined, { timeout: 3000 }),
     ).toBeInTheDocument();
   });
 });
@@ -456,7 +460,7 @@ describe("workspaceLoader overview prefetch", () => {
     fetchMonitorListMock.mockResolvedValue(overviewList);
     renderAt([protectedWorkspace], "/workspace");
 
-    expect(await screen.findByText("protected-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
     expect(fetchMonitorListMock).toHaveBeenCalledWith(
       organizationId,
       OVERVIEW_LIST_PARAMS,
@@ -479,7 +483,7 @@ describe("workspaceLoader overview prefetch", () => {
     renderAt([protectedWorkspace], "/workspace");
 
     expect(
-      await screen.findByText("protected-area", {}, { timeout: 4000 }),
+      await screen.findByTestId("protected-area", undefined, { timeout: 4000 }),
     ).toBeInTheDocument();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
@@ -489,7 +493,7 @@ describe("workspaceLoader overview prefetch", () => {
     fetchMeContextMock.mockResolvedValue(meContext);
     renderAt([protectedWorkspace], "/workspace");
 
-    expect(await screen.findByText("protected-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
 });
@@ -499,12 +503,12 @@ describe("audit log loaders", () => {
   const listRoute: RouteObject = {
     path: "/organizations/:organizationId/audit-log",
     loader: auditLogLoader,
-    element: <div>audit-area</div>,
+    element: <div data-testid="audit-area">audit-area</div>,
   };
   const eventRoute: RouteObject = {
     path: "/organizations/:organizationId/audit-log/:eventId",
     loader: auditLogEventLoader,
-    element: <div>audit-event-area</div>,
+    element: <div data-testid="audit-event-area">audit-event-area</div>,
   };
   afterEach(() => {
     sessionState.data = null;
@@ -538,7 +542,7 @@ describe("audit log loaders", () => {
       vi.mocked(fetchAuditActors).mockResolvedValue({ actors: [] });
       renderAt([listRoute], `/organizations/${organizationId}/audit-log`);
 
-      expect(await screen.findByText("audit-area")).toBeInTheDocument();
+      expect(await screen.findByTestId("audit-area")).toBeInTheDocument();
       expect(fetchAuditEvents).toHaveBeenCalledTimes(1);
       expect(fetchAuditActors).toHaveBeenCalledTimes(1);
       const [, params] = vi.mocked(fetchAuditEvents).mock.calls[0] ?? [];
@@ -573,7 +577,7 @@ describe("audit log loaders", () => {
         [listRoute],
         `/organizations/${organizationId}/audit-log${search}`,
       );
-      expect(await screen.findByText("audit-area")).toBeInTheDocument();
+      expect(await screen.findByTestId("audit-area")).toBeInTheDocument();
       expect(vi.mocked(fetchAuditEvents).mock.calls.length).toBe(sent ? 1 : 0);
     },
   );
@@ -611,9 +615,7 @@ describe("audit log loaders", () => {
         `/organizations/${organizationId}/audit-log`,
       );
 
-      expect(
-        await screen.findByText(/ยังไม่มีบันทึกกิจกรรมในช่วงที่เก็บไว้/),
-      ).toBeInTheDocument();
+      expect(await screen.findByTestId("audit-empty")).toBeInTheDocument();
       expect(fetchAuditEvents).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -627,7 +629,7 @@ describe("audit log loaders", () => {
       [listRoute, eventRoute],
       `/organizations/${organizationId}/audit-log`,
     );
-    expect(await screen.findByText("audit-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("audit-area")).toBeInTheDocument();
     expect(fetchAuditEvents).not.toHaveBeenCalled();
     expect(fetchAuditActors).not.toHaveBeenCalled();
   });
@@ -636,7 +638,7 @@ describe("audit log loaders", () => {
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockResolvedValue(meContext);
     renderAt([eventRoute], `/organizations/${organizationId}/audit-log/evt-1`);
-    expect(await screen.findByText("audit-event-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("audit-event-area")).toBeInTheDocument();
     expect(fetchAuditEvent).not.toHaveBeenCalled();
   });
 
@@ -645,7 +647,7 @@ describe("audit log loaders", () => {
     as("auditor");
     vi.mocked(fetchAuditEvent).mockRejectedValue(new Error("not prefetched"));
     renderAt([eventRoute], `/organizations/${organizationId}/audit-log/evt-1`);
-    expect(await screen.findByText("audit-event-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("audit-event-area")).toBeInTheDocument();
     expect(fetchAuditEvent).toHaveBeenCalledWith(organizationId, "evt-1");
   });
 });
@@ -655,7 +657,7 @@ describe("monitorsOverviewLoader", () => {
   const route: RouteObject = {
     path: "/organizations/:organizationId/monitors",
     loader: monitorsOverviewLoader,
-    element: <div>monitors-area</div>,
+    element: <div data-testid="monitors-area">monitors-area</div>,
   };
   const emptyList: MonitorListResponse = {
     summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
@@ -676,7 +678,7 @@ describe("monitorsOverviewLoader", () => {
     fetchMonitorListMock.mockResolvedValue(emptyList);
     renderAt([route], `/organizations/${organizationId}/monitors`);
 
-    expect(await screen.findByText("monitors-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("monitors-area")).toBeInTheDocument();
     expect(
       peekStagedQueryClient()?.client.getQueryData(
         monitorQueryKeys.list(organizationId, { limit: 25, offset: 0 }),
@@ -689,7 +691,7 @@ describe("monitorsOverviewLoader", () => {
     fetchMeContextMock.mockResolvedValue(meContext);
     renderAt([route], `/organizations/${organizationId}/monitors`);
 
-    expect(await screen.findByText("monitors-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("monitors-area")).toBeInTheDocument();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
 
@@ -710,7 +712,7 @@ describe("monitorDetailLoader", () => {
   const route: RouteObject = {
     path: "/organizations/:organizationId/monitors/:monitorId",
     loader: monitorDetailLoader,
-    element: <div>detail-area</div>,
+    element: <div data-testid="detail-area">detail-area</div>,
   };
   const path = `/organizations/${organizationId}/monitors/${monitorId}`;
 
@@ -727,7 +729,7 @@ describe("monitorDetailLoader", () => {
     fetchMonitorDetailMock.mockResolvedValue(response);
     renderAt([route], path);
 
-    expect(await screen.findByText("detail-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("detail-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).toHaveBeenCalledExactlyOnceWith(
       organizationId,
       monitorId,
@@ -744,7 +746,7 @@ describe("monitorDetailLoader", () => {
     fetchMeContextMock.mockResolvedValue(meContext);
     renderAt([route], path);
 
-    expect(await screen.findByText("detail-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("detail-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
   });
 
@@ -761,7 +763,7 @@ describe("monitorDetailLoader", () => {
     renderAt([route], path);
 
     expect(
-      await screen.findByText("detail-area", {}, { timeout: 4000 }),
+      await screen.findByTestId("detail-area", undefined, { timeout: 4000 }),
     ).toBeInTheDocument();
   });
 
@@ -780,12 +782,12 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
   const editRoute: RouteObject = {
     path: "/organizations/:organizationId/monitors/:monitorId/edit",
     loader: monitorEditLoader,
-    element: <div>edit-area</div>,
+    element: <div data-testid="edit-area">edit-area</div>,
   };
   const createRoute: RouteObject = {
     path: "/organizations/:organizationId/monitors/new",
     loader: monitorCreateLoader,
-    element: <div>create-area</div>,
+    element: <div data-testid="create-area">create-area</div>,
   };
   const member = {
     ...meContext,
@@ -815,7 +817,7 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
     fetchMonitorDetailMock.mockResolvedValue(fresh);
     renderAt([editRoute], editPath);
 
-    expect(await screen.findByText("edit-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("edit-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).toHaveBeenCalledExactlyOnceWith(
       organizationId,
       monitorId,
@@ -832,7 +834,7 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
     fetchMeContextMock.mockResolvedValue(meContext);
     renderAt([editRoute], editPath);
 
-    expect(await screen.findByText("edit-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("edit-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
   });
 
@@ -842,7 +844,7 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
     fetchMonitorDetailMock.mockRejectedValue(new Error("404"));
     renderAt([editRoute], editPath);
 
-    expect(await screen.findByText("edit-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("edit-area")).toBeInTheDocument();
   });
 
   it("sends an anonymous visitor to sign in from Edit and from Create", async () => {
@@ -856,7 +858,7 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockResolvedValue(member);
     renderAt([createRoute], `/organizations/${organizationId}/monitors/new`);
-    expect(await screen.findByText("create-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("create-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
   });
 });
@@ -1577,7 +1579,7 @@ describe("verifyEmailLoader (anonymous-reachable resend hub)", () => {
   const verifyEmail: RouteObject = {
     path: "/verify-email",
     loader: verifyEmailLoader,
-    element: <div>verify-area</div>,
+    element: <div data-testid="verify-area">verify-area</div>,
   };
 
   it("prefetches the remembered invitation preview into the anonymous identity", async () => {
@@ -1585,7 +1587,7 @@ describe("verifyEmailLoader (anonymous-reachable resend hub)", () => {
     fetchInvitationMock.mockResolvedValue(invitation);
     renderAt([verifyEmail], "/verify-email");
 
-    expect(await screen.findByText("verify-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("verify-area")).toBeInTheDocument();
     expect(fetchInvitationMock).toHaveBeenCalledTimes(1);
     const staged = peekStagedQueryClient();
     expect(staged?.identity).toBeNull();
@@ -1599,7 +1601,7 @@ describe("verifyEmailLoader (anonymous-reachable resend hub)", () => {
     fetchInvitationMock.mockRejectedValue(new Error("not found"));
     renderAt([verifyEmail], "/verify-email");
 
-    expect(await screen.findByText("verify-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("verify-area")).toBeInTheDocument();
   });
 
   it("does not query invitation previews for signed-in visitors", async () => {
@@ -1607,7 +1609,7 @@ describe("verifyEmailLoader (anonymous-reachable resend hub)", () => {
     rememberInvitation("inv-5");
     renderAt([verifyEmail], "/verify-email");
 
-    expect(await screen.findByText("verify-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("verify-area")).toBeInTheDocument();
     expect(fetchInvitationMock).not.toHaveBeenCalled();
     expect(peekStagedQueryClient()).toBeNull();
   });

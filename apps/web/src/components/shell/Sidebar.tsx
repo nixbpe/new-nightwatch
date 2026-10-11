@@ -47,6 +47,7 @@ export function Sidebar({
     <div className="flex h-full flex-col">
       <OrgSwitcher collapsed={collapsed} />
       <nav
+        data-testid="shell-navigation"
         aria-label="เมนูหลัก"
         className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-4"
       >
@@ -71,7 +72,11 @@ export function Sidebar({
             return navRows;
           }
           return (
-            <div key={item.label} className="flex flex-col gap-0.5">
+            <div
+              key={item.label}
+              data-testid="shell-organization-navigation"
+              className="flex flex-col gap-0.5"
+            >
               {collapsed ? (
                 <div
                   role="separator"
@@ -112,6 +117,7 @@ function NavRow({
   if (collapsed) {
     return (
       <NavLink
+        data-testid={`shell-nav-${leaf.path}`}
         to={href}
         title={leaf.label}
         aria-label={leaf.label}
@@ -128,6 +134,7 @@ function NavRow({
   }
   return (
     <NavLink
+      data-testid={`shell-nav-${leaf.path}`}
       to={href}
       onClick={onNavigate}
       // The 3 px bar sits on the sidebar edge (-8 px past the row's 8 px inset).
@@ -145,6 +152,7 @@ function NavRow({
         // aria-hidden keeps the link's accessible name equal to its label.
         <span
           aria-hidden="true"
+          data-testid="shell-navigation-count"
           data-slot="nav-count"
           className="font-mono text-xs font-medium text-foreground-secondary tabular-nums"
         >

@@ -120,6 +120,8 @@ export function VerifyEmailPage() {
 
   return (
     <AuthPageFrame
+      data-testid="verify-email-page"
+      subtitleTestId="verify-email-recipient"
       eyebrow="// verify email"
       title="ยืนยันอีเมลของคุณ"
       subtitle={subtitle}
@@ -135,9 +137,13 @@ export function VerifyEmailPage() {
             className="flex flex-col gap-4"
             noValidate
           >
-            {error === null ? null : <Alert tone="error">{error}</Alert>}
+            {error === null ? null : (
+              <Alert data-testid="verify-email-resend-error" tone="error">
+                {error}
+              </Alert>
+            )}
             {status === "sent" ? (
-              <Alert tone="success">
+              <Alert data-testid="verify-email-sent" tone="success">
                 ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
                 (รวมถึงโฟลเดอร์สแปม)
               </Alert>
@@ -154,6 +160,7 @@ export function VerifyEmailPage() {
               {(field) => (
                 <Field label="อีเมลที่ใช้สมัครบัญชี">
                   <Input
+                    data-testid="verify-email-email"
                     type="email"
                     name="email"
                     autoComplete="email"
@@ -171,6 +178,7 @@ export function VerifyEmailPage() {
                   />
                   <FieldValidationError
                     id="verify-email-error"
+                    data-testid="verify-email-field-error"
                     errors={field.state.meta.errors}
                   />
                 </Field>
@@ -180,6 +188,7 @@ export function VerifyEmailPage() {
               selector={(state) => state.isSubmitting}
               children={(isSubmitting) => (
                 <SubmitButton
+                  data-testid="verify-email-resend"
                   pending={isSubmitting}
                   pendingLabel="กำลังส่ง…"
                   disabled={isSubmitting || coolingDown}
@@ -194,9 +203,13 @@ export function VerifyEmailPage() {
         )}
         {signedIn ? (
           <div className="flex flex-col gap-4">
-            {error === null ? null : <Alert tone="error">{error}</Alert>}
+            {error === null ? null : (
+              <Alert data-testid="verify-email-resend-error" tone="error">
+                {error}
+              </Alert>
+            )}
             {status === "sent" ? (
-              <Alert tone="success">
+              <Alert data-testid="verify-email-sent" tone="success">
                 ส่งอีเมลยืนยันใหม่แล้ว กรุณาตรวจสอบกล่องจดหมาย
                 (รวมถึงโฟลเดอร์สแปม)
               </Alert>
@@ -205,6 +218,7 @@ export function VerifyEmailPage() {
               selector={(state) => state.isSubmitting}
               children={(isSubmitting) => (
                 <Button
+                  data-testid="verify-email-resend"
                   type="button"
                   className="w-full"
                   disabled={isSubmitting || coolingDown}
@@ -225,6 +239,7 @@ export function VerifyEmailPage() {
         <div className="flex items-center justify-between text-sm">
           {signedIn ? (
             <button
+              data-testid="verify-email-sign-out"
               type="button"
               className="text-foreground-secondary underline"
               onClick={() => {
@@ -241,6 +256,7 @@ export function VerifyEmailPage() {
             </button>
           ) : (
             <button
+              data-testid="verify-email-login"
               type="button"
               className="text-foreground-secondary underline"
               onClick={() => {
@@ -251,6 +267,7 @@ export function VerifyEmailPage() {
             </button>
           )}
           <button
+            data-testid="verify-email-continue"
             type="button"
             className="text-primary underline"
             onClick={() => {

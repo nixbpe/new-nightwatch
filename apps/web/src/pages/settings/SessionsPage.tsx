@@ -97,6 +97,7 @@ export function SessionsPage() {
       <Card
         as="section"
         role="status"
+        data-testid="sessions-loading"
         aria-label="กำลังโหลดรายการเซสชัน"
         className="gap-3 p-6"
       >
@@ -111,11 +112,14 @@ export function SessionsPage() {
   if (query.isError) {
     return (
       <div className="flex flex-col gap-4">
-        <Alert tone="error">{query.error.message}</Alert>
+        <Alert data-testid="sessions-load-error" tone="error">
+          {query.error.message}
+        </Alert>
         <div>
           <Button
             type="button"
             variant="secondary"
+            data-testid="sessions-load-retry"
             disabled={query.isRefetching}
             onClick={() => {
               void query.refetch();
@@ -158,7 +162,10 @@ export function SessionsPage() {
         </p>
       </div>
 
-      <ul className="flex flex-col rounded-md border border-foreground/10">
+      <ul
+        data-testid="sessions-rows"
+        className="flex flex-col rounded-md border border-foreground/10"
+      >
         {rows.map((row, index) => {
           const isCurrent = row.token === currentToken;
           const device = deviceLabel(row.userAgent);
@@ -169,6 +176,7 @@ export function SessionsPage() {
           return (
             <li
               key={row.id}
+              data-testid={`session-row-${row.id}`}
               className={`flex flex-col gap-3 p-4 ${
                 index < rows.length - 1 ? "border-b border-foreground/10" : ""
               }`}
@@ -185,18 +193,29 @@ export function SessionsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span
                       className="truncate text-sm font-medium"
+                      data-testid="session-device"
                       title={row.userAgent ?? undefined}
                     >
                       {device.label}
                     </span>
                     {isCurrent ? (
-                      <StatusPill tone="primary" dot>
+                      <StatusPill
+                        data-testid="session-current"
+                        tone="primary"
+                        dot
+                      >
                         อุปกรณ์นี้
                       </StatusPill>
                     ) : null}
                   </div>
                   <p className="flex flex-wrap gap-x-2 text-xs text-foreground-secondary">
-                    <span>
+                    <span
+                      data-testid={
+                        row.ipAddress == null || row.ipAddress.trim() === ""
+                          ? "session-ip-unknown"
+                          : "session-ip"
+                      }
+                    >
                       {row.ipAddress === null ||
                       row.ipAddress === undefined ||
                       row.ipAddress.trim() === "" ? (
@@ -209,7 +228,10 @@ export function SessionsPage() {
                     </span>
                     <span>
                       ใช้งานล่าสุด{" "}
-                      <time dateTime={row.updatedAt.toISOString()}>
+                      <time
+                        data-testid="session-updated-at"
+                        dateTime={row.updatedAt.toISOString()}
+                      >
                         {lastActive}
                       </time>
                     </span>
@@ -222,6 +244,7 @@ export function SessionsPage() {
                       type="button"
                       variant="destructive-outline"
                       size="sm"
+                      data-testid="session-revoke-confirm"
                       disabled={busy === row.token}
                       onClick={() => {
                         void revoke(row.token, () =>
@@ -240,6 +263,7 @@ export function SessionsPage() {
                       onClick={() => {
                         closeConfirm(row.token);
                       }}
+                      data-testid="session-revoke-cancel"
                     >
                       ยกเลิก
                     </Button>
@@ -256,6 +280,7 @@ export function SessionsPage() {
                       setFailure(null);
                       setConfirming(row.token);
                     }}
+                    data-testid="session-revoke-open"
                   >
                     <LogOutIcon size={14} />
                     ออกจากระบบ
@@ -263,7 +288,11 @@ export function SessionsPage() {
                 )}
               </div>
               {rowFailure === null ? null : (
-                <p role="alert" className="text-sm text-danger">
+                <p
+                  data-testid="session-revoke-error"
+                  role="alert"
+                  className="text-sm text-danger"
+                >
                   {rowFailure}
                 </p>
               )}
@@ -275,6 +304,7 @@ export function SessionsPage() {
       <Notice tone="success">{revoked ? "ออกจากระบบอุปกรณ์แล้ว" : null}</Notice>
       {others?.length === 0 ? (
         <EmptyState
+          data-testid="sessions-no-others"
           icon={<LaptopIcon size={20} />}
           title="ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่ มีเพียงอุปกรณ์นี้เท่านั้น"
         />
@@ -293,6 +323,7 @@ export function SessionsPage() {
                   type="button"
                   variant="destructive-outline"
                   size="sm"
+                  data-testid="sessions-others-confirm"
                   disabled={busy === OTHERS}
                   onClick={() => {
                     void revoke(OTHERS, () => authClient.revokeOtherSessions());
@@ -309,6 +340,7 @@ export function SessionsPage() {
                   onClick={() => {
                     closeConfirm(OTHERS);
                   }}
+                  data-testid="sessions-others-cancel"
                 >
                   ยกเลิก
                 </Button>
@@ -325,13 +357,18 @@ export function SessionsPage() {
                   setFailure(null);
                   setConfirming(OTHERS);
                 }}
+                data-testid="sessions-others-open"
               >
                 ออกจากระบบทุกอุปกรณ์อื่น
               </Button>
             )}
           </div>
           {failure?.key === OTHERS ? (
-            <p role="alert" className="text-sm text-danger">
+            <p
+              data-testid="sessions-others-error"
+              role="alert"
+              className="text-sm text-danger"
+            >
               {failure.message}
             </p>
           ) : null}

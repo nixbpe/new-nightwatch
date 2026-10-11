@@ -59,7 +59,11 @@ function Kpi({
   label,
   value,
   danger = false,
+  testId,
+  valueCode,
 }: {
+  valueCode?: number | null;
+  testId?: string;
   label: string;
   value: string;
   danger?: boolean;
@@ -68,6 +72,8 @@ function Kpi({
     <div className="px-4 py-3">
       <dt className="text-xs text-foreground-secondary">{label}</dt>
       <dd
+        data-testid={testId}
+        data-value-code={valueCode ?? ""}
         className={`mt-1 ${value === "ไม่มีข้อมูล" ? "font-sans text-base" : "font-mono text-[22px] leading-8 font-medium tabular-nums"} ${danger ? "text-danger" : "text-heading"}`}
       >
         {value}
@@ -180,7 +186,7 @@ export function ResponseTimeCard({
   let body;
   if (denied || notFound) {
     body = (
-      <Alert tone="info">
+      <Alert data-testid="monitor-response-denial" tone="info">
         {denied ? "คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้" : "ไม่พบมอนิเตอร์นี้"}
       </Alert>
     );
@@ -188,6 +194,8 @@ export function ResponseTimeCard({
     body = (
       <>
         <Button
+          data-testid="monitor-response-toggle"
+          data-view={view}
           type="button"
           variant="secondary"
           size="sm"
@@ -206,16 +214,26 @@ export function ResponseTimeCard({
           <ResponseTimeTable range={range} series={series} />
         )}
         {windowClamped ? (
-          <p className="text-xs text-foreground-secondary">
+          <p
+            data-testid="monitor-response-clamp-note"
+            className="text-xs text-foreground-secondary"
+          >
             ช่วงเวลาเริ่มตั้งแต่สร้างมอนิเตอร์
           </p>
         ) : null}
         {range === "24h" ? null : (
-          <p className="text-xs text-foreground-secondary">
+          <p
+            data-testid="monitor-response-hourly-note"
+            className="text-xs text-foreground-secondary"
+          >
             {HOURLY_CHECK_ERROR_NOTE}
           </p>
         )}
-        <p className="text-sm">
+        <p
+          data-testid="monitor-response-summary"
+          data-paused={paused}
+          className="text-sm"
+        >
           {paused && !hasChecks(series)
             ? "หยุดชั่วคราวตลอดช่วง ไม่มีการตรวจ"
             : summaryText(summarize(series))}
@@ -224,14 +242,24 @@ export function ResponseTimeCard({
     );
   } else if (chartProps !== undefined) {
     body = (
-      <p className="text-sm text-foreground-secondary">
+      <p
+        data-testid="monitor-response-empty"
+        data-last-check-at={lastCheckAt ?? ""}
+        className="text-sm text-foreground-secondary"
+      >
         {lastCheckAt === null ? (
           "ยังไม่มีผลการตรวจ"
         ) : (
           <>
             ไม่มีผลใน{" "}
             {RANGE_OPTIONS.find((option) => option.value === range)?.label}{" "}
-            (ผลล่าสุด <Time iso={lastCheckAt} format={formatTimeOrDate} />)
+            (ผลล่าสุด{" "}
+            <Time
+              testId="monitor-response-empty-time"
+              iso={lastCheckAt}
+              format={formatTimeOrDate}
+            />
+            )
           </>
         )}
       </p>
@@ -239,12 +267,15 @@ export function ResponseTimeCard({
   } else if (query.isError) {
     body = (
       <>
-        <Alert tone="error">โหลดกราฟเวลาตอบสนองไม่สำเร็จ</Alert>
+        <Alert data-testid="monitor-response-error" tone="error">
+          โหลดกราฟเวลาตอบสนองไม่สำเร็จ
+        </Alert>
         <Button
           type="button"
           variant="secondary"
           size="sm"
           className="self-start"
+          data-testid="monitor-response-retry"
           onClick={() => void query.refetch()}
         >
           ลองอีกครั้ง
@@ -258,6 +289,9 @@ export function ResponseTimeCard({
   return (
     <section
       aria-labelledby="detail-response-times"
+      data-testid="monitor-response-times"
+      data-denied={denied}
+      data-not-found={notFound}
       className="flex flex-col gap-4"
     >
       <SectionHeader
@@ -265,7 +299,9 @@ export function ResponseTimeCard({
         title="เวลาตอบสนอง"
         meta={
           <SegmentedControl
+            testId="monitor-response-range-controls"
             label="ช่วงเวลาของกราฟ"
+            optionTestId={(value) => `monitor-response-range-${value}`}
             value={range}
             options={RANGE_OPTIONS}
             onChange={(next) => {
@@ -290,14 +326,22 @@ export function ResponseTimeCard({
           ? announcement.text
           : ""}
       </p>
-      <p className="text-xs text-foreground-secondary">
-        <span>หน่วย: ms</span>
+      <p
+        data-testid="monitor-response-caption"
+        data-range={range}
+        className="text-xs text-foreground-secondary"
+      >
+        <span data-testid="monitor-response-caption-unit">หน่วย: ms</span>
         {SEPARATOR}
-        <span>ช่วง: {RANGE_LABELS[range]}</span>
+        <span data-testid="monitor-response-caption-range">
+          ช่วง: {RANGE_LABELS[range]}
+        </span>
         {SEPARATOR}
-        <span>แหล่ง: ผลการตรวจของ NightWatch</span>
+        <span data-testid="monitor-response-caption-source">
+          แหล่ง: ผลการตรวจของ NightWatch
+        </span>
         {SEPARATOR}
-        <span>
+        <span data-testid="monitor-response-caption-population">
           p50/p95 จากเวลาที่วัดได้และไม่เป็น null
           รวมผลล้มเหลวและปัญหาฝั่งระบบที่วัดได้ ไม่มีค่าที่วัดได้แสดง
           “ไม่มีข้อมูล” จำนวนการตรวจนับ pass + fail ไม่นับปัญหาฝั่งระบบ
@@ -306,10 +350,23 @@ export function ResponseTimeCard({
         {data === undefined ? null : (
           <>
             {SEPARATOR}
-            <span>
-              ช่วงข้อมูล: <Time iso={data.window.from} format={formatBound} />{" "}
-              ถึง <Time iso={data.window.to} format={formatBound} /> (
-              {TIME_ZONE})
+            <span
+              data-testid="monitor-response-caption-window"
+              data-time-zone={TIME_ZONE}
+            >
+              ช่วงข้อมูล:{" "}
+              <Time
+                testId="monitor-response-window-from"
+                iso={data.window.from}
+                format={formatBound}
+              />{" "}
+              ถึง{" "}
+              <Time
+                testId="monitor-response-window-to"
+                iso={data.window.to}
+                format={formatBound}
+              />{" "}
+              ({TIME_ZONE})
               {range === "24h"
                 ? null
                 : " ขอบเริ่มปัดขึ้นเป็นชั่วโมง UTC รวมชั่วโมงปัจจุบันเฉพาะผลที่บันทึกแล้ว"}
@@ -320,13 +377,19 @@ export function ResponseTimeCard({
         data.points.length === MONITOR_RESPONSE_POINTS_MAX ? (
           <>
             {SEPARATOR}
-            <span>คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ</span>
+            <span
+              data-testid="monitor-response-cap-note"
+              data-count={data.points.length}
+            >
+              คำนวณจากผลตรวจล่าสุดไม่เกิน 1,440 รายการ
+            </span>
           </>
         ) : null}
       </p>
       {stats === undefined ? (
         denied || notFound || query.isError ? null : (
           <div
+            data-testid="monitor-response-kpis-loading"
             aria-label="กำลังโหลดสรุปเวลาตอบสนอง"
             className="grid grid-cols-2 gap-4 lg:grid-cols-4"
           >
@@ -336,11 +399,30 @@ export function ResponseTimeCard({
           </div>
         )
       ) : (
-        <HairlineGrid as="dl" className="grid-cols-2 lg:grid-cols-4">
-          <Kpi label="p50" value={msText(stats.p50Ms)} />
-          <Kpi label="p95" value={msText(stats.p95Ms)} />
-          <Kpi label="จำนวนการตรวจ" value={formatNumber(stats.checks)} />
+        <HairlineGrid
+          data-testid="monitor-response-kpis"
+          as="dl"
+          className="grid-cols-2 lg:grid-cols-4"
+        >
           <Kpi
+            testId="monitor-response-p50"
+            valueCode={stats.p50Ms}
+            label="p50"
+            value={msText(stats.p50Ms)}
+          />
+          <Kpi
+            testId="monitor-response-p95"
+            valueCode={stats.p95Ms}
+            label="p95"
+            value={msText(stats.p95Ms)}
+          />
+          <Kpi
+            testId="monitor-response-checks"
+            label="จำนวนการตรวจ"
+            value={formatNumber(stats.checks)}
+          />
+          <Kpi
+            testId="monitor-response-failed"
             label="ล้มเหลว"
             value={formatNumber(stats.failed)}
             danger={stats.failed > 0}
@@ -351,15 +433,24 @@ export function ResponseTimeCard({
         {body}
         {data !== undefined && query.isError ? (
           <>
-            <Alert tone="warning">
+            <Alert
+              data-testid="monitor-response-retained-warning"
+              tone="warning"
+            >
               อัปเดตกราฟไม่สำเร็จ ข้อมูล ณ{" "}
-              <Time iso={data.dataAsOf} format={formatBound} /> ({TIME_ZONE})
+              <Time
+                testId="monitor-response-retained-time"
+                iso={data.dataAsOf}
+                format={formatBound}
+              />{" "}
+              ({TIME_ZONE})
             </Alert>
             <Button
               type="button"
               variant="secondary"
               size="sm"
               className="self-start"
+              data-testid="monitor-response-retained-retry"
               onClick={() => void query.refetch()}
             >
               ลองอีกครั้ง

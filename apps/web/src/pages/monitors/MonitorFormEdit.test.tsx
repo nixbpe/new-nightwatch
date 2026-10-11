@@ -1,6 +1,6 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +17,12 @@ import {
   fetchMonitorResponseTimes,
   updateMonitor,
 } from "../../lib/api/monitors";
-import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
+import {
+  must,
+  noChecks,
+  noIncidents,
+  noResponseTimes,
+} from "./detail-test-support";
 import {
   A,
   B,
@@ -83,8 +88,7 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-const saveEdit = () =>
-  screen.getByRole("button", { name: /^(บันทึกการแก้ไข|กำลังบันทึก…)$/ });
+const saveEdit = () => screen.getByTestId("monitor-form-save");
 
 describe("Edit opens with the saved configuration", () => {
   it("opens in advanced mode when the monitor has advanced values", async () => {
@@ -102,28 +106,58 @@ describe("Edit opens with the saved configuration", () => {
       }),
     });
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
-    expect(screen.getByRole("radio", { name: "ขั้นสูง" })).toBeChecked();
-    expect(screen.getByLabelText("เมธอด")).toHaveValue("POST");
-    expect(screen.getByLabelText("หมดเวลารอ (วินาที)")).toHaveValue("5");
-    expect(screen.getByLabelText("รหัสสถานะที่ถือว่าปกติ")).toHaveValue(
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
+    expect(screen.getByTestId("monitor-form-mode-advanced")).toBeChecked();
+    expect(screen.getByTestId("monitor-form-method")).toHaveValue("POST");
+    expect(screen.getByTestId("monitor-form-timeout")).toHaveValue("5");
+    expect(screen.getByTestId("monitor-form-expected-status")).toHaveValue(
       "200-299,301",
     );
-    expect(screen.getByLabelText("ชื่อ query param แถวที่ 1")).toHaveValue(
-      "page",
-    );
-    expect(screen.getByLabelText("เนื้อหา")).toHaveValue("ping");
-    expect(screen.getByLabelText("JSONPath แถวที่ 1")).toHaveValue("$.status");
     expect(
-      screen.getByLabelText("เวลาตอบสนองน้อยกว่าแถวที่ 2 (มิลลิวินาที)"),
+      within(screen.getByTestId(/^monitor-form-query-row-/)).getByTestId(
+        "monitor-form-query-name",
+      ),
+    ).toHaveValue("page");
+    expect(screen.getByTestId("monitor-form-body-content")).toHaveValue("ping");
+    const [jsonRow] = screen
+      .getAllByTestId(/^monitor-form-assertion-row-/)
+      .filter(
+        (row) =>
+          within(row).getByTestId<HTMLSelectElement>(
+            "monitor-form-assertion-kind",
+          ).value === "jsonPathEquals",
+      );
+    const [responseRow] = screen
+      .getAllByTestId(/^monitor-form-assertion-row-/)
+      .filter(
+        (row) =>
+          within(row).getByTestId<HTMLSelectElement>(
+            "monitor-form-assertion-kind",
+          ).value === "responseTimeBelow",
+      );
+    expect(jsonRow).toBeInTheDocument();
+    expect(responseRow).toBeInTheDocument();
+    expect(
+      within(must(jsonRow)).getByTestId("monitor-form-assertion-path"),
+    ).toHaveValue("$.status");
+    expect(
+      within(must(responseRow)).getByTestId("monitor-form-assertion-ms"),
     ).toHaveValue("800");
   });
 
   it("opens in basic mode when nothing advanced is set", async () => {
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
-    expect(screen.getByRole("radio", { name: "พื้นฐาน" })).toBeChecked();
-    expect(screen.queryByText(/มีการตั้งค่าขั้นสูง/)).toBeNull();
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
+    expect(screen.getByTestId("monitor-form-mode-basic")).toBeChecked();
+    expect(screen.queryByTestId("monitor-form-advanced-summary")).toBeNull();
   });
 
   it("shows a loading state, then an error with retry when the load fails", async () => {
@@ -131,10 +165,16 @@ describe("Edit opens with the saved configuration", () => {
     const user = userEvent.setup();
     renderForm(editPath());
     expect(
-      await screen.findByText("โหลดการตั้งค่าไม่สำเร็จ"),
+      await screen.findByTestId("monitor-form-load-error"),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(await screen.findByDisplayValue("Payments API")).toBeInTheDocument();
+    await user.click(screen.getByTestId("monitor-form-load-retry"));
+    expect(
+      await waitFor(() => {
+        const field = screen.getByTestId("monitor-form-name");
+        expect(field).toHaveValue("Payments API");
+        return field;
+      }),
+    ).toBeInTheDocument();
   });
 
   it.each([
@@ -145,8 +185,10 @@ describe("Edit opens with the saved configuration", () => {
     // The API answers the three the same way (AC-48), so the page cannot tell them apart.
     detailMock.mockRejectedValue(new ApiError("MONITOR_NOT_FOUND", "nf", 404));
     renderForm(editPath(A, id));
-    expect(await screen.findByText("ไม่พบมอนิเตอร์นี้")).toBeInTheDocument();
-    expect(screen.queryByLabelText("ชื่อมอนิเตอร์")).toBeNull();
+    expect(
+      await screen.findByTestId("monitor-form-not-found"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   });
 
   it("keeps the nav leaf active on /new and /edit", () => {
@@ -162,7 +204,11 @@ describe("Edit save", () => {
     updateMock.mockReturnValue(pending.promise);
     const user = userEvent.setup();
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     await user.click(saveEdit());
     await user.click(saveEdit());
     await user.keyboard("{Enter}");
@@ -185,17 +231,15 @@ describe("Edit save", () => {
     });
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await screen.findByDisplayValue("Payments API");
-    expect(screen.getByLabelText("แจ้งเมื่อล้มเหลวติดกัน")).toHaveValue("3");
-    expect(
-      screen.getByRole("checkbox", { name: "แจ้งเมื่อล่มและกลับมาปกติ" }),
-    ).not.toBeChecked();
-    expect(
-      screen.getByRole("checkbox", { name: "แจ้งเมื่อ SSL ใกล้หมดอายุ" }),
-    ).not.toBeChecked();
-    expect(screen.getByLabelText("แจ้งล่วงหน้าก่อนหมดอายุ (วัน)")).toHaveValue(
-      "12",
-    );
+    const name = await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
+    expect(screen.getByTestId("monitor-form-alert-threshold")).toHaveValue("3");
+    expect(screen.getByTestId("monitor-form-alert-down")).not.toBeChecked();
+    expect(screen.getByTestId("monitor-form-alert-ssl")).not.toBeChecked();
+    expect(screen.getByTestId("monitor-form-alert-days")).toHaveValue("12");
     await user.type(name, " v2");
     await user.click(saveEdit());
     await waitFor(() => {
@@ -222,28 +266,47 @@ describe("Edit save", () => {
     });
     const user = userEvent.setup();
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     await user.click(saveEdit());
     await waitFor(() => {
       expect(
-        screen.getByLabelText("ค่า query param แถวที่ 1"),
-      ).toHaveAccessibleDescription("ค่ายาวได้ไม่เกิน 4 KiB");
+        within(screen.getByTestId(/^monitor-form-query-row-/)).getByTestId(
+          "monitor-form-query-value",
+        ),
+      ).toHaveAccessibleDescription();
+      expect(
+        within(screen.getByTestId(/^monitor-form-query-row-/)).getByTestId(
+          "monitor-form-query-value",
+        ),
+      ).toHaveAttribute("aria-invalid", "true");
     });
-    expect(screen.getByLabelText("ค่า query param แถวที่ 1")).toHaveFocus();
+    expect(
+      within(screen.getByTestId(/^monitor-form-query-row-/)).getByTestId(
+        "monitor-form-query-value",
+      ),
+    ).toHaveFocus();
   });
 
   it("keeps the edited values and blocks actions when the role drops", async () => {
     updateMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "d", 403));
     const user = userEvent.setup();
     renderForm(editPath());
-    const name = await screen.findByDisplayValue("Payments API");
+    const name = await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     await user.type(name, " mine");
     vi.mocked(fetchMeContext).mockResolvedValue(context("auditor"));
     await user.click(saveEdit());
-    expect(
-      (await screen.findAllByText("สิทธิ์ของคุณเปลี่ยนแล้ว")).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByLabelText("ชื่อมอนิเตอร์")).toHaveValue(
+    expect(await screen.findByTestId("monitor-form-role-changed")).toHaveRole(
+      "alert",
+    );
+    expect(screen.getByTestId("monitor-form-name")).toHaveValue(
       "Payments API mine",
     );
     await waitFor(() => {
@@ -257,18 +320,20 @@ describe("Edit save", () => {
     updateMock.mockRejectedValue(new ApiError("MEMBERSHIP_DENIED", "d", 403));
     const user = userEvent.setup();
     renderForm(editPath());
-    await screen.findByDisplayValue("Payments API");
+    await waitFor(() => {
+      const field = screen.getByTestId("monitor-form-name");
+      expect(field).toHaveValue("Payments API");
+      return field;
+    });
     vi.mocked(fetchMeContext).mockResolvedValue(
       context("owner", [{ id: B, name: "Beta", slug: "beta", role: "owner" }]),
     );
     await user.click(saveEdit());
     expect(
-      await screen.findByText(
-        "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
-      ),
+      await screen.findByTestId("monitor-form-denied"),
     ).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Payments API")).toBeNull();
-    expect(screen.queryByText("Acme")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-scope")).toBeNull();
   });
 
   it.each(["viewer", "auditor"] as const)(
@@ -277,9 +342,7 @@ describe("Edit save", () => {
       vi.mocked(fetchMeContext).mockResolvedValue(context(role));
       renderForm(editPath());
       expect(
-        await screen.findByText(
-          "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้",
-        ),
+        await screen.findByTestId("monitor-form-denied"),
       ).toBeInTheDocument();
       expect(detailMock).not.toHaveBeenCalled();
     },

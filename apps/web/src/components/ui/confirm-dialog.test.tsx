@@ -13,15 +13,19 @@ function StaticDialog() {
   const fallback = createRef<HTMLHeadingElement>();
   return (
     <>
-      <h1 ref={fallback} tabIndex={-1}>
+      <h1 data-testid="confirmation-fallback" ref={fallback} tabIndex={-1}>
         fallback heading
       </h1>
       <ConfirmDialog
+        data-testid="confirmation-dialog"
+        confirmTestId="confirmation-confirm"
         title="ยืนยัน"
         description={
           <>
-            <a href="#more">รายละเอียด</a>
-            <input aria-label="เหตุผล" />
+            <a data-testid="confirmation-details" href="#more">
+              รายละเอียด
+            </a>
+            <input data-testid="confirmation-reason" aria-label="เหตุผล" />
           </>
         }
         confirmLabel="ตกลง"
@@ -49,10 +53,11 @@ function StatefulHost({ withOpener = true }: { withOpener?: boolean }) {
   const fallback = createRef<HTMLHeadingElement>();
   return (
     <>
-      <h1 ref={fallback} tabIndex={-1}>
+      <h1 data-testid="confirmation-fallback" ref={fallback} tabIndex={-1}>
         fallback heading
       </h1>
       <button
+        data-testid="confirmation-open"
         type="button"
         ref={withOpener ? setOpener : undefined}
         onClick={() => {
@@ -63,6 +68,8 @@ function StatefulHost({ withOpener = true }: { withOpener?: boolean }) {
       </button>
       {open && (
         <ConfirmDialog
+          data-testid="confirmation-dialog"
+          confirmTestId="confirmation-confirm"
           title="ยืนยัน"
           description="รายละเอียด"
           confirmLabel="ตกลง"
@@ -85,17 +92,25 @@ function StatefulHost({ withOpener = true }: { withOpener?: boolean }) {
 describe("ConfirmDialog", () => {
   it("focuses Cancel on open", () => {
     render(<StaticDialog />);
-    expect(screen.getByRole("button", { name: "ยกเลิก" })).toHaveFocus();
+    expect(screen.getByTestId("confirmation-dialog")).toHaveAttribute(
+      "role",
+      "dialog",
+    );
+    expect(screen.getByTestId("confirmation-dialog")).toHaveAttribute(
+      "aria-modal",
+      "true",
+    );
+    expect(screen.getByTestId("confirmation-cancel")).toHaveFocus();
   });
 
   it("traps Tab across links, inputs and buttons in both directions", async () => {
     const user = userEvent.setup();
     render(<StaticDialog />);
-    const link = screen.getByRole("link", { name: "รายละเอียด" });
-    const input = screen.getByRole("textbox", { name: "เหตุผล" });
-    const confirm = screen.getByRole("button", { name: "ตกลง" });
+    const link = screen.getByTestId("confirmation-details");
+    const input = screen.getByTestId("confirmation-reason");
+    const confirm = screen.getByTestId("confirmation-confirm");
     // DOM order is link, input, Cancel, confirm; initial focus is Cancel.
-    expect(screen.getByRole("button", { name: "ยกเลิก" })).toHaveFocus();
+    expect(screen.getByTestId("confirmation-cancel")).toHaveFocus();
     await user.tab();
     expect(confirm).toHaveFocus();
     await user.tab();
@@ -111,34 +126,32 @@ describe("ConfirmDialog", () => {
   it("closes on Escape and returns focus to the opener when not pending", async () => {
     const user = userEvent.setup();
     render(<StatefulHost />);
-    const opener = screen.getByRole("button", { name: "open" });
+    const opener = screen.getByTestId("confirmation-open");
     await user.click(opener);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("confirmation-dialog")).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("confirmation-dialog")).toBeNull();
     expect(opener).toHaveFocus();
   });
 
   it("ignores Escape and keeps focus in the dialog while pending", async () => {
     const user = userEvent.setup();
     render(<StatefulHost />);
-    await user.click(screen.getByRole("button", { name: "open" }));
+    await user.click(screen.getByTestId("confirmation-open"));
     // The focused Confirm button is disabled once pending; focus moves to the dialog itself.
-    await user.click(screen.getByRole("button", { name: "ตกลง" }));
-    const dialog = screen.getByRole("dialog");
+    await user.click(screen.getByTestId("confirmation-confirm"));
+    const dialog = screen.getByTestId("confirmation-dialog");
     expect(dialog).toHaveFocus();
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("confirmation-dialog")).toBeInTheDocument();
     expect(dialog).toHaveFocus();
   });
 
   it("returns focus to fallbackFocus when the opener is gone", async () => {
     const user = userEvent.setup();
     render(<StatefulHost withOpener={false} />);
-    await user.click(screen.getByRole("button", { name: "open" }));
+    await user.click(screen.getByTestId("confirmation-open"));
     await user.keyboard("{Escape}");
-    expect(
-      screen.getByRole("heading", { name: "fallback heading" }),
-    ).toHaveFocus();
+    expect(screen.getByTestId("confirmation-fallback")).toHaveFocus();
   });
 });

@@ -46,7 +46,9 @@ export function ExportDialog({
   fallbackFocus,
   onSubmit,
   onCancel,
+  categoryCode,
 }: {
+  categoryCode?: string;
   scope: ExportDialogScope;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
@@ -132,6 +134,7 @@ export function ExportDialog({
   return createPortal(
     <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
       <div
+        data-testid="audit-export-dialog"
         ref={dialog}
         role="dialog"
         aria-modal="true"
@@ -142,12 +145,14 @@ export function ExportDialog({
         className="overlay-enter flex max-h-[calc(100dvh-2rem)] w-full max-w-[520px] flex-col rounded-md border border-foreground/10 bg-surface text-foreground shadow-modal focus:outline-none"
       >
         <h2
+          data-testid="audit-export-dialog-title"
           id={titleId}
           className="px-4 pt-4 text-lg font-semibold text-heading sm:px-6 sm:pt-6"
         >
           ส่งออกบันทึกกิจกรรม
         </h2>
         <div
+          data-testid="audit-export-dialog-body"
           tabIndex={0}
           role="region"
           aria-label="รายละเอียดการส่งออก"
@@ -155,27 +160,46 @@ export function ExportDialog({
         >
           <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-[max-content_1fr]">
             <dt className="text-foreground-secondary">ขอบเขต</dt>
-            <dd className="break-words">
+            <dd data-testid="audit-export-dialog-range" className="break-words">
               <span className="font-mono">{scope.rangeText}</span> (
               {scope.timeZone})
             </dd>
             <dt className="text-foreground-secondary">ตัวกรอง</dt>
-            <dd className="break-words">{scope.filtersText}</dd>
+            <dd
+              data-testid="audit-export-dialog-filters"
+              data-categories={categoryCode}
+              className="break-words"
+            >
+              {scope.filtersText}
+            </dd>
             <dt className="text-foreground-secondary">จำนวน</dt>
             <dd>
-              <span className="font-mono">{total.toLocaleString("en-US")}</span>{" "}
+              <span
+                data-testid="audit-export-dialog-total"
+                className="font-mono"
+              >
+                {total.toLocaleString("en-US")}
+              </span>{" "}
               รายการ
             </dd>
           </dl>
-          <p className="text-foreground-secondary">
+          <p
+            data-testid="audit-export-dialog-snapshot"
+            data-time-zone={scope.timeZone}
+            className="text-foreground-secondary"
+          >
             ณ โหลดเมื่อ <span className="font-mono">{scope.loadedAt}</span> (
             {scope.timeZone})
           </p>
-          <fieldset className="flex flex-col gap-2">
+          <fieldset
+            data-testid="audit-export-dialog-formats"
+            className="flex flex-col gap-2"
+          >
             <legend className="mb-1 font-medium">รูปแบบไฟล์</legend>
             {(["csv", "json"] as const).map((value) => (
               <label key={value} className="flex items-center gap-2">
                 <input
+                  data-testid={`audit-export-dialog-format-${value}`}
                   ref={value === "csv" ? firstFormat : undefined}
                   type="radio"
                   name="export-format"
@@ -191,18 +215,29 @@ export function ExportDialog({
           </fieldset>
           <RecordingScopeNote since={scope.recordingSince} />
           {tooLarge ? (
-            <p id={messageId} role="alert" className="text-danger">
+            <p
+              data-testid="audit-export-dialog-too-large"
+              id={messageId}
+              role="alert"
+              className="text-danger"
+            >
               {tooLargeText(total)}
             </p>
           ) : null}
           {message === null ? null : (
-            <p role="alert" className="text-danger">
+            <p
+              data-testid="audit-export-dialog-error"
+              data-outcome={message === EMPTY_REASON ? "empty" : "failed"}
+              role="alert"
+              className="text-danger"
+            >
               {message}
             </p>
           )}
         </div>
         <div className="flex flex-col gap-2 border-t border-foreground/10 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
           <Button
+            data-testid="audit-export-dialog-cancel"
             type="button"
             variant="secondary"
             wrap
@@ -212,6 +247,7 @@ export function ExportDialog({
             ยกเลิก
           </Button>
           <Button
+            data-testid="audit-export-dialog-create"
             type="button"
             wrap
             aria-disabled={submitting || tooLarge ? true : undefined}

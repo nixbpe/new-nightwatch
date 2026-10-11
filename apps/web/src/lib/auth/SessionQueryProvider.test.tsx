@@ -83,7 +83,9 @@ describe("SessionQueryProvider identity boundaries", () => {
 
     render(<Harness userId="user-a" pending={false} />);
 
-    expect(await screen.findByText("Org A")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("view")).toHaveTextContent("Org A"),
+    );
     // Cache hit on the staged prefetch: the tree never re-fetched.
     expect(transport).not.toHaveBeenCalled();
   });
@@ -94,14 +96,18 @@ describe("SessionQueryProvider identity boundaries", () => {
     transport.mockImplementation(() => new Promise<{ org: string }>(() => {}));
 
     const tree = render(<Harness userId="user-a" pending={false} />);
-    expect(await screen.findByText("Org A")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("view")).toHaveTextContent("Org A"),
+    );
 
     resolveQueryClientForIdentity("user-b").setQueryData(["me", "context"], {
       org: "Org B",
     });
     tree.rerender(<Harness userId="user-b" pending={false} />);
 
-    expect(await screen.findByText("Org B")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("view")).toHaveTextContent("Org B"),
+    );
     // B's tree consumed the staged prefetch instead of fetching again.
     expect(transport).toHaveBeenCalledTimes(1);
   });
@@ -117,7 +123,9 @@ describe("SessionQueryProvider identity boundaries", () => {
     render(<Harness userId="user-b" pending={false} />);
 
     // (a) B's tree never receives A's cached payload — not even one frame.
-    expect(await screen.findByText("Org B")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("view")).toHaveTextContent("Org B"),
+    );
     expect(commitLog).not.toContain("Org A");
     // (b) The mismatched client is retired through the cancel-then-clear path.
     await waitFor(() => {
@@ -148,7 +156,9 @@ describe("SessionQueryProvider identity boundaries", () => {
     tree.rerender(<Harness userId="user-a" pending={false} />);
 
     first.resolve({ org: "Org A" });
-    expect(await screen.findByText("Org A")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("view")).toHaveTextContent("Org A"),
+    );
     // The mounted query was never re-issued across hydration.
     expect(transport).toHaveBeenCalledTimes(1);
   });
@@ -166,7 +176,9 @@ describe("SessionQueryProvider identity boundaries", () => {
     tree.rerender(<Harness userId={null} pending={false} />);
     tree.rerender(<Harness userId="user-b" pending={false} />);
 
-    expect(await screen.findByText("Org B")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("view")).toHaveTextContent("Org B"),
+    );
 
     // A's response finally lands; B's view must not flinch.
     await act(async () => {
@@ -174,7 +186,7 @@ describe("SessionQueryProvider identity boundaries", () => {
       await staleA.promise;
     });
     expect(screen.getByTestId("view")).toHaveTextContent("Org B");
-    expect(screen.queryByText("Org A")).toBeNull();
+    expect(screen.getByTestId("view")).not.toHaveTextContent("Org A");
   });
 
   it("never renders the previous account cache after a direct account switch", async () => {
@@ -184,13 +196,17 @@ describe("SessionQueryProvider identity boundaries", () => {
     transport.mockImplementation(() => Promise.resolve({ org: "Org B" }));
 
     const tree = render(<Harness userId="user-a" pending={false} />);
-    expect(await screen.findByText("Org A")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("view")).toHaveTextContent("Org A"),
+    );
     // Boundary between A's committed frames and whatever B commits.
     const aCommits = commitLog.length;
 
     tree.rerender(<Harness userId="user-b" pending={false} />);
 
-    expect(await screen.findByText("Org B")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("view")).toHaveTextContent("Org B"),
+    );
     // B's very first committed frame was already served by B's own client:
     // no frame after the switch ever showed A's data.
     expect(commitLog.slice(aCommits)).not.toContain("Org A");

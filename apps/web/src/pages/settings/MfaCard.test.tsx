@@ -36,15 +36,24 @@ async function reachScanStep(refreshStatus = vi.fn()) {
     error: null,
   });
   render(<MfaCard enabled={false} refreshStatus={refreshStatus} />);
-  await user.click(screen.getByRole("button", { name: "เปิดใช้งาน" }));
+  await user.click(screen.getByTestId("mfa-enable-open"));
   await user.type(
-    screen.getByLabelText("รหัสผ่านปัจจุบัน"),
+    screen.getByTestId("mfa-enable-password"),
     "CurrentPassw0rd!",
   );
-  await user.click(
-    screen.getByRole("button", { name: /ถัดไป: สแกนคิวอาร์โค้ด/ }),
+  await user.click(screen.getByTestId("mfa-enable-submit"));
+  expect(await screen.findByTestId("mfa-secret")).toHaveTextContent(
+    SECRET_GROUPED,
   );
-  await screen.findByText(SECRET_GROUPED);
+  expect(screen.getByTestId("mfa-card").tagName).toBe("SECTION");
+  expect(screen.getByTestId("mfa-card")).toHaveAttribute(
+    "aria-labelledby",
+    "mfa-card-title",
+  );
+  expect(screen.getByTestId("mfa-card")).toHaveAccessibleName();
+  expect(
+    screen.getAllByTestId("mfa-recovery-code").map((node) => node.textContent),
+  ).toEqual(["code-1", "code-2"]);
   return user;
 }
 
@@ -62,40 +71,41 @@ describe("MfaCard enrolment steps", () => {
     expect(twoFactorMock.enable).toHaveBeenCalledWith({
       password: "CurrentPassw0rd!",
     });
-    expect(screen.getByText("code-1")).toBeInTheDocument();
-    expect(screen.getByText("code-2")).toBeInTheDocument();
-    expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent(
-      "สแกนและเก็บรหัสกู้คืน",
+    expect(screen.getByTestId("mfa-recovery-codes")).toHaveTextContent(
+      "code-1",
+    );
+    expect(screen.getByTestId("mfa-recovery-codes")).toHaveTextContent(
+      "code-2",
+    );
+    expect(screen.getByTestId("mfa-step-scan")).toHaveAttribute(
+      "aria-current",
+      "step",
     );
 
-    const next = screen.getByRole("button", { name: /ถัดไป: ยืนยันรหัสแรก/ });
+    const next = screen.getByTestId("mfa-scan-next");
     expect(next).toBeDisabled();
-    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByTestId("mfa-recovery-acknowledge"));
     expect(next).toBeEnabled();
     await user.click(next);
-    expect(screen.getByLabelText(/รหัสยืนยัน 6 หลัก/)).toBeInTheDocument();
+    expect(screen.getByTestId("mfa-verify-code")).toBeInTheDocument();
   });
 
   it("cancelling discards the draft — the secret and codes leave the DOM", async () => {
     const user = await reachScanStep();
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(
-      screen.getByRole("button", { name: /ถัดไป: ยืนยันรหัสแรก/ }),
-    );
-    await user.click(screen.getByRole("button", { name: /ย้อนกลับ/ }));
-    expect(screen.getByText(SECRET_GROUPED)).toBeInTheDocument();
+    await user.click(screen.getByTestId("mfa-recovery-acknowledge"));
+    await user.click(screen.getByTestId("mfa-scan-next"));
+    await user.click(screen.getByTestId("mfa-verify-back"));
+    expect(screen.getByTestId("mfa-secret")).toHaveTextContent(SECRET_GROUPED);
 
-    await user.click(screen.getByRole("button", { name: /ย้อนกลับ/ }));
+    await user.click(screen.getByTestId("mfa-scan-back"));
     // Back to the password step: a new enable call would mint a new secret.
-    expect(screen.queryByText(SECRET_GROUPED)).toBeNull();
-    expect(screen.queryByText("code-1")).toBeNull();
-    expect(screen.getByLabelText("รหัสผ่านปัจจุบัน")).toBeInTheDocument();
+    expect(screen.queryByTestId("mfa-secret")).toBeNull();
+    expect(screen.queryByTestId("mfa-recovery-codes")).toBeNull();
+    expect(screen.getByTestId("mfa-enable-password")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
-    expect(
-      screen.getByRole("button", { name: "เปิดใช้งาน" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("ปิดอยู่")).toBeInTheDocument();
+    await user.click(screen.getByTestId("mfa-enable-cancel"));
+    expect(screen.getByTestId("mfa-enable-open")).toBeInTheDocument();
+    expect(screen.getByTestId("mfa-status-disabled")).toBeInTheDocument();
   });
 
   it("a wrong password on enable is a field-level error and stays on step 1", async () => {
@@ -105,42 +115,53 @@ describe("MfaCard enrolment steps", () => {
       error: { code: "INVALID_PASSWORD", message: "Invalid password" },
     });
     render(<MfaCard enabled={false} refreshStatus={vi.fn()} />);
-    await user.click(screen.getByRole("button", { name: "เปิดใช้งาน" }));
-    const password = screen.getByLabelText("รหัสผ่านปัจจุบัน");
+    await user.click(screen.getByTestId("mfa-enable-open"));
+    const password = screen.getByTestId("mfa-enable-password");
     await user.type(password, "nope");
-    await user.click(
-      screen.getByRole("button", { name: /ถัดไป: สแกนคิวอาร์โค้ด/ }),
-    );
+    await user.click(screen.getByTestId("mfa-enable-submit"));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "รหัสผ่านไม่ถูกต้อง",
+    expect(
+      await screen.findByTestId("mfa-enable-password-error"),
+    ).toBeVisible();
+    expect(screen.getByTestId("mfa-enable-password-error")).toHaveAttribute(
+      "role",
+      "alert",
     );
     expect(password).toHaveAttribute("aria-invalid", "true");
-    expect(screen.queryByText(SECRET_GROUPED)).toBeNull();
+    expect(password).toHaveAttribute(
+      "aria-describedby",
+      screen.getByTestId("mfa-enable-password-error").id,
+    );
+    expect(password).toHaveValue("nope");
+    expect(twoFactorMock.enable).toHaveBeenCalledWith({ password: "nope" });
+    expect(screen.getByTestId("mfa-step-password")).toHaveAttribute(
+      "aria-current",
+      "step",
+    );
+    expect(screen.queryByTestId("mfa-secret")).toBeNull();
   });
 
   it("links a wrong TOTP code to its exact server validation alert", async () => {
     const user = await reachScanStep();
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(
-      screen.getByRole("button", { name: /ถัดไป: ยืนยันรหัสแรก/ }),
-    );
+    await user.click(screen.getByTestId("mfa-recovery-acknowledge"));
+    await user.click(screen.getByTestId("mfa-scan-next"));
     twoFactorMock.verifyTotp.mockResolvedValue({
       data: null,
       error: { code: "INVALID_CODE", message: "Invalid code" },
     });
 
-    const code = screen.getByLabelText(/รหัสยืนยัน 6 หลัก/);
+    const code = screen.getByTestId("mfa-verify-code");
     await user.type(code, "123456");
-    await user.click(
-      screen.getByRole("button", { name: /ยืนยันและเปิดใช้งาน/ }),
-    );
+    await user.click(screen.getByTestId("mfa-verify-submit"));
 
-    const alert = await screen.findByRole("alert");
+    const alert = await screen.findByTestId("mfa-verify-server-error");
     expect(code).toHaveAttribute("aria-invalid", "true");
     expect(code).toHaveAttribute("aria-describedby", "first-totp-server-error");
     expect(alert).toHaveAttribute("id", "first-totp-server-error");
-    expect(alert).toHaveTextContent("รหัสยืนยันไม่ถูกต้อง");
+    expect(alert).toBeVisible();
+    expect(alert).toHaveAttribute("role", "alert");
+    expect(code).toHaveValue("123456");
+    expect(twoFactorMock.verifyTotp).toHaveBeenCalledWith({ code: "123456" });
 
     await user.clear(code);
     expect(code).toHaveAttribute(
@@ -152,35 +173,37 @@ describe("MfaCard enrolment steps", () => {
   it("a verified code that the server still reports as disabled shows the refresh guard, not success", async () => {
     const refreshStatus = vi.fn().mockResolvedValue(false);
     const user = await reachScanStep(refreshStatus);
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(
-      screen.getByRole("button", { name: /ถัดไป: ยืนยันรหัสแรก/ }),
-    );
+    await user.click(screen.getByTestId("mfa-recovery-acknowledge"));
+    await user.click(screen.getByTestId("mfa-scan-next"));
     twoFactorMock.verifyTotp.mockResolvedValue({
       data: { token: "t", user: {} },
       error: null,
     });
 
-    await user.type(screen.getByLabelText(/รหัสยืนยัน 6 หลัก/), "123456");
-    await user.click(
-      screen.getByRole("button", { name: /ยืนยันและเปิดใช้งาน/ }),
-    );
+    await user.type(screen.getByTestId("mfa-verify-code"), "123456");
+    await user.click(screen.getByTestId("mfa-verify-submit"));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "ยืนยันรหัสแล้วแต่ยังไม่สามารถยืนยันสถานะกับเซิร์ฟเวอร์ได้",
+    expect(await screen.findByTestId("mfa-verify-guard")).toBeVisible();
+    expect(screen.getByTestId("mfa-verify-guard")).toHaveAttribute(
+      "role",
+      "alert",
     );
     expect(refreshStatus).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("เปิดอยู่")).toBeNull();
+    expect(twoFactorMock.verifyTotp).toHaveBeenCalledWith({ code: "123456" });
+    expect(screen.getByTestId("mfa-verify-code")).toHaveValue("");
+    expect(screen.getByTestId("mfa-step-verify")).toHaveAttribute(
+      "aria-current",
+      "step",
+    );
+    expect(screen.queryByTestId("mfa-status-enabled")).toBeNull();
   });
 
   it("the code field accepts digits only, six at most", async () => {
     const user = await reachScanStep();
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(
-      screen.getByRole("button", { name: /ถัดไป: ยืนยันรหัสแรก/ }),
-    );
+    await user.click(screen.getByTestId("mfa-recovery-acknowledge"));
+    await user.click(screen.getByTestId("mfa-scan-next"));
 
-    const code = screen.getByLabelText(/รหัสยืนยัน 6 หลัก/);
+    const code = screen.getByTestId("mfa-verify-code");
     await user.type(code, "12ab34567");
     expect(code).toHaveValue("123456");
   });
@@ -188,9 +211,7 @@ describe("MfaCard enrolment steps", () => {
   it("step 2 renders a QR image generated from the real otpauth URI on a white tile", async () => {
     await reachScanStep();
 
-    const qr = await screen.findByRole("img", {
-      name: "คิวอาร์โค้ดสำหรับแอปยืนยันตัวตน",
-    });
+    const qr = await screen.findByTestId("mfa-qr");
     expect(qr).toHaveAttribute("src", "data:image/png;base64,QR");
     expect(vi.mocked(toDataURL)).toHaveBeenCalledWith(
       TOTP_URI,
@@ -204,13 +225,13 @@ describe("MfaCard enrolment steps", () => {
       .mockResolvedValue(undefined);
     const user = await reachScanStep();
 
-    await user.click(screen.getByRole("button", { name: /^คัดลอก$/ }));
+    await user.click(screen.getByTestId("mfa-secret-copy-ready"));
     expect(writeText).toHaveBeenCalledWith("JBSWY3DPEHPK3PXP");
     expect(
-      await screen.findByRole("button", { name: "คัดลอกแล้ว" }),
+      await screen.findByTestId("mfa-secret-copy-done"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "คัดลอกทั้งหมด" }));
+    await user.click(screen.getByTestId("mfa-codes-copy-ready"));
     expect(writeText).toHaveBeenLastCalledWith("code-1\ncode-2");
     writeText.mockRestore();
   });
@@ -227,13 +248,18 @@ describe("MfaCard enrolment steps", () => {
       .mockImplementation(() => undefined);
     const user = await reachScanStep();
 
-    await user.click(screen.getByRole("button", { name: /ดาวน์โหลด \.txt/ }));
+    await user.click(screen.getByTestId("mfa-codes-download"));
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0]?.[0];
     expect(blob).toBeInstanceOf(Blob);
     expect(await (blob as Blob).text()).toContain("code-1\ncode-2");
     expect(click).toHaveBeenCalledTimes(1);
+    expect(click.mock.instances[0]).toHaveAttribute(
+      "download",
+      "nightwatch-recovery-codes.txt",
+    );
+    expect(click.mock.instances[0]).toHaveAttribute("href", "blob:codes");
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:codes");
     createObjectURL.mockRestore();
     revokeObjectURL.mockRestore();
@@ -260,24 +286,26 @@ describe("MfaCard enabled state", () => {
       <MfaCard enabled refreshStatus={refreshStatus} />,
     );
 
-    await user.click(screen.getByRole("button", { name: "ปิดใช้งาน" }));
-    const password = screen.getByLabelText(
-      "ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน",
-    );
+    await user.click(screen.getByTestId("mfa-disable-open"));
+    const password = screen.getByTestId("mfa-disable-password");
     expect(password).toHaveFocus();
-    expect(screen.getByRole("alert")).toHaveTextContent("การปิด MFA");
-    await user.type(password, "CurrentPassw0rd!");
-    await user.click(
-      screen.getByRole("button", { name: "ปิดใช้งานยืนยันสองขั้นตอน" }),
+    expect(screen.getByTestId("mfa-disable-warning")).toBeVisible();
+    expect(screen.getByTestId("mfa-disable-warning")).toHaveAttribute(
+      "role",
+      "alert",
     );
+    await user.type(password, "CurrentPassw0rd!");
+    await user.click(screen.getByTestId("mfa-disable-submit"));
 
     expect(twoFactorMock.disable).toHaveBeenCalledWith({
       password: "CurrentPassw0rd!",
     });
     expect(refreshStatus).toHaveBeenCalledTimes(1);
     rerender(<MfaCard enabled={false} refreshStatus={refreshStatus} />);
-    expect(await screen.findByText("ปิดอยู่")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "เปิดใช้งาน" })).toHaveFocus();
+    expect(
+      await screen.findByTestId("mfa-status-disabled"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("mfa-enable-open")).toHaveFocus();
   });
 
   it("a wrong password on disable keeps the panel open with a field-level error", async () => {
@@ -288,33 +316,39 @@ describe("MfaCard enabled state", () => {
     const user = userEvent.setup();
     render(<MfaCard enabled refreshStatus={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: "ปิดใช้งาน" }));
-    const password = screen.getByLabelText(
-      "ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน",
-    );
+    await user.click(screen.getByTestId("mfa-disable-open"));
+    const password = screen.getByTestId("mfa-disable-password");
     await user.type(password, "nope");
-    await user.click(
-      screen.getByRole("button", { name: "ปิดใช้งานยืนยันสองขั้นตอน" }),
-    );
+    await user.click(screen.getByTestId("mfa-disable-submit"));
 
-    expect(await screen.findByText("รหัสผ่านไม่ถูกต้อง")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("mfa-disable-password-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("mfa-disable-password-error")).toHaveAttribute(
+      "role",
+      "alert",
+    );
     expect(password).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("เปิดอยู่")).toBeInTheDocument();
+    expect(password).toHaveAttribute(
+      "aria-describedby",
+      screen.getByTestId("mfa-disable-password-error").id,
+    );
+    expect(password).toHaveValue("nope");
+    expect(twoFactorMock.disable).toHaveBeenCalledWith({ password: "nope" });
+    expect(screen.getByTestId("mfa-status-enabled")).toBeInTheDocument();
   });
 
   it("only one panel is open at a time, and cancelling returns focus to the button that opened it", async () => {
     const user = userEvent.setup();
     render(<MfaCard enabled refreshStatus={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: /สร้างชุดใหม่/ }));
-    expect(screen.getByLabelText(/รหัสผ่านปัจจุบัน/)).toHaveFocus();
-    await user.click(screen.getByRole("button", { name: "ปิดใช้งาน" }));
-    expect(screen.queryByLabelText(/จำเป็นสำหรับสร้างรหัสกู้คืน/)).toBeNull();
-    expect(
-      screen.getByLabelText("ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน"),
-    ).toHaveFocus();
+    await user.click(screen.getByTestId("mfa-regenerate-open"));
+    expect(screen.getByTestId("mfa-regenerate-password")).toHaveFocus();
+    await user.click(screen.getByTestId("mfa-disable-open"));
+    expect(screen.queryByTestId("mfa-regenerate-password")).toBeNull();
+    expect(screen.getByTestId("mfa-disable-password")).toHaveFocus();
 
-    await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
-    expect(screen.getByRole("button", { name: "ปิดใช้งาน" })).toHaveFocus();
+    await user.click(screen.getByTestId("mfa-disable-cancel"));
+    expect(screen.getByTestId("mfa-disable-open")).toHaveFocus();
   });
 });

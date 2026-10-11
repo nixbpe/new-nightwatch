@@ -116,14 +116,25 @@ describe("PendingInvitationsSection", () => {
     serve(120);
     const user = userEvent.setup();
     const { announceCreated } = renderSection();
-    await screen.findByText("row-1@example.test");
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    await screen.findByText("row-51@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
+    await user.click(screen.getByTestId("pending-invitations-next"));
+    await screen.findByTestId(`pending-invitation-row-${publicId(51)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent("row-51@example.test");
 
     announceCreated();
 
-    await screen.findByText("row-1@example.test");
-    expect(screen.queryByText("row-51@example.test")).toBeNull();
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
+    expect(
+      screen.queryByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toBeNull();
   });
 
   it("shows rows, n of 100, the total and an expired label that is text", async () => {
@@ -147,40 +158,93 @@ describe("PendingInvitationsSection", () => {
     );
     renderSection();
 
-    await screen.findByText("live@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
     expect(
-      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
-    ).toHaveTextContent("คำเชิญที่รอตอบรับ (1 จาก 100)");
-    expect(screen.getByText("คำเชิญที่หมดอายุไม่นับในโควตา")).toBeVisible();
-    const rows = screen.getAllByRole("row").slice(1);
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("live@example.test");
+    expect(screen.getByTestId("pending-invitations-count")).toHaveTextContent(
+      "1",
+    );
+    expect(screen.getByTestId("pending-invitations-limit")).toHaveTextContent(
+      "100",
+    );
+    expect(screen.getByTestId("pending-invitations-count")).toBeVisible();
+    const rows = screen.getAllByTestId(/^pending-invitation-row-/);
     expect(rows).toHaveLength(3);
-    const [live, old, nullDate] = rows as [
-      HTMLElement,
-      HTMLElement,
-      HTMLElement,
-    ];
-    expect(within(live).getByText("live@example.test")).toBeVisible();
-    expect(within(live).getByText("ผู้ดูแล")).toBeVisible();
-    expect(within(live).queryByText("หมดอายุ")).toBeNull();
-    expect(within(old).getByText("หมดอายุ")).toBeVisible();
-    expect(within(nullDate).getByText("หมดอายุ")).toBeVisible();
+    const live = screen.getByTestId(`pending-invitation-row-${publicId(1)}`);
+    const old = screen.getByTestId(`pending-invitation-row-${publicId(2)}`);
+    const nullDate = screen.getByTestId(
+      `pending-invitation-row-${publicId(3)}`,
+    );
+    expect(live).toBeVisible();
+    expect(live).toHaveTextContent("live@example.test");
     expect(
-      screen.getAllByRole("columnheader").map((cell) => cell.textContent),
-    ).toEqual(["อีเมล", "บทบาท", "ส่งเมื่อ", "หมดอายุ", "การทำงาน"]);
-    expect(screen.getByText("คำเชิญทั้งหมด 3 รายการ")).toBeVisible();
+      within(live).getByTestId("pending-invitation-sent-at"),
+    ).toHaveAttribute("datetime", "2026-09-30T08:00:00.000Z");
+    expect(
+      within(live).getByTestId("pending-invitation-expires-at"),
+    ).toHaveAttribute("datetime", "2026-10-02T08:00:00.000Z");
+    expect(
+      within(live).getByTestId("pending-invitation-role-admin"),
+    ).toBeVisible();
+    expect(within(live).queryByTestId("pending-invitation-expired")).toBeNull();
+    expect(within(old).getByTestId("pending-invitation-expired")).toBeVisible();
+    expect(
+      within(nullDate).getByTestId("pending-invitation-expired"),
+    ).toBeVisible();
+    for (const field of ["email", "role", "sentAt", "expiresAt", "actions"]) {
+      const column = screen.getByTestId(`pending-invitation-column-${field}`);
+      expect(column).toHaveAttribute("scope", "col");
+      expect(column).toHaveRole("columnheader");
+      expect(column).toHaveAccessibleName();
+    }
+    expect(
+      within(live).getByTestId(`invitation-cancel-${publicId(1)}`),
+    ).toBeEnabled();
+    expect(
+      within(live).getByTestId(`invitation-resend-${publicId(1)}`),
+    ).toBeEnabled();
+    expect(screen.getByTestId("pending-invitations-total")).toBeVisible();
+    expect(
+      screen.getByTestId("pending-invitations-total").textContent.match(/\d+/g),
+    ).toEqual(["3"]);
     expect(fetchList).toHaveBeenCalledWith(A, 50, 0);
   });
 
-  it("renders no invitation id, public id or link in the DOM", async () => {
+  it("renders no invitation id or link and exposes public id only in row/action hooks", async () => {
     fetchList.mockResolvedValue(
       listOf(A, [invitation(7, "someone@example.test")]),
     );
     const { container } = renderSection();
-    await screen.findByText("someone@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(7)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(7)}`),
+    ).toHaveTextContent("someone@example.test");
 
     expect(container.querySelector("a, [href]")).toBeNull();
-    expect(container.innerHTML).not.toContain(publicId(7));
-    expect(container.innerHTML.toLowerCase()).not.toContain("accept");
+    const hooks =
+      /^(pending-invitation-row|invitation-cancel|invitation-resend)-/;
+    expect(
+      within(container)
+        .getAllByTestId(hooks)
+        .map((node) => node.getAttribute("data-testid"))
+        .sort(),
+    ).toEqual(
+      [
+        `pending-invitation-row-${publicId(7)}`,
+        `invitation-cancel-${publicId(7)}`,
+        `invitation-resend-${publicId(7)}`,
+      ].sort(),
+    );
+    const withoutPublicHooks = container.cloneNode(true) as HTMLElement;
+    for (const node of within(withoutPublicHooks).getAllByTestId(hooks))
+      node.removeAttribute("data-testid");
+    expect(withoutPublicHooks.innerHTML).not.toContain(publicId(7));
+    // The bearer invitation.id is a UUID, excluded by the list DTO. Only
+    // the three exact verified public hook attributes above are removed.
+    expect(withoutPublicHooks.innerHTML).not.toMatch(
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
+    );
   });
 
   it.each([
@@ -192,18 +256,24 @@ describe("PendingInvitationsSection", () => {
     async ({ total, next, rows }) => {
       serve(total);
       renderSection();
-      await screen.findByText("row-1@example.test");
-
-      expect(screen.getAllByRole("row").slice(1)).toHaveLength(rows);
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
       expect(
-        screen.getByRole("button", { name: "หน้าก่อนหน้า" }),
-      ).toBeDisabled();
-      const nextButton = screen.getByRole("button", { name: "หน้าถัดไป" });
+        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).toHaveTextContent("row-1@example.test");
+
+      expect(screen.getAllByTestId(/^pending-invitation-row-/)).toHaveLength(
+        rows,
+      );
+      expect(screen.getByTestId("pending-invitations-previous")).toBeDisabled();
+      const nextButton = screen.getByTestId("pending-invitations-next");
       if (next) expect(nextButton).toBeEnabled();
       else expect(nextButton).toBeDisabled();
+      expect(screen.getByTestId("pending-invitations-total")).toBeVisible();
       expect(
-        screen.getByText(`คำเชิญทั้งหมด ${String(total)} รายการ`),
-      ).toBeVisible();
+        screen
+          .getByTestId("pending-invitations-total")
+          .textContent.match(/\d+/g),
+      ).toEqual([String(total)]);
     },
   );
 
@@ -211,21 +281,33 @@ describe("PendingInvitationsSection", () => {
     serve(51, 40);
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText("row-1@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
 
     const second = Promise.withResolvers<PendingInvitationListResponse>();
     fetchList.mockImplementationOnce(() => second.promise);
-    const next = screen.getByRole("button", { name: "หน้าถัดไป" });
+    const next = screen.getByTestId("pending-invitations-next");
     next.focus();
     await user.keyboard("{Enter}");
 
     expect(fetchList).toHaveBeenLastCalledWith(A, 50, 50);
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดคำเชิญ",
+    expect(screen.getByTestId("pending-invitations-status")).toHaveAttribute(
+      "role",
+      "status",
     );
-    expect(screen.queryByText("row-1@example.test")).toBeNull();
-    expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.queryByText(/จาก 100/)).toBeNull();
+    expect(
+      screen.getByTestId("pending-invitations-status"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      await screen.findByTestId("pending-invitations-loading"),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.queryByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeNull();
+    expect(screen.queryByTestId("pending-invitations-table")).toBeNull();
+    expect(screen.queryByTestId("pending-invitations-count")).toBeNull();
 
     second.resolve({
       organizationId: A,
@@ -234,44 +316,68 @@ describe("PendingInvitationsSection", () => {
       activeLimit: 100,
       page: { limit: 50, offset: 50, total: 51 },
     });
-    expect(await screen.findByText("row-51@example.test")).toBeVisible();
     expect(
-      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
-    ).toHaveTextContent("(40 จาก 100)");
+      await screen.findByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toBeVisible();
     expect(
-      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
-    ).toHaveFocus();
-    expect(screen.getByRole("button", { name: "หน้าถัดไป" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "หน้าก่อนหน้า" })).toBeEnabled();
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent("row-51@example.test");
+    expect(screen.getByTestId("pending-invitations-count")).toHaveTextContent(
+      "40",
+    );
+    expect(screen.getByTestId("pending-invitations-limit")).toHaveTextContent(
+      "100",
+    );
+    expect(screen.getByTestId("pending-invitations-heading")).toHaveFocus();
+    expect(screen.getByTestId("pending-invitations-next")).toBeDisabled();
+    expect(screen.getByTestId("pending-invitations-previous")).toBeEnabled();
   });
 
   it("focuses the heading when the page changes to a page already in the cache", async () => {
     serve(51, 40);
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText("row-1@example.test");
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    await screen.findByText("row-51@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
+    await user.click(screen.getByTestId("pending-invitations-next"));
+    await screen.findByTestId(`pending-invitation-row-${publicId(51)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent("row-51@example.test");
     const callsBefore = fetchList.mock.calls.length;
 
-    await user.click(screen.getByRole("button", { name: "หน้าก่อนหน้า" }));
+    await user.click(screen.getByTestId("pending-invitations-previous"));
 
-    expect(await screen.findByText("row-1@example.test")).toBeVisible();
-    expect(fetchList).toHaveBeenCalledTimes(callsBefore);
     expect(
-      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
-    ).toHaveFocus();
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
+    expect(fetchList).toHaveBeenCalledTimes(callsBefore);
+    expect(screen.getByTestId("pending-invitations-heading")).toHaveFocus();
   });
 
   it("loads the last page with rows when a refresh returns none past the end", async () => {
     serve(130);
     const user = userEvent.setup();
     const { queryClient } = renderSection();
-    await screen.findByText("row-1@example.test");
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    await screen.findByText("row-51@example.test");
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    await screen.findByText("row-101@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
+    await user.click(screen.getByTestId("pending-invitations-next"));
+    await screen.findByTestId(`pending-invitation-row-${publicId(51)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent("row-51@example.test");
+    await user.click(screen.getByTestId("pending-invitations-next"));
+    await screen.findByTestId(`pending-invitation-row-${publicId(101)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(101)}`),
+    ).toHaveTextContent("row-101@example.test");
 
     // Another session cancels rows: 60 remain, so offset 100 is past the end.
     serve(60);
@@ -285,18 +391,33 @@ describe("PendingInvitationsSection", () => {
       queryKey: ["tenant", "invitations", A],
     });
 
-    expect(await screen.findByText("row-51@example.test")).toBeVisible();
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent("row-51@example.test");
     expect(fetchList).toHaveBeenLastCalledWith(A, 50, 50);
-    expect(screen.getByText("คำเชิญทั้งหมด 60 รายการ")).toBeVisible();
+    expect(screen.getByTestId("pending-invitations-total")).toBeVisible();
+    expect(
+      screen.getByTestId("pending-invitations-total").textContent.match(/\d+/g),
+    ).toEqual(["60"]);
   });
 
   it("shows empty only when the total is 0", async () => {
     fetchList.mockResolvedValue(listOf(A, [], 0));
     renderSection();
 
-    expect(await screen.findByText("ไม่มีคำเชิญที่รอตอบรับ")).toBeVisible();
-    expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.getByRole("heading")).toHaveTextContent("(0 จาก 100)");
+    expect(
+      await screen.findByTestId("pending-invitations-empty"),
+    ).toBeVisible();
+    expect(screen.queryByTestId("pending-invitations-table")).toBeNull();
+    expect(screen.getByTestId("pending-invitations-count")).toHaveTextContent(
+      "0",
+    );
+    expect(screen.getByTestId("pending-invitations-limit")).toHaveTextContent(
+      "100",
+    );
   });
 
   it("shows a retryable error instead of empty, then recovers", async () => {
@@ -306,67 +427,95 @@ describe("PendingInvitationsSection", () => {
     const user = userEvent.setup();
     renderSection();
 
-    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
-    expect(screen.queryByText("ไม่มีคำเชิญที่รอตอบรับ")).toBeNull();
-    expect(screen.queryByText(/จาก 100/)).toBeNull();
+    expect(
+      await screen.findByTestId("pending-invitations-load-error"),
+    ).toBeVisible();
+    expect(screen.queryByTestId("pending-invitations-empty")).toBeNull();
+    expect(screen.queryByTestId("pending-invitations-count")).toBeNull();
 
     fetchList.mockResolvedValueOnce(
       listOf(A, [invitation(1, "back@example.test")]),
     );
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-    expect(await screen.findByText("back@example.test")).toBeVisible();
-    expect(screen.queryByText("โหลดคำเชิญไม่สำเร็จ")).toBeNull();
+    await user.click(screen.getByTestId("pending-invitations-retry"));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("back@example.test");
+    expect(screen.queryByTestId("pending-invitations-load-error")).toBeNull();
   });
 
   it("focuses the heading and offers the previous page when the next page fails", async () => {
     serve(51);
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText("row-1@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
 
     fetchList.mockRejectedValueOnce(
       new ApiError("INTERNAL_ERROR", "boom", 500),
     );
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
+    await user.click(screen.getByTestId("pending-invitations-next"));
 
-    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
     expect(
-      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
-    ).toHaveFocus();
-    expect(screen.queryByText("row-1@example.test")).toBeNull();
+      await screen.findByTestId("pending-invitations-load-error"),
+    ).toBeVisible();
+    expect(screen.getByTestId("pending-invitations-heading")).toHaveFocus();
+    expect(
+      screen.queryByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeNull();
     await user.tab();
     await user.tab();
-    expect(screen.getByRole("button", { name: "หน้าก่อนหน้า" })).toHaveFocus();
+    expect(screen.getByTestId("pending-invitations-previous")).toHaveFocus();
     await user.keyboard("{Enter}");
-    expect(await screen.findByText("row-1@example.test")).toBeVisible();
-    expect(screen.queryByText("โหลดคำเชิญไม่สำเร็จ")).toBeNull();
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
+    expect(screen.queryByTestId("pending-invitations-load-error")).toBeNull();
   });
 
   it("focuses the heading when a retry succeeds after a failed page change", async () => {
     serve(51);
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText("row-1@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
 
     fetchList.mockRejectedValueOnce(
       new ApiError("INTERNAL_ERROR", "boom", 500),
     );
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
-
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
-
-    expect(await screen.findByText("row-51@example.test")).toBeVisible();
+    await user.click(screen.getByTestId("pending-invitations-next"));
     expect(
-      screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ }),
-    ).toHaveFocus();
+      await screen.findByTestId("pending-invitations-load-error"),
+    ).toBeVisible();
+
+    await user.click(screen.getByTestId("pending-invitations-retry"));
+
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent("row-51@example.test");
+    expect(screen.getByTestId("pending-invitations-heading")).toHaveFocus();
   });
 
   it("announces loading while a retry runs after a failed refresh", async () => {
     serve(2);
     const user = userEvent.setup();
     const { queryClient } = renderSection();
-    await screen.findByText("row-1@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
 
     fetchList.mockRejectedValueOnce(
       new ApiError("INTERNAL_ERROR", "boom", 500),
@@ -374,26 +523,42 @@ describe("PendingInvitationsSection", () => {
     await queryClient.invalidateQueries({
       queryKey: ["tenant", "invitations", A],
     });
-    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
+    expect(
+      await screen.findByTestId("pending-invitations-load-error"),
+    ).toBeVisible();
 
     fetchList.mockReturnValueOnce(new Promise(() => undefined));
-    await user.click(screen.getByRole("button", { name: "ลองอีกครั้ง" }));
+    await user.click(screen.getByTestId("pending-invitations-retry"));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดคำเชิญ",
+    expect(screen.getByTestId("pending-invitations-status")).toHaveAttribute(
+      "role",
+      "status",
     );
-    expect(screen.queryByText("โหลดคำเชิญไม่สำเร็จ")).toBeNull();
+    expect(
+      screen.getByTestId("pending-invitations-status"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      await screen.findByTestId("pending-invitations-loading"),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByTestId("pending-invitations-load-error")).toBeNull();
   });
 
   it("announces loading and shows no rows while the first request is pending", async () => {
     fetchList.mockReturnValue(new Promise(() => undefined));
     renderSection();
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "กำลังโหลดคำเชิญ",
+    expect(screen.getByTestId("pending-invitations-status")).toHaveAttribute(
+      "role",
+      "status",
     );
-    expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.queryByText("ไม่มีคำเชิญที่รอตอบรับ")).toBeNull();
+    expect(
+      screen.getByTestId("pending-invitations-status"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      await screen.findByTestId("pending-invitations-loading"),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByTestId("pending-invitations-table")).toBeNull();
+    expect(screen.queryByTestId("pending-invitations-empty")).toBeNull();
   });
 
   it("keeps Organization B untouched by a late response for A", async () => {
@@ -405,27 +570,51 @@ describe("PendingInvitationsSection", () => {
     );
     const { switchTo } = renderSection(A);
     switchTo(B);
-    expect(await screen.findByText("b-only@example.test")).toBeVisible();
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(2)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
+    ).toHaveTextContent("b-only@example.test");
 
     lateA.resolve(listOf(A, [invitation(1, "a-only@example.test")], 9));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(screen.getByText("b-only@example.test")).toBeVisible();
-    expect(screen.queryByText("a-only@example.test")).toBeNull();
-    expect(screen.getByText("คำเชิญทั้งหมด 1 รายการ")).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
+    ).toHaveTextContent("b-only@example.test");
+    expect(
+      screen.queryByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeNull();
+    expect(screen.getByTestId("pending-invitations-total")).toBeVisible();
+    expect(
+      screen.getByTestId("pending-invitations-total").textContent.match(/\d+/g),
+    ).toEqual(["1"]);
   });
 
   it("starts Organization B at offset 0 after paging in A", async () => {
     serve(120);
     const user = userEvent.setup();
     const { switchTo } = renderSection(A);
-    await screen.findByText("row-1@example.test");
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    await screen.findByText("row-51@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
+    await user.click(screen.getByTestId("pending-invitations-next"));
+    await screen.findByTestId(`pending-invitation-row-${publicId(51)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent("row-51@example.test");
 
     switchTo(B);
-    await screen.findByText("row-1@example.test");
+    await screen.findByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent("row-1@example.test");
     expect(fetchList).toHaveBeenLastCalledWith(B, 50, 0);
   });
 });

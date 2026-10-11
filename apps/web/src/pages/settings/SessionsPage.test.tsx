@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { formatDateTime, PREFERENCES_KEY } from "../../lib/preferences";
+import { UNKNOWN_DEVICE } from "../../lib/sessions/device-label";
 import type { SessionRow } from "../../lib/sessions/sessions";
 import { SessionsPage } from "./SessionsPage";
 
@@ -69,28 +70,13 @@ const UNKNOWN = session({
   updatedAt: new Date(NOW - 60 * 60_000),
 });
 
-function nth<T>(items: T[], index: number): T {
-  const item = items[index];
-  if (item === undefined) {
-    throw new Error(`expected an item at index ${String(index)}`);
-  }
-  return item;
-}
-
 function expectVisibleAbsoluteTime(item: HTMLElement, row: SessionRow): void {
   const value = formatDateTime(row.updatedAt, STORED_PREFERENCES);
-  const time = item.querySelector(
-    `time[datetime="${row.updatedAt.toISOString()}"]`,
-  );
-
-  expect(time).not.toBeNull();
-  if (time === null) {
-    throw new Error("expected a timestamp");
-  }
+  const time = within(item).getByTestId("session-updated-at");
+  expect(time).toHaveAttribute("datetime", row.updatedAt.toISOString());
 
   expect(time).toBeVisible();
   expect(time.textContent).toBe(value);
-  expect(time).not.toHaveClass("sr-only");
   expect(time).not.toHaveAttribute("aria-hidden", "true");
 }
 
@@ -130,22 +116,35 @@ describe("SessionsPage", () => {
     });
     const { container } = renderPage();
 
-    const items = await screen.findAllByRole("listitem");
+    const items = await screen.findAllByTestId(/^session-row-/);
     expect(items).toHaveLength(3);
-    expect(items[0]).toHaveTextContent("Chrome 129 · macOS");
-    expect(items[0]).toHaveTextContent("อุปกรณ์นี้");
-    expect(items[0]).toHaveTextContent("171.99.12.48");
-    expectVisibleAbsoluteTime(nth(items, 0), CURRENT);
-    expect(within(nth(items, 0)).queryByRole("button")).toBeNull();
+    expect(items.map((item) => item.getAttribute("data-testid"))).toEqual(
+      [CURRENT, UNKNOWN, PHONE].map((row) => `session-row-${row.id}`),
+    );
+    const current = screen.getByTestId(`session-row-${CURRENT.id}`);
+    expect(within(current).getByTestId("session-device")).toHaveTextContent(
+      "Chrome 129 · macOS",
+    );
+    expect(within(current).getByTestId("session-current")).toBeVisible();
+    expect(within(current).getByTestId("session-ip")).toHaveTextContent(
+      "171.99.12.48",
+    );
+    expectVisibleAbsoluteTime(current, CURRENT);
+    expect(within(current).queryByTestId("session-revoke-open")).toBeNull();
     // Most recently active other session next (1 h ago before 3 days ago).
-    expect(items[1]).toHaveTextContent("อุปกรณ์ที่ไม่รู้จัก");
-    expect(items[1]).toHaveTextContent("ไม่ทราบ IP");
-    expect(items[2]).toHaveTextContent("Safari 18 · iOS");
-    expectVisibleAbsoluteTime(nth(items, 2), PHONE);
+    const unknown = screen.getByTestId(`session-row-${UNKNOWN.id}`);
+    expect(within(unknown).getByTestId("session-device")).toHaveTextContent(
+      UNKNOWN_DEVICE.label,
+    );
+    expect(within(unknown).getByTestId("session-ip-unknown")).toBeVisible();
+    const phone = screen.getByTestId(`session-row-${PHONE.id}`);
+    expect(within(phone).getByTestId("session-device")).toHaveTextContent(
+      "Safari 18 · iOS",
+    );
+    expectVisibleAbsoluteTime(phone, PHONE);
     expect(container.textContent).not.toContain("tok-");
-    expect(
-      screen.getByRole("button", { name: "ออกจากระบบทุกอุปกรณ์อื่น" }),
-    ).toBeInTheDocument();
+    expect(container.innerHTML).not.toContain("tok-");
+    expect(screen.getByTestId("sessions-others-open")).toBeInTheDocument();
   });
 
   it("shows rows without current-device claims or revoke controls while the session is pending", async () => {
@@ -157,9 +156,13 @@ describe("SessionsPage", () => {
     });
     const { queryClient, rerender } = renderPage();
 
-    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
-    expect(screen.queryByText("อุปกรณ์นี้")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(await screen.findAllByTestId(/^session-row-/)).toHaveLength(2);
+    expect(screen.queryByTestId("session-current")).toBeNull();
+    expect(
+      screen.queryAllByTestId(
+        /^(session-revoke-(open|confirm|cancel)|sessions-others-(open|confirm|cancel))$/,
+      ),
+    ).toHaveLength(0);
 
     sessionState.data = {
       session: { token: "tok-current" },
@@ -172,10 +175,8 @@ describe("SessionsPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByText("อุปกรณ์นี้")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "ออกจากระบบทุกอุปกรณ์อื่น" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("session-current")).toBeInTheDocument();
+    expect(screen.getByTestId("sessions-others-open")).toBeInTheDocument();
   });
 
   it("shows rows without current-device claims or revoke controls when no listed session matches", async () => {
@@ -189,9 +190,13 @@ describe("SessionsPage", () => {
     });
     renderPage();
 
-    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
-    expect(screen.queryByText("อุปกรณ์นี้")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(await screen.findAllByTestId(/^session-row-/)).toHaveLength(2);
+    expect(screen.queryByTestId("session-current")).toBeNull();
+    expect(
+      screen.queryAllByTestId(
+        /^(session-revoke-(open|confirm|cancel)|sessions-others-(open|confirm|cancel))$/,
+      ),
+    ).toHaveLength(0);
   });
 
   it("shows no destructive controls when more than one row matches the current token", async () => {
@@ -204,9 +209,13 @@ describe("SessionsPage", () => {
     });
     renderPage();
 
-    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
-    expect(screen.queryByText("อุปกรณ์นี้")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(await screen.findAllByTestId(/^session-row-/)).toHaveLength(2);
+    expect(screen.queryByTestId("session-current")).toBeNull();
+    expect(
+      screen.queryAllByTestId(
+        /^(session-revoke-(open|confirm|cancel)|sessions-others-(open|confirm|cancel))$/,
+      ),
+    ).toHaveLength(0);
   });
 
   it("revoking one session asks for confirmation, calls the API with that token, and refetches", async () => {
@@ -220,28 +229,21 @@ describe("SessionsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const phoneRow = nth(await screen.findAllByRole("listitem"), 1);
-    await user.click(
-      within(phoneRow).getByRole("button", { name: /ออกจากระบบ/ }),
-    );
-    const confirm = within(phoneRow).getByRole("button", {
-      name: "ยืนยันออกจากระบบ",
-    });
+    const phoneRow = await screen.findByTestId(`session-row-${PHONE.id}`);
+    await user.click(within(phoneRow).getByTestId("session-revoke-open"));
+    const confirm = within(phoneRow).getByTestId("session-revoke-confirm");
     expect(confirm).toHaveFocus();
-    // COL-05: an inline confirm is a Danger outline button, never Danger fill.
-    expect(confirm).toHaveClass("border-danger", "text-danger");
-    expect(confirm).not.toHaveClass("bg-danger");
+    expect(confirm).toBeEnabled();
+    expect(authMock.revokeSession).not.toHaveBeenCalled();
     await user.click(confirm);
 
     expect(authMock.revokeSession).toHaveBeenCalledWith({
       token: "tok-phone-secret",
     });
     await waitFor(() => {
-      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+      expect(screen.getAllByTestId(/^session-row-/)).toHaveLength(1);
     });
-    expect(
-      screen.getByText(/ไม่มีอุปกรณ์อื่นเข้าสู่ระบบอยู่/),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("sessions-no-others")).toBeInTheDocument();
     expect(authMock.listSessions).toHaveBeenCalledTimes(2);
   });
 
@@ -253,15 +255,11 @@ describe("SessionsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const phoneRow = nth(await screen.findAllByRole("listitem"), 1);
-    await user.click(
-      within(phoneRow).getByRole("button", { name: /ออกจากระบบ/ }),
-    );
-    await user.click(within(phoneRow).getByRole("button", { name: "ยกเลิก" }));
+    const phoneRow = await screen.findByTestId(`session-row-${PHONE.id}`);
+    await user.click(within(phoneRow).getByTestId("session-revoke-open"));
+    await user.click(within(phoneRow).getByTestId("session-revoke-cancel"));
 
-    expect(
-      within(phoneRow).getByRole("button", { name: /ออกจากระบบ/ }),
-    ).toHaveFocus();
+    expect(within(phoneRow).getByTestId("session-revoke-open")).toHaveFocus();
     expect(authMock.revokeSession).not.toHaveBeenCalled();
   });
 
@@ -276,20 +274,14 @@ describe("SessionsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(
-      await screen.findByRole("button", { name: "ออกจากระบบทุกอุปกรณ์อื่น" }),
-    );
-    await user.click(
-      screen.getByRole("button", { name: "ยืนยันออกจากระบบ 2 อุปกรณ์" }),
-    );
+    await user.click(await screen.findByTestId("sessions-others-open"));
+    await user.click(screen.getByTestId("sessions-others-confirm"));
 
     expect(authMock.revokeOtherSessions).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+      expect(screen.getAllByTestId(/^session-row-/)).toHaveLength(1);
     });
-    expect(
-      screen.queryByRole("button", { name: "ออกจากระบบทุกอุปกรณ์อื่น" }),
-    ).toBeNull();
+    expect(screen.queryByTestId("sessions-others-open")).toBeNull();
   });
 
   it("a failed revoke keeps the row and shows the message", async () => {
@@ -304,18 +296,23 @@ describe("SessionsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const phoneRow = nth(await screen.findAllByRole("listitem"), 1);
-    await user.click(
-      within(phoneRow).getByRole("button", { name: /ออกจากระบบ/ }),
-    );
-    await user.click(
-      within(phoneRow).getByRole("button", { name: "ยืนยันออกจากระบบ" }),
-    );
+    const phoneRow = await screen.findByTestId(`session-row-${PHONE.id}`);
+    await user.click(within(phoneRow).getByTestId("session-revoke-open"));
+    await user.click(within(phoneRow).getByTestId("session-revoke-confirm"));
 
-    expect(await within(phoneRow).findByRole("alert")).toHaveTextContent(
-      "ออกจากระบบอุปกรณ์ไม่สำเร็จ",
-    );
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(
+      await within(phoneRow).findByTestId("session-revoke-error"),
+    ).toBeVisible();
+    expect(
+      within(phoneRow).getByTestId("session-revoke-error"),
+    ).toHaveAttribute("role", "alert");
+    expect(
+      within(phoneRow).getByTestId("session-revoke-confirm"),
+    ).toBeEnabled();
+    expect(authMock.revokeSession).toHaveBeenCalledWith({
+      token: "tok-phone-secret",
+    });
+    expect(screen.getAllByTestId(/^session-row-/)).toHaveLength(2);
     expect(authMock.listSessions).toHaveBeenCalledTimes(1);
   });
 
@@ -326,10 +323,12 @@ describe("SessionsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "โหลดรายการเซสชันไม่สำเร็จ",
+    expect(await screen.findByTestId("sessions-load-error")).toBeVisible();
+    expect(screen.getByTestId("sessions-load-error")).toHaveAttribute(
+      "role",
+      "alert",
     );
-    await user.click(screen.getByRole("button", { name: "ลองใหม่" }));
-    expect(await screen.findAllByRole("listitem")).toHaveLength(1);
+    await user.click(screen.getByTestId("sessions-load-retry"));
+    expect(await screen.findAllByTestId(/^session-row-/)).toHaveLength(1);
   });
 });

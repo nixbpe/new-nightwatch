@@ -50,6 +50,7 @@ export function Header({
     <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-foreground/10 bg-background px-4 sm:gap-4 sm:px-8">
       <button
         ref={mobileMenuButtonRef}
+        data-testid="shell-mobile-open"
         type="button"
         aria-label="เปิดเมนู"
         onClick={onOpenMobileMenu}
@@ -59,6 +60,7 @@ export function Header({
       </button>
       <button
         type="button"
+        data-testid="shell-sidebar-toggle"
         aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
         aria-expanded={!collapsed}
         aria-controls="app-sidebar"
@@ -68,7 +70,11 @@ export function Header({
         <PanelLeftIcon size={18} />
       </button>
 
-      <nav aria-label="ตำแหน่งปัจจุบัน" className="min-w-0 flex-1">
+      <nav
+        data-testid="shell-breadcrumb"
+        aria-label="ตำแหน่งปัจจุบัน"
+        className="min-w-0 flex-1"
+      >
         <ol className="flex items-center gap-2 text-sm">
           {trail.map((crumb, index) => {
             const isLast = index === trail.length - 1;
@@ -89,6 +95,11 @@ export function Header({
                 ) : null}
                 {crumb.path !== undefined && !isLast ? (
                   <Link
+                    data-testid={
+                      crumb === rootCrumb
+                        ? "shell-breadcrumb-organization"
+                        : `shell-breadcrumb-${crumb.path}`
+                    }
                     to={crumb.path}
                     className="text-foreground-secondary hover:text-foreground"
                   >
@@ -96,6 +107,15 @@ export function Header({
                   </Link>
                 ) : (
                   <span
+                    data-testid={
+                      crumb === rootCrumb
+                        ? "shell-breadcrumb-organization"
+                        : isLast
+                          ? "shell-breadcrumb-current"
+                          : crumb.path === undefined
+                            ? "shell-breadcrumb-ancestor"
+                            : `shell-breadcrumb-${crumb.path}`
+                    }
                     aria-current={isLast ? "page" : undefined}
                     className={
                       isLast
@@ -116,6 +136,7 @@ export function Header({
         <button
           type="button"
           onClick={onOpenSearch}
+          data-testid="shell-search-open"
           // Field-shaped, so it uses the control-border token (>= 3:1 contrast), not the divider hairline.
           className="hidden h-10 w-[360px] items-center gap-2.5 rounded-md border border-control-border bg-surface ps-3 pe-1.5 text-sm text-foreground-secondary hover:surface-hover hover:text-foreground lg:flex"
         >
@@ -125,6 +146,7 @@ export function Header({
         </button>
         <button
           type="button"
+          data-testid="shell-search-compact-open"
           aria-label="ค้นหาทั้งหมด"
           onClick={onOpenSearch}
           className={`${iconButton} inline-flex lg:hidden`}

@@ -429,6 +429,8 @@ export function MonitorForm({
         {editing ? "กลับไปมอนิเตอร์" : "กลับไปรายการมอนิเตอร์"}
       </Link>
       <PageHeader
+        titleTestId="monitor-form-title"
+        scopeTestId="monitor-form-scope"
         eyebrow={editing ? "// edit monitor" : "// new monitor"}
         description={
           editing
@@ -467,6 +469,7 @@ export function MonitorForm({
         {heading}
         <PageState
           kind="denied"
+          data-testid="monitor-form-not-found"
           tone="info"
           message="ไม่พบมอนิเตอร์นี้"
           action={
@@ -495,7 +498,9 @@ export function MonitorForm({
         <PageState kind="loading" label="กำลังยืนยันสิทธิ์มอนิเตอร์" />
       ) : null}
       {!presented && formError !== null ? (
-        <Alert tone="error">{formError}</Alert>
+        <Alert data-testid="monitor-form-error" tone="error">
+          {formError}
+        </Alert>
       ) : null}
       <form
         ref={formRef}
@@ -521,6 +526,7 @@ export function MonitorForm({
                 โหมด
               </span>
               <SegmentedControl
+                optionTestId={(value) => `monitor-form-mode-${value}`}
                 label="โหมด"
                 value={mode}
                 options={[
@@ -531,11 +537,16 @@ export function MonitorForm({
               />
             </div>
             {mode === "basic" && advancedInUse > 0 ? (
-              <div className="flex flex-wrap items-center gap-3">
+              <div
+                data-testid="monitor-form-advanced-summary"
+                data-advanced-count={advancedInUse}
+                className="flex flex-wrap items-center gap-3"
+              >
                 <Alert tone="info" role="status">
                   มีการตั้งค่าขั้นสูง {advancedInUse} รายการที่ยังใช้งานอยู่
                 </Alert>
                 <Button
+                  data-testid="monitor-form-show-advanced"
                   type="button"
                   variant="secondary"
                   size="sm"
@@ -564,13 +575,20 @@ export function MonitorForm({
               code={mode === "advanced" ? "05" : "02"}
               organizationId={organizationId}
             />
-            {roleLost ? <Alert tone="error">{lockMessage}</Alert> : null}
+            {roleLost ? (
+              <Alert data-testid="monitor-form-role-changed" tone="error">
+                {lockMessage}
+              </Alert>
+            ) : null}
             {conflict ? (
               <div className="flex flex-col gap-2">
-                <Alert tone="warning">{CONFLICT_MESSAGE}</Alert>
+                <Alert data-testid="monitor-form-conflict" tone="warning">
+                  {CONFLICT_MESSAGE}
+                </Alert>
                 {onReload === undefined ? null : (
                   <div>
                     <Button
+                      data-testid="monitor-form-reload"
                       type="button"
                       variant="secondary"
                       size="sm"
@@ -586,10 +604,16 @@ export function MonitorForm({
               </div>
             ) : null}
             {formError === null || roleLost ? null : (
-              <Alert tone="error">{formError}</Alert>
+              <Alert data-testid="monitor-form-error" tone="error">
+                {formError}
+              </Alert>
             )}
             {unplaced.map((message) => (
-              <Alert key={message} tone="error">
+              <Alert
+                data-testid="monitor-form-unplaced-error"
+                key={message}
+                tone="error"
+              >
                 {message}
               </Alert>
             ))}
@@ -629,9 +653,12 @@ export function MonitorForm({
         {presented ? (
           <div className="flex min-w-0 items-center justify-end gap-2 border-t border-foreground/10 pt-4 lg:col-start-1 lg:row-start-2">
             <Button asChild variant="ghost">
-              <Link to={backPath}>ยกเลิก</Link>
+              <Link data-testid="monitor-form-cancel" to={backPath}>
+                ยกเลิก
+              </Link>
             </Button>
             <Button
+              data-testid="monitor-form-save"
               id="monitor-form-save-button"
               type="submit"
               aria-disabled={saving || testing || roleLost}

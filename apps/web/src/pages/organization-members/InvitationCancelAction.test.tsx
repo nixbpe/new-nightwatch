@@ -86,22 +86,25 @@ function renderSection() {
 }
 
 const cancelButton = (n: number) =>
-  screen.getByRole("button", { name: `ยกเลิกคำเชิญถึง ${emailOf(n)}` });
+  screen.getByTestId(`invitation-cancel-${publicId(n)}`);
 const confirmButton = () =>
-  within(screen.getByRole("dialog")).getByRole("button", {
-    name: "ยืนยันการยกเลิกคำเชิญ",
-  });
-const heading = () =>
-  screen.getByRole("heading", { name: /คำเชิญที่รอตอบรับ/ });
+  within(screen.getByTestId(/^invitation-(cancel|resend)-dialog$/)).getByTestId(
+    "invitation-cancel-confirm",
+  );
+const heading = () => screen.getByTestId("pending-invitations-heading");
 // The section's own region; the open dialog carries a second status element.
-const sectionStatus = () =>
-  screen
-    .getAllByRole("status")
-    .find((node) => node.closest("section") !== null) as HTMLElement;
-const textStatusCount = () =>
-  screen.getAllByRole("status").filter((node) => node.textContent !== "")
-    .length;
-const regionText = () => sectionStatus().textContent;
+const sectionStatus = () => {
+  const node = screen.getByTestId("pending-invitations-status");
+  expect(node).toHaveAttribute("role", "status");
+  return node;
+};
+const textStatusCount = () => {
+  const nodes = screen.getAllByTestId(
+    /^(pending-invitations-status|confirmation-pending)$/,
+  );
+  for (const node of nodes) expect(node).toHaveAttribute("role", "status");
+  return nodes.filter((node) => node.textContent !== "").length;
+};
 
 async function openAndConfirm(
   user: ReturnType<typeof userEvent.setup>,
@@ -116,20 +119,29 @@ describe("invitation cancel", () => {
     serve(range(2));
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
+    const row = screen.getByTestId(`pending-invitation-row-${publicId(1)}`);
+    expect(
+      within(row).getByTestId("pending-invitation-sent-at"),
+    ).toHaveAttribute("datetime", invitation(1).sentAt);
+    expect(
+      within(row).getByTestId("pending-invitation-expires-at"),
+    ).toHaveAttribute("datetime", invitation(1).expiresAt);
     await user.click(cancelButton(1));
 
-    const dialog = screen.getByRole("dialog", {
-      name: "ยืนยันการยกเลิกคำเชิญ",
-    });
+    const dialog = screen.getByTestId(/^invitation-(cancel|resend)-dialog$/);
     expect(dialog).toHaveTextContent(emailOf(1));
-    expect(dialog).toHaveTextContent("ผู้ชม");
+    expect(
+      within(dialog).getByTestId("pending-invitation-confirm-role-viewer"),
+    ).toBeVisible();
     expect(dialog).toHaveTextContent("Acme");
-    expect(dialog).toHaveTextContent(
-      "ลิงก์เชิญเดิมจะใช้ไม่ได้ ผู้รับต้องได้รับคำเชิญใหม่จึงจะเข้าร่วมได้",
-    );
-    expect(document.body.innerHTML).not.toContain(publicId(1));
+    expect(dialog).toHaveAttribute("role", "dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAccessibleDescription();
+    expect(document.body.textContent).not.toContain(publicId(1));
     expect(document.body.innerHTML).not.toMatch(/https?:\/\//);
     expect(cancelRequest).not.toHaveBeenCalled();
   });
@@ -138,16 +150,22 @@ describe("invitation cancel", () => {
     serve(range(2));
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await user.click(cancelButton(2));
-    await user.click(screen.getByRole("button", { name: "กลับ" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByTestId("confirmation-cancel"));
+    expect(
+      screen.queryByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeNull();
     expect(cancelButton(2)).toHaveFocus();
 
     await user.click(cancelButton(1));
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.queryByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeNull();
     expect(cancelButton(1)).toHaveFocus();
     expect(cancelRequest).not.toHaveBeenCalled();
     expect(fetchList).toHaveBeenCalledTimes(1);
@@ -160,21 +178,27 @@ describe("invitation cancel", () => {
     cancelRequest.mockReturnValue(held.promise);
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await user.click(cancelButton(2));
     await user.click(confirmButton());
-    expect(screen.getByRole("dialog")).toHaveTextContent("กำลังยกเลิกคำเชิญ…");
     expect(
-      within(screen.getByRole("dialog")).getByRole("button", {
-        name: "กำลังยกเลิกคำเชิญ…",
-      }),
+      screen.getByTestId("confirmation-pending"),
+    ).not.toBeEmptyDOMElement();
+    expect(
+      within(
+        screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
+      ).getByTestId("invitation-cancel-confirm"),
     ).toBeDisabled();
     // One announcement while the dialog is open: the dialog's own region.
     expect(textStatusCount()).toBe(1);
     expect(cancelButton(1)).toBeDisabled();
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(
+      screen.getByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeVisible();
     expect(cancelRequest).toHaveBeenCalledTimes(1);
 
     // The list refetch is held: the server confirmed, the list has not.
@@ -185,10 +209,16 @@ describe("invitation cancel", () => {
     await waitFor(() => {
       expect(fetchList).toHaveBeenCalledTimes(2);
     });
-    expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
-    expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(regionText()).toContain("กำลังยกเลิกคำเชิญ…");
+    expect(
+      screen.queryByTestId("pending-invitations-cancel-success"),
+    ).toBeNull();
+    expect(screen.queryByTestId("pending-invitations-table")).toBeNull();
+    expect(
+      screen.queryByTestId(/^invitation-(cancel|resend)-dialog$/),
+    ).toBeNull();
+    expect(
+      screen.getByTestId("pending-invitations-cancel-pending"),
+    ).not.toBeEmptyDOMElement();
     expect(textStatusCount()).toBe(1);
 
     refreshed.resolve({
@@ -199,13 +229,24 @@ describe("invitation cancel", () => {
       page: { limit: 50, offset: 0, total: 2 },
     });
     expect(
-      await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(2)} แล้ว`),
+      await screen.findByTestId("pending-invitations-cancel-success"),
     ).toBeVisible();
-    expect(sectionStatus()).toHaveTextContent(
-      `ยกเลิกคำเชิญถึง ${emailOf(2)} แล้ว`,
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(2));
+    expect(sectionStatus()).toHaveTextContent(emailOf(2));
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toBeVisible();
+    expect(
+      screen.queryByTestId(`pending-invitation-row-${publicId(2)}`),
+    ).toBeNull();
+    expect(screen.getByTestId("pending-invitations-count")).toHaveTextContent(
+      "2",
     );
-    expect(screen.queryByText(emailOf(2), { selector: "td" })).toBeNull();
-    expect(heading()).toHaveTextContent("(2 จาก 100)");
+    expect(screen.getByTestId("pending-invitations-limit")).toHaveTextContent(
+      "100",
+    );
     expect(cancelRequest).toHaveBeenCalledTimes(1);
     expect(cancelRequest).toHaveBeenCalledWith(A, publicId(2));
   });
@@ -215,7 +256,9 @@ describe("invitation cancel", () => {
     cancelRequest.mockResolvedValue({ canceled: true });
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await user.click(cancelButton(1));
     fetchList.mockRejectedValueOnce(
@@ -223,10 +266,14 @@ describe("invitation cancel", () => {
     );
     await user.click(confirmButton());
 
-    expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
-    expect(screen.getByRole("button", { name: "ลองอีกครั้ง" })).toBeVisible();
-    expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
-    expect(screen.queryByText(/ไม่สำเร็จ โหลดรายการล่าสุด/)).toBeNull();
+    expect(
+      await screen.findByTestId("pending-invitations-load-error"),
+    ).toBeVisible();
+    expect(screen.getByTestId("pending-invitations-retry")).toBeVisible();
+    expect(
+      screen.queryByTestId("pending-invitations-cancel-success"),
+    ).toBeNull();
+    expect(screen.queryByTestId("pending-invitations-cancel-error")).toBeNull();
     await waitFor(() => {
       expect(heading()).toHaveFocus();
     });
@@ -241,17 +288,34 @@ describe("invitation cancel", () => {
     });
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
-    expect(screen.queryByText(emailOf(51))).toBeNull();
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
+    expect(
+      screen.queryByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toBeNull();
 
     await openAndConfirm(user, 1);
 
     expect(
-      await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(1)} แล้ว`),
+      await screen.findByTestId("pending-invitations-cancel-success"),
     ).toBeVisible();
-    expect(screen.getByText(emailOf(51))).toBeVisible();
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(1));
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent(emailOf(51));
     expect(fetchList.mock.calls.map((call) => call[2])).toEqual([0, 0]);
-    expect(heading()).toHaveTextContent("(50 จาก 100)");
+    expect(screen.getByTestId("pending-invitations-count")).toHaveTextContent(
+      "50",
+    );
+    expect(screen.getByTestId("pending-invitations-limit")).toHaveTextContent(
+      "100",
+    );
     // Focus goes to the next row's cancel button.
     await waitFor(() => {
       expect(cancelButton(2)).toHaveFocus();
@@ -267,12 +331,22 @@ describe("invitation cancel", () => {
     });
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 50);
 
-    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(50)} แล้ว`);
-    expect(screen.getByText(emailOf(51))).toBeVisible();
+    await screen.findByTestId("pending-invitations-cancel-success");
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(50));
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent(emailOf(51));
     await waitFor(() => {
       expect(cancelButton(51)).toHaveFocus();
     });
@@ -287,16 +361,28 @@ describe("invitation cancel", () => {
     });
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    await screen.findByText(emailOf(51));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
+    await user.click(screen.getByTestId("pending-invitations-next"));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent(emailOf(51));
 
     await openAndConfirm(user, 51);
 
     expect(
-      await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(51)} แล้ว`),
+      await screen.findByTestId("pending-invitations-cancel-success"),
     ).toBeVisible();
-    expect(await screen.findByText(emailOf(1))).toBeVisible();
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(51));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
     expect(fetchList.mock.calls.map((call) => call[2])).toEqual([0, 50, 50, 0]);
     await waitFor(() => {
       expect(heading()).toHaveFocus();
@@ -312,28 +398,39 @@ describe("invitation cancel", () => {
     });
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 3);
-    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(3)} แล้ว`);
+    await screen.findByTestId("pending-invitations-cancel-success");
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(3));
     await waitFor(() => {
       expect(cancelButton(2)).toHaveFocus();
     });
 
     await openAndConfirm(user, 2);
-    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(2)} แล้ว`);
+    await screen.findByTestId("pending-invitations-cancel-success");
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(2));
     await waitFor(() => {
       expect(cancelButton(1)).toHaveFocus();
     });
 
     await openAndConfirm(user, 1);
-    expect(await screen.findByText("ไม่มีคำเชิญที่รอตอบรับ")).toBeVisible();
+    expect(
+      await screen.findByTestId("pending-invitations-empty"),
+    ).toBeVisible();
     await waitFor(() => {
       expect(heading()).toHaveFocus();
     });
-    expect(sectionStatus()).toHaveTextContent(
-      `ยกเลิกคำเชิญถึง ${emailOf(1)} แล้ว`,
-    );
+    expect(sectionStatus()).toHaveTextContent(emailOf(1));
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toBeVisible();
   });
 
   it("skips rows without a button when choosing the focus neighbour", async () => {
@@ -356,11 +453,16 @@ describe("invitation cancel", () => {
     });
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 1);
 
-    await screen.findByText(`ยกเลิกคำเชิญถึง ${emailOf(1)} แล้ว`);
+    await screen.findByTestId("pending-invitations-cancel-success");
+    expect(
+      screen.getByTestId("pending-invitations-cancel-success"),
+    ).toHaveTextContent(emailOf(1));
     await waitFor(() => {
       expect(cancelButton(3)).toHaveFocus();
     });
@@ -378,19 +480,39 @@ describe("invitation cancel", () => {
       page: { limit: 50, offset: 0, total: 2 },
     });
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(within(rows[0] as HTMLElement).getByText("เจ้าของ")).toBeVisible();
     expect(
-      within(rows[0] as HTMLElement).getByText("เฉพาะเจ้าของจัดการได้"),
+      within(
+        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).getByTestId("pending-invitation-role-owner"),
     ).toBeVisible();
-    expect(within(rows[0] as HTMLElement).queryByRole("button")).toBeNull();
     expect(
-      within(rows[1] as HTMLElement).getByRole("button", {
-        name: `ยกเลิกคำเชิญถึง ${emailOf(2)}`,
-      }),
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
+    expect(
+      within(
+        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).getByTestId("invitation-owner-only"),
     ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
+    expect(
+      within(
+        screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).queryAllByTestId(/^invitation-(cancel|resend)-/),
+    ).toHaveLength(0);
+    expect(
+      within(
+        screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
+      ).getByTestId(`invitation-cancel-${publicId(2)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(2)}`),
+    ).toHaveTextContent(emailOf(2));
   });
 
   it("shows the 404 message without an email, refreshes once, never replays and focuses the heading when the row is gone", async () => {
@@ -406,16 +528,25 @@ describe("invitation cancel", () => {
     const user = userEvent.setup();
     const { queryClient } = renderSection();
     queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, { marker: true });
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 1);
 
-    const message = "ยกเลิกคำเชิญไม่สำเร็จ โหลดรายการล่าสุดแล้ว";
-    expect(await screen.findByText(message)).toBeVisible();
-    expect(sectionStatus()).toHaveTextContent(message);
+    expect(
+      await screen.findByTestId("pending-invitations-cancel-error"),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId("pending-invitations-cancel-error"),
+    ).toBeVisible();
     expect(sectionStatus()).not.toHaveTextContent("@");
-    expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
-    expect(screen.queryByText(emailOf(1), { selector: "td" })).toBeNull();
+    expect(
+      screen.queryByTestId("pending-invitations-cancel-success"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeNull();
     expect(cancelRequest).toHaveBeenCalledTimes(1);
     expect(fetchList).toHaveBeenCalledTimes(2);
     expect(refreshMembershipContext).not.toHaveBeenCalled();
@@ -432,14 +563,18 @@ describe("invitation cancel", () => {
     cancelRequest.mockRejectedValue(new Error("network"));
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
     await openAndConfirm(user, 2);
 
     expect(
-      await screen.findByText("ยกเลิกคำเชิญไม่สำเร็จ โหลดรายการล่าสุดแล้ว"),
+      await screen.findByTestId("pending-invitations-cancel-error"),
     ).toBeVisible();
-    expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
+    expect(
+      screen.queryByTestId("pending-invitations-cancel-success"),
+    ).toBeNull();
     await waitFor(() => {
       expect(cancelButton(2)).toHaveFocus();
     });
@@ -457,16 +592,25 @@ describe("invitation cancel", () => {
     });
     const user = userEvent.setup();
     renderSection();
-    await screen.findByText(emailOf(1));
-    await user.click(screen.getByRole("button", { name: "หน้าถัดไป" }));
-    await screen.findByText(emailOf(51));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
+    await user.click(screen.getByTestId("pending-invitations-next"));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(51)}`),
+    ).toHaveTextContent(emailOf(51));
 
     await openAndConfirm(user, 51);
 
     expect(
-      await screen.findByText("ยกเลิกคำเชิญไม่สำเร็จ โหลดรายการล่าสุดแล้ว"),
+      await screen.findByTestId("pending-invitations-cancel-error"),
     ).toBeVisible();
-    expect(await screen.findByText(emailOf(1))).toBeVisible();
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
     expect(fetchList.mock.calls.map((call) => call[2])).toEqual([0, 50, 50, 0]);
 
     // Every row of the last page canceled elsewhere, nothing left at all.
@@ -476,7 +620,9 @@ describe("invitation cancel", () => {
     );
     await user.click(cancelButton(1));
     await user.click(confirmButton());
-    expect(await screen.findByText("ไม่มีคำเชิญที่รอตอบรับ")).toBeVisible();
+    expect(
+      await screen.findByTestId("pending-invitations-empty"),
+    ).toBeVisible();
     await waitFor(() => {
       expect(heading()).toHaveFocus();
     });
@@ -490,14 +636,18 @@ describe("invitation cancel", () => {
       const user = userEvent.setup();
       const { queryClient } = renderSection();
       queryClient.setQueryData(ME_CONTEXT_QUERY_KEY, { marker: true });
-      await screen.findByText(emailOf(1));
+      expect(
+        await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).toHaveTextContent(emailOf(1));
 
       await openAndConfirm(user, 1);
 
       expect(
-        await screen.findByText("ยกเลิกคำเชิญไม่สำเร็จ โหลดรายการล่าสุดแล้ว"),
+        await screen.findByTestId("pending-invitations-cancel-error"),
       ).toBeVisible();
-      expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
+      expect(
+        screen.queryByTestId("pending-invitations-cancel-success"),
+      ).toBeNull();
       await waitFor(() => {
         expect(refreshMembershipContext).toHaveBeenCalledTimes(1);
       });
@@ -516,16 +666,22 @@ describe("invitation cancel", () => {
       cancelRequest.mockRejectedValue(new ApiError(code, "denied", 403));
       const user = userEvent.setup();
       renderSection();
-      await screen.findByText(emailOf(1));
+      expect(
+        await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+      ).toHaveTextContent(emailOf(1));
       fetchList.mockRejectedValue(new ApiError(code, "denied", 403));
 
       await openAndConfirm(user, 1);
 
-      expect(await screen.findByText("โหลดคำเชิญไม่สำเร็จ")).toBeVisible();
+      expect(
+        await screen.findByTestId("pending-invitations-load-error"),
+      ).toBeVisible();
       await waitFor(() => {
         expect(refreshMembershipContext).toHaveBeenCalledTimes(1);
       });
-      expect(screen.queryByText(/ยกเลิกคำเชิญถึง .* แล้ว/)).toBeNull();
+      expect(
+        screen.queryByTestId("pending-invitations-cancel-success"),
+      ).toBeNull();
       expect(cancelRequest).toHaveBeenCalledTimes(1);
     },
   );
@@ -533,9 +689,15 @@ describe("invitation cancel", () => {
   it("keeps the status region mounted and empty while idle", async () => {
     serve(range(1));
     renderSection();
-    await screen.findByText(emailOf(1));
+    expect(
+      await screen.findByTestId(`pending-invitation-row-${publicId(1)}`),
+    ).toHaveTextContent(emailOf(1));
 
-    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(
+      screen.getAllByTestId(
+        /^(pending-invitations-status|confirmation-pending)$/,
+      ),
+    ).toHaveLength(1);
     expect(sectionStatus()).toBeEmptyDOMElement();
   });
 });

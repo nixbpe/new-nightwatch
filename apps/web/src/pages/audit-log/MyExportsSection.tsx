@@ -94,11 +94,13 @@ export function MyExportsSection({
 
   return (
     <section
+      data-testid="audit-export-jobs"
       id={MY_EXPORTS_ID}
       aria-labelledby={`${idBase}-title`}
       className="flex flex-col gap-4"
     >
       <SectionHeader
+        headingTestId="audit-export-jobs-title"
         id={`${idBase}-title`}
         code="03"
         title="ไฟล์ส่งออกของฉัน"
@@ -111,9 +113,13 @@ export function MyExportsSection({
         headingClassName="w-fit rounded-[4px] outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         meta={
           pollFailed || failedWithoutRows ? (
-            <span className="flex items-center gap-2">
+            <span
+              data-testid="audit-export-jobs-stale"
+              className="flex items-center gap-2"
+            >
               ข้อมูลอาจไม่เป็นปัจจุบัน
               <Button
+                data-testid="audit-export-jobs-retry"
                 type="button"
                 size="sm"
                 variant="secondary"
@@ -125,22 +131,34 @@ export function MyExportsSection({
           ) : undefined
         }
       />
-      <p role="status" className="sr-only">
+      <p
+        data-testid="audit-export-jobs-status"
+        role="status"
+        className="sr-only"
+      >
         {announcement}
       </p>
       {loading ? (
-        <div aria-busy="true" className="flex min-h-11 items-center">
+        <div
+          data-testid="audit-export-jobs-loading"
+          aria-busy="true"
+          className="flex min-h-11 items-center"
+        >
           <Skeleton className="h-4 w-64 max-w-full" />
         </div>
       ) : null}
       {rows === undefined || rows.length === 0 ? null : (
         <div
+          data-testid="audit-export-jobs-region"
           tabIndex={0}
           role="region"
           aria-label="ตารางไฟล์ส่งออกของฉัน"
           className="overflow-x-auto rounded-md border border-foreground/10 bg-surface focus:outline-2 focus:outline-offset-2 focus:outline-primary"
         >
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table
+            data-testid="audit-export-jobs-table"
+            className="w-full min-w-[760px] text-left text-sm"
+          >
             <caption className="sr-only">ไฟล์ส่งออกของฉัน</caption>
             <thead className="text-xs font-medium text-foreground-secondary">
               <tr>
@@ -175,21 +193,40 @@ export function MyExportsSection({
                   inProgress || state.busy !== undefined ? true : undefined;
                 return (
                   <tr
+                    data-testid={`audit-export-job-${record.id}`}
+                    data-status={record.status}
+                    data-failure-code={record.failureCode ?? undefined}
                     key={record.id}
                     className="border-b border-foreground/10 align-top last:border-0"
                   >
-                    <td className="px-4 py-3">{FORMAT_LABEL[record.format]}</td>
-                    <td className="px-4 py-3 break-words">
+                    <td
+                      data-testid="audit-export-job-format"
+                      className="px-4 py-3"
+                    >
+                      {FORMAT_LABEL[record.format]}
+                    </td>
+                    <td
+                      data-testid="audit-export-job-scope"
+                      data-categories={record.filters.categories.join(",")}
+                      data-search-applied={record.filters.q !== null}
+                      className="px-4 py-3 break-words"
+                    >
                       {scopeText(record, preferences, actors)}
                     </td>
-                    <td className="px-4 py-3 font-mono text-[13px] whitespace-nowrap">
+                    <td
+                      data-testid="audit-export-job-requested-at"
+                      className="px-4 py-3 font-mono text-[13px] whitespace-nowrap"
+                    >
                       {formatAuditTimestamp(
                         new Date(record.requestedAt),
                         preferences,
                       )}{" "}
                       {preferences.timeZone}
                     </td>
-                    <td className="px-4 py-3">
+                    <td
+                      data-testid="audit-export-job-status"
+                      className="px-4 py-3"
+                    >
                       <StatusCell record={record} preferences={preferences} />
                     </td>
                     <td className="px-4 py-3">
@@ -199,6 +236,8 @@ export function MyExportsSection({
                             type="button"
                             size="sm"
                             variant="secondary"
+                            data-testid="audit-export-job-download"
+                            data-busy={state.busy === "download"}
                             aria-label={`ดาวน์โหลด ${suffix}`}
                             aria-disabled={
                               state.busy === "download" ? true : undefined
@@ -217,6 +256,7 @@ export function MyExportsSection({
                           <Button
                             type="button"
                             size="sm"
+                            data-testid="audit-export-job-adjust"
                             aria-label={`ปรับตัวกรอง ${suffix}`}
                             onClick={() => {
                               onAdjustFilters(record);
@@ -231,6 +271,7 @@ export function MyExportsSection({
                             type="button"
                             size="sm"
                             variant="secondary"
+                            data-testid="audit-export-job-retry"
                             aria-label={`ขอใหม่ ${suffix}`}
                             aria-disabled={retryDisabled}
                             aria-busy={
@@ -253,6 +294,7 @@ export function MyExportsSection({
                       ) : null}
                       {state.message === undefined ? null : (
                         <p
+                          data-testid="audit-export-job-error"
                           id={messageId}
                           role="alert"
                           className="mt-1 text-xs text-danger"
@@ -269,7 +311,10 @@ export function MyExportsSection({
         </div>
       )}
       {rows !== undefined && rows.length >= LIST_MAX ? (
-        <p className="text-xs text-foreground-secondary">
+        <p
+          data-testid="audit-export-jobs-limit"
+          className="text-xs text-foreground-secondary"
+        >
           แสดง {LIST_MAX} รายการล่าสุด
         </p>
       ) : null}
@@ -295,7 +340,10 @@ function StatusCell({
             <>
               {" "}
               · ดาวน์โหลดได้ถึง{" "}
-              <span className="font-mono text-[13px]">
+              <span
+                data-testid="audit-export-job-expires-at"
+                className="font-mono text-[13px]"
+              >
                 {formatAuditTimestamp(new Date(record.expiresAt), preferences)}{" "}
                 {preferences.timeZone}
               </span>

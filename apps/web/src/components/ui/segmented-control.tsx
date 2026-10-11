@@ -17,7 +17,11 @@ export function SegmentedControl<Value extends string>({
   onChange,
   className,
   disabled = false,
+  optionTestId,
+  testId,
 }: {
+  testId?: string;
+  optionTestId?: (value: Value) => string;
   label: string;
   value: Value;
   options: readonly SegmentedOption<Value>[];
@@ -36,6 +40,7 @@ export function SegmentedControl<Value extends string>({
   };
   return (
     <div
+      data-testid={testId}
       role="radiogroup"
       aria-label={label}
       aria-disabled={disabled ? true : undefined}
@@ -49,6 +54,7 @@ export function SegmentedControl<Value extends string>({
         return (
           <button
             key={option.value}
+            data-testid={optionTestId?.(option.value)}
             ref={(element) => {
               buttons.current[index] = element;
             }}

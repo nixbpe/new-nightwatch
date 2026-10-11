@@ -65,13 +65,17 @@ export function SslLabel({
   level,
   daysRemaining,
   className,
+  testId,
 }: {
+  testId?: string;
   level: SslLevelName;
   daysRemaining: number | null;
   className?: string;
 }) {
   return (
     <span
+      data-testid={testId}
+      data-days-remaining={daysRemaining ?? ""}
       data-ssl-level={level}
       className={cn("text-sm", TONE_CLASSES[SSL_TONES[level]], className)}
     >

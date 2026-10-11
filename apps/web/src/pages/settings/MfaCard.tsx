@@ -293,7 +293,7 @@ export function MfaCard({
         : groupedSecret(secret);
 
   return (
-    <CardSection aria-labelledby="mfa-card-title">
+    <CardSection data-testid="mfa-card" aria-labelledby="mfa-card-title">
       <div className="flex flex-col gap-2">
         <SectionHeader
           id="mfa-card-title"
@@ -301,6 +301,13 @@ export function MfaCard({
           title="ยืนยันสองขั้นตอน (MFA)"
           meta={
             <StatusPill
+              data-testid={
+                enabled
+                  ? "mfa-status-enabled"
+                  : stage === "idle"
+                    ? "mfa-status-disabled"
+                    : "mfa-status-pending"
+              }
               tone={
                 status.tone === "positive"
                   ? "primary"
@@ -323,7 +330,7 @@ export function MfaCard({
       {enabled ? (
         <>
           {justEnabled ? (
-            <Alert tone="success">
+            <Alert data-testid="mfa-enabled-notice" tone="success">
               เปิดใช้งานยืนยันสองขั้นตอนแล้ว
               ครั้งถัดไปที่เข้าสู่ระบบจะต้องกรอกรหัสจากแอปด้วย
             </Alert>
@@ -343,6 +350,7 @@ export function MfaCard({
               </div>
               {disableOpen ? null : (
                 <Button
+                  data-testid="mfa-disable-open"
                   ref={disableTriggerRef}
                   type="button"
                   variant="secondary"
@@ -370,7 +378,7 @@ export function MfaCard({
                 noValidate
                 className="flex flex-col gap-4 border-b border-foreground/10 bg-foreground/5 p-4"
               >
-                <Alert tone="error">
+                <Alert data-testid="mfa-disable-warning" tone="error">
                   การปิด MFA ทำให้บัญชีเข้าสู่ระบบได้ด้วยรหัสผ่านอย่างเดียว
                   และรหัสกู้คืนทุกชุดจะใช้ไม่ได้อีก
                 </Alert>
@@ -388,6 +396,7 @@ export function MfaCard({
                       <Field label="ยืนยันรหัสผ่านปัจจุบันเพื่อปิดใช้งาน">
                         <Input
                           type="password"
+                          data-testid="mfa-disable-password"
                           name="disable-password"
                           autoComplete="current-password"
                           autoFocus
@@ -409,11 +418,13 @@ export function MfaCard({
                         />
                         {disableError === null ? (
                           <FieldValidationError
+                            data-testid="mfa-disable-password-error"
                             id="disable-password-error"
                             errors={field.state.meta.errors}
                           />
                         ) : (
                           <span
+                            data-testid="mfa-disable-password-error"
                             id="disable-password-error"
                             role="alert"
                             className="mt-1 block text-sm text-danger"
@@ -430,6 +441,7 @@ export function MfaCard({
                     selector={(state) => state.isSubmitting}
                     children={(submitting) => (
                       <Button
+                        data-testid="mfa-disable-submit"
                         type="submit"
                         variant="destructive-outline"
                         disabled={submitting}
@@ -449,6 +461,7 @@ export function MfaCard({
                       disableForm.reset();
                       pendingFocus.current = disableTriggerRef;
                     }}
+                    data-testid="mfa-disable-cancel"
                   >
                     ยกเลิก
                   </Button>
@@ -470,6 +483,7 @@ export function MfaCard({
               </div>
               {regen === null ? (
                 <Button
+                  data-testid="mfa-regenerate-open"
                   ref={regenTriggerRef}
                   type="button"
                   variant="secondary"
@@ -510,6 +524,7 @@ export function MfaCard({
                       <Field label="รหัสผ่านปัจจุบัน (จำเป็นสำหรับสร้างรหัสกู้คืนชุดใหม่)">
                         <Input
                           type="password"
+                          data-testid="mfa-regenerate-password"
                           name="regenerate-password"
                           autoComplete="current-password"
                           autoFocus
@@ -531,11 +546,13 @@ export function MfaCard({
                         />
                         {regenError === null ? (
                           <FieldValidationError
+                            data-testid="mfa-regenerate-password-error"
                             id="regenerate-password-error"
                             errors={field.state.meta.errors}
                           />
                         ) : (
                           <span
+                            data-testid="mfa-regenerate-password-error"
                             id="regenerate-password-error"
                             role="alert"
                             className="mt-1 block text-sm text-danger"
@@ -551,7 +568,11 @@ export function MfaCard({
                   <regenerateForm.Subscribe
                     selector={(state) => state.isSubmitting}
                     children={(submitting) => (
-                      <Button type="submit" disabled={submitting}>
+                      <Button
+                        data-testid="mfa-regenerate-submit"
+                        type="submit"
+                        disabled={submitting}
+                      >
                         {submitting ? "กำลังสร้าง…" : "สร้างรหัสกู้คืนใหม่"}
                       </Button>
                     )}
@@ -565,6 +586,7 @@ export function MfaCard({
                       regenerateForm.reset();
                       pendingFocus.current = regenTriggerRef;
                     }}
+                    data-testid="mfa-regenerate-cancel"
                   >
                     ยกเลิก
                   </Button>
@@ -592,6 +614,7 @@ export function MfaCard({
                       setRegen(null);
                       pendingFocus.current = regenTriggerRef;
                     }}
+                    data-testid="mfa-regenerate-done"
                   >
                     เรียบร้อย
                   </Button>
@@ -615,6 +638,7 @@ export function MfaCard({
             </div>
           </div>
           <Button
+            data-testid="mfa-enable-open"
             ref={enableTriggerRef}
             type="button"
             onClick={() => {
@@ -656,6 +680,7 @@ export function MfaCard({
                   <Field label="รหัสผ่านปัจจุบัน">
                     <Input
                       type="password"
+                      data-testid="mfa-enable-password"
                       name="password"
                       autoComplete="current-password"
                       autoFocus
@@ -677,11 +702,13 @@ export function MfaCard({
                     />
                     {enableError === null ? (
                       <FieldValidationError
+                        data-testid="mfa-enable-password-error"
                         id="enable-password-error"
                         errors={field.state.meta.errors}
                       />
                     ) : (
                       <span
+                        data-testid="mfa-enable-password-error"
                         id="enable-password-error"
                         role="alert"
                         className="mt-1 block text-sm text-danger"
@@ -699,6 +726,7 @@ export function MfaCard({
                   wrap
                   type="button"
                   variant="ghost"
+                  data-testid="mfa-enable-cancel"
                   onClick={resetEnrollment}
                 >
                   ยกเลิก
@@ -708,7 +736,12 @@ export function MfaCard({
                 <enableForm.Subscribe
                   selector={(state) => state.isSubmitting}
                   children={(submitting) => (
-                    <Button wrap type="submit" disabled={submitting}>
+                    <Button
+                      data-testid="mfa-enable-submit"
+                      wrap
+                      type="submit"
+                      disabled={submitting}
+                    >
                       {submitting ? "กำลังตรวจสอบ…" : "ถัดไป: สแกนคิวอาร์โค้ด"}
                       <ArrowRightIcon size={16} />
                     </Button>
@@ -727,6 +760,7 @@ export function MfaCard({
               <div className="flex h-[200px] w-[200px] items-center justify-center rounded-md border border-foreground/10 bg-white p-4">
                 {qr.state === "ready" ? (
                   <img
+                    data-testid="mfa-qr"
                     src={qr.dataUrl}
                     alt="คิวอาร์โค้ดสำหรับแอปยืนยันตัวตน"
                     width={168}
@@ -749,7 +783,10 @@ export function MfaCard({
                   หรือกรอกคีย์นี้ในแอปด้วยตนเองถ้าสแกนไม่ได้
                 </p>
                 <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                  <code className="block min-w-0 flex-1 break-all rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-sm tracking-wider">
+                  <code
+                    data-testid="mfa-secret"
+                    className="block min-w-0 flex-1 break-all rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 font-mono text-sm tracking-wider"
+                  >
                     {secretDisplay}
                   </code>
                   <Button
@@ -760,6 +797,11 @@ export function MfaCard({
                     onClick={() => {
                       copy(secret ?? draft.totpURI, "secret");
                     }}
+                    data-testid={
+                      copied === "secret"
+                        ? "mfa-secret-copy-done"
+                        : "mfa-secret-copy-ready"
+                    }
                   >
                     <CopyIcon size={14} />
                     {copied === "secret" ? "คัดลอกแล้ว" : "คัดลอก"}
@@ -780,6 +822,7 @@ export function MfaCard({
               </div>
               <label className="flex items-start gap-2.5 text-sm">
                 <input
+                  data-testid="mfa-recovery-acknowledge"
                   type="checkbox"
                   checked={acknowledged}
                   onChange={(event) => {
@@ -806,6 +849,7 @@ export function MfaCard({
                   setAcknowledged(false);
                   setStage("password");
                 }}
+                data-testid="mfa-scan-back"
               >
                 <ArrowLeftIcon size={16} />
                 ย้อนกลับ
@@ -815,6 +859,7 @@ export function MfaCard({
               <Button
                 wrap
                 type="button"
+                data-testid="mfa-scan-next"
                 disabled={!acknowledged}
                 onClick={() => {
                   setError(null);
@@ -847,11 +892,17 @@ export function MfaCard({
                 <span className="font-mono">30</span> วินาที
               </p>
               {error === null ? null : codeInvalid ? (
-                <Alert id={VERIFY_TOTP_SERVER_ERROR_ID} tone="error">
+                <Alert
+                  data-testid="mfa-verify-server-error"
+                  id={VERIFY_TOTP_SERVER_ERROR_ID}
+                  tone="error"
+                >
                   {error}
                 </Alert>
               ) : (
-                <Alert tone="error">{error}</Alert>
+                <Alert data-testid="mfa-verify-guard" tone="error">
+                  {error}
+                </Alert>
               )}
               <verifyForm.Field
                 name="code"
@@ -866,6 +917,7 @@ export function MfaCard({
                   <Field label="รหัสยืนยัน 6 หลักจากแอปยืนยันตัวตน">
                     <Input
                       type="text"
+                      data-testid="mfa-verify-code"
                       name="first-totp"
                       inputMode="numeric"
                       autoFocus
@@ -894,6 +946,7 @@ export function MfaCard({
                       className="max-w-56 text-center font-mono text-xl tracking-normal sm:text-2xl sm:tracking-[0.35em]"
                     />
                     <FieldValidationError
+                      data-testid="mfa-verify-client-error"
                       id={VERIFY_TOTP_CLIENT_ERROR_ID}
                       errors={field.state.meta.errors}
                     />
@@ -912,6 +965,7 @@ export function MfaCard({
                     setCodeInvalid(false);
                     setStage("scan");
                   }}
+                  data-testid="mfa-verify-back"
                 >
                   <ArrowLeftIcon size={16} />
                   ย้อนกลับ
@@ -921,7 +975,12 @@ export function MfaCard({
                 <verifyForm.Subscribe
                   selector={(state) => state.isSubmitting}
                   children={(submitting) => (
-                    <Button wrap type="submit" disabled={submitting}>
+                    <Button
+                      data-testid="mfa-verify-submit"
+                      wrap
+                      type="submit"
+                      disabled={submitting}
+                    >
                       <CheckIcon size={16} />
                       {submitting ? "กำลังยืนยัน…" : "ยืนยันและเปิดใช้งาน"}
                     </Button>
@@ -941,6 +1000,7 @@ const STEPS = ["ยืนยันรหัสผ่าน", "สแกนแล
 function Stepper({ current }: { current: 1 | 2 | 3 }) {
   return (
     <ol
+      data-testid="mfa-enrollment-progress"
       aria-label="ขั้นตอนการเปิดใช้งาน"
       className="flex flex-col items-stretch gap-2 lg:flex-row lg:items-center"
     >
@@ -951,6 +1011,13 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
         return (
           <li
             key={label}
+            data-testid={
+              n === 1
+                ? "mfa-step-password"
+                : n === 2
+                  ? "mfa-step-scan"
+                  : "mfa-step-verify"
+            }
             aria-current={state === "current" ? "step" : undefined}
             className={`flex min-w-0 items-center gap-2 ${last ? "" : "lg:flex-1"}`}
           >
@@ -1016,7 +1083,14 @@ function CodesHeader({
         <p className="text-xs text-foreground-secondary">{description}</p>
       </div>
       <div className="flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:flex-wrap sm:items-center">
-        <Button wrap type="button" variant="ghost" size="sm" onClick={onCopy}>
+        <Button
+          data-testid={copied ? "mfa-codes-copy-done" : "mfa-codes-copy-ready"}
+          wrap
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onCopy}
+        >
           <CopyIcon size={14} />
           {copied ? "คัดลอกแล้ว" : "คัดลอกทั้งหมด"}
         </Button>
@@ -1028,6 +1102,7 @@ function CodesHeader({
           onClick={() => {
             downloadCodes(codes);
           }}
+          data-testid="mfa-codes-download"
         >
           <DownloadIcon size={14} />
           ดาวน์โหลด .txt
@@ -1039,9 +1114,16 @@ function CodesHeader({
 
 function BackupCodes({ codes }: { codes: string[] }) {
   return (
-    <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 rounded-md border border-foreground/10 bg-foreground/5 px-4 py-3 sm:grid-cols-2">
+    <ul
+      data-testid="mfa-recovery-codes"
+      className="grid grid-cols-1 gap-x-6 gap-y-1.5 rounded-md border border-foreground/10 bg-foreground/5 px-4 py-3 sm:grid-cols-2"
+    >
       {codes.map((code) => (
-        <li key={code} className="min-w-0 break-all font-mono text-sm">
+        <li
+          data-testid="mfa-recovery-code"
+          key={code}
+          className="min-w-0 break-all font-mono text-sm"
+        >
           {code}
         </li>
       ))}

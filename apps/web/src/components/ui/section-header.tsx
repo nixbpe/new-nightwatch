@@ -13,6 +13,7 @@ export function SectionHeader({
   headingRef,
   headingTabIndex,
   headingClassName,
+  headingTestId,
   className,
 }: {
   /** For `aria-labelledby` on the section this header opens. */
@@ -26,10 +27,12 @@ export function SectionHeader({
   headingRef?: Ref<HTMLHeadingElement>;
   headingTabIndex?: number;
   headingClassName?: string;
+  headingTestId?: string;
   className?: string;
 }) {
   const heading = (
     <h2
+      data-testid={headingTestId}
       id={id}
       ref={headingRef}
       tabIndex={headingTabIndex}

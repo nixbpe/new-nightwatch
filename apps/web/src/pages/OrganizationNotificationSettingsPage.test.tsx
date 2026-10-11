@@ -17,7 +17,6 @@ import { OrganizationNotificationSettingsPage } from "./OrganizationNotification
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
-const SETTINGS_CHANGED_LABEL = /แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน/;
 
 vi.mock("../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
@@ -120,7 +119,7 @@ describe("OrganizationNotificationSettingsPage", () => {
       Promise.withResolvers<Awaited<ReturnType<typeof fetchMeContext>>>();
     renderPage(null, bootstrap);
     expect(
-      await screen.findByText("กำลังโหลดข้อมูลองค์กร…"),
+      await screen.findByTestId("shell-admission-loading"),
     ).toBeInTheDocument();
     expect(fetchSettingsMock).not.toHaveBeenCalled();
     bootstrap.resolve({
@@ -143,7 +142,7 @@ describe("OrganizationNotificationSettingsPage", () => {
       version: 1,
     });
     expect(
-      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+      await screen.findByTestId("organization-notifications-settings-changed"),
     ).toBeInTheDocument();
     expect(fetchSettingsMock).toHaveBeenCalledWith(ORG_A);
   });
@@ -156,10 +155,26 @@ describe("OrganizationNotificationSettingsPage", () => {
     });
     renderPage();
     expect(
-      await within(screen.getByRole("main")).findByText("Org A"),
+      await within(screen.getByTestId("shell-main")).findByTestId("page-scope"),
     ).toBeInTheDocument();
-    expect(screen.getByText("ตั้งค่าองค์กร")).toBeInTheDocument();
-    expect(screen.getByText("org-a")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("shell-main")).getByTestId("page-scope"),
+    ).toHaveTextContent("Org A");
+    expect(
+      screen.getByTestId("organization-notifications-settings"),
+    ).toHaveAttribute("data-organization-id", ORG_A);
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-monitor-alerts"),
+    ).toBeChecked();
+    expect(
+      screen.getByTestId("organization-notifications-slug"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("organization-notifications-slug"),
+    ).toHaveTextContent("org-a");
   });
 
   it("sends the loaded version with a changed owner setting", async () => {
@@ -185,22 +200,22 @@ describe("OrganizationNotificationSettingsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const toggle = await screen.findByRole("checkbox", {
-      name: SETTINGS_CHANGED_LABEL,
-    });
-    await user.click(toggle);
-    await user.click(
-      screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
+    const toggle = await screen.findByTestId(
+      "organization-notifications-settings-changed",
     );
+    await user.click(toggle);
+    await user.click(screen.getByTestId("organization-notifications-save"));
 
     expect(updateSettingsMock).toHaveBeenCalledWith(ORG_A, {
       settingsChangedEnabled: false,
       expectedVersion: 4,
     });
     expect(
-      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+      await screen.findByTestId("organization-notifications-settings-changed"),
     ).not.toBeChecked();
-    expect(await screen.findByText("บันทึกแล้ว")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("organization-notifications-success"),
+    ).toBeInTheDocument();
   });
 
   it("shows the monitor alerts checkbox and saves only that toggle", async () => {
@@ -226,27 +241,27 @@ describe("OrganizationNotificationSettingsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const monitorToggle = await screen.findByRole("checkbox", {
-      name: /แจ้งเตือนมอนิเตอร์/,
-    });
+    const monitorToggle = await screen.findByTestId(
+      "organization-notifications-monitor-alerts",
+    );
     expect(monitorToggle).toBeChecked();
     expect(
-      screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
+      screen.getByTestId("organization-notifications-save"),
     ).toBeDisabled();
 
     await user.click(monitorToggle);
-    await user.click(
-      screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
-    );
+    await user.click(screen.getByTestId("organization-notifications-save"));
 
     expect(updateSettingsMock).toHaveBeenCalledWith(ORG_A, {
       monitorAlertsEnabled: false,
       expectedVersion: 6,
     });
     expect(
-      await screen.findByRole("checkbox", { name: /แจ้งเตือนมอนิเตอร์/ }),
+      await screen.findByTestId("organization-notifications-monitor-alerts"),
     ).not.toBeChecked();
-    expect(await screen.findByText("บันทึกแล้ว")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("organization-notifications-success"),
+    ).toBeInTheDocument();
   });
 
   it("shows a distinct permission denial and optimistic-concurrency conflict", async () => {
@@ -255,8 +270,12 @@ describe("OrganizationNotificationSettingsPage", () => {
     );
     renderPage();
     expect(
-      await screen.findByText("คุณไม่มีสิทธิ์จัดการการตั้งค่านี้"),
-    ).toBeInTheDocument();
+      await screen.findByTestId("organization-notifications-denied-alert"),
+    ).toHaveRole("alert");
+    expect(
+      screen.queryByTestId("organization-notifications-settings-changed"),
+    ).toBeNull();
+    expect(updateSettingsMock).not.toHaveBeenCalled();
 
     fetchSettingsMock.mockReset();
     fetchSettingsMock.mockResolvedValue({
@@ -271,14 +290,34 @@ describe("OrganizationNotificationSettingsPage", () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(
-      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+      await screen.findByTestId("organization-notifications-settings-changed"),
     );
+    await user.click(screen.getByTestId("organization-notifications-save"));
+    expect(
+      await screen.findByTestId("organization-notifications-version-conflict"),
+    ).toHaveRole("alert");
+    expect(
+      screen.getByTestId("organization-notifications-settings-changed"),
+    ).not.toBeChecked();
+    expect(updateSettingsMock).toHaveBeenCalledWith(ORG_A, {
+      settingsChangedEnabled: false,
+      expectedVersion: 4,
+    });
     await user.click(
-      screen.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }),
+      screen.getByTestId("organization-notifications-save-retry"),
+    );
+    await vi.waitFor(() =>
+      expect(
+        screen.getByTestId("organization-notifications-settings-changed"),
+      ).toBeChecked(),
     );
     expect(
-      await screen.findByText("การตั้งค่าถูกเปลี่ยนโดยผู้อื่น กรุณาโหลดใหม่"),
-    ).toBeInTheDocument();
+      screen.getByTestId("organization-notifications-save"),
+    ).toBeDisabled();
+    expect(
+      screen.queryByTestId("organization-notifications-version-conflict"),
+    ).toBeNull();
+    expect(updateSettingsMock).toHaveBeenCalledTimes(1);
   });
 
   it("drops an unsaved draft when navigating to another organization", async () => {
@@ -292,24 +331,27 @@ describe("OrganizationNotificationSettingsPage", () => {
     );
     const user = userEvent.setup();
     renderPage(
-      <Link to={`/organizations/${ORG_B}/notification-settings`}>
+      <Link
+        data-testid="test-notifications-navigate-b"
+        to={`/organizations/${ORG_B}/notification-settings`}
+      >
         องค์กร B
       </Link>,
     );
 
     await user.click(
-      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+      await screen.findByTestId("organization-notifications-settings-changed"),
     );
     expect(
-      screen.getByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+      screen.getByTestId("organization-notifications-settings-changed"),
     ).not.toBeChecked();
-    await user.click(screen.getByRole("link", { name: "องค์กร B" }));
+    await user.click(screen.getByTestId("test-notifications-navigate-b"));
 
     await vi.waitFor(() => {
       expect(fetchSettingsMock).toHaveBeenCalledWith(ORG_B);
     });
     expect(
-      await screen.findByRole("checkbox", { name: SETTINGS_CHANGED_LABEL }),
+      await screen.findByTestId("organization-notifications-settings-changed"),
     ).toBeChecked();
     expect(updateSettingsMock).not.toHaveBeenCalled();
   });

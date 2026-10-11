@@ -56,7 +56,7 @@ export function LoginPage() {
   });
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div data-testid="login-page" className="flex min-h-screen flex-col">
       <AuthHeader />
       <div className="grid flex-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <BrandPanel />
@@ -81,12 +81,16 @@ export function LoginPage() {
               noValidate
             >
               {error === null ? null : (
-                <Alert tone={needsVerification ? "info" : "error"}>
+                <Alert
+                  data-testid="login-auth-error"
+                  tone={needsVerification ? "info" : "error"}
+                >
                   {needsVerification ? (
                     <>
                       {error}{" "}
                       <Link
                         to="/verify-email"
+                        data-testid="login-verify-email"
                         className="font-medium underline"
                       >
                         ไปที่หน้ายืนยันอีเมล
@@ -113,6 +117,7 @@ export function LoginPage() {
                 {(field) => (
                   <Field label="อีเมล">
                     <Input
+                      data-testid="login-email"
                       type="email"
                       name="email"
                       autoComplete="email"
@@ -132,6 +137,7 @@ export function LoginPage() {
                     />
                     <FieldValidationError
                       id="login-email-error"
+                      data-testid="login-email-error"
                       errors={field.state.meta.errors}
                     />
                   </Field>
@@ -157,6 +163,7 @@ export function LoginPage() {
                       <Label htmlFor="login-password">รหัสผ่าน</Label>
                       <Link
                         to="/forgot-password"
+                        data-testid="login-forgot-password"
                         className="text-[13px] text-primary underline underline-offset-4"
                       >
                         ลืมรหัสผ่าน
@@ -165,6 +172,7 @@ export function LoginPage() {
                     <div className="relative flex items-center">
                       <Input
                         id="login-password"
+                        data-testid="login-password"
                         type={showPassword ? "text" : "password"}
                         name="password"
                         autoComplete="current-password"
@@ -182,6 +190,7 @@ export function LoginPage() {
                         }
                       />
                       <button
+                        data-testid="login-password-toggle"
                         type="button"
                         onClick={() => {
                           setShowPassword((value) => !value);
@@ -197,6 +206,7 @@ export function LoginPage() {
                     </div>
                     <FieldValidationError
                       id="login-password-error"
+                      data-testid="login-password-error"
                       errors={field.state.meta.errors}
                     />
                   </div>
@@ -206,6 +216,7 @@ export function LoginPage() {
                 selector={(state) => state.isSubmitting}
                 children={(isSubmitting) => (
                   <SubmitButton
+                    data-testid="login-submit"
                     pending={isSubmitting}
                     pendingLabel="กำลังเข้าสู่ระบบ…"
                   >
