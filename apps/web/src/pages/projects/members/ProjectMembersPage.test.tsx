@@ -31,6 +31,7 @@ import {
   fetchProjectDetail,
   fetchProjectMemberCandidates,
   fetchProjectMembers,
+  projectQueryKeys,
   removeProjectMember,
   updateProjectMemberRole,
 } from "../../../lib/api/projects";
@@ -603,6 +604,57 @@ describe("add member dialog", () => {
     expect(screen.getByTestId("project-member-count")).toHaveTextContent("5");
     expect(screen.getByTestId("project-members-notice-saved")).toBeVisible();
     expect(screen.getByTestId("project-members-add")).toHaveFocus();
+  });
+
+  // Another admin adds kitti after the picks were made; the page list refetches,
+  // then the request succeeds with kitti's existing role kept (ON CONFLICT DO NOTHING).
+  async function otherAdminAddsKitti() {
+    roster = [...roster, member("kitti", "admin")];
+    await queryClients[0]?.invalidateQueries({
+      queryKey: projectQueryKeys.members(A, P),
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("project-members-shown")).toHaveTextContent(
+        /4\D+4/,
+      );
+    });
+  }
+
+  it("counts only the people this request added when another admin added some first", async () => {
+    const user = userEvent.setup();
+    addMock.mockImplementation(() => {
+      roster = [...roster, member("pakorn", "member")];
+      return Promise.resolve({ members: roster });
+    });
+    renderPage();
+    const dialog = await openDialog(user);
+    await user.click(
+      candidate(dialog, "kitti").getByTestId("add-member-checkbox"),
+    );
+    await user.click(
+      candidate(dialog, "pakorn").getByTestId("add-member-checkbox"),
+    );
+    await otherAdminAddsKitti();
+    await user.click(within(dialog).getByTestId("add-member-submit"));
+    const notice = await screen.findByTestId("project-members-notice-saved");
+    expect(notice).toHaveTextContent("เพิ่ม 1 คนเป็นสมาชิกแล้ว");
+    expect(notice).toHaveTextContent("1 คนอยู่ในโปรเจกต์อยู่แล้ว");
+  });
+
+  it("does not report a success when everyone picked was already in the project", async () => {
+    const user = userEvent.setup();
+    addMock.mockImplementation(() => Promise.resolve({ members: roster }));
+    renderPage();
+    const dialog = await openDialog(user);
+    await user.click(
+      candidate(dialog, "kitti").getByTestId("add-member-checkbox"),
+    );
+    await otherAdminAddsKitti();
+    await user.click(within(dialog).getByTestId("add-member-submit"));
+    expect(
+      await screen.findByTestId("project-members-notice-stale"),
+    ).toBeVisible();
+    expect(screen.queryByTestId("project-members-notice-saved")).toBeNull();
   });
 
   it("selects an owner, admin, viewer and auditor candidate (AC-12)", async () => {

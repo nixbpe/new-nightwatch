@@ -48,6 +48,14 @@ export const NOT_IN_ORGANIZATION_MESSAGE =
   "มีผู้ใช้ที่ไม่ได้เป็นสมาชิกขององค์กรแล้ว เลือกสมาชิกใหม่อีกครั้ง";
 const FAILED_MESSAGE = "เพิ่มสมาชิกไม่สำเร็จ ลองอีกครั้ง";
 
+export type AddResult = {
+  /** Newly in the Project because of this request. */
+  added: number;
+  /** Picked, but already in the Project: the API keeps their existing role. */
+  already: number;
+  role: ProjectRole;
+};
+
 export type AddStaleReason = "denied" | "not-found";
 
 /** Picks Organization members (never outsiders, AC-01) and adds them with one role. */
@@ -58,6 +66,7 @@ export function AddMemberDialog({
   projectName,
   opener,
   fallbackFocus,
+  memberIds,
   onAdded,
   onCancel,
   onStale,
@@ -68,7 +77,9 @@ export function AddMemberDialog({
   projectName: string;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
-  onAdded: (count: number, role: ProjectRole) => Promise<void>;
+  /** Who was in the Project when the dialog's request was built. */
+  memberIds: readonly string[];
+  onAdded: (result: AddResult) => Promise<void>;
   onCancel: () => void;
   onStale: (reason: AddStaleReason) => void;
 }) {
@@ -147,11 +158,16 @@ export function AddMemberDialog({
     setSubmitting(true);
     setFormError(null);
     try {
-      await addProjectMembers(organizationId, projectId, {
+      const { members } = await addProjectMembers(organizationId, projectId, {
         userIds: selected,
         role,
       });
-      await onAdded(selected.length, role);
+      const before = new Set(memberIds);
+      const after = new Set(members.map((member) => member.userId));
+      const added = selected.filter(
+        (id) => !before.has(id) && after.has(id),
+      ).length;
+      await onAdded({ added, already: selected.length - added, role });
     } catch (error) {
       if (error instanceof ApiError) {
         const reason = staleReasonOf(error);

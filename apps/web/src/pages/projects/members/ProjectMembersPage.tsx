@@ -766,15 +766,20 @@ function ProjectMembers({
           projectName={project.name}
           opener={adding.opener}
           fallbackFocus={heading}
-          onAdded={async (count, role) => {
+          memberIds={members.map((member) => member.userId)}
+          onAdded={async ({ added, already, role }) => {
             const reloaded = await refresh();
+            // Only people this request added count; the rest were in already.
+            const text =
+              added === 0
+                ? "คนที่เลือกอยู่ในโปรเจกต์อยู่แล้ว ไม่มีใครถูกเพิ่ม"
+                : `เพิ่ม ${String(added)} คนเป็น${PROJECT_ROLE_LABELS[role]}แล้ว${
+                    already === 0
+                      ? ""
+                      : ` · ${String(already)} คนอยู่ในโปรเจกต์อยู่แล้ว`
+                  }`;
             setNotice(
-              reloaded
-                ? {
-                    text: `เพิ่ม ${String(count)} คนเป็น${PROJECT_ROLE_LABELS[role]}แล้ว`,
-                    kind: "saved",
-                  }
-                : null,
+              reloaded ? { text, kind: added === 0 ? "stale" : "saved" } : null,
             );
             setAdding(null);
           }}
