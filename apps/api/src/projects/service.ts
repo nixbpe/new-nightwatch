@@ -183,9 +183,9 @@ export async function listProjects(
     database,
     identity.organizationId,
     async (client) => {
-      const seesAll = isOrganizationAdmin(
-        await lockedMemberRole(client, identity),
-      );
+      const role = await lockedMemberRole(client, identity);
+      if (role === null) membershipDenied();
+      const seesAll = isOrganizationAdmin(role);
       const result = await client.query<ProjectRow>(
         `${SUMMARY_SELECT}${seesAll ? "" : " and me.user_id is not null"}
          order by p.name, p.id`,

@@ -346,6 +346,20 @@ describe("list (AC-05, AC-06)", () => {
     expect(response.json).toEqual({ projects: [] });
   });
 
+  it("answers 403 MEMBERSHIP_DENIED to a member whose role is not recognized", async () => {
+    const project = await created(org, { name: "Unrecognized role" });
+    const legacy = await ctx.createUser("project-legacy-role");
+    await ctx.owner.sql.query(
+      "insert into member (id, organization_id, user_id, role) values ($1, $2, $3, 'member')",
+      [`project-legacy-${ctx.run}`, org.id, legacy],
+    );
+    await addProjectMember(org, project.id, legacy, "member");
+
+    const response = await ctx.call(legacy, "GET", projectsPath(org.id));
+    expect(response.status).toBe(403);
+    expect(errorOf(response).code).toBe("MEMBERSHIP_DENIED");
+  });
+
   it("never lists another Organization's Projects", async () => {
     const foreign = await created(otherOrg);
     const response = await ctx.call(
