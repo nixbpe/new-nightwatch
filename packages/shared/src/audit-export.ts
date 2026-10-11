@@ -20,11 +20,19 @@ export const AUDIT_ACTIONS = [
   "organization.invitation.resend",
   "organization.invitation.cancel",
   "organization.audit-log.export",
+  "organization.project.create",
+  "organization.project.update",
+  "organization.project.delete",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 export type AuditCategory =
-  "monitor" | "notification_settings" | "member" | "invitation" | "audit_log";
+  | "monitor"
+  | "notification_settings"
+  | "member"
+  | "invitation"
+  | "audit_log"
+  | "project";
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.monitor.create": "สร้างมอนิเตอร์",
@@ -44,6 +52,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.invitation.resend": "ส่งคำเชิญซ้ำ",
   "organization.invitation.cancel": "ยกเลิกคำเชิญ",
   "organization.audit-log.export": "ขอส่งออกบันทึกกิจกรรม",
+  "organization.project.create": "สร้างโปรเจกต์",
+  "organization.project.update": "แก้ไขโปรเจกต์",
+  "organization.project.delete": "ลบโปรเจกต์",
 };
 
 export type AuditValue =
@@ -58,6 +69,7 @@ export type AuditChange = {
     | "monitorAlertsEnabled"
     | "settingsChangedEnabled"
     | "name"
+    | "description"
     | "url"
     | "method"
     | "intervalSeconds"
@@ -88,7 +100,7 @@ export const AUDIT_EXPORT_FILE_TTL_HOURS = 24;
 
 /** The note in every file and on the page (feature.md, step 3). */
 export function auditScopeNote(recordingStartedOn: string): string {
-  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
+  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
 }
 
 /** Action codes whose code or Thai label contains `q` (the `q` search of the list and the export). */

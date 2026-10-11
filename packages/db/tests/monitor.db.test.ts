@@ -809,7 +809,8 @@ describe("monitors alert settings backfill from migration 0022", () => {
       migrationsDir: postDir,
       log: () => undefined,
     });
-    expect(result.applied).toEqual(["0022_monitor_alert_settings.sql"]);
+    // Later migrations run on the same fixture; only 0022 is under test.
+    expect(result.applied).toContain("0022_monitor_alert_settings.sql");
 
     const row = await legacyOwner.query<{
       alert_failure_threshold: number;

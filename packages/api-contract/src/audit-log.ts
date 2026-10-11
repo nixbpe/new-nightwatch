@@ -11,6 +11,7 @@ export const AUDIT_CATEGORIES = [
   "member",
   "invitation",
   "audit_log",
+  "project",
 ] as const;
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 export const auditCategorySchema = z.enum(AUDIT_CATEGORIES);
@@ -32,6 +33,9 @@ export const AUDIT_ACTIONS = [
   "organization.invitation.resend",
   "organization.invitation.cancel",
   "organization.audit-log.export",
+  "organization.project.create",
+  "organization.project.update",
+  "organization.project.delete",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const auditActionSchema = z.enum(AUDIT_ACTIONS);
@@ -55,6 +59,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.invitation.resend": "ส่งคำเชิญซ้ำ",
   "organization.invitation.cancel": "ยกเลิกคำเชิญ",
   "organization.audit-log.export": "ขอส่งออกบันทึกกิจกรรม",
+  "organization.project.create": "สร้างโปรเจกต์",
+  "organization.project.update": "แก้ไขโปรเจกต์",
+  "organization.project.delete": "ลบโปรเจกต์",
 };
 
 export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
@@ -63,6 +70,7 @@ export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
   member: "สมาชิก",
   invitation: "คำเชิญ",
   audit_log: "บันทึกกิจกรรม",
+  project: "โปรเจกต์",
 };
 
 export const AUDIT_LIST_MAX_LIMIT = 50;
@@ -73,6 +81,7 @@ export const AUDIT_CHANGE_FIELDS = [
   "monitorAlertsEnabled",
   "settingsChangedEnabled",
   "name",
+  "description",
   "url",
   "method",
   "intervalSeconds",
@@ -111,6 +120,12 @@ export const auditTargetSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("monitor"),
     monitorId: z.uuid(),
+    displayName: z.string().nullable(),
+    deleted: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("project"),
+    projectId: z.uuid(),
     displayName: z.string().nullable(),
     deleted: z.boolean(),
   }),
@@ -428,5 +443,5 @@ export const auditExportExpiredErrorResponseSchema = auditErrorSchema(
 
 /** The note on the page, in the export dialog and in every file (feature.md, step 3). */
 export function auditScopeNote(recordingStartedOn: string): string {
-  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
+  return `บันทึกเฉพาะการกระทำที่สำเร็จในหมวด มอนิเตอร์ ตั้งค่าการแจ้งเตือน สมาชิก คำเชิญ โปรเจกต์ และบันทึกกิจกรรม ตั้งแต่ ${recordingStartedOn} ไม่รวมการกระทำที่ถูกปฏิเสธ การตอบรับคำเชิญ (สมาชิกเข้าร่วม) กิจกรรมระดับบัญชี (เข้าสู่ระบบ รหัสผ่าน MFA) และกิจกรรมของ AWS account, API key และ findings`;
 }

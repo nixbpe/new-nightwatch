@@ -1,0 +1,68 @@
+import {
+  projectListResponseSchema,
+  projectSummarySchema,
+  type createProjectRequestSchema,
+  type ProjectListResponse,
+  type ProjectSummary,
+  type updateProjectRequestSchema,
+} from "@nightwatch/api-contract";
+import type { z } from "zod";
+
+import { TENANT_QUERY_PREFIX } from "../tenant/TenantProvider";
+import { request } from "./client";
+
+// Requests are typed by the schema input: the server trims and normalizes.
+export type ProjectCreateBody = z.input<typeof createProjectRequestSchema>;
+export type ProjectUpdateBody = z.input<typeof updateProjectRequestSchema>;
+
+// Filters and search stay out of the keys: they are applied in the browser.
+export const projectQueryKeys = {
+  all: (organizationId: string) =>
+    [...TENANT_QUERY_PREFIX, "projects", organizationId] as const,
+  list: (organizationId: string) =>
+    [...projectQueryKeys.all(organizationId), "list"] as const,
+};
+
+export function fetchProjectList(
+  organizationId: string,
+): Promise<ProjectListResponse> {
+  return request(
+    "/api/organizations/{organizationId}/projects",
+    projectListResponseSchema,
+    { params: { organizationId } },
+  );
+}
+
+export function createProject(
+  organizationId: string,
+  body: ProjectCreateBody,
+): Promise<ProjectSummary> {
+  return request(
+    "/api/organizations/{organizationId}/projects",
+    projectSummarySchema,
+    { method: "POST", params: { organizationId }, body },
+  );
+}
+
+export function updateProject(
+  organizationId: string,
+  projectId: string,
+  body: ProjectUpdateBody,
+): Promise<ProjectSummary> {
+  return request(
+    "/api/organizations/{organizationId}/projects/{projectId}",
+    projectSummarySchema,
+    { method: "PATCH", params: { organizationId, projectId }, body },
+  );
+}
+
+export function deleteProject(
+  organizationId: string,
+  projectId: string,
+): Promise<undefined> {
+  return request(
+    "/api/organizations/{organizationId}/projects/{projectId}",
+    undefined,
+    { method: "DELETE", params: { organizationId, projectId } },
+  );
+}

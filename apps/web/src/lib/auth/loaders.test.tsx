@@ -32,6 +32,7 @@ import {
   monitorQueryKeys,
   OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
+import { fetchProjectList, projectQueryKeys } from "../api/projects";
 import {
   fetchNotifications,
   fetchOrganizationNotificationSettings,
@@ -58,6 +59,7 @@ import {
   notificationSettingsLoader,
   notificationsLoader,
   organizationMembersLoader,
+  projectsLoader,
   requireAnonLoader,
   rootLoader,
   settingsLoader,
@@ -137,7 +139,13 @@ vi.mock("../api/members", async (importOriginal) => {
   return { ...original, fetchOrganizationMembers: vi.fn() };
 });
 
+vi.mock("../api/projects", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return { ...original, fetchProjectList: vi.fn() };
+});
+
 const fetchMeContextMock = vi.mocked(fetchMeContext);
+const fetchProjectListMock = vi.mocked(fetchProjectList);
 const fetchInvitationMock = vi.mocked(fetchInvitation);
 const fetchNotificationsMock = vi.mocked(fetchNotifications);
 const fetchOrganizationNotificationSettingsMock = vi.mocked(
@@ -703,6 +711,55 @@ describe("monitorsOverviewLoader", () => {
       `/organizations/${organizationId}/monitors`,
     );
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("projectsLoader", () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const route: RouteObject = {
+    path: "/organizations/:organizationId/projects",
+    loader: projectsLoader,
+    element: <div data-testid="projects-area">projects-area</div>,
+  };
+
+  it("stages the project list in the identity client for a member", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue({
+      ...meContext,
+      organizations: [
+        { id: organizationId, name: "Acme", slug: "acme", role: "viewer" },
+      ],
+      lastActiveTenantId: organizationId,
+    });
+    fetchProjectListMock.mockResolvedValue({ projects: [] });
+    renderAt([route], `/organizations/${organizationId}/projects`);
+
+    expect(await screen.findByTestId("projects-area")).toBeInTheDocument();
+    expect(
+      peekStagedQueryClient()?.client.getQueryData(
+        projectQueryKeys.list(organizationId),
+      ),
+    ).toEqual({ projects: [] });
+  });
+
+  it("requests nothing for an Organization the user does not belong to", async () => {
+    sessionState.data = { user: VERIFIED };
+    fetchMeContextMock.mockResolvedValue(meContext);
+    fetchProjectListMock.mockReset();
+    renderAt([route], `/organizations/${organizationId}/projects`);
+
+    expect(await screen.findByTestId("projects-area")).toBeInTheDocument();
+    expect(fetchProjectListMock).not.toHaveBeenCalled();
+  });
+
+  it("sends an anonymous visitor to sign in with a return path", async () => {
+    sessionState.data = null;
+    renderAt([route], `/organizations/${organizationId}/projects`);
+
+    expect(await screen.findByTestId("from")).toHaveTextContent(
+      `/organizations/${organizationId}/projects`,
+    );
+    expect(fetchProjectListMock).not.toHaveBeenCalled();
   });
 });
 

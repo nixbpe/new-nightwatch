@@ -1025,7 +1025,7 @@ describe("AppShell", () => {
     expect(input).toHaveFocus();
     expect(
       within(dialog).getAllByTestId(/^shell-command-option-/),
-    ).toHaveLength(11);
+    ).toHaveLength(12);
     for (const path of [
       "/workspace",
       `/organizations/${ORG_A}/monitors`,
@@ -1035,6 +1035,7 @@ describe("AppShell", () => {
       "/settings/security",
       "/settings/sessions",
       "/settings/display",
+      `/organizations/${ORG_A}/projects`,
       `/organizations/${ORG_A}/members`,
       `/organizations/${ORG_A}/notification-settings`,
       `/organizations/${ORG_A}/audit-log`,

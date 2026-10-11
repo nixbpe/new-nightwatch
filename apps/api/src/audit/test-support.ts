@@ -63,11 +63,12 @@ const idempotentRole = (_match: string, role: string, options: string) =>
  * drops it, and so does a failed setup. Roles are cluster-global, so `create
  * role` is made idempotent in the migration copy (architecture DB-13).
  *
- * `skip` leaves one migration file out; `applySkipped` runs it later, for a
- * test that needs data in place before that migration.
+ * `skip` leaves migration files out (a later migration that alters what the
+ * skipped one creates must be listed too); `applySkipped` runs them later, for
+ * a test that needs data in place before that migration.
  */
 export async function openIsolatedAuditDatabase(options?: {
-  skip?: string;
+  skip?: readonly string[];
 }): Promise<{
   database: Database;
   ownerDatabase: Database;
@@ -132,7 +133,7 @@ export async function openIsolatedAuditDatabase(options?: {
     );
     copy = await mkdtemp(join(tmpdir(), "nightwatch-audit-migrations-"));
     for (const file of await readdir(source)) {
-      if (file === options?.skip) continue;
+      if (options?.skip?.includes(file)) continue;
       const sql = (await readFile(join(source, file), "utf8")).replace(
         IDEMPOTENT_ROLE,
         idempotentRole,
@@ -157,11 +158,13 @@ export async function openIsolatedAuditDatabase(options?: {
     },
     applySkipped: async () => {
       if (!options?.skip || !copy) throw new Error("no migration was skipped");
-      const sql = (await readFile(join(source, options.skip), "utf8")).replace(
-        IDEMPOTENT_ROLE,
-        idempotentRole,
-      );
-      await writeFile(join(copy, options.skip), sql);
+      for (const file of options.skip) {
+        const sql = (await readFile(join(source, file), "utf8")).replace(
+          IDEMPOTENT_ROLE,
+          idempotentRole,
+        );
+        await writeFile(join(copy, file), sql);
+      }
       await migrate();
     },
     close,

@@ -109,6 +109,7 @@ type EventRow = {
   targetName: string | null;
   targetCurrent: boolean;
   monitorExists: boolean;
+  projectExists: boolean;
 };
 
 function actorOf(row: EventRow): AuditEventSummary["actor"] {
@@ -130,6 +131,13 @@ function targetOf(row: EventRow): AuditTarget {
         monitorId: targetId,
         displayName: row.monitorExists ? row.targetName : null,
         deleted: !row.monitorExists,
+      };
+    case "project":
+      return {
+        type: "project",
+        projectId: targetId,
+        displayName: row.projectExists ? row.targetName : null,
+        deleted: !row.projectExists,
       };
     case "member":
       return {

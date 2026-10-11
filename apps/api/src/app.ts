@@ -36,6 +36,7 @@ import {
   registerOrganizationMemberRoutes,
   registerOrganizationNotificationSettingsRoutes,
 } from "./organization-notifications/routes";
+import { registerProjectRoutes } from "./projects/routes";
 import { RATE_LIMIT_TIMEOUT_MS } from "./rate-limit";
 
 export type AppDeps = {
@@ -63,6 +64,7 @@ const invitationsSegment = "invitations";
 const notificationSettingsSegment = "notification-settings";
 const monitorsSegment = "monitors";
 const auditLogSegment = "audit-log";
+const projectsSegment = "projects";
 // `test` and `recent-events` are routes, not monitor ids, so they stay static.
 const monitorStaticSegments = new Set(["test", "recent-events"]);
 const monitorActionSegments = new Set([
@@ -163,6 +165,8 @@ function logSafeOrganizationPath(path: string): string {
     | "invitation-route"
     | "monitors"
     | "monitor-route"
+    | "projects"
+    | "project-route"
     | "audit-log"
     | "audit-events"
     | "audit-exports"
@@ -204,6 +208,14 @@ function logSafeOrganizationPath(path: string): string {
       if (state === "organization-route" && segment === monitorsSegment) {
         state = "monitors";
         return monitorsSegment;
+      }
+      if (state === "organization-route" && segment === projectsSegment) {
+        state = "projects";
+        return projectsSegment;
+      }
+      if (state === "projects") {
+        state = "project-route";
+        return ":projectId";
       }
       if (state === "organization-route" && segment === auditLogSegment) {
         state = "audit-log";
@@ -457,6 +469,11 @@ export function createApp(deps: AppDeps): OpenAPIHono {
       logger: deps.logger,
     });
     registerAuditLogReadRoutes(app, {
+      auth,
+      database,
+      logger: deps.logger,
+    });
+    registerProjectRoutes(app, {
       auth,
       database,
       logger: deps.logger,
