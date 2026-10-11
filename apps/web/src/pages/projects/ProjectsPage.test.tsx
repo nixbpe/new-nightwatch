@@ -624,6 +624,7 @@ describe("role changed under the user", () => {
 
       await user.click(opener);
       const dialog = await screen.findByRole("dialog");
+      const listCallsBefore = fetchListMock.mock.calls.length;
       await user.click(
         within(dialog).getByRole("button", {
           name: action === "edit" ? "บันทึก" : "ลบโปรเจกต์",
@@ -639,8 +640,35 @@ describe("role changed under the user", () => {
         expect(screen.queryByRole("button", { name: /^ลบ / })).toBeNull();
       });
       expect(fetchMeContextMock.mock.calls.length).toBeGreaterThan(1);
+      expect(fetchListMock.mock.calls.length - listCallsBefore).toBe(1);
     },
   );
+  it("reloads the list once when only the project role changed", async () => {
+    const user = userEvent.setup();
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    fetchListMock.mockResolvedValueOnce({
+      projects: [project({ name: "Payments", myRole: "admin" })],
+    });
+    renderPage();
+    const opener = await screen.findByRole("button", {
+      name: "แก้ไข Payments",
+    });
+    fetchListMock.mockResolvedValue({
+      projects: [project({ name: "Payments", myRole: "member" })],
+    });
+    updateMock.mockRejectedValue(new ApiError("PERMISSION_DENIED", "no", 403));
+    await user.click(opener);
+    const dialog = await screen.findByRole("dialog");
+    const listCallsBefore = fetchListMock.mock.calls.length;
+    await user.click(within(dialog).getByRole("button", { name: "บันทึก" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "แก้ไข Payments" }),
+      ).toBeNull();
+    });
+    expect(fetchListMock.mock.calls.length - listCallsBefore).toBe(1);
+  });
 });
 
 describe("stale list", () => {
@@ -663,6 +691,15 @@ describe("stale list", () => {
       await screen.findByText(/อัปเดตรายการไม่สำเร็จ/),
     ).toBeInTheDocument();
     expect(screen.getByText("Old")).toBeInTheDocument();
+    expect(screen.queryByText("สร้างโปรเจกต์ Fresh แล้ว")).toBeNull();
+
+    // A later reload that succeeds must not bring back the old notice.
+    fetchListMock.mockResolvedValue({
+      projects: [project({ name: "Old" }), project({ name: "Fresh" })],
+    });
+    await queryClients.at(-1)?.invalidateQueries();
+    expect(await screen.findByText("Fresh")).toBeInTheDocument();
+    expect(screen.queryByText(/อัปเดตรายการไม่สำเร็จ/)).toBeNull();
     expect(screen.queryByText("สร้างโปรเจกต์ Fresh แล้ว")).toBeNull();
   });
 });

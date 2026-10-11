@@ -4,7 +4,6 @@ import {
   updateProjectRequestSchema,
   type ProjectSummary,
 } from "@nightwatch/api-contract";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   useEffect,
   useId,
@@ -19,11 +18,7 @@ import { createPortal } from "react-dom";
 import { Alert, Field, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { ApiError } from "../../lib/api/client";
-import {
-  createProject,
-  projectQueryKeys,
-  updateProject,
-} from "../../lib/api/projects";
+import { createProject, updateProject } from "../../lib/api/projects";
 import { cn } from "../../lib/utils";
 
 const FOCUSABLE = [
@@ -81,12 +76,11 @@ export function ProjectFormDialog({
   project?: ProjectSummary;
   opener: HTMLElement | null;
   fallbackFocus: RefObject<HTMLElement | null>;
-  onSaved: (saved: ProjectSummary) => void;
+  onSaved: (saved: ProjectSummary) => Promise<void>;
   onCancel: () => void;
   /** The role or the project changed under the user: close and reload the list. */
   onStale: (reason: StaleReason) => void;
 }) {
-  const queryClient = useQueryClient();
   const titleId = useId();
   const nameId = useId();
   const slugId = useId();
@@ -132,13 +126,6 @@ export function ProjectFormDialog({
     if (!inFlight.current) onCancel();
   };
 
-  const stale = (reason: StaleReason) => {
-    void queryClient.invalidateQueries({
-      queryKey: projectQueryKeys.all(organizationId),
-    });
-    onStale(reason);
-  };
-
   const handleError = (error: unknown) => {
     if (!(error instanceof ApiError)) {
       setFormError(FAILED_MESSAGE);
@@ -155,10 +142,10 @@ export function ProjectFormDialog({
         return;
       case "PERMISSION_DENIED":
       case "MEMBERSHIP_DENIED":
-        stale("denied");
+        onStale("denied");
         return;
       case "PROJECT_NOT_FOUND":
-        stale("not-found");
+        onStale("not-found");
         return;
       default:
         setFormError(FAILED_MESSAGE);
@@ -191,10 +178,8 @@ export function ProjectFormDialog({
       const saved = editing
         ? await updateProject(organizationId, project.id, { name, description })
         : await createProject(organizationId, { name, slug, description });
-      await queryClient.invalidateQueries({
-        queryKey: projectQueryKeys.all(organizationId),
-      });
-      onSaved(saved);
+      // The page reloads the list before the dialog closes.
+      await onSaved(saved);
     } catch (error) {
       handleError(error);
     } finally {

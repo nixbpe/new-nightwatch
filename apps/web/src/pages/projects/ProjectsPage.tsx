@@ -184,11 +184,33 @@ function ProjectsForOrganization({
     });
   };
 
-  // A denied write means the role changed: reload the list and the context, then say so.
+  // A success notice only after the list shows the change; otherwise the
+  // stale list warning speaks for the page.
+  const reloadThenNotify = async (text: string) => {
+    const reloaded = await queryClient
+      .invalidateQueries(
+        { queryKey: projectQueryKeys.all(organizationId) },
+        { throwOnError: true },
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+    setNotice(reloaded ? { text, kind: "saved" } : null);
+  };
+
+  // A denied write means the role changed: reload the context, then the list,
+  // and say so. The context refresh cancels tenant queries, and refetches them
+  // itself when the Organization role changed, so the list reload waits for it
+  // and joins a fetch already in flight.
   const roleChanged = () => {
-    reload();
-    void refreshMembershipContext();
     setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
+    void refreshMembershipContext().finally(() => {
+      void queryClient.invalidateQueries(
+        { queryKey: projectQueryKeys.all(organizationId) },
+        { cancelRefetch: false },
+      );
+    });
   };
 
   const confirmDelete = async () => {
@@ -197,11 +219,6 @@ function ProjectsForOrganization({
     setDeletion({ ...deletion, pending: true, failed: false });
     try {
       await deleteProject(organizationId, project.id);
-      await queryClient.invalidateQueries({
-        queryKey: projectQueryKeys.all(organizationId),
-      });
-      setDeletion(null);
-      setNotice({ text: `ลบโปรเจกต์ ${project.name} แล้ว`, kind: "saved" });
     } catch (error) {
       if (error instanceof ApiError) {
         if (
@@ -224,7 +241,10 @@ function ProjectsForOrganization({
         pending: false,
         failed: true,
       });
+      return;
     }
+    await reloadThenNotify(`ลบโปรเจกต์ ${project.name} แล้ว`);
+    setDeletion(null);
   };
 
   const header = (actions?: ReactNode, status?: ReactNode) => (
@@ -251,7 +271,7 @@ function ProjectsForOrganization({
         <Alert tone="info" role="status">
           {notice.text}
         </Alert>
-      ) : list.isError ? null : (
+      ) : (
         <Notice tone="success">{notice.text}</Notice>
       )}
     </>
@@ -528,15 +548,13 @@ function ProjectsForOrganization({
           project={dialog.kind === "edit" ? dialog.project : undefined}
           opener={dialog.opener}
           fallbackFocus={heading}
-          onSaved={(saved) => {
+          onSaved={async (saved) => {
+            await reloadThenNotify(
+              dialog.kind === "edit"
+                ? `บันทึกโปรเจกต์ ${saved.name} แล้ว`
+                : `สร้างโปรเจกต์ ${saved.name} แล้ว`,
+            );
             setDialog(null);
-            setNotice({
-              text:
-                dialog.kind === "edit"
-                  ? `บันทึกโปรเจกต์ ${saved.name} แล้ว`
-                  : `สร้างโปรเจกต์ ${saved.name} แล้ว`,
-              kind: "saved",
-            });
           }}
           onCancel={() => {
             setDialog(null);
@@ -544,6 +562,7 @@ function ProjectsForOrganization({
           onStale={(reason: StaleReason) => {
             setDialog(null);
             if (reason === "denied") roleChanged();
+            else reload();
           }}
         />
       )}
