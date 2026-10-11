@@ -73,21 +73,29 @@ export function ProjectsPage() {
 }
 
 function RolePill({ role }: { role: ProjectSummary["myRole"] }) {
+  const hooks = {
+    "data-testid": "project-role",
+    "data-project-role": role ?? "none",
+  };
   if (role === "admin") {
     return (
-      <StatusPill tone="primary" dot>
+      <StatusPill {...hooks} tone="primary" dot>
         ผู้ดูแล
       </StatusPill>
     );
   }
   if (role === "member") {
     return (
-      <StatusPill tone="neutral" dot>
+      <StatusPill {...hooks} tone="neutral" dot>
         สมาชิก
       </StatusPill>
     );
   }
-  return <StatusPill tone="muted">ไม่ได้เข้าร่วม</StatusPill>;
+  return (
+    <StatusPill {...hooks} tone="muted">
+      ไม่ได้เข้าร่วม
+    </StatusPill>
+  );
 }
 
 function ProjectsForOrganization({
@@ -179,9 +187,17 @@ function ProjectsForOrganization({
     searchRef.current?.focus();
   };
 
+  // A write that answers 403, or 404 for a Project the user can no longer see,
+  // may mean the role changed, so the context reloads before the list. The
+  // context refresh cancels tenant queries, and removes them when the
+  // Organization role changed so the list observer refetches; the list reload
+  // runs after it and joins that fetch.
   const reload = () => {
-    void queryClient.invalidateQueries({
-      queryKey: projectQueryKeys.all(organizationId),
+    void refreshMembershipContext().finally(() => {
+      void queryClient.invalidateQueries(
+        { queryKey: projectQueryKeys.all(organizationId) },
+        { cancelRefetch: false },
+      );
     });
   };
 
@@ -200,17 +216,9 @@ function ProjectsForOrganization({
     setNotice(reloaded ? { text, kind: "saved" } : null);
   };
 
-  // A denied write means the role changed. The context refresh cancels tenant
-  // queries, and removes them when the Organization role changed so the list
-  // observer refetches; the list reloads after it and joins that fetch.
   const roleChanged = () => {
     setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
-    void refreshMembershipContext().finally(() => {
-      void queryClient.invalidateQueries(
-        { queryKey: projectQueryKeys.all(organizationId) },
-        { cancelRefetch: false },
-      );
-    });
+    reload();
   };
 
   const confirmDelete = async () => {
@@ -268,11 +276,17 @@ function ProjectsForOrganization({
         titleTabIndex={-1}
       />
       {notice === null ? null : notice.kind === "role-changed" ? (
-        <Alert tone="info" role="status">
+        <Alert
+          data-testid="projects-notice-role-changed"
+          tone="info"
+          role="status"
+        >
           {notice.text}
         </Alert>
       ) : (
-        <Notice tone="success">{notice.text}</Notice>
+        <Notice data-testid="projects-notice-saved" tone="success">
+          {notice.text}
+        </Notice>
       )}
     </>
   );
@@ -281,7 +295,13 @@ function ProjectsForOrganization({
     return (
       <Page>
         {header()}
-        <PageState kind="loading" label="กำลังโหลดโปรเจกต์" layout="table" />
+        <PageState
+          data-testid="projects-loading"
+          statusTestId="projects-loading-status"
+          kind="loading"
+          label="กำลังโหลดโปรเจกต์"
+          layout="table"
+        />
       </Page>
     );
   }
@@ -290,6 +310,9 @@ function ProjectsForOrganization({
       <Page>
         {header()}
         <PageState
+          data-testid="projects-context-error"
+          alertTestId="projects-context-alert"
+          retryTestId="projects-context-retry"
           kind="error"
           message="ไม่สามารถยืนยันสิทธิ์ดูโปรเจกต์ได้"
           retryLabel="ลองอีกครั้ง"
@@ -309,6 +332,8 @@ function ProjectsForOrganization({
           titleTabIndex={-1}
         />
         <PageState
+          data-testid="projects-denied"
+          alertTestId="projects-denied-alert"
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูโปรเจกต์ขององค์กรนี้"
         />
@@ -321,13 +346,22 @@ function ProjectsForOrganization({
         {header()}
         {list.isError ? (
           <PageState
+            data-testid="projects-list-error"
+            alertTestId="projects-list-alert"
+            retryTestId="projects-list-retry"
             kind="error"
             message="โหลดโปรเจกต์ไม่สำเร็จ"
             retryLabel="ลองอีกครั้ง"
             onRetry={() => void list.refetch()}
           />
         ) : (
-          <PageState kind="loading" label="กำลังโหลดโปรเจกต์" layout="table" />
+          <PageState
+            data-testid="projects-loading"
+            statusTestId="projects-loading-status"
+            kind="loading"
+            label="กำลังโหลดโปรเจกต์"
+            layout="table"
+          />
         )}
       </Page>
     );
@@ -340,6 +374,7 @@ function ProjectsForOrganization({
   const limitReached = projects.length >= PROJECT_LIMIT_PER_ORGANIZATION;
   const createButton = (
     <Button
+      data-testid="projects-create"
       type="button"
       onClick={(event) => {
         openCreate(event.currentTarget);
@@ -351,12 +386,18 @@ function ProjectsForOrganization({
   const actions = !canManage ? undefined : limitReached ? (
     <>
       <span
+        data-testid="projects-limit-reason"
         id="project-limit-reason"
         className="text-xs text-foreground-secondary"
       >
         {LIMIT_REACHED_MESSAGE}
       </span>
-      <Button type="button" disabled aria-describedby="project-limit-reason">
+      <Button
+        data-testid="projects-create"
+        type="button"
+        disabled
+        aria-describedby="project-limit-reason"
+      >
         สร้างโปรเจกต์
       </Button>
     </>
@@ -365,8 +406,14 @@ function ProjectsForOrganization({
   );
   const status = (
     <span>
-      <span className="font-mono">{projects.length}</span> โปรเจกต์ ·
-      คุณเข้าร่วม <span className="font-mono">{joined.length}</span> โปรเจกต์
+      <span data-testid="projects-total" className="font-mono">
+        {projects.length}
+      </span>{" "}
+      โปรเจกต์ · คุณเข้าร่วม{" "}
+      <span data-testid="projects-joined" className="font-mono">
+        {joined.length}
+      </span>{" "}
+      โปรเจกต์
     </span>
   );
 
@@ -376,8 +423,13 @@ function ProjectsForOrganization({
       header: "โปรเจกต์",
       cell: (project) => (
         <span className="flex min-w-40 flex-col">
-          <span className="font-medium break-words">{project.name}</span>
-          <span className="font-mono text-[13px] whitespace-nowrap text-foreground-secondary">
+          <span data-testid="project-name" className="font-medium break-words">
+            {project.name}
+          </span>
+          <span
+            data-testid="project-slug"
+            className="font-mono text-[13px] whitespace-nowrap text-foreground-secondary"
+          >
             {project.slug}
           </span>
         </span>
@@ -389,7 +441,9 @@ function ProjectsForOrganization({
       width: "120px",
       align: "end",
       mono: true,
-      cell: (project) => project.memberCount,
+      cell: (project) => (
+        <span data-testid="project-member-count">{project.memberCount}</span>
+      ),
     },
     {
       key: "role",
@@ -406,6 +460,7 @@ function ProjectsForOrganization({
         const at = new Date(project.updatedAt);
         return (
           <time
+            data-testid="project-updated-at"
             dateTime={project.updatedAt}
             className="text-foreground-secondary"
           >
@@ -422,6 +477,7 @@ function ProjectsForOrganization({
     return (
       <span className="inline-flex justify-end gap-2">
         <Button
+          data-testid="project-edit"
           type="button"
           variant="ghost"
           size="sm"
@@ -439,6 +495,7 @@ function ProjectsForOrganization({
         </Button>
         {canManage ? (
           <Button
+            data-testid="project-delete"
             type="button"
             variant="ghost"
             size="sm"
@@ -464,6 +521,7 @@ function ProjectsForOrganization({
   if (projects.length === 0) {
     body = canManage ? (
       <EmptyState
+        data-testid="projects-empty-first-run"
         variant="first-run"
         icon={<GridIcon size={20} />}
         title="ยังไม่มีโปรเจกต์"
@@ -471,6 +529,7 @@ function ProjectsForOrganization({
       />
     ) : (
       <EmptyState
+        data-testid="projects-empty-not-joined"
         icon={<GridIcon size={20} />}
         title="คุณยังไม่ได้อยู่ในโปรเจกต์ใด"
         description="ติดต่อเจ้าของหรือผู้ดูแลองค์กรเพื่อเข้าร่วมโปรเจกต์"
@@ -489,6 +548,7 @@ function ProjectsForOrganization({
               <SearchIcon size={18} />
             </span>
             <Input
+              data-testid="projects-search"
               type="search"
               ref={searchRef}
               value={searchText}
@@ -501,27 +561,42 @@ function ProjectsForOrganization({
             />
           </Label>
           <SegmentedControl
+            testId="projects-view"
+            optionTestId={(value) => `projects-view-${value}`}
             label="แสดงโปรเจกต์"
             value={view}
             options={VIEW_OPTIONS}
             onChange={setView}
           />
         </div>
-        <p role="status" aria-label="ผลการกรอง" className="sr-only">
+        <p
+          data-testid="projects-filter-result"
+          role="status"
+          aria-label="ผลการกรอง"
+          className="sr-only"
+        >
           {announcement}
         </p>
         {visible.length === 0 ? (
           <EmptyState
+            data-testid="projects-no-results"
             icon={<GridIcon size={20} />}
             title="ไม่พบโปรเจกต์ที่ตรงกับตัวกรอง"
             action={
-              <Button type="button" variant="secondary" onClick={clearFilters}>
+              <Button
+                data-testid="projects-clear-filters"
+                type="button"
+                variant="secondary"
+                onClick={clearFilters}
+              >
                 ล้างตัวกรอง
               </Button>
             }
           />
         ) : (
           <DataTable
+            data-testid="projects-table"
+            rowTestId={(project) => `project-row-${project.id}`}
             ariaLabel="รายการโปรเจกต์"
             columns={columns}
             rows={visible}
@@ -537,7 +612,7 @@ function ProjectsForOrganization({
     <Page>
       {header(actions, status)}
       {list.isError ? (
-        <Alert tone="warning">
+        <Alert data-testid="projects-stale-warning" tone="warning">
           อัปเดตรายการไม่สำเร็จ กำลังแสดงรายการที่โหลดไว้ก่อนหน้า
         </Alert>
       ) : null}
@@ -568,6 +643,8 @@ function ProjectsForOrganization({
       )}
       {deletion === null ? null : (
         <ConfirmDialog
+          data-testid="project-delete-dialog"
+          confirmTestId="project-delete-confirm"
           title={`ลบโปรเจกต์ ${deletion.project.name}`}
           description={
             <>
@@ -576,7 +653,11 @@ function ProjectsForOrganization({
                 และกู้คืนไม่ได้
               </p>
               {deletion.failed ? (
-                <p role="alert" className="mt-2 text-danger">
+                <p
+                  data-testid="project-delete-error"
+                  role="alert"
+                  className="mt-2 text-danger"
+                >
                   {DELETE_FAILED}
                 </p>
               ) : null}

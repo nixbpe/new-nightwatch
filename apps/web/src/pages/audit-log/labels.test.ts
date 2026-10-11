@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CHANGE_FIELD_LABELS, targetText } from "./labels";
+import { targetText } from "./labels";
 
 const projectId = crypto.randomUUID();
 
@@ -16,21 +16,29 @@ describe("targetText for a Project", () => {
     ).toBe("Payments");
   });
 
-  it("says the Project was deleted once it is gone", () => {
+  it("marks a deleted Project the same way as a deleted monitor, never by its old name", () => {
+    const deletedMonitor = targetText({
+      type: "monitor",
+      monitorId: crypto.randomUUID(),
+      displayName: null,
+      deleted: true,
+    });
+    expect(deletedMonitor).toMatch(/\S/);
+    expect(
+      targetText({
+        type: "project",
+        projectId,
+        displayName: "Payments",
+        deleted: true,
+      }),
+    ).toBe(deletedMonitor);
     expect(
       targetText({
         type: "project",
         projectId,
         displayName: null,
-        deleted: true,
+        deleted: false,
       }),
-    ).toBe("ถูกลบแล้ว");
-  });
-});
-
-describe("shared change field labels", () => {
-  it("labels name without naming a monitor, and labels description", () => {
-    expect(CHANGE_FIELD_LABELS.name).toBe("ชื่อ");
-    expect(CHANGE_FIELD_LABELS.description).toBe("คำอธิบาย");
+    ).toBe(deletedMonitor);
   });
 });

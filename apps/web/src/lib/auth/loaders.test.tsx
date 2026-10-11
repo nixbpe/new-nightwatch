@@ -719,7 +719,7 @@ describe("projectsLoader", () => {
   const route: RouteObject = {
     path: "/organizations/:organizationId/projects",
     loader: projectsLoader,
-    element: <div>projects-area</div>,
+    element: <div data-testid="projects-area">projects-area</div>,
   };
 
   it("stages the project list in the identity client for a member", async () => {
@@ -734,7 +734,7 @@ describe("projectsLoader", () => {
     fetchProjectListMock.mockResolvedValue({ projects: [] });
     renderAt([route], `/organizations/${organizationId}/projects`);
 
-    expect(await screen.findByText("projects-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("projects-area")).toBeInTheDocument();
     expect(
       peekStagedQueryClient()?.client.getQueryData(
         projectQueryKeys.list(organizationId),
@@ -748,7 +748,7 @@ describe("projectsLoader", () => {
     fetchProjectListMock.mockReset();
     renderAt([route], `/organizations/${organizationId}/projects`);
 
-    expect(await screen.findByText("projects-area")).toBeInTheDocument();
+    expect(await screen.findByTestId("projects-area")).toBeInTheDocument();
     expect(fetchProjectListMock).not.toHaveBeenCalled();
   });
 

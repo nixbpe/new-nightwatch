@@ -218,6 +218,7 @@ export function ProjectFormDialog({
     <div className="backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
       <form
         ref={dialog}
+        data-testid={editing ? "project-edit-dialog" : "project-create-dialog"}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -234,9 +235,19 @@ export function ProjectFormDialog({
           {editing ? `แก้ไขโปรเจกต์ ${project.name}` : "สร้างโปรเจกต์"}
         </h2>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
-          {formError === null ? null : <Alert tone="error">{formError}</Alert>}
-          <Field label="ชื่อโปรเจกต์" error={errors.name} errorId={nameId}>
+          {formError === null ? null : (
+            <Alert data-testid="project-form-error" tone="error">
+              {formError}
+            </Alert>
+          )}
+          <Field
+            label="ชื่อโปรเจกต์"
+            error={errors.name}
+            errorId={nameId}
+            errorTestId="project-form-name-error"
+          >
             <Input
+              data-testid="project-form-name"
               ref={nameInput}
               value={name}
               aria-invalid={errors.name === undefined ? undefined : true}
@@ -249,15 +260,26 @@ export function ProjectFormDialog({
           {editing ? (
             <div>
               <span className="mb-2 block font-medium">slug</span>
-              <span className="font-mono text-[13px]">{project.slug}</span>
+              <span
+                data-testid="project-form-slug-fixed"
+                className="font-mono text-[13px]"
+              >
+                {project.slug}
+              </span>
               <span className="mt-1 block text-xs text-foreground-secondary">
                 slug เปลี่ยนไม่ได้หลังสร้าง
               </span>
             </div>
           ) : (
             <div>
-              <Field label="slug" error={errors.slug} errorId={slugId}>
+              <Field
+                label="slug"
+                error={errors.slug}
+                errorId={slugId}
+                errorTestId="project-form-slug-error"
+              >
                 <Input
+                  data-testid="project-form-slug"
                   ref={slugInput}
                   value={slug}
                   className="font-mono text-[13px]"
@@ -286,8 +308,10 @@ export function ProjectFormDialog({
               label="คำอธิบาย (ไม่บังคับ)"
               error={errors.description}
               errorId={descriptionId}
+              errorTestId="project-form-description-error"
             >
               <textarea
+                data-testid="project-form-description"
                 ref={descriptionInput}
                 value={description}
                 rows={3}
@@ -315,6 +339,7 @@ export function ProjectFormDialog({
         </div>
         <div className="flex flex-col gap-2 border-t border-foreground/10 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
           <Button
+            data-testid="project-form-cancel"
             type="button"
             variant="secondary"
             wrap
@@ -324,6 +349,7 @@ export function ProjectFormDialog({
             ยกเลิก
           </Button>
           <Button
+            data-testid="project-form-submit"
             type="submit"
             wrap
             aria-disabled={submitting ? true : undefined}

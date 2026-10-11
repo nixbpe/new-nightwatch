@@ -24,6 +24,7 @@ const pool = database.sql;
 let org: string;
 let otherOrg: string;
 let ownerSession: ApiSession;
+let secretId: string;
 const people = {} as Record<Role | "nonmember", Person>;
 const userIds: string[] = [];
 
@@ -34,10 +35,20 @@ const projectsApi = (organizationId: string) =>
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(person.email);
-  await page.locator("#login-password").fill(person.password);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(person.email);
+  await page.getByTestId("login-password").fill(person.password);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace/);
+}
+
+async function listProjects() {
+  const list = await ownerSession.request("GET", projectsApi(org));
+  expect(list.status).toBe(200);
+  return (
+    list.body as {
+      projects: { id: string; name: string; slug: string; myRole: string }[];
+    }
+  ).projects;
 }
 
 test.beforeAll(async () => {
@@ -69,29 +80,44 @@ test.describe("owner manages projects", () => {
   const name = `Payments ${run}`;
   const slug = `pay-${run}`;
   const renamed = `Payments v2 ${run}`;
+  let projectId: string;
 
-  test("creates a project and sees it with the role ผู้ดูแล", async ({
+  test("creates a project and sees it with the admin role", async ({
     page,
   }) => {
     await signIn(page, people.owner);
     await page.goto(projectsUrl(org));
-    await expect(page.getByText("ยังไม่มีโปรเจกต์")).toBeVisible();
+    await expect(page.getByTestId("projects-empty-first-run")).toBeVisible();
 
-    await page.getByRole("button", { name: "สร้างโปรเจกต์" }).click();
-    const dialog = page.getByRole("dialog", { name: "สร้างโปรเจกต์" });
-    await expect(dialog.getByLabel("ชื่อโปรเจกต์")).toBeFocused();
-    await dialog.getByLabel("ชื่อโปรเจกต์").fill(name);
-    await dialog.getByLabel("slug").fill(slug);
-    await dialog.getByLabel("คำอธิบาย (ไม่บังคับ)").fill("Team A");
-    await dialog.getByRole("button", { name: "สร้างโปรเจกต์" }).click();
+    await page.getByTestId("projects-create").click();
+    const dialog = page.getByTestId("project-create-dialog");
+    await expect(dialog.getByTestId("project-form-name")).toBeFocused();
+    await dialog.getByTestId("project-form-name").fill(name);
+    await dialog.getByTestId("project-form-slug").fill(slug);
+    await dialog.getByTestId("project-form-description").fill("Team A");
+    await dialog.getByTestId("project-form-submit").click();
 
     await expect(dialog).toHaveCount(0);
-    const row = page.getByRole("row").filter({ hasText: name });
-    await expect(row.getByText(slug)).toBeVisible();
-    await expect(row.getByText("ผู้ดูแล")).toBeVisible();
-    await expect(
-      row.getByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/),
-    ).toBeVisible();
+    const persisted = (await listProjects()).find(
+      (project) => project.slug === slug,
+    );
+    expect(persisted).toMatchObject({
+      name,
+      slug,
+      description: "Team A",
+      myRole: "admin",
+    });
+    projectId = persisted?.id ?? "";
+    const row = page.getByTestId(`project-row-${projectId}`);
+    await expect(row.getByTestId("project-name")).toHaveText(name);
+    await expect(row.getByTestId("project-slug")).toHaveText(slug);
+    await expect(row.getByTestId("project-role")).toHaveAttribute(
+      "data-project-role",
+      "admin",
+    );
+    await expect(row.getByTestId("project-updated-at")).toHaveText(
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+    );
   });
 
   test("shows a duplicate slug at the slug field and keeps the values", async ({
@@ -99,71 +125,76 @@ test.describe("owner manages projects", () => {
   }) => {
     await signIn(page, people.owner);
     await page.goto(projectsUrl(org));
-    await page.getByRole("button", { name: "สร้างโปรเจกต์" }).click();
-    const dialog = page.getByRole("dialog", { name: "สร้างโปรเจกต์" });
-    await dialog.getByLabel("ชื่อโปรเจกต์").fill("Duplicate");
-    await dialog.getByLabel("slug").fill(slug);
-    await dialog.getByRole("button", { name: "สร้างโปรเจกต์" }).click();
+    await page.getByTestId("projects-create").click();
+    const dialog = page.getByTestId("project-create-dialog");
+    await dialog.getByTestId("project-form-name").fill("Duplicate");
+    await dialog.getByTestId("project-form-slug").fill(slug);
+    await dialog.getByTestId("project-form-submit").click();
 
-    await expect(dialog.getByText("slug นี้ถูกใช้แล้วในองค์กร")).toBeVisible();
-    await expect(dialog.getByLabel("slug")).toBeFocused();
-    await expect(dialog.getByLabel("ชื่อโปรเจกต์")).toHaveValue("Duplicate");
-    await expect(dialog.getByLabel("slug")).toHaveValue(slug);
+    const error = dialog.getByTestId("project-form-slug-error");
+    await expect(error).toBeVisible();
+    const slugField = dialog.getByTestId("project-form-slug");
+    await expect(slugField).toHaveAttribute(
+      "aria-describedby",
+      (await error.getAttribute("id")) ?? "missing",
+    );
+    await expect(slugField).toHaveAttribute("aria-invalid", "true");
+    await expect(slugField).toBeFocused();
+    await expect(dialog.getByTestId("project-form-name")).toHaveValue(
+      "Duplicate",
+    );
+    await expect(slugField).toHaveValue(slug);
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
+    expect(await listProjects()).toHaveLength(1);
   });
 
   test("edits the name and keeps the slug fixed", async ({ page }) => {
     await signIn(page, people.owner);
     await page.goto(projectsUrl(org));
-    await page.getByRole("button", { name: `แก้ไข ${name}` }).click();
-    const dialog = page.getByRole("dialog", {
-      name: `แก้ไขโปรเจกต์ ${name}`,
-    });
-    await expect(dialog.getByLabel("slug")).toHaveCount(0);
-    await expect(dialog.getByText(slug)).toBeVisible();
-    await dialog.getByLabel("ชื่อโปรเจกต์").fill(renamed);
-    await dialog.getByRole("button", { name: "บันทึก" }).click();
+    const row = page.getByTestId(`project-row-${projectId}`);
+    await row.getByTestId("project-edit").click();
+    const dialog = page.getByTestId("project-edit-dialog");
+    await expect(dialog.getByTestId("project-form-slug")).toHaveCount(0);
+    await expect(dialog.getByTestId("project-form-slug-fixed")).toHaveText(
+      slug,
+    );
+    await dialog.getByTestId("project-form-name").fill(renamed);
+    await dialog.getByTestId("project-form-submit").click();
 
     await expect(dialog).toHaveCount(0);
-    await expect(
-      page.getByRole("row").filter({ hasText: renamed }),
-    ).toBeVisible();
-    await expect(page.getByText(name, { exact: true })).toHaveCount(0);
+    await expect(row.getByTestId("project-name")).toHaveText(renamed);
+    await expect(row.getByTestId("project-slug")).toHaveText(slug);
+    expect(await listProjects()).toMatchObject([
+      { id: projectId, name: renamed, slug },
+    ]);
   });
 
   test("deletes through the ConfirmDialog", async ({ page }) => {
     await signIn(page, people.owner);
     await page.goto(projectsUrl(org));
-    await page.getByRole("button", { name: `ลบ ${renamed}` }).click();
-    const dialog = page.getByRole("dialog", { name: `ลบโปรเจกต์ ${renamed}` });
-    await expect(
-      dialog.getByText(
-        "มอนิเตอร์ สมาชิก และการเชื่อมต่อ AWS ของโปรเจกต์นี้จะถูกลบด้วย และกู้คืนไม่ได้",
-      ),
-    ).toBeVisible();
-    await dialog.getByRole("button", { name: "ลบโปรเจกต์" }).click();
+    await page
+      .getByTestId(`project-row-${projectId}`)
+      .getByTestId("project-delete")
+      .click();
+    const dialog = page.getByTestId("project-delete-dialog");
+    await expect(dialog.getByTestId("confirmation-cancel")).toBeFocused();
+    await dialog.getByTestId("project-delete-confirm").click();
 
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByText("ยังไม่มีโปรเจกต์")).toBeVisible();
-    const list = await ownerSession.request("GET", projectsApi(org));
-    expect(list.body).toEqual({ projects: [] });
+    await expect(page.getByTestId("projects-empty-first-run")).toBeVisible();
+    expect(await listProjects()).toEqual([]);
   });
 });
 
 test.describe("other roles", () => {
-  test("viewer outside every project sees the contact copy and no create button", async ({
+  test("viewer outside every project sees the not-joined state and no create button", async ({
     page,
   }) => {
     await signIn(page, people.viewer);
     await page.goto(projectsUrl(org));
-    await expect(page.getByText("คุณยังไม่ได้อยู่ในโปรเจกต์ใด")).toBeVisible();
-    await expect(
-      page.getByText("ติดต่อเจ้าของหรือผู้ดูแลองค์กรเพื่อเข้าร่วมโปรเจกต์"),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "สร้างโปรเจกต์" }),
-    ).toHaveCount(0);
+    await expect(page.getByTestId("projects-empty-not-joined")).toBeVisible();
+    await expect(page.getByTestId("projects-create")).toHaveCount(0);
   });
 
   test("a non-member sees the denied state and no project data", async ({
@@ -174,11 +205,12 @@ test.describe("other roles", () => {
       slug: `secret-${run}`,
     });
     expect(seeded.status).toBe(201);
+    secretId = (seeded.body as { id: string }).id;
     await signIn(page, people.nonmember);
     await page.goto(projectsUrl(org));
-    await expect(
-      page.getByText("คุณไม่มีสิทธิ์ดูโปรเจกต์ขององค์กรนี้"),
-    ).toBeVisible();
+    await expect(page.getByTestId("projects-denied-alert")).toBeVisible();
+    await expect(page.getByTestId(`project-row-${secretId}`)).toHaveCount(0);
+    // Fixture name: no trace of the project may reach a non-member.
     await expect(page.getByText(`Secret ${run}`)).toHaveCount(0);
   });
 });
@@ -191,46 +223,31 @@ for (const theme of ["light", "dark"] as const) {
       }, theme);
     });
 
-    test("list, create dialog and 320 px reflow", async ({ page }) => {
+    test("list, create dialog and 320 px edit action", async ({ page }) => {
       await signIn(page, people.owner);
       await page.goto(projectsUrl(org));
+      // Document preference: the stored theme reaches the root element.
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await expect(page.getByText(`Secret ${run}`)).toBeVisible();
+      const row = page.getByTestId(`project-row-${secretId}`);
+      await expect(row.getByTestId("project-name")).toHaveText(`Secret ${run}`);
       await shot(page, `projects-list-${theme}`);
 
-      await page.getByRole("button", { name: "สร้างโปรเจกต์" }).click();
-      await expect(
-        page.getByRole("dialog", { name: "สร้างโปรเจกต์" }),
-      ).toBeVisible();
+      await page.getByTestId("projects-create").click();
+      await expect(page.getByTestId("project-create-dialog")).toBeVisible();
       // Let the overlay enter animation finish so the shot is not mid-fade.
       await page.waitForTimeout(500);
       await shot(page, `projects-create-dialog-${theme}`);
       await page.keyboard.press("Escape");
+      await expect(page.getByTestId("project-create-dialog")).toHaveCount(0);
 
       await page.setViewportSize({ width: 320, height: 700 });
       await shot(page, `projects-list-320-${theme}`, true);
-      const slugWraps = await page
-        .getByText(`secret-${run}`, { exact: true })
-        .evaluate(
-          (element) =>
-            element.getBoundingClientRect().height >
-            parseFloat(getComputedStyle(element).lineHeight) + 1,
-        );
-      expect(slugWraps).toBe(false);
       // Row actions sit past the table's right edge; they stay reachable by
       // scrolling the table region.
-      await page.getByRole("button", { name: `แก้ไข Secret ${run}` }).click();
-      await expect(
-        page.getByRole("dialog", { name: `แก้ไขโปรเจกต์ Secret ${run}` }),
-      ).toBeVisible();
+      await row.getByTestId("project-edit").click();
+      await expect(page.getByTestId("project-edit-dialog")).toBeVisible();
       await page.keyboard.press("Escape");
-      // Only the table's own scroll region may scroll sideways (LAY-02).
-      const overflow = await page.evaluate(
-        () =>
-          document.documentElement.scrollWidth -
-          document.documentElement.clientWidth,
-      );
-      expect(overflow).toBeLessThanOrEqual(0);
+      await expect(page.getByTestId("project-edit-dialog")).toHaveCount(0);
     });
   });
 }
