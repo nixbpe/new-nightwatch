@@ -3,6 +3,7 @@ import {
   invitationCreateInputSchema,
   invitationCreateResponseSchema,
   invitationResendResponseSchema,
+  lastProjectAdminErrorResponseSchema,
   organizationMemberRoleUpdateResponseSchema,
   organizationMemberListQuerySchema,
   organizationMemberListResponseSchema,
@@ -146,6 +147,13 @@ const memberRevokeRoute = createRoute({
       description: "Revoked member",
       content: { "application/json": { schema: memberResponseSchema } },
     },
+    409: {
+      description:
+        "The member is the last administrator of a Project; the message names it",
+      content: {
+        "application/json": { schema: lastProjectAdminErrorResponseSchema },
+      },
+    },
   },
 });
 
@@ -158,6 +166,13 @@ const memberSelfLeaveRoute = createRoute({
     200: {
       description: "Left organization",
       content: { "application/json": { schema: memberResponseSchema } },
+    },
+    409: {
+      description:
+        "The member is the last administrator of a Project; the message names it",
+      content: {
+        "application/json": { schema: lastProjectAdminErrorResponseSchema },
+      },
     },
   },
 });
