@@ -28,6 +28,7 @@ import {
 import { formatAuditDate, usePreferences } from "../../../lib/preferences";
 import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
+import { useLeaveOnOrganizationSwitch } from "../../monitors/useLeaveOnOrganizationSwitch";
 import { isDenied } from "../../workspace/rows";
 import { AddMemberDialog, type AddStaleReason } from "./AddMemberDialog";
 import { PROJECT_ROLE_DESCRIPTIONS, PROJECT_ROLE_LABELS } from "./roles";
@@ -81,6 +82,11 @@ function ProjectMembers({
     (item) => item.id === organizationId,
   );
   const isMember = organization !== undefined;
+  // A Project belongs to one Organization: a switch made in the shell leaves for the new one's list.
+  const switchedOrganization = useLeaveOnOrganizationSwitch(
+    organizationId,
+    "projects",
+  );
 
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState<{ opener: HTMLElement | null } | null>(
@@ -108,12 +114,12 @@ function ProjectMembers({
   const detail = useQuery({
     queryKey: projectQueryKeys.detail(organizationId, projectId),
     queryFn: () => fetchProjectDetail(organizationId, projectId),
-    enabled: isMember,
+    enabled: isMember && !switchedOrganization,
   });
   const membersQuery = useQuery({
     queryKey: projectQueryKeys.members(organizationId, projectId),
     queryFn: () => fetchProjectMembers(organizationId, projectId),
-    enabled: isMember,
+    enabled: isMember && !switchedOrganization,
   });
   const project = detail.data;
   const members = membersQuery.data?.members;
@@ -318,6 +324,25 @@ function ProjectMembers({
     </Button>
   );
 
+  if (switchedOrganization) {
+    // Nothing of the old Organization stays on screen while the redirect lands.
+    return (
+      <Page>
+        <PageHeader
+          eyebrow="// MEMBERS"
+          title="สมาชิกโปรเจกต์"
+          titleRef={heading}
+          titleTabIndex={-1}
+        />
+        <PageState
+          data-testid="project-members-loading"
+          kind="loading"
+          label="กำลังโหลดสมาชิกโปรเจกต์"
+          layout="table"
+        />
+      </Page>
+    );
+  }
   if (mePending || contextRefresh === "refreshing") {
     return (
       <Page>

@@ -16,11 +16,16 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import {
+  createMemoryRouter,
+  Outlet,
+  RouterProvider,
+  useLocation,
+} from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../../lib/api/client";
-import { fetchMeContext } from "../../../lib/api/me";
+import { fetchMeContext, updateActiveOrganization } from "../../../lib/api/me";
 import {
   addProjectMembers,
   fetchProjectDetail,
@@ -29,7 +34,7 @@ import {
   removeProjectMember,
   updateProjectMemberRole,
 } from "../../../lib/api/projects";
-import { TenantProvider } from "../../../lib/tenant/TenantProvider";
+import { TenantProvider, useTenant } from "../../../lib/tenant/TenantProvider";
 import { ProjectMembersPage } from "./ProjectMembersPage";
 
 guardUnassignedNetwork();
@@ -37,6 +42,7 @@ guardUnassignedNetwork();
 vi.mock("../../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
+  updateActiveOrganization: vi.fn(),
 }));
 vi.mock("../../../lib/api/projects", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -760,5 +766,93 @@ describe("add member dialog", () => {
     expect(
       await screen.findByTestId("project-members-notice-role-changed"),
     ).toBeVisible();
+  });
+});
+
+describe("organization switch", () => {
+  function SwitchHarness() {
+    const { switchOrg } = useTenant();
+    return (
+      <>
+        <button
+          data-testid="harness-switch"
+          type="button"
+          onClick={() => {
+            void switchOrg(B);
+          }}
+        >
+          switch
+        </button>
+        <p data-testid="harness-location">{useLocation().pathname}</p>
+        <Outlet />
+      </>
+    );
+  }
+
+  it("leaves for the new organization's project list and sends nothing to the old one", async () => {
+    const user = userEvent.setup();
+    const both: MeContextResponse = {
+      ...context("owner"),
+      organizations: [
+        { id: A, name: "Acme", slug: "acme", role: "owner" },
+        { id: B, name: "Beta", slug: "beta", role: "owner" },
+      ],
+    };
+    meMock.mockResolvedValue(both);
+    vi.mocked(updateActiveOrganization).mockResolvedValue({
+      ...both,
+      lastActiveTenantId: B,
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    bindQueryClientIdentity(queryClient, ME);
+    queryClients.push(queryClient);
+    const router = createMemoryRouter(
+      [
+        {
+          element: <SwitchHarness />,
+          children: [
+            {
+              path: "/organizations/:organizationId/projects/:projectId/members",
+              element: <ProjectMembersPage />,
+            },
+            {
+              path: "/organizations/:organizationId/projects",
+              element: <p data-testid="harness-projects">projects</p>,
+            },
+          ],
+        },
+      ],
+      { initialEntries: [`/organizations/${A}/projects/${P}/members`] },
+    );
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider>
+          <RouterProvider router={router} />
+        </TenantProvider>
+      </QueryClientProvider>,
+    );
+    await loaded();
+    const calls = [detailMock, membersMock, candidatesMock].map(
+      (mock) => mock.mock.calls.length,
+    );
+
+    await user.click(screen.getByTestId("harness-switch"));
+    await waitFor(() => {
+      expect(screen.getByTestId("harness-location")).toHaveTextContent(
+        `/organizations/${B}/projects`,
+      );
+    });
+    expect(screen.getByTestId("harness-projects")).toBeInTheDocument();
+    expect(screen.queryByTestId("project-members-table")).toBeNull();
+    expect(
+      [detailMock, membersMock, candidatesMock].map(
+        (mock) => mock.mock.calls.length,
+      ),
+    ).toEqual(calls);
+    for (const mock of [addMock, patchMock, removeMock]) {
+      expect(mock).not.toHaveBeenCalled();
+    }
   });
 });

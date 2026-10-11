@@ -23,6 +23,7 @@ const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
 
 let org: string;
+let otherOrg: string;
 let projectId: string;
 let ownerSession: ApiSession;
 const people = {} as Record<Role | "outsider" | "orgAdmin", Person>;
@@ -61,6 +62,9 @@ test.beforeAll(async () => {
   people.outsider = await createPerson(pool, "outsider", org);
   userIds.push(people.outsider.userId);
   await addMember(pool, org, people.outsider.userId, "viewer");
+  // A second Organization the owner can switch to from the shell.
+  otherOrg = await createOrganization(pool, `E2E Project members other ${run}`);
+  await addMember(pool, otherOrg, people.owner.userId, "owner");
   // An Organization admin who is not in the Project (AC-09).
   people.orgAdmin = await createPerson(pool, "orgadmin", org);
   userIds.push(people.orgAdmin.userId);
@@ -77,7 +81,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   try {
-    await cleanUp(pool, userIds, [org]);
+    await cleanUp(pool, userIds, [org, otherOrg]);
   } finally {
     await database.close();
   }
@@ -291,3 +295,18 @@ for (const theme of ["light", "dark"] as const) {
     });
   });
 }
+
+test("switching organization in the shell leaves the members page for the new project list", async ({
+  page,
+}) => {
+  await signIn(page, people.owner);
+  await page.goto(membersUrl());
+  await expect(page.getByTestId("project-members-table")).toBeVisible();
+  await page.getByTestId("shell-organization-switch").click();
+  await page
+    .getByTestId("shell-organization-menu")
+    .getByTestId(`shell-organization-${otherOrg}`)
+    .click();
+  await page.waitForURL(`**/organizations/${otherOrg}/projects`);
+  await expect(page.getByTestId("project-members-table")).toHaveCount(0);
+});
