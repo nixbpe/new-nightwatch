@@ -5,15 +5,11 @@ test.describe("public auth entry", () => {
     page,
   }) => {
     await page.goto("/login");
-    await expect(page.locator("html").first()).toHaveAttribute("lang", "th");
-    await expect(
-      page.getByRole("heading", { name: "เข้าสู่ระบบ" }),
-    ).toBeVisible();
-    await expect(page.getByLabel("อีเมล")).toBeVisible();
-    await expect(page.getByLabel("รหัสผ่าน")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "เข้าสู่ระบบ" }),
-    ).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "th");
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    await expect(page.getByTestId("login-email")).toBeVisible();
+    await expect(page.getByTestId("login-password")).toBeVisible();
+    await expect(page.getByTestId("login-submit")).toBeVisible();
   });
 
   test("invalid login stays client-side with accessible field errors", async ({
@@ -26,10 +22,10 @@ test.describe("public auth entry", () => {
     });
 
     await page.goto("/login");
-    await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+    await page.getByTestId("login-submit").click();
 
-    const email = page.getByLabel("อีเมล");
-    const password = page.getByLabel("รหัสผ่าน");
+    const email = page.getByTestId("login-email");
+    const password = page.getByTestId("login-password");
     await expect(page).toHaveURL(/\/login$/);
     await expect(email).toHaveAttribute("aria-invalid", "true");
     await expect(email).toHaveAttribute(
@@ -41,31 +37,36 @@ test.describe("public auth entry", () => {
       "aria-describedby",
       "login-password-error",
     );
-    await expect(
-      page.getByText("กรุณากรอกอีเมล", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("กรุณากรอกรหัสผ่าน", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByTestId("login-email-error")).toBeVisible();
+    await expect(page.getByTestId("login-email-error")).toHaveText(/\S/);
+    await expect(page.getByTestId("login-password-error")).toBeVisible();
+    await expect(page.getByTestId("login-password-error")).toHaveText(/\S/);
     expect(signInRequestCount).toBe(0);
   });
 
   test("forgot-password page is reachable from login", async ({ page }) => {
     await page.goto("/login");
-    await page.getByRole("link", { name: "ลืมรหัสผ่าน" }).click();
+    await page.getByTestId("login-forgot-password").click();
     await expect(page).toHaveURL(/\/forgot-password$/);
-    await expect(
-      page.getByRole("heading", { name: "ลืมรหัสผ่าน" }),
-    ).toBeVisible();
+    await expect(page.getByTestId("forgot-password-email")).toBeVisible();
+    await expect(page.getByTestId("forgot-password-submit")).toBeEnabled();
   });
 
   test("an invalid invitation link fails safely without tenant data", async ({
     page,
   }) => {
+    const previewResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+        "/api/onboarding/invitations/does-not-exist",
+    );
     await page.goto("/accept-invitation/does-not-exist");
-    await expect(page.getByRole("heading", { name: "คำเชิญ" })).toBeVisible();
-    await expect(
-      page.getByText(/ไม่พบคำเชิญนี้|โหลดข้อมูลคำเชิญไม่สำเร็จ/),
-    ).toBeVisible();
+    expect((await previewResponse).status()).toBe(404);
+    await expect(page.getByTestId("invitation-page")).toBeVisible();
+    await expect(page.getByTestId("invitation-preview-error")).toBeVisible();
+    await expect(page.getByTestId("invitation-preview-error")).toHaveText(/\S/);
+    await expect(page.getByTestId("invitation-organization")).toHaveCount(0);
+    await expect(page.getByTestId("invitation-recipient")).toHaveCount(0);
+    await expect(page.getByTestId("invitation-accept")).toHaveCount(0);
   });
 });

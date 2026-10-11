@@ -50,9 +50,9 @@ async function signIn(
   loginPassword = password,
 ) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(loginEmail);
-  await page.locator("#login-password").fill(loginPassword);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(loginEmail);
+  await page.getByTestId("login-password").fill(loginPassword);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace$/);
 }
 
@@ -84,12 +84,10 @@ test("single-member cold login and existing-session reload resolve before tenant
       requests.push(path);
   });
   await signIn(page);
-  await expect(
-    page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
-  ).toContainText("NightWatch E2E Settings");
+  await expect(page.getByTestId("workspace-identity")).toBeVisible();
+  await expect(page.getByTestId("shell-breadcrumb-organization")).toContainText(
+    "NightWatch E2E Settings",
+  );
   expect(requests[0]).toBe("/api/me/resolve-active-org");
   expect(await selection()).toEqual({
     last_active_tenant_id: identity.organizationId,
@@ -107,25 +105,17 @@ test("single-member cold login and existing-session reload resolve before tenant
     await page.emulateMedia({ colorScheme });
     requests.length = 0;
     await page.reload();
-    await expect(
-      page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByTestId("workspace-identity")).toBeVisible();
     expect(requests[0]).toBe("/api/me/resolve-active-org");
     expect(await selection()).toEqual({
       last_active_tenant_id: identity.organizationId,
       mirrors_match: true,
     });
-    await page
-      .getByRole("button", { name: "การแจ้งเตือน", exact: true })
-      .focus();
+    await page.getByTestId("shell-notifications-open").focus();
     await page.keyboard.press("Enter");
-    await expect(
-      page.getByRole("dialog", { name: "การแจ้งเตือน" }),
-    ).toBeVisible();
+    await expect(page.getByTestId("shell-notifications-dialog")).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(
-      page.getByRole("button", { name: "การแจ้งเตือน", exact: true }),
-    ).toBeFocused();
+    await expect(page.getByTestId("shell-notifications-open")).toBeFocused();
   }
 });
 
@@ -151,20 +141,16 @@ test("bootstrap failure blocks tenant and inbox requests until keyboard retry su
     }),
   );
   await signIn(page);
-  await expect(page.getByRole("alert")).toContainText(
-    "โหลดข้อมูลองค์กรไม่สำเร็จ",
-  );
+  await expect(page.getByTestId("shell-admission-error")).toHaveText(/\S/);
   expect(tenantRequests).toBe(0);
   expect(await selection()).toEqual({
     last_active_tenant_id: null,
     mirrors_match: true,
   });
   await page.unroute("**/api/me/resolve-active-org");
-  await page.getByRole("button", { name: "ลองใหม่", exact: true }).focus();
+  await page.getByTestId("shell-admission-retry").focus();
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId("workspace-identity")).toBeVisible();
   expect(await selection()).toEqual({
     last_active_tenant_id: identity.organizationId,
     mirrors_match: true,
@@ -175,7 +161,7 @@ test("warm-cache scope change withdraws tenant and inbox use until deferred reso
   page,
 }) => {
   await signIn(page);
-  const overview = page.getByRole("heading", { name: "ภาพรวม", exact: true });
+  const overview = page.getByTestId("workspace-identity");
   await expect(overview).toBeVisible();
   const resolverStarted = Promise.withResolvers<void>();
   const releaseResolver = Promise.withResolvers<void>();
@@ -199,13 +185,11 @@ test("warm-cache scope change withdraws tenant and inbox use until deferred reso
       }),
     }),
   );
-  await page.getByRole("button", { name: "การแจ้งเตือน", exact: true }).click();
+  await page.getByTestId("shell-notifications-open").click();
   await resolverStarted.promise;
   await expect(overview).not.toBeVisible();
-  await expect(page.getByText("กำลังโหลดข้อมูลองค์กร…")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "การแจ้งเตือน", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByTestId("shell-admission-loading")).toBeVisible();
+  await expect(page.getByTestId("shell-notifications-open")).toBeDisabled();
   let scopeRequests = 0;
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
@@ -217,15 +201,13 @@ test("warm-cache scope change withdraws tenant and inbox use until deferred reso
   });
   expect(scopeRequests).toBe(0);
   releaseResolver.resolve();
-  await expect(page.getByRole("main").getByRole("alert")).toContainText(
-    "โหลดข้อมูลองค์กรไม่สำเร็จ",
-  );
+  await expect(page.getByTestId("shell-admission-error")).toHaveText(/\S/);
   expect(scopeRequests).toBe(0);
   await page.unroute("**/api/me/resolve-active-org");
   await page.unroute("**/api/notifications?*");
   await page
-    .getByRole("main")
-    .getByRole("button", { name: "ลองใหม่", exact: true })
+    .getByTestId("shell-main")
+    .getByTestId("shell-admission-retry")
     .click();
   await expect(overview).toBeVisible();
   expect(await selection()).toEqual({
@@ -246,22 +228,16 @@ test("no membership admits account settings and account-only notifications witho
       tenantRequests++;
   });
   await signIn(page);
-  await expect(
-    page.getByRole("heading", { name: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "ออกจากระบบ", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId("workspace-access-needed")).toBeVisible();
+  await expect(page.getByTestId("workspace-sign-out")).toBeVisible();
   expect(await selection()).toEqual({
     last_active_tenant_id: null,
     mirrors_match: true,
   });
   await page.goto("/settings/profile");
-  await expect(page.getByLabel("ชื่อที่แสดง")).toBeVisible();
+  await expect(page.getByTestId("profile-name")).toBeVisible();
   await page.goto("/notifications");
-  await expect(
-    page.getByRole("heading", { name: "การแจ้งเตือน", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId("notifications-mark-all")).toBeVisible();
   expect(tenantRequests).toBe(0);
 });
 
@@ -313,13 +289,9 @@ for (const action of ["switch", "leave", "revoke"] as const) {
       const release = Promise.withResolvers<void>();
       try {
         await signIn(page);
-        await expect(
-          page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-        ).toBeVisible();
+        await expect(page.getByTestId("workspace-identity")).toBeVisible();
         await signIn(otherPage, action === "revoke" ? actorEmail : email);
-        await expect(
-          otherPage.getByRole("heading", { name: "ภาพรวม", exact: true }),
-        ).toBeVisible();
+        await expect(otherPage.getByTestId("workspace-identity")).toBeVisible();
         await page.route(
           "**/api/notifications?*",
           async (route) => {
@@ -329,9 +301,7 @@ for (const action of ["switch", "leave", "revoke"] as const) {
           },
           { times: 1 },
         );
-        await page
-          .getByRole("button", { name: "การแจ้งเตือน", exact: true })
-          .click();
+        await page.getByTestId("shell-notifications-open").click();
         await started.promise;
         const status = await otherPage.evaluate(
           async ({ action, original, target, member }) => {
@@ -361,19 +331,15 @@ for (const action of ["switch", "leave", "revoke"] as const) {
         release.resolve();
         if (remaining) {
           await expect(
-            page.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
+            page.getByTestId("shell-breadcrumb-organization"),
           ).toContainText("Replacement org");
           await expect
             .poll(async () => (await selection())?.last_active_tenant_id)
             .toBe(actorIdentity.organizationId);
-          await expect(
-            page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-          ).toBeVisible();
+          await expect(page.getByTestId("workspace-identity")).toBeVisible();
         } else {
           await expect(
-            page.getByRole("heading", {
-              name: "ยังไม่ได้รับสิทธิ์เข้าถึงองค์กร",
-            }),
+            page.getByTestId("workspace-access-needed"),
           ).toBeVisible();
         }
         expect(await selection()).toEqual({
@@ -433,13 +399,9 @@ test("successful invitation retains pending selection then explicitly switches b
   );
   try {
     await signIn(page);
-    await expect(
-      page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByTestId("workspace-identity")).toBeVisible();
     await page.goto(`/accept-invitation/${invitation}`);
-    await expect(
-      page.getByRole("button", { name: "เข้าร่วมองค์กร", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByTestId("invitation-accept")).toBeVisible();
     expect((await selection())?.last_active_tenant_id).toBe(
       identity.organizationId,
     );
@@ -453,12 +415,10 @@ test("successful invitation retains pending selection then explicitly switches b
       )
         operations.push(path);
     });
-    await page
-      .getByRole("button", { name: "เข้าร่วมองค์กร", exact: true })
-      .click();
+    await page.getByTestId("invitation-accept").click();
     await page.waitForURL(/\/workspace$/);
     await expect(
-      page.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
+      page.getByTestId("shell-breadcrumb-organization"),
     ).toContainText(name);
     expect(operations.slice(0, 4)).toEqual([
       `/api/onboarding/invitations/${invitation}/accept`,
@@ -503,23 +463,26 @@ test.describe("final MFA login bootstrap", () => {
   }) => {
     await signIn(page);
     await page.goto("/settings/security");
-    const mfa = page.getByRole("region", { name: "ยืนยันสองขั้นตอน (MFA)" });
-    await mfa.getByRole("button", { name: "เปิดใช้งาน", exact: true }).click();
-    await mfa.getByLabel("รหัสผ่านปัจจุบัน").fill(password);
-    await mfa.getByRole("button", { name: /ถัดไป: สแกนคิวอาร์โค้ด/ }).click();
-    await expect(
-      mfa.getByRole("img", { name: "คิวอาร์โค้ดสำหรับแอปยืนยันตัวตน" }),
-    ).toBeVisible();
-    const secret = (await mfa.locator("code").first().innerText()).replace(
+    const mfa = page.getByTestId("mfa-card");
+    await mfa.getByTestId("mfa-enable-open").click();
+    await mfa.getByTestId("mfa-enable-password").fill(password);
+    await mfa.getByTestId("mfa-enable-submit").click();
+    await expect(mfa.getByTestId("mfa-qr")).toBeVisible();
+    const secret = (await mfa.getByTestId("mfa-secret").innerText()).replace(
       /\s+/g,
       "",
     );
-    const backupCode = await mfa.locator("ul li").first().innerText();
-    await mfa.getByRole("checkbox").check();
-    await mfa.getByRole("button", { name: /ถัดไป: ยืนยันรหัสแรก/ }).click();
-    await mfa.locator('input[name="first-totp"]').fill(totpCode(secret));
-    await mfa.getByRole("button", { name: /ยืนยันและเปิดใช้งาน/ }).click();
-    await expect(mfa.getByText("เปิดอยู่", { exact: true })).toBeVisible();
+    const backupCodes = await mfa
+      .getByTestId("mfa-recovery-code")
+      .allTextContents();
+    const backupCode = backupCodes.shift();
+    expect(backupCode).toMatch(/\S/);
+    if (backupCode === undefined) throw new Error("No rendered recovery code");
+    await mfa.getByTestId("mfa-recovery-acknowledge").check();
+    await mfa.getByTestId("mfa-scan-next").click();
+    await mfa.getByTestId("mfa-verify-code").fill(totpCode(secret));
+    await mfa.getByTestId("mfa-verify-submit").click();
+    await expect(mfa.getByTestId("mfa-status-enabled")).toBeVisible();
     for (const mode of ["recovery", "totp", "trusted"] as const) {
       await page.evaluate(async () => {
         await fetch("/api/auth/sign-out", {
@@ -536,32 +499,25 @@ test.describe("final MFA login bootstrap", () => {
         [identity.userId],
       );
       await page.goto("/login");
-      await page.getByLabel("อีเมล").fill(email);
-      await page.locator("#login-password").fill(password);
-      await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+      await page.getByTestId("login-email").fill(email);
+      await page.getByTestId("login-password").fill(password);
+      await page.getByTestId("login-submit").click();
       if (mode !== "trusted") {
-        await expect(
-          page.getByRole("heading", { name: "ยืนยันตัวตนสองขั้นตอน" }),
-        ).toBeVisible();
+        await expect(page.getByTestId("two-factor-page")).toBeVisible();
         expect(await selection()).toEqual({
           last_active_tenant_id: null,
           mirrors_match: true,
         });
         if (mode === "recovery")
-          await page.getByRole("radio", { name: /รหัสกู้คืนบัญชี/ }).check();
-        else
-          await page
-            .getByRole("checkbox", { name: /เชื่อถืออุปกรณ์นี้/ })
-            .check();
+          await page.getByTestId("two-factor-mode-recovery").check();
+        else await page.getByTestId("two-factor-trust-device").check();
         await page
-          .locator('input[name="challenge-code"]')
+          .getByTestId("two-factor-code")
           .fill(mode === "recovery" ? backupCode : totpCode(secret));
-        await page.getByRole("button", { name: "ยืนยัน", exact: true }).click();
+        await page.getByTestId("two-factor-submit").click();
       }
       await page.waitForURL(/\/workspace$/);
-      await expect(
-        page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-      ).toBeVisible();
+      await expect(page.getByTestId("workspace-identity")).toBeVisible();
       expect(await selection()).toEqual({
         last_active_tenant_id: identity.organizationId,
         mirrors_match: true,
@@ -584,19 +540,15 @@ test("a bookmarked member organization names its URL scope without switching the
     [randomUUID(), organizationId, identity.userId],
   );
   await signIn(page);
-  await expect(
-    page.getByRole("heading", { name: "ภาพรวม", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId("workspace-identity")).toBeVisible();
   expect((await selection())?.last_active_tenant_id).toBe(
     identity.organizationId,
   );
   await page.goto(`/organizations/${organizationId}/monitors`);
-  await expect(
-    page.getByRole("navigation", { name: "ตำแหน่งปัจจุบัน" }),
-  ).toContainText(name);
-  await expect(
-    page.getByRole("button", { name: /NightWatch E2E Settings/ }).first(),
-  ).toBeVisible();
+  await expect(page.getByTestId("shell-breadcrumb-organization")).toContainText(
+    name,
+  );
+  await expect(page.getByTestId("shell-organization-switch")).toBeVisible();
   expect(await selection()).toEqual({
     last_active_tenant_id: identity.organizationId,
     mirrors_match: true,

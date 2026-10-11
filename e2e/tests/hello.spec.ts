@@ -21,8 +21,8 @@ test.describe("hello journey", () => {
   }) => {
     await page.goto("/");
     await expect.poll(() => new URL(page.url()).pathname).toBe("/login");
-    await expect(
-      page.getByRole("heading", { name: "เข้าสู่ระบบ" }),
-    ).toBeVisible();
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    await expect(page.getByTestId("login-email")).toBeEditable();
+    await expect(page.getByTestId("login-password")).toBeEditable();
   });
 });

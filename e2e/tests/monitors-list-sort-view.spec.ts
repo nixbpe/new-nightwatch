@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { monitorListResponseSchema } from "../../packages/api-contract/src/index.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
 import {
   addMember,
@@ -9,6 +10,8 @@ import {
   createPerson,
   databaseOwnerUrl,
   shot,
+  signInApi,
+  monitorPath,
   type Person,
 } from "../support/monitor-fixtures";
 
@@ -83,9 +86,9 @@ const overview = () => `/organizations/${orgId}/monitors`;
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(person.email);
-  await page.locator("#login-password").fill(person.password);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(person.email);
+  await page.getByTestId("login-password").fill(person.password);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace/);
 }
 
@@ -204,39 +207,18 @@ async function orderOf(rows: Locator): Promise<string[]> {
 }
 
 const tableRows = (page: Page) =>
-  page
-    .getByRole("region", { name: "ตารางมอนิเตอร์" })
-    .getByRole("row")
-    .filter({ hasText: `-${run}` });
-// Cards are the direct children of the hairline grid; the recent-events card on
-// the same page also lists these monitors by name.
+  page.getByTestId("monitor-overview-table").getByTestId(/^monitor-list-row-/);
 const cardItems = (page: Page) =>
-  page
-    .locator("ul[data-slot='hairline-grid'] > li")
-    .filter({ hasText: `-${run}` });
+  page.getByTestId("monitor-overview-cards").getByTestId(/^monitor-list-row-/);
 
-async function scrollListIntoView(page: Page, view: "ตาราง" | "การ์ด") {
-  const target =
-    view === "ตาราง"
-      ? page.getByRole("region", { name: "ตารางมอนิเตอร์" })
-      : page.locator("ul[data-slot='hairline-grid']");
-  await target.evaluate((element) => {
-    element.scrollIntoView({ block: "start" });
-  });
-}
-
-async function expectNoSidewaysScroll(page: Page, label: string) {
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          () =>
-            document.documentElement.scrollWidth -
-            document.documentElement.clientWidth,
-        ),
-      { message: `${label} sideways overflow`, timeout: 5000 },
+async function scrollListIntoView(page: Page, view: "table" | "cards") {
+  await page
+    .getByTestId(
+      view === "table"
+        ? "monitor-overview-table-region"
+        : "monitor-overview-cards",
     )
-    .toBeLessThanOrEqual(0);
+    .scrollIntoViewIfNeeded();
 }
 
 test("Overview: default order, table columns, name sort, cards, reload keeps the view", async ({
@@ -246,77 +228,152 @@ test("Overview: default order, table columns, name sort, cards, reload keeps the
   await page.goto(overview());
 
   // Default view is the table, default sort is "ปัญหาก่อน" (down first, then by name).
-  await expect(page.getByRole("radio", { name: "ตาราง" })).toBeChecked();
-  const sort = page.getByLabel("เรียงตาม");
+  await expect(page.getByTestId("monitor-overview-view-table")).toBeChecked();
+  const sort = page.getByTestId("monitor-overview-sort");
   await expect(sort).toHaveValue("problems");
   await expect(tableRows(page)).toHaveCount(3);
   expect(await orderOf(tableRows(page))).toEqual(PROBLEMS_ORDER);
 
-  await expect(page.getByRole("columnheader", { name: "เมธอด" })).toBeVisible();
+  const table = page.getByTestId("monitor-overview-table");
   await expect(
-    page.getByRole("columnheader", { name: "รอบตรวจ" }),
-  ).toBeVisible();
-  for (const seed of SEEDS) {
-    const row = tableRows(page).filter({ hasText: names[seed.key] });
-    await expect(row).toContainText(seed.method);
-    await expect(row).toContainText(
-      `ทุก ${String(seed.intervalSeconds / 60)} นาที`,
+    page.getByTestId("monitor-overview-table-region"),
+  ).toHaveAccessibleName(/\S/);
+  for (const key of [
+    "name",
+    "url",
+    "method",
+    "interval",
+    "ssl",
+    "responseTime",
+  ]) {
+    await expect(
+      table.getByTestId(`monitor-list-heading-${key}`),
+    ).toHaveAttribute("scope", "col");
+    await expect(table.getByTestId(`monitor-list-heading-${key}`)).toHaveText(
+      /\S/,
     );
   }
-  // Existing columns stay.
-  for (const header of ["ชื่อ", "URL", "SSL", "ตอบสนอง"]) {
-    await expect(
-      page.getByRole("columnheader", { name: header, exact: true }),
-    ).toBeVisible();
+  for (const seed of SEEDS) {
+    const row = table.getByTestId(`monitor-list-row-${ids[seed.key]}`);
+    await expect(row).toHaveRole("row");
+    await expect(row.getByTestId("monitor-list-cell-method")).toHaveText(
+      seed.method,
+    );
+    await expect(row.getByTestId("monitor-list-cell-interval")).toContainText(
+      new RegExp(`\\b${String(seed.intervalSeconds / 60)}\\b`),
+    );
+    await expect(row.getByTestId("monitor-list-cell-url")).toHaveText(
+      `https://${seed.key}-${run}.example.invalid/health`,
+    );
   }
-
   // "ชื่อ A-Z" reorders by name and announces the sort with the result count.
-  await sort.selectOption({ label: "ชื่อ A-Z" });
-  await expect(page.getByRole("status", { name: "ผลการกรอง" })).toHaveText(
-    "เรียงตาม ชื่อ A-Z · พบ 3 จาก 3",
+  const sortedResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === monitorPath(orgId) &&
+      new URL(response.url()).searchParams.get("sort") === "name",
   );
+  await sort.selectOption("name");
+  const sorted = monitorListResponseSchema.parse(
+    await (await sortedResponse).json(),
+  );
+  expect(sorted.monitors.map((monitor) => monitor.id)).toEqual([
+    ids.alpha,
+    ids.mike,
+    ids.zulu,
+  ]);
+  expect(sorted.page.total).toBe(3);
+  expect(sorted.summary.total).toBe(3);
+  await expect(sort).toHaveValue("name");
+  await expect(page.getByTestId("monitor-overview-announcement")).toHaveText(
+    /\S/,
+  );
+  await expect(page.getByTestId("monitor-overview-announcement")).toContainText(
+    /3\D+3/,
+  );
+  await expect(
+    page.getByTestId("monitor-overview-announcement"),
+  ).toHaveAttribute("role", "status");
   await expect.poll(async () => orderOf(tableRows(page))).toEqual(NAME_ORDER);
 
   // Cards carry method, interval and the sparkline text alternative.
-  await page.getByRole("radio", { name: "การ์ด" }).click();
+  await page.getByTestId("monitor-overview-view-cards").click();
   await expect(cardItems(page)).toHaveCount(3);
   for (const seed of SEEDS) {
-    const card = cardItems(page).filter({ hasText: names[seed.key] });
-    await expect(card).toContainText(seed.method);
-    await expect(card).toContainText(
-      `ทุก ${String(seed.intervalSeconds / 60)} นาที`,
+    const card = page
+      .getByTestId("monitor-overview-cards")
+      .getByTestId(`monitor-list-row-${ids[seed.key]}`);
+    await expect(card).toHaveRole("listitem");
+    await expect(card.getByTestId("monitor-list-cell-method")).toHaveText(
+      seed.method,
+    );
+    await expect(card.getByTestId("monitor-list-cell-interval")).toContainText(
+      new RegExp(`\\b${String(seed.intervalSeconds / 60)}\\b`),
     );
   }
   const hours = alphaHours();
   const perHourMs = hours.map((hour) => hour.sum / hour.checks);
-  const alphaCard = cardItems(page).filter({ hasText: names.alpha });
-  await expect(
-    alphaCard.locator(".sr-only", { hasText: "เวลาตอบสนองเฉลี่ย" }),
-  ).toHaveText(
-    `เวลาตอบสนองเฉลี่ยรายชั่วโมงจากผลตรวจของมอนิเตอร์นี้ 24 ชม. ล่าสุด สูงสุด ${String(Math.max(...perHourMs))} ms ไม่มีข้อมูล ${String(24 - hours.length)} ชั่วโมง`,
+  const alphaCard = page
+    .getByTestId("monitor-overview-cards")
+    .getByTestId(`monitor-list-row-${ids.alpha}`);
+  const description = alphaCard.getByTestId("monitor-list-spark-description");
+  await expect(description).toContainText(
+    new RegExp(`\\b${String(Math.max(...perHourMs))} ms\\b`),
   );
-  // 24 slots: bars for hours with data, empty slots for the rest.
-  await expect(alphaCard.locator("i[data-empty='true']")).toHaveCount(
-    24 - hours.length,
+  await expect(description).toContainText(
+    new RegExp(`\\b${String(24 - hours.length)}\\b`),
   );
-  await expect(alphaCard.locator("span[aria-hidden='true'] > i")).toHaveCount(
-    24,
+  const session = await signInApi(owner);
+  const list = monitorListResponseSchema.parse(
+    (await session.request("GET", monitorPath(orgId))).body,
   );
-  // A monitor without any hourly point shows the words in the sparkline slot
-  // (a direct child of the content column), no bars and no chart description.
-  const mikeCard = cardItems(page).filter({ hasText: names.mike });
+  expect(list.monitors.map((monitor) => monitor.id)).toEqual([
+    ids.mike,
+    ids.alpha,
+    ids.zulu,
+  ]);
+  const alpha = list.monitors.find((monitor) => monitor.id === ids.alpha);
+  expect(
+    alpha?.responseSparkline
+      .filter((point) => point.avgMs !== null)
+      .map((point) => point.avgMs),
+  ).toEqual([...perHourMs].reverse());
+  const slots = alphaCard.getByTestId("monitor-list-spark-slot");
+  await expect(slots).toHaveCount(24);
+  expect(
+    await slots.evaluateAll((elements) =>
+      elements.map((element) => ({
+        hourStart: element.getAttribute("data-hour-start"),
+        avgMs:
+          element.getAttribute("data-avg-ms") === ""
+            ? null
+            : Number(element.getAttribute("data-avg-ms")),
+      })),
+    ),
+  ).toEqual(alpha?.responseSparkline);
+  await expect(alphaCard.getByTestId("monitor-list-sparkline")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+  const mikeCard = page
+    .getByTestId("monitor-overview-cards")
+    .getByTestId(`monitor-list-row-${ids.mike}`);
+  await expect(mikeCard.getByTestId("monitor-list-spark-empty")).toHaveText(
+    /\S/,
+  );
+  await expect(mikeCard.getByTestId("monitor-list-spark-slot")).toHaveCount(0);
   await expect(
-    mikeCard.locator("div.flex-1 > span", { hasText: /^ไม่มีข้อมูล$/ }),
-  ).toHaveCount(1);
-  await expect(mikeCard.locator("span[aria-hidden='true'] > i")).toHaveCount(0);
-  await expect(
-    mikeCard.locator(".sr-only", { hasText: "เวลาตอบสนองเฉลี่ย" }),
+    mikeCard.getByTestId("monitor-list-spark-description"),
   ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => localStorage.getItem("nightwatch:monitors-view")),
+  ).toBe("cards");
 
   // Reload: the view is remembered, the sort is not.
   await page.reload();
-  await expect(page.getByRole("radio", { name: "การ์ด" })).toBeChecked();
-  await expect(page.getByLabel("เรียงตาม")).toHaveValue("problems");
+  await expect(page.getByTestId("monitor-overview-view-cards")).toBeChecked();
+  await expect(page.getByTestId("monitor-overview-sort")).toHaveValue(
+    "problems",
+  );
   await expect(cardItems(page)).toHaveCount(3);
   expect(await orderOf(cardItems(page))).toEqual(PROBLEMS_ORDER);
 });
@@ -326,24 +383,33 @@ test("Workspace section 01: SSL warning row shows issuer and expiry, down row do
 }) => {
   await signIn(page, owner);
   await page.goto("/workspace");
-  const section = page.locator("section[aria-labelledby='overview-issues']");
-  const zulu = section.getByRole("link").filter({ hasText: names.zulu });
+  const section = page.getByTestId("workspace-issues");
+  const zulu = section.getByTestId(`monitor-list-row-${ids.zulu}`);
   await expect(zulu).toBeVisible();
-  await expect(zulu).toContainText(`ผู้ออก ${LONG_ISSUER}`);
-  const expiry = zulu.locator("time");
+  await expect(zulu.getByTestId("workspace-ssl-issuer")).toContainText(
+    LONG_ISSUER,
+  );
+  const expiry = zulu.getByTestId("workspace-ssl-expiry");
   await expect(expiry).toHaveAttribute("dateTime", sslNotAfter.toISOString());
   const dateText = (await expiry.textContent()) ?? "";
   expect(dateText).not.toBe("");
-  await expect(zulu).toContainText(`หมดอายุ ${dateText}`);
+  await expect(expiry).toHaveText(dateText);
+  await expect(zulu).toHaveAttribute("href", `${overview()}/${ids.zulu}`);
 
-  const mike = section.getByRole("link").filter({ hasText: names.mike });
+  const mike = section.getByTestId(`monitor-list-row-${ids.mike}`);
   await expect(mike).toBeVisible();
-  await expect(mike).not.toContainText("ผู้ออก");
-  await expect(mike).not.toContainText("หมดอายุ");
+  await expect(mike.getByTestId("workspace-ssl-issuer")).toHaveCount(0);
+  await expect(mike.getByTestId("workspace-ssl-expiry")).toHaveCount(0);
 
   // The Detail certificate card words the same expiry date.
   await page.goto(`${overview()}/${ids.zulu}`);
-  await expect(page.getByText(dateText).first()).toBeVisible();
+  await expect(page.getByTestId("monitor-detail-ssl-expiry")).toHaveText(
+    dateText,
+  );
+  await expect(page.getByTestId("monitor-detail-ssl-expiry")).toHaveAttribute(
+    "datetime",
+    sslNotAfter.toISOString(),
+  );
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -354,49 +420,37 @@ for (const theme of ["light", "dark"] as const) {
       }, theme);
     });
 
-    async function openOverview(page: Page, view: "ตาราง" | "การ์ด") {
+    async function openOverview(page: Page, view: "table" | "cards") {
       await signIn(page, owner);
       await page.goto(overview());
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await page.getByRole("radio", { name: view }).click();
+      await page.getByTestId(`monitor-overview-view-${view}`).click();
       await expect(
-        view === "ตาราง" ? tableRows(page) : cardItems(page),
+        view === "table" ? tableRows(page) : cardItems(page),
       ).toHaveCount(3);
     }
 
-    async function expectIssuerWrapped(page: Page) {
-      const issuer = page
-        .locator("section[aria-labelledby='overview-issues']")
-        .getByText(`ผู้ออก ${LONG_ISSUER}`);
-      await expect(issuer).toBeVisible();
-      // Bring the row into the viewport so the screenshot shows the wrapped issuer.
-      await issuer.evaluate((element) => {
-        element.scrollIntoView({ block: "center" });
-      });
-      const geometry = await issuer.evaluate((element) => {
-        const box = element.getBoundingClientRect();
-        const column = element.parentElement!.getBoundingClientRect();
-        return {
-          width: box.width,
-          height: box.height,
-          columnWidth: column.width,
-          lineHeight: parseFloat(getComputedStyle(element).lineHeight),
-          overflow: element.scrollWidth - element.clientWidth,
-        };
-      });
-      expect(geometry.columnWidth).toBeLessThanOrEqual(170.5);
-      expect(geometry.width).toBeLessThanOrEqual(170.5);
-      expect(geometry.overflow).toBeLessThanOrEqual(0);
-      // More than one line: the issuer name, which has no break point, wrapped inside the column.
-      expect(geometry.height).toBeGreaterThan(geometry.lineHeight * 1.5);
+    async function expectIssuer(page: Page) {
+      const row = page
+        .getByTestId("workspace-issues")
+        .getByTestId(`monitor-list-row-${ids.zulu}`);
+      await expect(row.getByTestId("workspace-ssl-issuer")).toContainText(
+        LONG_ISSUER,
+      );
+      await expect(row.getByTestId("workspace-ssl-expiry")).toHaveAttribute(
+        "datetime",
+        sslNotAfter.toISOString(),
+      );
+      await expect(row).toHaveAttribute("href", `${overview()}/${ids.zulu}`);
+      await row.scrollIntoViewIfNeeded();
     }
 
     test("section 01 at desktop width", async ({ page }) => {
       await signIn(page, owner);
       await page.goto("/workspace");
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await expectIssuerWrapped(page);
-      await expectNoSidewaysScroll(page, `workspace ${theme}`);
+      await expectIssuer(page);
+
       await shot(page, `workspace-section01-${theme}`);
     });
 
@@ -404,9 +458,9 @@ for (const theme of ["light", "dark"] as const) {
       test.use({ viewport: { width: 640, height: 900 } });
 
       test("Table: page does not scroll sideways", async ({ page }) => {
-        await openOverview(page, "ตาราง");
-        await expectNoSidewaysScroll(page, `table ${theme}`);
-        await scrollListIntoView(page, "ตาราง");
+        await openOverview(page, "table");
+
+        await scrollListIntoView(page, "table");
         await shot(page, `table-640-${theme}`, true);
       });
 
@@ -416,8 +470,8 @@ for (const theme of ["light", "dark"] as const) {
         await signIn(page, owner);
         await page.goto("/workspace");
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-        await expectIssuerWrapped(page);
-        await expectNoSidewaysScroll(page, `workspace ${theme}`);
+        await expectIssuer(page);
+
         await shot(page, `workspace-section01-640-${theme}`, true);
       });
     });

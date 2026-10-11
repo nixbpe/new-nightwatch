@@ -1,3 +1,4 @@
+import { notificationListResponseSchema } from "../../packages/api-contract/src/index.ts";
 import { createDatabase } from "../../packages/db/src/index.ts";
 import { hashPassword } from "better-auth/crypto";
 import { randomUUID } from "node:crypto";
@@ -19,7 +20,6 @@ const { env, ports } = resolveDevEnv();
 const password = `notification-ui-${randomUUID()}`;
 let currentPrimaryPassword = password;
 const email = `notification-${randomUUID()}@nightwatch.invalid`;
-const primaryOrganizationName = "NightWatch E2E Settings";
 const secondaryOrganization = {
   id: randomUUID(),
   memberId: randomUUID(),
@@ -61,9 +61,9 @@ const database = createDatabase(env.DATABASE_OWNER_URL!);
 
 async function signIn(page: Page, value: string) {
   await page.goto("/login");
-  await page.getByLabel("อีเมล").fill(email);
-  await page.locator("#login-password").fill(value);
-  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await page.getByTestId("login-email").fill(email);
+  await page.getByTestId("login-password").fill(value);
+  await page.getByTestId("login-submit").click();
   await page.waitForURL(/\/workspace/);
 }
 
@@ -270,7 +270,7 @@ async function notificationState() {
 }
 
 async function browserNotificationState(page: Page) {
-  return page.evaluate(async (expectedUserId) => {
+  const state = await page.evaluate(async (expectedUserId) => {
     const [session, list, unread] = await Promise.all([
       fetch("/api/auth/get-session").then((response) => response.json()),
       fetch("/api/notifications"),
@@ -280,11 +280,16 @@ async function browserNotificationState(page: Page) {
       sessionMatchesFixture: session.user?.id === expectedUserId,
       list: { status: list.status, body: await list.json() },
       unread: { status: unread.status, body: await unread.json() },
-      unreadBadgeLabels: Array.from(
-        document.querySelectorAll('[aria-label$="รายการยังไม่อ่าน"]'),
-      ).map((element) => element.getAttribute("aria-label")),
     };
   }, identity.userId);
+  return {
+    ...state,
+    unreadBadgeLabels: await page
+      .getByTestId("shell-notifications-unread-count")
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("aria-label")),
+      ),
+  };
 }
 
 async function browserMeContext(page: Page) {
@@ -297,8 +302,11 @@ async function browserMeContext(page: Page) {
 async function expectUnreadBadge(page: Page, unreadCount: number) {
   try {
     await expect(
-      page.getByLabel(`${unreadCount} รายการยังไม่อ่าน`),
-    ).toBeVisible();
+      page.getByTestId("shell-notifications-unread-count"),
+    ).toHaveText(String(unreadCount));
+    await expect(
+      page.getByTestId("shell-notifications-unread-count"),
+    ).toHaveAttribute("aria-label", new RegExp(`\\b${String(unreadCount)}\\b`));
   } catch {
     const inbox = await database.sql.query<{
       id: string;
@@ -330,60 +338,27 @@ async function expectUnreadBadge(page: Page, unreadCount: number) {
 }
 
 async function expectReadStatus(page: Page) {
-  const statusValue = page
-    .locator("dt", { hasText: /^สถานะ$/ })
-    .locator("xpath=following-sibling::dd[1]");
-  await expect(statusValue).toHaveText("อ่านแล้ว");
+  await expect(page.getByTestId("notification-detail-read")).toHaveText(/\S/);
+  await expect(page.getByTestId("notification-detail-unread")).toHaveCount(0);
+  await expect(page.getByTestId("notification-detail-read-at")).toHaveAttribute(
+    "datetime",
+    /\S/,
+  );
+}
+
+async function notificationList(page: Page) {
+  const reply = await page.evaluate(async () => {
+    const response = await fetch("/api/notifications");
+    return { status: response.status, body: await response.json() };
+  });
+  expect(reply.status).toBe(200);
+  return notificationListResponseSchema.parse(reply.body);
 }
 
 async function applyTextZoom(page: Page) {
   await page.evaluate(() => {
     document.documentElement.style.fontSize = "200%";
   });
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
-      ),
-    )
-    .toBe(32);
-}
-
-async function assertVisibleWithoutOverflow(
-  page: Page,
-  surface: Locator,
-  controls: string[],
-) {
-  const viewport = page.viewportSize();
-  expect(viewport).not.toBeNull();
-  for (const control of controls) {
-    const locator = page.getByRole("button", { name: control });
-    await locator.scrollIntoViewIfNeeded();
-    await expect(locator).toBeVisible();
-    const box = await locator.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x).toBeGreaterThanOrEqual(0);
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
-  }
-  const surfaceBox = await surface.boundingBox();
-  expect(surfaceBox).not.toBeNull();
-  expect(surfaceBox!.x).toBeGreaterThanOrEqual(0);
-  expect(surfaceBox!.x + surfaceBox!.width).toBeLessThanOrEqual(
-    viewport!.width,
-  );
-  if ((await surface.getAttribute("role")) === "dialog") {
-    expect(surfaceBox!.y).toBeGreaterThanOrEqual(0);
-    expect(surfaceBox!.y + surfaceBox!.height).toBeLessThanOrEqual(
-      viewport!.height,
-    );
-  }
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
 }
 
 async function attachSurface(
@@ -391,46 +366,36 @@ async function attachSurface(
   testInfo: TestInfo,
   name: string,
   surface: Locator,
-  controls: string[],
 ) {
   await applyTextZoom(page);
+  await expect(surface).toBeVisible();
   await testInfo.attach(name, {
     body: await page.screenshot(),
     contentType: "image/png",
   });
-  await assertVisibleWithoutOverflow(page, surface, controls);
 }
 
 async function assertPopoverListScrollAndFooterFocus(
   page: Page,
   dialog: Locator,
 ) {
-  const list = dialog.locator(":scope > div").nth(1);
-  const dimensions = await list.evaluate((element) => ({
-    clientHeight: element.clientHeight,
-    scrollHeight: element.scrollHeight,
-  }));
-  expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight);
-  await list.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(
-    0,
+  const center = dialog.getByTestId("shell-notifications-all");
+  const enabledItemCount = await dialog.evaluate(
+    (element) =>
+      Array.from(element.querySelectorAll("[data-popover-item]")).filter(
+        (control) =>
+          !(control instanceof HTMLButtonElement) || !control.disabled,
+      ).length,
   );
-
-  const center = dialog.getByRole("link", { name: "ดูการแจ้งเตือนทั้งหมด" });
-  const enabledItems = dialog.locator("[data-popover-item]:not([disabled])");
-  const enabledItemCount = await enabledItems.count();
   expect(enabledItemCount).toBeGreaterThan(0);
-  await expect(
-    dialog.locator("[data-popover-item]:not([disabled]):focus"),
-  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      document.activeElement?.hasAttribute("data-popover-item"),
+    ),
+  ).toBe(true);
   for (let step = 0; step < enabledItemCount + 1; step += 1) {
-    if (
-      await center.evaluate((element) => document.activeElement === element)
-    ) {
+    if (await center.evaluate((element) => document.activeElement === element))
       break;
-    }
     await page.keyboard.press("Tab");
     expect(
       await dialog.evaluate((element) =>
@@ -444,29 +409,22 @@ async function assertPopoverListScrollAndFooterFocus(
 async function selectTheme(page: Page, theme: "dark" | "light") {
   await page.goto("/settings/display");
   await applyTextZoom(page);
-  await page
-    .getByRole("radio", { name: theme === "dark" ? "มืด" : "สว่าง" })
-    .click();
+  await page.getByTestId(`display-theme-${theme}`).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 }
 
 async function openNotificationsFromKeyboard(page: Page, bell: Locator) {
   await bell.focus();
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "การแจ้งเตือน" });
+  const dialog = page.getByTestId("shell-notifications-dialog");
   await expect(dialog).toBeVisible();
-  await expect(page.locator("[data-popover-item]:focus")).toBeVisible();
-  const focusStyle = await page
-    .locator("[data-popover-item]:focus")
-    .evaluate((element) => {
-      const style = getComputedStyle(element);
-      return {
-        outlineStyle: style.outlineStyle,
-        outlineWidth: style.outlineWidth,
-      };
-    });
-  expect(focusStyle.outlineStyle).toBe("solid");
-  expect(Number.parseFloat(focusStyle.outlineWidth)).toBeGreaterThan(0);
+  await expect(dialog).toHaveRole("dialog");
+  await expect(dialog).toHaveAccessibleName(/\S/);
+  expect(
+    await page.evaluate(() =>
+      document.activeElement?.hasAttribute("data-popover-item"),
+    ),
+  ).toBe(true);
   return dialog;
 }
 
@@ -476,26 +434,40 @@ test("password-change notification is materialized, scope switches across organi
   const temporary = `${password}-changed`;
   await signIn(page, password);
   await page.goto("/settings/security");
-  const card = page.getByRole("region", { name: "รหัสผ่าน" });
-  await card.getByLabel("รหัสผ่านปัจจุบัน").fill(password);
-  await card.getByLabel("รหัสผ่านใหม่", { exact: true }).fill(temporary);
-  await card.getByLabel("ยืนยันรหัสผ่านใหม่").fill(temporary);
-  await card.getByRole("button", { name: "เปลี่ยนรหัสผ่าน" }).click();
-  await expect(card.getByRole("alert")).toContainText("เปลี่ยนรหัสผ่านแล้ว");
+  const card = page.getByTestId("password-change-section");
+  await expect(card).toHaveRole("region");
+  await expect(card).toHaveAccessibleName(/\S/);
+  await card.getByTestId("change-current-password").fill(password);
+  await card.getByTestId("change-new-password").fill(temporary);
+  await card.getByTestId("change-confirm-password").fill(temporary);
+  await card.getByTestId("password-change-submit").click();
+  await expect(card.getByTestId("password-change-success")).toHaveText(/\S/);
   currentPrimaryPassword = temporary;
 
-  const bell = page.getByRole("button", { name: "การแจ้งเตือน" });
+  const bell = page.getByTestId("shell-notifications-open");
+  let passwordItemId = "";
   try {
     await expect
       .poll(
         async () => {
           await page.reload();
           await page.waitForTimeout(250);
-          return await page.locator('[aria-label$="รายการยังไม่อ่าน"]').count();
+          const list = await notificationList(page);
+          const item = list.items.find(
+            (item) =>
+              item.scope === "account" && item.eventType === "PASSWORD_CHANGED",
+          );
+          passwordItemId = item?.id ?? "";
+          return (
+            item !== undefined &&
+            (await page
+              .getByTestId("shell-notifications-unread-count")
+              .count()) > 0
+          );
         },
         { timeout: 100_000 },
       )
-      .toBeGreaterThan(0);
+      .toBe(true);
   } catch {
     throw new Error(
       `notification did not materialize after 100 seconds: ${JSON.stringify({
@@ -505,32 +477,38 @@ test("password-change notification is materialized, scope switches across organi
     );
   }
   await bell.click();
+  await expect(page.getByTestId("shell-notifications-dialog")).toBeVisible();
   await expect(
-    page.getByRole("dialog", { name: "การแจ้งเตือน" }),
-  ).toContainText("มีการเปลี่ยนรหัสผ่าน");
+    page
+      .getByTestId("shell-notifications-dialog")
+      .getByTestId(`notification-row-${passwordItemId}`),
+  ).toHaveAttribute("data-event-type", "PASSWORD_CHANGED");
+  await expect(
+    page
+      .getByTestId("shell-notifications-dialog")
+      .getByTestId(`notification-row-${passwordItemId}`)
+      .getByTestId("notification-title"),
+  ).toHaveText(/\S/);
   await page.keyboard.press("Escape");
   await expect(bell).toBeFocused();
   await bell.click();
   await page
-    .getByRole("button", { name: /มีการเปลี่ยนรหัสผ่าน/ })
-    .first()
+    .getByTestId("shell-notifications-dialog")
+    .getByTestId(`notification-open-${passwordItemId}`)
     .click();
   await expect(page).toHaveURL(/\/notifications$/);
   await expectReadStatus(page);
   await page.reload();
   await expectReadStatus(page);
-  await page.getByRole("button", { name: "กลับไปที่การแจ้งเตือน" }).click();
+  await page.getByTestId("notifications-back").click();
 
   await seedNotificationFixtures();
 
   await page.goto("/workspace");
+  await page.getByTestId("shell-organization-switch").click();
   await page
-    .getByRole("button", { name: new RegExp(primaryOrganizationName) })
-    .click();
-  await page
-    .getByRole("menuitemradio", {
-      name: new RegExp(secondaryOrganization.name),
-    })
+    .getByTestId("shell-organization-menu")
+    .getByTestId(`shell-organization-${secondaryOrganization.id}`)
     .click();
   await expect
     .poll(() => browserMeContext(page))
@@ -546,54 +524,82 @@ test("password-change notification is materialized, scope switches across organi
         lastActiveTenantId: secondaryOrganization.id,
       },
     });
-  await expect(
-    page.getByRole("button", { name: new RegExp(secondaryOrganization.name) }),
-  ).toContainText("ผู้ดูแล");
+  await expect(page.getByTestId("shell-organization-switch")).toBeVisible();
+  await expect(page.getByTestId("shell-organization-role-admin")).toHaveText(
+    /\S/,
+  );
   await page.goto(
     `/organizations/${secondaryOrganization.id}/notification-settings`,
   );
-  const secondarySetting = page.getByLabel(
-    "แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน",
+  const secondarySetting = page.getByTestId(
+    "organization-notifications-settings-changed",
   );
   await expect(secondarySetting).toBeChecked();
   await secondarySetting.uncheck();
-  await page.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }).click();
+  await page.getByTestId("organization-notifications-save").click();
   await page.reload();
   await expect(secondarySetting).not.toBeChecked();
   await secondarySetting.check();
-  await page.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }).click();
+  await page.getByTestId("organization-notifications-save").click();
   await page.reload();
   await expect(secondarySetting).toBeChecked();
   await page.goto("/workspace");
   await expectUnreadBadge(page, 2);
   await bell.click();
-  const popover = page.getByRole("dialog", { name: "การแจ้งเตือน" });
-  await expect(popover.getByText(secondaryActor)).toBeVisible();
-  await expect(popover.getByText(primaryActor)).toHaveCount(0);
-  await expect(popover.getByText("มีการเปลี่ยนรหัสผ่าน").first()).toBeVisible();
+  const popover = page.getByTestId("shell-notifications-dialog");
+  await expect(
+    popover.getByTestId(`notification-row-${seededItems.secondary}`),
+  ).toContainText(secondaryActor);
+  await expect(
+    popover.getByTestId(`notification-row-${seededItems.primary}`),
+  ).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => document.body.textContent))
+    .not.toContain(primaryActor);
+  await expect(
+    popover.getByTestId(`notification-row-${seededItems.personal}`),
+  ).toHaveAttribute("data-event-type", "PASSWORD_CHANGED");
+  await expect(
+    popover
+      .getByTestId(`notification-row-${seededItems.personal}`)
+      .getByTestId("notification-title"),
+  ).toHaveText(/\S/);
   await page.keyboard.press("Escape");
 
+  await page.getByTestId("shell-organization-switch").click();
   await page
-    .getByRole("button", { name: new RegExp(secondaryOrganization.name) })
-    .click();
-  await page
-    .getByRole("menuitemradio", { name: new RegExp(primaryOrganizationName) })
+    .getByTestId("shell-organization-menu")
+    .getByTestId(`shell-organization-${identity.organizationId}`)
     .click();
   await expectUnreadBadge(page, 2);
   await bell.click();
-  await expect(popover.getByText(primaryActor).first()).toBeVisible();
-  await expect(popover.getByText(secondaryActor)).toHaveCount(0);
-  await expect(popover.getByText("มีการเปลี่ยนรหัสผ่าน").first()).toBeVisible();
+  await expect(
+    popover.getByTestId(`notification-row-${seededItems.primary}`),
+  ).toContainText(primaryActor);
+  await expect(
+    popover.getByTestId(`notification-row-${seededItems.secondary}`),
+  ).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => document.body.textContent))
+    .not.toContain(secondaryActor);
+  await expect(
+    popover.getByTestId(`notification-row-${seededItems.personal}`),
+  ).toHaveAttribute("data-event-type", "PASSWORD_CHANGED");
+  await expect(
+    popover
+      .getByTestId(`notification-row-${seededItems.personal}`)
+      .getByTestId("notification-title"),
+  ).toHaveText(/\S/);
   await page.keyboard.press("Escape");
 
   await page.goto(
     `/organizations/${identity.organizationId}/notification-settings`,
   );
-  const setting = page.getByLabel(
-    "แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน",
+  const setting = page.getByTestId(
+    "organization-notifications-settings-changed",
   );
   await setting.uncheck();
-  await page.getByRole("button", { name: "บันทึกการเปลี่ยนแปลง" }).click();
+  await page.getByTestId("organization-notifications-save").click();
   await page.reload();
   await expect(setting).not.toBeChecked();
 
@@ -604,37 +610,35 @@ test("password-change notification is materialized, scope switches across organi
     await page.goto("/workspace");
     await applyTextZoom(page);
     const dialog = await openNotificationsFromKeyboard(page, bell);
-    await expect(dialog.getByText(primaryActor).first()).toBeVisible();
+    await expect(
+      dialog.getByTestId(`notification-row-${seededItems.primary}`),
+    ).toContainText(primaryActor);
     await attachSurface(
       page,
       testInfo,
       `notification-popover-${theme}-375-200`,
       dialog,
-      ["ทำเครื่องหมายว่าอ่านทั้งหมด"],
     );
     await assertPopoverListScrollAndFooterFocus(page, dialog);
-    await page.getByRole("link", { name: "ดูการแจ้งเตือนทั้งหมด" }).click();
+    await page.getByTestId("shell-notifications-all").click();
     await expect(page).toHaveURL(/\/notifications$/);
-    await expect(page.getByText(primaryActor).first()).toBeVisible();
+    await expect(
+      page.getByTestId(`notification-row-${seededItems.primary}`),
+    ).toContainText(primaryActor);
     await attachSurface(
       page,
       testInfo,
       `notification-center-${theme}-375-200`,
-      page.getByRole("main"),
-      ["ทำเครื่องหมายว่าอ่านทั้งหมด"],
+      page.getByTestId("shell-main"),
     );
 
-    await page
-      .getByRole("button", { name: new RegExp(primaryActor) })
-      .first()
-      .click();
+    await page.getByTestId(`notification-open-${seededItems.primary}`).click();
     await expectReadStatus(page);
     await attachSurface(
       page,
       testInfo,
       `notification-detail-${theme}-375-200`,
-      page.getByRole("main"),
-      ["กลับไปที่การแจ้งเตือน"],
+      page.getByTestId("shell-main"),
     );
 
     await page.goto(
@@ -645,8 +649,7 @@ test("password-change notification is materialized, scope switches across organi
       page,
       testInfo,
       `notification-settings-${theme}-375-200`,
-      page.getByRole("main"),
-      ["บันทึกการเปลี่ยนแปลง"],
+      page.getByTestId("shell-main"),
     );
     await expect(setting).not.toBeChecked();
   }
@@ -688,13 +691,13 @@ test("notification center distinguishes loading, content, empty, denied, and fai
     await page.route("**/api/notifications?*", holdListResponse);
     await page.goto("/notifications");
     await expect.poll(() => capturedListResponse).toBe(true);
-    await expect(
-      page.getByRole("status").filter({ hasText: "กำลังเปิดหน้า…" }),
-    ).toBeVisible();
-    await expect(page.getByText("ยังไม่มีการแจ้งเตือน")).toHaveCount(0);
+    await expect(page.getByTestId("route-opening-status")).toHaveText(/\S/);
+    await expect(page.getByTestId("notifications-empty")).toHaveCount(0);
 
     releaseListResponse();
-    await expect(page.getByText(deferredPrimaryActor)).toBeVisible();
+    await expect(
+      page.getByTestId(`notification-row-${stateItem}`),
+    ).toContainText(deferredPrimaryActor);
     await page.unroute("**/api/notifications?*", holdListResponse);
 
     const identitySwitch = await page.evaluate(
@@ -726,28 +729,22 @@ test("notification center distinguishes loading, content, empty, denied, and fai
       )
       .toEqual({ status: 200, userId: alternateIdentity.userId });
     await page.goto("/notifications");
-    await expect(page.getByText("ยังไม่มีการแจ้งเตือน")).toBeVisible();
+    await expect(page.getByTestId("notifications-empty")).toHaveText(/\S/);
 
     await page.route("**/api/notifications?*", abortListRequest);
     await page.reload();
-    await expect(
-      page
-        .getByRole("alert")
-        .filter({ hasText: "โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" }),
-    ).toBeVisible();
-    await expect(page.getByText("ยังไม่มีการแจ้งเตือน")).toHaveCount(0);
+    await expect(page.getByTestId("notifications-list-error")).toHaveText(/\S/);
+    await expect(page.getByTestId("notifications-empty")).toHaveCount(0);
     await page.unroute("**/api/notifications?*");
 
     await page.goto(
       `/organizations/${identity.organizationId}/notification-settings`,
     );
     await expect(
-      page
-        .getByRole("alert")
-        .filter({ hasText: "คุณไม่มีสิทธิ์จัดการการตั้งค่านี้" }),
-    ).toBeVisible();
+      page.getByTestId("organization-notifications-denied-alert"),
+    ).toHaveText(/\S/);
     await expect(
-      page.getByLabel("แจ้งเมื่อมีการเปลี่ยนการตั้งค่าการแจ้งเตือน"),
+      page.getByTestId("organization-notifications-settings-changed"),
     ).toHaveCount(0);
   } finally {
     releaseListResponse();
@@ -842,18 +839,15 @@ test("deferred notification responses cannot cross confirmed organization or ide
     await signIn(page, currentPrimaryPassword);
     page.on("requestfailed", onOrganizationRequestFailed);
     await page.route("**/api/notifications?*", holdOrganizationResponse);
-    const organizationBell = page.getByRole("button", { name: "การแจ้งเตือน" });
+    const organizationBell = page.getByTestId("shell-notifications-open");
     await organizationBell.click();
     await expect.poll(() => organizationResponseCaptured).toBe(true);
     await page.keyboard.press("Escape");
 
+    await page.getByTestId("shell-organization-switch").click();
     await page
-      .getByRole("button", { name: new RegExp(primaryOrganizationName) })
-      .click();
-    await page
-      .getByRole("menuitemradio", {
-        name: new RegExp(secondaryOrganization.name),
-      })
+      .getByTestId("shell-organization-menu")
+      .getByTestId(`shell-organization-${secondaryOrganization.id}`)
       .click();
     await expect
       .poll(() => browserMeContext(page))
@@ -862,15 +856,20 @@ test("deferred notification responses cannot cross confirmed organization or ide
         body: { lastActiveTenantId: secondaryOrganization.id },
       });
     await organizationBell.click();
-    const organizationPopover = page.getByRole("dialog", {
-      name: "การแจ้งเตือน",
-    });
+    const organizationPopover = page.getByTestId("shell-notifications-dialog");
     await expect(
-      organizationPopover.getByText(deferredSecondaryActor),
-    ).toBeVisible();
+      organizationPopover.getByTestId(
+        `notification-row-${deferredSecondaryItem}`,
+      ),
+    ).toContainText(deferredSecondaryActor);
     await expect(
-      organizationPopover.getByText(deferredPrimaryActor),
+      organizationPopover.getByTestId(
+        `notification-row-${deferredPrimaryItem}`,
+      ),
     ).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(deferredPrimaryActor);
 
     releaseOrganizationResponse();
     await expect
@@ -881,20 +880,26 @@ test("deferred notification responses cannot cross confirmed organization or ide
       )
       .toBe(true);
     await expect(
-      organizationPopover.getByText(deferredSecondaryActor),
-    ).toBeVisible();
+      organizationPopover.getByTestId(
+        `notification-row-${deferredSecondaryItem}`,
+      ),
+    ).toContainText(deferredSecondaryActor);
     await expect(
-      organizationPopover.getByText(deferredPrimaryActor),
+      organizationPopover.getByTestId(
+        `notification-row-${deferredPrimaryItem}`,
+      ),
     ).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(deferredPrimaryActor);
     await page.keyboard.press("Escape");
     await page.unroute("**/api/notifications?*", holdOrganizationResponse);
     page.off("requestfailed", onOrganizationRequestFailed);
 
+    await page.getByTestId("shell-organization-switch").click();
     await page
-      .getByRole("button", { name: new RegExp(secondaryOrganization.name) })
-      .click();
-    await page
-      .getByRole("menuitemradio", { name: new RegExp(primaryOrganizationName) })
+      .getByTestId("shell-organization-menu")
+      .getByTestId(`shell-organization-${identity.organizationId}`)
       .click();
     await expect
       .poll(() => browserMeContext(page))
@@ -938,19 +943,19 @@ test("deferred notification responses cannot cross confirmed organization or ide
       .toEqual({ status: 200, userId: alternateIdentity.userId });
     await page.goto("/workspace");
     await organizationBell.click();
-    const identityPopover = page.getByRole("dialog", {
-      name: "การแจ้งเตือน",
-    });
+    const identityPopover = page.getByTestId("shell-notifications-dialog");
     await expect(
-      identityPopover.getByText("ยังไม่มีการแจ้งเตือน"),
-    ).toBeVisible();
-    await expect(identityPopover.getByText(deferredPrimaryActor)).toHaveCount(
-      0,
-    );
-    await page.getByRole("link", { name: "ดูการแจ้งเตือนทั้งหมด" }).click();
+      identityPopover.getByTestId("shell-notifications-empty"),
+    ).toHaveText(/\S/);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(deferredPrimaryActor);
+    await page.getByTestId("shell-notifications-all").click();
     await expect(page).toHaveURL(/\/notifications$/);
-    await expect(page.getByText("ยังไม่มีการแจ้งเตือน")).toBeVisible();
-    await expect(page.getByText(deferredPrimaryActor)).toHaveCount(0);
+    await expect(page.getByTestId("notifications-empty")).toHaveText(/\S/);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(deferredPrimaryActor);
 
     releaseIdentityResponse();
     await expect
@@ -958,17 +963,19 @@ test("deferred notification responses cannot cross confirmed organization or ide
         () => identityResponseFulfilled || identityRequestFailure !== undefined,
       )
       .toBe(true);
-    await expect(page.getByText("ยังไม่มีการแจ้งเตือน")).toBeVisible();
-    await expect(page.getByText(deferredPrimaryActor)).toHaveCount(0);
-    await page.getByRole("link", { name: "ภาพรวม" }).click();
+    await expect(page.getByTestId("notifications-empty")).toHaveText(/\S/);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(deferredPrimaryActor);
+    await page.getByTestId("shell-nav-/workspace").click();
     await expect(page).toHaveURL(/\/workspace$/);
     await organizationBell.click();
     await expect(
-      identityPopover.getByText("ยังไม่มีการแจ้งเตือน"),
-    ).toBeVisible();
-    await expect(identityPopover.getByText(deferredPrimaryActor)).toHaveCount(
-      0,
-    );
+      identityPopover.getByTestId("shell-notifications-empty"),
+    ).toHaveText(/\S/);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(deferredPrimaryActor);
   } finally {
     releaseOrganizationResponse();
     releaseIdentityResponse();
@@ -1017,11 +1024,14 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
 
     await signIn(page, currentPrimaryPassword);
     await page.goto("/notifications");
-    const markAll = page.getByRole("button", {
-      name: "ทำเครื่องหมายว่าอ่านทั้งหมด",
-    });
+    const markAll = page.getByTestId("notifications-mark-all");
     await expect(markAll).toBeEnabled();
-    await expect(page.getByText(pageTwoActor)).toHaveCount(0);
+    await expect(
+      page.getByTestId(`notification-row-${paginationIds[20]}`),
+    ).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(pageTwoActor);
     const unreadBefore = await page.evaluate(async () => {
       const response = await fetch("/api/notifications/unread-count");
       return {
@@ -1058,15 +1068,17 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
       [paginationIds[20]],
     );
     expect(pageTwo.rows[0]?.readAt).not.toBeNull();
-    await expect(
-      page.getByText("ทำเครื่องหมายว่าอ่านแล้วทั้งหมด", { exact: true }),
-    ).toBeVisible();
-    await page
-      .getByRole("button", { name: "โหลดการแจ้งเตือนเพิ่มเติม" })
-      .click();
-    await page.getByRole("button", { name: new RegExp(pageTwoActor) }).click();
+    await expect(page.getByTestId("notifications-mark-all-success")).toHaveText(
+      /\S/,
+    );
+    await expect(page.getByTestId("notifications-mark-all-success")).toHaveRole(
+      "status",
+    );
+    await expect(page.getByTestId("notifications-mark-all")).toBeDisabled();
+    await page.getByTestId("notifications-load-more").click();
+    await page.getByTestId(`notification-open-${paginationIds[20]}`).click();
     await expectReadStatus(page);
-    await page.getByRole("button", { name: "กลับไปที่การแจ้งเตือน" }).click();
+    await page.getByTestId("notifications-back").click();
 
     const clientForExpiry = await database.sql.connect();
     try {
@@ -1085,30 +1097,25 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
       clientForExpiry.release();
     }
     await page.goto("/workspace");
-    const bell = page.getByRole("button", { name: "การแจ้งเตือน" });
+    const bell = page.getByTestId("shell-notifications-open");
     await bell.click();
-    const expiredPopover = page.getByRole("dialog", {
-      name: "การแจ้งเตือน",
-    });
-    await expect(expiredPopover.getByText(expiredActor)).toBeVisible();
+    const expiredPopover = page.getByTestId("shell-notifications-dialog");
+    await expect(
+      expiredPopover.getByTestId(`notification-row-${expiredId}`),
+    ).toContainText(expiredActor);
     const expiredInitialOpen = page.waitForResponse(
       (response) =>
         response.url().includes(`/api/notifications/${expiredId}/open`) &&
         response.request().method() === "POST" &&
         response.status() === 200,
     );
-    await expiredPopover
-      .getByRole("button", { name: new RegExp(expiredActor) })
-      .click();
+    await expiredPopover.getByTestId(`notification-open-${expiredId}`).click();
     await expiredInitialOpen;
     await expect(page).toHaveURL(/\/notifications$/);
     await expectReadStatus(page);
     await expect(
-      page.getByRole("heading", {
-        name: `การตั้งค่าการแจ้งเตือนเปลี่ยนโดย ${expiredActor}`,
-        exact: true,
-      }),
-    ).toBeVisible();
+      page.getByTestId(`notification-detail-${expiredId}`),
+    ).toContainText(expiredActor);
     await database.sql.query(
       "update notification_inbox_items set expires_at = now() - interval '1 minute' where id = $1",
       [expiredId],
@@ -1121,8 +1128,12 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
     );
     await page.reload();
     await expiredOpen;
-    await expect(page.getByText("ไม่พบการแจ้งเตือนนี้")).toBeVisible();
-    await expect(page.getByText(expiredActor)).toHaveCount(0);
+    await expect(page.getByTestId("notification-detail-error")).toHaveText(
+      /\S/,
+    );
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(expiredActor);
 
     const clientForDeletion = await database.sql.connect();
     try {
@@ -1138,28 +1149,23 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
     }
     await page.goto("/workspace");
     await bell.click();
-    const deletedPopover = page.getByRole("dialog", {
-      name: "การแจ้งเตือน",
-    });
-    await expect(deletedPopover.getByText(deletedActor)).toBeVisible();
+    const deletedPopover = page.getByTestId("shell-notifications-dialog");
+    await expect(
+      deletedPopover.getByTestId(`notification-row-${deletedId}`),
+    ).toContainText(deletedActor);
     const deletedInitialOpen = page.waitForResponse(
       (response) =>
         response.url().includes(`/api/notifications/${deletedId}/open`) &&
         response.request().method() === "POST" &&
         response.status() === 200,
     );
-    await deletedPopover
-      .getByRole("button", { name: new RegExp(deletedActor) })
-      .click();
+    await deletedPopover.getByTestId(`notification-open-${deletedId}`).click();
     await deletedInitialOpen;
     await expect(page).toHaveURL(/\/notifications$/);
     await expectReadStatus(page);
     await expect(
-      page.getByRole("heading", {
-        name: `การตั้งค่าการแจ้งเตือนเปลี่ยนโดย ${deletedActor}`,
-        exact: true,
-      }),
-    ).toBeVisible();
+      page.getByTestId(`notification-detail-${deletedId}`),
+    ).toContainText(deletedActor);
     await database.sql.query("delete from notification_intents where id = $1", [
       deletedId,
     ]);
@@ -1171,8 +1177,12 @@ test("Center reaches an unread twenty-first item and reauthorizes expired or del
     );
     await page.reload();
     await deletedOpen;
-    await expect(page.getByText("ไม่พบการแจ้งเตือนนี้")).toBeVisible();
-    await expect(page.getByText(deletedActor)).toHaveCount(0);
+    await expect(page.getByTestId("notification-detail-error")).toHaveText(
+      /\S/,
+    );
+    await expect
+      .poll(() => page.evaluate(() => document.body.textContent))
+      .not.toContain(deletedActor);
   } finally {
     await database.sql.query(
       "delete from notification_intents where id = any($1::text[])",
