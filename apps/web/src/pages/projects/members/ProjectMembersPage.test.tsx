@@ -466,7 +466,7 @@ describe("states", () => {
       finishReload(context("owner"));
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-    await act(async () => {
+    act(() => {
       finishLoader(null);
     });
     expect(await screen.findByTestId("elsewhere")).toBeVisible();
