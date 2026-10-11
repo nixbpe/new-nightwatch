@@ -262,6 +262,17 @@ export function AddMemberDialog({
               />
             </div>
           </div>
+          <p
+            data-testid="add-member-result-status"
+            role="status"
+            className="sr-only"
+          >
+            {rows === undefined || candidates.isFetching
+              ? ""
+              : rows.length === 0
+                ? "ไม่พบสมาชิกองค์กร"
+                : `พบ ${String(rows.length)} คน`}
+          </p>
           <div
             role="group"
             aria-label="สมาชิกองค์กร"

@@ -95,13 +95,15 @@ function ProjectMembers({
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<{
     text: string;
-    kind: "saved" | "role-changed";
+    kind: "saved" | "role-changed" | "stale";
   } | null>(null);
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
   >("idle");
   const heading = useRef<HTMLHeadingElement>(null);
   const refocusUserId = useRef<string | null>(null);
+  // Set when the user removes themself and loses access: says so instead of a bare not-found.
+  const [leftProject, setLeftProject] = useState<string | null>(null);
 
   const detail = useQuery({
     queryKey: projectQueryKeys.detail(organizationId, projectId),
@@ -126,16 +128,20 @@ function ProjectMembers({
     });
   }, [denied, contextRefresh, refreshMembershipContext]);
 
-  // Returns focus to a select that the refetch remounted.
+  // Returns focus to a select that the refetch remounted; with no select left
+  // (the user demoted themself), the heading keeps focus on the page.
   useEffect(() => {
     if (pendingRole !== null || refocusUserId.current === null) return;
-    document
-      .querySelector<HTMLElement>(
-        `[data-testid="project-member-role-select"][data-user-id="${CSS.escape(refocusUserId.current)}"]`,
-      )
-      ?.focus();
+    const target = document.querySelector<HTMLElement>(
+      `[data-testid="project-member-role-select"][data-user-id="${CSS.escape(refocusUserId.current)}"]`,
+    );
+    (target ?? heading.current)?.focus();
     refocusUserId.current = null;
   }, [pendingRole]);
+
+  useEffect(() => {
+    if (leftProject !== null) heading.current?.focus();
+  }, [leftProject]);
 
   const orgRole = organization?.role;
   const canManage =
@@ -226,12 +232,30 @@ function ProjectMembers({
       await removeProjectMember(organizationId, projectId, member.userId);
     } catch (error) {
       const message = failureMessage(error, "remove");
-      const gone =
-        error instanceof ApiError &&
-        (error.code === "PERMISSION_DENIED" ||
+      if (error instanceof ApiError) {
+        if (error.code === "PROJECT_MEMBER_NOT_FOUND") {
+          // Someone else removed them first; the refetch already runs.
+          setRemoval(null);
+          setNotice({ text: message, kind: "stale" });
+          return;
+        }
+        if (
+          error.code === "PERMISSION_DENIED" ||
           error.code === "MEMBERSHIP_DENIED" ||
-          error.code === "PROJECT_NOT_FOUND");
-      setRemoval(gone ? null : { ...removal, pending: false, error: message });
+          error.code === "PROJECT_NOT_FOUND"
+        ) {
+          setRemoval(null);
+          return;
+        }
+      }
+      setRemoval({ ...removal, pending: false, error: message });
+      return;
+    }
+    if (member.userId === me?.user.id && !canManageOrganization) {
+      // Access ends with the membership: the refetch will answer 404.
+      setLeftProject(project?.name ?? "");
+      setRemoval(null);
+      void refresh();
       return;
     }
     const reloaded = await refresh();
@@ -260,7 +284,15 @@ function ProjectMembers({
         titleRef={heading}
         titleTabIndex={-1}
       />
-      {notice === null ? null : notice.kind === "role-changed" ? (
+      {notice === null ? null : notice.kind === "stale" ? (
+        <Alert
+          data-testid="project-members-notice-stale"
+          tone="info"
+          role="status"
+        >
+          {notice.text}
+        </Alert>
+      ) : notice.kind === "role-changed" ? (
         <Alert
           data-testid="project-members-notice-role-changed"
           tone="info"
@@ -330,6 +362,25 @@ function ProjectMembers({
           alertTestId="project-members-denied-alert"
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูโปรเจกต์ขององค์กรนี้"
+        />
+      </Page>
+    );
+  }
+  if (leftProject !== null) {
+    return (
+      <Page>
+        <PageHeader
+          eyebrow="// MEMBERS"
+          title="สมาชิกโปรเจกต์"
+          titleRef={heading}
+          titleTabIndex={-1}
+        />
+        <PageState
+          data-testid="project-members-left"
+          kind="denied"
+          tone="info"
+          message={`คุณออกจากโปรเจกต์ ${leftProject} แล้ว`}
+          action={backLink}
         />
       </Page>
     );

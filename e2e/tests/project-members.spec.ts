@@ -25,7 +25,7 @@ const pool = database.sql;
 let org: string;
 let projectId: string;
 let ownerSession: ApiSession;
-const people = {} as Record<Role | "outsider", Person>;
+const people = {} as Record<Role | "outsider" | "orgAdmin", Person>;
 const userIds: string[] = [];
 
 const membersUrl = () => `/organizations/${org}/projects/${projectId}/members`;
@@ -61,6 +61,10 @@ test.beforeAll(async () => {
   people.outsider = await createPerson(pool, "outsider", org);
   userIds.push(people.outsider.userId);
   await addMember(pool, org, people.outsider.userId, "viewer");
+  // An Organization admin who is not in the Project (AC-09).
+  people.orgAdmin = await createPerson(pool, "orgadmin", org);
+  userIds.push(people.orgAdmin.userId);
+  await addMember(pool, org, people.orgAdmin.userId, "admin");
   ownerSession = await signInApi(people.owner);
   const created = await ownerSession.request(
     "POST",
@@ -212,6 +216,27 @@ test.describe("other viewers", () => {
     ).toHaveAttribute("data-project-role", "admin");
   });
 
+  test("an Organization admin outside the Project manages its members (AC-09)", async ({
+    page,
+  }) => {
+    await signIn(page, people.orgAdmin);
+    await page.goto(membersUrl());
+    await expect(page.getByTestId("project-my-role")).toHaveAttribute(
+      "data-project-role",
+      "none",
+    );
+    await expect(page.getByTestId("project-members-add")).toBeVisible();
+    const select = page
+      .getByTestId(`project-member-row-${people.viewer.userId}`)
+      .getByTestId("project-member-role-select");
+    await select.selectOption("admin");
+    await expect(page.getByTestId("project-admin-count")).toHaveText("2");
+    expect((await projectRoles())[people.viewer.userId]).toBe("admin");
+    await select.selectOption("member");
+    await expect(page.getByTestId("project-admin-count")).toHaveText("1");
+    expect((await projectRoles())[people.viewer.userId]).toBe("member");
+  });
+
   test("an Organization member outside the Project gets the not-found state", async ({
     page,
   }) => {
@@ -240,7 +265,12 @@ for (const theme of ["light", "dark"] as const) {
 
       await page.getByTestId("project-members-add").click();
       await expect(page.getByTestId("add-member-dialog")).toBeVisible();
-      await page.waitForTimeout(500);
+      // The shot waits for the overlay enter animation to finish.
+      await page
+        .getByTestId("add-member-dialog")
+        .evaluate((element) =>
+          Promise.all(element.getAnimations().map((a) => a.finished)),
+        );
       await shot(page, `project-members-add-${theme}`);
       await page.keyboard.press("Escape");
       await expect(page.getByTestId("add-member-dialog")).toHaveCount(0);

@@ -304,11 +304,14 @@ describe("who can manage", () => {
     ).toBeEnabled();
   });
 
-  it("gives a project admin who is only an organization viewer the controls", async () => {
+  it("gives a project admin who is only an organization viewer the controls, without the organization members link", async () => {
     meMock.mockResolvedValue(context("viewer"));
     renderPage();
     await loaded();
     expect(screen.getByTestId("project-members-add")).toBeEnabled();
+    expect(
+      screen.queryByTestId("project-members-organization-link"),
+    ).toBeNull();
   });
 });
 
@@ -393,7 +396,89 @@ describe("role change (AC-05)", () => {
   });
 });
 
+describe("self changes", () => {
+  it("keeps focus on the page heading when demoting yourself removes the select", async () => {
+    const user = userEvent.setup();
+    meMock.mockResolvedValue(context("viewer"));
+    patchMock.mockImplementation((_org, _project, userId, role) => {
+      roster = roster.map((item) =>
+        item.userId === userId ? { ...item, projectRole: role } : item,
+      );
+      if (userId === ME) myRole = role;
+      return Promise.resolve({ ...member(userId, role) });
+    });
+    renderPage();
+    await loaded();
+    await user.selectOptions(select(ME), "member");
+    await waitFor(() => {
+      expect(screen.queryByTestId("project-member-role-select")).toBeNull();
+    });
+    expect(screen.queryByTestId("project-members-add")).toBeNull();
+    expect(screen.getByTestId("page-title")).toHaveFocus();
+  });
+
+  it("says you left the project, not a bare not-found, after removing yourself", async () => {
+    const user = userEvent.setup();
+    meMock.mockResolvedValue(context("viewer"));
+    removeMock.mockImplementation(() => {
+      const gone = new ApiError("PROJECT_NOT_FOUND", "missing", 404);
+      detailMock.mockRejectedValue(gone);
+      membersMock.mockRejectedValue(gone);
+      return Promise.resolve(undefined);
+    });
+    renderPage();
+    await loaded();
+    await user.click(within(row(ME)).getByTestId("project-member-remove"));
+    await user.click(screen.getByTestId("project-member-remove-confirm"));
+    expect(await screen.findByTestId("project-members-left")).toBeVisible();
+    expect(removeMock).toHaveBeenCalledWith(A, P, ME);
+    expect(screen.queryByTestId("project-members-not-found")).toBeNull();
+    expect(screen.getByTestId("page-title")).toHaveFocus();
+  });
+
+  it("keeps the organization owner on the page after removing themself", async () => {
+    const user = userEvent.setup();
+    removeMock.mockImplementation((_org, _project, userId) => {
+      roster = roster.filter((item) => item.userId !== userId);
+      myRole = null;
+      return Promise.resolve(undefined);
+    });
+    renderPage();
+    await loaded();
+    await user.click(within(row(ME)).getByTestId("project-member-remove"));
+    await user.click(screen.getByTestId("project-member-remove-confirm"));
+    await waitFor(() => {
+      expect(screen.getByTestId("project-my-role")).toHaveAttribute(
+        "data-project-role",
+        "none",
+      );
+    });
+    expect(screen.queryByTestId("project-members-left")).toBeNull();
+  });
+});
+
 describe("remove (AC-05)", () => {
+  it("closes the dialog, says the member is gone and refetches on 404 PROJECT_MEMBER_NOT_FOUND", async () => {
+    const user = userEvent.setup();
+    removeMock.mockRejectedValue(
+      new ApiError("PROJECT_MEMBER_NOT_FOUND", "gone", 404),
+    );
+    renderPage();
+    await loaded();
+    const calls = membersMock.mock.calls.length;
+    await user.click(
+      within(row("thanakorn")).getByTestId("project-member-remove"),
+    );
+    await user.click(screen.getByTestId("project-member-remove-confirm"));
+    expect(
+      await screen.findByTestId("project-members-notice-stale"),
+    ).toBeVisible();
+    expect(screen.queryByTestId("project-member-remove-dialog")).toBeNull();
+    await waitFor(() => {
+      expect(membersMock.mock.calls.length).toBeGreaterThan(calls);
+    });
+  });
+
   it("confirms, sends the delete, closes and refreshes the list", async () => {
     const user = userEvent.setup();
     removeMock.mockImplementation((_org, _project, userId) => {
@@ -627,6 +712,38 @@ describe("add member dialog", () => {
       expect(candidatesMock.mock.calls.length).toBeGreaterThan(calls);
     });
   });
+
+  it("announces an empty search result in a live region", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const dialog = await openDialog(user);
+    const status = within(dialog).getByTestId("add-member-result-status");
+    expect(status).toHaveRole("status");
+    await user.type(within(dialog).getByTestId("add-member-search"), "nobody");
+    await waitFor(() => {
+      expect(status).toHaveTextContent("ไม่พบสมาชิกองค์กร");
+    });
+  });
+
+  it.each([
+    ["PERMISSION_DENIED", 403, "project-members-notice-role-changed"],
+    ["PROJECT_NOT_FOUND", 404, undefined],
+  ])(
+    "closes the dialog when the candidate search answers %s",
+    async (code, status, noticeId) => {
+      const user = userEvent.setup();
+      candidatesMock.mockRejectedValue(new ApiError(code, "stale", status));
+      renderPage();
+      await loaded();
+      await user.click(screen.getByTestId("project-members-add"));
+      await waitFor(() => {
+        expect(screen.queryByTestId("add-member-dialog")).toBeNull();
+      });
+      if (noticeId !== undefined) {
+        expect(await screen.findByTestId(noticeId)).toBeVisible();
+      }
+    },
+  );
 
   it("closes the dialog and reloads on 403 from the add request", async () => {
     const user = userEvent.setup();
