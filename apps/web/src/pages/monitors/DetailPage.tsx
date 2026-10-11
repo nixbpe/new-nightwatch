@@ -45,7 +45,7 @@ import {
 } from "./format";
 import { HealthPill } from "./HealthPill";
 import { useDataFresh } from "./useDataFresh";
-import { useLeaveOnOrganizationSwitch } from "./useLeaveOnOrganizationSwitch";
+import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 
 const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนแล้ว";
 

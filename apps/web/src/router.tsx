@@ -23,6 +23,7 @@ import {
   notificationSettingsLoader,
   notificationsLoader,
   organizationMembersLoader,
+  projectMembersLoader,
   projectsLoader,
   requireAnonLoader,
   rootLoader,
@@ -48,6 +49,7 @@ import { OverviewPage } from "./pages/monitors/OverviewPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrganizationNotificationSettingsPage } from "./pages/OrganizationNotificationSettingsPage";
 import { OrganizationMembersPage } from "./pages/OrganizationMembersPage";
+import { ProjectMembersPage } from "./pages/projects/members/ProjectMembersPage";
 import { ProjectsPage } from "./pages/projects/ProjectsPage";
 import { DisplayPage } from "./pages/settings/DisplayPage";
 import { ProfilePage } from "./pages/settings/ProfilePage";
@@ -196,6 +198,11 @@ export const routes: RouteObject[] = [
             path: "/organizations/:organizationId/projects",
             loader: projectsLoader,
             element: <ProjectsPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects/:projectId/members",
+            loader: projectMembersLoader,
+            element: <ProjectMembersPage />,
           },
           {
             path: "/organizations/:organizationId/audit-log",

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addProjectMembersRequestSchema,
+  addProjectMembersResponseSchema,
   createProjectRequestSchema,
+  projectDetailSchema,
+  projectMemberCandidatesQuerySchema,
+  PROJECT_MEMBER_ADD_MAX,
+  PROJECT_MEMBER_SEARCH_MAX_LENGTH,
+  updateProjectMemberRequestSchema,
   projectSummarySchema,
   updateProjectRequestSchema,
 } from "./project";
@@ -118,6 +125,105 @@ describe("project summary", () => {
     expect(projectSummarySchema.safeParse(summary).success).toBe(true);
     expect(
       projectSummarySchema.safeParse({ ...summary, myRole: "owner" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("add project members request", () => {
+  const add = (body: Record<string, unknown>) =>
+    addProjectMembersRequestSchema.safeParse(body);
+
+  it("requires at least one user id, at most the bound, and a role", () => {
+    expect(add({ userIds: ["u1"], role: "member" }).success).toBe(true);
+    expect(add({ userIds: [], role: "member" }).success).toBe(false);
+    expect(add({ userIds: ["u1"] }).success).toBe(false);
+    expect(
+      add({
+        userIds: Array.from({ length: PROJECT_MEMBER_ADD_MAX }, (_, i) =>
+          String(i),
+        ),
+        role: "admin",
+      }).success,
+    ).toBe(true);
+    expect(
+      add({
+        userIds: Array.from({ length: PROJECT_MEMBER_ADD_MAX + 1 }, (_, i) =>
+          String(i),
+        ),
+        role: "admin",
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([["owner"], ["viewer"], [""]])("rejects role %j", (role) => {
+    expect(add({ userIds: ["u1"], role }).success).toBe(false);
+  });
+
+  it("rejects unknown keys such as tenantId", () => {
+    expect(
+      add({ userIds: ["u1"], role: "member", tenantId: "x" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("update project member request", () => {
+  it("takes only a project role", () => {
+    expect(
+      updateProjectMemberRequestSchema.safeParse({ role: "admin" }).success,
+    ).toBe(true);
+    expect(updateProjectMemberRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      updateProjectMemberRequestSchema.safeParse({
+        role: "member",
+        userId: "u",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("member candidates query", () => {
+  it("bounds q and trims it", () => {
+    const parse = (q: string) =>
+      projectMemberCandidatesQuerySchema.safeParse({ q });
+    expect(parse("a".repeat(PROJECT_MEMBER_SEARCH_MAX_LENGTH)).success).toBe(
+      true,
+    );
+    expect(
+      parse("a".repeat(PROJECT_MEMBER_SEARCH_MAX_LENGTH + 1)).success,
+    ).toBe(false);
+    expect(parse("  ab  ").data?.q).toBe("ab");
+    expect(projectMemberCandidatesQuerySchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe("project detail", () => {
+  it("extends the summary with adminCount", () => {
+    const summary = {
+      id: crypto.randomUUID(),
+      name: "Payments",
+      slug: "payments",
+      description: null,
+      memberCount: 2,
+      myRole: null,
+      updatedAt: new Date().toISOString(),
+    };
+    expect(projectDetailSchema.safeParse(summary).success).toBe(false);
+    expect(
+      projectDetailSchema.safeParse({ ...summary, adminCount: 1 }).success,
+    ).toBe(true);
+  });
+});
+
+describe("add project members response", () => {
+  it("carries the member list and the users this request added", () => {
+    expect(
+      addProjectMembersResponseSchema.safeParse({
+        members: [],
+        addedUserIds: [],
+      }).success,
+    ).toBe(true);
+    expect(
+      addProjectMembersResponseSchema.safeParse({ members: [] }).success,
     ).toBe(false);
   });
 });

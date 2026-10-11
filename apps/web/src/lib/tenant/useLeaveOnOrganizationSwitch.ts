@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { useTenant } from "../../lib/tenant/TenantProvider";
+import { useTenant } from "./TenantProvider";
 
 /**
  * True once the server-active Organization moved to one that is not the one this
@@ -34,13 +34,15 @@ export function useOrganizationSwitched(routeOrganizationId: string): boolean {
 }
 
 /**
- * A monitor id belongs to one Organization, so a switch made while the page is
- * open sends the user to the new Organization's Overview (AC-49). Returns true
- * from the render in which the switch is seen so the page can drop its data
- * instead of showing the old Organization's monitor for a frame.
+ * A page whose route names one Organization's record (a monitor, a Project)
+ * cannot follow a switch, so a switch made while it is open sends the user to
+ * the new Organization's list of the same `section` (monitors: AC-49). Returns
+ * true from the render in which the switch is seen so the page can drop its
+ * data instead of showing the old Organization's record for a frame.
  */
 export function useLeaveOnOrganizationSwitch(
   routeOrganizationId: string,
+  section: "monitors" | "projects" = "monitors",
 ): boolean {
   const { serverActiveOrgId } = useTenant();
   const navigate = useNavigate();
@@ -55,10 +57,10 @@ export function useLeaveOnOrganizationSwitch(
       // Reconfirming the same destination must not supersede its pending loader.
       // A newer confirmed scope still replaces the old navigation.
       destination.current = serverActiveOrgId;
-      void navigate(`/organizations/${serverActiveOrgId}/monitors`, {
+      void navigate(`/organizations/${serverActiveOrgId}/${section}`, {
         replace: true,
       });
     }
-  }, [switched, serverActiveOrgId, navigate]);
+  }, [switched, serverActiveOrgId, section, navigate]);
   return switched;
 }

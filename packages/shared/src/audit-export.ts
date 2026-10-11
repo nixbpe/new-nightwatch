@@ -23,6 +23,9 @@ export const AUDIT_ACTIONS = [
   "organization.project.create",
   "organization.project.update",
   "organization.project.delete",
+  "organization.project.member.add",
+  "organization.project.member.role.update",
+  "organization.project.member.remove",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -55,6 +58,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.create": "สร้างโปรเจกต์",
   "organization.project.update": "แก้ไขโปรเจกต์",
   "organization.project.delete": "ลบโปรเจกต์",
+  "organization.project.member.add": "เพิ่มสมาชิกในโปรเจกต์",
+  "organization.project.member.role.update": "เปลี่ยนบทบาทสมาชิกในโปรเจกต์",
+  "organization.project.member.remove": "นำสมาชิกออกจากโปรเจกต์",
 };
 
 export type AuditValue =

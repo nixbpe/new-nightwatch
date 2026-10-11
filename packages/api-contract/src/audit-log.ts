@@ -36,6 +36,9 @@ export const AUDIT_ACTIONS = [
   "organization.project.create",
   "organization.project.update",
   "organization.project.delete",
+  "organization.project.member.add",
+  "organization.project.member.role.update",
+  "organization.project.member.remove",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const auditActionSchema = z.enum(AUDIT_ACTIONS);
@@ -62,6 +65,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "organization.project.create": "สร้างโปรเจกต์",
   "organization.project.update": "แก้ไขโปรเจกต์",
   "organization.project.delete": "ลบโปรเจกต์",
+  "organization.project.member.add": "เพิ่มสมาชิกในโปรเจกต์",
+  "organization.project.member.role.update": "เปลี่ยนบทบาทสมาชิกในโปรเจกต์",
+  "organization.project.member.remove": "นำสมาชิกออกจากโปรเจกต์",
 };
 
 export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
@@ -134,6 +140,14 @@ export const auditTargetSchema = z.discriminatedUnion("type", [
     userId: z.string(),
     displayName: z.string().nullable(),
     membership: membershipSchema,
+    /** Set when the event is about the member's place in a Project, not in the Organization. */
+    project: z
+      .object({
+        projectId: z.uuid(),
+        displayName: z.string().nullable(),
+        deleted: z.boolean(),
+      })
+      .optional(),
   }),
   z.object({
     type: z.literal("invitation"),

@@ -167,6 +167,7 @@ function logSafeOrganizationPath(path: string): string {
     | "monitor-route"
     | "projects"
     | "project-route"
+    | "project-members"
     | "audit-log"
     | "audit-events"
     | "audit-exports"
@@ -220,6 +221,18 @@ function logSafeOrganizationPath(path: string): string {
       if (state === "organization-route" && segment === auditLogSegment) {
         state = "audit-log";
         return auditLogSegment;
+      }
+      if (state === "project-route" && segment === membersSegment) {
+        state = "project-members";
+        return membersSegment;
+      }
+      if (state === "project-route" && segment === "member-candidates") {
+        state = "other";
+        return segment;
+      }
+      if (state === "project-members") {
+        state = "other";
+        return ":userId";
       }
       if (state === "audit-log" && segment === "events") {
         state = "audit-events";

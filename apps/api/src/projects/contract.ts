@@ -1,6 +1,18 @@
 import { createRoute } from "@hono/zod-openapi";
 import {
+  addProjectMembersRequestSchema,
+  addProjectMembersResponseSchema,
   createProjectRequestSchema,
+  lastProjectAdminErrorResponseSchema,
+  projectDetailSchema,
+  projectMemberCandidatesQuerySchema,
+  projectMemberCandidatesResponseSchema,
+  projectMemberListResponseSchema,
+  projectMemberNotFoundErrorResponseSchema,
+  projectMemberNotInOrganizationErrorResponseSchema,
+  projectMemberParamsSchema,
+  projectMemberSchema,
+  updateProjectMemberRequestSchema,
   emailNotVerifiedErrorResponseSchema,
   membershipDeniedErrorResponseSchema,
   permissionDeniedErrorResponseSchema,
@@ -125,6 +137,153 @@ export const projectRouteDeclarations = {
       400: invalidResponse,
       ...authResponses,
       404: notFoundResponse,
+    },
+  }),
+  get: createRoute({
+    method: "get",
+    path: `${projectsBase}/{projectId}`,
+    tags,
+    summary: "Read one Project the user can see, with its administrator count",
+    request: { params: projectParamsSchema },
+    responses: {
+      200: {
+        description: "The Project",
+        content: { "application/json": { schema: projectDetailSchema } },
+      },
+      400: invalidResponse,
+      ...authResponses,
+      404: notFoundResponse,
+    },
+  }),
+  listMembers: createRoute({
+    method: "get",
+    path: `${projectsBase}/{projectId}/members`,
+    tags,
+    summary: "List the members of a Project, administrators first",
+    request: { params: projectParamsSchema },
+    responses: {
+      200: {
+        description: "Members, administrators first, then by name",
+        content: {
+          "application/json": { schema: projectMemberListResponseSchema },
+        },
+      },
+      400: invalidResponse,
+      ...authResponses,
+      404: notFoundResponse,
+    },
+  }),
+  memberCandidates: createRoute({
+    method: "get",
+    path: `${projectsBase}/{projectId}/member-candidates`,
+    tags,
+    summary:
+      "Search Organization members to add; projectRole is null for one who is not in the Project",
+    request: {
+      params: projectParamsSchema,
+      query: projectMemberCandidatesQuerySchema,
+    },
+    responses: {
+      200: {
+        description: "At most 50 Organization members, sorted by name",
+        content: {
+          "application/json": {
+            schema: projectMemberCandidatesResponseSchema,
+          },
+        },
+      },
+      400: invalidResponse,
+      ...authResponses,
+      404: notFoundResponse,
+    },
+  }),
+  addMembers: createRoute({
+    method: "post",
+    path: `${projectsBase}/{projectId}/members`,
+    tags,
+    summary:
+      "Add Organization members to a Project (idempotent: existing members keep their role)",
+    request: {
+      params: projectParamsSchema,
+      body: {
+        content: {
+          "application/json": { schema: addProjectMembersRequestSchema },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description:
+          "All members of the Project after the change, and the users this request added",
+        content: {
+          "application/json": { schema: addProjectMembersResponseSchema },
+        },
+      },
+      400: invalidResponse,
+      415: mediaTypeResponse,
+      ...authResponses,
+      404: notFoundResponse,
+      422: jsonError(
+        "A user is not a member of the Organization; nothing was added",
+        projectMemberNotInOrganizationErrorResponseSchema,
+      ),
+    },
+  }),
+  updateMember: createRoute({
+    method: "patch",
+    path: `${projectsBase}/{projectId}/members/{userId}`,
+    tags,
+    summary: "Change a member's Project role (idempotent)",
+    request: {
+      params: projectMemberParamsSchema,
+      body: {
+        content: {
+          "application/json": { schema: updateProjectMemberRequestSchema },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "The member, changed or as it was",
+        content: { "application/json": { schema: projectMemberSchema } },
+      },
+      400: invalidResponse,
+      415: mediaTypeResponse,
+      ...authResponses,
+      404: jsonError(
+        "The Project is not visible to the user, or the user is not in the Project",
+        projectNotFoundErrorResponseSchema.or(
+          projectMemberNotFoundErrorResponseSchema,
+        ),
+      ),
+      409: jsonError(
+        "The change would leave the Project without an administrator",
+        lastProjectAdminErrorResponseSchema,
+      ),
+    },
+  }),
+  removeMember: createRoute({
+    method: "delete",
+    path: `${projectsBase}/{projectId}/members/{userId}`,
+    tags,
+    summary: "Remove a member from a Project",
+    request: { params: projectMemberParamsSchema },
+    responses: {
+      204: { description: "Removed" },
+      400: invalidResponse,
+      ...authResponses,
+      404: jsonError(
+        "The Project is not visible to the user, or the user is not in the Project",
+        projectNotFoundErrorResponseSchema.or(
+          projectMemberNotFoundErrorResponseSchema,
+        ),
+      ),
+      409: jsonError(
+        "The removal would leave the Project without an administrator",
+        lastProjectAdminErrorResponseSchema,
+      ),
     },
   }),
 };

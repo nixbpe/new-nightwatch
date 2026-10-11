@@ -19,6 +19,8 @@ import {
 const AUDIT_MIGRATION = "0020_organization_audit_log.sql";
 // Alters the audit_events that AUDIT_MIGRATION creates.
 const PROJECT_AUDIT_MIGRATION = "0023_projects.sql";
+// Replaces the action constraint 0023 wrote, and grants on a 0023 table.
+const PROJECT_MEMBERS_MIGRATION = "0024_project_members.sql";
 let database: Database;
 let ownerDatabase: Database;
 let owner: Client;
@@ -95,7 +97,7 @@ beforeAll(async () => {
     applySkipped: applyAuditMigration,
     close: closeDatabase,
   } = await openIsolatedAuditDatabase({
-    skip: [AUDIT_MIGRATION, PROJECT_AUDIT_MIGRATION],
+    skip: [AUDIT_MIGRATION, PROJECT_AUDIT_MIGRATION, PROJECT_MEMBERS_MIGRATION],
   }));
   await owner.query(
     `insert into organization (id, name, slug, created_at)

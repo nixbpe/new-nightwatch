@@ -399,6 +399,26 @@ function TargetValue({
       </Link>
     );
   }
+  // A Project member event names the Project too, and links to its members page.
+  if (target.type === "member" && target.project !== undefined) {
+    const { project } = target;
+    if (
+      !project.deleted &&
+      project.displayName !== null &&
+      (role === "owner" || role === "admin")
+    ) {
+      return (
+        <Link
+          data-testid="audit-event-target-link"
+          className={linkClass}
+          to={`/organizations/${organizationId}/projects/${project.projectId}/members`}
+        >
+          {targetText(target)}
+        </Link>
+      );
+    }
+    return <>{targetText(target)}</>;
+  }
   if (
     target.type === "member" &&
     target.membership === "current" &&

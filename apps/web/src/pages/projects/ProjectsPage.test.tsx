@@ -194,6 +194,28 @@ describe("list (AC-05)", () => {
   });
 });
 
+describe("members entry point", () => {
+  it.each(["owner", "viewer"] as const)(
+    "links every row to its members page for %s",
+    async (role) => {
+      fetchMeContextMock.mockResolvedValue(context(role));
+      const joined = project({ myRole: "member" });
+      const other = project({ myRole: null });
+      fetchListMock.mockResolvedValue({ projects: [joined, other] });
+      renderPage();
+      await screen.findByTestId("projects-table");
+      for (const item of [joined, other]) {
+        expect(
+          within(row(item.id)).getByTestId("project-members-link"),
+        ).toHaveAttribute(
+          "href",
+          `/organizations/${A}/projects/${item.id}/members`,
+        );
+      }
+    },
+  );
+});
+
 describe("empty states (AC-06, AC-07)", () => {
   it("tells a viewer outside every project to contact an owner or admin", async () => {
     fetchMeContextMock.mockResolvedValue(context("viewer"));

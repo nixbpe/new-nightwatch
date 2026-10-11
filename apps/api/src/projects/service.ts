@@ -4,6 +4,7 @@ import {
   PROJECT_LIMIT_PER_ORGANIZATION,
   type CreateProjectRequest,
   type OrganizationRole,
+  type ProjectDetail,
   type ProjectListResponse,
   type ProjectRole,
   type ProjectSummary,
@@ -21,9 +22,10 @@ import {
   assertProjectAccess,
   projectAccessOf,
   projectNotFound,
+  type ProjectAction,
 } from "./access";
 
-type Identity = {
+export type Identity = {
   organizationId: string;
   actorUserId: string;
   requestId?: string;
@@ -133,22 +135,27 @@ async function loadSummary(
   return row;
 }
 
-// Locks the row, then reads the actor's own membership: a role change locks
-// the same row, so reading before the lock could judge by a role that is
-// being replaced.
+// Locks the row, then reads the actor's own membership: a role change locks the
+// same row, so reading before the lock could judge by a role that is being
+// replaced. Writes take FOR UPDATE. Reads pass `exclusive: false` and take
+// FOR SHARE: a delete holds FOR UPDATE, so a read either finishes before it or
+// waits and then finds the Project gone (404), never a half-deleted one. Shared
+// locks do not block each other and nobody upgrades one, so they cannot
+// deadlock with a writer.
 async function lockProject(
   client: PoolClient,
   identity: Identity,
   projectId: string,
   organizationRole: OrganizationRole,
-  action: "project.update" | "project.delete",
+  action: ProjectAction,
+  exclusive = true,
 ): Promise<{ name: string; description: string | null }> {
   const locked = await client.query<{
     name: string;
     description: string | null;
   }>(
     `select name, description from projects
-     where id = $1 and tenant_id = $2 for update`,
+     where id = $1 and tenant_id = $2 ${exclusive ? "for update" : "for share"}`,
     [projectId, identity.organizationId],
   );
   const row = locked.rows[0];
@@ -382,4 +389,69 @@ export async function deleteProject(
       requestId: input.requestId,
     });
   });
+}
+
+// Reads and writes alike lock the organization row first (FOR SHARE), so the
+// actor's Organization role stays valid until the transaction ends. The action
+// decides the answer to a role that no longer normalizes: a read is denied as
+// listProjects denies it (MEMBERSHIP_DENIED), management as the other Project
+// writes deny it (PERMISSION_DENIED). `exclusive` only picks the row lock.
+export async function withProjectAccess<T>(
+  database: Database,
+  input: Identity & { projectId: string },
+  action: ProjectAction,
+  exclusive: boolean,
+  work: (
+    client: PoolClient,
+    context: { projectId: string; actorRole: OrganizationRole },
+  ) => Promise<T>,
+): Promise<T> {
+  await assertMemberBeforeTenantContext(
+    database,
+    input.organizationId,
+    input.actorUserId,
+  );
+  const projectId = parseProjectId(input.projectId);
+  return withTenantContextRaw(
+    database,
+    input.organizationId,
+    async (client) => {
+      const actorRole =
+        action === "project.read"
+          ? await readOrganizationRole(client, input)
+          : await enterOrganization(client, input);
+      await lockProject(client, input, projectId, actorRole, action, exclusive);
+      return work(client, { projectId, actorRole });
+    },
+  );
+}
+
+async function readOrganizationRole(
+  client: PoolClient,
+  identity: Identity,
+): Promise<OrganizationRole> {
+  const role = await lockedMemberRole(client, identity);
+  if (role === null) membershipDenied();
+  return role;
+}
+
+export async function getProject(
+  database: Database,
+  input: Identity & { projectId: string },
+): Promise<ProjectDetail> {
+  return withProjectAccess(
+    database,
+    input,
+    "project.read",
+    false,
+    async (client, { projectId }) => {
+      const summary = toSummary(await loadSummary(client, input, projectId));
+      const admins = await client.query<{ total: number }>(
+        `select count(*)::int as total from project_members
+         where tenant_id = $1 and project_id = $2 and role = 'admin'`,
+        [input.organizationId, projectId],
+      );
+      return { ...summary, adminCount: admins.rows[0]?.total ?? 0 };
+    },
+  );
 }

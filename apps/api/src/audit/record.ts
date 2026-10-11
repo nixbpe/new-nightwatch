@@ -29,6 +29,9 @@ export const AUDIT_ACTION_CATEGORIES: Record<AuditAction, AuditCategory> = {
   "organization.project.create": "project",
   "organization.project.update": "project",
   "organization.project.delete": "project",
+  "organization.project.member.add": "project",
+  "organization.project.member.role.update": "project",
+  "organization.project.member.remove": "project",
 };
 
 // What a writer passes; the read response shape is `AuditTarget` in the contract.

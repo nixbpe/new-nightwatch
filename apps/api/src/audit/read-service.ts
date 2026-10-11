@@ -110,6 +110,8 @@ type EventRow = {
   targetCurrent: boolean;
   monitorExists: boolean;
   projectExists: boolean;
+  memberProjectName: string | null;
+  memberProjectExists: boolean;
 };
 
 function actorOf(row: EventRow): AuditEventSummary["actor"] {
@@ -139,13 +141,29 @@ function targetOf(row: EventRow): AuditTarget {
         displayName: row.projectExists ? row.targetName : null,
         deleted: !row.projectExists,
       };
-    case "member":
-      return {
-        type: "member",
+    case "member": {
+      const member = {
+        type: "member" as const,
         userId: targetId,
         displayName: row.targetCurrent ? row.targetName : null,
-        membership: row.targetCurrent ? "current" : "former",
+        membership: row.targetCurrent
+          ? ("current" as const)
+          : ("former" as const),
       };
+      const projectId = row.targetAttributes.projectId;
+      return typeof projectId === "string"
+        ? {
+            ...member,
+            project: {
+              projectId,
+              displayName: row.memberProjectExists
+                ? row.memberProjectName
+                : null,
+              deleted: !row.memberProjectExists,
+            },
+          }
+        : member;
+    }
     case "invitation":
       return {
         type: "invitation",

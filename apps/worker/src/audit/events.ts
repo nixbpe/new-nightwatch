@@ -36,10 +36,18 @@ function targetLabel(row: AuditEventBatchRow): string {
       return row.monitorExists && row.targetName ? row.targetName : "ถูกลบแล้ว";
     case "project":
       return row.projectExists && row.targetName ? row.targetName : "ถูกลบแล้ว";
-    case "member":
-      return row.targetCurrent && row.targetName
-        ? row.targetName
-        : FORMER_MEMBER_LABEL;
+    case "member": {
+      const member =
+        row.targetCurrent && row.targetName
+          ? row.targetName
+          : FORMER_MEMBER_LABEL;
+      if (typeof row.targetAttributes.projectId !== "string") return member;
+      const project =
+        row.memberProjectExists && row.memberProjectName
+          ? row.memberProjectName
+          : "ถูกลบแล้ว";
+      return `${member} ในโปรเจกต์ ${project}`;
+    }
     case "invitation": {
       const role =
         typeof row.targetAttributes.role === "string"

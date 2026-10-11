@@ -22,35 +22,50 @@ const table: [string, ProjectAccess, Record<ProjectAction, Outcome>][] = [
   [
     "org-admin",
     { kind: "org-admin" },
-    { "project.update": "allowed", "project.delete": "allowed" },
+    {
+      "project.read": "allowed",
+      "project.update": "allowed",
+      "project.delete": "allowed",
+      "project.members.manage": "allowed",
+    },
   ],
   [
     "member/admin",
     { kind: "member", role: "admin" },
-    { "project.update": "allowed", "project.delete": "PERMISSION_DENIED" },
+    {
+      "project.read": "allowed",
+      "project.update": "allowed",
+      "project.delete": "PERMISSION_DENIED",
+      "project.members.manage": "allowed",
+    },
   ],
   [
     "member/member",
     { kind: "member", role: "member" },
     {
+      "project.read": "allowed",
       "project.update": "PERMISSION_DENIED",
       "project.delete": "PERMISSION_DENIED",
+      "project.members.manage": "PERMISSION_DENIED",
     },
   ],
   [
     "none",
     { kind: "none" },
     {
+      "project.read": "PROJECT_NOT_FOUND",
       "project.update": "PROJECT_NOT_FOUND",
       "project.delete": "PROJECT_NOT_FOUND",
+      "project.members.manage": "PROJECT_NOT_FOUND",
     },
   ],
 ];
 
 describe("assertProjectAccess", () => {
   it.each(table)("%s", (_name, access, expected) => {
-    expect(outcome(access, "project.update")).toBe(expected["project.update"]);
-    expect(outcome(access, "project.delete")).toBe(expected["project.delete"]);
+    for (const action of Object.keys(expected) as ProjectAction[]) {
+      expect(outcome(access, action), action).toBe(expected[action]);
+    }
   });
 });
 

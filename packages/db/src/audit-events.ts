@@ -33,7 +33,9 @@ export const AUDIT_EVENT_JOINS = `
     and pr.tenant_id = $1 and pr.id::text = e.target_id
   left join member tm on e.target_type = 'member'
     and tm.organization_id = $1 and tm.user_id = e.target_id
-  left join "user" tu on tu.id = tm.user_id`;
+  left join "user" tu on tu.id = tm.user_id
+  left join projects tp on e.target_type = 'member'
+    and tp.tenant_id = $1 and tp.id::text = e.target_attributes ->> 'projectId'`;
 
 export const AUDIT_EVENT_COLUMNS = `
   e.id, e.occurred_at as "occurredAt", e.actor_user_id as "actorUserId",
@@ -44,7 +46,8 @@ export const AUDIT_EVENT_COLUMNS = `
   coalesce(mo.name, pr.name, tu.name) as "targetName",
   (tm.user_id is not null) as "targetCurrent",
   (mo.id is not null) as "monitorExists",
-  (pr.id is not null) as "projectExists"`;
+  (pr.id is not null) as "projectExists",
+  tp.name as "memberProjectName", (tp.id is not null) as "memberProjectExists"`;
 
 /**
  * The seven values of `auditEventFilterWhere`, in order. `actionCodes` are the
@@ -98,6 +101,7 @@ export function auditEventFilterWhere(
       or e.action = any(${codes}::text[])
       or au.name ilike ${pattern}::text
       or coalesce(mo.name, pr.name, tu.name) ilike ${pattern}::text
+      or tp.name ilike ${pattern}::text
       or (${uuid}::uuid is not null
           and (e.id = ${uuid}::uuid
                or (e.target_type = 'invitation' and e.target_id = ${uuid}::uuid::text))))`;
@@ -123,6 +127,8 @@ export type AuditEventBatchRow = {
   targetCurrent: boolean;
   monitorExists: boolean;
   projectExists: boolean;
+  memberProjectName: string | null;
+  memberProjectExists: boolean;
 };
 
 /**

@@ -22,6 +22,8 @@ function row(overrides: Partial<AuditEventBatchRow>): AuditEventBatchRow {
     targetCurrent: false,
     monitorExists: false,
     projectExists: true,
+    memberProjectName: null,
+    memberProjectExists: false,
     ...overrides,
   };
 }
@@ -53,5 +55,35 @@ describe("export target of a Project event (AC-09)", () => {
   it("does not fall back to the notification settings label", async () => {
     const [target] = await targetsOf([row({})]);
     expect(target).not.toBe("การตั้งค่าการแจ้งเตือน");
+  });
+});
+
+describe("export target of a Project member event", () => {
+  const member = {
+    targetType: "member",
+    action: "organization.project.member.add",
+    targetAttributes: { projectId: crypto.randomUUID() },
+    targetName: "Somchai",
+    targetCurrent: true,
+    memberProjectName: "Payments",
+    memberProjectExists: true,
+  } as const;
+
+  it("names the member and the Project, and hides what no longer exists", async () => {
+    expect(
+      await targetsOf([
+        row(member),
+        row({
+          ...member,
+          targetCurrent: false,
+          targetName: null,
+          memberProjectExists: false,
+          memberProjectName: null,
+        }),
+      ]),
+    ).toEqual([
+      "Somchai ในโปรเจกต์ Payments",
+      "ไม่ใช่สมาชิกแล้ว ในโปรเจกต์ ถูกลบแล้ว",
+    ]);
   });
 });
