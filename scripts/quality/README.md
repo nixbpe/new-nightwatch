@@ -88,6 +88,22 @@ NOCREATEDB NOCREATEROLE NOBYPASSRLS`). The runtime role is created by
   containers/network; the `pgdata` volume survives until an explicit
   `db:down -- -v`. Do not remove other worktrees' projects or volumes.
 
+## UI logic tests
+
+Web component tests and Playwright specs locate application components with
+stable `data-testid` hooks named for domain fields, actions and states. Scope
+repeated controls by their entity container or public entity ID. Never include
+secrets, translated labels, CSS classes or ordinal positions in identifiers.
+Keep helpers flat and reuse existing hooks.
+
+Assert domain data, literal request payloads, persisted values, routing,
+validation, admission, pending and disabled states, keyboard behavior and focus.
+Fixed UI prose, classes, styles, colors, typography, layout and snapshots must
+not determine functional results. Replacing a selector must preserve its
+business assertion. Role queries without exact copy may assert accessibility
+semantics. Browser-native operations, document preferences and intrinsic
+label/error relationships remain valid when explicitly classified.
+
 ## Coverage policy
 
 - Thresholds (80% lines / statements / functions, 70% branches) live in **each
