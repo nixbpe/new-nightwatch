@@ -611,10 +611,40 @@ describe("limit (AC-11)", () => {
   it("lets exactly one of two concurrent creates take the 50th place", async () => {
     const racing = await ctx.createOrganization("project-race");
     await fill(racing, 49);
-    const responses = await Promise.all([
-      create(racing, racing.users.owner),
-      create(racing, racing.users.admin),
-    ]);
+    // The table lock stops the insert (not the advisory lock or the count), so
+    // both requests are inside their transactions before either can write.
+    const holder = await ctx.owner.sql.connect();
+    let responses: Awaited<ReturnType<typeof create>>[];
+    try {
+      await holder.query("begin");
+      await holder.query("lock table projects in share mode");
+      const pending = Promise.all([
+        create(racing, racing.users.owner),
+        create(racing, racing.users.admin),
+      ]);
+      await vi.waitFor(
+        async () => {
+          // pg_stat_activity.query lags behind the statement a session waits
+          // on, so read the ungranted locks: one request waits for the
+          // advisory lock, the other for the table lock.
+          const waiting = await holder.query<{ total: string }>(
+            `select count(*) as total from pg_locks
+             where not granted
+               and ((locktype = 'relation' and relation = 'projects'::regclass)
+                 or (locktype = 'advisory'
+                     and ((classid::bigint << 32) | objid::bigint) = hashtext($1)::bigint))`,
+            [`projects:${racing.id}`],
+          );
+          expect(Number(waiting.rows[0]?.total)).toBeGreaterThanOrEqual(2);
+        },
+        { timeout: 10_000, interval: 25 },
+      );
+      await holder.query("rollback");
+      responses = await pending;
+    } finally {
+      await holder.query("rollback").catch(() => undefined);
+      holder.release();
+    }
     expect(responses.map((response) => response.status).sort()).toEqual([
       201, 409,
     ]);
