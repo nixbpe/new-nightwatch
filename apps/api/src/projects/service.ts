@@ -85,21 +85,30 @@ async function memberRole(
   return role;
 }
 
-// Lock order shared by every Project write: organization row, then the
-// per-Organization advisory lock (create only), then the projects row
-// (update and delete). The role is read after the organization lock because it
-// may have changed since the pre-check. Not enterOrganization of the monitors,
-// which checks monitor permissions.
-async function enterOrganization(
+// Membership changes lock the organization row FOR UPDATE, so reading the role
+// under FOR SHARE keeps it valid until the transaction ends. Reads need this
+// too: the list must not show every Project to an admin being demoted.
+async function lockedMemberRole(
   client: PoolClient,
   identity: Identity,
-): Promise<OrganizationRole> {
+): Promise<OrganizationRole | null> {
   const organization = await client.query(
     "select id from organization where id = $1 for share",
     [identity.organizationId],
   );
   if (organization.rows.length === 0) membershipDenied();
-  const role = normalizeOrganizationRole(await memberRole(client, identity));
+  return normalizeOrganizationRole(await memberRole(client, identity));
+}
+
+// Lock order shared by every Project write: organization row, then the
+// per-Organization advisory lock (create only), then the projects row
+// (update and delete). Not enterOrganization of the monitors, which checks
+// monitor permissions.
+async function enterOrganization(
+  client: PoolClient,
+  identity: Identity,
+): Promise<OrganizationRole> {
+  const role = await lockedMemberRole(client, identity);
   if (role === null) {
     throw new AppError(
       403,
@@ -175,7 +184,7 @@ export async function listProjects(
     identity.organizationId,
     async (client) => {
       const seesAll = isOrganizationAdmin(
-        normalizeOrganizationRole(await memberRole(client, identity)),
+        await lockedMemberRole(client, identity),
       );
       const result = await client.query<ProjectRow>(
         `${SUMMARY_SELECT}${seesAll ? "" : " and me.user_id is not null"}

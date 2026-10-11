@@ -301,6 +301,51 @@ describe("list (AC-05, AC-06)", () => {
     expect(errorOf(response).code).toBe("MEMBERSHIP_DENIED");
   });
 
+  it("lists by the role a concurrent demotion commits, not the role read before it", async () => {
+    const demoting = await ctx.createOrganization("project-demote");
+    await ctx.owner.sql.query(
+      "insert into projects (tenant_id, name, slug) values ($1, 'Unjoined', 'unjoined')",
+      [demoting.id],
+    );
+    // Holds the organization row the way a member role change does.
+    const holder = await ctx.owner.sql.connect();
+    let response: Awaited<ReturnType<typeof ctx.call>>;
+    try {
+      await holder.query("begin");
+      await holder.query(
+        "select id from organization where id = $1 for update",
+        [demoting.id],
+      );
+      await holder.query(
+        "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+        [demoting.id, demoting.users.admin],
+      );
+      const pending = ctx.call(
+        demoting.users.admin,
+        "GET",
+        projectsPath(demoting.id),
+      );
+      await vi.waitFor(
+        async () => {
+          const waiting = await holder.query<{ total: string }>(
+            `select count(*) as total from pg_locks
+             where not granted and locktype = 'transactionid'
+               and transactionid = xid(pg_current_xact_id())`,
+          );
+          expect(Number(waiting.rows[0]?.total)).toBe(1);
+        },
+        { timeout: 10_000, interval: 25 },
+      );
+      await holder.query("commit");
+      response = await pending;
+    } finally {
+      await holder.query("rollback").catch(() => undefined);
+      holder.release();
+    }
+    expect(response.status).toBe(200);
+    expect(response.json).toEqual({ projects: [] });
+  });
+
   it("never lists another Organization's Projects", async () => {
     const foreign = await created(otherOrg);
     const response = await ctx.call(
