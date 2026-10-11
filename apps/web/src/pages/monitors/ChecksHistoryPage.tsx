@@ -37,7 +37,7 @@ import {
 } from "./detail/AssertionTable";
 import { assertionSummary, failureText, OUTCOME_LABELS } from "./detail/labels";
 import { formatDateTime, formatNumber, Time, TIME_ZONE } from "./format";
-import { useLeaveOnOrganizationSwitch } from "./useLeaveOnOrganizationSwitch";
+import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { isDenied } from "../workspace/rows";
 
 type Check = MonitorChecksResponse["checks"][number];

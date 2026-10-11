@@ -28,7 +28,7 @@ import {
 import { formatAuditDate, usePreferences } from "../../../lib/preferences";
 import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
-import { useLeaveOnOrganizationSwitch } from "../../monitors/useLeaveOnOrganizationSwitch";
+import { useLeaveOnOrganizationSwitch } from "../../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { isDenied } from "../../workspace/rows";
 import { AddMemberDialog, type AddStaleReason } from "./AddMemberDialog";
 import { PROJECT_ROLE_DESCRIPTIONS, PROJECT_ROLE_LABELS } from "./roles";
@@ -101,7 +101,7 @@ function ProjectMembers({
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<{
     text: string;
-    kind: "saved" | "role-changed" | "stale";
+    kind: "saved" | "role-changed" | "info";
   } | null>(null);
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
@@ -242,7 +242,7 @@ function ProjectMembers({
         if (error.code === "PROJECT_MEMBER_NOT_FOUND") {
           // Someone else removed them first; the refetch already runs.
           setRemoval(null);
-          setNotice({ text: message, kind: "stale" });
+          setNotice({ text: message, kind: "info" });
           return;
         }
         if (
@@ -290,9 +290,9 @@ function ProjectMembers({
         titleRef={heading}
         titleTabIndex={-1}
       />
-      {notice === null ? null : notice.kind === "stale" ? (
+      {notice === null ? null : notice.kind === "info" ? (
         <Alert
-          data-testid="project-members-notice-stale"
+          data-testid="project-members-notice-info"
           tone="info"
           role="status"
         >
@@ -713,7 +713,11 @@ function ProjectMembers({
             data-testid="project-members-shown"
             className="text-xs text-foreground-secondary"
           >
-            แสดง {visible.length} จาก {members.length}
+            แสดง{" "}
+            <span className="font-mono">
+              {visible.length === 0 ? "0" : `1–${String(visible.length)}`}
+            </span>{" "}
+            จาก <span className="font-mono">{members.length}</span>
           </p>
         </section>
         <Card
@@ -778,7 +782,7 @@ function ProjectMembers({
                       : ` · ${String(already)} คนอยู่ในโปรเจกต์อยู่แล้ว`
                   }`;
             setNotice(
-              reloaded ? { text, kind: added === 0 ? "stale" : "saved" } : null,
+              reloaded ? { text, kind: added === 0 ? "info" : "saved" } : null,
             );
             setAdding(null);
           }}

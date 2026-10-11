@@ -29,7 +29,7 @@ import { getContextPublicationSnapshot } from "../../../lib/queryClient";
 import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import type { MonitorFlashState } from "../flash";
-import { useOrganizationSwitched } from "../useLeaveOnOrganizationSwitch";
+import { useOrganizationSwitched } from "../../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { AssertionsSection } from "./AssertionsSection";
 import { AlertsSection } from "./AlertsSection";
 import { BasicSection } from "./BasicSection";

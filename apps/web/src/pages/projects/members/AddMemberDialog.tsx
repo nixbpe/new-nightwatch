@@ -15,6 +15,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { SearchIcon } from "../../../components/shell/icons";
+import { initialsOf } from "../../../components/shell/initials";
 import { Alert, Input } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Label } from "../../../components/ui/label";
@@ -349,6 +350,12 @@ export function AddMemberDialog({
                         toggle(candidate.userId);
                       }}
                     />
+                    <span
+                      aria-hidden="true"
+                      className="surface-hover inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-foreground/20 text-xs font-semibold"
+                    >
+                      {initialsOf(candidate.name)}
+                    </span>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span
                         data-testid="add-member-name"

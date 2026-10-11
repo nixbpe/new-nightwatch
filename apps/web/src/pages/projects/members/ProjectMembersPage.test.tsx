@@ -242,7 +242,7 @@ describe("members list", () => {
     expect(screen.queryByTestId(`project-member-row-siriporn`)).toBeNull();
     expect(row("thanakorn")).toBeInTheDocument();
     expect(screen.getByTestId("project-members-shown")).toHaveTextContent(
-      /1\D+3/,
+      "แสดง 1–1 จาก 3",
     );
     await user.clear(screen.getByTestId("project-members-search"));
     await user.type(screen.getByTestId("project-members-search"), "zzz");
@@ -477,7 +477,7 @@ describe("remove (AC-05)", () => {
     );
     await user.click(screen.getByTestId("project-member-remove-confirm"));
     expect(
-      await screen.findByTestId("project-members-notice-stale"),
+      await screen.findByTestId("project-members-notice-info"),
     ).toBeVisible();
     expect(screen.queryByTestId("project-member-remove-dialog")).toBeNull();
     await waitFor(() => {
@@ -644,9 +644,11 @@ describe("add member dialog", () => {
       candidate(dialog, "kitti").getByTestId("add-member-checkbox"),
     );
     await user.click(within(dialog).getByTestId("add-member-submit"));
-    expect(
-      await screen.findByTestId("project-members-notice-stale"),
-    ).toBeVisible();
+    const notice = await screen.findByTestId("project-members-notice-info");
+    expect(notice).toBeVisible();
+    expect(notice).toHaveTextContent(
+      "คนที่เลือกอยู่ในโปรเจกต์อยู่แล้ว ไม่มีใครถูกเพิ่ม",
+    );
     expect(screen.queryByTestId("project-members-notice-saved")).toBeNull();
   });
 
@@ -786,11 +788,22 @@ describe("add member dialog", () => {
       candidatesMock.mockRejectedValue(new ApiError(code, "stale", status));
       renderPage();
       await loaded();
+      const contextCalls = meMock.mock.calls.length;
+      const detailCalls = detailMock.mock.calls.length;
       await user.click(screen.getByTestId("project-members-add"));
       await waitFor(() => {
         expect(screen.queryByTestId("add-member-dialog")).toBeNull();
       });
-      if (noticeId !== undefined) {
+      // Either answer may mean the role or the Project changed: reload both.
+      await waitFor(() => {
+        expect(meMock.mock.calls.length).toBeGreaterThan(contextCalls);
+        expect(detailMock.mock.calls.length).toBeGreaterThan(detailCalls);
+      });
+      if (noticeId === undefined) {
+        expect(
+          screen.queryByTestId("project-members-notice-role-changed"),
+        ).toBeNull();
+      } else {
         expect(await screen.findByTestId(noticeId)).toBeVisible();
       }
     },

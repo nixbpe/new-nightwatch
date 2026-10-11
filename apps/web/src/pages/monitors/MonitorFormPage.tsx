@@ -11,7 +11,7 @@ import { fetchMonitorDetail, monitorQueryKeys } from "../../lib/api/monitors";
 import { getContextPublicationSnapshot } from "../../lib/queryClient";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { MonitorForm } from "./form/MonitorForm";
-import { useLeaveOnOrganizationSwitch } from "./useLeaveOnOrganizationSwitch";
+import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 
 const DENIED_MESSAGE = "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้";
 
