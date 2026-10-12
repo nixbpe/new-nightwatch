@@ -694,6 +694,7 @@ describe("monitor notification schema", () => {
     "MONITOR_SSL_EXPIRED",
   ];
   const tenantM = randomUUID();
+  const projectM = randomUUID();
   const users = {
     owner: randomUUID(),
     admin: randomUUID(),
@@ -718,6 +719,18 @@ describe("monitor notification schema", () => {
         [randomUUID(), tenantM, id, role === "admin" ? "viewer,admin" : role],
       );
     }
+    await owner.query(
+      `insert into projects (id, tenant_id, name, slug)
+       values ($1, $2, 'Monitors', $3)`,
+      [projectM, tenantM, `m-${run.slice(0, 12)}`],
+    );
+    // The viewer is a Project member; the auditor belongs to no Project, and
+    // the owner is both an Organization owner and a Project member.
+    await owner.query(
+      `insert into project_members (project_id, tenant_id, user_id, role)
+       values ($1, $2, $3, 'member'), ($1, $2, $4, 'admin')`,
+      [projectM, tenantM, users.viewer, users.owner],
+    );
   });
 
   afterAll(async () => {
@@ -727,7 +740,7 @@ describe("monitor notification schema", () => {
     ]);
   });
 
-  it("keeps exactly one event_type and one scope CHECK per table", async () => {
+  it("keeps one event_type CHECK, one scope CHECK and the monitor Project CHECK per table", async () => {
     for (const table of ["notification_intents", "notification_inbox_items"]) {
       const result = await owner.query<{ conname: string; def: string }>(
         `select conname, pg_get_constraintdef(oid) as def
@@ -739,9 +752,12 @@ describe("monitor notification schema", () => {
       );
       expect(result.rows.map((row) => row.conname)).toEqual([
         `${table}_event_type_check`,
+        `${table}_monitor_project_check`,
         `${table}_scope_check`,
       ]);
-      for (const row of result.rows) {
+      for (const row of result.rows.filter(
+        (r) => !r.conname.includes("project"),
+      )) {
         for (const type of MONITOR_EVENT_TYPES) expect(row.def).toContain(type);
       }
     }
@@ -754,8 +770,9 @@ describe("monitor notification schema", () => {
     ): Promise<unknown> =>
       owner.query(
         `insert into notification_intents
-           (id, scope_kind, tenant_id, user_id, origin, event_type, occurred_at)
-         values ($1, $2, $3, $4, $5, $6, now())`,
+           (id, scope_kind, tenant_id, user_id, origin, event_type, occurred_at,
+            subject_project_id)
+         values ($1, $2, $3, $4, $5, $6, now(), $7)`,
         [
           randomUUID(),
           scope,
@@ -763,6 +780,7 @@ describe("monitor notification schema", () => {
           scope === "account" ? users.owner : null,
           `check-${randomUUID()}`,
           eventType,
+          eventType.startsWith("MONITOR_") ? projectM : null,
         ],
       );
 
@@ -784,11 +802,23 @@ describe("monitor notification schema", () => {
     );
   });
 
-  it("snapshots owners and admins and stores the monitor subject without a monitor row", async () => {
+  it("rejects a monitor intent without a Project subject", async () => {
+    await expect(
+      owner.query(
+        `insert into notification_intents
+           (id, scope_kind, tenant_id, origin, event_type, occurred_at)
+         values ($1, 'tenant', $2, $3, 'MONITOR_DOWN', now())`,
+        [randomUUID(), tenantM, `check-${randomUUID()}`],
+      ),
+    ).rejects.toThrow("notification_intents_monitor_project_check");
+  });
+
+  it("snapshots Project members and owners and admins once each and stores the monitor subject without a monitor row", async () => {
     const monitorId = randomUUID();
     const origin = `monitor:${monitorId}:incident:${run}:down`;
     const input = {
       tenantId: tenantM,
+      projectId: projectM,
       monitorId,
       monitorName: "Checkout",
       eventType: "MONITOR_DOWN" as const,
@@ -806,7 +836,8 @@ describe("monitor notification schema", () => {
     expect({ created, replay }).toEqual({ created: true, replay: false });
 
     const rows = await owner.query(
-      `select intent.subject_monitor_id, intent.subject_monitor_name,
+      `select intent.subject_project_id, intent.subject_monitor_id,
+              intent.subject_monitor_name,
               intent.monitor_reason, count(distinct ledger.id)::int as ledgers,
               array_agg(recipient.recipient_user_id order by recipient.recipient_user_id) as recipients
        from notification_intents intent
@@ -818,11 +849,13 @@ describe("monitor notification schema", () => {
     );
     expect(rows.rows).toEqual([
       {
+        subject_project_id: projectM,
         subject_monitor_id: monitorId,
         subject_monitor_name: "Checkout",
         monitor_reason: "http_status",
         ledgers: 1,
-        recipients: [users.owner, users.admin].sort(),
+        // owner is both Organization owner and Project member: one recipient.
+        recipients: [users.owner, users.admin, users.viewer].sort(),
       },
     ]);
   });

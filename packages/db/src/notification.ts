@@ -237,6 +237,7 @@ export type MonitorNotificationEventType =
 
 export type MonitorNotificationInput = {
   tenantId: string;
+  projectId: string;
   monitorId: string;
   monitorName: string;
   eventType: MonitorNotificationEventType;
@@ -248,7 +249,8 @@ export type MonitorNotificationInput = {
 };
 
 /**
- * Writes a monitor intent, its recipient snapshot (current owners and admins,
+ * Writes a monitor intent, its recipient snapshot (every member of the
+ * monitor's Project plus the Organization's owners and admins, once each;
  * there is no actor to exclude) and the dispatch ledger row on the caller's
  * open tenant transaction, so the notification commits or rolls back with the
  * check result. Returns false when the origin already existed.
@@ -258,13 +260,15 @@ export async function insertMonitorNotificationIntent(
   input: MonitorNotificationInput,
 ): Promise<boolean> {
   assertNonEmpty(input.tenantId, "tenantId");
+  assertNonEmpty(input.projectId, "projectId");
   assertNonEmpty(input.origin, "origin");
   const intentId = crypto.randomUUID();
   const inserted = await client.query(
     `insert into notification_intents
        (id, scope_kind, tenant_id, origin, event_type, occurred_at,
-        subject_monitor_id, subject_monitor_name, monitor_reason, ssl_not_after)
-     values ($1, 'tenant', $2, $3, $4, $5, $6, $7, $8, $9)
+        subject_project_id, subject_monitor_id, subject_monitor_name,
+        monitor_reason, ssl_not_after)
+     values ($1, 'tenant', $2, $3, $4, $5, $6, $7, $8, $9, $10)
      on conflict (origin) do nothing
      returning id`,
     [
@@ -273,6 +277,7 @@ export async function insertMonitorNotificationIntent(
       input.origin,
       input.eventType,
       input.occurredAt,
+      input.projectId,
       input.monitorId,
       input.monitorName,
       input.reason,
@@ -286,13 +291,22 @@ export async function insertMonitorNotificationIntent(
      select $1, $2, member.user_id, 'tenant', $3
      from member
      where member.organization_id = $3
-       and exists (
-         select 1
-         from unnest(string_to_array(member.role, ',')) as role_token(value)
-         where btrim(role_token.value) in ('owner', 'admin')
+       and (
+         exists (
+           select 1
+           from unnest(string_to_array(member.role, ',')) as role_token(value)
+           where btrim(role_token.value) in ('owner', 'admin')
+         )
+         or exists (
+           select 1
+           from project_members
+           where project_members.tenant_id = member.organization_id
+             and project_members.project_id = $4
+             and project_members.user_id = member.user_id
+         )
        )
      on conflict (origin, recipient_user_id) do nothing`,
-    [intentId, input.origin, input.tenantId],
+    [intentId, input.origin, input.tenantId, input.projectId],
   );
   await client.query("select create_notification_dispatch($1, $2)", [
     crypto.randomUUID(),
