@@ -1,6 +1,6 @@
 import type { ProjectSummary } from "@nightwatch/api-contract";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { projectQueryKeys, rememberLastProject } from "../../lib/api/projects";
@@ -33,6 +33,19 @@ export function ProjectSwitcher({
   useEffect(() => {
     if (!popover.open) setQuery("");
   }, [popover.open]);
+
+  // A route change re-admits the organization, which replaces this button; focus follows the switch back to it.
+  const refocusAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      refocusAt.current !== null &&
+      refocusAt.current === location.pathname &&
+      popover.triggerRef.current !== null
+    ) {
+      refocusAt.current = null;
+      popover.triggerRef.current.focus();
+    }
+  });
 
   if (activeOrg === null) return null;
   const organizationId = activeOrg.id;
@@ -134,7 +147,10 @@ export function ProjectSwitcher({
       organizationId,
       project.id,
     );
-    if (destination !== null) void navigate(destination);
+    if (destination !== null) {
+      refocusAt.current = destination;
+      void navigate(destination);
+    }
   };
 
   const option = (project: ProjectSummary) => {

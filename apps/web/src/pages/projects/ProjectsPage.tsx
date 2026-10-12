@@ -178,16 +178,20 @@ function ProjectsForOrganization({
 
   const canManage =
     organization?.role === "owner" || organization?.role === "admin";
-  // The sidebar's "สร้างโปรเจกต์" arrives with `?create=1`: open the dialog once the list is known, then drop the parameter.
+  // The sidebar's "สร้างโปรเจกต์" arrives with `?create=1`: open the dialog once the list is known. The parameter
+  // stays in the URL: dropping it is a navigation that re-runs the route loader, which remounts this page.
   const wantsCreate =
     new URLSearchParams(location.search).get(CREATE_PROJECT_PARAM) === "1";
+  const createLinkHandled = useRef(false);
   useEffect(() => {
-    if (!wantsCreate || projects === undefined) return;
+    if (!wantsCreate || createLinkHandled.current || projects === undefined) {
+      return;
+    }
+    createLinkHandled.current = true;
     if (canManage && projects.length < PROJECT_LIMIT_PER_ORGANIZATION) {
       setDialog({ kind: "create", opener: null });
     }
-    void navigate(location.pathname, { replace: true });
-  }, [wantsCreate, projects, canManage, navigate, location.pathname]);
+  }, [wantsCreate, projects, canManage]);
   const joined = projects?.filter((project) => project.myRole !== null) ?? [];
   const needle = q.toLowerCase();
   const visible = (projects ?? []).filter(
