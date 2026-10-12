@@ -722,6 +722,30 @@ describe("ProjectSwitcher", () => {
     expect(rememberLastProjectMock).toHaveBeenCalledWith(ORG_A, P_ALPHA);
   });
 
+  it("upper-case static segments name the same Project: current, in the nav and breadcrumb, and saved once in lower case", async () => {
+    renderShell({
+      path: `/ORGANIZATIONS/${ORG_A}/PROJECTS/${P_ALPHA.toUpperCase()}/MEMBERS`,
+    });
+    const button = await screen.findByTestId("shell-project-switch");
+    await waitFor(() => {
+      expect(button).toHaveTextContent("Alpha");
+    });
+    const link = screen.getByTestId(
+      "shell-nav-/organizations/:organizationId/projects/:projectId/members",
+    );
+    expect(link).toHaveAttribute("href", membersPath(P_ALPHA));
+    expect(link).toHaveAttribute("aria-current", "page");
+    expect(
+      within(screen.getByTestId("shell-breadcrumb"))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Org A", "Alpha", "สมาชิกโปรเจกต์"]);
+    await waitFor(() => {
+      expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
+    });
+    expect(rememberLastProjectMock).toHaveBeenCalledWith(ORG_A, P_ALPHA);
+  });
+
   describe("a bookmarked Project of another Organization the user belongs to", () => {
     const otherPath = `/organizations/${ORG_B}/projects/${P_OTHER}/members`;
 

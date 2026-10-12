@@ -198,7 +198,7 @@ export function projectSwitchDestination(
 export function getProjectRoute(
   pathname: string,
 ): { organizationId: string; projectId: string } | null {
-  const match = /^\/organizations\/([^/]+)\/projects\/([^/]+)(?:\/|$)/.exec(
+  const match = /^\/organizations\/([^/]+)\/projects\/([^/]+)(?:\/|$)/i.exec(
     pathname,
   );
   return match?.[1] !== undefined && match[2] !== undefined
