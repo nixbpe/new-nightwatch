@@ -22,6 +22,7 @@ type InboxRow = {
   cursorOccurredAt: string;
   readAt: Date | string | null;
   actorDisplayName: string | null;
+  subjectProjectId: string | null;
   subjectMonitorId: string | null;
   subjectMonitorName: string | null;
   monitorReason: string | null;
@@ -86,7 +87,11 @@ function toItem(row: InboxRow): NotificationItem {
       category: "audit-log",
     };
   }
-  if (!row.subjectMonitorId || !row.subjectMonitorName) {
+  if (
+    !row.subjectProjectId ||
+    !row.subjectMonitorId ||
+    !row.subjectMonitorName
+  ) {
     throw new Error("monitor notification requires a subject");
   }
   const monitor = {
@@ -94,6 +99,7 @@ function toItem(row: InboxRow): NotificationItem {
     actor: null,
     category: "monitor" as const,
     subject: {
+      projectId: row.subjectProjectId,
       monitorId: row.subjectMonitorId,
       monitorName: row.subjectMonitorName,
     },
@@ -247,6 +253,7 @@ const itemFields = `
   occurred_at as "occurredAt",
   to_char(occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "cursorOccurredAt",
   read_at as "readAt", actor_display_name as "actorDisplayName",
+  subject_project_id as "subjectProjectId",
   subject_monitor_id as "subjectMonitorId", subject_monitor_name as "subjectMonitorName",
   monitor_reason as "monitorReason", ssl_not_after as "sslNotAfter"`;
 

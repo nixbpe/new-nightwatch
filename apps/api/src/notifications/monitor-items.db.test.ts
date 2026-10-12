@@ -23,6 +23,8 @@ const ownerUser = crypto.randomUUID();
 const viewerUser = crypto.randomUUID();
 const ownerToken = `monitor-items-owner-${run}`;
 const viewerToken = `monitor-items-viewer-${run}`;
+const projectId = crypto.randomUUID();
+const otherProjectId = crypto.randomUUID();
 const monitorId = crypto.randomUUID();
 const otherMonitorId = crypto.randomUUID();
 const deps = { database, cursorSecret: "monitor-items-secret" };
@@ -59,11 +61,12 @@ async function materialize(tenantId: string): Promise<void> {
   await owner.query(
     `insert into notification_inbox_items
        (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
-        event_type, occurred_at, subject_monitor_id, subject_monitor_name,
-        monitor_reason, ssl_not_after)
+        event_type, occurred_at, subject_project_id, subject_monitor_id,
+        subject_monitor_name, monitor_reason, ssl_not_after)
      select gen_random_uuid()::text, intent.id, intent.origin,
             recipient.recipient_user_id, 'tenant', intent.tenant_id,
-            intent.event_type, intent.occurred_at, intent.subject_monitor_id,
+            intent.event_type, intent.occurred_at, intent.subject_project_id,
+            intent.subject_monitor_id,
             intent.subject_monitor_name, intent.monitor_reason, intent.ssl_not_after
      from notification_intents intent
      join notification_intent_recipients recipient on recipient.intent_id = intent.id
@@ -117,13 +120,14 @@ beforeAll(async () => {
       [crypto.randomUUID(), org, user, role],
     );
   }
-  // No monitors table rows: the notifications must not depend on the monitor still existing.
+  // No monitors or projects rows: the notifications must not depend on either still existing.
   let offset = 0;
   for (const event of EVENTS) {
     offset += 1;
     await withTenantContextRaw(database, orgA, (client) =>
       insertMonitorNotificationIntent(client, {
         tenantId: orgA,
+        projectId,
         monitorId,
         monitorName: "Checkout",
         origin: `monitor:${monitorId}:${event.eventType}:${run}`,
@@ -135,6 +139,7 @@ beforeAll(async () => {
   await withTenantContextRaw(database, orgB, (client) =>
     insertMonitorNotificationIntent(client, {
       tenantId: orgB,
+      projectId: otherProjectId,
       monitorId: otherMonitorId,
       monitorName: "Other org monitor",
       eventType: "MONITOR_DOWN",
@@ -188,7 +193,7 @@ describe("monitor notification inbox items", () => {
         organizationId: orgA,
         category: "monitor",
         actor: null,
-        subject: { monitorId, monitorName: "Checkout" },
+        subject: { projectId, monitorId, monitorName: "Checkout" },
       });
     }
   });
@@ -212,7 +217,7 @@ describe("monitor notification inbox items", () => {
     expect(list.items[0]).toMatchObject({
       eventType: "MONITOR_DOWN",
       reason: "timeout",
-      subject: { monitorId: otherMonitorId },
+      subject: { projectId: otherProjectId, monitorId: otherMonitorId },
     });
   });
 
