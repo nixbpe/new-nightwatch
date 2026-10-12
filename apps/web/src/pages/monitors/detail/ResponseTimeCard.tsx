@@ -191,7 +191,9 @@ export function ResponseTimeCard({
   if (denied || notFound) {
     body = (
       <Alert data-testid="monitor-response-denial" tone="info">
-        {denied ? "คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้" : "ไม่พบมอนิเตอร์นี้"}
+        {denied
+          ? "คุณไม่มีสิทธิ์ดูมอนิเตอร์ของโปรเจกต์นี้"
+          : "ไม่พบมอนิเตอร์นี้"}
       </Alert>
     );
   } else if (chartProps !== undefined && (hasChecks(series) || paused)) {

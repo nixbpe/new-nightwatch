@@ -274,7 +274,7 @@ export function fetchMonitorEvents(
   );
 }
 
-/** Owner and admin only: the caller must not request it for another role. */
+/** Project admin, Organization Owner or Admin only: the caller must not request it for anyone else. */
 export function fetchMonitorLastResponse(
   organizationId: string,
   projectId: string,

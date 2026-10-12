@@ -381,7 +381,7 @@ function DetailForMonitor({
         <PageState
           kind="denied"
           data-testid="monitor-detail-denied"
-          message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
+          message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ของโปรเจกต์นี้"
         />
       </Page>
     );

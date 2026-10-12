@@ -63,7 +63,7 @@ import {
 } from "./model";
 
 export const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนแล้ว";
-const DENIED_MESSAGE = "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้";
+const DENIED_MESSAGE = "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ของโปรเจกต์นี้";
 const CONFLICT_MESSAGE =
   "มอนิเตอร์นี้ถูกแก้โดยผู้อื่น โหลดใหม่เพื่อดูค่าล่าสุด";
 const ORIGIN_BLOCK_NOTE =

@@ -410,7 +410,7 @@ function ChecksHistoryForMonitor({
         <PageState
           kind="denied"
           data-testid="monitor-checks-denied"
-          message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
+          message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ของโปรเจกต์นี้"
           action={
             organization === undefined ? undefined : (
               <Button

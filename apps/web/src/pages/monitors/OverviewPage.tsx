@@ -690,8 +690,10 @@ function OverviewForProject({
           ariaLabel="หน้ามอนิเตอร์"
           summary={
             <>
-              แสดง {shownFrom}–{shownTo} จาก {page.total} · เฉพาะมอนิเตอร์ของ{" "}
-              {project?.name}
+              แสดง {shownFrom}–{shownTo} จาก {page.total}
+              {project === undefined
+                ? null
+                : ` · เฉพาะมอนิเตอร์ของ ${project.name}`}
             </>
           }
           previousLabel="ก่อนหน้า"
