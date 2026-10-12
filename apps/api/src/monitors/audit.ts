@@ -395,6 +395,15 @@ export function editAuditAction(
     : "organization.monitor.secret.set";
 }
 
+/** The audit target of a monitor event: the monitor and the Project it belongs to (AC-09). */
+export function monitorTarget(monitorId: string, projectId: string) {
+  return {
+    type: "monitor" as const,
+    id: monitorId,
+    attributes: { projectId },
+  };
+}
+
 const DENIAL_CODES = new Set(["MEMBERSHIP_DENIED", "PERMISSION_DENIED"]);
 
 // Logs actor and action only, never the organization, monitor id, URL or input.

@@ -27,6 +27,9 @@ const table: [string, ProjectAccess, Record<ProjectAction, Outcome>][] = [
       "project.update": "allowed",
       "project.delete": "allowed",
       "project.members.manage": "allowed",
+      "monitor.read": "allowed",
+      "monitor.write": "allowed",
+      "monitor.readResponse": "allowed",
     },
   ],
   [
@@ -37,6 +40,9 @@ const table: [string, ProjectAccess, Record<ProjectAction, Outcome>][] = [
       "project.update": "allowed",
       "project.delete": "PERMISSION_DENIED",
       "project.members.manage": "allowed",
+      "monitor.read": "allowed",
+      "monitor.write": "allowed",
+      "monitor.readResponse": "allowed",
     },
   ],
   [
@@ -47,6 +53,9 @@ const table: [string, ProjectAccess, Record<ProjectAction, Outcome>][] = [
       "project.update": "PERMISSION_DENIED",
       "project.delete": "PERMISSION_DENIED",
       "project.members.manage": "PERMISSION_DENIED",
+      "monitor.read": "allowed",
+      "monitor.write": "PERMISSION_DENIED",
+      "monitor.readResponse": "PERMISSION_DENIED",
     },
   ],
   [
@@ -57,6 +66,9 @@ const table: [string, ProjectAccess, Record<ProjectAction, Outcome>][] = [
       "project.update": "PROJECT_NOT_FOUND",
       "project.delete": "PROJECT_NOT_FOUND",
       "project.members.manage": "PROJECT_NOT_FOUND",
+      "monitor.read": "PROJECT_NOT_FOUND",
+      "monitor.write": "PROJECT_NOT_FOUND",
+      "monitor.readResponse": "PROJECT_NOT_FOUND",
     },
   ],
 ];

@@ -11,7 +11,15 @@ import {
 import type { Redis } from "ioredis";
 import http from "node:http";
 import type net from "node:net";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import {
   blockAuditInserts,
@@ -135,8 +143,13 @@ const organizationIds: string[] = [];
 beforeAll(async () => {
   redis = createRedisClient(redisUrl);
   isolated = await openIsolatedAuditDatabase();
-  ctx = await openMonitorTestContext({ redis, urls: isolated.urls });
+  ctx = await openMonitorTestContext({
+    defaultProject: true,
+    redis,
+    urls: isolated.urls,
+  });
   bare = await openMonitorTestContext({
+    defaultProject: true,
     withoutCredentials: true,
     urls: isolated.urls,
   });
@@ -153,6 +166,10 @@ afterAll(async () => {
   await ctx.close();
   await isolated.close();
 }, 60_000);
+
+beforeEach(async () => {
+  await ctx.rotateDefaultProject(org);
+});
 
 afterEach(async () => {
   target.seen.length = 0;
@@ -962,6 +979,12 @@ describe("Test in Edit reads (R13-01, R13-02, quota)", () => {
        values ($1, $2, $3, 'admin', now(), now())`,
       [crypto.randomUUID(), org.id, admin],
     );
+    // A Project member: the demotion to viewer leaves read access, not write.
+    await ctx.owner.sql.query(
+      `insert into project_members (project_id, tenant_id, user_id, role)
+       values ($1, $2, $3, 'member')`,
+      [org.projectId, org.id, admin],
+    );
     const monitor = await created(bearer());
     const path = monitorsPath(org.id, `/${monitor.id}/test`);
     const body = editBody(monitor);
@@ -1246,9 +1269,15 @@ describe("An app built without the credential env", () => {
     const owner = organization.users.owner;
     const id = crypto.randomUUID();
     await bare.owner.sql.query(
-      `insert into monitors (id, tenant_id, name, url, auth_type, client_request_id)
-       values ($1, $2, 'Bare', $3, 'bearer', $4)`,
-      [id, organization.id, targetUrl(), crypto.randomUUID()],
+      `insert into monitors (id, tenant_id, project_id, name, url, auth_type, client_request_id)
+       values ($1, $2, $5, 'Bare', $3, 'bearer', $4)`,
+      [
+        id,
+        organization.id,
+        targetUrl(),
+        crypto.randomUUID(),
+        organization.projectId,
+      ],
     );
     const sealed = encryptSecret(
       {

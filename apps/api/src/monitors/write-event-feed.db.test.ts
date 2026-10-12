@@ -18,7 +18,7 @@ let ctx: MonitorTestContext;
 let org: TestOrganization;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   org = await ctx.createOrganization("write-feed");
 }, 120_000);
 

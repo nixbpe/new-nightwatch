@@ -8,7 +8,7 @@ import {
 let ctx: MonitorTestContext;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
 });
 
 afterEach(() => {

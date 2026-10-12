@@ -8,9 +8,6 @@ import {
   monitorEditSchema,
   monitorInvalidErrorResponseSchema,
   monitorLimitReachedErrorResponseSchema,
-  monitorNotFoundErrorResponseSchema,
-  monitorOrganizationParamsSchema,
-  monitorParamsSchema,
   monitorSecretOriginChangedErrorResponseSchema,
   monitorTargetBlockedErrorResponseSchema,
   monitorVersionConflictErrorResponseSchema,
@@ -20,6 +17,14 @@ import {
   unsupportedMediaTypeErrorResponseSchema,
 } from "@nightwatch/api-contract";
 import { z } from "zod";
+
+import {
+  monitorBase,
+  monitorNotFoundResponse,
+  monitorParamsSchema,
+  monitorProjectParamsSchema,
+  projectNotFoundResponse,
+} from "./params";
 
 const jsonError = (description: string, schema: z.ZodType) =>
   ({ description, content: { "application/json": { schema } } }) as const;
@@ -43,17 +48,12 @@ const authResponses = {
     ]),
   ),
 } as const;
-const notFoundResponse = jsonError(
-  "The monitor does not exist, is malformed or belongs to another Organization",
-  monitorNotFoundErrorResponseSchema,
-);
 
 const credentialsResponse = jsonError(
   "Credential encryption is not configured, so secret values cannot be stored or read",
   credentialsUnavailableErrorResponseSchema,
 );
 
-const monitorBase = "/api/organizations/{organizationId}/monitors";
 const tags = ["monitors"];
 
 export const monitorWriteRouteDeclarations = {
@@ -63,7 +63,7 @@ export const monitorWriteRouteDeclarations = {
     tags,
     summary: "Create a monitor",
     request: {
-      params: monitorOrganizationParamsSchema,
+      params: monitorProjectParamsSchema,
       body: {
         content: { "application/json": { schema: monitorCreateSchema } },
         required: true,
@@ -77,8 +77,9 @@ export const monitorWriteRouteDeclarations = {
       400: invalidResponse,
       415: mediaTypeResponse,
       ...authResponses,
+      404: projectNotFoundResponse,
       409: jsonError(
-        "The Organization is at its monitor limit",
+        "The Project is at its monitor limit",
         monitorLimitReachedErrorResponseSchema,
       ),
       422: jsonError(
@@ -108,7 +109,7 @@ export const monitorWriteRouteDeclarations = {
       400: invalidResponse,
       415: mediaTypeResponse,
       ...authResponses,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
       409: jsonError(
         "The expected version is stale",
         monitorVersionConflictErrorResponseSchema,
@@ -136,7 +137,7 @@ export const monitorWriteRouteDeclarations = {
       },
       400: invalidResponse,
       ...authResponses,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
   resume: createRoute({
@@ -152,7 +153,7 @@ export const monitorWriteRouteDeclarations = {
       },
       400: invalidResponse,
       ...authResponses,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
   delete: createRoute({
@@ -165,7 +166,7 @@ export const monitorWriteRouteDeclarations = {
       204: { description: "Deleted" },
       400: invalidResponse,
       ...authResponses,
-      404: notFoundResponse,
+      404: monitorNotFoundResponse,
     },
   }),
 } as const;

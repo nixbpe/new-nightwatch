@@ -22,10 +22,10 @@ import type { PoolClient } from "pg";
 
 import { recordAuditEvent, type AuditChange } from "../audit/record";
 import { normalizeOrganizationRole } from "../me/service";
-import { membershipDenied } from "../monitors/permissions";
 import { assertMemberBeforeTenantContext } from "../organization-notifications/service";
 import {
   assertProjectAccess,
+  isReadAction,
   projectAccessOf,
   projectNotFound,
   type ProjectAction,
@@ -46,6 +46,12 @@ type ProjectRow = {
   memberCount: number;
   myRole: ProjectRole | null;
 };
+
+// A nonmember and a missing Organization get the same denial, so callers
+// cannot probe which Organizations exist.
+export function membershipDenied(): never {
+  throw new AppError(403, "MEMBERSHIP_DENIED", "คุณไม่ใช่สมาชิกขององค์กรนี้");
+}
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -422,10 +428,9 @@ export async function withProjectAccess<T>(
     database,
     input.organizationId,
     async (client) => {
-      const actorRole =
-        action === "project.read"
-          ? await readOrganizationRole(client, input)
-          : await enterOrganization(client, input);
+      const actorRole = isReadAction(action)
+        ? await readOrganizationRole(client, input)
+        : await enterOrganization(client, input);
       await lockProject(client, input, projectId, actorRole, action, exclusive);
       return work(client, { projectId, actorRole });
     },

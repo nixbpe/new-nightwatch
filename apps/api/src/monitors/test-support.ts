@@ -23,8 +23,20 @@ export const TEST_ROLES: readonly TestRole[] = [
 
 export type TestOrganization = {
   id: string;
+  /** The default Project (empty when the context was opened without one). */
+  projectId: string;
   users: Record<TestRole, string>;
 };
+
+// Default Project of each fixture Organization, so paths and seeds that name
+// only the Organization land in it. Ids are run-unique.
+const defaultProjects = new Map<string, string>();
+
+export function defaultProjectId(organizationId: string): string {
+  const projectId = defaultProjects.get(organizationId);
+  if (!projectId) throw new Error("no fixture Project for the Organization");
+  return projectId;
+}
 
 export type ApiResponse = {
   status: number;
@@ -77,6 +89,11 @@ export async function openMonitorTestContext(options?: {
   redis?: Redis;
   /** A database that is already migrated and used by this suite alone. */
   urls?: { runtimeUrl: string; ownerUrl: string };
+  /**
+   * Gives every fixture Organization one Project that `monitorsPath` and
+   * `seedMonitor` use by default. Off for suites that count Projects.
+   */
+  defaultProject?: boolean;
 }) {
   const { runtimeUrl, ownerUrl } =
     options?.urls ?? requireIntegrationDatabaseUrls();
@@ -223,7 +240,51 @@ export async function openMonitorTestContext(options?: {
         [crypto.randomUUID(), id, userId, role],
       );
     }
-    return { id, users: members };
+    const organization = { id, projectId: "", users: members };
+    if (options?.defaultProject) await rotateDefaultProject(organization);
+    return organization;
+  }
+
+  // Owner and Admin reach every Project; viewer and auditor are plain members
+  // of the default one, so they read monitors and cannot write. A new default
+  // gives a test an empty Project: a Project holds at most 20 monitors, and a
+  // suite that shares an Organization across tests would otherwise fill it.
+  async function rotateDefaultProject(
+    organization: TestOrganization,
+  ): Promise<string> {
+    const projectId = await createProject(organization.id, "default", [
+      { userId: organization.users.viewer, role: "member" },
+      { userId: organization.users.auditor, role: "member" },
+    ]);
+    defaultProjects.set(organization.id, projectId);
+    organization.projectId = projectId;
+    return projectId;
+  }
+
+  async function createProject(
+    organizationId: string,
+    label: string,
+    projectMembers: { userId: string; role: "admin" | "member" }[] = [],
+  ): Promise<string> {
+    const projectId = crypto.randomUUID();
+    await owner.sql.query(
+      `insert into projects (id, tenant_id, name, slug)
+       values ($1, $2, $3, $4)`,
+      [
+        projectId,
+        organizationId,
+        `${label} ${run}`,
+        `${label}-${projectId.slice(0, 8)}`,
+      ],
+    );
+    for (const member of projectMembers) {
+      await owner.sql.query(
+        `insert into project_members (project_id, tenant_id, user_id, role)
+         values ($1, $2, $3, $4)`,
+        [projectId, organizationId, member.userId, member.role],
+      );
+    }
+    return projectId;
   }
 
   // `body` is serialized as JSON unless `rawBody` sends the bytes as they are.
@@ -285,6 +346,8 @@ export async function openMonitorTestContext(options?: {
     resolverCalls,
     createUser,
     createOrganization,
+    createProject,
+    rotateDefaultProject,
     call,
     close,
     logRecords: () =>
@@ -296,5 +359,9 @@ export type MonitorTestContext = Awaited<
   ReturnType<typeof openMonitorTestContext>
 >;
 
-export const monitorsPath = (organizationId: string, suffix = ""): string =>
-  `/api/organizations/${organizationId}/monitors${suffix}`;
+export const monitorsPath = (
+  organizationId: string,
+  suffix = "",
+  projectId = defaultProjectId(organizationId),
+): string =>
+  `/api/organizations/${organizationId}/projects/${projectId}/monitors${suffix}`;

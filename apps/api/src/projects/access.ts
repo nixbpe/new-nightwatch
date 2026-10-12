@@ -14,7 +14,22 @@ export type ProjectAction =
   | "project.read"
   | "project.update"
   | "project.delete"
-  | "project.members.manage";
+  | "project.members.manage"
+  | "monitor.read"
+  | "monitor.write"
+  | "monitor.readResponse";
+
+// Actions that only read: they check the Organization role under a shared
+// lock and answer MEMBERSHIP_DENIED for a role that no longer normalizes.
+const READ_ACTIONS: ReadonlySet<ProjectAction> = new Set([
+  "project.read",
+  "monitor.read",
+  "monitor.readResponse",
+]);
+
+export function isReadAction(action: ProjectAction): boolean {
+  return READ_ACTIONS.has(action);
+}
 
 type Grant = "allow" | "deny";
 
@@ -43,6 +58,29 @@ const PROJECT_PERMISSIONS: Record<
     projectAdmin: "allow",
     projectMember: "deny",
   },
+  // Monitors read by any Project member; changed (create, edit, pause, resume,
+  // delete, test) by Project admins and Owner/Admin.
+  "monitor.read": {
+    orgAdmin: "allow",
+    projectAdmin: "allow",
+    projectMember: "allow",
+  },
+  "monitor.write": {
+    orgAdmin: "allow",
+    projectAdmin: "allow",
+    projectMember: "deny",
+  },
+  // Headers and body come from the target and may hold personal data (OD-58-04).
+  "monitor.readResponse": {
+    orgAdmin: "allow",
+    projectAdmin: "allow",
+    projectMember: "deny",
+  },
+};
+
+const DENIED_MESSAGES: Partial<Record<ProjectAction, string>> = {
+  "monitor.readResponse": "คุณไม่มีสิทธิ์ดูการตอบกลับของมอนิเตอร์นี้",
+  "monitor.write": "คุณไม่มีสิทธิ์จัดการมอนิเตอร์ของโปรเจกต์นี้",
 };
 
 export function projectAccessOf(
@@ -79,7 +117,7 @@ export function assertProjectAccess(
     throw new AppError(
       403,
       "PERMISSION_DENIED",
-      "คุณไม่มีสิทธิ์จัดการโปรเจกต์นี้",
+      DENIED_MESSAGES[action] ?? "คุณไม่มีสิทธิ์จัดการโปรเจกต์นี้",
     );
   }
 }

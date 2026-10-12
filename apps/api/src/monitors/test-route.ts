@@ -6,9 +6,6 @@ import {
   canonicalSecretSlot,
   credentialsUnavailableErrorResponseSchema,
   monitorInvalidErrorResponseSchema,
-  monitorNotFoundErrorResponseSchema,
-  monitorOrganizationParamsSchema,
-  monitorParamsSchema,
   monitorSecretOriginChangedErrorResponseSchema,
   monitorTestCreateSchema,
   monitorTestEditSchema,
@@ -23,7 +20,7 @@ import {
   type MonitorSecretEditEntry,
   type MonitorTestResult,
 } from "@nightwatch/api-contract";
-import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import type { Database } from "@nightwatch/db";
 import {
   AppError,
   buildCheckUrl,
@@ -44,7 +41,13 @@ import { requireVerifiedSession } from "../me/service";
 import { consumeMonitorTestRateLimit, type RateLimiter } from "../rate-limit";
 import { auditMonitorDenials } from "./audit";
 import { monitorInvalidInputHook } from "./invalid-input";
-import { assertMemberPermissionBeforeTenantContext } from "./permissions";
+import {
+  monitorBase,
+  monitorNotFoundResponse,
+  monitorParamsSchema,
+  monitorProjectParamsSchema,
+  projectNotFoundResponse,
+} from "./params";
 import {
   MONITOR_COLUMNS,
   assignHeaderIds,
@@ -61,16 +64,14 @@ import {
 } from "./secrets";
 import {
   assertMonitorExists,
-  enterOrganization,
-  parseMonitorId,
   requireCredentials,
   URL_REASONS,
+  withMonitorWriteAccess,
 } from "./service";
 
 const jsonError = (description: string, schema: z.ZodType) =>
   ({ description, content: { "application/json": { schema } } }) as const;
 
-const monitorBase = "/api/organizations/{organizationId}/monitors";
 const tags = ["monitors"];
 
 const testResponses = {
@@ -95,6 +96,7 @@ const testResponses = {
       permissionDeniedErrorResponseSchema,
     ]),
   ),
+  404: projectNotFoundResponse,
   415: jsonError(
     "The request body is not JSON",
     unsupportedMediaTypeErrorResponseSchema,
@@ -127,7 +129,7 @@ export const monitorTestRouteDeclarations = {
     path: `${monitorBase}/test`,
     tags,
     summary: "Test a monitor configuration before it is created",
-    request: { params: monitorOrganizationParamsSchema, body: createBody },
+    request: { params: monitorProjectParamsSchema, body: createBody },
     responses: testResponses,
   }),
   testExisting: createRoute({
@@ -141,10 +143,7 @@ export const monitorTestRouteDeclarations = {
       400: testResponses[400],
       401: testResponses[401],
       403: testResponses[403],
-      404: jsonError(
-        "The monitor does not exist, is malformed or belongs to another Organization",
-        monitorNotFoundErrorResponseSchema,
-      ),
+      404: monitorNotFoundResponse,
       415: testResponses[415],
       422: jsonError(
         "The scheme, host or port changed while a stored secret is kept; nothing was sent",
@@ -230,6 +229,7 @@ async function prepareEditSecrets(
   database: Database,
   input: {
     organizationId: string;
+    projectId: string;
     actorUserId: string;
     monitorId: string;
     config: MonitorConfig;
@@ -237,22 +237,19 @@ async function prepareEditSecrets(
     credentialEnv: CredentialEnv | undefined;
   },
 ): Promise<TestSecrets> {
-  return withTenantContextRaw(
-    database,
-    input.organizationId,
-    async (client) => {
-      // The role may have dropped since the pre-check; a removed or demoted
-      // user must not get a stored credential sent to the target. Same lock
-      // order as the write paths, and no lock is held once this returns.
-      await enterOrganization(client, input);
-      // One statement: the row and the ciphertext of the requested `keep` slots
-      // share a snapshot. Two statements are two READ COMMITTED snapshots, and an
-      // Edit committing between them would pair a new secret with the old origin.
-      const keepSlots = input.entries
-        .filter((entry) => entry.action === "keep")
-        .map((entry) => canonicalSecretSlot(entry.slot));
-      const found = await client.query<MonitorRow & { secrets: KeptSecret[] }>(
-        `select ${MONITOR_COLUMNS},
+  return withMonitorWriteAccess(database, input, async (client, context) => {
+    // Membership, Project access and the role may have changed since the
+    // pre-check; a removed or demoted user must not get a stored credential
+    // sent to the target. Same lock order as the write paths, and no lock is
+    // held once this returns.
+    // One statement: the row and the ciphertext of the requested `keep` slots
+    // share a snapshot. Two statements are two READ COMMITTED snapshots, and an
+    // Edit committing between them would pair a new secret with the old origin.
+    const keepSlots = input.entries
+      .filter((entry) => entry.action === "keep")
+      .map((entry) => canonicalSecretSlot(entry.slot));
+    const found = await client.query<MonitorRow & { secrets: KeptSecret[] }>(
+      `select ${MONITOR_COLUMNS},
            (select coalesce(json_agg(json_build_object(
                      'slot', ms.slot, 'key_version', ms.key_version,
                      'iv', encode(ms.iv, 'hex'),
@@ -261,38 +258,37 @@ async function prepareEditSecrets(
               from monitor_secrets as ms
              where ms.monitor_id = m.id and ms.slot = any($3::text[])) as secrets
          from monitors as m
-         where m.id = $1 and m.tenant_id = $2`,
-        [input.monitorId, input.organizationId, keepSlots],
-      );
-      const row = found.rows[0];
-      if (!row) {
-        throw new AppError(404, "MONITOR_NOT_FOUND", "ไม่พบมอนิเตอร์นี้");
-      }
-      const previous = storedFromRow(row);
-      const next = toStoredConfig(input.config);
-      next.headers = assignHeaderIds(next.headers, previous.headers);
-      const plan = planSecrets({
-        required: requiredSlots(next),
-        entries: input.entries,
-        stored: new Set(row.secrets.map((entry) => entry.slot)),
-        mode: "test",
-      });
-      if (plan.keeps.length > 0) {
-        assertSameOrigin(previous, next);
-        requireCredentials(input.credentialEnv);
-      }
-      const kept = row.secrets
-        .filter((entry) => plan.keeps.includes(entry.slot))
-        .map((entry): SecretRow => ({
-          slot: entry.slot,
-          key_version: entry.key_version,
-          iv: Buffer.from(entry.iv, "hex"),
-          auth_tag: Buffer.from(entry.auth_tag, "hex"),
-          ciphertext: Buffer.from(entry.ciphertext, "hex"),
-        }));
-      return { headers: next.headers, provided: valuesOf(plan), kept };
-    },
-  );
+         where m.id = $1 and m.tenant_id = $2 and m.project_id = $4`,
+      [input.monitorId, input.organizationId, keepSlots, context.projectId],
+    );
+    const row = found.rows[0];
+    if (!row) {
+      throw new AppError(404, "MONITOR_NOT_FOUND", "ไม่พบมอนิเตอร์นี้");
+    }
+    const previous = storedFromRow(row);
+    const next = toStoredConfig(input.config);
+    next.headers = assignHeaderIds(next.headers, previous.headers);
+    const plan = planSecrets({
+      required: requiredSlots(next),
+      entries: input.entries,
+      stored: new Set(row.secrets.map((entry) => entry.slot)),
+      mode: "test",
+    });
+    if (plan.keeps.length > 0) {
+      assertSameOrigin(previous, next);
+      requireCredentials(input.credentialEnv);
+    }
+    const kept = row.secrets
+      .filter((entry) => plan.keeps.includes(entry.slot))
+      .map((entry): SecretRow => ({
+        slot: entry.slot,
+        key_version: entry.key_version,
+        iv: Buffer.from(entry.iv, "hex"),
+        auth_tag: Buffer.from(entry.auth_tag, "hex"),
+        ciphertext: Buffer.from(entry.ciphertext, "hex"),
+      }));
+    return { headers: next.headers, provided: valuesOf(plan), kept };
+  });
 }
 
 function valuesOf(plan: SecretPlan): Record<string, string> {
@@ -389,6 +385,7 @@ async function runTest(
   deps: MonitorTestRouteDeps,
   input: {
     organizationId: string;
+    projectId: string;
     actorUserId: string;
     monitorId?: string;
     config: MonitorConfig;
@@ -408,15 +405,14 @@ async function runTest(
     input.actorUserId,
     "organization.monitor.test",
     async () => {
-      await assertMemberPermissionBeforeTenantContext(database, {
-        organizationId: input.organizationId,
-        userId: input.actorUserId,
-        permission: "write",
-      });
+      // Organization membership, Project access and write permission are
+      // settled here, before any DNS lookup or outbound work, so a Project the
+      // caller cannot see answers 404 without a resolver or timing signal. The
+      // connection goes back to the pool before the outbound request starts.
       if (input.monitorId !== undefined) {
-        // The connection goes back to the pool before the outbound request starts.
-        monitorId = parseMonitorId(input.monitorId);
-        await assertMonitorExists(database, input, monitorId);
+        monitorId = await assertMonitorExists(database, input, input.monitorId);
+      } else {
+        await withMonitorWriteAccess(database, input, () => Promise.resolve());
       }
     },
   );
@@ -439,6 +435,7 @@ async function runTest(
           () =>
             prepareEditSecrets(database, {
               organizationId: input.organizationId,
+              projectId: input.projectId,
               actorUserId: input.actorUserId,
               monitorId: editing,
               config: input.config,
@@ -532,7 +529,7 @@ export function registerMonitorTestRoutes(
   app.openapi(
     routes.test,
     async (c) => {
-      const { organizationId } = c.req.valid("param");
+      const { organizationId, projectId } = c.req.valid("param");
       const body = c.req.valid("json");
       const session = await requireVerifiedSession(
         deps.auth,
@@ -540,6 +537,7 @@ export function registerMonitorTestRoutes(
       );
       const outcome = await runTest(deps, {
         organizationId,
+        projectId,
         actorUserId: session.user.id,
         config: body,
         entries: body.secrets,
@@ -558,7 +556,7 @@ export function registerMonitorTestRoutes(
   app.openapi(
     routes.testExisting,
     async (c) => {
-      const { organizationId, monitorId } = c.req.valid("param");
+      const { organizationId, projectId, monitorId } = c.req.valid("param");
       const body = c.req.valid("json");
       const session = await requireVerifiedSession(
         deps.auth,
@@ -566,6 +564,7 @@ export function registerMonitorTestRoutes(
       );
       const outcome = await runTest(deps, {
         organizationId,
+        projectId,
         actorUserId: session.user.id,
         monitorId,
         config: body,

@@ -80,7 +80,7 @@ const asActors = (response: { json: unknown }) =>
   response.json as AuditLogActorsResponse;
 
 beforeAll(async () => {
-  ctx = await openMonitorTestContext();
+  ctx = await openMonitorTestContext({ defaultProject: true });
   orgA = await organization("auditread-a");
   orgB = await organization("auditread-b");
   await seed(orgA.id, {
@@ -293,9 +293,9 @@ describe("filters and search (AC-10)", () => {
     org = await organization("auditread-search");
     monitorId = crypto.randomUUID();
     await ctx.owner.sql.query(
-      `insert into monitors (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-       values ($1, $2, $3, 'https://x.example.test/', 60, 10, $4)`,
-      [monitorId, org.id, monitorName, crypto.randomUUID()],
+      `insert into monitors (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds, client_request_id)
+       values ($1, $2, $5, $3, 'https://x.example.test/', 60, 10, $4)`,
+      [monitorId, org.id, monitorName, crypto.randomUUID(), org.projectId],
     );
     events.monitor = await seed(org.id, {
       actorUserId: org.users.admin,
@@ -420,9 +420,9 @@ describe("detail (AC-12, AC-13)", () => {
     const org = await organization("auditread-detail");
     const monitorId = crypto.randomUUID();
     await ctx.owner.sql.query(
-      `insert into monitors (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-       values ($1, $2, 'Live monitor', 'https://x.example.test/', 60, 10, $3)`,
-      [monitorId, org.id, crypto.randomUUID()],
+      `insert into monitors (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds, client_request_id)
+       values ($1, $2, $4, 'Live monitor', 'https://x.example.test/', 60, 10, $3)`,
+      [monitorId, org.id, crypto.randomUUID(), org.projectId],
     );
     const former = await ctx.createUser("auditread-former");
     const changes = [
