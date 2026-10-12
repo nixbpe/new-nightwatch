@@ -6,6 +6,7 @@ import type {
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -112,6 +113,7 @@ function renderPage(
   state?: unknown,
   search = "",
   hash = "",
+  holdNavigation = false,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -138,6 +140,9 @@ function renderPage(
   );
   lastRouter = router;
   navigateSpy = vi.spyOn(router, "navigate");
+  if (holdNavigation) {
+    navigateSpy.mockImplementation(() => new Promise<void>(() => undefined));
+  }
   return render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -188,20 +193,43 @@ describe("create link from the sidebar (F-010 AC-05)", () => {
   it("sends one navigation however often the effect re-runs before it commits, so the route does not see a same-URL navigation", async () => {
     // Observed in the app: a second navigation to the already-stripped URL is a revalidation, which re-runs the loader and remounts the page.
     fetchListMock.mockResolvedValue({ projects: [project()] });
-    renderPage(A, undefined, "?create=1");
-    await screen.findByTestId("projects-create");
-    // Holds the first navigation back, then refreshes the list so the effect runs again.
-    navigateSpy.mockImplementation(() => new Promise<void>(() => undefined));
-    await queryClients[0]?.setQueryData(projectQueryKeys.list(A), {
-      projects: [project()],
-    });
-    await queryClients[0]?.setQueryData(projectQueryKeys.list(A), {
-      projects: [project()],
-    });
-    await waitFor(() => {
-      expect(navigateSpy.mock.calls.length).toBeGreaterThan(0);
-    });
+    // The first navigation is held from the start, so the URL still carries create when the effect runs again.
+    renderPage(A, undefined, "?create=1", "", true);
+    await screen.findByTestId("project-create-dialog");
     expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(lastRouter.state.location.search).toBe("?create=1");
+    // A refreshed list is a new array, so the effect runs again; the new row shows the page rendered with it.
+    for (let round = 0; round < 2; round += 1) {
+      const fresh = project();
+      act(() => {
+        queryClients[0]?.setQueryData(projectQueryKeys.list(A), {
+          projects: [fresh],
+        });
+      });
+      await screen.findByTestId(`project-row-${fresh.id}`);
+    }
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(lastRouter.state.location.search).toBe("?create=1");
+  });
+
+  it("opens the dialog again for a later ?create=1 on the same page", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, undefined, "?create=1");
+    await screen.findByTestId("project-create-dialog");
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
+    await userEvent.setup().keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByTestId("project-create-dialog")).toBeNull();
+    });
+    await act(() =>
+      lastRouter.navigate(`/organizations/${A}/projects?create=1`),
+    );
+    expect(await screen.findByTestId("project-create-dialog")).toBeVisible();
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
   });
 
   it("drops only the create parameter and keeps the other parameters and the hash", async () => {
