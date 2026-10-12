@@ -2,11 +2,12 @@ import type { RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
 import { useTenant } from "../../lib/tenant/TenantProvider";
-import { getBreadcrumbTrail } from "./breadcrumb";
+import { getBreadcrumbTrail, type BreadcrumbCrumb } from "./breadcrumb";
 import { ChevronRightIcon, MenuIcon, PanelLeftIcon, SearchIcon } from "./icons";
 import { Kbd } from "./Kbd";
-import { getRouteOrganizationId } from "./nav-config";
+import { getProjectRoute, getRouteOrganizationId } from "./nav-config";
 import { NotificationsPopover } from "./NotificationsPopover";
+import { useCurrentProject } from "./useCurrentProject";
 
 export function Header({
   collapsed,
@@ -23,6 +24,7 @@ export function Header({
 }) {
   const { pathname } = useLocation();
   const { activeOrg, me } = useTenant();
+  const { project } = useCurrentProject();
 
   const pageTrail = getBreadcrumbTrail(pathname);
   // Root crumb is the org the page acts on (a bookmarked URL may name a non-active org); an id
@@ -40,7 +42,20 @@ export function Header({
           // Link only for the active org; /workspace would otherwise open another tenant's page.
           ...(routeOrgId === activeOrg?.id ? { path: "/workspace" } : {}),
         };
-  const trail = rootCrumb === null ? pageTrail : [rootCrumb, ...pageTrail];
+  // A Project route reads Organization › Project › page. The Project has no page of its own yet, so its crumb is
+  // not a link; the name is known only while the Project is in the active organization's list.
+  const routeProjectId = getProjectRoute(pathname)?.projectId ?? null;
+  const projectCrumb: BreadcrumbCrumb | null =
+    routeProjectId === null
+      ? null
+      : {
+          label: project?.id === routeProjectId ? project.name : "โปรเจกต์",
+        };
+  const trail = [
+    ...(rootCrumb === null ? [] : [rootCrumb]),
+    ...(projectCrumb === null ? [] : [projectCrumb]),
+    ...pageTrail,
+  ];
 
   // No display utility here: the collapse toggle sets `hidden sm:inline-flex` and would lose to a base `inline-flex`.
   const iconButton =

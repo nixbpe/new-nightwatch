@@ -18,6 +18,12 @@ import { OrganizationNotificationSettingsPage } from "./OrganizationNotification
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 
+// The shell's Project switcher reads these; no Project is the quietest state.
+vi.mock("../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectList: () => Promise.resolve({ projects: [] }),
+  fetchLastProject: () => Promise.resolve({ projectId: null }),
+}));
 vi.mock("../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {

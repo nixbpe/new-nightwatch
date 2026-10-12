@@ -15,6 +15,7 @@ import { Header } from "./Header";
 import { XIcon } from "./icons";
 import { Sidebar } from "./Sidebar";
 import { useMediaQuery } from "./useMediaQuery";
+import { useRememberLastProject } from "./useRememberLastProject";
 
 const FOCUSABLE_DRAWER_SELECTOR = [
   "a[href]",
@@ -53,6 +54,7 @@ const MONITOR_ROUTES = [
 export function AppShell() {
   const { pathname } = useLocation();
   const { me, mePending, retryMe, membershipInteraction } = useTenant();
+  useRememberLastProject();
   const monitorRoute = matchRoutes(MONITOR_ROUTES, pathname)?.at(-1)?.route.id;
   const privateRoute = monitorRoute !== undefined && monitorRoute !== "detail";
   const admittedPrivateRoute = useRef<string | null>(null);
@@ -117,7 +119,14 @@ export function AppShell() {
   };
 
   const onMobileDrawerKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const drawer = mobileDrawerRef.current;
     if (event.key === "Escape") {
+      // An open menu in the drawer takes the first Escape: its own handler closes it and refocuses its button.
+      if (
+        drawer?.querySelector('[aria-haspopup="menu"][aria-expanded="true"]')
+      ) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       closeMobileMenu();
@@ -127,7 +136,6 @@ export function AppShell() {
       return;
     }
 
-    const drawer = mobileDrawerRef.current;
     if (drawer === null) {
       return;
     }

@@ -6,6 +6,7 @@ import type {
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -14,7 +15,15 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
@@ -96,7 +105,16 @@ beforeEach(() => {
 });
 
 let lastRouter: ReturnType<typeof createMemoryRouter>;
-function renderPage(organizationId = A, state?: unknown) {
+let navigateSpy: MockInstance<
+  ReturnType<typeof createMemoryRouter>["navigate"]
+>;
+function renderPage(
+  organizationId = A,
+  state?: unknown,
+  search = "",
+  hash = "",
+  holdNavigation = false,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -111,11 +129,20 @@ function renderPage(organizationId = A, state?: unknown) {
     ],
     {
       initialEntries: [
-        { pathname: `/organizations/${organizationId}/projects`, state },
+        {
+          pathname: `/organizations/${organizationId}/projects`,
+          search,
+          hash,
+          state,
+        },
       ],
     },
   );
   lastRouter = router;
+  navigateSpy = vi.spyOn(router, "navigate");
+  if (holdNavigation) {
+    navigateSpy.mockImplementation(() => new Promise<void>(() => undefined));
+  }
   return render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -149,6 +176,94 @@ describe("create button (AC-01)", () => {
     fetchListMock.mockResolvedValue({ projects: [project()] });
     renderPage();
     expect(await screen.findByTestId("projects-create")).toBeEnabled();
+  });
+});
+
+describe("create link from the sidebar (F-010 AC-05)", () => {
+  it("opens the create dialog for an Owner and drops the parameter, so a reload does not reopen it", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, undefined, "?create=1");
+    expect(await screen.findByTestId("project-create-dialog")).toBeVisible();
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
+    expect(screen.getAllByTestId("project-create-dialog")).toHaveLength(1);
+  });
+
+  it("sends one navigation however often the effect re-runs before it commits, so the route does not see a same-URL navigation", async () => {
+    // Observed in the app: a second navigation to the already-stripped URL is a revalidation, which re-runs the loader and remounts the page.
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    // The first navigation is held from the start, so the URL still carries create when the effect runs again.
+    renderPage(A, undefined, "?create=1", "", true);
+    await screen.findByTestId("project-create-dialog");
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(lastRouter.state.location.search).toBe("?create=1");
+    // A refreshed list is a new array, so the effect runs again; the new row shows the page rendered with it.
+    for (let round = 0; round < 2; round += 1) {
+      const fresh = project();
+      act(() => {
+        queryClients[0]?.setQueryData(projectQueryKeys.list(A), {
+          projects: [fresh],
+        });
+      });
+      await screen.findByTestId(`project-row-${fresh.id}`);
+    }
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(lastRouter.state.location.search).toBe("?create=1");
+  });
+
+  it("opens the dialog again for a later ?create=1 on the same page", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, undefined, "?create=1");
+    await screen.findByTestId("project-create-dialog");
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
+    await userEvent.setup().keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByTestId("project-create-dialog")).toBeNull();
+    });
+    await act(() =>
+      lastRouter.navigate(`/organizations/${A}/projects?create=1`),
+    );
+    expect(await screen.findByTestId("project-create-dialog")).toBeVisible();
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
+  });
+
+  it("drops only the create parameter and keeps the other parameters and the hash", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, undefined, "?create=1&view=mine", "#top");
+    await screen.findByTestId("project-create-dialog");
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("?view=mine");
+    });
+    expect(lastRouter.state.location.hash).toBe("#top");
+  });
+
+  it("opens nothing for a role below Admin, still dropping the parameter", async () => {
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    const listed = project();
+    fetchListMock.mockResolvedValue({ projects: [listed] });
+    renderPage(A, undefined, "?create=1");
+    await screen.findByTestId(`project-row-${listed.id}`);
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
+    expect(screen.queryByTestId("project-create-dialog")).toBeNull();
+  });
+
+  it("opens nothing at the Project limit", async () => {
+    fetchListMock.mockResolvedValue({
+      projects: Array.from({ length: 50 }, () => project()),
+    });
+    renderPage(A, undefined, "?create=1");
+    expect(await screen.findByTestId("projects-create")).toBeDisabled();
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
+    expect(screen.queryByTestId("project-create-dialog")).toBeNull();
   });
 });
 

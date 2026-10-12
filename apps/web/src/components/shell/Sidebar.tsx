@@ -1,18 +1,20 @@
-import { NavLink, useLocation } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { AccountMenu } from "./AccountMenu";
 import { NAV_ICONS } from "./icons";
 import {
   canSeeLeaf,
-  isLeafActive,
   isNavGroup,
+  mostSpecificLeaf,
   NAV_ITEMS,
   resolveNavPath,
   type NavCountSource,
   type NavLeaf,
 } from "./nav-config";
 import { OrgSwitcher } from "./OrgSwitcher";
+import { ProjectSwitcher } from "./ProjectSwitcher";
+import { useCurrentProject } from "./useCurrentProject";
 import { useMonitorTotal, useUnreadCount } from "./useNavCounts";
 
 export function Sidebar({
@@ -26,6 +28,8 @@ export function Sidebar({
   const { activeOrg } = useTenant();
   const organizationId = activeOrg?.id ?? null;
   const role = activeOrg?.role ?? null;
+  const { projectId, organizationId: projectOrganizationId } =
+    useCurrentProject();
   const unread = useUnreadCount();
   const monitorTotal = useMonitorTotal(organizationId);
   // Unknown or failed counts render nothing, never a guessed number (CMP-01).
@@ -39,13 +43,29 @@ export function Sidebar({
 
   const visibleRows = (leaves: NavLeaf[]) =>
     leaves.flatMap((leaf) => {
-      const href = resolveNavPath(leaf.path, organizationId);
+      // A Project page belongs to the Project's Organization, which a bookmarked URL may make other than the active one.
+      const href = resolveNavPath(
+        leaf.path,
+        leaf.path.includes(":projectId")
+          ? projectOrganizationId
+          : organizationId,
+        projectId,
+      );
       return href !== null && canSeeLeaf(leaf, role) ? [{ leaf, href }] : [];
     });
+
+  // One current row: a leaf and the list above it (an organization's Projects and one Project's members) both match the URL.
+  const activeHref = mostSpecificLeaf(
+    NAV_ITEMS.flatMap((item) =>
+      visibleRows(isNavGroup(item) ? item.children : [item]),
+    ).map(({ href }) => ({ path: href })),
+    pathname,
+  )?.path;
 
   return (
     <div className="flex h-full flex-col">
       <OrgSwitcher collapsed={collapsed} />
+      <ProjectSwitcher collapsed={collapsed} onNavigate={onNavigate} />
       <nav
         data-testid="shell-navigation"
         aria-label="เมนูหลัก"
@@ -64,7 +84,7 @@ export function Sidebar({
               collapsed={collapsed}
               count={leaf.count === undefined ? undefined : counts[leaf.count]}
               // Matched on the resolved href, so an org leaf is current only for the org it links to.
-              active={isLeafActive({ path: href }, pathname)}
+              active={href === activeHref}
               onNavigate={onNavigate}
             />
           ));
@@ -74,10 +94,12 @@ export function Sidebar({
           return (
             <div
               key={item.label}
-              data-testid="shell-organization-navigation"
+              data-testid={`shell-${item.scope}-navigation`}
+              data-scope={item.scope}
               className="flex flex-col gap-0.5"
             >
-              {collapsed ? (
+              {/* The switcher above the nav is the Project group's heading. */}
+              {item.scope === "project" ? null : collapsed ? (
                 <div
                   role="separator"
                   aria-label={item.label}
@@ -116,9 +138,10 @@ function NavRow({
   const Icon = NAV_ICONS[leaf.icon];
   if (collapsed) {
     return (
-      <NavLink
+      <Link
         data-testid={`shell-nav-${leaf.path}`}
         to={href}
+        aria-current={active ? "page" : undefined}
         title={leaf.label}
         aria-label={leaf.label}
         onClick={onNavigate}
@@ -129,13 +152,15 @@ function NavRow({
         }`}
       >
         <Icon />
-      </NavLink>
+      </Link>
     );
   }
   return (
-    <NavLink
+    <Link
       data-testid={`shell-nav-${leaf.path}`}
       to={href}
+      // NavLink would mark every path prefix current, including the organization's Project list on a Project page.
+      aria-current={active ? "page" : undefined}
       onClick={onNavigate}
       // The 3 px bar sits on the sidebar edge (-8 px past the row's 8 px inset).
       className={`relative flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-100 ${
@@ -159,6 +184,6 @@ function NavRow({
           {count}
         </span>
       )}
-    </NavLink>
+    </Link>
   );
 }

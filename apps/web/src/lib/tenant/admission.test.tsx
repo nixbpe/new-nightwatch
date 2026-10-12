@@ -106,6 +106,12 @@ vi.mock("../api/monitors", async (original) => ({
   fetchMonitorLastResponse: vi.fn(),
   fetchMonitorEvents: vi.fn(),
 }));
+// AppShell saves the last Project; no Project is the quietest state.
+vi.mock("../api/projects", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  fetchProjectList: () => Promise.resolve({ projects: [] }),
+  fetchLastProject: () => Promise.resolve({ projectId: null }),
+}));
 vi.mock("../api/notifications", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   fetchOrganizationNotificationSettings: vi.fn(() =>

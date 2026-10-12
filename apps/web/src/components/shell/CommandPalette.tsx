@@ -5,6 +5,7 @@ import { useTenant } from "../../lib/tenant/TenantProvider";
 import { NAV_ICONS, SearchIcon } from "./icons";
 import { Kbd } from "./Kbd";
 import { getNavDestinations, type NavDestination } from "./nav-config";
+import { useCurrentProject } from "./useCurrentProject";
 
 function matches(destinations: NavDestination[], query: string) {
   const needle = query.trim().toLowerCase();
@@ -23,8 +24,12 @@ function matches(destinations: NavDestination[], query: string) {
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { activeOrg } = useTenant();
+  const { projectId, organizationId: projectOrganizationId } =
+    useCurrentProject();
   const destinations = getNavDestinations({
     organizationId: activeOrg?.id ?? null,
+    projectId,
+    projectOrganizationId,
     role: activeOrg?.role ?? null,
   });
   const [query, setQuery] = useState("");

@@ -8,6 +8,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { EmptyState } from "../../components/shell/EmptyState";
 import { GridIcon, SearchIcon } from "../../components/shell/icons";
+import { CREATE_PROJECT_PARAM } from "../../components/shell/nav-config";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { Alert, Input } from "../../components/ui";
@@ -177,6 +178,33 @@ function ProjectsForOrganization({
 
   const canManage =
     organization?.role === "owner" || organization?.role === "admin";
+  // The sidebar's "สร้างโปรเจกต์" arrives with `?create=1`: open the dialog once the list is known, then drop the
+  // parameter so a reload or Back does not reopen it. The strip is sent once: this effect can run again before the
+  // navigation commits, and a second navigation to the same URL is a revalidation that re-runs the route loader
+  // and remounts the page, losing the dialog. The route skips its loader only for the strip itself.
+  const wantsCreate =
+    new URLSearchParams(location.search).get(CREATE_PROJECT_PARAM) === "1";
+  const { pathname, search, hash } = location;
+  const stripSent = useRef(false);
+  useEffect(() => {
+    if (!wantsCreate) {
+      stripSent.current = false;
+      return;
+    }
+    if (projects === undefined || stripSent.current) return;
+    stripSent.current = true;
+    if (canManage && projects.length < PROJECT_LIMIT_PER_ORGANIZATION) {
+      setDialog({ kind: "create", opener: null });
+    }
+    // Only `create` goes; other parameters and the hash stay.
+    const rest = new URLSearchParams(search);
+    rest.delete(CREATE_PROJECT_PARAM);
+    const restSearch = rest.toString();
+    void navigate(
+      { pathname, search: restSearch === "" ? "" : `?${restSearch}`, hash },
+      { replace: true },
+    );
+  }, [wantsCreate, projects, canManage, navigate, pathname, search, hash]);
   const joined = projects?.filter((project) => project.myRole !== null) ?? [];
   const needle = q.toLowerCase();
   const visible = (projects ?? []).filter(

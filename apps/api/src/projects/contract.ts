@@ -4,6 +4,9 @@ import {
   addProjectMembersResponseSchema,
   createProjectRequestSchema,
   lastProjectAdminErrorResponseSchema,
+  lastProjectInputSchema,
+  lastProjectQuerySchema,
+  lastProjectResponseSchema,
   projectDetailSchema,
   projectMemberCandidatesQuerySchema,
   projectMemberCandidatesResponseSchema,
@@ -24,6 +27,7 @@ import {
   projectSlugTakenErrorResponseSchema,
   projectSummarySchema,
   projectValidationErrorResponseSchema,
+  rememberedProjectResponseSchema,
   unauthenticatedErrorResponseSchema,
   unsupportedMediaTypeErrorResponseSchema,
   updateProjectRequestSchema,
@@ -58,6 +62,51 @@ const notFoundResponse = jsonError(
 
 const projectsBase = "/api/organizations/{organizationId}/projects";
 const tags = ["projects"];
+
+export const lastProjectRouteDeclarations = {
+  get: createRoute({
+    method: "get",
+    path: "/api/me/last-project",
+    tags: ["me"],
+    summary: "Resolve the Project to open in an Organization",
+    description:
+      "Read-only. Access is checked on every call: the remembered Project, else the first readable one, else null.",
+    request: { query: lastProjectQuerySchema },
+    responses: {
+      200: {
+        description: "The resolved Project id, or null when none is readable",
+        content: { "application/json": { schema: lastProjectResponseSchema } },
+      },
+      400: invalidResponse,
+      ...authResponses,
+    },
+  }),
+  put: createRoute({
+    method: "put",
+    path: "/api/me/last-project",
+    tags: ["me"],
+    summary: "Remember the last Project the user opened in an Organization",
+    request: {
+      body: {
+        content: { "application/json": { schema: lastProjectInputSchema } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description:
+          "The Project stored after the request: the one sent, or the newer one already stored when the request is older",
+        content: {
+          "application/json": { schema: rememberedProjectResponseSchema },
+        },
+      },
+      400: invalidResponse,
+      415: mediaTypeResponse,
+      ...authResponses,
+      404: notFoundResponse,
+    },
+  }),
+} as const;
 
 export const projectRouteDeclarations = {
   list: createRoute({

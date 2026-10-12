@@ -4,6 +4,7 @@ import {
   Outlet,
   useRevalidator,
   type RouteObject,
+  type ShouldRevalidateFunction,
 } from "react-router";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -11,6 +12,7 @@ import { AppShell } from "./components/shell/AppShell";
 import { AuthEyebrow } from "./components/shell/AuthFrame";
 import { AuthLayout } from "./components/shell/AuthLayout";
 import { BrandMark } from "./components/shell/BrandMark";
+import { CREATE_PROJECT_PARAM } from "./components/shell/nav-config";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import {
@@ -96,6 +98,20 @@ function NotFoundPage() {
     </main>
   );
 }
+
+// The Projects page drops `?create=1` by a replace navigation; the loader re-admits the organization, which would
+// remount the page. Only that transition is skipped: a revalidation (the same URL, as after a session change) must
+// still run the loader's session and membership gate.
+export const projectsShouldRevalidate: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  defaultShouldRevalidate,
+}) =>
+  currentUrl.pathname === nextUrl.pathname &&
+  currentUrl.searchParams.has(CREATE_PROJECT_PARAM) &&
+  !nextUrl.searchParams.has(CREATE_PROJECT_PARAM)
+    ? false
+    : defaultShouldRevalidate;
 
 export const routes: RouteObject[] = [
   {
@@ -197,6 +213,7 @@ export const routes: RouteObject[] = [
           {
             path: "/organizations/:organizationId/projects",
             loader: projectsLoader,
+            shouldRevalidate: projectsShouldRevalidate,
             element: <ProjectsPage />,
           },
           {

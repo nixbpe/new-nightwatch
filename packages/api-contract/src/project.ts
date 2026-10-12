@@ -62,6 +62,45 @@ export const projectDetailSchema = projectSummarySchema.extend({
 });
 export type ProjectDetail = z.infer<typeof projectDetailSchema>;
 
+// ---- Last Project (F-010) ----------------------------------------------------
+
+/** `projectId` is parsed in the service: a malformed id answers 404 like a missing one. */
+export const lastProjectInputSchema = z.strictObject({
+  organizationId: z.uuid(),
+  projectId: z.string().min(1).max(100),
+  /**
+   * When the user landed on the Project, from the client. The server clamps it
+   * to its own clock and keeps the newest landing per user and Organization.
+   */
+  selectedAt: z.iso.datetime({ offset: true }),
+});
+export type LastProjectInput = z.infer<typeof lastProjectInputSchema>;
+
+export const lastProjectQuerySchema = z.object({
+  organizationId: z.uuid(),
+});
+
+/**
+ * The Project to open in an Organization: the remembered one while the user
+ * can still read it, else the first Project they can read (by name, then id),
+ * else `null`. Never a Project the user cannot see.
+ */
+export const lastProjectResponseSchema = z.object({
+  projectId: z.uuid().nullable(),
+});
+export type LastProjectResponse = z.infer<typeof lastProjectResponseSchema>;
+
+/**
+ * The Project stored for the user after the PUT: the one just sent, or the
+ * newer one already stored when this request arrived late. Never null.
+ */
+export const rememberedProjectResponseSchema = z.object({
+  projectId: z.uuid(),
+});
+export type RememberedProjectResponse = z.infer<
+  typeof rememberedProjectResponseSchema
+>;
+
 // ---- Members -----------------------------------------------------------------
 
 export const PROJECT_MEMBER_ADD_MAX = 100;

@@ -229,7 +229,7 @@ export async function openMonitorTestContext(options?: {
   // `body` is serialized as JSON unless `rawBody` sends the bytes as they are.
   async function call(
     userId: string | null,
-    method: "DELETE" | "GET" | "PATCH" | "POST",
+    method: "DELETE" | "GET" | "PATCH" | "POST" | "PUT",
     path: string,
     body?: unknown,
     rawBody?: { text: string; contentType: string | null },

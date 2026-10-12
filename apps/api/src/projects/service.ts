@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import {
   PROJECT_LIMIT_PER_ORGANIZATION,
   type CreateProjectRequest,
+  type LastProjectResponse,
+  type RememberedProjectResponse,
   type OrganizationRole,
   type ProjectDetail,
   type ProjectListResponse,
@@ -10,7 +12,11 @@ import {
   type ProjectSummary,
   type UpdateProjectRequest,
 } from "@nightwatch/api-contract";
-import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import {
+  withTenantContextRaw,
+  withTenantUserContextRaw,
+  type Database,
+} from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
@@ -452,6 +458,123 @@ export async function getProject(
         [input.organizationId, projectId],
       );
       return { ...summary, adminCount: admins.rows[0]?.total ?? 0 };
+    },
+  );
+}
+
+// The remembered Project is a hint, not a grant: it is written only after the
+// caller passed the same read check as GET /{projectId}, and every read checks
+// access again. The user context is set on the connection that already holds
+// the Organization and Project locks, so a revocation cannot interleave.
+// Writes are ordered by `selectedAt`, the client's landing time clamped to the
+// server clock (a fast client clock cannot block later saves): an older save
+// that arrives late leaves the row alone, and the response is the Project the
+// row holds afterwards, whichever request wrote it. The reply is read back in a
+// fresh statement and only names a Project the caller can still read (a member
+// of it, or Owner/Admin; the rule of resolveLastProject). When the stored one is
+// not readable (removed from it, demoted, deleted with its row), the requested
+// Project replaces it, inserting the row if the deletion removed it.
+// Under READ COMMITTED a removal committing after the read-back is a valid
+// order: the stored Project was readable when answered. No lock on the stored
+// Project is taken, so no order against the removal path's locks arises.
+// Accepted limit: `selectedAt` comes from the clients' clocks, so a device that
+// runs behind can lose to an earlier landing from another device by up to that
+// skew; equal stamps keep the first stored.
+export async function rememberLastProject(
+  database: Database,
+  input: Identity & { projectId: string; selectedAt: string },
+): Promise<RememberedProjectResponse> {
+  return withProjectAccess(
+    database,
+    input,
+    "project.read",
+    false,
+    async (client, { projectId, actorRole }) => {
+      await client.query("select set_config('app.user_id', $1, true)", [
+        input.actorUserId,
+      ]);
+      const admin = isOrganizationAdmin(actorRole);
+      await client.query(
+        `insert into member_last_project
+           (tenant_id, user_id, project_id, selected_at)
+         values ($1, $2, $3, least($4::timestamptz, now()))
+         on conflict (tenant_id, user_id)
+         do update set project_id = excluded.project_id,
+                       selected_at = excluded.selected_at,
+                       updated_at = now()
+         where member_last_project.selected_at < excluded.selected_at`,
+        [input.organizationId, input.actorUserId, projectId, input.selectedAt],
+      );
+      // A fresh statement, so a removal that committed while the upsert waited is seen.
+      const readable = await client.query<{ project_id: string }>(
+        `select m.project_id from member_last_project m
+         where m.tenant_id = $1 and m.user_id = $2
+           and ($3::boolean or exists (
+             select 1 from project_members pm
+             where pm.tenant_id = m.tenant_id
+               and pm.project_id = m.project_id
+               and pm.user_id = m.user_id))`,
+        [input.organizationId, input.actorUserId, admin],
+      );
+      let stored = readable.rows[0]?.project_id;
+      if (stored === undefined) {
+        // The stored Project is no longer readable by the caller: the requested one, which the
+        // locks held here keep readable, replaces it whatever its time.
+        const replaced = await client.query<{ project_id: string }>(
+          `insert into member_last_project
+             (tenant_id, user_id, project_id, selected_at)
+           values ($1, $2, $3, least($4::timestamptz, now()))
+           on conflict (tenant_id, user_id)
+           do update set project_id = excluded.project_id,
+                         selected_at = excluded.selected_at,
+                         updated_at = now()
+           returning project_id`,
+          [
+            input.organizationId,
+            input.actorUserId,
+            projectId,
+            input.selectedAt,
+          ],
+        );
+        stored = replaced.rows[0]?.project_id;
+      }
+      if (stored === undefined) throw new Error("last Project row missing");
+      return { projectId: stored };
+    },
+  );
+}
+
+// Remembered Project while still readable, else the first readable one in the
+// list's order (name, id), else null. Reads only; nothing is written back.
+export async function resolveLastProject(
+  database: Database,
+  identity: Identity,
+): Promise<LastProjectResponse> {
+  await assertMemberBeforeTenantContext(
+    database,
+    identity.organizationId,
+    identity.actorUserId,
+  );
+  return withTenantUserContextRaw(
+    database,
+    identity.organizationId,
+    identity.actorUserId,
+    async (client) => {
+      const role = await lockedMemberRole(client, identity);
+      if (role === null) membershipDenied();
+      const result = await client.query<{ id: string }>(
+        `select p.id
+         from projects p
+         left join project_members me
+           on me.tenant_id = p.tenant_id and me.project_id = p.id and me.user_id = $2
+         left join member_last_project last
+           on last.tenant_id = p.tenant_id and last.project_id = p.id and last.user_id = $2
+         where p.tenant_id = $1${isOrganizationAdmin(role) ? "" : " and me.user_id is not null"}
+         order by (last.project_id is not null) desc, p.name, p.id
+         limit 1`,
+        [identity.organizationId, identity.actorUserId],
+      );
+      return { projectId: result.rows[0]?.id ?? null };
     },
   );
 }
