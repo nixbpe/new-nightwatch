@@ -239,9 +239,15 @@ function ProjectsForOrganization({
   };
 
   // The Project answered 404: drop what is cached for it, not only the list.
-  const forgetProject = (projectId: string) => {
+  const forgetProject = async (projectId: string) => {
     queryClient.removeQueries({
       queryKey: projectQueryKeys.project(organizationId, projectId),
+    });
+    // A list fetch still in flight would be cancelled by the context refresh
+    // that follows, and cancelling restores the data it started from, the row
+    // included. Cancel it first so the filter below is what stays.
+    await queryClient.cancelQueries({
+      queryKey: projectQueryKeys.list(organizationId),
     });
     // The list reload may fail; the row must not outlive the 404 either way.
     queryClient.setQueryData<{ projects: ProjectSummary[] }>(
@@ -277,8 +283,7 @@ function ProjectsForOrganization({
         }
         if (error.code === "PROJECT_NOT_FOUND") {
           setDeletion(null);
-          forgetProject(project.id);
-          reload();
+          void forgetProject(project.id).then(reload);
           return;
         }
       }
@@ -686,10 +691,9 @@ function ProjectsForOrganization({
           onStale={(reason: StaleReason) => {
             setDialog(null);
             if (reason === "denied") roleChanged();
-            else {
-              if (dialog.kind === "edit") forgetProject(dialog.project.id);
-              reload();
-            }
+            else if (dialog.kind === "edit") {
+              void forgetProject(dialog.project.id).then(reload);
+            } else reload();
           }}
         />
       )}

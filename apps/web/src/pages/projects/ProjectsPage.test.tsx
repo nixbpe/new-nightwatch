@@ -711,6 +711,52 @@ describe("a 404 on edit or delete removes the row even if the reload fails (AC-0
   );
 });
 
+describe("a 404 while a list refetch is in flight (AC-05)", () => {
+  it.each(["edit", "delete"] as const)(
+    "keeps the Project out of the list on %s although the context refresh cancels that refetch and the next one fails",
+    async (action) => {
+      const user = userEvent.setup();
+      const gone = project({ name: "Payments", myRole: "admin" });
+      const other = project({ name: "Other", myRole: "admin" });
+      fetchListMock.mockResolvedValueOnce({ projects: [gone, other] });
+      renderPage();
+      const opener = within(
+        await screen.findByTestId(`project-row-${gone.id}`),
+      ).getByTestId(`project-${action}`);
+      const queryClient = queryClients[0];
+      if (queryClient === undefined) throw new Error("no query client");
+      // A refetch that never settles by itself: only a cancellation ends it.
+      fetchListMock.mockImplementationOnce(() => new Promise(() => undefined));
+      void queryClient.refetchQueries({
+        queryKey: projectQueryKeys.list(A),
+      });
+      await waitFor(() => {
+        expect(fetchListMock).toHaveBeenCalledTimes(2);
+      });
+      fetchListMock.mockRejectedValue(new ApiError("INTERNAL_ERROR", "x", 500));
+      const notFound = new ApiError("PROJECT_NOT_FOUND", "gone", 404);
+      updateMock.mockRejectedValue(notFound);
+      deleteMock.mockRejectedValue(notFound);
+      await user.click(opener);
+      const dialog = await screen.findByTestId(
+        action === "edit" ? "project-edit-dialog" : "project-delete-dialog",
+      );
+      await user.click(
+        within(dialog).getByTestId(
+          action === "edit" ? "project-form-submit" : "project-delete-confirm",
+        ),
+      );
+      await waitFor(() => {
+        expect(fetchListMock.mock.calls.length).toBeGreaterThan(2);
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId(`project-row-${gone.id}`)).toBeNull();
+      });
+      expect(screen.getByTestId(`project-row-${other.id}`)).toBeVisible();
+    },
+  );
+});
+
 describe("role changed under the user", () => {
   it.each(["edit", "delete"] as const)(
     "reloads the list and the role after a denied %s",
