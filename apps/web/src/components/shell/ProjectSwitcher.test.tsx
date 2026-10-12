@@ -369,36 +369,10 @@ describe("ProjectSwitcher", () => {
     expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
   });
 
-  it("AC-06: a slower earlier save cannot overwrite the cache after a newer Project change", async () => {
-    const view = renderShell({ path: membersPath(P_ALPHA) });
-    const replies: Record<string, () => void> = {};
-    rememberLastProjectMock.mockImplementation(
-      (_org, projectId) =>
-        new Promise((resolve) => {
-          replies[projectId] = () => {
-            resolve({ projectId });
-          };
-        }),
-    );
-    // Alpha's save started with the default mock; start Bravo's on the deferred one.
-    await waitFor(() => {
-      expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
-    });
-    await view.router.navigate(membersPath(P_BRAVO));
-    await waitFor(() => {
-      expect(replies[P_BRAVO]).toBeDefined();
-    });
-    replies[P_BRAVO]?.();
-    await waitFor(() => {
-      expect(
-        view.queryClient.getQueryData(projectQueryKeys.last(ORG_A)),
-      ).toEqual({ projectId: P_BRAVO });
-    });
-  });
-
   it("AC-06: the cache keeps the newer Project when saves resolve in reverse order", async () => {
     const replies: Record<string, () => void> = {};
-    const view = renderShell({ path: "/workspace" });
+    // Nothing remembered yet, so only a save can put a Project in the cache.
+    const view = renderShell({ path: "/workspace", last: null });
     rememberLastProjectMock.mockImplementation(
       (_org, projectId) =>
         new Promise((resolve) => {

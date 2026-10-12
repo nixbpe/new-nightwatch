@@ -14,7 +14,15 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
@@ -96,6 +104,9 @@ beforeEach(() => {
 });
 
 let lastRouter: ReturnType<typeof createMemoryRouter>;
+let navigateSpy: MockInstance<
+  ReturnType<typeof createMemoryRouter>["navigate"]
+>;
 function renderPage(
   organizationId = A,
   state?: unknown,
@@ -126,6 +137,7 @@ function renderPage(
     },
   );
   lastRouter = router;
+  navigateSpy = vi.spyOn(router, "navigate");
   return render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -171,6 +183,25 @@ describe("create link from the sidebar (F-010 AC-05)", () => {
       expect(lastRouter.state.location.search).toBe("");
     });
     expect(screen.getAllByTestId("project-create-dialog")).toHaveLength(1);
+  });
+
+  it("sends one navigation however often the effect re-runs before it commits, so the route does not see a same-URL navigation", async () => {
+    // Observed in the app: a second navigation to the already-stripped URL is a revalidation, which re-runs the loader and remounts the page.
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, undefined, "?create=1");
+    await screen.findByTestId("projects-create");
+    // Holds the first navigation back, then refreshes the list so the effect runs again.
+    navigateSpy.mockImplementation(() => new Promise<void>(() => undefined));
+    await queryClients[0]?.setQueryData(projectQueryKeys.list(A), {
+      projects: [project()],
+    });
+    await queryClients[0]?.setQueryData(projectQueryKeys.list(A), {
+      projects: [project()],
+    });
+    await waitFor(() => {
+      expect(navigateSpy.mock.calls.length).toBeGreaterThan(0);
+    });
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
   });
 
   it("drops only the create parameter and keeps the other parameters and the hash", async () => {

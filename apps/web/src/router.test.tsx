@@ -55,6 +55,21 @@ describe("Projects route revalidation", () => {
     router.dispose();
   });
 
+  it.each([
+    [`${PROJECTS}?view=all`, `${PROJECTS}?view=mine`],
+    [`${PROJECTS}?create=1`, `${PROJECTS}?create=1&view=mine`],
+    [PROJECTS, `${PROJECTS}?view=mine`],
+  ])(
+    "runs the loader for a same-page change that does not drop create (%s to %s)",
+    async (from, to) => {
+      const { router, loader } = projectsRouter(from);
+      await settled(router);
+      await act(() => router.navigate(to, { replace: true }));
+      expect(loader).toHaveBeenCalledTimes(2);
+      router.dispose();
+    },
+  );
+
   it("runs the loader for any other navigation", async () => {
     const { router, loader } = projectsRouter(`${PROJECTS}?create=1`);
     await settled(router);

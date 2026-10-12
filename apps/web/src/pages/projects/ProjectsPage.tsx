@@ -179,13 +179,20 @@ function ProjectsForOrganization({
   const canManage =
     organization?.role === "owner" || organization?.role === "admin";
   // The sidebar's "สร้างโปรเจกต์" arrives with `?create=1`: open the dialog once the list is known, then drop the
-  // parameter so a reload or Back does not reopen it. The route skips its loader for a search-only change, so
-  // dropping it does not remount this page.
+  // parameter so a reload or Back does not reopen it. The strip is sent once: this effect can run again before the
+  // navigation commits, and a second navigation to the same URL is a revalidation that re-runs the route loader
+  // and remounts the page, losing the dialog. The route skips its loader only for the strip itself.
   const wantsCreate =
     new URLSearchParams(location.search).get(CREATE_PROJECT_PARAM) === "1";
   const { pathname, search, hash } = location;
+  const stripSent = useRef(false);
   useEffect(() => {
-    if (!wantsCreate || projects === undefined) return;
+    if (!wantsCreate) {
+      stripSent.current = false;
+      return;
+    }
+    if (projects === undefined || stripSent.current) return;
+    stripSent.current = true;
     if (canManage && projects.length < PROJECT_LIMIT_PER_ORGANIZATION) {
       setDialog({ kind: "create", opener: null });
     }
