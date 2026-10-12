@@ -19,9 +19,11 @@ truncate table
 -- Monitor notifications without a Project cannot link to a monitor route and
 -- are no longer readable (their subject needs projectId). Deleting the intent
 -- cascades to recipients, inbox items and the dispatch ledger. FORCE RLS would
--- hide every row from this role, so it is lifted for the delete and restored;
+-- hide every row from this role, so it is lifted on the intents (delete) and the
+-- inbox items (check) and restored;
 -- the check afterwards fails the migration if a row survived.
 alter table notification_intents no force row level security;
+alter table notification_inbox_items no force row level security;
 
 delete from notification_intents where event_type like 'MONITOR\_%';
 
@@ -36,6 +38,7 @@ end;
 $$;
 
 alter table notification_intents force row level security;
+alter table notification_inbox_items force row level security;
 
 alter table monitors
   add column project_id uuid not null;
