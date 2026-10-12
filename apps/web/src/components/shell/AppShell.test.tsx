@@ -671,6 +671,42 @@ describe("AppShell", () => {
     await expectFocusRestored();
   });
 
+  it.each([
+    ["organization switcher", "shell-organization-switch"],
+    ["account menu", "shell-account-open"],
+  ])(
+    "gives the first Escape to an open %s in the mobile drawer, then closes the drawer",
+    async (_name, triggerId) => {
+      mockMobileViewport();
+      fetchMeContextMock.mockResolvedValue(
+        meContext([ownerOrg, viewerOrg], ORG_A),
+      );
+      const user = userEvent.setup();
+      renderShell();
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("shell-breadcrumb-organization"),
+        ).toHaveTextContent("Org A");
+      });
+
+      await user.click(screen.getByTestId("shell-mobile-open"));
+      const drawer = screen.getByTestId("shell-mobile-menu");
+      const trigger = within(drawer).getByTestId(triggerId);
+      await user.click(trigger);
+      expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+      await user.keyboard("{Escape}");
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger).toHaveFocus();
+      expect(screen.getByTestId("shell-mobile-menu")).toBeInTheDocument();
+
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(screen.queryByTestId("shell-mobile-menu")).toBeNull();
+      });
+    },
+  );
+
   it("follows a remote organization switch over this tab's earlier selection", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
