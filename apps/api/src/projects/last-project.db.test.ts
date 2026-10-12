@@ -1,5 +1,5 @@
 import { lastProjectResponseSchema } from "@nightwatch/api-contract";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   openMonitorTestContext,
@@ -149,6 +149,53 @@ describe("PUT /api/me/last-project", () => {
     expect(late.json).toEqual({ projectId: alpha });
     expect(await stored(org, user)).toBe(alpha);
     expect(await resolved(user, org.id)).toBe(alpha);
+  });
+
+  it("never names a Project the user lost access to while the save waited", async () => {
+    const org = await ctx.createOrganization("lp-put-race");
+    const user = org.users.viewer;
+    const alpha = await projectNamed(org, "Alpha", [[user, "member"]]);
+    const beta = await projectNamed(org, "Beta", [[user, "member"]]);
+    const base = Date.now() - 60_000;
+    const at = (offsetMs: number) => new Date(base + offsetMs).toISOString();
+    expect((await put(user, org.id, beta, at(5_000))).status).toBe(200);
+
+    // The holder locks the stored row, so the older save's upsert waits on it; the
+    // removal from Beta commits meanwhile, after the upsert took its snapshot.
+    const holder = await ctx.owner.sql.connect();
+    try {
+      await holder.query("begin");
+      await holder.query(
+        "select 1 from member_last_project where tenant_id = $1 and user_id = $2 for update",
+        [org.id, user],
+      );
+      const holderPid = (
+        await holder.query<{ pid: number }>("select pg_backend_pid() as pid")
+      ).rows[0]?.pid;
+      const late = put(user, org.id, alpha, at(0));
+      await vi.waitFor(
+        async () => {
+          const queued = await ctx.owner.sql.query(
+            "select 1 from pg_stat_activity a where $1::int = any(pg_blocking_pids(a.pid))",
+            [holderPid],
+          );
+          expect(queued.rowCount).toBe(1);
+        },
+        { timeout: 8_000, interval: 25 },
+      );
+      await holder.query(
+        "delete from project_members where project_id = $1 and user_id = $2",
+        [beta, user],
+      );
+      await holder.query("commit");
+      const response = await late;
+      expect(response.status).toBe(200);
+      expect(response.json).toEqual({ projectId: alpha });
+    } finally {
+      await holder.query("rollback").catch(() => undefined);
+      holder.release();
+    }
+    expect(await stored(org, user)).toBe(alpha);
   });
 
   it("replaces a stored Project an Owner lost access to by demotion", async () => {

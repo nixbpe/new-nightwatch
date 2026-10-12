@@ -469,10 +469,13 @@ export async function getProject(
 // Writes are ordered by `selectedAt`, the client's landing time clamped to the
 // server clock (a fast client clock cannot block later saves): an older save
 // that arrives late leaves the row alone, and the response is the Project the
-// row holds afterwards, whichever request wrote it. A stored Project the caller
-// can no longer read (removed from it, or demoted from Owner/Admin) is replaced
-// whatever its time, so the reply never names a Project the caller cannot see
-// (the same readability rule as resolveLastProject).
+// row holds afterwards, whichever request wrote it. The reply is read back in a
+// fresh statement and only names a Project the caller can still read (a member
+// of it, or Owner/Admin; the rule of resolveLastProject). When the stored one is
+// not readable (removed from it, demoted), the requested Project replaces it.
+// Under READ COMMITTED a removal committing after the read-back is a valid
+// order: the stored Project was readable when answered. No lock on the stored
+// Project is taken, so no order against the removal path's locks arises.
 export async function rememberLastProject(
   database: Database,
   input: Identity & { projectId: string; selectedAt: string },
@@ -486,6 +489,7 @@ export async function rememberLastProject(
       await client.query("select set_config('app.user_id', $1, true)", [
         input.actorUserId,
       ]);
+      const admin = isOrganizationAdmin(actorRole);
       await client.query(
         `insert into member_last_project
            (tenant_id, user_id, project_id, selected_at)
@@ -494,26 +498,38 @@ export async function rememberLastProject(
          do update set project_id = excluded.project_id,
                        selected_at = excluded.selected_at,
                        updated_at = now()
-         where member_last_project.selected_at < excluded.selected_at
-            or (not $5::boolean and not exists (
-              select 1 from project_members pm
-              where pm.tenant_id = member_last_project.tenant_id
-                and pm.project_id = member_last_project.project_id
-                and pm.user_id = member_last_project.user_id))`,
-        [
-          input.organizationId,
-          input.actorUserId,
-          projectId,
-          input.selectedAt,
-          isOrganizationAdmin(actorRole),
-        ],
+         where member_last_project.selected_at < excluded.selected_at`,
+        [input.organizationId, input.actorUserId, projectId, input.selectedAt],
       );
-      const winner = await client.query<{ project_id: string }>(
-        `select project_id from member_last_project
-         where tenant_id = $1 and user_id = $2`,
-        [input.organizationId, input.actorUserId],
+      // A fresh statement, so a removal that committed while the upsert waited is seen.
+      const readable = await client.query<{ project_id: string }>(
+        `select m.project_id from member_last_project m
+         where m.tenant_id = $1 and m.user_id = $2
+           and ($3::boolean or exists (
+             select 1 from project_members pm
+             where pm.tenant_id = m.tenant_id
+               and pm.project_id = m.project_id
+               and pm.user_id = m.user_id))`,
+        [input.organizationId, input.actorUserId, admin],
       );
-      const stored = winner.rows[0]?.project_id;
+      let stored = readable.rows[0]?.project_id;
+      if (stored === undefined) {
+        // The stored Project is no longer readable by the caller: the requested one, which the
+        // locks held here keep readable, replaces it whatever its time.
+        const replaced = await client.query<{ project_id: string }>(
+          `update member_last_project
+           set project_id = $3, selected_at = least($4::timestamptz, now()), updated_at = now()
+           where tenant_id = $1 and user_id = $2
+           returning project_id`,
+          [
+            input.organizationId,
+            input.actorUserId,
+            projectId,
+            input.selectedAt,
+          ],
+        );
+        stored = replaced.rows[0]?.project_id;
+      }
       if (stored === undefined) throw new Error("last Project row missing");
       return { projectId: stored };
     },
