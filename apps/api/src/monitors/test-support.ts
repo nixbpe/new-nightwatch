@@ -274,7 +274,7 @@ export async function openMonitorTestContext(options?: {
         projectId,
         organizationId,
         `${label} ${run}`,
-        `${label}-${projectId.slice(0, 8)}`,
+        `${label.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}-${projectId.slice(0, 8)}`,
       ],
     );
     for (const member of projectMembers) {
