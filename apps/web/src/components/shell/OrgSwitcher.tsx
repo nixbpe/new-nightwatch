@@ -127,9 +127,9 @@ export function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
                 onClick={() => {
                   popover.close();
                   void switchOrg(org.id).then((switched) => {
-                    // A monitor page and a Project members page keep their own redirect (useLeaveOnOrganizationSwitch), so only the lists and the audit log are handled here.
+                    // A monitor page and a Project page keep their own redirect (useLeaveOnOrganizationSwitch), so only the member list and the audit log are handled here.
                     const match =
-                      /^\/organizations\/([^/]+)\/(members|monitors|audit-log(?:\/[^/]+)?)$/.exec(
+                      /^\/organizations\/([^/]+)\/(members|audit-log(?:\/[^/]+)?)$/.exec(
                         location.pathname,
                       );
                     // Choosing the Organization the URL already names changes nothing on the page.

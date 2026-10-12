@@ -45,13 +45,16 @@ async function findScope(name: string, role: string) {
   });
 }
 
-const { sessionState, signOutMock } = vi.hoisted(() => ({
-  sessionState: {
-    data: null as { user: Record<string, unknown> } | null,
-    isPending: false,
-  },
-  signOutMock: vi.fn(),
-}));
+const { projectState, sessionState, signOutMock } = vi.hoisted(() => {
+  const projectState: { myRole: "admin" | "member" | null } = {
+    myRole: "member",
+  };
+  const sessionState: {
+    data: { user: Record<string, unknown> } | null;
+    isPending: boolean;
+  } = { data: null, isPending: false };
+  return { projectState, sessionState, signOutMock: vi.fn() };
+});
 
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
@@ -87,11 +90,35 @@ vi.mock("../lib/api/members", async (importOriginal) => ({
   fetchOrganizationMembers: vi.fn(),
 }));
 
+// The overview shows one Project's monitors: the one the server resolves as last used.
+vi.mock("../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectList: () =>
+    Promise.resolve({
+      projects: [
+        {
+          id: "55555555-5555-4555-8555-555555555555",
+          name: "Payments Platform",
+          slug: "payments",
+          description: null,
+          memberCount: 2,
+          myRole: projectState.myRole,
+          updatedAt: "2026-10-01T00:00:00.000Z",
+        },
+      ],
+    }),
+  fetchLastProject: () =>
+    Promise.resolve({ projectId: "55555555-5555-4555-8555-555555555555" }),
+}));
 vi.mock("../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMonitorList: vi.fn(),
   fetchMonitorRecentEvents: vi.fn(),
 }));
+
+afterEach(() => {
+  projectState.myRole = "member";
+});
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const fetchMonitorListMock = vi.mocked(fetchMonitorList);
@@ -99,6 +126,7 @@ const fetchMonitorRecentEventsMock = vi.mocked(fetchMonitorRecentEvents);
 const updateActiveOrganizationMock = vi.mocked(updateActiveOrganization);
 const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 
+const P = "55555555-5555-4555-8555-555555555555";
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 
@@ -125,6 +153,7 @@ function monitorItem(
     lastCheckAt: "2026-10-02T05:00:00.000Z",
     openIncident: null,
     lastResponseTimeMs: 120,
+    responseP95Ms24h: 120,
     responseSparkline: Array.from({ length: 24 }, (_, hour) => ({
       hourStart: new Date(Date.UTC(2026, 9, 1, 6 + hour)).toISOString(),
       avgMs: null,
@@ -143,7 +172,7 @@ function monitorItem(
 
 function monitorList(total = 3): MonitorListResponse {
   return {
-    summary: { up: 1, down: 1, unknown: 0, paused: 0, total, limit: 50 },
+    summary: { up: 1, down: 1, unknown: 0, paused: 0, total, limit: 20 },
     monitors: [
       monitorItem(MONITOR_A, "api-payments", {
         health: "down",
@@ -408,6 +437,7 @@ describe("WorkspacePage context states", () => {
 
 describe("WorkspacePage organization views", () => {
   afterEach(() => {
+    projectState.myRole = "member";
     fetchMeContextMock.mockReset();
     fetchMonitorListMock.mockReset();
     fetchMonitorRecentEventsMock.mockReset();
@@ -427,6 +457,7 @@ describe("WorkspacePage organization views", () => {
 
 describe("WorkspacePage overview content", () => {
   afterEach(() => {
+    projectState.myRole = "member";
     fetchMeContextMock.mockReset();
     fetchMonitorListMock.mockReset();
     fetchMonitorRecentEventsMock.mockReset();
@@ -463,7 +494,10 @@ describe("WorkspacePage overview content", () => {
       ["paused", 0],
     ] as const) {
       const tile = within(stats).getByTestId(`workspace-stat-${kind}`);
-      expect(tile).toHaveAttribute("href", `/organizations/${ORG_A}/monitors`);
+      expect(tile).toHaveAttribute(
+        "href",
+        `/organizations/${ORG_A}/projects/${P}/monitors`,
+      );
       expect(
         within(tile)
           .getByTestId("workspace-stat-value")
@@ -481,13 +515,13 @@ describe("WorkspacePage overview content", () => {
       );
       expect(row).toHaveAttribute(
         "href",
-        `/organizations/${ORG_A}/monitors/${monitor.id}`,
+        `/organizations/${ORG_A}/projects/${P}/monitors/${monitor.id}`,
       );
       expect(row).toHaveAttribute("data-health", monitor.health);
     }
     expect(screen.getByTestId("workspace-add")).toHaveAttribute(
       "href",
-      `/organizations/${ORG_A}/monitors/new`,
+      `/organizations/${ORG_A}/projects/${P}/monitors/new`,
     );
   });
 
@@ -528,7 +562,22 @@ describe("WorkspacePage overview content", () => {
     expect(screen.queryByTestId("workspace-add")).toBeNull();
     expect(screen.getByTestId("workspace-monitors")).toHaveAttribute(
       "href",
-      `/organizations/${ORG_B}/monitors`,
+      `/organizations/${ORG_B}/projects/${P}/monitors`,
+    );
+  });
+
+  it("gives a Project admin who is only an Organization viewer the add button, and names the Project", async () => {
+    projectState.myRole = "admin";
+    fetchMeContextMock.mockResolvedValue(meContext([viewerOrg], ORG_B));
+    renderPage();
+
+    await screen.findByTestId("workspace-issues");
+    expect(screen.getByTestId("workspace-add")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_B}/projects/${P}/monitors/new`,
+    );
+    expect(screen.getByTestId("workspace-project")).toHaveTextContent(
+      "Payments Platform",
     );
   });
 
@@ -558,7 +607,7 @@ describe("WorkspacePage overview content", () => {
   it("an organization without monitors shows the first-run state", async () => {
     fetchMonitorListMock.mockResolvedValue({
       ...monitorList(0),
-      summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+      summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
       monitors: [],
     });
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
@@ -584,6 +633,7 @@ describe("WorkspacePage overview content", () => {
 
 describe("WorkspacePage denied list", () => {
   afterEach(() => {
+    projectState.myRole = "member";
     fetchMeContextMock.mockReset();
     fetchMonitorListMock.mockReset();
     fetchMonitorRecentEventsMock.mockReset();
@@ -656,6 +706,7 @@ describe("WorkspacePage denied list", () => {
 
 describe("WorkspacePage overview details", () => {
   afterEach(() => {
+    projectState.myRole = "member";
     fetchMeContextMock.mockReset();
     fetchMonitorListMock.mockReset();
     fetchMonitorRecentEventsMock.mockReset();
@@ -856,7 +907,7 @@ describe("WorkspacePage overview details", () => {
     const link = await within(events).findByTestId("workspace-event-monitor");
     expect(link).toHaveAttribute(
       "href",
-      `/organizations/${ORG_A}/monitors/${MONITOR_A}`,
+      `/organizations/${ORG_A}/projects/${P}/monitors/${MONITOR_A}`,
     );
     expect(link.textContent).toBe("api-payments");
     const event = within(events).getByTestId("workspace-event");

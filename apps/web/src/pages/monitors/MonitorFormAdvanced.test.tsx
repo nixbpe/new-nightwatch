@@ -3,6 +3,7 @@ import {
   noChecks,
   noIncidents,
   noResponseTimes,
+  projectDetail,
 } from "./detail-test-support";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
@@ -11,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchMeContext } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
@@ -30,6 +32,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -52,6 +58,7 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
 const createMock = vi.mocked(createMonitor);
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
     organizationId: A,
     version: 1,
@@ -60,7 +67,7 @@ beforeEach(() => {
   });
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
     monitors: [],
     page: { limit: 25, offset: 0, total: 0 },
     dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -199,7 +206,7 @@ describe("Advanced mode defaults and mode switch", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       name: "Payments API 2",
       method: "POST",
       headers: [{ name: "X-Team", value: "core", secret: false }],
@@ -266,7 +273,7 @@ describe("Advanced mode defaults and mode switch", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       timeoutSeconds: 5,
       method: "POST",
       expectedStatus: "200-299,301",
@@ -593,7 +600,7 @@ describe("Permanent warnings and notes", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       method: "HEAD",
       body: { type: "json", content: '{"public":true}' },
     });

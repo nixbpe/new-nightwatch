@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
@@ -30,6 +31,8 @@ import {
   newPath,
   record,
   renderForm,
+  P,
+  projectDetail,
 } from "./form-test-support";
 import { noChecks, noIncidents, noResponseTimes } from "./detail-test-support";
 
@@ -39,6 +42,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -66,6 +73,7 @@ const fetchDetailMock = vi.mocked(fetchMonitorDetail);
 const fetchListMock = vi.mocked(fetchMonitorList);
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
     organizationId: A,
     version: 1,
@@ -83,7 +91,7 @@ beforeEach(() => {
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
   fetchListMock.mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
     monitors: [],
     page: { limit: 25, offset: 0, total: 0 },
     dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -188,9 +196,9 @@ describe("Create validation and save", () => {
       screen.getByTestId("monitor-detail-notice"),
     ).not.toBeEmptyDOMElement();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${A}/monitors/${MONITOR_ID}`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
     );
-    const [organizationId, body] = createMock.mock.calls[0] ?? [];
+    const [organizationId, , body] = createMock.mock.calls[0] ?? [];
     expect(organizationId).toBe(A);
     expect(body).toMatchObject({
       name: "Payments API",
@@ -289,7 +297,7 @@ describe("StrictMode", () => {
     await user.click(screen.getByTestId("monitor-form-save"));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${A}/monitors/${MONITOR_ID}`,
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
       );
     });
   });
@@ -318,7 +326,7 @@ describe("Access", () => {
 });
 
 describe("Organization switch", () => {
-  const overviewOfB = `/organizations/${B}/monitors`;
+  const projectsOfB = `/organizations/${B}/projects`;
 
   async function switchToB(user: ReturnType<typeof userEvent.setup>) {
     updateActiveOrganizationMock.mockResolvedValue({
@@ -329,17 +337,17 @@ describe("Organization switch", () => {
     await user.click(screen.getByTestId(`shell-organization-${B}`));
   }
 
-  it("sends /monitors/new to the new Organization's Overview without the typed values", async () => {
+  it("sends /monitors/new to the new Organization's Projects without the typed values", async () => {
     const user = await openCreate();
     await fillBasic(user);
     await switchToB(user);
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent(overviewOfB);
+      expect(screen.getByTestId("location")).toHaveTextContent(projectsOfB);
     });
     expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   });
 
-  it("sends an Edit page to the new Organization's Overview", async () => {
+  it("sends an Edit page to the new Organization's Projects", async () => {
     fetchDetailMock.mockResolvedValue({ monitor: detail({ version: 3 }) });
     const user = userEvent.setup();
     renderForm(editPath());
@@ -350,7 +358,7 @@ describe("Organization switch", () => {
     });
     await switchToB(user);
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent(overviewOfB);
+      expect(screen.getByTestId("location")).toHaveTextContent(projectsOfB);
     });
     expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   });
@@ -363,13 +371,13 @@ describe("Organization switch", () => {
     await user.click(screen.getByTestId("monitor-form-save"));
     await switchToB(user);
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent(overviewOfB);
+      expect(screen.getByTestId("location")).toHaveTextContent(projectsOfB);
     });
     pending.resolve(written());
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(screen.getByTestId("location")).toHaveTextContent(overviewOfB);
+    expect(screen.getByTestId("location")).toHaveTextContent(projectsOfB);
   });
 });
 
@@ -402,7 +410,7 @@ describe("Edit", () => {
     expect(screen.getByTestId("monitor-detail-title")).toHaveTextContent(
       /^Payments API 2$/,
     );
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       name: "Payments API 2",
       expectedVersion: 3,
       secrets: [],
@@ -466,7 +474,7 @@ describe("Edit", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(2);
     });
-    expect(updateMock.mock.calls[1]?.[2].expectedVersion).toBe(5);
+    expect(updateMock.mock.calls[1]?.[3].expectedVersion).toBe(5);
   });
 
   it("shows not-found when the monitor is deleted before the save", async () => {

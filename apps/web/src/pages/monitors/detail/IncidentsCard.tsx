@@ -87,16 +87,24 @@ const columns: DataTableColumn<Incident>[] = [
 // Independent query: a failure stays inside this card.
 export function IncidentsCard({
   organizationId,
+  projectId,
   monitorId,
 }: {
   organizationId: string;
+  projectId: string;
   monitorId: string;
 }) {
   const [offset, setOffset] = useState(0);
   const page = { limit: MONITOR_HISTORY_PAGE_SIZE, offset };
   const incidents = useQuery({
-    queryKey: monitorQueryKeys.incidents(organizationId, monitorId, page),
-    queryFn: () => fetchMonitorIncidents(organizationId, monitorId, page),
+    queryKey: monitorQueryKeys.incidents(
+      organizationId,
+      projectId,
+      monitorId,
+      page,
+    ),
+    queryFn: () =>
+      fetchMonitorIncidents(organizationId, projectId, monitorId, page),
     refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
     placeholderData: keepPreviousData,
   });

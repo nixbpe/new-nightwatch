@@ -10,24 +10,27 @@ import { ApiError } from "../../lib/api/client";
 import { fetchMonitorDetail, monitorQueryKeys } from "../../lib/api/monitors";
 import { getContextPublicationSnapshot } from "../../lib/queryClient";
 import { useTenant } from "../../lib/tenant/TenantProvider";
+import { PROJECT_GONE_NOTICE } from "../projects/members/ProjectMembersPage";
 import { MonitorForm } from "./form/MonitorForm";
+import { isMonitorNotFound, useMonitorAccess } from "./useMonitorAccess";
 import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 
-const DENIED_MESSAGE = "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ขององค์กรนี้";
+const DENIED_MESSAGE = "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ของโปรเจกต์นี้";
 
 function isCode(error: unknown, ...codes: string[]): boolean {
   return error instanceof ApiError && codes.includes(error.code);
 }
 
 export function MonitorFormPage({ mode }: { mode: "create" | "edit" }) {
-  const { organizationId, monitorId } = useParams();
-  if (organizationId === undefined) return null;
+  const { organizationId, projectId, monitorId } = useParams();
+  if (organizationId === undefined || projectId === undefined) return null;
   if (mode === "edit" && monitorId === undefined) return null;
-  // Keyed so nothing typed carries over to another Organization or monitor.
+  // Keyed so nothing typed carries over to another Project or monitor.
   return (
     <MonitorFormForOrganization
-      key={`${organizationId}:${monitorId ?? "new"}`}
+      key={`${organizationId}:${projectId}:${monitorId ?? "new"}`}
       organizationId={organizationId}
+      projectId={projectId}
       monitorId={mode === "edit" ? monitorId : undefined}
     />
   );
@@ -35,30 +38,39 @@ export function MonitorFormPage({ mode }: { mode: "create" | "edit" }) {
 
 type Snapshot = {
   organization: { id: string; name: string; role: string };
+  project: { id: string; name: string; roleTag: string | undefined };
   record: MonitorRecord | undefined;
 };
 
 function MonitorFormForOrganization({
   organizationId,
+  projectId,
   monitorId,
 }: {
   organizationId: string;
+  projectId: string;
   monitorId: string | undefined;
 }) {
   const queryClient = useQueryClient();
   const { me, mePending, meError, refreshMembershipContext } = useTenant();
   const switched = useLeaveOnOrganizationSwitch(organizationId);
-  const organization = me?.organizations.find(
-    (item) => item.id === organizationId,
-  );
-  const canWrite =
-    organization?.role === "owner" || organization?.role === "admin";
+  const access = useMonitorAccess(organizationId, projectId, !switched);
+  const { organization, project, canWrite } = access;
+  // The latest write access, for an async reload that outlives the render that started it.
+  const latestCanWrite = useRef(canWrite);
+  latestCanWrite.current = canWrite;
+  const canWriteNow = () => latestCanWrite.current;
   const editing = monitorId !== undefined;
-  const overviewPath = `/organizations/${organizationId}/monitors`;
+  const overviewPath = `/organizations/${organizationId}/projects/${projectId}/monitors`;
 
   const detail = useQuery({
-    queryKey: monitorQueryKeys.detail(organizationId, monitorId ?? ""),
-    queryFn: () => fetchMonitorDetail(organizationId, monitorId ?? ""),
+    queryKey: monitorQueryKeys.detail(
+      organizationId,
+      projectId,
+      monitorId ?? "",
+    ),
+    queryFn: () =>
+      fetchMonitorDetail(organizationId, projectId, monitorId ?? ""),
     enabled: editing && canWrite && !switched,
     // The form pins what it loads: no polling and no refetch behind the user's back.
     staleTime: 30_000,
@@ -69,8 +81,18 @@ function MonitorFormForOrganization({
 
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const record = detail.data?.monitor;
-  if (snapshot === null && canWrite && (!editing || record !== undefined)) {
-    setSnapshot({ organization, record });
+  if (
+    snapshot === null &&
+    canWrite &&
+    organization !== undefined &&
+    project !== undefined &&
+    (!editing || record !== undefined)
+  ) {
+    setSnapshot({
+      organization,
+      project: { id: project.id, name: project.name, roleTag: access.roleTag },
+      record,
+    });
   }
   // Bumped to open the form again from a fresh read after a version conflict.
   const [generation, setGeneration] = useState(0);
@@ -82,12 +104,30 @@ function MonitorFormForOrganization({
       titleTestId="monitor-form-title"
       scopeTestId="monitor-form-scope"
       scope={
-        organization === undefined
+        project === undefined
           ? undefined
-          : { mark: organization.name, label: organization.name }
+          : { mark: project.name, label: project.name, tag: access.roleTag }
       }
       title={editing ? "แก้ไขมอนิเตอร์" : "เพิ่มมอนิเตอร์"}
     />
+  );
+  const gone = (
+    <Page width="form">
+      {header}
+      <PageState
+        kind="denied"
+        data-testid="monitor-form-project-gone"
+        tone="info"
+        message={PROJECT_GONE_NOTICE}
+        action={
+          <Button asChild variant="secondary">
+            <Link to={`/organizations/${organizationId}/projects`}>
+              ไปที่รายการโปรเจกต์
+            </Link>
+          </Button>
+        }
+      />
+    </Page>
   );
   const denied = (
     <Page width="form">
@@ -114,6 +154,7 @@ function MonitorFormForOrganization({
     );
   }
   if (me !== undefined && organization === undefined) return denied;
+  if (access.projectGone && snapshot === null) return gone;
   if (snapshot !== null) {
     return (
       <>
@@ -130,12 +171,15 @@ function MonitorFormForOrganization({
         <MonitorForm
           key={generation}
           organization={organization ?? snapshot.organization}
+          project={snapshot.project}
+          projectId={projectId}
+          onAccessRefresh={access.refresh}
           monitorId={monitorId}
           record={snapshot.record}
           roleLost={roleLost.current || me === undefined}
           onReload={async () => {
             const before = getContextPublicationSnapshot(queryClient);
-            if (before.admission.kind !== "confirmed" || !canWrite) return;
+            if (before.admission.kind !== "confirmed" || !canWriteNow()) return;
             const fresh = await detail.refetch();
             const current = getContextPublicationSnapshot(queryClient);
             if (
@@ -147,8 +191,7 @@ function MonitorFormForOrganization({
             const membership = current.admission.context.organizations.find(
               (item) => item.id === organizationId,
             );
-            if (membership?.role !== "owner" && membership?.role !== "admin")
-              return;
+            if (membership === undefined || !canWriteNow()) return;
             const next = fresh.data?.monitor;
             if (next !== undefined) {
               setSnapshot({ ...snapshot, record: next });
@@ -174,7 +217,7 @@ function MonitorFormForOrganization({
       </Page>
     );
   }
-  if (mePending || me === undefined) {
+  if (mePending || me === undefined || access.pending) {
     return (
       <Page width="form">
         {header}
@@ -183,7 +226,7 @@ function MonitorFormForOrganization({
     );
   }
   if (!canWrite) return denied;
-  if (isCode(detail.error, "MONITOR_NOT_FOUND")) {
+  if (isMonitorNotFound(detail.error)) {
     return (
       <Page width="form">
         {header}

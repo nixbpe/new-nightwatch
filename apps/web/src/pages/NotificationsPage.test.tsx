@@ -13,6 +13,7 @@ import {
 import { ApiError } from "../lib/api/client";
 import { NotificationRows, NotificationsPage } from "./NotificationsPage";
 
+const P = "55555555-5555-4555-8555-555555555555";
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 const notification: NotificationItem = {
@@ -34,7 +35,7 @@ const monitorBase = {
   readAt: null,
   actor: null,
   category: "monitor" as const,
-  subject: { monitorId: MONITOR_ID, monitorName: "Checkout" },
+  subject: { projectId: P, monitorId: MONITOR_ID, monitorName: "Checkout" },
 };
 const monitorNotifications: NotificationItem[] = [
   {
@@ -165,7 +166,7 @@ describe("NotificationsPage", () => {
         within(row).getByTestId("notification-monitor-link"),
       ).toHaveAttribute(
         "href",
-        `/organizations/${ORG_A}/monitors/${MONITOR_ID}`,
+        `/organizations/${ORG_A}/projects/${P}/monitors/${MONITOR_ID}`,
       );
     }
     expect(
@@ -294,7 +295,7 @@ describe("NotificationsPage", () => {
     );
     expect(screen.getByTestId("notification-monitor-link")).toHaveAttribute(
       "href",
-      `/organizations/${ORG_A}/monitors/${MONITOR_ID}`,
+      `/organizations/${ORG_A}/projects/${P}/monitors/${MONITOR_ID}`,
     );
   });
 

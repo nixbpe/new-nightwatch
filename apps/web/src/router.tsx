@@ -171,27 +171,27 @@ export const routes: RouteObject[] = [
             element: <WorkspacePage />,
           },
           {
-            path: "/organizations/:organizationId/monitors",
+            path: "/organizations/:organizationId/projects/:projectId/monitors",
             loader: monitorsOverviewLoader,
             element: <OverviewPage />,
           },
           {
-            path: "/organizations/:organizationId/monitors/new",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/new",
             loader: monitorCreateLoader,
             element: <MonitorFormPage mode="create" />,
           },
           {
-            path: "/organizations/:organizationId/monitors/:monitorId/edit",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
             loader: monitorEditLoader,
             element: <MonitorFormPage mode="edit" />,
           },
           {
-            path: "/organizations/:organizationId/monitors/:monitorId",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
             loader: monitorDetailLoader,
             element: <DetailPage />,
           },
           {
-            path: "/organizations/:organizationId/monitors/:monitorId/checks",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/checks",
             loader: monitorDetailLoader,
             element: <ChecksHistoryPage />,
           },

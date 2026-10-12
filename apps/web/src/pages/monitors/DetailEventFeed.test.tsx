@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import {
   fetchMonitorChecks,
   fetchMonitorDetail,
@@ -35,6 +36,8 @@ import {
   MONITOR_ID,
   NOW,
   renderDetail,
+  P,
+  projectDetail,
 } from "./detail-test-support";
 import { RecentEventsCard } from "./RecentEventsCard";
 
@@ -42,6 +45,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -69,6 +76,7 @@ const AT = "2026-09-30T07:30:00.000Z";
 const nonempty: unknown = expect.stringMatching(/\S/);
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchMonitorDetail).mockResolvedValue({ monitor: detail() });
@@ -712,6 +720,7 @@ describe("Event feed states", () => {
       expect(feedMock).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
+        expect.any(String),
         { limit: 20, offset: 20 },
       );
     });
@@ -806,7 +815,7 @@ describe("Pagination threshold of the feed and the incidents", () => {
 
   it("keeps the way back on a later page after the total shrank to one page, then hides the pager at offset 0", async () => {
     let shrunk = false;
-    feedMock.mockImplementation((_org, _monitor, page) =>
+    feedMock.mockImplementation((_org, _project, _monitor, page) =>
       Promise.resolve(
         page.offset === 20
           ? // The rows beyond the first page went away while the reader was on page 2.
@@ -843,7 +852,7 @@ describe("Pagination threshold of the feed and the incidents", () => {
   it("keeps the way back on a later page of the incidents after the total shrank", async () => {
     let shrunk = false;
     vi.mocked(fetchMonitorIncidents).mockImplementation(
-      (_org, _monitor, page) =>
+      (_org, _project, _monitor, page) =>
         Promise.resolve(
           page.offset === 20
             ? { incidents: [], page: { limit: 20, offset: 20, total: 15 } }
@@ -928,9 +937,9 @@ describe("Last response panel", () => {
     expect(table.tagName).toBe("TABLE");
     expect(table).toHaveAccessibleName(/\S/);
     expect(
-      queryClient.getQueryData(monitorQueryKeys.lastResponse(A, MONITOR_ID)),
+      queryClient.getQueryData(monitorQueryKeys.lastResponse(A, P, MONITOR_ID)),
     ).toEqual({ response: fullResponse });
-    expect(lastResponseMock).toHaveBeenCalledWith(A, MONITOR_ID);
+    expect(lastResponseMock).toHaveBeenCalledWith(A, P, MONITOR_ID);
     expect(section.innerHTML).not.toContain("PRIVATE_RESPONSE_HEADER_VALUE");
     expect(responseHeaderRecords(section)).toEqual(
       expect.arrayContaining([
@@ -1290,7 +1299,7 @@ describe("Recent events HTTP status", () => {
         }
       >
         <MemoryRouter>
-          <RecentEventsCard organizationId="o1" />
+          <RecentEventsCard organizationId="o1" projectId="p1" />
         </MemoryRouter>
       </QueryClientProvider>,
     );
@@ -1323,21 +1332,21 @@ describe("Recent events HTTP status", () => {
         {
           kind: "incident_opened",
           name: "A",
-          href: "/organizations/o1/monitors/m1",
+          href: "/organizations/o1/projects/p1/monitors/m1",
           http: "503",
           duration: null,
         },
         {
           kind: "incident_closed",
           name: "A",
-          href: "/organizations/o1/monitors/m1",
+          href: "/organizations/o1/projects/p1/monitors/m1",
           http: "200",
           duration: "2 นาที",
         },
         {
           kind: "incident_opened",
           name: "B",
-          href: "/organizations/o1/monitors/m2",
+          href: "/organizations/o1/projects/p1/monitors/m2",
           http: null,
           duration: null,
         },

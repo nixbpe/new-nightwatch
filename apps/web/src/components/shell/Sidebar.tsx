@@ -31,7 +31,7 @@ export function Sidebar({
   const { projectId, organizationId: projectOrganizationId } =
     useCurrentProject();
   const unread = useUnreadCount();
-  const monitorTotal = useMonitorTotal(organizationId);
+  const monitorTotal = useMonitorTotal(projectOrganizationId, projectId);
   // Unknown or failed counts render nothing, never a guessed number (CMP-01).
   const counts: Record<NavCountSource, number | undefined> = {
     monitors: monitorTotal,

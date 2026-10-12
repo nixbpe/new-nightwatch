@@ -92,10 +92,7 @@ function ProjectMembers({
   );
   const isMember = organization !== undefined;
   // A Project belongs to one Organization: a switch made in the shell leaves for the new one's list.
-  const switchedOrganization = useLeaveOnOrganizationSwitch(
-    organizationId,
-    "projects",
-  );
+  const switchedOrganization = useLeaveOnOrganizationSwitch(organizationId);
 
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState<{ opener: HTMLElement | null } | null>(

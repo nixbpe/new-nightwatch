@@ -186,18 +186,26 @@ function EventSummary({
 // Independent query: a failure stays inside this card.
 export function MonitorEventsCard({
   organizationId,
+  projectId,
   monitorId,
   headers,
 }: {
   organizationId: string;
+  projectId: string;
   monitorId: string;
   headers: Monitor["headers"];
 }) {
   const [offset, setOffset] = useState(0);
   const page = { limit: MONITOR_HISTORY_PAGE_SIZE, offset };
   const events = useQuery({
-    queryKey: monitorQueryKeys.events(organizationId, monitorId, page),
-    queryFn: () => fetchMonitorEvents(organizationId, monitorId, page),
+    queryKey: monitorQueryKeys.events(
+      organizationId,
+      projectId,
+      monitorId,
+      page,
+    ),
+    queryFn: () =>
+      fetchMonitorEvents(organizationId, projectId, monitorId, page),
     refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
     placeholderData: keepPreviousData,
   });

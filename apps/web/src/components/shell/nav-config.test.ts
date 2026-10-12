@@ -8,7 +8,6 @@ import {
   mostSpecificLeaf,
   projectSwitchDestination,
   resolveNavPath,
-  type NavLeaf,
 } from "./nav-config";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -81,8 +80,8 @@ describe("projectSwitchDestination (AC-04)", () => {
     ).toBe(`/organizations/${ORG}/projects/${P2}/members`);
   });
 
-  it("lands on the first Project page from anywhere else", () => {
-    const landing = `/organizations/${ORG}/projects/${P2}/members`;
+  it("lands on the monitors, the first Project page, from anywhere else", () => {
+    const landing = `/organizations/${ORG}/projects/${P2}/monitors`;
     expect(projectSwitchDestination("/workspace", ORG, P2)).toBe(landing);
     expect(
       projectSwitchDestination(`/organizations/${ORG}/projects`, ORG, P2),
@@ -96,30 +95,27 @@ describe("projectSwitchDestination (AC-04)", () => {
     ).toBe(landing);
   });
 
-  it("sends a detail page to the list above it", () => {
-    // A monitor detail route does not exist under a Project yet; this is the table F-011 will add to.
-    const leaves: NavLeaf[] = [
-      {
-        label: "สมาชิกโปรเจกต์",
-        icon: "users",
-        path: "/organizations/:organizationId/projects/:projectId/members",
-      },
-      {
-        label: "ตรวจสถานะบริการ",
-        icon: "activity",
-        path: "/organizations/:organizationId/projects/:projectId/monitors",
-      },
-    ];
+  it("sends a monitor detail, edit or history page to the Project's monitor list", () => {
     const monitors = `/organizations/${ORG}/projects/${P2}/monitors`;
     for (const pathname of [
       `/organizations/${ORG}/projects/${P1}/monitors`,
+      `/organizations/${ORG}/projects/${P1}/monitors/new`,
       `/organizations/${ORG}/projects/${P1}/monitors/9f1c`,
       `/organizations/${ORG}/projects/${P1}/monitors/9f1c/edit`,
+      `/organizations/${ORG}/projects/${P1}/monitors/9f1c/checks`,
     ]) {
-      expect(projectSwitchDestination(pathname, ORG, P2, leaves)).toBe(
-        monitors,
-      );
+      expect(projectSwitchDestination(pathname, ORG, P2)).toBe(monitors);
     }
+  });
+
+  it("keeps the members page apart from the monitors", () => {
+    expect(
+      projectSwitchDestination(
+        `/organizations/${ORG}/projects/${P1}/members`,
+        ORG,
+        P2,
+      ),
+    ).toBe(`/organizations/${ORG}/projects/${P2}/members`);
   });
 });
 
@@ -134,9 +130,13 @@ describe("Project scope in the navigation definition", () => {
       projectOrganizationId: other,
     });
     expect(
-      destinations.find((destination) => destination.group === "โปรเจกต์")
-        ?.path,
-    ).toBe(`/organizations/${other}/projects/${P1}/members`);
+      destinations
+        .filter((destination) => destination.group === "โปรเจกต์")
+        .map((destination) => destination.path),
+    ).toEqual([
+      `/organizations/${other}/projects/${P1}/monitors`,
+      `/organizations/${other}/projects/${P1}/members`,
+    ]);
     expect(
       destinations.find((destination) => destination.label === "สมาชิก")?.path,
     ).toBe(`/organizations/${ORG}/members`);
@@ -149,6 +149,12 @@ describe("Project scope in the navigation definition", () => {
       ),
     ).toEqual([
       {
+        label: "ตรวจสถานะบริการ",
+        icon: "activity",
+        path: `/organizations/${ORG}/projects/${P1}/monitors`,
+        group: "โปรเจกต์",
+      },
+      {
         label: "สมาชิกโปรเจกต์",
         icon: "users",
         path: `/organizations/${ORG}/projects/${P1}/members`,
@@ -160,6 +166,21 @@ describe("Project scope in the navigation definition", () => {
         (destination) => destination.group === "โปรเจกต์",
       ),
     ).toBe(false);
+  });
+
+  it("names the monitor list on every monitor page of a Project", () => {
+    for (const page of ["", "/new", "/9f1c", "/9f1c/edit", "/9f1c/checks"]) {
+      expect(
+        getBreadcrumbTrail(
+          `/organizations/${ORG}/projects/${P1}/monitors${page}`,
+        ).map((crumb) => crumb.label),
+      ).toEqual(["ตรวจสถานะบริการ"]);
+    }
+    expect(
+      getRouteOrganizationId(
+        `/organizations/${ORG}/projects/${P1}/monitors/9f1c`,
+      ),
+    ).toBe(ORG);
   });
 
   it("names the Project page, not the Project list, on a Project route", () => {

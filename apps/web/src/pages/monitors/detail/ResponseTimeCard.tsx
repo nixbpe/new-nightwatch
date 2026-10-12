@@ -22,7 +22,7 @@ import {
 } from "../../../components/ui/response-time-series";
 import { SectionHeader } from "../../../components/ui/section-header";
 import { SegmentedControl } from "../../../components/ui/segmented-control";
-import { ApiError } from "../../../lib/api/client";
+import { isMonitorNotFound } from "../useMonitorAccess";
 import {
   fetchMonitorResponseTimes,
   MONITOR_REFETCH_INTERVAL_MS,
@@ -85,10 +85,6 @@ function Kpi({
 const msText = (value: number | null) =>
   value === null ? "ไม่มีข้อมูล" : `${formatNumber(value)} ms`;
 
-function isNotFound(error: unknown): boolean {
-  return error instanceof ApiError && error.code === "MONITOR_NOT_FOUND";
-}
-
 // Caption segments read as one paragraph, the way the design canvas sets them.
 const SEPARATOR = " · ";
 
@@ -106,12 +102,14 @@ const formatBound = (iso: string) => boundFormat.format(new Date(iso));
 // Independent query: a failure stays inside this card.
 export function ResponseTimeCard({
   organizationId,
+  projectId,
   monitorId,
   lastCheckAt,
   intervalSeconds,
   createdAt,
 }: {
   organizationId: string;
+  projectId: string;
   monitorId: string;
   lastCheckAt: string | null;
   intervalSeconds: number;
@@ -131,15 +129,21 @@ export function ResponseTimeCard({
     monitorId: string;
   } | null>(null);
   const query = useQuery({
-    queryKey: monitorQueryKeys.responseTimes(organizationId, monitorId, range),
-    queryFn: () => fetchMonitorResponseTimes(organizationId, monitorId, range),
+    queryKey: monitorQueryKeys.responseTimes(
+      organizationId,
+      projectId,
+      monitorId,
+      range,
+    ),
+    queryFn: () =>
+      fetchMonitorResponseTimes(organizationId, projectId, monitorId, range),
     refetchInterval: (query) =>
-      isDenied(query.state.error) || isNotFound(query.state.error)
+      isDenied(query.state.error) || isMonitorNotFound(query.state.error)
         ? false
         : MONITOR_REFETCH_INTERVAL_MS,
   });
   const denied = isDenied(query.error);
-  const notFound = isNotFound(query.error);
+  const notFound = isMonitorNotFound(query.error);
   const data = denied || notFound ? undefined : query.data;
   const chartProps = useMemo(
     () =>

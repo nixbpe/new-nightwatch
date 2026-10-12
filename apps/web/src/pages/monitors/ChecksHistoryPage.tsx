@@ -21,7 +21,6 @@ import {
 } from "../../components/ui/data-table";
 import { SectionHeader } from "../../components/ui/section-header";
 import { StatusPill } from "../../components/ui/status-pill";
-import { ApiError } from "../../lib/api/client";
 import {
   fetchMonitorChecks,
   fetchMonitorDetail,
@@ -29,7 +28,7 @@ import {
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../lib/api/monitors";
-import { ROLE_LABELS } from "../../lib/roles";
+import { isMonitorNotFound, useMonitorAccess } from "./useMonitorAccess";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import {
   AssertionTable,
@@ -55,10 +54,6 @@ const OUTCOME_TONES = {
   fail: "danger",
   check_error: "muted",
 } as const;
-
-function isNotFound(error: unknown): boolean {
-  return error instanceof ApiError && error.code === "MONITOR_NOT_FOUND";
-}
 
 /**
  * A URL change is marked on the first result at or after it. The oldest row
@@ -134,7 +129,7 @@ function refreshesAutomatically(
   >,
 ): boolean {
   const { data, error, status, fetchMeta } = query.state;
-  if (isNotFound(error) || isDenied(error)) return false;
+  if (isMonitorNotFound(error) || isDenied(error)) return false;
   if (status === "error" && fetchMeta?.fetchMore !== undefined) return false;
   return data?.pages.length === 1;
 }
@@ -238,13 +233,20 @@ const columns: DataTableColumn<Row>[] = [
 ];
 
 export function ChecksHistoryPage() {
-  const { organizationId, monitorId } = useParams();
-  if (organizationId === undefined || monitorId === undefined) return null;
-  // Keyed so nothing carries over to another Organization or monitor.
+  const { organizationId, projectId, monitorId } = useParams();
+  if (
+    organizationId === undefined ||
+    projectId === undefined ||
+    monitorId === undefined
+  ) {
+    return null;
+  }
+  // Keyed so nothing carries over to another Project or monitor.
   return (
     <ChecksHistoryForMonitor
-      key={`${organizationId}:${monitorId}`}
+      key={`${organizationId}:${projectId}:${monitorId}`}
       organizationId={organizationId}
+      projectId={projectId}
       monitorId={monitorId}
     />
   );
@@ -252,18 +254,23 @@ export function ChecksHistoryPage() {
 
 function ChecksHistoryForMonitor({
   organizationId,
+  projectId,
   monitorId,
 }: {
   organizationId: string;
+  projectId: string;
   monitorId: string;
 }) {
-  const { me, mePending, meError, refreshMembershipContext } = useTenant();
+  const { mePending, meError, refreshMembershipContext } = useTenant();
   const switchedOrganization = useLeaveOnOrganizationSwitch(organizationId);
-  const organization = me?.organizations.find(
-    (item) => item.id === organizationId,
+  const access = useMonitorAccess(
+    organizationId,
+    projectId,
+    !switchedOrganization,
   );
+  const { organization, project } = access;
   const isMember = organization !== undefined;
-  const overviewPath = `/organizations/${organizationId}/monitors`;
+  const overviewPath = `/organizations/${organizationId}/projects/${projectId}/monitors`;
 
   // While the membership is re-read after a refusal, the page shows loading, never "denied" for a member who can still read.
   const [refreshing, setRefreshing] = useState(false);
@@ -271,20 +278,24 @@ function ChecksHistoryForMonitor({
 
   // Name and not-found/denied only: it is not refetched here.
   const detail = useQuery({
-    queryKey: monitorQueryKeys.detail(organizationId, monitorId),
-    queryFn: () => fetchMonitorDetail(organizationId, monitorId),
+    queryKey: monitorQueryKeys.detail(organizationId, projectId, monitorId),
+    queryFn: () => fetchMonitorDetail(organizationId, projectId, monitorId),
     enabled: (query) =>
       isMember && !switchedOrganization && !isDenied(query.state.error),
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
-  const detailGone = isNotFound(detail.error) || isDenied(detail.error);
+  const detailGone = isMonitorNotFound(detail.error) || isDenied(detail.error);
 
   const checks = useInfiniteQuery({
-    queryKey: monitorQueryKeys.checksHistory(organizationId, monitorId),
+    queryKey: monitorQueryKeys.checksHistory(
+      organizationId,
+      projectId,
+      monitorId,
+    ),
     queryFn: ({ pageParam }) =>
-      fetchMonitorChecks(organizationId, monitorId, {
+      fetchMonitorChecks(organizationId, projectId, monitorId, {
         limit: MONITOR_CHECKS_CHUNK_SIZE,
         offset: pageParam,
       }),
@@ -317,7 +328,8 @@ function ChecksHistoryForMonitor({
     refetchOnReconnect: refreshesAutomatically,
   });
 
-  const notFound = isNotFound(detail.error) || isNotFound(checks.error);
+  const notFound =
+    isMonitorNotFound(detail.error) || isMonitorNotFound(checks.error);
   const denied = isDenied(detail.error) || isDenied(checks.error);
   useEffect(() => {
     if (!denied || readRefresh !== "idle") return;
@@ -348,12 +360,12 @@ function ChecksHistoryForMonitor({
       <PageHeader
         titleTestId="monitor-checks-title"
         scope={
-          organization === undefined || readDenied
+          project === undefined || readDenied
             ? undefined
             : {
-                mark: organization.name,
-                label: organization.name,
-                tag: ROLE_LABELS[organization.role] ?? organization.role,
+                mark: project.name,
+                label: project.name,
+                tag: access.roleTag,
               }
         }
         title={title}

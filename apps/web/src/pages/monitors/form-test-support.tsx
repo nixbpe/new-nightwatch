@@ -13,7 +13,7 @@ import {
 
 import { OrgSwitcher } from "../../components/shell/OrgSwitcher";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
-import { A, MONITOR_ID } from "./detail-test-support";
+import { A, MONITOR_ID, P } from "./detail-test-support";
 import { DetailPage } from "./DetailPage";
 import { MonitorFormPage } from "./MonitorFormPage";
 import { OverviewPage } from "./OverviewPage";
@@ -31,7 +31,16 @@ afterEach(async () => {
   }
 });
 
-export { A, B, MONITOR_ID, context, detail } from "./detail-test-support";
+export {
+  A,
+  B,
+  MONITOR_ID,
+  P,
+  PROJECT_NAME,
+  context,
+  detail,
+  projectDetail,
+} from "./detail-test-support";
 
 /** The record a write returns: the Detail fixture without its computed state. */
 export function record(overrides: Partial<MonitorRecord> = {}): MonitorRecord {
@@ -85,20 +94,24 @@ export function renderForm(path: string, client?: QueryClient, strict = false) {
         element: <Routing />,
         children: [
           {
-            path: "/organizations/:organizationId/monitors/new",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/new",
             element: <MonitorFormPage mode="create" />,
           },
           {
-            path: "/organizations/:organizationId/monitors/:monitorId/edit",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
             element: <MonitorFormPage mode="edit" />,
           },
           {
-            path: "/organizations/:organizationId/monitors/:monitorId",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
             element: <DetailPage />,
           },
           {
-            path: "/organizations/:organizationId/monitors",
+            path: "/organizations/:organizationId/projects/:projectId/monitors",
             element: <OverviewPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects",
+            element: <p data-testid="projects-page">projects</p>,
           },
         ],
       },
@@ -122,9 +135,9 @@ export function renderForm(path: string, client?: QueryClient, strict = false) {
 }
 
 export const newPath = (organizationId = A) =>
-  `/organizations/${organizationId}/monitors/new`;
+  `/organizations/${organizationId}/projects/${P}/monitors/new`;
 export const editPath = (organizationId = A, monitorId = MONITOR_ID) =>
-  `/organizations/${organizationId}/monitors/${monitorId}/edit`;
+  `/organizations/${organizationId}/projects/${P}/monitors/${monitorId}/edit`;
 
 /** A promise the test settles later, to hold a request open. */
 export function deferred<T>() {

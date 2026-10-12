@@ -34,15 +34,14 @@ export function useOrganizationSwitched(routeOrganizationId: string): boolean {
 }
 
 /**
- * A page whose route names one Organization's record (a monitor, a Project)
- * cannot follow a switch, so a switch made while it is open sends the user to
- * the new Organization's list of the same `section` (monitors: AC-49). Returns
- * true from the render in which the switch is seen so the page can drop its
- * data instead of showing the old Organization's record for a frame.
+ * A page whose route names one Organization's record (a Project, or a monitor
+ * in one) cannot follow a switch, so a switch made while it is open sends the
+ * user to the new Organization's Projects (AC-49). Returns true from the render
+ * in which the switch is seen so the page can drop its data instead of showing
+ * the old Organization's record for a frame.
  */
 export function useLeaveOnOrganizationSwitch(
   routeOrganizationId: string,
-  section: "monitors" | "projects" = "monitors",
 ): boolean {
   const { serverActiveOrgId } = useTenant();
   const navigate = useNavigate();
@@ -57,10 +56,10 @@ export function useLeaveOnOrganizationSwitch(
       // Reconfirming the same destination must not supersede its pending loader.
       // A newer confirmed scope still replaces the old navigation.
       destination.current = serverActiveOrgId;
-      void navigate(`/organizations/${serverActiveOrgId}/${section}`, {
+      void navigate(`/organizations/${serverActiveOrgId}/projects`, {
         replace: true,
       });
     }
-  }, [switched, serverActiveOrgId, section, navigate]);
+  }, [switched, serverActiveOrgId, navigate]);
   return switched;
 }

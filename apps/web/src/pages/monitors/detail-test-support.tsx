@@ -7,6 +7,7 @@ import type {
   MonitorChecksResponse,
   MonitorIncidentsResponse,
   MonitorResponseTimesResponse,
+  ProjectDetail,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
@@ -37,9 +38,28 @@ afterEach(async () => {
 
 export const A = "11111111-1111-4111-8111-111111111111";
 export const B = "22222222-2222-4222-8222-222222222222";
+export const P = "33333333-3333-4333-8333-333333333333";
+export const PROJECT_NAME = "Payments Platform";
 export const MONITOR_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 export const DATA_AS_OF = "2026-09-30T07:32:05.000Z";
 export const NOW = new Date("2026-09-30T08:00:00.000Z");
+
+/** The Project the pages open in; a Project member by default, so an Organization viewer reads only. */
+export function projectDetail(
+  overrides: Partial<ProjectDetail> = {},
+): ProjectDetail {
+  return {
+    id: P,
+    name: PROJECT_NAME,
+    slug: "payments",
+    description: null,
+    memberCount: 3,
+    adminCount: 1,
+    myRole: "member",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 export function context(
   role: "owner" | "admin" | "viewer" | "auditor" = "owner",
@@ -179,7 +199,9 @@ function Harness() {
         data-testid="detail-harness-open"
         type="button"
         onClick={() => {
-          void navigate(`/organizations/${A}/monitors/${MONITOR_ID}`);
+          void navigate(
+            `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
+          );
         }}
       >
         open detail
@@ -204,19 +226,23 @@ export function renderDetail(
         element: <Harness />,
         children: [
           {
-            path: "/organizations/:organizationId/monitors/:monitorId",
+            path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
             element: <DetailPage />,
           },
           {
-            path: "/organizations/:organizationId/monitors",
+            path: "/organizations/:organizationId/projects/:projectId/monitors",
             element: <OverviewPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects",
+            element: <p data-testid="projects-page">projects</p>,
           },
         ],
       },
     ],
     {
       initialEntries: [
-        `/organizations/${organizationId}/monitors/${monitorId}`,
+        `/organizations/${organizationId}/projects/${P}/monitors/${monitorId}`,
       ],
     },
   );

@@ -1,11 +1,18 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 guardUnassignedNetwork();
 import type { MonitorTestResult } from "@nightwatch/api-contract";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
@@ -24,6 +31,7 @@ import {
   noChecks,
   noIncidents,
   noResponseTimes,
+  projectDetail,
 } from "./detail-test-support";
 import {
   A,
@@ -41,6 +49,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -98,6 +110,7 @@ const testResult: { result: MonitorTestResult } = {
 };
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.mocked(fetchOrganizationNotificationSettings).mockResolvedValue({
     organizationId: A,
     version: 1,
@@ -110,7 +123,7 @@ beforeEach(() => {
   vi.mocked(fetchMonitorRecentEvents).mockResolvedValue({ events: [] });
   vi.mocked(fetchMonitorResponseTimes).mockResolvedValue(noResponseTimes);
   vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
     monitors: [],
     page: { limit: 25, offset: 0, total: 0 },
     dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -132,9 +145,10 @@ const saveCreate = () => screen.getByTestId("monitor-form-save");
 const saveEdit = () => screen.getByTestId("monitor-form-save");
 const testButton = () => screen.getByTestId("monitor-form-test");
 
+let openedRouter: ReturnType<typeof renderForm>["router"];
 async function openCreate(): Promise<User> {
   const user = userEvent.setup();
-  renderForm(newPath());
+  openedRouter = renderForm(newPath()).router;
   await screen.findByTestId("monitor-form-name");
   await user.type(screen.getByTestId("monitor-form-name"), "Payments API");
   await user.type(
@@ -218,7 +232,7 @@ describe("Create: auth section and secret entries", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       auth: { type: "none" },
       secrets: [],
     });
@@ -240,7 +254,7 @@ describe("Create: auth section and secret entries", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    const body = createMock.mock.calls[0]?.[1];
+    const body = createMock.mock.calls[0]?.[2];
     expect(body).toMatchObject({
       auth: { type: "bearer" },
       secrets: [{ slot: "auth.token", value: SECRET }],
@@ -266,7 +280,7 @@ describe("Create: auth section and secret entries", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       auth: { type: "basic" },
       secrets: [
         { slot: "auth.username", value: "svc" },
@@ -318,7 +332,7 @@ describe("Create: auth section and secret entries", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       auth: { type: "apiKey", headerName: "X-Key" },
       secrets: [{ slot: "auth.apiKey", value: SECRET }],
     });
@@ -387,7 +401,7 @@ describe("Create: auth section and secret entries", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       secrets: [{ slot: "auth.token", value: SECRET }],
     });
   });
@@ -469,7 +483,7 @@ describe("Create: secret headers", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    const body = createMock.mock.calls[0]?.[1];
+    const body = createMock.mock.calls[0]?.[2];
     const headers = body?.headers ?? [];
     expect(headers).toHaveLength(2);
     const [first, second] = headers;
@@ -535,7 +549,7 @@ describe("Create: secret headers", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    const body = createMock.mock.calls[0]?.[1];
+    const body = createMock.mock.calls[0]?.[2];
     expect(body?.secrets).toEqual([]);
     expect(body?.headers?.[0]).toMatchObject({ value: "plain", secret: false });
   });
@@ -552,7 +566,7 @@ describe("Edit: replace, keep and delete", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       auth: { type: "bearer" },
       secrets: [{ slot: "auth.token", action: "keep" }],
     });
@@ -571,7 +585,7 @@ describe("Edit: replace, keep and delete", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       secrets: [{ slot: "auth.token", action: "replace", value: SECRET }],
     });
   });
@@ -590,7 +604,7 @@ describe("Edit: replace, keep and delete", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       secrets: [{ slot: "auth.token", action: "keep" }],
     });
   });
@@ -607,7 +621,7 @@ describe("Edit: replace, keep and delete", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(JSON.stringify(updateMock.mock.calls[0]?.[2])).not.toContain(SECRET);
+    expect(JSON.stringify(updateMock.mock.calls[0]?.[3])).not.toContain(SECRET);
   });
 
   it("warns that the old secrets are deleted when the type changes and asks for the new type's fields", async () => {
@@ -645,7 +659,7 @@ describe("Edit: replace, keep and delete", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       auth: { type: "basic" },
       secrets: [
         { slot: "auth.username", action: "replace", value: "svc" },
@@ -671,7 +685,7 @@ describe("Edit: replace, keep and delete", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       auth: { type: "none" },
       secrets: [{ slot: "auth.token", action: "delete" }],
     });
@@ -706,7 +720,7 @@ describe("Edit: replace, keep and delete", () => {
       await waitFor(() => {
         expect(updateMock).toHaveBeenCalledTimes(1);
       });
-      const body = updateMock.mock.calls[0]?.[2];
+      const body = updateMock.mock.calls[0]?.[3];
       expect(body?.headers).toEqual([
         { id: HEADER_ID, name: "X-Api-Key", secret: true },
       ]);
@@ -737,7 +751,7 @@ describe("Edit: replace, keep and delete", () => {
       await waitFor(() => {
         expect(updateMock).toHaveBeenCalledTimes(1);
       });
-      const body = updateMock.mock.calls[0]?.[2];
+      const body = updateMock.mock.calls[0]?.[3];
       expect(body?.headers?.[0]).toMatchObject({
         value: "plain",
         secret: false,
@@ -758,7 +772,7 @@ describe("Edit: replace, keep and delete", () => {
       await waitFor(() => {
         expect(updateMock).toHaveBeenCalledTimes(1);
       });
-      expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+      expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
         headers: [],
         secrets: [{ slot: `header.${HEADER_ID}`, action: "delete" }],
       });
@@ -785,7 +799,7 @@ describe("Edit: replace, keep and delete", () => {
       await waitFor(() => {
         expect(updateMock).toHaveBeenCalledTimes(1);
       });
-      const body = updateMock.mock.calls[0]?.[2];
+      const body = updateMock.mock.calls[0]?.[3];
       const id = body?.headers?.[0]?.id ?? "";
       expect(id).toMatch(UUID);
       expect(body?.secrets).toEqual([
@@ -919,7 +933,7 @@ describe("Edit: origin change", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       url: "https://other.example/health",
       secrets: [{ slot: "auth.token", action: "replace", value: SECRET }],
     });
@@ -951,7 +965,7 @@ describe("Edit: origin change", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       auth: { type: "none" },
       headers: [],
     });
@@ -974,7 +988,7 @@ describe("Edit: origin change", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    expect(updateMock.mock.calls[0]?.[2]).toMatchObject({
+    expect(updateMock.mock.calls[0]?.[3]).toMatchObject({
       url: next,
       secrets: [{ slot: "auth.token", action: "keep" }],
     });
@@ -1007,7 +1021,7 @@ describe("Test panel with secrets", () => {
       );
     });
     expect(draftMock).toHaveBeenCalledTimes(1);
-    expect(draftMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(draftMock.mock.calls[0]?.[2]).toMatchObject({
       auth: { type: "bearer" },
       secrets: [{ slot: "auth.token", value: SECRET }],
     });
@@ -1054,7 +1068,7 @@ describe("Test panel with secrets", () => {
       );
     });
     expect(draftMock).not.toHaveBeenCalled();
-    const [, monitorId, body] = editTestMock.mock.calls[0] ?? [];
+    const [, , monitorId, body] = editTestMock.mock.calls[0] ?? [];
     expect(monitorId).toBe(MONITOR_ID);
     expect(body).toMatchObject({
       name: "Payments API",
@@ -1520,19 +1534,25 @@ describe("Secret hygiene", () => {
       await user.click(screen.getByTestId(`shell-organization-${B}`));
       await waitFor(() => {
         expect(screen.getByTestId("location")).toHaveTextContent(
-          `/organizations/${B}/monitors`,
+          `/organizations/${B}/projects`,
         );
       });
       expect(passwordInputs()).toHaveLength(0);
       expect(document.documentElement.outerHTML).not.toContain(SECRET);
-      await reopenCreateFromOverview(user);
+      // The switch leaves for the Projects of B; the form is then opened again in one of them.
+      await act(async () => {
+        await openedRouter.navigate(newPath(B));
+      });
+      await screen.findByTestId("monitor-form-name");
+      await user.click(screen.getByTestId("monitor-form-mode-advanced"));
+      await chooseAuth(user, "bearer");
       expect(screen.getByTestId("monitor-secret-auth.token-value")).toHaveValue(
         "",
       );
     });
 
     it("on unmount: the store forgets the value", async () => {
-      const { renderHook, act } = await import("@testing-library/react");
+      const { renderHook } = await import("@testing-library/react");
       const { useSecretStore, useClearSecretsOnUnmount } =
         await import("./form/secrets");
       const hook = renderHook(() => {

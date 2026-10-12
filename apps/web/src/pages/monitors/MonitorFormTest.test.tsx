@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
@@ -32,6 +33,7 @@ import {
   noChecks,
   noIncidents,
   noResponseTimes,
+  projectDetail,
 } from "./detail-test-support";
 import {
   A,
@@ -48,6 +50,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -73,9 +79,10 @@ const editTestMock = vi.mocked(testMonitorEdit);
 const createMock = vi.mocked(createMonitor);
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.mocked(fetchMeContext).mockResolvedValue(context());
   vi.mocked(fetchMonitorList).mockResolvedValue({
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
     monitors: [],
     page: { limit: 25, offset: 0, total: 0 },
     dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -756,7 +763,7 @@ describe("Saving and testing are independent", () => {
     const user = await openCreate();
     await user.click(testButton());
     await screen.findByTestId("monitor-test-result");
-    const body = draftMock.mock.calls[0]?.[1];
+    const body = draftMock.mock.calls[0]?.[2];
     expect(body).toMatchObject({
       name: "Payments API",
       secrets: [],
@@ -936,7 +943,7 @@ describe("Alerts section controls", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       alerts: {
         failureThreshold: 2,
         downEnabled: true,
@@ -967,7 +974,7 @@ describe("Alerts section controls", () => {
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
-    expect(createMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(createMock.mock.calls[0]?.[2]).toMatchObject({
       alerts: {
         failureThreshold: 3,
         downEnabled: false,

@@ -13,7 +13,7 @@ export type NavLeaf = {
   count?: NavCountSource;
 };
 
-/** `monitors`: the active organization's monitor `summary.total`; `unread`: the inbox unread count. */
+/** `monitors`: the current Project's monitor `summary.total`; `unread`: the inbox unread count. */
 export type NavCountSource = "monitors" | "unread";
 
 /** What a group's pages belong to: the current Project, the active organization or the signed-in user. */
@@ -34,18 +34,17 @@ export function isNavGroup(item: NavItem): item is NavGroup {
 // Leaves must be real routes in router.tsx; the mockup's placeholder sections are intentionally omitted.
 // The Project group lists only pages that exist under a Project; the switcher above it is not a leaf.
 export const NAV_ITEMS: NavItem[] = [
-  // The organization's overview and monitors stay top-level, as before Project scope existed.
   { label: "ภาพรวม", icon: "grid", path: "/workspace" },
-  {
-    label: "ตรวจสถานะบริการ",
-    icon: "activity",
-    path: "/organizations/:organizationId/monitors",
-    count: "monitors",
-  },
   {
     label: "โปรเจกต์",
     scope: "project",
     children: [
+      {
+        label: "ตรวจสถานะบริการ",
+        icon: "activity",
+        path: "/organizations/:organizationId/projects/:projectId/monitors",
+        count: "monitors",
+      },
       {
         label: "สมาชิกโปรเจกต์",
         icon: "users",

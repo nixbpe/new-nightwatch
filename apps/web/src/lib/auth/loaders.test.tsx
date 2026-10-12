@@ -30,7 +30,6 @@ import {
   fetchMonitorDetail,
   fetchMonitorList,
   monitorQueryKeys,
-  OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import {
   fetchProjectDetail,
@@ -78,6 +77,7 @@ type SessionUser = {
   emailVerified: boolean;
 };
 
+const P = "33333333-3333-4333-8333-333333333333";
 const { sessionState, getSessionMock } = vi.hoisted(() => {
   const sessionState = {
     data: null as { user: SessionUser } | null,
@@ -450,15 +450,9 @@ describe("protected-route gates (workspaceLoader / settingsLoader)", () => {
   });
 });
 
-describe("workspaceLoader overview prefetch", () => {
+describe("workspaceLoader", () => {
   const organizationId = "11111111-1111-4111-8111-111111111111";
   const otherId = "22222222-2222-4222-8222-222222222222";
-  const overviewList: MonitorListResponse = {
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
-    monitors: [],
-    page: { limit: 50, offset: 0, total: 0 },
-    dataAsOf: "2026-09-30T07:32:05.000Z",
-  };
   const orgs = [
     { id: otherId, name: "Other", slug: "other", role: "viewer" as const },
     { id: organizationId, name: "Acme", slug: "acme", role: "owner" as const },
@@ -471,26 +465,18 @@ describe("workspaceLoader overview prefetch", () => {
     fetchMonitorListMock.mockReset();
   });
 
-  it("stages the active organization's overview list under the page's own key", async () => {
+  it("loads the membership context and requests no list: the list belongs to a Project the loader does not know", async () => {
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockResolvedValue({
       ...meContext,
       organizations: orgs,
       lastActiveTenantId: organizationId,
     });
-    fetchMonitorListMock.mockResolvedValue(overviewList);
     renderAt([protectedWorkspace], "/workspace");
 
     expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
-    expect(fetchMonitorListMock).toHaveBeenCalledWith(
-      organizationId,
-      OVERVIEW_LIST_PARAMS,
-    );
-    expect(
-      peekStagedQueryClient()?.client.getQueryData(
-        monitorQueryKeys.list(organizationId, OVERVIEW_LIST_PARAMS),
-      ),
-    ).toEqual(overviewList);
+    expect(fetchMeContextMock).toHaveBeenCalled();
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
 
   it("does not prefetch a tenant without server-confirmed selection", async () => {
@@ -676,12 +662,12 @@ describe("audit log loaders", () => {
 describe("monitorsOverviewLoader", () => {
   const organizationId = "11111111-1111-4111-8111-111111111111";
   const route: RouteObject = {
-    path: "/organizations/:organizationId/monitors",
+    path: "/organizations/:organizationId/projects/:projectId/monitors",
     loader: monitorsOverviewLoader,
     element: <div data-testid="monitors-area">monitors-area</div>,
   };
   const emptyList: MonitorListResponse = {
-    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
     monitors: [],
     page: { limit: 25, offset: 0, total: 0 },
     dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -697,12 +683,15 @@ describe("monitorsOverviewLoader", () => {
       lastActiveTenantId: organizationId,
     });
     fetchMonitorListMock.mockResolvedValue(emptyList);
-    renderAt([route], `/organizations/${organizationId}/monitors`);
+    renderAt(
+      [route],
+      `/organizations/${organizationId}/projects/${P}/monitors`,
+    );
 
     expect(await screen.findByTestId("monitors-area")).toBeInTheDocument();
     expect(
       peekStagedQueryClient()?.client.getQueryData(
-        monitorQueryKeys.list(organizationId, { limit: 25, offset: 0 }),
+        monitorQueryKeys.list(organizationId, P, { limit: 25, offset: 0 }),
       ),
     ).toEqual(emptyList);
   });
@@ -710,7 +699,10 @@ describe("monitorsOverviewLoader", () => {
   it("requests nothing for an Organization the user does not belong to", async () => {
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockResolvedValue(meContext);
-    renderAt([route], `/organizations/${organizationId}/monitors`);
+    renderAt(
+      [route],
+      `/organizations/${organizationId}/projects/${P}/monitors`,
+    );
 
     expect(await screen.findByTestId("monitors-area")).toBeInTheDocument();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
@@ -718,10 +710,13 @@ describe("monitorsOverviewLoader", () => {
 
   it("sends an anonymous visitor to sign in with a return path", async () => {
     sessionState.data = null;
-    renderAt([route], `/organizations/${organizationId}/monitors`);
+    renderAt(
+      [route],
+      `/organizations/${organizationId}/projects/${P}/monitors`,
+    );
 
     expect(await screen.findByTestId("from")).toHaveTextContent(
-      `/organizations/${organizationId}/monitors`,
+      `/organizations/${organizationId}/projects/${P}/monitors`,
     );
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
@@ -845,11 +840,11 @@ describe("monitorDetailLoader", () => {
   const organizationId = "11111111-1111-4111-8111-111111111111";
   const monitorId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const route: RouteObject = {
-    path: "/organizations/:organizationId/monitors/:monitorId",
+    path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId",
     loader: monitorDetailLoader,
     element: <div data-testid="detail-area">detail-area</div>,
   };
-  const path = `/organizations/${organizationId}/monitors/${monitorId}`;
+  const path = `/organizations/${organizationId}/projects/${P}/monitors/${monitorId}`;
 
   it("stages the monitor in the identity client for a member", async () => {
     sessionState.data = { user: VERIFIED };
@@ -867,11 +862,12 @@ describe("monitorDetailLoader", () => {
     expect(await screen.findByTestId("detail-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).toHaveBeenCalledExactlyOnceWith(
       organizationId,
+      P,
       monitorId,
     );
     expect(
       peekStagedQueryClient()?.client.getQueryData(
-        monitorQueryKeys.detail(organizationId, monitorId),
+        monitorQueryKeys.detail(organizationId, P, monitorId),
       ),
     ).toEqual(response);
   });
@@ -915,12 +911,12 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
   const organizationId = "11111111-1111-4111-8111-111111111111";
   const monitorId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const editRoute: RouteObject = {
-    path: "/organizations/:organizationId/monitors/:monitorId/edit",
+    path: "/organizations/:organizationId/projects/:projectId/monitors/:monitorId/edit",
     loader: monitorEditLoader,
     element: <div data-testid="edit-area">edit-area</div>,
   };
   const createRoute: RouteObject = {
-    path: "/organizations/:organizationId/monitors/new",
+    path: "/organizations/:organizationId/projects/:projectId/monitors/new",
     loader: monitorCreateLoader,
     element: <div data-testid="create-area">create-area</div>,
   };
@@ -936,7 +932,7 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
     ],
     lastActiveTenantId: organizationId,
   };
-  const editPath = `/organizations/${organizationId}/monitors/${monitorId}/edit`;
+  const editPath = `/organizations/${organizationId}/projects/${P}/monitors/${monitorId}/edit`;
 
   afterEach(() => {
     sessionState.data = null;
@@ -955,11 +951,12 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
     expect(await screen.findByTestId("edit-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).toHaveBeenCalledExactlyOnceWith(
       organizationId,
+      P,
       monitorId,
     );
     expect(
       peekStagedQueryClient()?.client.getQueryData(
-        monitorQueryKeys.detail(organizationId, monitorId),
+        monitorQueryKeys.detail(organizationId, P, monitorId),
       ),
     ).toEqual(fresh);
   });
@@ -992,7 +989,10 @@ describe("monitorEditLoader and monitorCreateLoader", () => {
   it("lets a signed-in member open Create without any monitor request", async () => {
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockResolvedValue(member);
-    renderAt([createRoute], `/organizations/${organizationId}/monitors/new`);
+    renderAt(
+      [createRoute],
+      `/organizations/${organizationId}/projects/${P}/monitors/new`,
+    );
     expect(await screen.findByTestId("create-area")).toBeInTheDocument();
     expect(fetchMonitorDetailMock).not.toHaveBeenCalled();
   });
@@ -1774,7 +1774,7 @@ describe("verified bootstrap barrier", () => {
       context: {},
     };
     fetchMonitorListMock.mockResolvedValue({
-      summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+      summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
       monitors: [],
       page: { limit: 50, offset: 0, total: 0 },
       dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -1803,10 +1803,7 @@ describe("verified bootstrap barrier", () => {
     });
     await loading;
     expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
-    expect(fetchMonitorListMock).toHaveBeenCalledWith(
-      organizationId,
-      OVERVIEW_LIST_PARAMS,
-    );
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
     expect(fetchNotificationsMock).toHaveBeenCalledWith(organizationId);
   });
 

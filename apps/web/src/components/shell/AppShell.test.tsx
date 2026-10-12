@@ -116,11 +116,27 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMonitorList: fetchMonitorListMock,
 }));
-// The Project switcher reads these; no Project is the quietest state (ProjectSwitcher.test.tsx covers the rest).
+// One readable Project, so the Project group and the monitors' leaf resolve (ProjectSwitcher.test.tsx covers the rest).
 vi.mock("../../lib/api/projects", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  fetchProjectList: () => Promise.resolve({ projects: [] }),
-  fetchLastProject: () => Promise.resolve({ projectId: null }),
+  fetchProjectList: () =>
+    Promise.resolve({
+      projects: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          name: "Alpha",
+          slug: "alpha",
+          description: null,
+          memberCount: 1,
+          myRole: "admin",
+          updatedAt: "2026-10-01T00:00:00.000Z",
+        },
+      ],
+    }),
+  fetchLastProject: () =>
+    Promise.resolve({ projectId: "33333333-3333-4333-8333-333333333333" }),
+  rememberLastProject: () =>
+    Promise.resolve({ projectId: "33333333-3333-4333-8333-333333333333" }),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
@@ -140,6 +156,10 @@ const fetchOrganizationMembersMock = vi.mocked(fetchOrganizationMembers);
 guardUnassignedNetwork();
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
+const PROJECT = "33333333-3333-4333-8333-333333333333";
+const MONITORS_A = `/organizations/${ORG_A}/projects/${PROJECT}/monitors`;
+const MONITORS_LEAF =
+  "shell-nav-/organizations/:organizationId/projects/:projectId/monitors";
 const ownerOrg = {
   id: ORG_A,
   name: "Org A",
@@ -209,8 +229,12 @@ function renderShell(
           },
           { path: "/notifications", element: <NotificationsPage /> },
           {
-            path: "/organizations/:organizationId/monitors",
+            path: "/organizations/:organizationId/projects/:projectId/monitors",
             element: <p data-testid="shell-route-monitors">หน้ามอนิเตอร์</p>,
+          },
+          {
+            path: "/organizations/:organizationId/projects",
+            element: <p data-testid="shell-route-projects">หน้าโปรเจกต์</p>,
           },
           {
             path: "/settings/security",
@@ -291,9 +315,9 @@ fetchNotificationsMock.mockResolvedValue({
 fetchUnreadCountMock.mockResolvedValue({ unreadCount: 0 });
 // The sidebar reads `summary.total`; the overview page also renders the full response.
 const monitorList = (total: number) => ({
-  summary: { up: 0, down: 0, unknown: 0, paused: 0, total, limit: 50 },
+  summary: { up: 0, down: 0, unknown: 0, paused: 0, total, limit: 20 },
   monitors: [],
-  page: { limit: 50, offset: 0, total },
+  page: { limit: 20, offset: 0, total },
   dataAsOf: "2026-10-02T05:00:00.000Z",
 });
 fetchMonitorListMock.mockResolvedValue(monitorList(0));
@@ -327,9 +351,7 @@ describe("AppShell", () => {
     renderShell();
 
     const nav = await screen.findByTestId("shell-navigation");
-    const monitors = await within(nav).findByTestId(
-      "shell-nav-/organizations/:organizationId/monitors",
-    );
+    const monitors = await within(nav).findByTestId(MONITORS_LEAF);
     await waitFor(() => {
       expect(monitors).toHaveTextContent("24");
     });
@@ -736,7 +758,7 @@ describe("AppShell", () => {
     await findScope("Org A", "owner");
   });
 
-  it("switching organization on the monitors route moves the page to the new organization", async () => {
+  it("keeps a Project's monitor route in the Project's own organization when the active one is switched", async () => {
     fetchMeContextMock.mockResolvedValue(
       meContext([ownerOrg, viewerOrg], ORG_A),
     );
@@ -744,7 +766,7 @@ describe("AppShell", () => {
       meContext([ownerOrg, viewerOrg], ORG_B),
     );
     const user = userEvent.setup();
-    renderShell(undefined, `/organizations/${ORG_A}/monitors`);
+    renderShell(undefined, MONITORS_A);
     await waitFor(() => {
       const element = screen.getByTestId("shell-organization-switch");
       expect(element).toHaveTextContent("Org A");
@@ -760,20 +782,22 @@ describe("AppShell", () => {
 
     const nav = screen.getByTestId("shell-navigation");
     await vi.waitFor(() => {
-      expect(
-        within(nav).getByTestId(
-          "shell-nav-/organizations/:organizationId/monitors",
-        ),
-      ).toHaveAttribute("href", `/organizations/${ORG_B}/monitors`);
+      expect(screen.getByTestId("shell-organization-switch")).toHaveTextContent(
+        "Org B",
+      );
     });
-    // The page acts on the URL's organization, so the crumb follows only if the URL moved.
+    // The page acts on the URL's organization and Project; the pages that name one leave on their own (useLeaveOnOrganizationSwitch).
+    expect(within(nav).getByTestId(MONITORS_LEAF)).toHaveAttribute(
+      "href",
+      MONITORS_A,
+    );
     const breadcrumb = screen.getByTestId("shell-breadcrumb");
     expect(
       await waitFor(() => {
         const element = within(breadcrumb).getByTestId(
           "shell-breadcrumb-organization",
         );
-        expect(element).toHaveTextContent("Org B");
+        expect(element).toHaveTextContent("Org A");
         return element;
       }),
     ).toBeInTheDocument();
@@ -939,11 +963,10 @@ describe("AppShell", () => {
       });
 
       const nav = screen.getByTestId("shell-navigation");
-      expect(
-        within(nav).getByTestId(
-          "shell-nav-/organizations/:organizationId/monitors",
-        ),
-      ).toHaveAttribute("href", `/organizations/${ORG_A}/monitors`);
+      expect(within(nav).getByTestId(MONITORS_LEAF)).toHaveAttribute(
+        "href",
+        MONITORS_A,
+      );
 
       await user.keyboard("{Meta>}k{/Meta}");
       const dialog = screen.getByTestId("shell-command-dialog");
@@ -1026,26 +1049,21 @@ describe("AppShell", () => {
     await screen.findByTestId("shell-navigation");
 
     const nav = screen.getByTestId("shell-navigation");
-    expect(
-      within(nav).queryByTestId(
-        "shell-nav-/organizations/:organizationId/monitors",
-      ),
-    ).toBeNull();
+    expect(within(nav).queryByTestId(MONITORS_LEAF)).toBeNull();
   });
 
   it("marks the monitors leaf current on the monitors route", async () => {
     fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
-    renderShell(undefined, `/organizations/${ORG_A}/monitors`);
+    renderShell(undefined, MONITORS_A);
     expect(
       await screen.findByTestId("shell-route-monitors"),
     ).toBeInTheDocument();
 
     const nav = screen.getByTestId("shell-navigation");
-    expect(
-      await within(nav).findByTestId(
-        "shell-nav-/organizations/:organizationId/monitors",
-      ),
-    ).toHaveAttribute("aria-current", "page");
+    expect(await within(nav).findByTestId(MONITORS_LEAF)).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(within(nav).getByTestId("shell-nav-/workspace")).not.toHaveAttribute(
       "aria-current",
     );
@@ -1067,10 +1085,11 @@ describe("AppShell", () => {
     expect(input).toHaveFocus();
     expect(
       within(dialog).getAllByTestId(/^shell-command-option-/),
-    ).toHaveLength(12);
+    ).toHaveLength(13);
     for (const path of [
       "/workspace",
-      `/organizations/${ORG_A}/monitors`,
+      MONITORS_A,
+      `/organizations/${ORG_A}/projects/${PROJECT}/members`,
       "/notifications",
       "/settings",
       "/settings/profile",

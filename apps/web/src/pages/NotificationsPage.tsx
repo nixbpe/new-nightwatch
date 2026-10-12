@@ -130,7 +130,7 @@ function downReason(reason: string) {
 }
 /** Monitor items link to the Detail page; a deleted monitor is reported there. */
 function monitorPath(item: MonitorNotificationItem) {
-  return `/organizations/${item.organizationId}/monitors/${item.subject.monitorId}`;
+  return `/organizations/${item.organizationId}/projects/${item.subject.projectId}/monitors/${item.subject.monitorId}`;
 }
 /** Export results link to the section where the requester's files are listed. */
 function auditExportPath(organizationId: string) {

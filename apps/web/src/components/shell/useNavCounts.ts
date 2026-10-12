@@ -26,12 +26,21 @@ export function useUnreadCount() {
 // loader), so the list page and the nav row share one cached response.
 const FIRST_PAGE = { limit: MONITOR_LIST_PAGE_SIZE, offset: 0 };
 
-/** `summary.total` of the organization's monitors; undefined while unknown or failed. */
-export function useMonitorTotal(organizationId: string | null) {
+/** `summary.total` of the Project's monitors; undefined while unknown or failed. */
+export function useMonitorTotal(
+  organizationId: string | null,
+  projectId: string | null,
+) {
+  const scoped = organizationId !== null && projectId !== null;
   const query = useQuery({
-    queryKey: monitorQueryKeys.list(organizationId ?? "", FIRST_PAGE),
-    queryFn: () => fetchMonitorList(organizationId ?? "", FIRST_PAGE),
-    enabled: organizationId !== null,
+    queryKey: monitorQueryKeys.list(
+      organizationId ?? "",
+      projectId ?? "",
+      FIRST_PAGE,
+    ),
+    queryFn: () =>
+      fetchMonitorList(organizationId ?? "", projectId ?? "", FIRST_PAGE),
+    enabled: scoped,
     select: (data) => data.summary.total,
   });
   return query.isError ? undefined : query.data;

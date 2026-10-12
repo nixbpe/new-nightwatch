@@ -23,10 +23,12 @@ const TD = "border-t border-foreground/10 px-4 py-3.5 align-middle";
 
 export function UptimeSection({
   organizationId,
+  projectId,
   monitors,
   total,
 }: {
   organizationId: string;
+  projectId: string;
   monitors: MonitorRow[];
   total: number;
 }) {
@@ -43,7 +45,7 @@ export function UptimeSection({
         title="ความพร้อมใช้งาน 30 วัน"
         meta={
           <Link
-            to={`/organizations/${organizationId}/monitors`}
+            to={`/organizations/${organizationId}/projects/${projectId}/monitors`}
             className="text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             ดูทั้ง <span className="font-mono">{total}</span> รายการ →
@@ -76,7 +78,7 @@ export function UptimeSection({
                   <td className={TD}>
                     <Link
                       data-testid={`monitor-list-name-${row.id}`}
-                      to={`/organizations/${organizationId}/monitors/${row.id}`}
+                      to={`/organizations/${organizationId}/projects/${projectId}/monitors/${row.id}`}
                       className="font-medium text-heading underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       {row.name}

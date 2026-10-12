@@ -128,7 +128,7 @@ describe("AuditEventPage", () => {
       "href",
       "/organizations/" +
         ORG_A +
-        "/monitors/99999999-9999-4999-8999-999999999999",
+        "/projects/88888888-8888-4888-8888-888888888888/monitors/99999999-9999-4999-8999-999999999999",
     );
     expect(screen.getByTestId("audit-event-target-link")).toHaveTextContent(
       "api-prod",
@@ -152,6 +152,25 @@ describe("AuditEventPage", () => {
     expect(
       screen.getByTestId("audit-event-target").textContent.trim(),
     ).not.toBe("");
+    expect(
+      screen.queryByTestId("audit-event-target-link"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a monitor target recorded before Projects as text, without a link", async () => {
+    open(
+      makeDetail({
+        target: {
+          type: "monitor",
+          monitorId: "99999999-9999-4999-8999-999999999999",
+          displayName: "api-prod",
+          deleted: false,
+        },
+      }),
+    );
+    expect(await screen.findByTestId("audit-event-target")).toHaveTextContent(
+      "api-prod",
+    );
     expect(
       screen.queryByTestId("audit-event-target-link"),
     ).not.toBeInTheDocument();

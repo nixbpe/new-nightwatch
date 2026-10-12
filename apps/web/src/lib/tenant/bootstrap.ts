@@ -51,7 +51,7 @@ export function discardUnconfirmedTenantQueries(
     predicate: (query) =>
       !(
         query.queryKey[1] === "monitors" &&
-        query.queryKey[3] === "checks-history" &&
+        query.queryKey[4] === "checks-history" &&
         query.getObserversCount() > 0
       ),
   });

@@ -16,8 +16,6 @@ import {
   Time,
   TIME_ZONE,
 } from "./format";
-import { IntervalText } from "./detail/IntervalText";
-import { SslLabel } from "./SslLabel";
 
 type Row = MonitorListResponse["monitors"][number];
 
@@ -101,9 +99,18 @@ export function StatusDetail({ row }: { row: Row }) {
   );
 }
 
+// The dash is the visible mark of a missing value; the sentence is for screen readers.
+export function NoData() {
+  return (
+    <span className="whitespace-nowrap">
+      <span aria-hidden="true">—</span>
+      <span className="sr-only">{NO_DATA}</span>
+    </span>
+  );
+}
+
 export function Uptime({ window }: { window: Row["uptime"]["h24"] }) {
-  if (window.percent === null)
-    return <span className="whitespace-nowrap">{NO_DATA}</span>;
+  if (window.percent === null) return <NoData />;
   return (
     <span className="flex flex-col whitespace-nowrap">
       <span data-testid="monitor-list-uptime-value" className="font-mono">
@@ -123,15 +130,39 @@ export function Uptime({ window }: { window: Row["uptime"]["h24"] }) {
 
 export function MonitorTable({
   organizationId,
+  projectId,
   monitors,
 }: {
   organizationId: string;
+  projectId: string;
   monitors: Row[];
 }) {
   const columns: DataTableColumn<Row>[] = [
     {
+      key: "name",
+      header: "มอนิเตอร์",
+      cell: (row) => (
+        <span className="flex min-w-40 max-w-[320px] flex-col py-1.5">
+          <Link
+            data-testid={`monitor-list-name-${row.id}`}
+            to={`/organizations/${organizationId}/projects/${projectId}/monitors/${row.id}`}
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            {row.name}
+          </Link>
+          <span
+            data-testid="monitor-list-url"
+            title={row.url}
+            className="truncate font-mono text-xs text-foreground-secondary"
+          >
+            {row.url}
+          </span>
+        </span>
+      ),
+    },
+    {
       key: "health",
-      header: `สถานะ (${TIME_ZONE})`,
+      header: "สถานะ",
       cell: (row) => (
         <span className="flex flex-col items-start py-1.5">
           <HealthPill testId="monitor-list-health" health={row.health} />
@@ -140,84 +171,32 @@ export function MonitorTable({
       ),
     },
     {
-      key: "name",
-      header: "ชื่อ",
-      cell: (row) => (
-        <Link
-          data-testid={`monitor-list-name-${row.id}`}
-          to={`/organizations/${organizationId}/monitors/${row.id}`}
-          className="block min-w-32 max-w-[240px] font-medium text-primary underline-offset-4 hover:underline"
-        >
-          {row.name}
-        </Link>
-      ),
-    },
-    {
-      key: "url",
-      header: "URL",
-      mono: true,
-      cell: (row) => (
-        <span title={row.url} className="block max-w-[160px] truncate">
-          {row.url}
-        </span>
-      ),
-    },
-    {
-      key: "method",
-      header: "เมธอด",
-      mono: true,
-      cell: (row) => row.method,
-    },
-    {
-      key: "interval",
-      header: "รอบตรวจ",
-      cell: (row) => (
-        <span className="whitespace-nowrap">
-          <IntervalText seconds={row.intervalSeconds} />
-        </span>
-      ),
-    },
-    {
-      key: "h24",
-      header: "24 ชม.",
-      cell: (row) => <Uptime window={row.uptime.h24} />,
-    },
-    {
-      key: "d30",
-      header: "30 วัน",
-      cell: (row) => <Uptime window={row.uptime.d30} />,
-    },
-    {
-      key: "responseTime",
-      header: "ตอบสนอง",
+      key: "p95",
+      header: "เวลาตอบสนอง · p95 · 24 ชม.",
       align: "end",
       cell: (row) =>
-        row.lastResponseTimeMs === null ? (
-          <span className="whitespace-nowrap">{NO_DATA}</span>
+        row.responseP95Ms24h === null ? (
+          <NoData />
         ) : (
-          <span className="font-mono whitespace-nowrap tabular-nums">
-            {formatNumber(row.lastResponseTimeMs)} ms
+          <span
+            data-testid="monitor-list-p95-value"
+            className="font-mono whitespace-nowrap tabular-nums"
+          >
+            {formatNumber(row.responseP95Ms24h)} ms
           </span>
         ),
     },
     {
-      key: "ssl",
-      header: "SSL",
-      cell: (row) => (
-        <SslLabel
-          testId="monitor-list-ssl"
-          level={row.ssl.level}
-          daysRemaining={row.ssl.daysRemaining}
-          className="whitespace-nowrap"
-        />
-      ),
+      key: "h24",
+      header: "ความพร้อมใช้งาน · 24 ชม.",
+      cell: (row) => <Uptime window={row.uptime.h24} />,
     },
     {
       key: "lastCheck",
       header: `ตรวจล่าสุด (${TIME_ZONE})`,
       cell: (row) =>
         row.lastCheckAt === null ? (
-          <span className="whitespace-nowrap">{NO_DATA}</span>
+          <NoData />
         ) : (
           <Time
             testId="monitor-list-check-time"

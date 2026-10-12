@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isLeafActive } from "../../components/shell/nav-config";
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
+import { fetchProjectDetail } from "../../lib/api/projects";
 import {
   fetchMonitorChecks,
   fetchMonitorDetail,
@@ -43,6 +44,8 @@ import {
   noResponseTimes,
   NOW,
   renderDetail,
+  P,
+  projectDetail,
 } from "./detail-test-support";
 import { ResponseTimeCard } from "./detail/ResponseTimeCard";
 import { formatDateTime, formatTime, TIME_ZONE } from "./format";
@@ -52,6 +55,10 @@ vi.mock("../../lib/api/me", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMeContext: vi.fn(),
   updateActiveOrganization: vi.fn(),
+}));
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectDetail: vi.fn(),
 }));
 vi.mock("../../lib/api/notifications", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -84,6 +91,7 @@ const fetchResponseTimesMock = vi.mocked(fetchMonitorResponseTimes);
 const fetchOrgAlertsMock = vi.mocked(fetchOrganizationNotificationSettings);
 
 beforeEach(() => {
+  vi.mocked(fetchProjectDetail).mockResolvedValue(projectDetail());
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   fetchMeContextMock.mockResolvedValue(context());
   fetchChecksMock.mockResolvedValue(noChecks);
@@ -844,7 +852,7 @@ describe("Detail checks history link", () => {
     ).toHaveAttribute("aria-hidden", "true");
     expect(link).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/checks`,
     );
     expect(screen.queryByTestId("monitor-checks-records")).toBeNull();
     expect(screen.queryByTestId("monitor-checks-summary")).toBeNull();
@@ -867,7 +875,7 @@ describe("Detail access", () => {
       await readyDetail();
       expect(screen.getByTestId("monitor-detail-read-only")).toHaveAttribute(
         "data-role",
-        role,
+        "member",
       );
       expect(screen.getByTestId("monitor-detail-read-only")).toHaveTextContent(
         /\S/,
@@ -875,8 +883,39 @@ describe("Detail access", () => {
       expect(screen.queryByTestId("monitor-detail-edit")).toBeNull();
       expect(screen.queryByTestId("monitor-detail-toggle")).toBeNull();
       expect(screen.queryByTestId("monitor-detail-delete")).toBeNull();
+      // A Project member never asks for the last response (AC-03).
+      expect(fetchLastResponseMock).not.toHaveBeenCalled();
     },
   );
+  it("gives a Project admin who is only an Organization viewer the write controls and the last response", async () => {
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "admin" }),
+    );
+    showDetail(detail());
+    renderDetail();
+    await readyDetail();
+    expect(screen.getByTestId("monitor-detail-edit")).toHaveRole("link");
+    expect(screen.getByTestId("monitor-detail-toggle")).toHaveRole("button");
+    expect(screen.getByTestId("monitor-detail-delete")).toHaveRole("button");
+    expect(screen.queryByTestId("monitor-detail-read-only")).toBeNull();
+    await waitFor(() => {
+      expect(fetchLastResponseMock).toHaveBeenCalledWith(A, P, MONITOR_ID);
+    });
+    // The Organization's own alert setting is for Owners and Admins, not for a Project admin.
+    expect(fetchOrgAlertsMock).not.toHaveBeenCalled();
+  });
+  it("gives an Organization admin who is not in the Project the write controls", async () => {
+    fetchMeContextMock.mockResolvedValue(context("admin"));
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: null }),
+    );
+    showDetail(detail());
+    renderDetail();
+    await readyDetail();
+    expect(screen.getByTestId("monitor-detail-edit")).toHaveRole("link");
+    expect(screen.queryByTestId("monitor-detail-read-only")).toBeNull();
+  });
   it("gives owner and admin the edit link, pause and delete", async () => {
     fetchMeContextMock.mockResolvedValue(context("admin"));
     showDetail(detail());
@@ -887,7 +926,7 @@ describe("Detail access", () => {
     expect(screen.getByTestId("monitor-detail-delete")).toHaveRole("button");
     expect(screen.getByTestId("monitor-detail-edit")).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/${MONITOR_ID}/edit`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/edit`,
     );
     expect(screen.getByTestId("monitor-detail-toggle")).toBeVisible();
     expect(screen.getByTestId("monitor-detail-toggle")).toHaveAttribute(
@@ -954,11 +993,11 @@ describe("Detail access", () => {
     );
     expect(screen.getByTestId("monitor-detail-back")).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors`,
+      `/organizations/${A}/projects/${P}/monitors`,
     );
     expect(screen.getByTestId("monitor-detail-not-found-back")).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors`,
+      `/organizations/${A}/projects/${P}/monitors`,
     );
     expect(document.body.textContent).not.toContain("Payments API");
     expect(document.body.innerHTML).not.toContain("Payments API");
@@ -1202,7 +1241,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     onlineManager.setOnline(false);
     await waitFor(() => {
       expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
           ?.fetchStatus,
       ).toBe("paused");
     });
@@ -1237,7 +1276,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     onlineManager.setOnline(false);
     await waitFor(() => {
       expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
           ?.fetchStatus,
       ).toBe("paused");
     });
@@ -1274,7 +1313,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     onlineManager.setOnline(false);
     await waitFor(() => {
       expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
           ?.fetchStatus,
       ).toBe("paused");
     });
@@ -1319,7 +1358,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     onlineManager.setOnline(false);
     await waitFor(() => {
       expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
           ?.fetchStatus,
       ).toBe("paused");
     });
@@ -1350,7 +1389,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     onlineManager.setOnline(false);
     await waitFor(() => {
       expect(
-        freshClient.getQueryState(monitorQueryKeys.detail(A, MONITOR_ID))
+        freshClient.getQueryState(monitorQueryKeys.detail(A, P, MONITOR_ID))
           ?.fetchStatus,
       ).toBe("paused");
     });
@@ -1416,7 +1455,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
       defaultOptions: { queries: { retry: false } },
     });
     queryClient.setQueryData(
-      monitorQueryKeys.detail(A, MONITOR_ID),
+      monitorQueryKeys.detail(A, P, MONITOR_ID),
       { monitor: downWithIncident() },
       { updatedAt: NOW.getTime() - PAUSE_MS },
     );
@@ -1484,7 +1523,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
   it("leaves the Overview pills of the same down monitor without a glow", async () => {
     const hour = Date.UTC(2026, 8, 30, 7);
     fetchListMock.mockResolvedValue({
-      summary: { up: 0, down: 1, unknown: 0, paused: 0, total: 1, limit: 50 },
+      summary: { up: 0, down: 1, unknown: 0, paused: 0, total: 1, limit: 20 },
       monitors: [
         {
           id: MONITOR_ID,
@@ -1503,6 +1542,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
             reason: "http_status",
           },
           lastResponseTimeMs: 182,
+          responseP95Ms24h: 182,
           responseSparkline: Array.from({ length: 24 }, (_, index) => ({
             hourStart: new Date(hour - (23 - index) * 3_600_000).toISOString(),
             avgMs: null,
@@ -1532,7 +1572,7 @@ describe("Detail data freshness (AC-81, AC-87)", () => {
     await user.click(screen.getByTestId("monitor-detail-back"));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        new RegExp(`^/organizations/${A}/monitors$`),
+        new RegExp(`^/organizations/${A}/projects/${P}/monitors$`),
       );
     });
     const row = await screen.findByTestId(`monitor-list-row-${MONITOR_ID}`);
@@ -1609,7 +1649,7 @@ describe("Detail structure", () => {
     );
     expect(screen.getByTestId("monitor-detail-checks-link")).toHaveAttribute(
       "href",
-      `/organizations/${A}/monitors/${MONITOR_ID}/checks`,
+      `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/checks`,
     );
   });
 
@@ -1758,21 +1798,26 @@ describe("Detail structure", () => {
   });
 
   it("keeps the monitor leaf active on the Detail path", () => {
-    const leaf = { path: "/organizations/:organizationId/monitors" };
+    const leaf = {
+      path: "/organizations/:organizationId/projects/:projectId/monitors",
+    };
     expect(
-      isLeafActive(leaf, `/organizations/${A}/monitors/${MONITOR_ID}`),
+      isLeafActive(
+        leaf,
+        `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}`,
+      ),
     ).toBe(true);
   });
 });
 
 describe("Detail Organization switch", () => {
-  it("leaves the monitor for the new Organization's Overview without showing old data", async () => {
+  it("leaves the monitor for the new Organization's Projects without showing old data", async () => {
     updateActiveOrganizationMock.mockResolvedValue({
       ...context(),
       lastActiveTenantId: B,
     });
     fetchListMock.mockResolvedValue({
-      summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 50 },
+      summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
       monitors: [],
       page: { limit: 25, offset: 0, total: 0 },
       dataAsOf: "2026-09-30T07:32:05.000Z",
@@ -1784,7 +1829,7 @@ describe("Detail Organization switch", () => {
     await user.click(screen.getByTestId("detail-harness-switch"));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent(
-        `/organizations/${B}/monitors`,
+        `/organizations/${B}/projects`,
       );
     });
     expect(document.body.textContent).not.toContain("Payments API");
@@ -2024,7 +2069,7 @@ describe("Detail response-time chart", () => {
     showDetail(
       detail({ status: "paused", health: "paused", intervalSeconds: 900 }),
     );
-    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+    fetchResponseTimesMock.mockImplementation((_org, _project, _id, range) =>
       Promise.resolve(
         range === "24h"
           ? noResponseTimes
@@ -2174,7 +2219,12 @@ describe("Detail response-time chart", () => {
         ];
       }),
     ).toEqual([[Date.parse(inWindow(10)), Date.parse(inWindow(25))]]);
-    expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, MONITOR_ID, "24h");
+    expect(fetchResponseTimesMock).toHaveBeenCalledWith(
+      A,
+      P,
+      MONITOR_ID,
+      "24h",
+    );
   });
 
   it("swaps the chart for the same data as a real table with one toggle that keeps focus", async () => {
@@ -2256,43 +2306,44 @@ describe("Detail response-time chart", () => {
     "refetches for %s and labels the table with the range",
     async (_label, range) => {
       showDetail(detail());
-      fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
-        Promise.resolve(
-          requested === "24h"
-            ? responseTimes24h
-            : {
-                range: requested,
-                dataAsOf: DATA_AS_OF,
-                window: { from: T("05:00"), to: DATA_AS_OF },
-                summary: { p50Ms: 100, p95Ms: 500, checks: 24, failed: 0 },
-                unit: "ms",
-                buckets: [
-                  {
-                    hourStart: T("05:00"),
-                    avgMs: 100,
-                    maxMs: 150,
-                    checks: 12,
-                    responseChecks: 12,
-                  },
-                  {
-                    hourStart: T("06:00"),
-                    avgMs: null,
-                    maxMs: null,
-                    checks: 0,
-                    responseChecks: 0,
-                  },
-                  {
-                    hourStart: T("07:00"),
-                    avgMs: 300,
-                    maxMs: 500,
-                    checks: 12,
-                    responseChecks: 12,
-                  },
-                ],
-                pauses: [],
-                configChanges: [],
-              },
-        ),
+      fetchResponseTimesMock.mockImplementation(
+        (_org, _project, _id, requested) =>
+          Promise.resolve(
+            requested === "24h"
+              ? responseTimes24h
+              : {
+                  range: requested,
+                  dataAsOf: DATA_AS_OF,
+                  window: { from: T("05:00"), to: DATA_AS_OF },
+                  summary: { p50Ms: 100, p95Ms: 500, checks: 24, failed: 0 },
+                  unit: "ms",
+                  buckets: [
+                    {
+                      hourStart: T("05:00"),
+                      avgMs: 100,
+                      maxMs: 150,
+                      checks: 12,
+                      responseChecks: 12,
+                    },
+                    {
+                      hourStart: T("06:00"),
+                      avgMs: null,
+                      maxMs: null,
+                      checks: 0,
+                      responseChecks: 0,
+                    },
+                    {
+                      hourStart: T("07:00"),
+                      avgMs: 300,
+                      maxMs: 500,
+                      checks: 12,
+                      responseChecks: 12,
+                    },
+                  ],
+                  pauses: [],
+                  configChanges: [],
+                },
+          ),
       );
       const user = userEvent.setup();
       renderDetail();
@@ -2301,6 +2352,7 @@ describe("Detail response-time chart", () => {
       await waitFor(() => {
         expect(fetchResponseTimesMock).toHaveBeenCalledWith(
           A,
+          P,
           MONITOR_ID,
           range,
         );
@@ -2499,7 +2551,7 @@ describe("Detail redesign behaviours", () => {
 
   it("shows four live KPIs without a percentile sample on 7 d", async () => {
     showDetail(detail());
-    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+    fetchResponseTimesMock.mockImplementation((_org, _project, _id, range) =>
       Promise.resolve(
         range === "24h"
           ? noResponseTimes
@@ -2545,7 +2597,7 @@ describe("Detail redesign behaviours", () => {
       within(card).getByTestId("monitor-response-failed"),
     ).toHaveTextContent(/^0$/);
     expect(range).toHaveAttribute("aria-checked", "true");
-    expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, MONITOR_ID, "7d");
+    expect(fetchResponseTimesMock).toHaveBeenCalledWith(A, P, MONITOR_ID, "7d");
     for (const group of card.querySelectorAll('[role="group"]'))
       expect(group).not.toHaveAccessibleName(/^ตัวอย่าง: p50 p95/);
   });
@@ -2613,6 +2665,7 @@ function renderResponseCard(createdAt = "2026-09-01T00:00:00.000Z") {
     >
       <ResponseTimeCard
         organizationId={organizationId}
+        projectId={P}
         monitorId={MONITOR_ID}
         lastCheckAt={DATA_AS_OF}
         intervalSeconds={300}
@@ -2663,7 +2716,7 @@ describe("response-time state and selection", () => {
   it.each(["7d", "30d"] as const)(
     "shows the same literal four KPI values for %s, full bounds and keyboard table",
     async (range) => {
-      fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+      fetchResponseTimesMock.mockImplementation((_org, _project, _id, range) =>
         Promise.resolve(
           range === "24h"
             ? {
@@ -2793,7 +2846,7 @@ describe("response-time state and selection", () => {
   it("hides previous KPIs during rapid selections, ignores late completion, announces latest once and never auto-refetch", async () => {
     const seven = deferred<MonitorResponseTimesResponse>();
     const thirty = deferred<MonitorResponseTimesResponse>();
-    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+    fetchResponseTimesMock.mockImplementation((_org, _project, _id, range) =>
       range === "24h"
         ? Promise.resolve(noResponseTimes)
         : range === "7d"
@@ -2853,7 +2906,7 @@ describe("response-time state and selection", () => {
     fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
     await act(async () => {
       await client.refetchQueries({
-        queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+        queryKey: monitorQueryKeys.responseTimes(A, P, MONITOR_ID, "24h"),
       });
     });
     expectKpis(["10 ms", "10 ms", "1", "0"]);
@@ -2896,7 +2949,7 @@ describe("response-time state and selection", () => {
       );
       await act(async () => {
         await client.refetchQueries({
-          queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+          queryKey: monitorQueryKeys.responseTimes(A, P, MONITOR_ID, "24h"),
         });
       });
       const denial = await responseScope().findByTestId(
@@ -2943,7 +2996,7 @@ describe("response-time state and selection", () => {
     const oldIdentity = deferred<MonitorResponseTimesResponse>();
     fetchResponseTimesMock.mockReturnValue(oldIdentity.promise);
     const retiredRequest = client.refetchQueries({
-      queryKey: monitorQueryKeys.responseTimes(B, MONITOR_ID, "24h"),
+      queryKey: monitorQueryKeys.responseTimes(B, P, MONITOR_ID, "24h"),
     });
     const newIdentity = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -3068,10 +3121,11 @@ describe("response-time caption (AC-75)", () => {
   it.each(["7d", "30d"] as const)(
     "adds the window bounds and the UTC-hour note for %s but never the cap",
     async (range) => {
-      fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
-        Promise.resolve(
-          requested === "24h" ? noResponseTimes : liveRange(requested),
-        ),
+      fetchResponseTimesMock.mockImplementation(
+        (_org, _project, _id, requested) =>
+          Promise.resolve(
+            requested === "24h" ? noResponseTimes : liveRange(requested),
+          ),
       );
       renderResponseCard();
       await waitFor(() => {
@@ -3116,7 +3170,7 @@ describe("response-time caption (AC-75)", () => {
     fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
     await act(async () => {
       await client.refetchQueries({
-        queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+        queryKey: monitorQueryKeys.responseTimes(A, P, MONITOR_ID, "24h"),
       });
     });
     await responseScope().findByTestId("monitor-response-retained-warning");
@@ -3217,7 +3271,7 @@ function expectSameSteps(
 
 describe("response-time view toggle (AC-76, AC-77)", () => {
   function mockRanges() {
-    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+    fetchResponseTimesMock.mockImplementation((_org, _project, _id, range) =>
       Promise.resolve(range === "24h" ? responseTimes24h : hourlyRange(range)),
     );
   }
@@ -3294,7 +3348,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
     fetchResponseTimesMock.mockRejectedValue(new Error("offline"));
     await act(async () => {
       await client.refetchQueries({
-        queryKey: monitorQueryKeys.responseTimes(A, MONITOR_ID, "24h"),
+        queryKey: monitorQueryKeys.responseTimes(A, P, MONITOR_ID, "24h"),
       });
     });
     const warning = await responseScope().findByTestId(
@@ -3317,7 +3371,7 @@ describe("response-time view toggle (AC-76, AC-77)", () => {
   });
 
   it("announces the range from its own element in the chart view and in the table view", async () => {
-    fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+    fetchResponseTimesMock.mockImplementation((_org, _project, _id, range) =>
       Promise.resolve(range === "24h" ? noResponseTimes : liveRange(range)),
     );
     const user = userEvent.setup();
@@ -3375,10 +3429,11 @@ describe("response-time data notes in both views", () => {
   ] as const)(
     "shows each note once, with the same copy, in the chart and the table for %s of %s",
     async (range, _monitor, createdAt, clamped, hourly) => {
-      fetchResponseTimesMock.mockImplementation((_org, _id, requested) =>
-        Promise.resolve(
-          requested === "24h" ? young24h : hourlyRange(requested),
-        ),
+      fetchResponseTimesMock.mockImplementation(
+        (_org, _project, _id, requested) =>
+          Promise.resolve(
+            requested === "24h" ? young24h : hourlyRange(requested),
+          ),
       );
       const user = userEvent.setup();
       renderResponseCard(createdAt);
@@ -3469,7 +3524,7 @@ describe("response-time data notes in both views", () => {
 });
 
 it("announces an empty latest selection once after failed load and retry, without moving focus", async () => {
-  fetchResponseTimesMock.mockImplementation((_org, _id, range) =>
+  fetchResponseTimesMock.mockImplementation((_org, _project, _id, range) =>
     range === "24h"
       ? Promise.resolve(noResponseTimes)
       : Promise.reject(new Error("offline")),

@@ -26,7 +26,6 @@ import {
   updateMonitor,
 } from "../../../lib/api/monitors";
 import { getContextPublicationSnapshot } from "../../../lib/queryClient";
-import { ROLE_LABELS } from "../../../lib/roles";
 import { useTenant } from "../../../lib/tenant/TenantProvider";
 import type { MonitorFlashState } from "../flash";
 import { useOrganizationSwitched } from "../../../lib/tenant/useLeaveOnOrganizationSwitch";
@@ -87,18 +86,25 @@ const FORM_ERROR_CODES: ReadonlySet<string> = new Set([
 
 export function MonitorForm({
   organization,
+  project,
+  projectId,
   monitorId,
   record,
   roleLost: roleLostByRole,
   onReload,
+  onAccessRefresh,
 }: {
   organization: { id: string; name: string; role: string };
+  project: { id: string; name: string; roleTag: string | undefined };
+  projectId: string;
   /** Set with `record` on Edit. */
   monitorId?: string;
   record?: MonitorRecord;
   /** The role no longer allows writing: the form stays, with its values, and its actions are off. */
   roleLost: boolean;
   onReload?: () => Promise<void>;
+  /** Re-reads the caller's Project role after a refusal. */
+  onAccessRefresh: () => Promise<void>;
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -163,7 +169,9 @@ export function MonitorForm({
   useEffect(() => {
     if (confirmedOrganization !== undefined) setMembershipDenied(false);
   }, [confirmedOrganization]);
+  const roleLostNow = useRef(false);
   const roleLost = roleLostByRole || membershipDenied;
+  roleLostNow.current = roleLost;
   const lockMessage =
     membershipDenied && !roleLostByRole ? DENIED_MESSAGE : ROLE_CHANGED;
 
@@ -195,16 +203,13 @@ export function MonitorForm({
   /** The page is gone or the user switched Organization since the form opened. */
   const leftOrganization = () => {
     const admission = getContextPublicationSnapshot(queryClient).admission;
-    const role =
-      admission.kind === "confirmed"
-        ? admission.context.organizations.find(
-            (item) => item.id === organizationId,
-          )?.role
-        : undefined;
+    const member =
+      admission.kind === "confirmed" &&
+      admission.context.organizations.some(
+        (item) => item.id === organizationId,
+      );
     return (
-      !mounted.current ||
-      switchedNow.current ||
-      (role !== "owner" && role !== "admin")
+      !mounted.current || switchedNow.current || !member || roleLostNow.current
     );
   };
 
@@ -279,6 +284,7 @@ export function MonitorForm({
 
   function refreshContext() {
     void refreshMembershipContext();
+    void onAccessRefresh();
   }
 
   /** Puts a server refusal where the user can act on it. Raw server text is never shown. */
@@ -324,7 +330,7 @@ export function MonitorForm({
         setConflict(true);
         return true;
       case "MONITOR_LIMIT_REACHED":
-        setFormError("องค์กรนี้มีมอนิเตอร์ครบตามจำนวนสูงสุดแล้ว เพิ่มไม่ได้");
+        setFormError("โปรเจกต์นี้มีมอนิเตอร์ครบตามจำนวนสูงสุดแล้ว เพิ่มไม่ได้");
         return true;
       default:
         setFormError(failure);
@@ -363,17 +369,19 @@ export function MonitorForm({
       const saved = editing
         ? await updateMonitor(
             organizationId,
+            projectId,
             monitorId,
             editPayload(values, base, entriesNow()),
           )
         : await createMonitor(
             organizationId,
+            projectId,
             createPayload(values, clientRequestId, entriesNow()),
           );
       // Saved: no typed value stays in memory, whatever happens to the page next.
       secretStore.clear();
       await queryClient.invalidateQueries({
-        queryKey: monitorQueryKeys.all(organizationId),
+        queryKey: monitorQueryKeys.project(organizationId, projectId),
         refetchType: "none",
       });
       // A late save after a switch must not write this Organization's detail into the cache.
@@ -382,20 +390,29 @@ export function MonitorForm({
         // Detail must not paint the pre-edit health for a frame: it starts from a fresh read.
         await queryClient
           .query({
-            queryKey: monitorQueryKeys.detail(organizationId, monitorId),
-            queryFn: () => fetchMonitorDetail(organizationId, monitorId),
+            queryKey: monitorQueryKeys.detail(
+              organizationId,
+              projectId,
+              monitorId,
+            ),
+            queryFn: () =>
+              fetchMonitorDetail(organizationId, projectId, monitorId),
             staleTime: 0,
           })
           .catch(() => {
             queryClient.removeQueries({
-              queryKey: monitorQueryKeys.detail(organizationId, monitorId),
+              queryKey: monitorQueryKeys.detail(
+                organizationId,
+                projectId,
+                monitorId,
+              ),
             });
           });
       }
       // A save that lands after the Organization was switched must not pull the user back.
       if (leftOrganization()) return;
       void navigate(
-        `/organizations/${organizationId}/monitors/${saved.monitor.id}`,
+        `/organizations/${organizationId}/projects/${projectId}/monitors/${saved.monitor.id}`,
         {
           state: {
             notice: editing ? "updated" : "created",
@@ -412,7 +429,7 @@ export function MonitorForm({
     }
   }
 
-  const overviewPath = `/organizations/${organizationId}/monitors`;
+  const overviewPath = `/organizations/${organizationId}/projects/${projectId}/monitors`;
   const backPath = editing ? `${overviewPath}/${monitorId}` : overviewPath;
   const heading = (
     <div
@@ -441,11 +458,9 @@ export function MonitorForm({
           confirmedOrganization === undefined
             ? undefined
             : {
-                mark: confirmedOrganization.name,
-                label: confirmedOrganization.name,
-                tag:
-                  ROLE_LABELS[confirmedOrganization.role] ??
-                  confirmedOrganization.role,
+                mark: project.name,
+                label: project.name,
+                tag: project.roleTag,
               }
         }
         title={
@@ -635,10 +650,12 @@ export function MonitorForm({
               base === null || monitorId === undefined
                 ? testMonitorDraft(
                     organizationId,
+                    projectId,
                     testCreatePayload(values, entriesNow()),
                   )
                 : testMonitorEdit(
                     organizationId,
+                    projectId,
                     monitorId,
                     testEditPayload(values, entriesNow()),
                   )

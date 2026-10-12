@@ -31,9 +31,11 @@ const SSL_EVENT_TITLES = {
 
 function EventRow({
   organizationId,
+  projectId,
   event,
 }: {
   organizationId: string;
+  projectId: string;
   event: MonitorRecentEvent;
 }) {
   const sslTitle =
@@ -70,7 +72,7 @@ function EventRow({
       )}
       <Link
         data-testid="monitor-overview-event-monitor"
-        to={`/organizations/${organizationId}/monitors/${event.monitorId}`}
+        to={`/organizations/${organizationId}/projects/${projectId}/monitors/${event.monitorId}`}
         className="font-medium text-primary underline-offset-4 hover:underline"
       >
         {event.monitorName}
@@ -125,12 +127,14 @@ function EventRow({
 // Independent query: a failure here stays inside the card and never blocks the table.
 export function RecentEventsCard({
   organizationId,
+  projectId,
 }: {
   organizationId: string;
+  projectId: string;
 }) {
   const events = useQuery({
-    queryKey: monitorQueryKeys.recentEvents(organizationId),
-    queryFn: () => fetchMonitorRecentEvents(organizationId),
+    queryKey: monitorQueryKeys.recentEvents(organizationId, projectId),
+    queryFn: () => fetchMonitorRecentEvents(organizationId, projectId),
     refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
   });
   let body: ReactNode;
@@ -149,6 +153,7 @@ export function RecentEventsCard({
             <EventRow
               key={`${event.kind}:${event.monitorId}:${event.at}`}
               organizationId={organizationId}
+              projectId={projectId}
               event={event}
             />
           ))}

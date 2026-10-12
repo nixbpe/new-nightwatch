@@ -2,7 +2,6 @@ import { isDenied } from "../workspace/rows";
 import {
   MONITOR_LIST_SORTS,
   type MonitorHealthName,
-  type MonitorListResponse,
   type MonitorListSort,
 } from "@nightwatch/api-contract";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -18,8 +17,6 @@ import { Alert, Input, textInputClass } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Notice } from "../../components/ui/notice";
 import { DataTablePagination } from "../../components/ui/data-table";
-import { HairlineGrid } from "../../components/ui/hairline-grid";
-import { STAT_TILE_CLASS, StatTile } from "../../components/ui/stat-tile";
 import { Label } from "../../components/ui/label";
 import { SegmentedControl } from "../../components/ui/segmented-control";
 import {
@@ -28,9 +25,12 @@ import {
   MONITOR_REFETCH_INTERVAL_MS,
   monitorQueryKeys,
 } from "../../lib/api/monitors";
-import { ROLE_LABELS } from "../../lib/roles";
 import { cn } from "../../lib/utils";
+import { useLeaveOnOrganizationSwitch } from "../../lib/tenant/useLeaveOnOrganizationSwitch";
 import { useTenant } from "../../lib/tenant/TenantProvider";
+import { IntervalText } from "./detail/IntervalText";
+import { PROJECT_GONE_NOTICE } from "../projects/members/ProjectMembersPage";
+import { isMonitorNotFound, useMonitorAccess } from "./useMonitorAccess";
 import { useFlashNotice } from "./flash";
 import { formatTimeWithSeconds, Time, TIME_ZONE } from "./format";
 import { HEALTH_LABELS } from "./HealthPill";
@@ -39,14 +39,8 @@ import { MonitorTable } from "./MonitorTable";
 import { RecentEventsCard } from "./RecentEventsCard";
 
 const SEARCH_DEBOUNCE_MS = 300;
-const SUMMARY_ORDER = ["up", "down", "unknown", "paused"] as const;
-// Same dots as the Workspace tiles; "unknown" is hollow so it differs from "paused" without a status colour.
-const SUMMARY_DOT: Record<(typeof SUMMARY_ORDER)[number], string> = {
-  up: "bg-primary",
-  down: "bg-danger",
-  unknown: "border border-foreground-secondary",
-  paused: "bg-foreground-secondary",
-};
+// The status filter reads down first, as the design does; "unknown" follows the states the design names.
+const FILTER_ORDER = ["down", "up", "paused", "unknown"] as const;
 const VIEW_STORAGE_KEY = "nightwatch:monitors-view";
 const VIEW_OPTIONS = [
   { value: "cards", label: "การ์ด" },
@@ -80,47 +74,21 @@ function writeView(view: ViewMode) {
 }
 
 export function OverviewPage() {
-  const { organizationId } = useParams();
-  if (organizationId === undefined) return null;
-  // Keyed so filters, page and announcements never carry over to another Organization.
+  const { organizationId, projectId } = useParams();
+  if (organizationId === undefined || projectId === undefined) return null;
+  // Keyed so filters, page and announcements never carry over to another Project.
   return (
-    <OverviewForOrganization
-      key={organizationId}
+    <OverviewForProject
+      key={`${organizationId}:${projectId}`}
       organizationId={organizationId}
+      projectId={projectId}
     />
-  );
-}
-
-function SummaryStrip({
-  summary,
-}: {
-  summary: MonitorListResponse["summary"];
-}) {
-  return (
-    <HairlineGrid as="dl" className="grid-cols-2 lg:grid-cols-4">
-      {SUMMARY_ORDER.map((health) => (
-        <div key={health} className={STAT_TILE_CLASS}>
-          <StatTile
-            valueTestId={`monitor-overview-summary-${health}`}
-            term
-            dot={SUMMARY_DOT[health]}
-            label={HEALTH_LABELS[health]}
-            value={summary[health]}
-          />
-        </div>
-      ))}
-    </HairlineGrid>
   );
 }
 
 function OverviewLoading() {
   return (
     <>
-      <div aria-hidden="true" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {SUMMARY_ORDER.map((health) => (
-          <Skeleton key={health} className="h-20 w-full" />
-        ))}
-      </div>
       <PageState
         data-testid="monitor-overview-loading"
         kind="loading"
@@ -133,15 +101,22 @@ function OverviewLoading() {
   );
 }
 
-function OverviewForOrganization({
+function OverviewForProject({
   organizationId,
+  projectId,
 }: {
   organizationId: string;
+  projectId: string;
 }) {
-  const { me, mePending, meError, refreshMembershipContext } = useTenant();
-  const organization = me?.organizations.find(
-    (item) => item.id === organizationId,
+  const { mePending, meError, refreshMembershipContext } = useTenant();
+  // A Project belongs to one Organization: a switch made in the shell leaves for the new one's Projects.
+  const switchedOrganization = useLeaveOnOrganizationSwitch(organizationId);
+  const access = useMonitorAccess(
+    organizationId,
+    projectId,
+    !switchedOrganization,
   );
+  const { organization, project } = access;
   const isMember = organization !== undefined;
 
   const [offset, setOffset] = useState(0);
@@ -170,11 +145,14 @@ function OverviewForOrganization({
     sort: sort === "problems" ? undefined : sort,
   };
   const list = useQuery({
-    queryKey: monitorQueryKeys.list(organizationId, listParams),
-    queryFn: () => fetchMonitorList(organizationId, listParams),
-    enabled: isMember,
-    refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
-    // Safe across filters because the component is keyed by Organization.
+    queryKey: monitorQueryKeys.list(organizationId, projectId, listParams),
+    queryFn: () => fetchMonitorList(organizationId, projectId, listParams),
+    enabled: isMember && !switchedOrganization,
+    refetchInterval: (query) =>
+      isMonitorNotFound(query.state.error) || isDenied(query.state.error)
+        ? false
+        : MONITOR_REFETCH_INTERVAL_MS,
+    // Safe across filters because the component is keyed by Project.
     placeholderData: keepPreviousData,
   });
   const data = list.data;
@@ -218,27 +196,31 @@ function OverviewForOrganization({
   }, [data, list.isPlaceholderData, offset]);
 
   const denied = isDenied(list.error);
+  const gone = isMonitorNotFound(list.error) || access.projectGone;
+  const refreshAccess = access.refresh;
   useEffect(() => {
     if (!denied || contextRefresh !== "idle") return;
     setContextRefresh("refreshing");
-    void refreshMembershipContext().finally(() => {
-      setContextRefresh("done");
-    });
-  }, [denied, contextRefresh, refreshMembershipContext]);
+    void Promise.all([refreshMembershipContext(), refreshAccess()]).finally(
+      () => {
+        setContextRefresh("done");
+      },
+    );
+  }, [denied, contextRefresh, refreshMembershipContext, refreshAccess]);
 
   const { notice, heading } = useFlashNotice();
 
   const header = (actions?: ReactNode, status?: ReactNode) => (
     <>
       <PageHeader
-        eyebrow="// monitors registry"
+        eyebrow="// monitors"
         scope={
-          organization === undefined
+          project === undefined || denied
             ? undefined
             : {
-                mark: organization.name,
-                label: organization.name,
-                tag: ROLE_LABELS[organization.role] ?? organization.role,
+                mark: project.name,
+                label: project.name,
+                tag: access.roleTag,
               }
         }
         titleTestId="monitor-overview-heading"
@@ -257,7 +239,12 @@ function OverviewForOrganization({
     </>
   );
 
-  if (mePending || contextRefresh === "refreshing") {
+  if (
+    mePending ||
+    switchedOrganization ||
+    access.pending ||
+    contextRefresh === "refreshing"
+  ) {
     return (
       <Page>
         {header()}
@@ -280,26 +267,46 @@ function OverviewForOrganization({
       </Page>
     );
   }
+  if (gone) {
+    // A missing Project and one the caller cannot read look alike.
+    return (
+      <Page>
+        {header()}
+        <PageState
+          data-testid="monitor-overview-project-gone"
+          kind="denied"
+          tone="info"
+          message={PROJECT_GONE_NOTICE}
+          action={
+            <Button asChild variant="secondary">
+              <Link to={`/organizations/${organizationId}/projects`}>
+                ไปที่รายการโปรเจกต์
+              </Link>
+            </Button>
+          }
+        />
+      </Page>
+    );
+  }
   if (organization === undefined || denied) {
-    // No scope row, name or count: a non-member learns nothing about this Organization.
+    // No scope row, name or count: a non-member learns nothing about this Project.
     return (
       <Page>
         {header()}
         <PageState
           data-testid="monitor-overview-denied"
           kind="denied"
-          message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้"
+          message="คุณไม่มีสิทธิ์ดูมอนิเตอร์ของโปรเจกต์นี้"
         />
       </Page>
     );
   }
 
-  const canWrite =
-    organization.role === "owner" || organization.role === "admin";
+  const canWrite = access.canWrite;
   const firstRun = data !== undefined && data.summary.total === 0;
   const limitReached =
     data !== undefined && data.summary.total >= data.summary.limit;
-  const addPath = `/organizations/${organizationId}/monitors/new`;
+  const addPath = `/organizations/${organizationId}/projects/${projectId}/monitors/new`;
 
   let actions: ReactNode;
   if (canWrite && data !== undefined && !firstRun) {
@@ -310,7 +317,7 @@ function OverviewForOrganization({
           id="monitor-limit-reason"
           className="text-xs text-foreground-secondary"
         >
-          องค์กรนี้มีมอนิเตอร์ครบ {data.summary.limit} ตัวแล้ว
+          โปรเจกต์นี้มีมอนิเตอร์ครบ {data.summary.limit} ตัวแล้ว
           ลบมอนิเตอร์เดิมก่อนจึงจะเพิ่มได้
         </span>
         <Button
@@ -401,7 +408,7 @@ function OverviewForOrganization({
     count?: number;
   }[] = [
     { value: undefined, label: "ทั้งหมด", count: data?.summary.total },
-    ...SUMMARY_ORDER.map((value) => ({
+    ...FILTER_ORDER.map((value) => ({
       value,
       label: HEALTH_LABELS[value],
       count: data?.summary[value],
@@ -548,11 +555,11 @@ function OverviewForOrganization({
           data-testid="monitor-overview-empty"
           variant="first-run"
           icon={<ActivityIcon size={20} />}
-          title="ยังไม่มีมอนิเตอร์"
+          title="ยังไม่มีมอนิเตอร์ในโปรเจกต์นี้"
           description={
             canWrite
               ? "เพิ่มเว็บไซต์หรือ API เพื่อให้ NightWatch ตรวจสถานะเป็นระยะและแจ้งเมื่อล่มหรือ SSL ใกล้หมดอายุ"
-              : "ผู้ดูแลหรือเจ้าขององค์กรเพิ่มได้"
+              : "ผู้ดูแลโปรเจกต์หรือเจ้าของและผู้ดูแลองค์กรเพิ่มได้"
           }
           action={
             canWrite ? (
@@ -569,6 +576,11 @@ function OverviewForOrganization({
   }
 
   const { page } = data;
+  // The Project has no interval of its own: the shortest one on this page stands for the checks' pace.
+  const intervals = data.monitors.map((monitor) => monitor.intervalSeconds);
+  const intervalSeconds =
+    intervals.length === 0 ? null : Math.min(...intervals);
+  const mixedIntervals = new Set(intervals).size > 1;
   const shownFrom = page.total === 0 ? 0 : page.offset + 1;
   const shownTo = page.offset + data.monitors.length;
 
@@ -594,12 +606,17 @@ function OverviewForOrganization({
         <>
           {status}
           <span data-testid="monitor-overview-total">
-            มอนิเตอร์ทั้งหมด{" "}
-            <span className="font-mono">{data.summary.total}</span>
+            <span className="font-mono">{data.summary.total}</span> มอนิเตอร์
           </span>
-          <span>
+          <span data-testid="monitor-overview-down">
             ล่ม <span className="font-mono">{data.summary.down}</span>
           </span>
+          {intervalSeconds === null ? null : (
+            <span data-testid="monitor-overview-interval">
+              ตรวจ{mixedIntervals ? "ถี่สุด" : ""}
+              <IntervalText seconds={intervalSeconds} />
+            </span>
+          )}
           <span>
             ข้อมูล ณ{" "}
             <span className="font-mono">
@@ -623,7 +640,6 @@ function OverviewForOrganization({
           />
         </Alert>
       ) : null}
-      <SummaryStrip summary={data.summary} />
       {filterControls(!(page.total === 0 && filtered), sortControl)}
       <p
         data-testid="monitor-overview-announcement"
@@ -654,11 +670,13 @@ function OverviewForOrganization({
           {view === "cards" ? (
             <MonitorCards
               organizationId={organizationId}
+              projectId={projectId}
               monitors={data.monitors}
             />
           ) : (
             <MonitorTable
               organizationId={organizationId}
+              projectId={projectId}
               monitors={data.monitors}
             />
           )}
@@ -672,7 +690,8 @@ function OverviewForOrganization({
           ariaLabel="หน้ามอนิเตอร์"
           summary={
             <>
-              แสดง {shownFrom}–{shownTo} จาก {page.total}
+              แสดง {shownFrom}–{shownTo} จาก {page.total} · เฉพาะมอนิเตอร์ของ{" "}
+              {project?.name}
             </>
           }
           previousLabel="ก่อนหน้า"
@@ -687,7 +706,7 @@ function OverviewForOrganization({
           }}
         />
       )}
-      <RecentEventsCard organizationId={organizationId} />
+      <RecentEventsCard organizationId={organizationId} projectId={projectId} />
     </Page>
   );
 }

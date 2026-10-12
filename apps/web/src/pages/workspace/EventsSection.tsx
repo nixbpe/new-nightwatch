@@ -77,9 +77,11 @@ const ROW_CLASS =
 
 function EventRow({
   organizationId,
+  projectId,
   event,
 }: {
   organizationId: string;
+  projectId: string;
   event: MonitorRecentEvent;
 }) {
   return (
@@ -107,7 +109,7 @@ function EventRow({
         <span className="min-w-0">
           <Link
             data-testid="workspace-event-monitor"
-            to={`/organizations/${organizationId}/monitors/${event.monitorId}`}
+            to={`/organizations/${organizationId}/projects/${projectId}/monitors/${event.monitorId}`}
             className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             {event.monitorName}
@@ -125,10 +127,16 @@ function EventRow({
 }
 
 // Independent query: a failure here stays in this section and never blocks the stats.
-export function EventsSection({ organizationId }: { organizationId: string }) {
+export function EventsSection({
+  organizationId,
+  projectId,
+}: {
+  organizationId: string;
+  projectId: string;
+}) {
   const events = useQuery({
-    queryKey: monitorQueryKeys.recentEvents(organizationId),
-    queryFn: () => fetchMonitorRecentEvents(organizationId),
+    queryKey: monitorQueryKeys.recentEvents(organizationId, projectId),
+    queryFn: () => fetchMonitorRecentEvents(organizationId, projectId),
     refetchInterval: MONITOR_REFETCH_INTERVAL_MS,
   });
   const { refreshMembershipContext } = useTenant();
@@ -141,7 +149,7 @@ export function EventsSection({ organizationId }: { organizationId: string }) {
   }, [denied, refreshMembershipContext]);
   let body: ReactNode;
   if (denied) {
-    body = <Alert tone="error">คุณไม่มีสิทธิ์ดูมอนิเตอร์ขององค์กรนี้</Alert>;
+    body = <Alert tone="error">คุณไม่มีสิทธิ์ดูมอนิเตอร์ของโปรเจกต์นี้</Alert>;
   } else if (events.data !== undefined) {
     body =
       events.data.events.length === 0 ? (
@@ -154,6 +162,7 @@ export function EventsSection({ organizationId }: { organizationId: string }) {
             <EventRow
               key={`${event.kind}:${event.monitorId}:${event.at}`}
               organizationId={organizationId}
+              projectId={projectId}
               event={event}
             />
           ))}
