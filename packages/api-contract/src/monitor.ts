@@ -1337,14 +1337,6 @@ export type MonitorResponseTimesResponse = z.infer<
 
 // ---- Route parameters and error envelopes ------------------------------------
 
-export const monitorOrganizationParamsSchema = z.object({
-  organizationId: z.uuid(),
-});
-/** A malformed id must answer 404, not 400, so it is parsed in the handler (AC-48). */
-export const monitorParamsSchema = monitorOrganizationParamsSchema.extend({
-  monitorId: z.string().max(64),
-});
-
 function monitorErrorSchema<Code extends string>(code: Code) {
   return z.object({
     error: z.object({
