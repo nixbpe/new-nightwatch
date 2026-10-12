@@ -138,7 +138,8 @@ function leafPattern(path: string, captureOrganization = false): RegExp {
   const source = path
     .replace(ORG_PARAM, captureOrganization ? "([^/]+)" : "[^/]+")
     .replace(PROJECT_PARAM, "[^/]+");
-  return new RegExp(`^${source}(/|$)`);
+  // Case-insensitive: the nav links carry the canonical lowercase ids, the URL may not.
+  return new RegExp(`^${source}(/|$)`, "i");
 }
 
 export function isLeafActive(
@@ -190,7 +191,10 @@ export function projectSwitchDestination(
     : resolveNavPath(target.path, organizationId, projectId);
 }
 
-/** The Organization and Project a Project route names. */
+/**
+ * The Organization and Project a Project route names. The Project id is lowercased here: the API accepts any
+ * case and answers with the lowercase id, which the shell compares against, saves and links to.
+ */
 export function getProjectRoute(
   pathname: string,
 ): { organizationId: string; projectId: string } | null {
@@ -198,7 +202,7 @@ export function getProjectRoute(
     pathname,
   );
   return match?.[1] !== undefined && match[2] !== undefined
-    ? { organizationId: match[1], projectId: match[2] }
+    ? { organizationId: match[1], projectId: match[2].toLowerCase() }
     : null;
 }
 

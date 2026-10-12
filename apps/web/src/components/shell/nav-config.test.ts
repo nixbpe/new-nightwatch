@@ -32,6 +32,11 @@ describe("getProjectRoute", () => {
     expect(
       getProjectRoute(`/organizations/${ORG}/projects/${P1}/members`),
     ).toEqual({ organizationId: ORG, projectId: P1 });
+    expect(
+      getProjectRoute(
+        `/organizations/${ORG}/projects/${P1.toUpperCase()}/members`,
+      ),
+    ).toEqual({ organizationId: ORG, projectId: P1 });
     expect(getProjectRoute(`/organizations/${ORG}/projects`)).toBeNull();
     expect(getProjectRoute("/workspace")).toBeNull();
   });
