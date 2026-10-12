@@ -1,5 +1,5 @@
 import type { ProjectSummary } from "@nightwatch/api-contract";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 
@@ -25,6 +25,8 @@ import { useFocusHeadingAfterSelfLeave } from "./organization-members/SelfLeaveA
 import { EventsSection } from "./workspace/EventsSection";
 import { IssuesSection } from "./workspace/IssuesSection";
 import { StatStrip } from "./workspace/StatStrip";
+import { projectQueryKeys } from "../lib/api/projects";
+import { isMonitorNotFound } from "./monitors/useMonitorAccess";
 import { isDenied } from "./workspace/rows";
 import { UptimeSection } from "./workspace/UptimeSection";
 
@@ -209,7 +211,17 @@ function OrganizationOverview({
       setContextRefresh("done");
     });
   }, [denied, contextRefresh, setContextRefresh, refreshMembershipContext]);
-  const data = denied ? undefined : list.data;
+  // A Project deleted or lost after the first load answers 404: its cached rows must not stay, and the
+  // Project list is re-read so the current Project moves on.
+  const gone = isMonitorNotFound(list.error);
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (gone)
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.all(organization.id),
+      });
+  }, [gone, queryClient, organization.id]);
+  const data = denied || gone ? undefined : list.data;
   const monitorsPath = `/organizations/${organization.id}/projects/${project.id}/monitors`;
   const canWrite =
     organization.role === "owner" ||

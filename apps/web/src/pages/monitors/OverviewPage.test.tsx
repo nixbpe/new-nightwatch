@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
-import { fetchProjectDetail } from "../../lib/api/projects";
+import { fetchProjectDetail, projectQueryKeys } from "../../lib/api/projects";
 import {
   fetchMonitorList,
   fetchMonitorRecentEvents,
@@ -2366,6 +2366,32 @@ describe("Overview one-time notice", () => {
     await screen.findByTestId("monitor-overview-heading");
     expect(screen.queryByTestId("monitor-overview-notice")).toBeNull();
     expect(screen.queryByTestId("monitor-overview-notice")).toBeNull();
+  });
+});
+
+describe("A Project that is gone after the list loaded", () => {
+  it("hides the cached rows and shows the not-found state", async () => {
+    fetchListMock.mockResolvedValue(
+      list([
+        item({ id: "a3000000-0000-4000-8000-000000000001", name: "Cached" }),
+      ]),
+    );
+    const { queryClient } = renderPage();
+    await screen.findByTestId(
+      "monitor-list-name-a3000000-0000-4000-8000-000000000001",
+    );
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("PROJECT_NOT_FOUND", "not found", 404),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.detail(A, P),
+      });
+    });
+    expect(
+      await screen.findByTestId("monitor-overview-project-gone"),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("Cached");
   });
 });
 

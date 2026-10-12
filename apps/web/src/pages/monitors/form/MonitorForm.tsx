@@ -63,6 +63,8 @@ import {
 } from "./model";
 
 export const ROLE_CHANGED = "สิทธิ์ของคุณเปลี่ยนแล้ว";
+import { PROJECT_GONE_NOTICE } from "../../projects/members/ProjectMembersPage";
+
 const DENIED_MESSAGE = "คุณไม่มีสิทธิ์สร้างหรือแก้ไขมอนิเตอร์ของโปรเจกต์นี้";
 const CONFLICT_MESSAGE =
   "มอนิเตอร์นี้ถูกแก้โดยผู้อื่น โหลดใหม่เพื่อดูค่าล่าสุด";
@@ -80,6 +82,7 @@ const FORM_ERROR_CODES: ReadonlySet<string> = new Set([
   "MONITOR_TARGET_BLOCKED",
   "MONITOR_SECRET_ORIGIN_CHANGED",
   "MONITOR_NOT_FOUND",
+  "PROJECT_NOT_FOUND",
   "PERMISSION_DENIED",
   "MEMBERSHIP_DENIED",
 ]);
@@ -314,6 +317,11 @@ export function MonitorForm({
         return true;
       case "MONITOR_NOT_FOUND":
         setNotFound(true);
+        return true;
+      case "PROJECT_NOT_FOUND":
+        // The page re-reads the Project and leaves for its not-found state.
+        setFormError(PROJECT_GONE_NOTICE);
+        void onAccessRefresh();
         return true;
       case "PERMISSION_DENIED":
         setFormError(ROLE_CHANGED);

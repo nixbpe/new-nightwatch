@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isLeafActive } from "../../components/shell/nav-config";
 import { ApiError } from "../../lib/api/client";
 import { bindQueryClientIdentity } from "../../lib/queryClient";
-import { fetchProjectDetail } from "../../lib/api/projects";
+import { fetchProjectDetail, projectQueryKeys } from "../../lib/api/projects";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import {
   fetchMonitorChecks,
@@ -1417,5 +1417,23 @@ describe("Checks history links", () => {
         `/organizations/${A}/projects/${P}/monitors/${MONITOR_ID}/checks`,
       ),
     ).toBe(true);
+  });
+});
+
+describe("A Project that is gone after the history loaded", () => {
+  it("drops the cached history for the not-found state", async () => {
+    fetchChecksMock.mockResolvedValue(chunk(span(0, 3), 0, 3));
+    const { queryClient } = renderChecks();
+    expect(await screen.findByTestId("monitor-checks-table")).toBeVisible();
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("PROJECT_NOT_FOUND", "not found", 404),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.detail(A, P),
+      });
+    });
+    expect(await screen.findByTestId("monitor-checks-not-found")).toBeVisible();
+    expect(screen.queryByTestId("monitor-checks-table")).toBeNull();
   });
 });

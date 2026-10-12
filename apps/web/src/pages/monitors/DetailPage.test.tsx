@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isLeafActive } from "../../components/shell/nav-config";
 import { ApiError } from "../../lib/api/client";
+import { projectQueryKeys } from "../../lib/api/projects";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
 import { fetchProjectDetail } from "../../lib/api/projects";
 import {
@@ -3582,3 +3583,24 @@ it.each(["owner", "admin", "viewer", "auditor"] as const)(
       expect(screen.queryByTestId("monitor-detail-edit")).toBeNull();
   },
 );
+
+describe("A Project that is gone after Detail loaded", () => {
+  it("replaces the monitor and its actions with the not-found state", async () => {
+    showDetail(detail());
+    const { queryClient } = renderDetail();
+    await readyDetail();
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("PROJECT_NOT_FOUND", "not found", 404),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.detail(A, P),
+      });
+    });
+    expect(
+      await screen.findByTestId("monitor-detail-not-found"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-detail-toggle")).toBeNull();
+    expect(document.body.textContent).not.toContain("Payments API");
+  });
+});

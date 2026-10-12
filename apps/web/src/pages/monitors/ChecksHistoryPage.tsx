@@ -329,7 +329,9 @@ function ChecksHistoryForMonitor({
   });
 
   const notFound =
-    isMonitorNotFound(detail.error) || isMonitorNotFound(checks.error);
+    isMonitorNotFound(detail.error) ||
+    isMonitorNotFound(checks.error) ||
+    access.projectGone;
   const denied = isDenied(detail.error) || isDenied(checks.error);
   useEffect(() => {
     if (!denied || readRefresh !== "idle") return;

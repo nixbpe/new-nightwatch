@@ -4,7 +4,7 @@ import type {
   OrganizationMemberListResponse,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { act, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -261,22 +261,25 @@ function renderPage() {
     defaultOptions: { queries: { retry: false } },
   });
   bindQueryClientIdentity(queryClient, "user-1");
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/workspace"]}>
-        <Routes>
-          <Route
-            path="/workspace"
-            element={
-              <TenantProvider>
-                <WorkspacePage />
-              </TenantProvider>
-            }
-          />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/workspace"]}>
+          <Routes>
+            <Route
+              path="/workspace"
+              element={
+                <TenantProvider>
+                  <WorkspacePage />
+                </TenantProvider>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 function renderDeniedMembershipPage() {
@@ -586,6 +589,21 @@ describe("WorkspacePage overview content", () => {
       `/organizations/${ORG_A}/projects`,
     );
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
+  });
+
+  it("drops the cached monitors when the Project answers 404 after the first load", async () => {
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    const { queryClient } = renderPage();
+    await screen.findByTestId("workspace-issues");
+    fetchMonitorListMock.mockRejectedValue(
+      new ApiError("PROJECT_NOT_FOUND", "not found", 404),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["tenant", "monitors"] });
+    });
+    await screen.findByTestId("workspace-list-error");
+    expect(screen.queryByTestId("workspace-issues")).toBeNull();
+    expect(document.body.textContent).not.toContain("api-payments");
   });
 
   it("gives a Project admin who is only an Organization viewer the add button, and names the Project", async () => {

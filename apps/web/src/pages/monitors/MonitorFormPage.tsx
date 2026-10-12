@@ -154,7 +154,8 @@ function MonitorFormForOrganization({
     );
   }
   if (me !== undefined && organization === undefined) return denied;
-  if (access.projectGone && snapshot === null) return gone;
+  // Also with a snapshot: a Project deleted or lost after the form opened leaves nothing to save into.
+  if (access.projectGone) return gone;
   if (snapshot !== null) {
     return (
       <>

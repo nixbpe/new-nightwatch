@@ -1,12 +1,12 @@
 import { guardUnassignedNetwork } from "../../test/guard-network";
 import type { MonitorRecord } from "@nightwatch/api-contract";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../lib/api/client";
 import { fetchMeContext, updateActiveOrganization } from "../../lib/api/me";
-import { fetchProjectDetail } from "../../lib/api/projects";
+import { fetchProjectDetail, projectQueryKeys } from "../../lib/api/projects";
 import { fetchOrganizationNotificationSettings } from "../../lib/api/notifications";
 import {
   createMonitor,
@@ -491,5 +491,38 @@ describe("Edit", () => {
     expect(
       await screen.findByTestId("monitor-form-not-found"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("A Project that is gone after the form opened", () => {
+  const gone = () => new ApiError("PROJECT_NOT_FOUND", "not found", 404);
+
+  it("leaves the form for the not-found state when the Project is re-read as gone", async () => {
+    const { queryClient } = renderForm(newPath());
+    await screen.findByTestId("monitor-form-name");
+    await userEvent.type(screen.getByTestId("monitor-form-name"), "typed");
+    vi.mocked(fetchProjectDetail).mockRejectedValue(gone());
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.detail(A, P),
+      });
+    });
+    expect(
+      await screen.findByTestId("monitor-form-project-gone"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
+    expect(screen.queryByTestId("monitor-form-save")).toBeNull();
+  });
+
+  it("leads a PROJECT_NOT_FOUND from save to the not-found state", async () => {
+    const user = await openCreate();
+    await fillBasic(user);
+    createMock.mockRejectedValue(gone());
+    vi.mocked(fetchProjectDetail).mockRejectedValue(gone());
+    await user.click(screen.getByTestId("monitor-form-save"));
+    expect(
+      await screen.findByTestId("monitor-form-project-gone"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   });
 });
