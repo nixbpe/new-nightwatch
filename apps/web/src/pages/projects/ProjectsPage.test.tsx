@@ -157,30 +157,25 @@ describe("create button (AC-01)", () => {
 });
 
 describe("create link from the sidebar (F-010 AC-05)", () => {
-  it("opens the create dialog once for an Owner and does not reopen it after it closes", async () => {
-    const listed = project();
-    fetchListMock.mockResolvedValue({ projects: [listed] });
+  it("opens the create dialog for an Owner and drops the parameter, so a reload does not reopen it", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
     renderPage(A, undefined, "?create=1");
-    const dialog = await screen.findByTestId("project-create-dialog");
-    expect(dialog).toBeVisible();
-    await userEvent.setup().keyboard("{Escape}");
+    expect(await screen.findByTestId("project-create-dialog")).toBeVisible();
     await waitFor(() => {
-      expect(screen.queryByTestId("project-create-dialog")).toBeNull();
+      expect(lastRouter.state.location.search).toBe("");
     });
-    // A reload of the list must not bring it back.
-    await queryClients[0]?.invalidateQueries({
-      queryKey: projectQueryKeys.list(A),
-    });
-    await screen.findByTestId(`project-row-${listed.id}`);
-    expect(screen.queryByTestId("project-create-dialog")).toBeNull();
+    expect(screen.getAllByTestId("project-create-dialog")).toHaveLength(1);
   });
 
-  it("opens nothing for a role below Admin", async () => {
+  it("opens nothing for a role below Admin, still dropping the parameter", async () => {
     fetchMeContextMock.mockResolvedValue(context("viewer"));
     const listed = project();
     fetchListMock.mockResolvedValue({ projects: [listed] });
     renderPage(A, undefined, "?create=1");
     await screen.findByTestId(`project-row-${listed.id}`);
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
     expect(screen.queryByTestId("project-create-dialog")).toBeNull();
   });
 
@@ -190,6 +185,9 @@ describe("create link from the sidebar (F-010 AC-05)", () => {
     });
     renderPage(A, undefined, "?create=1");
     expect(await screen.findByTestId("projects-create")).toBeDisabled();
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("");
+    });
     expect(screen.queryByTestId("project-create-dialog")).toBeNull();
   });
 });

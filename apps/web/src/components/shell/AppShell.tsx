@@ -15,6 +15,7 @@ import { Header } from "./Header";
 import { XIcon } from "./icons";
 import { Sidebar } from "./Sidebar";
 import { useMediaQuery } from "./useMediaQuery";
+import { useRememberLastProject } from "./useRememberLastProject";
 
 const FOCUSABLE_DRAWER_SELECTOR = [
   "a[href]",
@@ -53,6 +54,7 @@ const MONITOR_ROUTES = [
 export function AppShell() {
   const { pathname } = useLocation();
   const { me, mePending, retryMe, membershipInteraction } = useTenant();
+  useRememberLastProject();
   const monitorRoute = matchRoutes(MONITOR_ROUTES, pathname)?.at(-1)?.route.id;
   const privateRoute = monitorRoute !== undefined && monitorRoute !== "detail";
   const admittedPrivateRoute = useRef<string | null>(null);

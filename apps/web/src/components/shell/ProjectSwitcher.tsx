@@ -1,9 +1,7 @@
 import type { ProjectSummary } from "@nightwatch/api-contract";
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
-import { projectQueryKeys, rememberLastProject } from "../../lib/api/projects";
 import { useTenant } from "../../lib/tenant/TenantProvider";
 import { PROJECT_ROLE_LABELS } from "../../pages/projects/members/roles";
 import { CheckIcon, ChevronsUpDownIcon, SearchIcon } from "./icons";
@@ -23,7 +21,6 @@ export function ProjectSwitcher({
 }) {
   const { activeOrg } = useTenant();
   const current = useCurrentProject();
-  const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
   const popover = usePopover();
@@ -133,15 +130,6 @@ export function ProjectSwitcher({
     popover.close();
     if (project.id === current.projectId) return;
     onNavigate?.();
-    queryClient.setQueryData(projectQueryKeys.last(organizationId), {
-      projectId: project.id,
-    });
-    void rememberLastProject(organizationId, project.id).catch(() => {
-      // The Project may have been removed meanwhile; reload what the server now allows.
-      void queryClient.invalidateQueries({
-        queryKey: projectQueryKeys.all(organizationId),
-      });
-    });
     const destination = projectSwitchDestination(
       location.pathname,
       organizationId,

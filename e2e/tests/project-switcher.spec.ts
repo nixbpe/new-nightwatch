@@ -152,9 +152,14 @@ test("the create link opens the create dialog on the projects page", async ({
   await page.getByTestId("shell-project-switch").click();
   await page.getByTestId("shell-project-create").click();
   await expect(page.getByTestId("project-create-dialog")).toBeVisible();
-  await expect(page).toHaveURL(
-    new RegExp(`/organizations/${org}/projects\\?create=1$`),
-  );
+  // The parameter is dropped once the dialog is open, so a reload does not reopen it.
+  await expect(page).toHaveURL(new RegExp(`/organizations/${org}/projects$`));
+  await expect(page.getByTestId("project-create-dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("project-create-dialog")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("projects-create")).toBeVisible();
+  await expect(page.getByTestId("project-create-dialog")).toHaveCount(0);
 });
 
 test("a viewer sees only the joined Projects and no create link", async ({
@@ -175,4 +180,24 @@ test("a viewer sees only the joined Projects and no create link", async ({
     0,
   );
   await expect(page.getByTestId("shell-project-create")).toHaveCount(0);
+});
+
+test("opening a Project page by its link saves it as the last Project", async ({
+  page,
+}) => {
+  await signIn(page, people.owner);
+  await page.goto(membersUrl(alpha));
+  await expect
+    .poll(async () => {
+      const resolved = await ownerSession.request(
+        "GET",
+        `/api/me/last-project?organizationId=${org}`,
+      );
+      return (resolved.body as { projectId: string }).projectId;
+    })
+    .toBe(alpha);
+  await page.getByTestId("shell-nav-/workspace").click();
+  await expect(page.getByTestId("shell-project-switch")).toContainText(
+    `Alpha ${run}`,
+  );
 });

@@ -197,6 +197,15 @@ export const routes: RouteObject[] = [
           {
             path: "/organizations/:organizationId/projects",
             loader: projectsLoader,
+            // `?create=1` is dropped by a replace navigation; the loader re-admits the organization, which would remount the page.
+            shouldRevalidate: ({
+              currentUrl,
+              nextUrl,
+              defaultShouldRevalidate,
+            }) =>
+              currentUrl.pathname === nextUrl.pathname
+                ? false
+                : defaultShouldRevalidate,
             element: <ProjectsPage />,
           },
           {

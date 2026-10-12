@@ -15,6 +15,8 @@ export type CurrentProject = {
   /** Every Project the user can read, in the list's order; undefined until loaded. */
   projects: ProjectSummary[] | undefined;
   status: "loading" | "error" | "ready";
+  /** The Project a Project route names, whether or not it is in the list. */
+  routeProjectId: string | null;
   /** The Project in the URL, else the server's last or first readable one; null when there is none. */
   projectId: string | null;
   project: ProjectSummary | null;
@@ -67,6 +69,7 @@ export function useCurrentProject(): CurrentProject {
   return {
     organizationId,
     projects,
+    routeProjectId,
     status: resolving,
     projectId,
     project,

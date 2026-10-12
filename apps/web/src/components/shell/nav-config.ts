@@ -34,6 +34,14 @@ export function isNavGroup(item: NavItem): item is NavGroup {
 // Leaves must be real routes in router.tsx; the mockup's placeholder sections are intentionally omitted.
 // The Project group lists only pages that exist under a Project; the switcher above it is not a leaf.
 export const NAV_ITEMS: NavItem[] = [
+  // The organization's overview and monitors stay top-level, as before Project scope existed.
+  { label: "ภาพรวม", icon: "grid", path: "/workspace" },
+  {
+    label: "ตรวจสถานะบริการ",
+    icon: "activity",
+    path: "/organizations/:organizationId/monitors",
+    count: "monitors",
+  },
   {
     label: "โปรเจกต์",
     scope: "project",
@@ -49,13 +57,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "องค์กร",
     scope: "organization",
     children: [
-      { label: "ภาพรวม", icon: "grid", path: "/workspace" },
-      {
-        label: "ตรวจสถานะบริการ",
-        icon: "activity",
-        path: "/organizations/:organizationId/monitors",
-        count: "monitors",
-      },
       {
         label: "โปรเจกต์ทั้งหมด",
         icon: "grid",

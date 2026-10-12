@@ -3,7 +3,13 @@ import type {
   ProjectSummary,
 } from "@nightwatch/api-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -296,10 +302,13 @@ describe("ProjectSwitcher", () => {
         membersPath(P_BRAVO),
       );
     });
-    expect(rememberLastProjectMock).toHaveBeenCalledExactlyOnceWith(
-      ORG_A,
-      P_BRAVO,
-    );
+    // Landing on Alpha's page saved Alpha; landing on Bravo's saves Bravo.
+    await waitFor(() => {
+      expect(rememberLastProjectMock.mock.calls).toEqual([
+        [ORG_A, P_ALPHA],
+        [ORG_A, P_BRAVO],
+      ]);
+    });
     await waitFor(() => {
       expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
         "Bravo",
@@ -326,23 +335,56 @@ describe("ProjectSwitcher", () => {
     await openMenu(user);
     await user.click(screen.getByTestId(`shell-project-option-${P_ALPHA}`));
     expect(screen.getByTestId("probe")).toHaveTextContent(membersPath(P_ALPHA));
-    expect(rememberLastProjectMock).not.toHaveBeenCalled();
+    expect(rememberLastProjectMock.mock.calls).toEqual([[ORG_A, P_ALPHA]]);
     expect(screen.queryByTestId("shell-project-menu")).toBeNull();
   });
 
-  it("AC-04: a failed remember reloads the Projects instead of blocking the switch", async () => {
+  it("AC-06: landing on a Project route saves it once, however often the shell renders", async () => {
+    const user = userEvent.setup();
+    renderShell({ path: membersPath(P_ALPHA) });
+    await waitFor(() => {
+      expect(rememberLastProjectMock).toHaveBeenCalledExactlyOnceWith(
+        ORG_A,
+        P_ALPHA,
+      );
+    });
+    // Opening and closing the menu re-renders the shell; nothing is sent again.
+    await openMenu(user);
+    await user.keyboard("{Escape}");
+    expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("AC-06: nothing is saved outside a Project route, or for a Project missing from the list", async () => {
+    renderShell({ path: "/workspace" });
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+        "Bravo",
+      );
+    });
+    expect(rememberLastProjectMock).not.toHaveBeenCalled();
+    cleanup();
+    renderShell({ path: membersPath(crypto.randomUUID()) });
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+        "เลือกโปรเจกต์",
+      );
+    });
+    expect(rememberLastProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("AC-06: a failed save is silent and the switch still happens", async () => {
     const user = userEvent.setup();
     renderShell({ path: "/workspace" });
     await openMenu(user);
     rememberLastProjectMock.mockRejectedValueOnce(new Error("gone"));
-    const before = fetchProjectListMock.mock.calls.length;
     await user.click(screen.getByTestId(`shell-project-option-${P_ALPHA}`));
     await waitFor(() => {
       expect(screen.getByTestId("probe")).toHaveTextContent(
         membersPath(P_ALPHA),
       );
-      expect(fetchProjectListMock.mock.calls.length).toBeGreaterThan(before);
+      expect(rememberLastProjectMock).toHaveBeenCalledWith(ORG_A, P_ALPHA);
     });
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("AC-05: links to all Projects and, for an Owner, to the create dialog", async () => {
@@ -462,12 +504,19 @@ describe("ProjectSwitcher", () => {
       "shell-nav-/organizations/:organizationId/projects/:projectId/members",
     ]);
     expect(scoped("organization")).toEqual([
-      "shell-nav-/workspace",
-      "shell-nav-/organizations/:organizationId/monitors",
       "shell-nav-/organizations/:organizationId/projects",
       "shell-nav-/organizations/:organizationId/members",
       "shell-nav-/organizations/:organizationId/notification-settings",
       "shell-nav-/organizations/:organizationId/audit-log",
+    ]);
+    // The overview and the monitors stay top-level, above every group.
+    const topLevel = within(nav)
+      .getAllByRole("link")
+      .filter((link) => link.closest("[data-scope]") === null)
+      .map((link) => link.getAttribute("data-testid"));
+    expect(topLevel).toEqual([
+      "shell-nav-/workspace",
+      "shell-nav-/organizations/:organizationId/monitors",
     ]);
     expect(scoped("personal")).toEqual([
       "shell-nav-/notifications",
