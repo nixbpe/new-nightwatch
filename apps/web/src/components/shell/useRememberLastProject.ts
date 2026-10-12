@@ -10,8 +10,8 @@ import { useCurrentProject } from "./useCurrentProject";
  * coming back is a new landing and saves again, so a failed save is retried. It waits
  * for the Project to appear in the user's list, so a URL the server would refuse is
  * never sent. Failure is silent: the choice is a convenience.
- * Each save carries the time of its landing, taken when the user landed and not when the
- * queued save is finally sent. The server keeps the newest landing per user, so a delayed
+ * Each save carries the time of its landing, taken when the route changed to the Project
+ * (before the list validates it) and not when the save is finally sent. The server keeps the newest landing per user, so a delayed
  * save from another tab or browser cannot restore an older Project; the cache follows the
  * Project the server reports as stored.
  * One save is in flight at a time, so the server commits them in the order they were
@@ -41,6 +41,9 @@ export function useRememberLastProject(): void {
   // Last landing time handed out; the next is at least 1 ms later, so two landings in
   // this tab never share a time (the server keeps a write only if it is strictly newer).
   const lastLandedAt = useRef(0);
+  // Landing time of the route's Project, taken when the route changed to it: validating
+  // the Project against the list can take long, and another tab may land and save first.
+  const routeLanding = useRef<{ projectId: string; at: number } | null>(null);
   const waiting = useRef<Target | null>(null);
   const isRetired = () => retired.current;
   const projectId =
@@ -57,6 +60,19 @@ export function useRememberLastProject(): void {
   }, []);
 
   useEffect(() => {
+    if (routeProjectId === null) {
+      routeLanding.current = null;
+      return;
+    }
+    if (routeLanding.current?.projectId === routeProjectId) return;
+    lastLandedAt.current = Math.max(Date.now(), lastLandedAt.current + 1);
+    routeLanding.current = {
+      projectId: routeProjectId,
+      at: lastLandedAt.current,
+    };
+  }, [routeProjectId]);
+
+  useEffect(() => {
     if (organizationId === null || projectId === null) {
       landed.current = null;
       return;
@@ -65,7 +81,11 @@ export function useRememberLastProject(): void {
     if (landed.current === key) return;
     landed.current = key;
     sent.current = key;
-    lastLandedAt.current = Math.max(Date.now(), lastLandedAt.current + 1);
+    const landingAt =
+      routeLanding.current?.projectId === projectId
+        ? routeLanding.current.at
+        : Math.max(Date.now(), lastLandedAt.current + 1);
+    lastLandedAt.current = Math.max(lastLandedAt.current, landingAt);
 
     function send(target: Target): void {
       inFlight.current = true;
@@ -105,7 +125,7 @@ export function useRememberLastProject(): void {
     const target = {
       organizationId,
       projectId,
-      selectedAt: new Date(lastLandedAt.current).toISOString(),
+      selectedAt: new Date(landingAt).toISOString(),
     };
     if (inFlight.current) waiting.current = target;
     else send(target);

@@ -145,6 +145,7 @@ function renderShell({
   last = P_BRAVO,
   lastFails = false,
   secondOrgRole,
+  listGate,
 }: {
   path?: string;
   role?: "owner" | "viewer";
@@ -153,13 +154,14 @@ function renderShell({
   lastFails?: boolean;
   /** Adds Org B, whose only Project is Delta; Org A stays the active one. */
   secondOrgRole?: "owner" | "viewer";
+  /** Holds every Project list fetch until it resolves. */
+  listGate?: Promise<void>;
 } = {}) {
   fetchMeContextMock.mockResolvedValue(meContext(role, secondOrgRole));
-  fetchProjectListMock.mockImplementation((organizationId) =>
-    Promise.resolve({
-      projects: organizationId === ORG_B ? [OTHER] : projects,
-    }),
-  );
+  fetchProjectListMock.mockImplementation(async (organizationId) => {
+    await listGate;
+    return { projects: organizationId === ORG_B ? [OTHER] : projects };
+  });
   if (lastFails) fetchLastProjectMock.mockRejectedValue(new Error("down"));
   else fetchLastProjectMock.mockResolvedValue({ projectId: last });
   rememberLastProjectMock.mockImplementation((_org, projectId) =>
@@ -506,6 +508,45 @@ describe("ProjectSwitcher", () => {
       } finally {
         clock.mockRestore();
       }
+    });
+
+    it("the save keeps the time the route changed to the Project, not the time the list validated it", async () => {
+      const clock = vi.spyOn(Date, "now");
+      try {
+        let openList: () => void = () => undefined;
+        const listGate = new Promise<void>((resolve) => {
+          openList = resolve;
+        });
+        clock.mockReturnValue(Date.parse("2026-10-12T10:00:00.000Z"));
+        const view = renderShell({ path: "/workspace", last: null, listGate });
+        const saves = deferSaves();
+        clock.mockReturnValue(Date.parse("2026-10-12T10:00:05.000Z"));
+        await view.router.navigate(membersPath(P_BRAVO));
+        await settled();
+        expect(saves).toEqual([]);
+        // The list is slow; another tab could land and save in the meantime.
+        clock.mockReturnValue(Date.parse("2026-10-12T10:01:00.000Z"));
+        openList();
+        await waitFor(() => {
+          expect(sentIds(saves)).toEqual([P_BRAVO]);
+        });
+        expect(saves[0]?.selectedAt).toBe("2026-10-12T10:00:05.000Z");
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it("a route to a Project outside the list sends nothing, even once the list arrives", async () => {
+      let openList: () => void = () => undefined;
+      const listGate = new Promise<void>((resolve) => {
+        openList = resolve;
+      });
+      const view = renderShell({ path: "/workspace", last: null, listGate });
+      const saves = deferSaves();
+      await view.router.navigate(membersPath(P_OTHER));
+      openList();
+      await settled();
+      expect(saves).toEqual([]);
     });
 
     it("two landings in the same millisecond get increasing times", async () => {
