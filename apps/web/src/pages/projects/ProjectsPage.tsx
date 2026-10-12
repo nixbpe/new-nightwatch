@@ -8,6 +8,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { EmptyState } from "../../components/shell/EmptyState";
 import { GridIcon, SearchIcon } from "../../components/shell/icons";
+import { CREATE_PROJECT_PARAM } from "../../components/shell/nav-config";
 import { Page, PageHeader } from "../../components/shell/Page";
 import { PageState } from "../../components/shell/PageState";
 import { Alert, Input } from "../../components/ui";
@@ -177,6 +178,16 @@ function ProjectsForOrganization({
 
   const canManage =
     organization?.role === "owner" || organization?.role === "admin";
+  // The sidebar's "สร้างโปรเจกต์" arrives with `?create=1`: open the dialog once the list is known, then drop the parameter.
+  const wantsCreate =
+    new URLSearchParams(location.search).get(CREATE_PROJECT_PARAM) === "1";
+  useEffect(() => {
+    if (!wantsCreate || projects === undefined) return;
+    if (canManage && projects.length < PROJECT_LIMIT_PER_ORGANIZATION) {
+      setDialog({ kind: "create", opener: null });
+    }
+    void navigate(location.pathname, { replace: true });
+  }, [wantsCreate, projects, canManage, navigate, location.pathname]);
   const joined = projects?.filter((project) => project.myRole !== null) ?? [];
   const needle = q.toLowerCase();
   const visible = (projects ?? []).filter(

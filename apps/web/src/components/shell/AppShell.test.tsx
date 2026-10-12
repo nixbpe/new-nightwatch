@@ -116,6 +116,12 @@ vi.mock("../../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMonitorList: fetchMonitorListMock,
 }));
+// The Project switcher reads these; no Project is the quietest state (ProjectSwitcher.test.tsx covers the rest).
+vi.mock("../../lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchProjectList: () => Promise.resolve({ projects: [] }),
+  fetchLastProject: () => Promise.resolve({ projectId: null }),
+}));
 vi.mock("../../lib/api/notifications", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {

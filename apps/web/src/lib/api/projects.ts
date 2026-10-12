@@ -1,5 +1,6 @@
 import {
   addProjectMembersResponseSchema,
+  lastProjectResponseSchema,
   projectDetailSchema,
   projectListResponseSchema,
   projectMemberCandidatesResponseSchema,
@@ -9,6 +10,7 @@ import {
   type AddProjectMembersResponse,
   type addProjectMembersRequestSchema,
   type createProjectRequestSchema,
+  type LastProjectResponse,
   type ProjectDetail,
   type ProjectListResponse,
   type ProjectMember,
@@ -36,6 +38,9 @@ export const projectQueryKeys = {
     [...TENANT_QUERY_PREFIX, "projects", organizationId] as const,
   list: (organizationId: string) =>
     [...projectQueryKeys.all(organizationId), "list"] as const,
+  // The Project to open when the URL names none; changes with a Project switch.
+  last: (organizationId: string) =>
+    [...projectQueryKeys.all(organizationId), "last"] as const,
   // Detail, members and candidates of one Project; removing it forgets them all.
   project: (organizationId: string, projectId: string) =>
     [...projectQueryKeys.all(organizationId), projectId] as const,
@@ -170,4 +175,22 @@ export function removeProjectMember(
     undefined,
     { method: "DELETE", params: { organizationId, projectId, userId } },
   );
+}
+
+export function fetchLastProject(
+  organizationId: string,
+): Promise<LastProjectResponse> {
+  return request("/api/me/last-project", lastProjectResponseSchema, {
+    query: { organizationId },
+  });
+}
+
+export function rememberLastProject(
+  organizationId: string,
+  projectId: string,
+): Promise<LastProjectResponse> {
+  return request("/api/me/last-project", lastProjectResponseSchema, {
+    method: "PUT",
+    body: { organizationId, projectId },
+  });
 }

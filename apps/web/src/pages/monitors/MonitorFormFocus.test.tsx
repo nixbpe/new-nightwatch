@@ -74,6 +74,12 @@ vi.mock("../../lib/api/monitors", async (original) => ({
   fetchMonitorList: vi.fn(),
   updateMonitor: vi.fn(),
 }));
+// The shell's Project switcher reads these; no Project is the quietest state.
+vi.mock("../../lib/api/projects", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  fetchProjectList: () => Promise.resolve({ projects: [] }),
+  fetchLastProject: () => Promise.resolve({ projectId: null }),
+}));
 vi.mock("../../lib/api/notifications", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   fetchOrganizationNotificationSettings: vi.fn(),

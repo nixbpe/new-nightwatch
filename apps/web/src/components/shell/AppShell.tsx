@@ -117,7 +117,14 @@ export function AppShell() {
   };
 
   const onMobileDrawerKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const drawer = mobileDrawerRef.current;
     if (event.key === "Escape") {
+      // An open menu in the drawer takes the first Escape: its own handler closes it and refocuses its button.
+      if (
+        drawer?.querySelector('[aria-haspopup="menu"][aria-expanded="true"]')
+      ) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       closeMobileMenu();
@@ -127,7 +134,6 @@ export function AppShell() {
       return;
     }
 
-    const drawer = mobileDrawerRef.current;
     if (drawer === null) {
       return;
     }

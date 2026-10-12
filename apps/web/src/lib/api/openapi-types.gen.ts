@@ -6,7755 +6,8485 @@
  */
 
 export interface paths {
-    "/api/onboarding/invitations/{invitationId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Public invitation preview for the accept-invitation page */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    invitationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Pending, unexpired invitation preview */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            invitation: {
-                                id: string;
-                                /** Format: email */
-                                email: string;
-                                organizationName: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                                /** Format: date-time */
-                                expiresAt: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Unknown, expired or cancelled invitation */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  "/api/onboarding/invitations/{invitationId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/onboarding/invitations/{invitationId}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    /** Public invitation preview for the accept-invitation page */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          invitationId: string;
         };
-        get?: never;
-        put?: never;
-        /** Accept an invitation for the verified recipient */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    invitationId: string;
-                };
-                cookie?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Pending, unexpired invitation preview */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              invitation: {
+                id: string;
+                /** Format: email */
+                email: string;
+                organizationName: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+                /** Format: date-time */
+                expiresAt: string;
+              };
             };
-            requestBody?: never;
-            responses: {
-                /** @description Accepted membership */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            organizationId: string;
-                        };
-                    };
-                };
-                /** @description Invitation unavailable to this recipient */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Already a member or organization at capacity */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
+          };
         };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+        /** @description Unknown, expired or cancelled invitation */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
     };
-    "/api/me/context": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Authenticated context for tenant selection */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Verified session, memberships and active selection */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            user: {
-                                id: string;
-                                name: string;
-                                /** Format: email */
-                                email: string;
-                                emailVerified: boolean;
-                                twoFactorEnabled: boolean;
-                            };
-                            organizations: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                slug: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                            }[];
-                            /** Format: uuid */
-                            lastActiveTenantId: string | null;
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email not verified */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/onboarding/invitations/{invitationId}/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/me/resolve-active-org": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    get?: never;
+    put?: never;
+    /** Accept an invitation for the verified recipient */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          invitationId: string;
         };
-        get?: never;
-        put?: never;
-        /**
-         * Resolve account-global active organization after verified authentication
-         * @description No selection input. Credentialed browser and native callers must send the configured trusted Origin.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Accepted membership */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              organizationId: string;
             };
-            requestBody?: never;
-            responses: {
-                /** @description Resolved context, or account-only admission when no membership exists */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            user: {
-                                id: string;
-                                name: string;
-                                /** Format: email */
-                                email: string;
-                                emailVerified: boolean;
-                                twoFactorEnabled: boolean;
-                            };
-                            organizations: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                slug: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                            }[];
-                            /** Format: uuid */
-                            lastActiveTenantId: string | null;
-                        };
-                    };
-                };
-                /** @description No final authenticated session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email not verified or missing, null or foreign Origin */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Resolution could not converge, retry required */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
+          };
         };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+        /** @description Invitation unavailable to this recipient */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Already a member or organization at capacity */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
     };
-    "/api/me/active-org": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Switch the active organization (membership-verified) */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/me/context": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Authenticated context for tenant selection */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Verified session, memberships and active selection */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              user: {
+                id: string;
+                name: string;
+                /** Format: email */
+                email: string;
+                emailVerified: boolean;
+                twoFactorEnabled: boolean;
+              };
+              organizations: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                slug: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+              }[];
+              /** Format: uuid */
+              lastActiveTenantId: string | null;
             };
-            requestBody: {
-                content: {
-                    "application/json": {
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email not verified */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/me/resolve-active-org": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve account-global active organization after verified authentication
+     * @description No selection input. Credentialed browser and native callers must send the configured trusted Origin.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Resolved context, or account-only admission when no membership exists */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              user: {
+                id: string;
+                name: string;
+                /** Format: email */
+                email: string;
+                emailVerified: boolean;
+                twoFactorEnabled: boolean;
+              };
+              organizations: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                slug: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+              }[];
+              /** Format: uuid */
+              lastActiveTenantId: string | null;
+            };
+          };
+        };
+        /** @description No final authenticated session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email not verified or missing, null or foreign Origin */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Resolution could not converge, retry required */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/me/active-org": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Switch the active organization (membership-verified) */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            /** Format: uuid */
+            organizationId: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Updated context with the new active selection */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              user: {
+                id: string;
+                name: string;
+                /** Format: email */
+                email: string;
+                emailVerified: boolean;
+                twoFactorEnabled: boolean;
+              };
+              organizations: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                slug: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+              }[];
+              /** Format: uuid */
+              lastActiveTenantId: string | null;
+            };
+          };
+        };
+        /** @description Invalid input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email not verified or not an organization member */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                code: string;
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/notifications": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List visible notification inbox items */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          cursor?: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Visible personal and active-organization items */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              items: (
+                | {
+                    /** Format: uuid */
+                    id: string;
+                    /** @enum {string} */
+                    scope: "account";
+                    organizationId: unknown;
+                    /** @enum {string} */
+                    eventType:
+                      "PASSWORD_CHANGED" | "MFA_ENABLED" | "MFA_DISABLED";
+                    /** Format: date-time */
+                    occurredAt: string;
+                    /** Format: date-time */
+                    readAt: string | null;
+                    actor: unknown;
+                    category: unknown;
+                  }
+                | (
+                    | {
+                        /** Format: uuid */
+                        id: string;
+                        /** @enum {string} */
+                        scope: "organization";
                         /** Format: uuid */
                         organizationId: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated context with the new active selection */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            user: {
-                                id: string;
-                                name: string;
-                                /** Format: email */
-                                email: string;
-                                emailVerified: boolean;
-                                twoFactorEnabled: boolean;
-                            };
-                            organizations: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                slug: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                            }[];
-                            /** Format: uuid */
-                            lastActiveTenantId: string | null;
-                        };
-                    };
-                };
-                /** @description Invalid input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email not verified or not an organization member */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                code: string;
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/notifications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List visible notification inbox items */
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                    cursor?: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Visible personal and active-organization items */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            items: ({
-                                /** Format: uuid */
-                                id: string;
-                                /** @enum {string} */
-                                scope: "account";
-                                organizationId: unknown;
-                                /** @enum {string} */
-                                eventType: "PASSWORD_CHANGED" | "MFA_ENABLED" | "MFA_DISABLED";
-                                /** Format: date-time */
-                                occurredAt: string;
-                                /** Format: date-time */
-                                readAt: string | null;
-                                actor: unknown;
-                                category: unknown;
-                            } | ({
-                                /** Format: uuid */
-                                id: string;
-                                /** @enum {string} */
-                                scope: "organization";
-                                /** Format: uuid */
-                                organizationId: string;
-                                /** Format: date-time */
-                                occurredAt: string;
-                                /** Format: date-time */
-                                readAt: string | null;
-                                /** @enum {string} */
-                                eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED";
-                                actor: {
-                                    displayName: string;
-                                };
-                                /** @enum {string} */
-                                category: "notification-settings";
-                            } | {
-                                /** Format: uuid */
-                                id: string;
-                                /** @enum {string} */
-                                scope: "organization";
-                                /** Format: uuid */
-                                organizationId: string;
-                                /** Format: date-time */
-                                occurredAt: string;
-                                /** Format: date-time */
-                                readAt: string | null;
-                                /** @enum {string} */
-                                eventType: "AUDIT_EXPORT_READY" | "AUDIT_EXPORT_FAILED";
-                                actor: unknown;
-                                /** @enum {string} */
-                                category: "audit-log";
-                            } | {
-                                /** Format: uuid */
-                                id: string;
-                                /** @enum {string} */
-                                scope: "organization";
-                                /** Format: uuid */
-                                organizationId: string;
-                                /** Format: date-time */
-                                occurredAt: string;
-                                /** Format: date-time */
-                                readAt: string | null;
-                                actor: unknown;
-                                /** @enum {string} */
-                                category: "monitor";
-                                subject: {
-                                    /** Format: uuid */
-                                    monitorId: string;
-                                    monitorName: string;
-                                };
-                                /** @enum {string} */
-                                eventType: "MONITOR_DOWN";
-                                reason: string;
-                                sslNotAfter: unknown;
-                            } | {
-                                /** Format: uuid */
-                                id: string;
-                                /** @enum {string} */
-                                scope: "organization";
-                                /** Format: uuid */
-                                organizationId: string;
-                                /** Format: date-time */
-                                occurredAt: string;
-                                /** Format: date-time */
-                                readAt: string | null;
-                                actor: unknown;
-                                /** @enum {string} */
-                                category: "monitor";
-                                subject: {
-                                    /** Format: uuid */
-                                    monitorId: string;
-                                    monitorName: string;
-                                };
-                                /** @enum {string} */
-                                eventType: "MONITOR_RECOVERED";
-                                reason: unknown;
-                                sslNotAfter: unknown;
-                            } | {
-                                /** Format: uuid */
-                                id: string;
-                                /** @enum {string} */
-                                scope: "organization";
-                                /** Format: uuid */
-                                organizationId: string;
-                                /** Format: date-time */
-                                occurredAt: string;
-                                /** Format: date-time */
-                                readAt: string | null;
-                                actor: unknown;
-                                /** @enum {string} */
-                                category: "monitor";
-                                subject: {
-                                    /** Format: uuid */
-                                    monitorId: string;
-                                    monitorName: string;
-                                };
-                                /** @enum {string} */
-                                eventType: "MONITOR_SSL_CAUTION" | "MONITOR_SSL_DANGER" | "MONITOR_SSL_EXPIRED";
-                                reason: unknown;
-                                /** Format: date-time */
-                                sslNotAfter: string;
-                            }))[];
-                            nextCursor: string | null;
-                            unreadCount: number;
-                            /** Format: uuid */
-                            organizationId: string | null;
-                        };
-                    };
-                };
-                /** @description Invalid request input or cursor */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_CURSOR";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is not verified */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notifications/unread-count": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Count unread visible notification inbox items */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Unread count for visible notification scope */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            unreadCount: number;
-                            /** Format: uuid */
-                            organizationId: string | null;
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is not verified */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notifications/{id}/open": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Open a notification and atomically mark it read */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Opened notification detail */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            id: string;
-                            /** @enum {string} */
-                            scope: "account";
-                            organizationId: unknown;
-                            /** @enum {string} */
-                            eventType: "PASSWORD_CHANGED" | "MFA_ENABLED" | "MFA_DISABLED";
-                            /** Format: date-time */
-                            occurredAt: string;
-                            /** Format: date-time */
-                            readAt: string | null;
-                            actor: unknown;
-                            category: unknown;
-                        } | ({
-                            /** Format: uuid */
-                            id: string;
-                            /** @enum {string} */
-                            scope: "organization";
-                            /** Format: uuid */
-                            organizationId: string;
-                            /** Format: date-time */
-                            occurredAt: string;
-                            /** Format: date-time */
-                            readAt: string | null;
-                            /** @enum {string} */
-                            eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED";
-                            actor: {
-                                displayName: string;
-                            };
-                            /** @enum {string} */
-                            category: "notification-settings";
-                        } | {
-                            /** Format: uuid */
-                            id: string;
-                            /** @enum {string} */
-                            scope: "organization";
-                            /** Format: uuid */
-                            organizationId: string;
-                            /** Format: date-time */
-                            occurredAt: string;
-                            /** Format: date-time */
-                            readAt: string | null;
-                            /** @enum {string} */
-                            eventType: "AUDIT_EXPORT_READY" | "AUDIT_EXPORT_FAILED";
-                            actor: unknown;
-                            /** @enum {string} */
-                            category: "audit-log";
-                        } | {
-                            /** Format: uuid */
-                            id: string;
-                            /** @enum {string} */
-                            scope: "organization";
-                            /** Format: uuid */
-                            organizationId: string;
-                            /** Format: date-time */
-                            occurredAt: string;
-                            /** Format: date-time */
-                            readAt: string | null;
-                            actor: unknown;
-                            /** @enum {string} */
-                            category: "monitor";
-                            subject: {
-                                /** Format: uuid */
-                                monitorId: string;
-                                monitorName: string;
-                            };
-                            /** @enum {string} */
-                            eventType: "MONITOR_DOWN";
-                            reason: string;
-                            sslNotAfter: unknown;
-                        } | {
-                            /** Format: uuid */
-                            id: string;
-                            /** @enum {string} */
-                            scope: "organization";
-                            /** Format: uuid */
-                            organizationId: string;
-                            /** Format: date-time */
-                            occurredAt: string;
-                            /** Format: date-time */
-                            readAt: string | null;
-                            actor: unknown;
-                            /** @enum {string} */
-                            category: "monitor";
-                            subject: {
-                                /** Format: uuid */
-                                monitorId: string;
-                                monitorName: string;
-                            };
-                            /** @enum {string} */
-                            eventType: "MONITOR_RECOVERED";
-                            reason: unknown;
-                            sslNotAfter: unknown;
-                        } | {
-                            /** Format: uuid */
-                            id: string;
-                            /** @enum {string} */
-                            scope: "organization";
-                            /** Format: uuid */
-                            organizationId: string;
-                            /** Format: date-time */
-                            occurredAt: string;
-                            /** Format: date-time */
-                            readAt: string | null;
-                            actor: unknown;
-                            /** @enum {string} */
-                            category: "monitor";
-                            subject: {
-                                /** Format: uuid */
-                                monitorId: string;
-                                monitorName: string;
-                            };
-                            /** @enum {string} */
-                            eventType: "MONITOR_SSL_CAUTION" | "MONITOR_SSL_DANGER" | "MONITOR_SSL_EXPIRED";
-                            reason: unknown;
-                            /** Format: date-time */
-                            sslNotAfter: string;
-                        });
-                    };
-                };
-                /** @description Invalid request input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is not verified */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Notification item is not visible or no longer exists */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "NOTIFICATION_NOT_FOUND";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notifications/{id}/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Mark a notification read */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The notification read transition */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            id: string;
-                            /** Format: date-time */
-                            readAt: string;
-                        };
-                    };
-                };
-                /** @description Invalid request input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is not verified */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Notification item is not visible or no longer exists */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "NOTIFICATION_NOT_FOUND";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/notifications/read-all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mark all currently visible notifications read */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        expectedOrganizationId: string | null;
-                    };
-                };
-            };
-            responses: {
-                /** @description Count of items newly marked read */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            markedCount: number;
-                        };
-                    };
-                };
-                /** @description Invalid request input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is not verified */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The server resolves a different active scope than expected */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INBOX_SCOPE_CHANGED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/notification-settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get organization notification settings */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Organization notification settings */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            organizationId: string;
-                            settingsChangedEnabled: boolean;
-                            monitorAlertsEnabled: boolean;
-                            version: number;
-                        };
-                    };
-                };
-                /** @description Invalid request input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update organization notification settings with compare-and-swap */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        settingsChangedEnabled?: boolean;
-                        monitorAlertsEnabled?: boolean;
-                        expectedVersion: number;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated organization notification settings */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            organizationId: string;
-                            settingsChangedEnabled: boolean;
-                            monitorAlertsEnabled: boolean;
-                            version: number;
-                        };
-                    };
-                };
-                /** @description Invalid request input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The settings version is stale */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "SETTINGS_VERSION_CONFLICT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/members": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                    offset?: number;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Paginated organization members */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            organizationId: string;
-                            members: {
-                                id: string;
-                                userId: string;
-                                name: string;
-                                /** Format: email */
-                                email: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                            }[];
-                            page: {
-                                limit: number;
-                                offset: number;
-                                total: number;
-                            };
-                            memberLimit: number;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/members/{memberId}/role": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    memberId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        role: "owner" | "admin" | "viewer" | "auditor";
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated member */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            member: {
-                                id: string;
-                                userId: string;
-                                /** Format: uuid */
-                                organizationId: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/members/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Left organization */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            member: {
-                                id: string;
-                                userId: string;
-                                /** Format: uuid */
-                                organizationId: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                            };
-                        };
-                    };
-                };
-                /** @description The member is the last administrator of a Project; the message names it */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "LAST_PROJECT_ADMIN";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/members/{memberId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    memberId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Revoked member */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            member: {
-                                id: string;
-                                userId: string;
-                                /** Format: uuid */
-                                organizationId: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                            };
-                        };
-                    };
-                };
-                /** @description The member is the last administrator of a Project; the message names it */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "LAST_PROJECT_ADMIN";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/invitations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                    offset?: number;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Paginated pending organization invitations */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            organizationId: string;
-                            invitations: {
-                                /** Format: uuid */
-                                publicId: string;
-                                email: string;
-                                /** @enum {string} */
-                                role: "owner" | "admin" | "viewer" | "auditor";
-                                /** Format: date-time */
-                                sentAt: string;
-                                /** Format: date-time */
-                                expiresAt: string | null;
-                                expired: boolean;
-                                /** Format: date-time */
-                                resendAvailableAt: string;
-                                manageable: boolean;
-                            }[];
-                            activeCount: number;
-                            /** @enum {number} */
-                            activeLimit: 100;
-                            page: {
-                                limit: number;
-                                offset: number;
-                                total: number;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        email: string;
-                        /** @enum {string} */
-                        role: "owner" | "admin" | "viewer" | "auditor";
-                    };
-                };
-            };
-            responses: {
-                /** @description Invitation persisted; SMTP transport result */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {boolean} */
-                            created: true;
-                            /** @enum {string} */
-                            emailDispatch: "accepted" | "failed";
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/invitations/{publicId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    publicId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Invitation canceled */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {boolean} */
-                            canceled: true;
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/invitations/{publicId}/resend": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    publicId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Invitation link rotated; SMTP transport result */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {boolean} */
-                            resent: true;
-                            /** @enum {string} */
-                            emailDispatch: "accepted" | "failed";
-                            /** Format: date-time */
-                            sentAt: string;
-                            /** Format: date-time */
-                            expiresAt: string;
-                            /** Format: date-time */
-                            resendAvailableAt: string;
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test a monitor configuration before it is created */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name: string;
-                        url: string;
-                        /** @default 300 */
-                        intervalSeconds?: number;
-                        /** @default 10 */
-                        timeoutSeconds?: number;
-                        /**
-                         * @default GET
-                         * @enum {string}
-                         */
-                        method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                        /** @default [] */
-                        headers?: {
-                            id?: string;
-                            name: string;
-                            value?: string;
-                            /** @default false */
-                            secret?: boolean;
-                        }[];
-                        /** @default [] */
-                        queryParams?: {
-                            name: string;
-                            value: string;
-                        }[];
-                        /** @default null */
-                        body?: {
-                            /** @enum {string} */
-                            type: "json" | "text";
-                            content: string;
-                        } | null;
-                        /** @default 200-299 */
-                        expectedStatus?: string;
-                        /** @default [] */
-                        assertions?: ({
-                            /** @enum {string} */
-                            kind: "jsonPathEquals";
-                            path: string;
-                            expected: string;
-                        } | {
-                            /** @enum {string} */
-                            kind: "bodyContains";
-                            text: string;
-                        } | {
-                            /** @enum {string} */
-                            kind: "responseTimeBelow";
-                            ms: number;
-                        })[];
-                        /**
-                         * @default {
-                         *       "type": "none"
-                         *     }
-                         */
-                        auth?: {
-                            /** @enum {string} */
-                            type: "none";
-                        } | {
-                            /** @enum {string} */
-                            type: "bearer";
-                        } | {
-                            /** @enum {string} */
-                            type: "basic";
-                        } | {
-                            /** @enum {string} */
-                            type: "apiKey";
-                            headerName: string;
-                        };
-                        /**
-                         * @default {
-                         *       "failureThreshold": 2,
-                         *       "downEnabled": true,
-                         *       "sslEnabled": true,
-                         *       "sslCautionDays": 30
-                         *     }
-                         */
-                        alerts?: {
-                            /** @default 2 */
-                            failureThreshold?: number;
-                            /** @default true */
-                            downEnabled?: boolean;
-                            /** @default true */
-                            sslEnabled?: boolean;
-                            /** @default 30 */
-                            sslCautionDays?: number;
-                        };
-                        /** @default [] */
-                        secrets?: {
-                            slot: string;
-                            value: string;
-                        }[];
-                    };
-                };
-            };
-            responses: {
-                /** @description The result of one check of the target, not recorded. Target problems (DNS, TLS, timeout, blocked address, redirects) are results, not errors */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            result: {
-                                /** Format: date-time */
-                                checkedAt: string;
-                                /** @enum {string} */
-                                outcome: "pass" | "fail" | "check_error";
-                                httpStatus: number | null;
-                                responseTimeMs: number | null;
-                                /** @enum {string|null} */
-                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
-                                /** @enum {string|null} */
-                                tlsReason: "expired" | "hostname_mismatch" | "untrusted" | "self_signed" | "handshake_failed" | null;
-                                assertions: {
-                                    /** @enum {string} */
-                                    kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
-                                    expected: string;
-                                    actual: string | null;
-                                    actualType: string | null;
-                                    actualTruncated: boolean;
-                                    /** @enum {string} */
-                                    status: "pass" | "fail" | "not_evaluated";
-                                    /** @enum {string|null} */
-                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | "prefix_ended" | null;
-                                }[];
-                                url: string;
-                                evaluatedFromPrefix: boolean;
-                                ssl: {
-                                    /** @enum {string} */
-                                    level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
-                                    daysRemaining: number | null;
-                                    host: string | null;
-                                    issuer: string | null;
-                                    /** Format: date-time */
-                                    notAfter: string | null;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid monitor input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_INVALID";
-                                message: string;
-                                details: {
-                                    fields: {
-                                        field: string;
-                                        /** @enum {string} */
-                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
-                                    }[];
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Test rate limit reached; Retry-After carries the wait in seconds */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_TEST_RATE_LIMITED";
-                                message: string;
-                                details: {
-                                    retryAfterSeconds: number;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description The rate limiter is unavailable, or credential encryption is not configured for a kept secret; no request was sent */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "RATE_LIMIT_UNAVAILABLE";
-                                message: string;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "CREDENTIALS_UNAVAILABLE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test a configuration in the edit form of an existing monitor */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name: string;
-                        url: string;
-                        /** @default 300 */
-                        intervalSeconds?: number;
-                        /** @default 10 */
-                        timeoutSeconds?: number;
-                        /**
-                         * @default GET
-                         * @enum {string}
-                         */
-                        method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                        /** @default [] */
-                        headers?: {
-                            id?: string;
-                            name: string;
-                            value?: string;
-                            /** @default false */
-                            secret?: boolean;
-                        }[];
-                        /** @default [] */
-                        queryParams?: {
-                            name: string;
-                            value: string;
-                        }[];
-                        /** @default null */
-                        body?: {
-                            /** @enum {string} */
-                            type: "json" | "text";
-                            content: string;
-                        } | null;
-                        /** @default 200-299 */
-                        expectedStatus?: string;
-                        /** @default [] */
-                        assertions?: ({
-                            /** @enum {string} */
-                            kind: "jsonPathEquals";
-                            path: string;
-                            expected: string;
-                        } | {
-                            /** @enum {string} */
-                            kind: "bodyContains";
-                            text: string;
-                        } | {
-                            /** @enum {string} */
-                            kind: "responseTimeBelow";
-                            ms: number;
-                        })[];
-                        /**
-                         * @default {
-                         *       "type": "none"
-                         *     }
-                         */
-                        auth?: {
-                            /** @enum {string} */
-                            type: "none";
-                        } | {
-                            /** @enum {string} */
-                            type: "bearer";
-                        } | {
-                            /** @enum {string} */
-                            type: "basic";
-                        } | {
-                            /** @enum {string} */
-                            type: "apiKey";
-                            headerName: string;
-                        };
-                        /**
-                         * @default {
-                         *       "failureThreshold": 2,
-                         *       "downEnabled": true,
-                         *       "sslEnabled": true,
-                         *       "sslCautionDays": 30
-                         *     }
-                         */
-                        alerts?: {
-                            /** @default 2 */
-                            failureThreshold?: number;
-                            /** @default true */
-                            downEnabled?: boolean;
-                            /** @default true */
-                            sslEnabled?: boolean;
-                            /** @default 30 */
-                            sslCautionDays?: number;
-                        };
-                        /** @default [] */
-                        secrets?: {
-                            slot: string;
-                            /** @enum {string} */
-                            action: "keep" | "replace" | "delete";
-                            value?: string;
-                        }[];
-                    };
-                };
-            };
-            responses: {
-                /** @description The result of one check of the target, not recorded. Target problems (DNS, TLS, timeout, blocked address, redirects) are results, not errors */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            result: {
-                                /** Format: date-time */
-                                checkedAt: string;
-                                /** @enum {string} */
-                                outcome: "pass" | "fail" | "check_error";
-                                httpStatus: number | null;
-                                responseTimeMs: number | null;
-                                /** @enum {string|null} */
-                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
-                                /** @enum {string|null} */
-                                tlsReason: "expired" | "hostname_mismatch" | "untrusted" | "self_signed" | "handshake_failed" | null;
-                                assertions: {
-                                    /** @enum {string} */
-                                    kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
-                                    expected: string;
-                                    actual: string | null;
-                                    actualType: string | null;
-                                    actualTruncated: boolean;
-                                    /** @enum {string} */
-                                    status: "pass" | "fail" | "not_evaluated";
-                                    /** @enum {string|null} */
-                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | "prefix_ended" | null;
-                                }[];
-                                url: string;
-                                evaluatedFromPrefix: boolean;
-                                ssl: {
-                                    /** @enum {string} */
-                                    level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
-                                    daysRemaining: number | null;
-                                    host: string | null;
-                                    issuer: string | null;
-                                    /** Format: date-time */
-                                    notAfter: string | null;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid monitor input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_INVALID";
-                                message: string;
-                                details: {
-                                    fields: {
-                                        field: string;
-                                        /** @enum {string} */
-                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
-                                    }[];
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The scheme, host or port changed while a stored secret is kept; nothing was sent */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_SECRET_ORIGIN_CHANGED";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Test rate limit reached; Retry-After carries the wait in seconds */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_TEST_RATE_LIMITED";
-                                message: string;
-                                details: {
-                                    retryAfterSeconds: number;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description The rate limiter is unavailable, or credential encryption is not configured for a kept secret; no request was sent */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "RATE_LIMIT_UNAVAILABLE";
-                                message: string;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "CREDENTIALS_UNAVAILABLE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List monitors with health, SSL level and uptime */
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                    offset?: number | null;
-                    health?: "up" | "down" | "unknown" | "paused";
-                    q?: string;
-                    sort?: "problems" | "name" | "uptime" | "response_time" | "newest";
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description One page of monitors and the Organization summary */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            summary: {
-                                up: number;
-                                down: number;
-                                unknown: number;
-                                paused: number;
-                                total: number;
-                                /** @enum {number} */
-                                limit: 50;
-                            };
-                            monitors: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                url: string;
-                                /** @enum {string} */
-                                status: "active" | "paused";
-                                /** @enum {string} */
-                                health: "up" | "down" | "unknown" | "paused";
-                                /** @enum {string|null} */
-                                healthReason: "never_checked" | "stale" | "awaiting_new_config" | "check_error" | null;
-                                lastKnownDown: boolean;
-                                consecutiveFailures: number;
-                                /** Format: date-time */
-                                lastCheckAt: string | null;
-                                openIncident: {
-                                    /** Format: date-time */
-                                    startedAt: string;
-                                    reason: string;
-                                } | null;
-                                /** @enum {string} */
-                                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                                intervalSeconds: number;
-                                lastResponseTimeMs: number | null;
-                                ssl: {
-                                    /** @enum {string} */
-                                    level: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
-                                    daysRemaining: number | null;
-                                    host: string | null;
-                                    issuer: string | null;
-                                    /** Format: date-time */
-                                    notAfter: string | null;
-                                };
-                                uptime: {
-                                    h24: {
-                                        percent: number | null;
-                                        checks: number;
-                                        coveragePercent: number;
-                                    };
-                                    d30: {
-                                        percent: number | null;
-                                        checks: number;
-                                        coveragePercent: number;
-                                    };
-                                };
-                                responseSparkline: {
-                                    /** Format: date-time */
-                                    hourStart: string;
-                                    avgMs: number | null;
-                                }[];
-                            }[];
-                            page: {
-                                limit: number;
-                                offset: number;
-                                total: number;
-                            };
-                            /** Format: date-time */
-                            dataAsOf: string;
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified or membership is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Create a monitor */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name: string;
-                        url: string;
-                        /** @default 300 */
-                        intervalSeconds?: number;
-                        /** @default 10 */
-                        timeoutSeconds?: number;
-                        /**
-                         * @default GET
-                         * @enum {string}
-                         */
-                        method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                        /** @default [] */
-                        headers?: {
-                            id?: string;
-                            name: string;
-                            value?: string;
-                            /** @default false */
-                            secret?: boolean;
-                        }[];
-                        /** @default [] */
-                        queryParams?: {
-                            name: string;
-                            value: string;
-                        }[];
-                        /** @default null */
-                        body?: {
-                            /** @enum {string} */
-                            type: "json" | "text";
-                            content: string;
-                        } | null;
-                        /** @default 200-299 */
-                        expectedStatus?: string;
-                        /** @default [] */
-                        assertions?: ({
-                            /** @enum {string} */
-                            kind: "jsonPathEquals";
-                            path: string;
-                            expected: string;
-                        } | {
-                            /** @enum {string} */
-                            kind: "bodyContains";
-                            text: string;
-                        } | {
-                            /** @enum {string} */
-                            kind: "responseTimeBelow";
-                            ms: number;
-                        })[];
-                        /**
-                         * @default {
-                         *       "type": "none"
-                         *     }
-                         */
-                        auth?: {
-                            /** @enum {string} */
-                            type: "none";
-                        } | {
-                            /** @enum {string} */
-                            type: "bearer";
-                        } | {
-                            /** @enum {string} */
-                            type: "basic";
-                        } | {
-                            /** @enum {string} */
-                            type: "apiKey";
-                            headerName: string;
-                        };
-                        /**
-                         * @default {
-                         *       "failureThreshold": 2,
-                         *       "downEnabled": true,
-                         *       "sslEnabled": true,
-                         *       "sslCautionDays": 30
-                         *     }
-                         */
-                        alerts?: {
-                            /** @default 2 */
-                            failureThreshold?: number;
-                            /** @default true */
-                            downEnabled?: boolean;
-                            /** @default true */
-                            sslEnabled?: boolean;
-                            /** @default 30 */
-                            sslCautionDays?: number;
-                        };
-                        /** Format: uuid */
-                        clientRequestId: string;
-                        /** @default [] */
-                        secrets?: {
-                            slot: string;
-                            value: string;
-                        }[];
-                    };
-                };
-            };
-            responses: {
-                /** @description Created, or the original monitor of a replayed request */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            monitor: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                url: string;
-                                /** @enum {string} */
-                                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                                intervalSeconds: number;
-                                timeoutSeconds: number;
-                                headers: {
-                                    id?: string;
-                                    name: string;
-                                    value?: string;
-                                    secret: boolean;
-                                }[];
-                                queryParams: {
-                                    name: string;
-                                    value: string;
-                                }[];
-                                body: {
-                                    /** @enum {string} */
-                                    type: "json" | "text";
-                                    content: string;
-                                } | null;
-                                expectedStatus: string;
-                                assertions: ({
-                                    /** @enum {string} */
-                                    kind: "jsonPathEquals";
-                                    path: string;
-                                    expected: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "bodyContains";
-                                    text: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "responseTimeBelow";
-                                    ms: number;
-                                })[];
-                                auth: {
-                                    /** @enum {string} */
-                                    type: "none";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "bearer";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "basic";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "apiKey";
-                                    headerName: string;
-                                };
-                                secretSlots: {
-                                    slot: string;
-                                    /** @enum {boolean} */
-                                    configured: true;
-                                }[];
-                                /** @enum {string} */
-                                status: "active" | "paused";
-                                version: number;
-                                /** Format: date-time */
-                                createdAt: string;
-                                /** Format: date-time */
-                                updatedAt: string;
-                                alerts: {
-                                    failureThreshold: number;
-                                    downEnabled: boolean;
-                                    sslEnabled: boolean;
-                                    sslCautionDays: number;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid monitor input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_INVALID";
-                                message: string;
-                                details: {
-                                    fields: {
-                                        field: string;
-                                        /** @enum {string} */
-                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
-                                    }[];
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Organization is at its monitor limit */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_LIMIT_REACHED";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The host is or resolves to a forbidden address */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_TARGET_BLOCKED";
-                                message: string;
-                                details: {
-                                    /** @enum {string} */
-                                    field: "url";
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Credential encryption is not configured, so secret values cannot be stored or read */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "CREDENTIALS_UNAVAILABLE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Monitor configuration with health, SSL level and uptime */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The monitor with its computed state */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            monitor: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                url: string;
-                                /** @enum {string} */
-                                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                                intervalSeconds: number;
-                                timeoutSeconds: number;
-                                headers: {
-                                    id?: string;
-                                    name: string;
-                                    value?: string;
-                                    secret: boolean;
-                                }[];
-                                queryParams: {
-                                    name: string;
-                                    value: string;
-                                }[];
-                                body: {
-                                    /** @enum {string} */
-                                    type: "json" | "text";
-                                    content: string;
-                                } | null;
-                                expectedStatus: string;
-                                assertions: ({
-                                    /** @enum {string} */
-                                    kind: "jsonPathEquals";
-                                    path: string;
-                                    expected: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "bodyContains";
-                                    text: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "responseTimeBelow";
-                                    ms: number;
-                                })[];
-                                auth: {
-                                    /** @enum {string} */
-                                    type: "none";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "bearer";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "basic";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "apiKey";
-                                    headerName: string;
-                                };
-                                secretSlots: {
-                                    slot: string;
-                                    /** @enum {boolean} */
-                                    configured: true;
-                                }[];
-                                /** @enum {string} */
-                                status: "active" | "paused";
-                                version: number;
-                                /** Format: date-time */
-                                createdAt: string;
-                                /** Format: date-time */
-                                updatedAt: string;
-                                alerts: {
-                                    failureThreshold: number;
-                                    downEnabled: boolean;
-                                    sslEnabled: boolean;
-                                    sslCautionDays: number;
-                                };
-                                /** @enum {string} */
-                                health: "up" | "down" | "unknown" | "paused";
-                                /** @enum {string|null} */
-                                healthReason: "never_checked" | "stale" | "awaiting_new_config" | "check_error" | null;
-                                lastKnownDown: boolean;
-                                consecutiveFailures: number;
-                                /** Format: date-time */
-                                lastCheckAt: string | null;
-                                openIncident: {
-                                    /** Format: date-time */
-                                    startedAt: string;
-                                    reason: string;
-                                } | null;
-                                lastResult: {
-                                    /** Format: date-time */
-                                    scheduledFor: string;
-                                    /** Format: date-time */
-                                    checkedAt: string;
-                                    /** @enum {string} */
-                                    outcome: "pass" | "fail" | "check_error";
-                                    httpStatus: number | null;
-                                    responseTimeMs: number | null;
-                                    /** @enum {string|null} */
-                                    failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
-                                    /** @enum {string|null} */
-                                    tlsReason: "expired" | "hostname_mismatch" | "untrusted" | "self_signed" | "handshake_failed" | null;
-                                    assertions: {
-                                        /** @enum {string} */
-                                        kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
-                                        expected: string;
-                                        actual: string | null;
-                                        actualType: string | null;
-                                        actualTruncated: boolean;
-                                        /** @enum {string} */
-                                        status: "pass" | "fail" | "not_evaluated";
-                                        /** @enum {string|null} */
-                                        reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | "prefix_ended" | null;
-                                    }[];
-                                    url: string;
-                                    configVersion: number;
-                                    evaluatedFromPrefix: boolean;
-                                } | null;
-                                ssl: {
-                                    /** @enum {string} */
-                                    state: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
-                                    host: string | null;
-                                    issuer: string | null;
-                                    /** Format: date-time */
-                                    notAfter: string | null;
-                                    daysRemaining: number | null;
-                                    reason: string | null;
-                                };
-                                uptime: {
-                                    h24: {
-                                        percent: number | null;
-                                        checks: number;
-                                        coveragePercent: number;
-                                    };
-                                    d7: {
-                                        percent: number | null;
-                                        checks: number;
-                                        coveragePercent: number;
-                                    };
-                                    d30: {
-                                        percent: number | null;
-                                        checks: number;
-                                        coveragePercent: number;
-                                    };
-                                };
-                                /** Format: date-time */
-                                dataAsOf: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified or membership is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /** Delete a monitor and its history */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Deleted */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Invalid monitor input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_INVALID";
-                                message: string;
-                                details: {
-                                    fields: {
-                                        field: string;
-                                        /** @enum {string} */
-                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
-                                    }[];
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /** Replace the configuration of a monitor */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name: string;
-                        url: string;
-                        /** @default 300 */
-                        intervalSeconds?: number;
-                        /** @default 10 */
-                        timeoutSeconds?: number;
-                        /**
-                         * @default GET
-                         * @enum {string}
-                         */
-                        method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                        /** @default [] */
-                        headers?: {
-                            id?: string;
-                            name: string;
-                            value?: string;
-                            /** @default false */
-                            secret?: boolean;
-                        }[];
-                        /** @default [] */
-                        queryParams?: {
-                            name: string;
-                            value: string;
-                        }[];
-                        /** @default null */
-                        body?: {
-                            /** @enum {string} */
-                            type: "json" | "text";
-                            content: string;
-                        } | null;
-                        /** @default 200-299 */
-                        expectedStatus?: string;
-                        /** @default [] */
-                        assertions?: ({
-                            /** @enum {string} */
-                            kind: "jsonPathEquals";
-                            path: string;
-                            expected: string;
-                        } | {
-                            /** @enum {string} */
-                            kind: "bodyContains";
-                            text: string;
-                        } | {
-                            /** @enum {string} */
-                            kind: "responseTimeBelow";
-                            ms: number;
-                        })[];
-                        /**
-                         * @default {
-                         *       "type": "none"
-                         *     }
-                         */
-                        auth?: {
-                            /** @enum {string} */
-                            type: "none";
-                        } | {
-                            /** @enum {string} */
-                            type: "bearer";
-                        } | {
-                            /** @enum {string} */
-                            type: "basic";
-                        } | {
-                            /** @enum {string} */
-                            type: "apiKey";
-                            headerName: string;
-                        };
-                        alerts?: {
-                            failureThreshold: number;
-                            downEnabled: boolean;
-                            sslEnabled: boolean;
-                            sslCautionDays: number;
-                        };
-                        expectedVersion: number;
-                        /** @default [] */
-                        secrets?: {
-                            slot: string;
-                            /** @enum {string} */
-                            action: "keep" | "replace" | "delete";
-                            value?: string;
-                        }[];
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated monitor */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            monitor: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                url: string;
-                                /** @enum {string} */
-                                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                                intervalSeconds: number;
-                                timeoutSeconds: number;
-                                headers: {
-                                    id?: string;
-                                    name: string;
-                                    value?: string;
-                                    secret: boolean;
-                                }[];
-                                queryParams: {
-                                    name: string;
-                                    value: string;
-                                }[];
-                                body: {
-                                    /** @enum {string} */
-                                    type: "json" | "text";
-                                    content: string;
-                                } | null;
-                                expectedStatus: string;
-                                assertions: ({
-                                    /** @enum {string} */
-                                    kind: "jsonPathEquals";
-                                    path: string;
-                                    expected: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "bodyContains";
-                                    text: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "responseTimeBelow";
-                                    ms: number;
-                                })[];
-                                auth: {
-                                    /** @enum {string} */
-                                    type: "none";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "bearer";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "basic";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "apiKey";
-                                    headerName: string;
-                                };
-                                secretSlots: {
-                                    slot: string;
-                                    /** @enum {boolean} */
-                                    configured: true;
-                                }[];
-                                /** @enum {string} */
-                                status: "active" | "paused";
-                                version: number;
-                                /** Format: date-time */
-                                createdAt: string;
-                                /** Format: date-time */
-                                updatedAt: string;
-                                alerts: {
-                                    failureThreshold: number;
-                                    downEnabled: boolean;
-                                    sslEnabled: boolean;
-                                    sslCautionDays: number;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid monitor input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_INVALID";
-                                message: string;
-                                details: {
-                                    fields: {
-                                        field: string;
-                                        /** @enum {string} */
-                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
-                                    }[];
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The expected version is stale */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_VERSION_CONFLICT";
-                                message: string;
-                                details: {
-                                    currentVersion: number;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The host is or resolves to a forbidden address, or the scheme, host or port changed while a secret is kept */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_TARGET_BLOCKED";
-                                message: string;
-                                details: {
-                                    /** @enum {string} */
-                                    field: "url";
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_SECRET_ORIGIN_CHANGED";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Credential encryption is not configured, so secret values cannot be stored or read */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "CREDENTIALS_UNAVAILABLE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/pause": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Pause a monitor (idempotent) */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The monitor, paused */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            monitor: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                url: string;
-                                /** @enum {string} */
-                                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                                intervalSeconds: number;
-                                timeoutSeconds: number;
-                                headers: {
-                                    id?: string;
-                                    name: string;
-                                    value?: string;
-                                    secret: boolean;
-                                }[];
-                                queryParams: {
-                                    name: string;
-                                    value: string;
-                                }[];
-                                body: {
-                                    /** @enum {string} */
-                                    type: "json" | "text";
-                                    content: string;
-                                } | null;
-                                expectedStatus: string;
-                                assertions: ({
-                                    /** @enum {string} */
-                                    kind: "jsonPathEquals";
-                                    path: string;
-                                    expected: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "bodyContains";
-                                    text: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "responseTimeBelow";
-                                    ms: number;
-                                })[];
-                                auth: {
-                                    /** @enum {string} */
-                                    type: "none";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "bearer";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "basic";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "apiKey";
-                                    headerName: string;
-                                };
-                                secretSlots: {
-                                    slot: string;
-                                    /** @enum {boolean} */
-                                    configured: true;
-                                }[];
-                                /** @enum {string} */
-                                status: "active" | "paused";
-                                version: number;
-                                /** Format: date-time */
-                                createdAt: string;
-                                /** Format: date-time */
-                                updatedAt: string;
-                                alerts: {
-                                    failureThreshold: number;
-                                    downEnabled: boolean;
-                                    sslEnabled: boolean;
-                                    sslCautionDays: number;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid monitor input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_INVALID";
-                                message: string;
-                                details: {
-                                    fields: {
-                                        field: string;
-                                        /** @enum {string} */
-                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
-                                    }[];
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Resume a monitor (idempotent) */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The monitor, active */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            monitor: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                url: string;
-                                /** @enum {string} */
-                                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
-                                intervalSeconds: number;
-                                timeoutSeconds: number;
-                                headers: {
-                                    id?: string;
-                                    name: string;
-                                    value?: string;
-                                    secret: boolean;
-                                }[];
-                                queryParams: {
-                                    name: string;
-                                    value: string;
-                                }[];
-                                body: {
-                                    /** @enum {string} */
-                                    type: "json" | "text";
-                                    content: string;
-                                } | null;
-                                expectedStatus: string;
-                                assertions: ({
-                                    /** @enum {string} */
-                                    kind: "jsonPathEquals";
-                                    path: string;
-                                    expected: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "bodyContains";
-                                    text: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "responseTimeBelow";
-                                    ms: number;
-                                })[];
-                                auth: {
-                                    /** @enum {string} */
-                                    type: "none";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "bearer";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "basic";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "apiKey";
-                                    headerName: string;
-                                };
-                                secretSlots: {
-                                    slot: string;
-                                    /** @enum {boolean} */
-                                    configured: true;
-                                }[];
-                                /** @enum {string} */
-                                status: "active" | "paused";
-                                version: number;
-                                /** Format: date-time */
-                                createdAt: string;
-                                /** Format: date-time */
-                                updatedAt: string;
-                                alerts: {
-                                    failureThreshold: number;
-                                    downEnabled: boolean;
-                                    sslEnabled: boolean;
-                                    sslCautionDays: number;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid monitor input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_INVALID";
-                                message: string;
-                                details: {
-                                    fields: {
-                                        field: string;
-                                        /** @enum {string} */
-                                        reason: "required" | "too_long" | "invalid_format" | "blocked_scheme" | "embedded_credentials" | "blocked_port" | "blocked_header" | "duplicate" | "crlf" | "auth_header_conflict" | "invalid_json" | "invalid_jsonpath" | "body_assertion_with_head" | "out_of_range" | "too_many";
-                                    }[];
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/recent-events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Recent incidents and SSL levels across the Organization */
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Events of the last 30 days, newest first */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            events: {
-                                /** @enum {string} */
-                                kind: "incident_opened" | "incident_closed" | "ssl_level";
-                                /** Format: uuid */
-                                monitorId: string;
-                                monitorName: string;
-                                /** Format: date-time */
-                                at: string;
-                                reason: string | null;
-                                durationSeconds?: number;
-                                httpStatus?: number;
-                                /** @enum {string} */
-                                sslLevel?: "ok" | "caution" | "danger" | "expired" | "not_https" | "unreadable" | "no_data";
-                                daysRemaining?: number;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified or membership is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/checks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Check history, newest first */
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                    offset?: number | null;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description One page of results and the URL changes inside it */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            checks: {
-                                /** Format: date-time */
-                                scheduledFor: string;
-                                /** Format: date-time */
-                                checkedAt: string;
-                                /** @enum {string} */
-                                outcome: "pass" | "fail" | "check_error";
-                                httpStatus: number | null;
-                                responseTimeMs: number | null;
-                                /** @enum {string|null} */
-                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
-                                /** @enum {string|null} */
-                                tlsReason: "expired" | "hostname_mismatch" | "untrusted" | "self_signed" | "handshake_failed" | null;
-                                assertions: {
-                                    /** @enum {string} */
-                                    kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
-                                    expected: string;
-                                    actual: string | null;
-                                    actualType: string | null;
-                                    actualTruncated: boolean;
-                                    /** @enum {string} */
-                                    status: "pass" | "fail" | "not_evaluated";
-                                    /** @enum {string|null} */
-                                    reason: "not_json" | "path_not_found" | "multiple_matches" | "type_mismatch" | "no_body" | "undecodable" | "value_mismatch" | "text_not_found" | "too_slow" | "no_response" | "prefix_ended" | null;
-                                }[];
-                                url: string;
-                                configVersion: number;
-                                evaluatedFromPrefix: boolean;
-                            }[];
-                            page: {
-                                limit: number;
-                                offset: number;
-                                total: number;
-                            };
-                            urlChanges: {
-                                /** Format: date-time */
-                                at: string;
-                                url: string;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified or membership is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/incidents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Incident history, newest first */
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                    offset?: number | null;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description One page of incidents */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            incidents: {
-                                /** Format: uuid */
-                                id: string;
-                                /** Format: date-time */
-                                startedAt: string;
-                                /** Format: date-time */
-                                endedAt: string | null;
-                                durationSeconds: number;
-                                startReason: string;
-                                startHttpStatus: number | null;
-                                /** @enum {string|null} */
-                                endReason: "recovered" | "paused_by_user" | null;
-                            }[];
-                            page: {
-                                limit: number;
-                                offset: number;
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified or membership is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/response-times": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Response times: per-check points for 24 h, hourly buckets for 7 d and 30 d */
-        get: {
-            parameters: {
-                query?: {
-                    range?: "24h" | "7d" | "30d";
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The series with its pauses and configuration changes */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {string} */
-                            range: "24h";
-                            points: {
-                                /** Format: date-time */
-                                at: string;
-                                responseTimeMs: number | null;
-                                /** @enum {string} */
-                                outcome: "pass" | "fail" | "check_error";
-                            }[];
-                            gaps: {
-                                /** Format: date-time */
-                                from: string;
-                                /** Format: date-time */
-                                to: string;
-                            }[];
-                            /** Format: date-time */
-                            dataAsOf: string;
-                            window: {
-                                /** Format: date-time */
-                                from: string;
-                                /** Format: date-time */
-                                to: string;
-                            };
-                            /** @enum {string} */
-                            unit: "ms";
-                            pauses: {
-                                /** Format: date-time */
-                                from: string;
-                                /** Format: date-time */
-                                to: string;
-                            }[];
-                            configChanges: {
-                                /** Format: date-time */
-                                at: string;
-                                urlChanged: boolean;
-                                url?: string;
-                            }[];
-                        } | {
-                            /** @enum {string} */
-                            range: "7d" | "30d";
-                            summary: {
-                                p50Ms: number | null;
-                                p95Ms: number | null;
-                                checks: number;
-                                failed: number;
-                            };
-                            buckets: {
-                                /** Format: date-time */
-                                hourStart: string;
-                                avgMs: number | null;
-                                maxMs: number | null;
-                                checks: number;
-                                responseChecks: number;
-                            }[];
-                            /** Format: date-time */
-                            dataAsOf: string;
-                            window: {
-                                /** Format: date-time */
-                                from: string;
-                                /** Format: date-time */
-                                to: string;
-                            };
-                            /** @enum {string} */
-                            unit: "ms";
-                            pauses: {
-                                /** Format: date-time */
-                                from: string;
-                                /** Format: date-time */
-                                to: string;
-                            }[];
-                            configChanges: {
-                                /** Format: date-time */
-                                at: string;
-                                urlChanged: boolean;
-                                url?: string;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified or membership is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Event feed of the last 30 days, newest first */
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                    offset?: number | null;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description One page of failed checks, incidents, pauses, resumes and configuration changes */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            events: ({
-                                id: string;
-                                /** Format: date-time */
-                                at: string;
-                                /** @enum {string} */
-                                kind: "check_failed";
-                                /** @enum {string|null} */
-                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
-                                /** @enum {string|null} */
-                                tlsReason: "expired" | "hostname_mismatch" | "untrusted" | "self_signed" | "handshake_failed" | null;
-                                httpStatus: number | null;
-                                responseTimeMs: number | null;
-                            } | {
-                                id: string;
-                                /** Format: date-time */
-                                at: string;
-                                /** @enum {string} */
-                                kind: "incident_opened";
-                                /** Format: uuid */
-                                incidentId: string;
-                                reason: string;
-                                httpStatus: number | null;
-                            } | {
-                                id: string;
-                                /** Format: date-time */
-                                at: string;
-                                /** @enum {string} */
-                                kind: "incident_closed";
-                                /** Format: uuid */
-                                incidentId: string;
-                                /** @enum {string} */
-                                endReason: "recovered" | "paused_by_user";
-                                durationSeconds: number;
-                                httpStatus: number | null;
-                                responseTimeMs: number | null;
-                            } | {
-                                id: string;
-                                /** Format: date-time */
-                                at: string;
-                                /** @enum {string} */
-                                kind: "paused";
-                                actor: {
-                                    /** @enum {string} */
-                                    kind: "member";
-                                    userId: string;
-                                    displayName: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "member_hidden";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "former_member";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "deleted";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "unrecorded";
-                                };
-                            } | {
-                                id: string;
-                                /** Format: date-time */
-                                at: string;
-                                /** @enum {string} */
-                                kind: "resumed";
-                                actor: {
-                                    /** @enum {string} */
-                                    kind: "member";
-                                    userId: string;
-                                    displayName: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "member_hidden";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "former_member";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "deleted";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "unrecorded";
-                                };
-                            } | {
-                                id: string;
-                                /** Format: date-time */
-                                at: string;
-                                /** @enum {string} */
-                                kind: "config_changed";
-                                actor: {
-                                    /** @enum {string} */
-                                    kind: "member";
-                                    userId: string;
-                                    displayName: string;
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "member_hidden";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "former_member";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "deleted";
-                                } | {
-                                    /** @enum {string} */
-                                    kind: "unrecorded";
-                                };
-                                changes: ({
-                                    field: string;
-                                    /** @enum {string} */
-                                    kind: "value";
-                                    before: (string | null) | number;
-                                    after: (string | null) | number;
-                                } | {
-                                    field: string;
-                                    /** @enum {string} */
-                                    kind: "changed";
-                                } | {
-                                    field: string;
-                                    /** @enum {string} */
-                                    kind: "secret";
-                                    /** @enum {string} */
-                                    action: "set" | "replaced" | "deleted";
-                                })[];
-                            })[];
-                            page: {
-                                limit: number;
-                                offset: number;
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified or membership is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/monitors/{monitorId}/last-response": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Redacted last response of the monitor (owner and admin) */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    monitorId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The last recorded response, or null before the first */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            response: {
-                                /** Format: date-time */
-                                checkedAt: string;
-                                /** Format: date-time */
-                                scheduledFor: string;
-                                configVersion: number;
-                                /** @enum {string} */
-                                outcome: "pass" | "fail" | "check_error";
-                                /** @enum {string|null} */
-                                failureReason: "http_status" | "assertion_failed" | "timeout" | "dns_not_found" | "connect_refused" | "connect_failed" | "tls_invalid" | "blocked_address" | "redirect_blocked" | "redirect_limit" | "body_read_failed" | "secret_decrypt_failed" | "internal_egress_failed" | "resolver_unavailable" | "executor_error" | null;
-                                url: string;
-                                /** @enum {string|null} */
-                                detailOmitted: "request_values" | null;
-                                statusLine: {
-                                    /** @enum {string} */
-                                    httpVersion: "HTTP/1.0" | "HTTP/1.1";
-                                    status: number;
-                                    reasonPhrase: string | null;
-                                } | null;
-                                headers: {
-                                    name: string;
-                                    value: string;
-                                    redacted: boolean;
-                                }[];
-                                headersTruncated: boolean;
-                                body: ({
-                                    /** @enum {string} */
-                                    kind: "text";
-                                    text: string;
-                                    truncated: boolean;
-                                    totalBytesRead: number;
-                                } | null) | {
-                                    /** @enum {string} */
-                                    kind: "omitted";
-                                    /** @enum {string} */
-                                    reason: "no_body" | "not_text" | "undecodable" | "request_values";
-                                };
-                            } | null;
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "INVALID_INPUT";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified or membership is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The monitor does not exist, is malformed or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "MONITOR_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/audit-log/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List audit events, newest first */
-        get: {
-            parameters: {
-                query?: {
-                    from?: string;
-                    to?: string;
-                    categories?: string;
-                    actorUserId?: string;
-                    q?: string;
-                    asOf?: string;
-                    limit?: number;
-                    offset?: number | null;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description One page of events inside the retention window */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            organizationId: string;
-                            /** Format: date-time */
-                            asOf: string;
-                            /** Format: date-time */
-                            retainedFrom: string;
-                            /** Format: date-time */
-                            recordingStartedAt: string;
-                            events: {
-                                /** Format: uuid */
-                                id: string;
-                                /** Format: date-time */
-                                occurredAt: string;
-                                /** @enum {string} */
-                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project";
-                                /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove";
-                                actor: {
-                                    userId: string;
-                                    displayName: string | null;
-                                    /** @enum {string} */
-                                    roleAtTime: "owner" | "admin" | "viewer" | "auditor";
-                                    /** @enum {string} */
-                                    membership: "current" | "former";
-                                };
-                                target: {
-                                    /** @enum {string} */
-                                    type: "monitor";
-                                    /** Format: uuid */
-                                    monitorId: string;
-                                    displayName: string | null;
-                                    deleted: boolean;
-                                } | {
-                                    /** @enum {string} */
-                                    type: "project";
-                                    /** Format: uuid */
-                                    projectId: string;
-                                    displayName: string | null;
-                                    deleted: boolean;
-                                } | {
-                                    /** @enum {string} */
-                                    type: "member";
-                                    userId: string;
-                                    displayName: string | null;
-                                    /** @enum {string} */
-                                    membership: "current" | "former";
-                                    project?: {
-                                        /** Format: uuid */
-                                        projectId: string;
-                                        displayName: string | null;
-                                        deleted: boolean;
-                                    };
-                                } | {
-                                    /** @enum {string} */
-                                    type: "invitation";
-                                    /** Format: uuid */
-                                    publicId: string;
-                                    /** @enum {string} */
-                                    role: "owner" | "admin" | "viewer" | "auditor";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "notification_settings";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "audit_export";
-                                    /** Format: uuid */
-                                    exportId: string;
-                                    /** @enum {string} */
-                                    format: "csv" | "json";
-                                };
-                            }[];
-                            page: {
-                                limit: number;
-                                offset: number;
-                                total: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied or the role may not read the log */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/audit-log/events/{eventId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** One audit event with its changes */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    eventId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The event */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            organizationId: string;
-                            event: {
-                                /** Format: uuid */
-                                id: string;
-                                /** Format: date-time */
-                                occurredAt: string;
-                                /** @enum {string} */
-                                category: "monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project";
-                                /** @enum {string} */
-                                action: "organization.monitor.create" | "organization.monitor.update" | "organization.monitor.pause" | "organization.monitor.resume" | "organization.monitor.delete" | "organization.monitor.secret.set" | "organization.monitor.secret.replace" | "organization.notification-settings.monitor-alerts.update" | "organization.notification-settings.update" | "organization.member.role.update" | "organization.member.revoke" | "organization.member.leave" | "organization.invitation.create" | "organization.invitation.resend" | "organization.invitation.cancel" | "organization.audit-log.export" | "organization.project.create" | "organization.project.update" | "organization.project.delete" | "organization.project.member.add" | "organization.project.member.role.update" | "organization.project.member.remove";
-                                actor: {
-                                    userId: string;
-                                    displayName: string | null;
-                                    /** @enum {string} */
-                                    roleAtTime: "owner" | "admin" | "viewer" | "auditor";
-                                    /** @enum {string} */
-                                    membership: "current" | "former";
-                                };
-                                target: {
-                                    /** @enum {string} */
-                                    type: "monitor";
-                                    /** Format: uuid */
-                                    monitorId: string;
-                                    displayName: string | null;
-                                    deleted: boolean;
-                                } | {
-                                    /** @enum {string} */
-                                    type: "project";
-                                    /** Format: uuid */
-                                    projectId: string;
-                                    displayName: string | null;
-                                    deleted: boolean;
-                                } | {
-                                    /** @enum {string} */
-                                    type: "member";
-                                    userId: string;
-                                    displayName: string | null;
-                                    /** @enum {string} */
-                                    membership: "current" | "former";
-                                    project?: {
-                                        /** Format: uuid */
-                                        projectId: string;
-                                        displayName: string | null;
-                                        deleted: boolean;
-                                    };
-                                } | {
-                                    /** @enum {string} */
-                                    type: "invitation";
-                                    /** Format: uuid */
-                                    publicId: string;
-                                    /** @enum {string} */
-                                    role: "owner" | "admin" | "viewer" | "auditor";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "notification_settings";
-                                } | {
-                                    /** @enum {string} */
-                                    type: "audit_export";
-                                    /** Format: uuid */
-                                    exportId: string;
-                                    /** @enum {string} */
-                                    format: "csv" | "json";
-                                };
-                                changes: {
-                                    /** @enum {string} */
-                                    field: "role" | "monitorAlertsEnabled" | "settingsChangedEnabled" | "name" | "description" | "url" | "method" | "intervalSeconds" | "timeoutSeconds" | "header" | "queryParam" | "body" | "authType" | "apiKeyHeaderName" | "expectedStatus" | "assertions" | "secret" | "alertFailureThreshold" | "alertDownEnabled" | "alertSslEnabled" | "alertSslCautionDays";
-                                    key?: string;
-                                    before: ({
-                                        /** @enum {string} */
-                                        kind: "value";
-                                        value: (string | number | boolean) | null;
-                                    } | {
-                                        /** @enum {string} */
-                                        kind: "masked";
-                                    } | {
-                                        /** @enum {string} */
-                                        kind: "secret_set";
-                                    } | {
-                                        /** @enum {string} */
-                                        kind: "changed";
-                                    }) | null;
-                                    after: ({
-                                        /** @enum {string} */
-                                        kind: "value";
-                                        value: (string | number | boolean) | null;
-                                    } | {
-                                        /** @enum {string} */
-                                        kind: "masked";
-                                    } | {
-                                        /** @enum {string} */
-                                        kind: "secret_set";
-                                    } | {
-                                        /** @enum {string} */
-                                        kind: "changed";
-                                    }) | null;
-                                }[];
-                                exportScope?: {
-                                    /** @enum {string} */
-                                    format: "csv" | "json";
-                                    from: string | null;
-                                    to: string | null;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
-                                    actorUserId: string | null;
-                                    searchApplied: boolean;
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied or the role may not read the log */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The event does not exist, is malformed, is past retention or belongs to another Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "AUDIT_EVENT_NOT_FOUND";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/audit-log/actors": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Actors that have at least one retained event */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Distinct actors, by name then user id */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            actors: {
-                                userId: string;
-                                displayName: string | null;
-                                /** @enum {string} */
-                                membership: "current" | "former";
-                            }[];
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied or the role may not read the log */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/audit-log/exports": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The caller's export requests of the last 7 days */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Up to 20 requests, newest first */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            exports: {
-                                /** Format: uuid */
-                                id: string;
-                                /** @enum {string} */
-                                format: "csv" | "json";
-                                /** @enum {string} */
-                                status: "generating" | "ready" | "failed" | "expired";
-                                filters: {
-                                    /** Format: date-time */
-                                    from: string;
-                                    /** Format: date-time */
-                                    to: string;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
-                                    actorUserId: string | null;
-                                    q: string | null;
-                                };
-                                timeZone: string;
-                                /** Format: date-time */
-                                requestedAt: string;
-                                /** Format: date-time */
-                                completedAt: string | null;
-                                /** Format: date-time */
-                                expiresAt: string | null;
-                                rowCount: number | null;
-                                /** @enum {string|null} */
-                                failureCode: "EXPORT_TOO_LARGE" | "EXPORT_FAILED" | "REQUESTER_NOT_AUTHORIZED" | null;
-                            }[];
-                            inProgress: boolean;
-                        };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied or the role may not read the log */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Request an export of the audit log */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        format: "csv" | "json";
-                        timeZone: string;
-                        filters: {
-                            /** Format: date-time */
-                            from: string;
-                            /** Format: date-time */
-                            to: string;
-                            categories?: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
-                            actorUserId?: string;
-                            q?: string;
-                        };
                         /** Format: date-time */
-                        asOf: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description The request was stored and queued */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            export: {
-                                /** Format: uuid */
-                                id: string;
-                                /** @enum {string} */
-                                format: "csv" | "json";
-                                /** @enum {string} */
-                                status: "generating" | "ready" | "failed" | "expired";
-                                filters: {
-                                    /** Format: date-time */
-                                    from: string;
-                                    /** Format: date-time */
-                                    to: string;
-                                    categories: ("monitor" | "notification_settings" | "member" | "invitation" | "audit_log" | "project")[];
-                                    actorUserId: string | null;
-                                    q: string | null;
-                                };
-                                timeZone: string;
-                                /** Format: date-time */
-                                requestedAt: string;
-                                /** Format: date-time */
-                                completedAt: string | null;
-                                /** Format: date-time */
-                                expiresAt: string | null;
-                                rowCount: number | null;
-                                /** @enum {string|null} */
-                                failureCode: "EXPORT_TOO_LARGE" | "EXPORT_FAILED" | "REQUESTER_NOT_AUTHORIZED" | null;
-                            };
+                        occurredAt: string;
+                        /** Format: date-time */
+                        readAt: string | null;
+                        /** @enum {string} */
+                        eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED";
+                        actor: {
+                          displayName: string;
                         };
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied or the role may not read the log */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The caller already has an export being built in this Organization */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "AUDIT_EXPORT_IN_PROGRESS";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Nothing to export, or more than the limit (owner and admin only) */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "AUDIT_EXPORT_EMPTY";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "AUDIT_EXPORT_TOO_LARGE";
-                                message: string;
-                                details: {
-                                    limit: number;
-                                    total: number;
-                                };
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/audit-log/exports/{exportId}/download": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Download an export file of the caller */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    exportId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The file */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/csv": string;
-                        "application/json": string;
-                    };
-                };
-                /** @description Invalid query */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied or the role may not read the log */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description No such export of the caller in this Organization */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "AUDIT_EXPORT_NOT_FOUND";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The file is still being built or failed */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "AUDIT_EXPORT_NOT_READY";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The file is past its 24 hours */
-                410: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "AUDIT_EXPORT_EXPIRED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/me/last-project": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Resolve the Project to open in an Organization
-         * @description Read-only. Access is checked on every call: the remembered Project, else the first readable one, else null.
-         */
-        get: {
-            parameters: {
-                query: {
-                    organizationId: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The resolved Project id, or null when none is readable */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            projectId: string | null;
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        /** Remember the last Project the user opened in an Organization */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
+                        /** @enum {string} */
+                        category: "notification-settings";
+                      }
+                    | {
+                        /** Format: uuid */
+                        id: string;
+                        /** @enum {string} */
+                        scope: "organization";
                         /** Format: uuid */
                         organizationId: string;
+                        /** Format: date-time */
+                        occurredAt: string;
+                        /** Format: date-time */
+                        readAt: string | null;
+                        /** @enum {string} */
+                        eventType: "AUDIT_EXPORT_READY" | "AUDIT_EXPORT_FAILED";
+                        actor: unknown;
+                        /** @enum {string} */
+                        category: "audit-log";
+                      }
+                    | {
+                        /** Format: uuid */
+                        id: string;
+                        /** @enum {string} */
+                        scope: "organization";
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: date-time */
+                        occurredAt: string;
+                        /** Format: date-time */
+                        readAt: string | null;
+                        actor: unknown;
+                        /** @enum {string} */
+                        category: "monitor";
+                        subject: {
+                          /** Format: uuid */
+                          monitorId: string;
+                          monitorName: string;
+                        };
+                        /** @enum {string} */
+                        eventType: "MONITOR_DOWN";
+                        reason: string;
+                        sslNotAfter: unknown;
+                      }
+                    | {
+                        /** Format: uuid */
+                        id: string;
+                        /** @enum {string} */
+                        scope: "organization";
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: date-time */
+                        occurredAt: string;
+                        /** Format: date-time */
+                        readAt: string | null;
+                        actor: unknown;
+                        /** @enum {string} */
+                        category: "monitor";
+                        subject: {
+                          /** Format: uuid */
+                          monitorId: string;
+                          monitorName: string;
+                        };
+                        /** @enum {string} */
+                        eventType: "MONITOR_RECOVERED";
+                        reason: unknown;
+                        sslNotAfter: unknown;
+                      }
+                    | {
+                        /** Format: uuid */
+                        id: string;
+                        /** @enum {string} */
+                        scope: "organization";
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: date-time */
+                        occurredAt: string;
+                        /** Format: date-time */
+                        readAt: string | null;
+                        actor: unknown;
+                        /** @enum {string} */
+                        category: "monitor";
+                        subject: {
+                          /** Format: uuid */
+                          monitorId: string;
+                          monitorName: string;
+                        };
+                        /** @enum {string} */
+                        eventType:
+                          | "MONITOR_SSL_CAUTION"
+                          | "MONITOR_SSL_DANGER"
+                          | "MONITOR_SSL_EXPIRED";
+                        reason: unknown;
+                        /** Format: date-time */
+                        sslNotAfter: string;
+                      }
+                  )
+              )[];
+              nextCursor: string | null;
+              unreadCount: number;
+              /** Format: uuid */
+              organizationId: string | null;
+            };
+          };
+        };
+        /** @description Invalid request input or cursor */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_INPUT";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_CURSOR";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is not verified */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "EMAIL_NOT_VERIFIED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/notifications/unread-count": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Count unread visible notification inbox items */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Unread count for visible notification scope */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              unreadCount: number;
+              /** Format: uuid */
+              organizationId: string | null;
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is not verified */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "EMAIL_NOT_VERIFIED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/notifications/{id}/open": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Open a notification and atomically mark it read */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Opened notification detail */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  /** Format: uuid */
+                  id: string;
+                  /** @enum {string} */
+                  scope: "account";
+                  organizationId: unknown;
+                  /** @enum {string} */
+                  eventType:
+                    "PASSWORD_CHANGED" | "MFA_ENABLED" | "MFA_DISABLED";
+                  /** Format: date-time */
+                  occurredAt: string;
+                  /** Format: date-time */
+                  readAt: string | null;
+                  actor: unknown;
+                  category: unknown;
+                }
+              | (
+                  | {
+                      /** Format: uuid */
+                      id: string;
+                      /** @enum {string} */
+                      scope: "organization";
+                      /** Format: uuid */
+                      organizationId: string;
+                      /** Format: date-time */
+                      occurredAt: string;
+                      /** Format: date-time */
+                      readAt: string | null;
+                      /** @enum {string} */
+                      eventType: "ORG-NOTIFICATION-SETTINGS-CHANGED";
+                      actor: {
+                        displayName: string;
+                      };
+                      /** @enum {string} */
+                      category: "notification-settings";
+                    }
+                  | {
+                      /** Format: uuid */
+                      id: string;
+                      /** @enum {string} */
+                      scope: "organization";
+                      /** Format: uuid */
+                      organizationId: string;
+                      /** Format: date-time */
+                      occurredAt: string;
+                      /** Format: date-time */
+                      readAt: string | null;
+                      /** @enum {string} */
+                      eventType: "AUDIT_EXPORT_READY" | "AUDIT_EXPORT_FAILED";
+                      actor: unknown;
+                      /** @enum {string} */
+                      category: "audit-log";
+                    }
+                  | {
+                      /** Format: uuid */
+                      id: string;
+                      /** @enum {string} */
+                      scope: "organization";
+                      /** Format: uuid */
+                      organizationId: string;
+                      /** Format: date-time */
+                      occurredAt: string;
+                      /** Format: date-time */
+                      readAt: string | null;
+                      actor: unknown;
+                      /** @enum {string} */
+                      category: "monitor";
+                      subject: {
+                        /** Format: uuid */
+                        monitorId: string;
+                        monitorName: string;
+                      };
+                      /** @enum {string} */
+                      eventType: "MONITOR_DOWN";
+                      reason: string;
+                      sslNotAfter: unknown;
+                    }
+                  | {
+                      /** Format: uuid */
+                      id: string;
+                      /** @enum {string} */
+                      scope: "organization";
+                      /** Format: uuid */
+                      organizationId: string;
+                      /** Format: date-time */
+                      occurredAt: string;
+                      /** Format: date-time */
+                      readAt: string | null;
+                      actor: unknown;
+                      /** @enum {string} */
+                      category: "monitor";
+                      subject: {
+                        /** Format: uuid */
+                        monitorId: string;
+                        monitorName: string;
+                      };
+                      /** @enum {string} */
+                      eventType: "MONITOR_RECOVERED";
+                      reason: unknown;
+                      sslNotAfter: unknown;
+                    }
+                  | {
+                      /** Format: uuid */
+                      id: string;
+                      /** @enum {string} */
+                      scope: "organization";
+                      /** Format: uuid */
+                      organizationId: string;
+                      /** Format: date-time */
+                      occurredAt: string;
+                      /** Format: date-time */
+                      readAt: string | null;
+                      actor: unknown;
+                      /** @enum {string} */
+                      category: "monitor";
+                      subject: {
+                        /** Format: uuid */
+                        monitorId: string;
+                        monitorName: string;
+                      };
+                      /** @enum {string} */
+                      eventType:
+                        | "MONITOR_SSL_CAUTION"
+                        | "MONITOR_SSL_DANGER"
+                        | "MONITOR_SSL_EXPIRED";
+                      reason: unknown;
+                      /** Format: date-time */
+                      sslNotAfter: string;
+                    }
+                );
+          };
+        };
+        /** @description Invalid request input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is not verified */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "EMAIL_NOT_VERIFIED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Notification item is not visible or no longer exists */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "NOTIFICATION_NOT_FOUND";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/notifications/{id}/read": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Mark a notification read */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The notification read transition */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              /** Format: date-time */
+              readAt: string;
+            };
+          };
+        };
+        /** @description Invalid request input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is not verified */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "EMAIL_NOT_VERIFIED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Notification item is not visible or no longer exists */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "NOTIFICATION_NOT_FOUND";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/notifications/read-all": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Mark all currently visible notifications read */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            /** Format: uuid */
+            expectedOrganizationId: string | null;
+          };
+        };
+      };
+      responses: {
+        /** @description Count of items newly marked read */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              markedCount: number;
+            };
+          };
+        };
+        /** @description Invalid request input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is not verified */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "EMAIL_NOT_VERIFIED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description The server resolves a different active scope than expected */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INBOX_SCOPE_CHANGED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/notification-settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get organization notification settings */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Organization notification settings */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              organizationId: string;
+              settingsChangedEnabled: boolean;
+              monitorAlertsEnabled: boolean;
+              version: number;
+            };
+          };
+        };
+        /** @description Invalid request input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update organization notification settings with compare-and-swap */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            settingsChangedEnabled?: boolean;
+            monitorAlertsEnabled?: boolean;
+            expectedVersion: number;
+          };
+        };
+      };
+      responses: {
+        /** @description Updated organization notification settings */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              organizationId: string;
+              settingsChangedEnabled: boolean;
+              monitorAlertsEnabled: boolean;
+              version: number;
+            };
+          };
+        };
+        /** @description Invalid request input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The settings version is stale */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "SETTINGS_VERSION_CONFLICT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/members": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Paginated organization members */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              organizationId: string;
+              members: {
+                id: string;
+                userId: string;
+                name: string;
+                /** Format: email */
+                email: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+              }[];
+              page: {
+                limit: number;
+                offset: number;
+                total: number;
+              };
+              memberLimit: number;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/members/{memberId}/role": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          memberId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            /** @enum {string} */
+            role: "owner" | "admin" | "viewer" | "auditor";
+          };
+        };
+      };
+      responses: {
+        /** @description Updated member */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              member: {
+                id: string;
+                userId: string;
+                /** Format: uuid */
+                organizationId: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/members/me": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Left organization */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              member: {
+                id: string;
+                userId: string;
+                /** Format: uuid */
+                organizationId: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+              };
+            };
+          };
+        };
+        /** @description The member is the last administrator of a Project; the message names it */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "LAST_PROJECT_ADMIN";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/members/{memberId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          memberId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Revoked member */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              member: {
+                id: string;
+                userId: string;
+                /** Format: uuid */
+                organizationId: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+              };
+            };
+          };
+        };
+        /** @description The member is the last administrator of a Project; the message names it */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "LAST_PROJECT_ADMIN";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/invitations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Paginated pending organization invitations */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              organizationId: string;
+              invitations: {
+                /** Format: uuid */
+                publicId: string;
+                email: string;
+                /** @enum {string} */
+                role: "owner" | "admin" | "viewer" | "auditor";
+                /** Format: date-time */
+                sentAt: string;
+                /** Format: date-time */
+                expiresAt: string | null;
+                expired: boolean;
+                /** Format: date-time */
+                resendAvailableAt: string;
+                manageable: boolean;
+              }[];
+              activeCount: number;
+              /** @enum {number} */
+              activeLimit: 100;
+              page: {
+                limit: number;
+                offset: number;
+                total: number;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            email: string;
+            /** @enum {string} */
+            role: "owner" | "admin" | "viewer" | "auditor";
+          };
+        };
+      };
+      responses: {
+        /** @description Invitation persisted; SMTP transport result */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {boolean} */
+              created: true;
+              /** @enum {string} */
+              emailDispatch: "accepted" | "failed";
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/invitations/{publicId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          publicId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Invitation canceled */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {boolean} */
+              canceled: true;
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/invitations/{publicId}/resend": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          publicId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Invitation link rotated; SMTP transport result */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {boolean} */
+              resent: true;
+              /** @enum {string} */
+              emailDispatch: "accepted" | "failed";
+              /** Format: date-time */
+              sentAt: string;
+              /** Format: date-time */
+              expiresAt: string;
+              /** Format: date-time */
+              resendAvailableAt: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test a monitor configuration before it is created */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+            url: string;
+            /** @default 300 */
+            intervalSeconds?: number;
+            /** @default 10 */
+            timeoutSeconds?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+            /** @default [] */
+            headers?: {
+              id?: string;
+              name: string;
+              value?: string;
+              /** @default false */
+              secret?: boolean;
+            }[];
+            /** @default [] */
+            queryParams?: {
+              name: string;
+              value: string;
+            }[];
+            /** @default null */
+            body?: {
+              /** @enum {string} */
+              type: "json" | "text";
+              content: string;
+            } | null;
+            /** @default 200-299 */
+            expectedStatus?: string;
+            /** @default [] */
+            assertions?: (
+              | {
+                  /** @enum {string} */
+                  kind: "jsonPathEquals";
+                  path: string;
+                  expected: string;
+                }
+              | {
+                  /** @enum {string} */
+                  kind: "bodyContains";
+                  text: string;
+                }
+              | {
+                  /** @enum {string} */
+                  kind: "responseTimeBelow";
+                  ms: number;
+                }
+            )[];
+            /**
+             * @default {
+             *       "type": "none"
+             *     }
+             */
+            auth?:
+              | {
+                  /** @enum {string} */
+                  type: "none";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "bearer";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "basic";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "apiKey";
+                  headerName: string;
+                };
+            /**
+             * @default {
+             *       "failureThreshold": 2,
+             *       "downEnabled": true,
+             *       "sslEnabled": true,
+             *       "sslCautionDays": 30
+             *     }
+             */
+            alerts?: {
+              /** @default 2 */
+              failureThreshold?: number;
+              /** @default true */
+              downEnabled?: boolean;
+              /** @default true */
+              sslEnabled?: boolean;
+              /** @default 30 */
+              sslCautionDays?: number;
+            };
+            /** @default [] */
+            secrets?: {
+              slot: string;
+              value: string;
+            }[];
+          };
+        };
+      };
+      responses: {
+        /** @description The result of one check of the target, not recorded. Target problems (DNS, TLS, timeout, blocked address, redirects) are results, not errors */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              result: {
+                /** Format: date-time */
+                checkedAt: string;
+                /** @enum {string} */
+                outcome: "pass" | "fail" | "check_error";
+                httpStatus: number | null;
+                responseTimeMs: number | null;
+                /** @enum {string|null} */
+                failureReason:
+                  | "http_status"
+                  | "assertion_failed"
+                  | "timeout"
+                  | "dns_not_found"
+                  | "connect_refused"
+                  | "connect_failed"
+                  | "tls_invalid"
+                  | "blocked_address"
+                  | "redirect_blocked"
+                  | "redirect_limit"
+                  | "body_read_failed"
+                  | "secret_decrypt_failed"
+                  | "internal_egress_failed"
+                  | "resolver_unavailable"
+                  | "executor_error"
+                  | null;
+                /** @enum {string|null} */
+                tlsReason:
+                  | "expired"
+                  | "hostname_mismatch"
+                  | "untrusted"
+                  | "self_signed"
+                  | "handshake_failed"
+                  | null;
+                assertions: {
+                  /** @enum {string} */
+                  kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
+                  expected: string;
+                  actual: string | null;
+                  actualType: string | null;
+                  actualTruncated: boolean;
+                  /** @enum {string} */
+                  status: "pass" | "fail" | "not_evaluated";
+                  /** @enum {string|null} */
+                  reason:
+                    | "not_json"
+                    | "path_not_found"
+                    | "multiple_matches"
+                    | "type_mismatch"
+                    | "no_body"
+                    | "undecodable"
+                    | "value_mismatch"
+                    | "text_not_found"
+                    | "too_slow"
+                    | "no_response"
+                    | "prefix_ended"
+                    | null;
+                }[];
+                url: string;
+                evaluatedFromPrefix: boolean;
+                ssl: {
+                  /** @enum {string} */
+                  level:
+                    | "ok"
+                    | "caution"
+                    | "danger"
+                    | "expired"
+                    | "not_https"
+                    | "unreadable"
+                    | "no_data";
+                  daysRemaining: number | null;
+                  host: string | null;
+                  issuer: string | null;
+                  /** Format: date-time */
+                  notAfter: string | null;
+                };
+              };
+            };
+          };
+        };
+        /** @description Invalid monitor input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_INVALID";
+                    message: string;
+                    details: {
+                      fields: {
+                        field: string;
+                        /** @enum {string} */
+                        reason:
+                          | "required"
+                          | "too_long"
+                          | "invalid_format"
+                          | "blocked_scheme"
+                          | "embedded_credentials"
+                          | "blocked_port"
+                          | "blocked_header"
+                          | "duplicate"
+                          | "crlf"
+                          | "auth_header_conflict"
+                          | "invalid_json"
+                          | "invalid_jsonpath"
+                          | "body_assertion_with_head"
+                          | "out_of_range"
+                          | "too_many";
+                      }[];
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_INPUT";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Test rate limit reached; Retry-After carries the wait in seconds */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_TEST_RATE_LIMITED";
+                message: string;
+                details: {
+                  retryAfterSeconds: number;
+                };
+              };
+            };
+          };
+        };
+        /** @description The rate limiter is unavailable, or credential encryption is not configured for a kept secret; no request was sent */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "RATE_LIMIT_UNAVAILABLE";
+                    message: string;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "CREDENTIALS_UNAVAILABLE";
+                    message: string;
+                  };
+                };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test a configuration in the edit form of an existing monitor */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+            url: string;
+            /** @default 300 */
+            intervalSeconds?: number;
+            /** @default 10 */
+            timeoutSeconds?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+            /** @default [] */
+            headers?: {
+              id?: string;
+              name: string;
+              value?: string;
+              /** @default false */
+              secret?: boolean;
+            }[];
+            /** @default [] */
+            queryParams?: {
+              name: string;
+              value: string;
+            }[];
+            /** @default null */
+            body?: {
+              /** @enum {string} */
+              type: "json" | "text";
+              content: string;
+            } | null;
+            /** @default 200-299 */
+            expectedStatus?: string;
+            /** @default [] */
+            assertions?: (
+              | {
+                  /** @enum {string} */
+                  kind: "jsonPathEquals";
+                  path: string;
+                  expected: string;
+                }
+              | {
+                  /** @enum {string} */
+                  kind: "bodyContains";
+                  text: string;
+                }
+              | {
+                  /** @enum {string} */
+                  kind: "responseTimeBelow";
+                  ms: number;
+                }
+            )[];
+            /**
+             * @default {
+             *       "type": "none"
+             *     }
+             */
+            auth?:
+              | {
+                  /** @enum {string} */
+                  type: "none";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "bearer";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "basic";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "apiKey";
+                  headerName: string;
+                };
+            /**
+             * @default {
+             *       "failureThreshold": 2,
+             *       "downEnabled": true,
+             *       "sslEnabled": true,
+             *       "sslCautionDays": 30
+             *     }
+             */
+            alerts?: {
+              /** @default 2 */
+              failureThreshold?: number;
+              /** @default true */
+              downEnabled?: boolean;
+              /** @default true */
+              sslEnabled?: boolean;
+              /** @default 30 */
+              sslCautionDays?: number;
+            };
+            /** @default [] */
+            secrets?: {
+              slot: string;
+              /** @enum {string} */
+              action: "keep" | "replace" | "delete";
+              value?: string;
+            }[];
+          };
+        };
+      };
+      responses: {
+        /** @description The result of one check of the target, not recorded. Target problems (DNS, TLS, timeout, blocked address, redirects) are results, not errors */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              result: {
+                /** Format: date-time */
+                checkedAt: string;
+                /** @enum {string} */
+                outcome: "pass" | "fail" | "check_error";
+                httpStatus: number | null;
+                responseTimeMs: number | null;
+                /** @enum {string|null} */
+                failureReason:
+                  | "http_status"
+                  | "assertion_failed"
+                  | "timeout"
+                  | "dns_not_found"
+                  | "connect_refused"
+                  | "connect_failed"
+                  | "tls_invalid"
+                  | "blocked_address"
+                  | "redirect_blocked"
+                  | "redirect_limit"
+                  | "body_read_failed"
+                  | "secret_decrypt_failed"
+                  | "internal_egress_failed"
+                  | "resolver_unavailable"
+                  | "executor_error"
+                  | null;
+                /** @enum {string|null} */
+                tlsReason:
+                  | "expired"
+                  | "hostname_mismatch"
+                  | "untrusted"
+                  | "self_signed"
+                  | "handshake_failed"
+                  | null;
+                assertions: {
+                  /** @enum {string} */
+                  kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
+                  expected: string;
+                  actual: string | null;
+                  actualType: string | null;
+                  actualTruncated: boolean;
+                  /** @enum {string} */
+                  status: "pass" | "fail" | "not_evaluated";
+                  /** @enum {string|null} */
+                  reason:
+                    | "not_json"
+                    | "path_not_found"
+                    | "multiple_matches"
+                    | "type_mismatch"
+                    | "no_body"
+                    | "undecodable"
+                    | "value_mismatch"
+                    | "text_not_found"
+                    | "too_slow"
+                    | "no_response"
+                    | "prefix_ended"
+                    | null;
+                }[];
+                url: string;
+                evaluatedFromPrefix: boolean;
+                ssl: {
+                  /** @enum {string} */
+                  level:
+                    | "ok"
+                    | "caution"
+                    | "danger"
+                    | "expired"
+                    | "not_https"
+                    | "unreadable"
+                    | "no_data";
+                  daysRemaining: number | null;
+                  host: string | null;
+                  issuer: string | null;
+                  /** Format: date-time */
+                  notAfter: string | null;
+                };
+              };
+            };
+          };
+        };
+        /** @description Invalid monitor input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_INVALID";
+                    message: string;
+                    details: {
+                      fields: {
+                        field: string;
+                        /** @enum {string} */
+                        reason:
+                          | "required"
+                          | "too_long"
+                          | "invalid_format"
+                          | "blocked_scheme"
+                          | "embedded_credentials"
+                          | "blocked_port"
+                          | "blocked_header"
+                          | "duplicate"
+                          | "crlf"
+                          | "auth_header_conflict"
+                          | "invalid_json"
+                          | "invalid_jsonpath"
+                          | "body_assertion_with_head"
+                          | "out_of_range"
+                          | "too_many";
+                      }[];
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_INPUT";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The scheme, host or port changed while a stored secret is kept; nothing was sent */
+        422: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_SECRET_ORIGIN_CHANGED";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description Test rate limit reached; Retry-After carries the wait in seconds */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_TEST_RATE_LIMITED";
+                message: string;
+                details: {
+                  retryAfterSeconds: number;
+                };
+              };
+            };
+          };
+        };
+        /** @description The rate limiter is unavailable, or credential encryption is not configured for a kept secret; no request was sent */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "RATE_LIMIT_UNAVAILABLE";
+                    message: string;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "CREDENTIALS_UNAVAILABLE";
+                    message: string;
+                  };
+                };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List monitors with health, SSL level and uptime */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number | null;
+          health?: "up" | "down" | "unknown" | "paused";
+          q?: string;
+          sort?: "problems" | "name" | "uptime" | "response_time" | "newest";
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description One page of monitors and the Organization summary */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              summary: {
+                up: number;
+                down: number;
+                unknown: number;
+                paused: number;
+                total: number;
+                /** @enum {number} */
+                limit: 50;
+              };
+              monitors: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                url: string;
+                /** @enum {string} */
+                status: "active" | "paused";
+                /** @enum {string} */
+                health: "up" | "down" | "unknown" | "paused";
+                /** @enum {string|null} */
+                healthReason:
+                  | "never_checked"
+                  | "stale"
+                  | "awaiting_new_config"
+                  | "check_error"
+                  | null;
+                lastKnownDown: boolean;
+                consecutiveFailures: number;
+                /** Format: date-time */
+                lastCheckAt: string | null;
+                openIncident: {
+                  /** Format: date-time */
+                  startedAt: string;
+                  reason: string;
+                } | null;
+                /** @enum {string} */
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                intervalSeconds: number;
+                lastResponseTimeMs: number | null;
+                ssl: {
+                  /** @enum {string} */
+                  level:
+                    | "ok"
+                    | "caution"
+                    | "danger"
+                    | "expired"
+                    | "not_https"
+                    | "unreadable"
+                    | "no_data";
+                  daysRemaining: number | null;
+                  host: string | null;
+                  issuer: string | null;
+                  /** Format: date-time */
+                  notAfter: string | null;
+                };
+                uptime: {
+                  h24: {
+                    percent: number | null;
+                    checks: number;
+                    coveragePercent: number;
+                  };
+                  d30: {
+                    percent: number | null;
+                    checks: number;
+                    coveragePercent: number;
+                  };
+                };
+                responseSparkline: {
+                  /** Format: date-time */
+                  hourStart: string;
+                  avgMs: number | null;
+                }[];
+              }[];
+              page: {
+                limit: number;
+                offset: number;
+                total: number;
+              };
+              /** Format: date-time */
+              dataAsOf: string;
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified or membership is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+      };
+    };
+    put?: never;
+    /** Create a monitor */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+            url: string;
+            /** @default 300 */
+            intervalSeconds?: number;
+            /** @default 10 */
+            timeoutSeconds?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+            /** @default [] */
+            headers?: {
+              id?: string;
+              name: string;
+              value?: string;
+              /** @default false */
+              secret?: boolean;
+            }[];
+            /** @default [] */
+            queryParams?: {
+              name: string;
+              value: string;
+            }[];
+            /** @default null */
+            body?: {
+              /** @enum {string} */
+              type: "json" | "text";
+              content: string;
+            } | null;
+            /** @default 200-299 */
+            expectedStatus?: string;
+            /** @default [] */
+            assertions?: (
+              | {
+                  /** @enum {string} */
+                  kind: "jsonPathEquals";
+                  path: string;
+                  expected: string;
+                }
+              | {
+                  /** @enum {string} */
+                  kind: "bodyContains";
+                  text: string;
+                }
+              | {
+                  /** @enum {string} */
+                  kind: "responseTimeBelow";
+                  ms: number;
+                }
+            )[];
+            /**
+             * @default {
+             *       "type": "none"
+             *     }
+             */
+            auth?:
+              | {
+                  /** @enum {string} */
+                  type: "none";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "bearer";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "basic";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "apiKey";
+                  headerName: string;
+                };
+            /**
+             * @default {
+             *       "failureThreshold": 2,
+             *       "downEnabled": true,
+             *       "sslEnabled": true,
+             *       "sslCautionDays": 30
+             *     }
+             */
+            alerts?: {
+              /** @default 2 */
+              failureThreshold?: number;
+              /** @default true */
+              downEnabled?: boolean;
+              /** @default true */
+              sslEnabled?: boolean;
+              /** @default 30 */
+              sslCautionDays?: number;
+            };
+            /** Format: uuid */
+            clientRequestId: string;
+            /** @default [] */
+            secrets?: {
+              slot: string;
+              value: string;
+            }[];
+          };
+        };
+      };
+      responses: {
+        /** @description Created, or the original monitor of a replayed request */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              monitor: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                url: string;
+                /** @enum {string} */
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                intervalSeconds: number;
+                timeoutSeconds: number;
+                headers: {
+                  id?: string;
+                  name: string;
+                  value?: string;
+                  secret: boolean;
+                }[];
+                queryParams: {
+                  name: string;
+                  value: string;
+                }[];
+                body: {
+                  /** @enum {string} */
+                  type: "json" | "text";
+                  content: string;
+                } | null;
+                expectedStatus: string;
+                assertions: (
+                  | {
+                      /** @enum {string} */
+                      kind: "jsonPathEquals";
+                      path: string;
+                      expected: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "bodyContains";
+                      text: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "responseTimeBelow";
+                      ms: number;
+                    }
+                )[];
+                auth:
+                  | {
+                      /** @enum {string} */
+                      type: "none";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "bearer";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "basic";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "apiKey";
+                      headerName: string;
+                    };
+                secretSlots: {
+                  slot: string;
+                  /** @enum {boolean} */
+                  configured: true;
+                }[];
+                /** @enum {string} */
+                status: "active" | "paused";
+                version: number;
+                /** Format: date-time */
+                createdAt: string;
+                /** Format: date-time */
+                updatedAt: string;
+                alerts: {
+                  failureThreshold: number;
+                  downEnabled: boolean;
+                  sslEnabled: boolean;
+                  sslCautionDays: number;
+                };
+              };
+            };
+          };
+        };
+        /** @description Invalid monitor input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_INVALID";
+                    message: string;
+                    details: {
+                      fields: {
+                        field: string;
+                        /** @enum {string} */
+                        reason:
+                          | "required"
+                          | "too_long"
+                          | "invalid_format"
+                          | "blocked_scheme"
+                          | "embedded_credentials"
+                          | "blocked_port"
+                          | "blocked_header"
+                          | "duplicate"
+                          | "crlf"
+                          | "auth_header_conflict"
+                          | "invalid_json"
+                          | "invalid_jsonpath"
+                          | "body_assertion_with_head"
+                          | "out_of_range"
+                          | "too_many";
+                      }[];
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_INPUT";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Organization is at its monitor limit */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_LIMIT_REACHED";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The host is or resolves to a forbidden address */
+        422: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_TARGET_BLOCKED";
+                message: string;
+                details: {
+                  /** @enum {string} */
+                  field: "url";
+                };
+              };
+            };
+          };
+        };
+        /** @description Credential encryption is not configured, so secret values cannot be stored or read */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "CREDENTIALS_UNAVAILABLE";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Monitor configuration with health, SSL level and uptime */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The monitor with its computed state */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              monitor: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                url: string;
+                /** @enum {string} */
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                intervalSeconds: number;
+                timeoutSeconds: number;
+                headers: {
+                  id?: string;
+                  name: string;
+                  value?: string;
+                  secret: boolean;
+                }[];
+                queryParams: {
+                  name: string;
+                  value: string;
+                }[];
+                body: {
+                  /** @enum {string} */
+                  type: "json" | "text";
+                  content: string;
+                } | null;
+                expectedStatus: string;
+                assertions: (
+                  | {
+                      /** @enum {string} */
+                      kind: "jsonPathEquals";
+                      path: string;
+                      expected: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "bodyContains";
+                      text: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "responseTimeBelow";
+                      ms: number;
+                    }
+                )[];
+                auth:
+                  | {
+                      /** @enum {string} */
+                      type: "none";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "bearer";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "basic";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "apiKey";
+                      headerName: string;
+                    };
+                secretSlots: {
+                  slot: string;
+                  /** @enum {boolean} */
+                  configured: true;
+                }[];
+                /** @enum {string} */
+                status: "active" | "paused";
+                version: number;
+                /** Format: date-time */
+                createdAt: string;
+                /** Format: date-time */
+                updatedAt: string;
+                alerts: {
+                  failureThreshold: number;
+                  downEnabled: boolean;
+                  sslEnabled: boolean;
+                  sslCautionDays: number;
+                };
+                /** @enum {string} */
+                health: "up" | "down" | "unknown" | "paused";
+                /** @enum {string|null} */
+                healthReason:
+                  | "never_checked"
+                  | "stale"
+                  | "awaiting_new_config"
+                  | "check_error"
+                  | null;
+                lastKnownDown: boolean;
+                consecutiveFailures: number;
+                /** Format: date-time */
+                lastCheckAt: string | null;
+                openIncident: {
+                  /** Format: date-time */
+                  startedAt: string;
+                  reason: string;
+                } | null;
+                lastResult: {
+                  /** Format: date-time */
+                  scheduledFor: string;
+                  /** Format: date-time */
+                  checkedAt: string;
+                  /** @enum {string} */
+                  outcome: "pass" | "fail" | "check_error";
+                  httpStatus: number | null;
+                  responseTimeMs: number | null;
+                  /** @enum {string|null} */
+                  failureReason:
+                    | "http_status"
+                    | "assertion_failed"
+                    | "timeout"
+                    | "dns_not_found"
+                    | "connect_refused"
+                    | "connect_failed"
+                    | "tls_invalid"
+                    | "blocked_address"
+                    | "redirect_blocked"
+                    | "redirect_limit"
+                    | "body_read_failed"
+                    | "secret_decrypt_failed"
+                    | "internal_egress_failed"
+                    | "resolver_unavailable"
+                    | "executor_error"
+                    | null;
+                  /** @enum {string|null} */
+                  tlsReason:
+                    | "expired"
+                    | "hostname_mismatch"
+                    | "untrusted"
+                    | "self_signed"
+                    | "handshake_failed"
+                    | null;
+                  assertions: {
+                    /** @enum {string} */
+                    kind:
+                      "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
+                    expected: string;
+                    actual: string | null;
+                    actualType: string | null;
+                    actualTruncated: boolean;
+                    /** @enum {string} */
+                    status: "pass" | "fail" | "not_evaluated";
+                    /** @enum {string|null} */
+                    reason:
+                      | "not_json"
+                      | "path_not_found"
+                      | "multiple_matches"
+                      | "type_mismatch"
+                      | "no_body"
+                      | "undecodable"
+                      | "value_mismatch"
+                      | "text_not_found"
+                      | "too_slow"
+                      | "no_response"
+                      | "prefix_ended"
+                      | null;
+                  }[];
+                  url: string;
+                  configVersion: number;
+                  evaluatedFromPrefix: boolean;
+                } | null;
+                ssl: {
+                  /** @enum {string} */
+                  state:
+                    | "ok"
+                    | "caution"
+                    | "danger"
+                    | "expired"
+                    | "not_https"
+                    | "unreadable"
+                    | "no_data";
+                  host: string | null;
+                  issuer: string | null;
+                  /** Format: date-time */
+                  notAfter: string | null;
+                  daysRemaining: number | null;
+                  reason: string | null;
+                };
+                uptime: {
+                  h24: {
+                    percent: number | null;
+                    checks: number;
+                    coveragePercent: number;
+                  };
+                  d7: {
+                    percent: number | null;
+                    checks: number;
+                    coveragePercent: number;
+                  };
+                  d30: {
+                    percent: number | null;
+                    checks: number;
+                    coveragePercent: number;
+                  };
+                };
+                /** Format: date-time */
+                dataAsOf: string;
+              };
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified or membership is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    /** Delete a monitor and its history */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Deleted */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Invalid monitor input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_INVALID";
+                    message: string;
+                    details: {
+                      fields: {
+                        field: string;
+                        /** @enum {string} */
+                        reason:
+                          | "required"
+                          | "too_long"
+                          | "invalid_format"
+                          | "blocked_scheme"
+                          | "embedded_credentials"
+                          | "blocked_port"
+                          | "blocked_header"
+                          | "duplicate"
+                          | "crlf"
+                          | "auth_header_conflict"
+                          | "invalid_json"
+                          | "invalid_jsonpath"
+                          | "body_assertion_with_head"
+                          | "out_of_range"
+                          | "too_many";
+                      }[];
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_INPUT";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /** Replace the configuration of a monitor */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+            url: string;
+            /** @default 300 */
+            intervalSeconds?: number;
+            /** @default 10 */
+            timeoutSeconds?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+            /** @default [] */
+            headers?: {
+              id?: string;
+              name: string;
+              value?: string;
+              /** @default false */
+              secret?: boolean;
+            }[];
+            /** @default [] */
+            queryParams?: {
+              name: string;
+              value: string;
+            }[];
+            /** @default null */
+            body?: {
+              /** @enum {string} */
+              type: "json" | "text";
+              content: string;
+            } | null;
+            /** @default 200-299 */
+            expectedStatus?: string;
+            /** @default [] */
+            assertions?: (
+              | {
+                  /** @enum {string} */
+                  kind: "jsonPathEquals";
+                  path: string;
+                  expected: string;
+                }
+              | {
+                  /** @enum {string} */
+                  kind: "bodyContains";
+                  text: string;
+                }
+              | {
+                  /** @enum {string} */
+                  kind: "responseTimeBelow";
+                  ms: number;
+                }
+            )[];
+            /**
+             * @default {
+             *       "type": "none"
+             *     }
+             */
+            auth?:
+              | {
+                  /** @enum {string} */
+                  type: "none";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "bearer";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "basic";
+                }
+              | {
+                  /** @enum {string} */
+                  type: "apiKey";
+                  headerName: string;
+                };
+            alerts?: {
+              failureThreshold: number;
+              downEnabled: boolean;
+              sslEnabled: boolean;
+              sslCautionDays: number;
+            };
+            expectedVersion: number;
+            /** @default [] */
+            secrets?: {
+              slot: string;
+              /** @enum {string} */
+              action: "keep" | "replace" | "delete";
+              value?: string;
+            }[];
+          };
+        };
+      };
+      responses: {
+        /** @description Updated monitor */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              monitor: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                url: string;
+                /** @enum {string} */
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                intervalSeconds: number;
+                timeoutSeconds: number;
+                headers: {
+                  id?: string;
+                  name: string;
+                  value?: string;
+                  secret: boolean;
+                }[];
+                queryParams: {
+                  name: string;
+                  value: string;
+                }[];
+                body: {
+                  /** @enum {string} */
+                  type: "json" | "text";
+                  content: string;
+                } | null;
+                expectedStatus: string;
+                assertions: (
+                  | {
+                      /** @enum {string} */
+                      kind: "jsonPathEquals";
+                      path: string;
+                      expected: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "bodyContains";
+                      text: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "responseTimeBelow";
+                      ms: number;
+                    }
+                )[];
+                auth:
+                  | {
+                      /** @enum {string} */
+                      type: "none";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "bearer";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "basic";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "apiKey";
+                      headerName: string;
+                    };
+                secretSlots: {
+                  slot: string;
+                  /** @enum {boolean} */
+                  configured: true;
+                }[];
+                /** @enum {string} */
+                status: "active" | "paused";
+                version: number;
+                /** Format: date-time */
+                createdAt: string;
+                /** Format: date-time */
+                updatedAt: string;
+                alerts: {
+                  failureThreshold: number;
+                  downEnabled: boolean;
+                  sslEnabled: boolean;
+                  sslCautionDays: number;
+                };
+              };
+            };
+          };
+        };
+        /** @description Invalid monitor input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_INVALID";
+                    message: string;
+                    details: {
+                      fields: {
+                        field: string;
+                        /** @enum {string} */
+                        reason:
+                          | "required"
+                          | "too_long"
+                          | "invalid_format"
+                          | "blocked_scheme"
+                          | "embedded_credentials"
+                          | "blocked_port"
+                          | "blocked_header"
+                          | "duplicate"
+                          | "crlf"
+                          | "auth_header_conflict"
+                          | "invalid_json"
+                          | "invalid_jsonpath"
+                          | "body_assertion_with_head"
+                          | "out_of_range"
+                          | "too_many";
+                      }[];
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_INPUT";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The expected version is stale */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_VERSION_CONFLICT";
+                message: string;
+                details: {
+                  currentVersion: number;
+                };
+              };
+            };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The host is or resolves to a forbidden address, or the scheme, host or port changed while a secret is kept */
+        422: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_TARGET_BLOCKED";
+                    message: string;
+                    details: {
+                      /** @enum {string} */
+                      field: "url";
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_SECRET_ORIGIN_CHANGED";
+                    message: string;
+                  };
+                };
+          };
+        };
+        /** @description Credential encryption is not configured, so secret values cannot be stored or read */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "CREDENTIALS_UNAVAILABLE";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Pause a monitor (idempotent) */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The monitor, paused */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              monitor: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                url: string;
+                /** @enum {string} */
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                intervalSeconds: number;
+                timeoutSeconds: number;
+                headers: {
+                  id?: string;
+                  name: string;
+                  value?: string;
+                  secret: boolean;
+                }[];
+                queryParams: {
+                  name: string;
+                  value: string;
+                }[];
+                body: {
+                  /** @enum {string} */
+                  type: "json" | "text";
+                  content: string;
+                } | null;
+                expectedStatus: string;
+                assertions: (
+                  | {
+                      /** @enum {string} */
+                      kind: "jsonPathEquals";
+                      path: string;
+                      expected: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "bodyContains";
+                      text: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "responseTimeBelow";
+                      ms: number;
+                    }
+                )[];
+                auth:
+                  | {
+                      /** @enum {string} */
+                      type: "none";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "bearer";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "basic";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "apiKey";
+                      headerName: string;
+                    };
+                secretSlots: {
+                  slot: string;
+                  /** @enum {boolean} */
+                  configured: true;
+                }[];
+                /** @enum {string} */
+                status: "active" | "paused";
+                version: number;
+                /** Format: date-time */
+                createdAt: string;
+                /** Format: date-time */
+                updatedAt: string;
+                alerts: {
+                  failureThreshold: number;
+                  downEnabled: boolean;
+                  sslEnabled: boolean;
+                  sslCautionDays: number;
+                };
+              };
+            };
+          };
+        };
+        /** @description Invalid monitor input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_INVALID";
+                    message: string;
+                    details: {
+                      fields: {
+                        field: string;
+                        /** @enum {string} */
+                        reason:
+                          | "required"
+                          | "too_long"
+                          | "invalid_format"
+                          | "blocked_scheme"
+                          | "embedded_credentials"
+                          | "blocked_port"
+                          | "blocked_header"
+                          | "duplicate"
+                          | "crlf"
+                          | "auth_header_conflict"
+                          | "invalid_json"
+                          | "invalid_jsonpath"
+                          | "body_assertion_with_head"
+                          | "out_of_range"
+                          | "too_many";
+                      }[];
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_INPUT";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume a monitor (idempotent) */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The monitor, active */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              monitor: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                url: string;
+                /** @enum {string} */
+                method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+                intervalSeconds: number;
+                timeoutSeconds: number;
+                headers: {
+                  id?: string;
+                  name: string;
+                  value?: string;
+                  secret: boolean;
+                }[];
+                queryParams: {
+                  name: string;
+                  value: string;
+                }[];
+                body: {
+                  /** @enum {string} */
+                  type: "json" | "text";
+                  content: string;
+                } | null;
+                expectedStatus: string;
+                assertions: (
+                  | {
+                      /** @enum {string} */
+                      kind: "jsonPathEquals";
+                      path: string;
+                      expected: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "bodyContains";
+                      text: string;
+                    }
+                  | {
+                      /** @enum {string} */
+                      kind: "responseTimeBelow";
+                      ms: number;
+                    }
+                )[];
+                auth:
+                  | {
+                      /** @enum {string} */
+                      type: "none";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "bearer";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "basic";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "apiKey";
+                      headerName: string;
+                    };
+                secretSlots: {
+                  slot: string;
+                  /** @enum {boolean} */
+                  configured: true;
+                }[];
+                /** @enum {string} */
+                status: "active" | "paused";
+                version: number;
+                /** Format: date-time */
+                createdAt: string;
+                /** Format: date-time */
+                updatedAt: string;
+                alerts: {
+                  failureThreshold: number;
+                  downEnabled: boolean;
+                  sslEnabled: boolean;
+                  sslCautionDays: number;
+                };
+              };
+            };
+          };
+        };
+        /** @description Invalid monitor input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MONITOR_INVALID";
+                    message: string;
+                    details: {
+                      fields: {
+                        field: string;
+                        /** @enum {string} */
+                        reason:
+                          | "required"
+                          | "too_long"
+                          | "invalid_format"
+                          | "blocked_scheme"
+                          | "embedded_credentials"
+                          | "blocked_port"
+                          | "blocked_header"
+                          | "duplicate"
+                          | "crlf"
+                          | "auth_header_conflict"
+                          | "invalid_json"
+                          | "invalid_jsonpath"
+                          | "body_assertion_with_head"
+                          | "out_of_range"
+                          | "too_many";
+                      }[];
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "INVALID_INPUT";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/recent-events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Recent incidents and SSL levels across the Organization */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Events of the last 30 days, newest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              events: {
+                /** @enum {string} */
+                kind: "incident_opened" | "incident_closed" | "ssl_level";
+                /** Format: uuid */
+                monitorId: string;
+                monitorName: string;
+                /** Format: date-time */
+                at: string;
+                reason: string | null;
+                durationSeconds?: number;
+                httpStatus?: number;
+                /** @enum {string} */
+                sslLevel?:
+                  | "ok"
+                  | "caution"
+                  | "danger"
+                  | "expired"
+                  | "not_https"
+                  | "unreadable"
+                  | "no_data";
+                daysRemaining?: number;
+              }[];
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified or membership is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}/checks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check history, newest first */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number | null;
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description One page of results and the URL changes inside it */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              checks: {
+                /** Format: date-time */
+                scheduledFor: string;
+                /** Format: date-time */
+                checkedAt: string;
+                /** @enum {string} */
+                outcome: "pass" | "fail" | "check_error";
+                httpStatus: number | null;
+                responseTimeMs: number | null;
+                /** @enum {string|null} */
+                failureReason:
+                  | "http_status"
+                  | "assertion_failed"
+                  | "timeout"
+                  | "dns_not_found"
+                  | "connect_refused"
+                  | "connect_failed"
+                  | "tls_invalid"
+                  | "blocked_address"
+                  | "redirect_blocked"
+                  | "redirect_limit"
+                  | "body_read_failed"
+                  | "secret_decrypt_failed"
+                  | "internal_egress_failed"
+                  | "resolver_unavailable"
+                  | "executor_error"
+                  | null;
+                /** @enum {string|null} */
+                tlsReason:
+                  | "expired"
+                  | "hostname_mismatch"
+                  | "untrusted"
+                  | "self_signed"
+                  | "handshake_failed"
+                  | null;
+                assertions: {
+                  /** @enum {string} */
+                  kind: "jsonPathEquals" | "bodyContains" | "responseTimeBelow";
+                  expected: string;
+                  actual: string | null;
+                  actualType: string | null;
+                  actualTruncated: boolean;
+                  /** @enum {string} */
+                  status: "pass" | "fail" | "not_evaluated";
+                  /** @enum {string|null} */
+                  reason:
+                    | "not_json"
+                    | "path_not_found"
+                    | "multiple_matches"
+                    | "type_mismatch"
+                    | "no_body"
+                    | "undecodable"
+                    | "value_mismatch"
+                    | "text_not_found"
+                    | "too_slow"
+                    | "no_response"
+                    | "prefix_ended"
+                    | null;
+                }[];
+                url: string;
+                configVersion: number;
+                evaluatedFromPrefix: boolean;
+              }[];
+              page: {
+                limit: number;
+                offset: number;
+                total: number;
+              };
+              urlChanges: {
+                /** Format: date-time */
+                at: string;
+                url: string;
+              }[];
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified or membership is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}/incidents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Incident history, newest first */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number | null;
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description One page of incidents */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              incidents: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date-time */
+                startedAt: string;
+                /** Format: date-time */
+                endedAt: string | null;
+                durationSeconds: number;
+                startReason: string;
+                startHttpStatus: number | null;
+                /** @enum {string|null} */
+                endReason: "recovered" | "paused_by_user" | null;
+              }[];
+              page: {
+                limit: number;
+                offset: number;
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified or membership is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}/response-times": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Response times: per-check points for 24 h, hourly buckets for 7 d and 30 d */
+    get: {
+      parameters: {
+        query?: {
+          range?: "24h" | "7d" | "30d";
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The series with its pauses and configuration changes */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  /** @enum {string} */
+                  range: "24h";
+                  points: {
+                    /** Format: date-time */
+                    at: string;
+                    responseTimeMs: number | null;
+                    /** @enum {string} */
+                    outcome: "pass" | "fail" | "check_error";
+                  }[];
+                  gaps: {
+                    /** Format: date-time */
+                    from: string;
+                    /** Format: date-time */
+                    to: string;
+                  }[];
+                  /** Format: date-time */
+                  dataAsOf: string;
+                  window: {
+                    /** Format: date-time */
+                    from: string;
+                    /** Format: date-time */
+                    to: string;
+                  };
+                  /** @enum {string} */
+                  unit: "ms";
+                  pauses: {
+                    /** Format: date-time */
+                    from: string;
+                    /** Format: date-time */
+                    to: string;
+                  }[];
+                  configChanges: {
+                    /** Format: date-time */
+                    at: string;
+                    urlChanged: boolean;
+                    url?: string;
+                  }[];
+                }
+              | {
+                  /** @enum {string} */
+                  range: "7d" | "30d";
+                  summary: {
+                    p50Ms: number | null;
+                    p95Ms: number | null;
+                    checks: number;
+                    failed: number;
+                  };
+                  buckets: {
+                    /** Format: date-time */
+                    hourStart: string;
+                    avgMs: number | null;
+                    maxMs: number | null;
+                    checks: number;
+                    responseChecks: number;
+                  }[];
+                  /** Format: date-time */
+                  dataAsOf: string;
+                  window: {
+                    /** Format: date-time */
+                    from: string;
+                    /** Format: date-time */
+                    to: string;
+                  };
+                  /** @enum {string} */
+                  unit: "ms";
+                  pauses: {
+                    /** Format: date-time */
+                    from: string;
+                    /** Format: date-time */
+                    to: string;
+                  }[];
+                  configChanges: {
+                    /** Format: date-time */
+                    at: string;
+                    urlChanged: boolean;
+                    url?: string;
+                  }[];
+                };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified or membership is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Event feed of the last 30 days, newest first */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number | null;
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description One page of failed checks, incidents, pauses, resumes and configuration changes */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              events: (
+                | {
+                    id: string;
+                    /** Format: date-time */
+                    at: string;
+                    /** @enum {string} */
+                    kind: "check_failed";
+                    /** @enum {string|null} */
+                    failureReason:
+                      | "http_status"
+                      | "assertion_failed"
+                      | "timeout"
+                      | "dns_not_found"
+                      | "connect_refused"
+                      | "connect_failed"
+                      | "tls_invalid"
+                      | "blocked_address"
+                      | "redirect_blocked"
+                      | "redirect_limit"
+                      | "body_read_failed"
+                      | "secret_decrypt_failed"
+                      | "internal_egress_failed"
+                      | "resolver_unavailable"
+                      | "executor_error"
+                      | null;
+                    /** @enum {string|null} */
+                    tlsReason:
+                      | "expired"
+                      | "hostname_mismatch"
+                      | "untrusted"
+                      | "self_signed"
+                      | "handshake_failed"
+                      | null;
+                    httpStatus: number | null;
+                    responseTimeMs: number | null;
+                  }
+                | {
+                    id: string;
+                    /** Format: date-time */
+                    at: string;
+                    /** @enum {string} */
+                    kind: "incident_opened";
+                    /** Format: uuid */
+                    incidentId: string;
+                    reason: string;
+                    httpStatus: number | null;
+                  }
+                | {
+                    id: string;
+                    /** Format: date-time */
+                    at: string;
+                    /** @enum {string} */
+                    kind: "incident_closed";
+                    /** Format: uuid */
+                    incidentId: string;
+                    /** @enum {string} */
+                    endReason: "recovered" | "paused_by_user";
+                    durationSeconds: number;
+                    httpStatus: number | null;
+                    responseTimeMs: number | null;
+                  }
+                | {
+                    id: string;
+                    /** Format: date-time */
+                    at: string;
+                    /** @enum {string} */
+                    kind: "paused";
+                    actor:
+                      | {
+                          /** @enum {string} */
+                          kind: "member";
+                          userId: string;
+                          displayName: string;
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "member_hidden";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "former_member";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "deleted";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "unrecorded";
+                        };
+                  }
+                | {
+                    id: string;
+                    /** Format: date-time */
+                    at: string;
+                    /** @enum {string} */
+                    kind: "resumed";
+                    actor:
+                      | {
+                          /** @enum {string} */
+                          kind: "member";
+                          userId: string;
+                          displayName: string;
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "member_hidden";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "former_member";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "deleted";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "unrecorded";
+                        };
+                  }
+                | {
+                    id: string;
+                    /** Format: date-time */
+                    at: string;
+                    /** @enum {string} */
+                    kind: "config_changed";
+                    actor:
+                      | {
+                          /** @enum {string} */
+                          kind: "member";
+                          userId: string;
+                          displayName: string;
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "member_hidden";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "former_member";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "deleted";
+                        }
+                      | {
+                          /** @enum {string} */
+                          kind: "unrecorded";
+                        };
+                    changes: (
+                      | {
+                          field: string;
+                          /** @enum {string} */
+                          kind: "value";
+                          before: (string | null) | number;
+                          after: (string | null) | number;
+                        }
+                      | {
+                          field: string;
+                          /** @enum {string} */
+                          kind: "changed";
+                        }
+                      | {
+                          field: string;
+                          /** @enum {string} */
+                          kind: "secret";
+                          /** @enum {string} */
+                          action: "set" | "replaced" | "deleted";
+                        }
+                    )[];
+                  }
+              )[];
+              page: {
+                limit: number;
+                offset: number;
+                total: number;
+              };
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified or membership is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/monitors/{monitorId}/last-response": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Redacted last response of the monitor (owner and admin) */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          monitorId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The last recorded response, or null before the first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              response: {
+                /** Format: date-time */
+                checkedAt: string;
+                /** Format: date-time */
+                scheduledFor: string;
+                configVersion: number;
+                /** @enum {string} */
+                outcome: "pass" | "fail" | "check_error";
+                /** @enum {string|null} */
+                failureReason:
+                  | "http_status"
+                  | "assertion_failed"
+                  | "timeout"
+                  | "dns_not_found"
+                  | "connect_refused"
+                  | "connect_failed"
+                  | "tls_invalid"
+                  | "blocked_address"
+                  | "redirect_blocked"
+                  | "redirect_limit"
+                  | "body_read_failed"
+                  | "secret_decrypt_failed"
+                  | "internal_egress_failed"
+                  | "resolver_unavailable"
+                  | "executor_error"
+                  | null;
+                url: string;
+                /** @enum {string|null} */
+                detailOmitted: "request_values" | null;
+                statusLine: {
+                  /** @enum {string} */
+                  httpVersion: "HTTP/1.0" | "HTTP/1.1";
+                  status: number;
+                  reasonPhrase: string | null;
+                } | null;
+                headers: {
+                  name: string;
+                  value: string;
+                  redacted: boolean;
+                }[];
+                headersTruncated: boolean;
+                body:
+                  | ({
+                      /** @enum {string} */
+                      kind: "text";
+                      text: string;
+                      truncated: boolean;
+                      totalBytesRead: number;
+                    } | null)
+                  | {
+                      /** @enum {string} */
+                      kind: "omitted";
+                      /** @enum {string} */
+                      reason:
+                        | "no_body"
+                        | "not_text"
+                        | "undecodable"
+                        | "request_values";
+                    };
+              } | null;
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "INVALID_INPUT";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified or membership is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The monitor does not exist, is malformed or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "MONITOR_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/audit-log/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List audit events, newest first */
+    get: {
+      parameters: {
+        query?: {
+          from?: string;
+          to?: string;
+          categories?: string;
+          actorUserId?: string;
+          q?: string;
+          asOf?: string;
+          limit?: number;
+          offset?: number | null;
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description One page of events inside the retention window */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              organizationId: string;
+              /** Format: date-time */
+              asOf: string;
+              /** Format: date-time */
+              retainedFrom: string;
+              /** Format: date-time */
+              recordingStartedAt: string;
+              events: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date-time */
+                occurredAt: string;
+                /** @enum {string} */
+                category:
+                  | "monitor"
+                  | "notification_settings"
+                  | "member"
+                  | "invitation"
+                  | "audit_log"
+                  | "project";
+                /** @enum {string} */
+                action:
+                  | "organization.monitor.create"
+                  | "organization.monitor.update"
+                  | "organization.monitor.pause"
+                  | "organization.monitor.resume"
+                  | "organization.monitor.delete"
+                  | "organization.monitor.secret.set"
+                  | "organization.monitor.secret.replace"
+                  | "organization.notification-settings.monitor-alerts.update"
+                  | "organization.notification-settings.update"
+                  | "organization.member.role.update"
+                  | "organization.member.revoke"
+                  | "organization.member.leave"
+                  | "organization.invitation.create"
+                  | "organization.invitation.resend"
+                  | "organization.invitation.cancel"
+                  | "organization.audit-log.export"
+                  | "organization.project.create"
+                  | "organization.project.update"
+                  | "organization.project.delete"
+                  | "organization.project.member.add"
+                  | "organization.project.member.role.update"
+                  | "organization.project.member.remove";
+                actor: {
+                  userId: string;
+                  displayName: string | null;
+                  /** @enum {string} */
+                  roleAtTime: "owner" | "admin" | "viewer" | "auditor";
+                  /** @enum {string} */
+                  membership: "current" | "former";
+                };
+                target:
+                  | {
+                      /** @enum {string} */
+                      type: "monitor";
+                      /** Format: uuid */
+                      monitorId: string;
+                      displayName: string | null;
+                      deleted: boolean;
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "project";
+                      /** Format: uuid */
+                      projectId: string;
+                      displayName: string | null;
+                      deleted: boolean;
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "member";
+                      userId: string;
+                      displayName: string | null;
+                      /** @enum {string} */
+                      membership: "current" | "former";
+                      project?: {
+                        /** Format: uuid */
                         projectId: string;
+                        displayName: string | null;
+                        deleted: boolean;
+                      };
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "invitation";
+                      /** Format: uuid */
+                      publicId: string;
+                      /** @enum {string} */
+                      role: "owner" | "admin" | "viewer" | "auditor";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "notification_settings";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "audit_export";
+                      /** Format: uuid */
+                      exportId: string;
+                      /** @enum {string} */
+                      format: "csv" | "json";
                     };
-                };
+              }[];
+              page: {
+                limit: number;
+                offset: number;
+                total: number;
+              };
             };
-            responses: {
-                /** @description The remembered Project */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            projectId: string | null;
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
+          };
         };
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied or the role may not read the log */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+      };
     };
-    "/api/organizations/{organizationId}/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the Projects the user can see */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Projects, ordered by name */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            projects: {
-                                /** Format: uuid */
-                                id: string;
-                                name: string;
-                                slug: string;
-                                description: string | null;
-                                memberCount: number;
-                                /** @enum {string|null} */
-                                myRole: "admin" | "member" | null;
-                                /** Format: date-time */
-                                updatedAt: string;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Create a Project; the creator becomes its administrator */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name: string;
-                        slug: string;
-                        description?: string | null;
-                    };
-                };
-            };
-            responses: {
-                /** @description Created Project */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            id: string;
-                            name: string;
-                            slug: string;
-                            description: string | null;
-                            memberCount: number;
-                            /** @enum {string|null} */
-                            myRole: "admin" | "member" | null;
-                            /** Format: date-time */
-                            updatedAt: string;
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The slug is taken in the Organization, or the Organization is at its Project limit */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_SLUG_TAKEN";
-                                message: string;
-                                details: {
-                                    /** @enum {string} */
-                                    field: "slug";
-                                };
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_LIMIT_REACHED";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/audit-log/events/{eventId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/organizations/{organizationId}/projects/{projectId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    /** One audit event with its changes */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          eventId: string;
         };
-        /** Read one Project the user can see, with its administrator count */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The event */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              organizationId: string;
+              event: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date-time */
+                occurredAt: string;
+                /** @enum {string} */
+                category:
+                  | "monitor"
+                  | "notification_settings"
+                  | "member"
+                  | "invitation"
+                  | "audit_log"
+                  | "project";
+                /** @enum {string} */
+                action:
+                  | "organization.monitor.create"
+                  | "organization.monitor.update"
+                  | "organization.monitor.pause"
+                  | "organization.monitor.resume"
+                  | "organization.monitor.delete"
+                  | "organization.monitor.secret.set"
+                  | "organization.monitor.secret.replace"
+                  | "organization.notification-settings.monitor-alerts.update"
+                  | "organization.notification-settings.update"
+                  | "organization.member.role.update"
+                  | "organization.member.revoke"
+                  | "organization.member.leave"
+                  | "organization.invitation.create"
+                  | "organization.invitation.resend"
+                  | "organization.invitation.cancel"
+                  | "organization.audit-log.export"
+                  | "organization.project.create"
+                  | "organization.project.update"
+                  | "organization.project.delete"
+                  | "organization.project.member.add"
+                  | "organization.project.member.role.update"
+                  | "organization.project.member.remove";
+                actor: {
+                  userId: string;
+                  displayName: string | null;
+                  /** @enum {string} */
+                  roleAtTime: "owner" | "admin" | "viewer" | "auditor";
+                  /** @enum {string} */
+                  membership: "current" | "former";
                 };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The Project */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            id: string;
-                            name: string;
-                            slug: string;
-                            description: string | null;
-                            memberCount: number;
-                            /** @enum {string|null} */
-                            myRole: "admin" | "member" | null;
-                            /** Format: date-time */
-                            updatedAt: string;
-                            adminCount: number;
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /** Delete a Project and everything that belongs to it */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Deleted */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /** Change the name or description of a Project (idempotent) */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name?: string;
-                        description?: string | null;
-                    };
-                };
-            };
-            responses: {
-                /** @description The Project, changed or as it was */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            id: string;
-                            name: string;
-                            slug: string;
-                            description: string | null;
-                            memberCount: number;
-                            /** @enum {string|null} */
-                            myRole: "admin" | "member" | null;
-                            /** Format: date-time */
-                            updatedAt: string;
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/projects/{projectId}/members": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the members of a Project, administrators first */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Members, administrators first, then by name */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            members: {
-                                userId: string;
-                                name: string;
-                                email: string;
-                                /** @enum {string} */
-                                organizationRole: "owner" | "admin" | "viewer" | "auditor";
-                                /** @enum {string} */
-                                projectRole: "admin" | "member";
-                                /** Format: date-time */
-                                joinedAt: string;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Add Organization members to a Project (idempotent: existing members keep their role) */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        userIds: string[];
-                        /** @enum {string} */
-                        role: "admin" | "member";
-                    };
-                };
-            };
-            responses: {
-                /** @description All members of the Project after the change, and the users this request added */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            members: {
-                                userId: string;
-                                name: string;
-                                email: string;
-                                /** @enum {string} */
-                                organizationRole: "owner" | "admin" | "viewer" | "auditor";
-                                /** @enum {string} */
-                                projectRole: "admin" | "member";
-                                /** Format: date-time */
-                                joinedAt: string;
-                            }[];
-                            addedUserIds: string[];
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description A user is not a member of the Organization; nothing was added */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_MEMBER_NOT_IN_ORGANIZATION";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/projects/{projectId}/member-candidates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Search Organization members to add; projectRole is null for one who is not in the Project */
-        get: {
-            parameters: {
-                query?: {
-                    q?: string;
-                };
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description At most 50 Organization members, sorted by name */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            candidates: {
-                                userId: string;
-                                name: string;
-                                email: string;
-                                /** @enum {string} */
-                                organizationRole: "owner" | "admin" | "viewer" | "auditor";
-                                /** @enum {string|null} */
-                                projectRole: "admin" | "member" | null;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{organizationId}/projects/{projectId}/members/{userId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Remove a member from a Project */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                    userId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Removed */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project is not visible to the user, or the user is not in the Project */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_MEMBER_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The removal would leave the Project without an administrator */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "LAST_PROJECT_ADMIN";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /** Change a member's Project role (idempotent) */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    organizationId: string;
-                    projectId: string;
-                    userId: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        role: "admin" | "member";
-                    };
-                };
-            };
-            responses: {
-                /** @description The member, changed or as it was */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            userId: string;
-                            name: string;
-                            email: string;
+                target:
+                  | {
+                      /** @enum {string} */
+                      type: "monitor";
+                      /** Format: uuid */
+                      monitorId: string;
+                      displayName: string | null;
+                      deleted: boolean;
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "project";
+                      /** Format: uuid */
+                      projectId: string;
+                      displayName: string | null;
+                      deleted: boolean;
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "member";
+                      userId: string;
+                      displayName: string | null;
+                      /** @enum {string} */
+                      membership: "current" | "former";
+                      project?: {
+                        /** Format: uuid */
+                        projectId: string;
+                        displayName: string | null;
+                        deleted: boolean;
+                      };
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "invitation";
+                      /** Format: uuid */
+                      publicId: string;
+                      /** @enum {string} */
+                      role: "owner" | "admin" | "viewer" | "auditor";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "notification_settings";
+                    }
+                  | {
+                      /** @enum {string} */
+                      type: "audit_export";
+                      /** Format: uuid */
+                      exportId: string;
+                      /** @enum {string} */
+                      format: "csv" | "json";
+                    };
+                changes: {
+                  /** @enum {string} */
+                  field:
+                    | "role"
+                    | "monitorAlertsEnabled"
+                    | "settingsChangedEnabled"
+                    | "name"
+                    | "description"
+                    | "url"
+                    | "method"
+                    | "intervalSeconds"
+                    | "timeoutSeconds"
+                    | "header"
+                    | "queryParam"
+                    | "body"
+                    | "authType"
+                    | "apiKeyHeaderName"
+                    | "expectedStatus"
+                    | "assertions"
+                    | "secret"
+                    | "alertFailureThreshold"
+                    | "alertDownEnabled"
+                    | "alertSslEnabled"
+                    | "alertSslCautionDays";
+                  key?: string;
+                  before:
+                    | (
+                        | {
                             /** @enum {string} */
-                            organizationRole: "owner" | "admin" | "viewer" | "auditor";
+                            kind: "value";
+                            value: (string | number | boolean) | null;
+                          }
+                        | {
                             /** @enum {string} */
-                            projectRole: "admin" | "member";
-                            /** Format: date-time */
-                            joinedAt: string;
-                        };
-                    };
-                };
-                /** @description Invalid project input */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "VALIDATION_ERROR";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description No valid session */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNAUTHENTICATED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description Email is unverified, membership is denied, or permission is denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "EMAIL_NOT_VERIFIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "MEMBERSHIP_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PERMISSION_DENIED";
-                                message: string;
-                                details?: unknown;
-                            };
-                        };
-                    };
-                };
-                /** @description The Project is not visible to the user, or the user is not in the Project */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_NOT_FOUND";
-                                message: string;
-                            };
-                        } | {
-                            error: {
-                                /** @enum {string} */
-                                code: "PROJECT_MEMBER_NOT_FOUND";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The change would leave the Project without an administrator */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "LAST_PROJECT_ADMIN";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-                /** @description The request body is not JSON */
-                415: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            error: {
-                                /** @enum {string} */
-                                code: "UNSUPPORTED_MEDIA_TYPE";
-                                message: string;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Liveness probe */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Process is alive */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
+                            kind: "masked";
+                          }
+                        | {
                             /** @enum {string} */
-                            status: "ok";
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/ready": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Readiness probe (database and Redis checks when configured) */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Service is ready */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
+                            kind: "secret_set";
+                          }
+                        | {
                             /** @enum {string} */
-                            status: "ready" | "not_ready";
-                            checks: {
-                                [key: string]: "ok" | "fail";
-                            };
-                        };
-                    };
-                };
-                /** @description Service is not ready */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
+                            kind: "changed";
+                          }
+                      )
+                    | null;
+                  after:
+                    | (
+                        | {
                             /** @enum {string} */
-                            status: "ready" | "not_ready";
-                            checks: {
-                                [key: string]: "ok" | "fail";
-                            };
-                        };
-                    };
+                            kind: "value";
+                            value: (string | number | boolean) | null;
+                          }
+                        | {
+                            /** @enum {string} */
+                            kind: "masked";
+                          }
+                        | {
+                            /** @enum {string} */
+                            kind: "secret_set";
+                          }
+                        | {
+                            /** @enum {string} */
+                            kind: "changed";
+                          }
+                      )
+                    | null;
+                }[];
+                exportScope?: {
+                  /** @enum {string} */
+                  format: "csv" | "json";
+                  from: string | null;
+                  to: string | null;
+                  categories: (
+                    | "monitor"
+                    | "notification_settings"
+                    | "member"
+                    | "invitation"
+                    | "audit_log"
+                    | "project"
+                  )[];
+                  actorUserId: string | null;
+                  searchApplied: boolean;
                 };
+              };
             };
+          };
         };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Service identity */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+                details?: unknown;
+              };
             };
-            requestBody?: never;
-            responses: {
-                /** @description Name and version from package.json */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            name: string;
-                            version: string;
-                        };
-                    };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied or the role may not read the log */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
                 };
-            };
+          };
         };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+        /** @description The event does not exist, is malformed, is past retention or belongs to another Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "AUDIT_EVENT_NOT_FOUND";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
     };
-    "/api/v1/hello": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/audit-log/actors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Actors that have at least one retained event */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
         };
-        /** Greeting vertical slice */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Distinct actors, by name then user id */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              actors: {
+                userId: string;
+                displayName: string | null;
+                /** @enum {string} */
+                membership: "current" | "former";
+              }[];
             };
-            requestBody?: never;
-            responses: {
-                /** @description Greeting with the server timestamp */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            message: string;
-                            /** Format: date-time */
-                            timestamp: string;
-                        };
-                    };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied or the role may not read the log */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
                 };
-            };
+          };
         };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+      };
     };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/audit-log/exports": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The caller's export requests of the last 7 days */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Up to 20 requests, newest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              exports: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                format: "csv" | "json";
+                /** @enum {string} */
+                status: "generating" | "ready" | "failed" | "expired";
+                filters: {
+                  /** Format: date-time */
+                  from: string;
+                  /** Format: date-time */
+                  to: string;
+                  categories: (
+                    | "monitor"
+                    | "notification_settings"
+                    | "member"
+                    | "invitation"
+                    | "audit_log"
+                    | "project"
+                  )[];
+                  actorUserId: string | null;
+                  q: string | null;
+                };
+                timeZone: string;
+                /** Format: date-time */
+                requestedAt: string;
+                /** Format: date-time */
+                completedAt: string | null;
+                /** Format: date-time */
+                expiresAt: string | null;
+                rowCount: number | null;
+                /** @enum {string|null} */
+                failureCode:
+                  | "EXPORT_TOO_LARGE"
+                  | "EXPORT_FAILED"
+                  | "REQUESTER_NOT_AUTHORIZED"
+                  | null;
+              }[];
+              inProgress: boolean;
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied or the role may not read the log */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+      };
+    };
+    put?: never;
+    /** Request an export of the audit log */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            /** @enum {string} */
+            format: "csv" | "json";
+            timeZone: string;
+            filters: {
+              /** Format: date-time */
+              from: string;
+              /** Format: date-time */
+              to: string;
+              categories?: (
+                | "monitor"
+                | "notification_settings"
+                | "member"
+                | "invitation"
+                | "audit_log"
+                | "project"
+              )[];
+              actorUserId?: string;
+              q?: string;
+            };
+            /** Format: date-time */
+            asOf: string;
+          };
+        };
+      };
+      responses: {
+        /** @description The request was stored and queued */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              export: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                format: "csv" | "json";
+                /** @enum {string} */
+                status: "generating" | "ready" | "failed" | "expired";
+                filters: {
+                  /** Format: date-time */
+                  from: string;
+                  /** Format: date-time */
+                  to: string;
+                  categories: (
+                    | "monitor"
+                    | "notification_settings"
+                    | "member"
+                    | "invitation"
+                    | "audit_log"
+                    | "project"
+                  )[];
+                  actorUserId: string | null;
+                  q: string | null;
+                };
+                timeZone: string;
+                /** Format: date-time */
+                requestedAt: string;
+                /** Format: date-time */
+                completedAt: string | null;
+                /** Format: date-time */
+                expiresAt: string | null;
+                rowCount: number | null;
+                /** @enum {string|null} */
+                failureCode:
+                  | "EXPORT_TOO_LARGE"
+                  | "EXPORT_FAILED"
+                  | "REQUESTER_NOT_AUTHORIZED"
+                  | null;
+              };
+            };
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied or the role may not read the log */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The caller already has an export being built in this Organization */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "AUDIT_EXPORT_IN_PROGRESS";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Nothing to export, or more than the limit (owner and admin only) */
+        422: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "AUDIT_EXPORT_EMPTY";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "AUDIT_EXPORT_TOO_LARGE";
+                    message: string;
+                    details: {
+                      limit: number;
+                      total: number;
+                    };
+                  };
+                };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/audit-log/exports/{exportId}/download": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Download an export file of the caller */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          exportId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The file */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "text/csv": string;
+            "application/json": string;
+          };
+        };
+        /** @description Invalid query */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied or the role may not read the log */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description No such export of the caller in this Organization */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "AUDIT_EXPORT_NOT_FOUND";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description The file is still being built or failed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "AUDIT_EXPORT_NOT_READY";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description The file is past its 24 hours */
+        410: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "AUDIT_EXPORT_EXPIRED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/me/last-project": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Resolve the Project to open in an Organization
+     * @description Read-only. Access is checked on every call: the remembered Project, else the first readable one, else null.
+     */
+    get: {
+      parameters: {
+        query: {
+          organizationId: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The resolved Project id, or null when none is readable */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              projectId: string | null;
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+      };
+    };
+    /** Remember the last Project the user opened in an Organization */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            /** Format: uuid */
+            organizationId: string;
+            projectId: string;
+          };
+        };
+      };
+      responses: {
+        /** @description The remembered Project */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              projectId: string | null;
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "PROJECT_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/projects": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the Projects the user can see */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Projects, ordered by name */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              projects: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                slug: string;
+                description: string | null;
+                memberCount: number;
+                /** @enum {string|null} */
+                myRole: "admin" | "member" | null;
+                /** Format: date-time */
+                updatedAt: string;
+              }[];
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+      };
+    };
+    put?: never;
+    /** Create a Project; the creator becomes its administrator */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+            slug: string;
+            description?: string | null;
+          };
+        };
+      };
+      responses: {
+        /** @description Created Project */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              slug: string;
+              description: string | null;
+              memberCount: number;
+              /** @enum {string|null} */
+              myRole: "admin" | "member" | null;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The slug is taken in the Organization, or the Organization is at its Project limit */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PROJECT_SLUG_TAKEN";
+                    message: string;
+                    details: {
+                      /** @enum {string} */
+                      field: "slug";
+                    };
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PROJECT_LIMIT_REACHED";
+                    message: string;
+                  };
+                };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/projects/{projectId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one Project the user can see, with its administrator count */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The Project */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              slug: string;
+              description: string | null;
+              memberCount: number;
+              /** @enum {string|null} */
+              myRole: "admin" | "member" | null;
+              /** Format: date-time */
+              updatedAt: string;
+              adminCount: number;
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "PROJECT_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    /** Delete a Project and everything that belongs to it */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Deleted */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "PROJECT_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /** Change the name or description of a Project (idempotent) */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name?: string;
+            description?: string | null;
+          };
+        };
+      };
+      responses: {
+        /** @description The Project, changed or as it was */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              slug: string;
+              description: string | null;
+              memberCount: number;
+              /** @enum {string|null} */
+              myRole: "admin" | "member" | null;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "PROJECT_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/projects/{projectId}/members": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the members of a Project, administrators first */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Members, administrators first, then by name */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              members: {
+                userId: string;
+                name: string;
+                email: string;
+                /** @enum {string} */
+                organizationRole: "owner" | "admin" | "viewer" | "auditor";
+                /** @enum {string} */
+                projectRole: "admin" | "member";
+                /** Format: date-time */
+                joinedAt: string;
+              }[];
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "PROJECT_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /** Add Organization members to a Project (idempotent: existing members keep their role) */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            userIds: string[];
+            /** @enum {string} */
+            role: "admin" | "member";
+          };
+        };
+      };
+      responses: {
+        /** @description All members of the Project after the change, and the users this request added */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              members: {
+                userId: string;
+                name: string;
+                email: string;
+                /** @enum {string} */
+                organizationRole: "owner" | "admin" | "viewer" | "auditor";
+                /** @enum {string} */
+                projectRole: "admin" | "member";
+                /** Format: date-time */
+                joinedAt: string;
+              }[];
+              addedUserIds: string[];
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "PROJECT_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description A user is not a member of the Organization; nothing was added */
+        422: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "PROJECT_MEMBER_NOT_IN_ORGANIZATION";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/projects/{projectId}/member-candidates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Search Organization members to add; projectRole is null for one who is not in the Project */
+    get: {
+      parameters: {
+        query?: {
+          q?: string;
+        };
+        header?: never;
+        path: {
+          organizationId: string;
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description At most 50 Organization members, sorted by name */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              candidates: {
+                userId: string;
+                name: string;
+                email: string;
+                /** @enum {string} */
+                organizationRole: "owner" | "admin" | "viewer" | "auditor";
+                /** @enum {string|null} */
+                projectRole: "admin" | "member" | null;
+              }[];
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "PROJECT_NOT_FOUND";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/organizations/{organizationId}/projects/{projectId}/members/{userId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove a member from a Project */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          projectId: string;
+          userId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Removed */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project is not visible to the user, or the user is not in the Project */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PROJECT_NOT_FOUND";
+                    message: string;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PROJECT_MEMBER_NOT_FOUND";
+                    message: string;
+                  };
+                };
+          };
+        };
+        /** @description The removal would leave the Project without an administrator */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "LAST_PROJECT_ADMIN";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /** Change a member's Project role (idempotent) */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          organizationId: string;
+          projectId: string;
+          userId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            /** @enum {string} */
+            role: "admin" | "member";
+          };
+        };
+      };
+      responses: {
+        /** @description The member, changed or as it was */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              userId: string;
+              name: string;
+              email: string;
+              /** @enum {string} */
+              organizationRole: "owner" | "admin" | "viewer" | "auditor";
+              /** @enum {string} */
+              projectRole: "admin" | "member";
+              /** Format: date-time */
+              joinedAt: string;
+            };
+          };
+        };
+        /** @description Invalid project input */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "VALIDATION_ERROR";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description No valid session */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNAUTHENTICATED";
+                message: string;
+                details?: unknown;
+              };
+            };
+          };
+        };
+        /** @description Email is unverified, membership is denied, or permission is denied */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "EMAIL_NOT_VERIFIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "MEMBERSHIP_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PERMISSION_DENIED";
+                    message: string;
+                    details?: unknown;
+                  };
+                };
+          };
+        };
+        /** @description The Project is not visible to the user, or the user is not in the Project */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json":
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PROJECT_NOT_FOUND";
+                    message: string;
+                  };
+                }
+              | {
+                  error: {
+                    /** @enum {string} */
+                    code: "PROJECT_MEMBER_NOT_FOUND";
+                    message: string;
+                  };
+                };
+          };
+        };
+        /** @description The change would leave the Project without an administrator */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "LAST_PROJECT_ADMIN";
+                message: string;
+              };
+            };
+          };
+        };
+        /** @description The request body is not JSON */
+        415: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              error: {
+                /** @enum {string} */
+                code: "UNSUPPORTED_MEDIA_TYPE";
+                message: string;
+              };
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Liveness probe */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Process is alive */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {string} */
+              status: "ok";
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/ready": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Readiness probe (database and Redis checks when configured) */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Service is ready */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {string} */
+              status: "ready" | "not_ready";
+              checks: {
+                [key: string]: "ok" | "fail";
+              };
+            };
+          };
+        };
+        /** @description Service is not ready */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {string} */
+              status: "ready" | "not_ready";
+              checks: {
+                [key: string]: "ok" | "fail";
+              };
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/version": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Service identity */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Name and version from package.json */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              name: string;
+              version: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/hello": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Greeting vertical slice */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Greeting with the server timestamp */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              message: string;
+              /** Format: date-time */
+              timestamp: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+  schemas: never;
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export type operations = Record<string, never>;
