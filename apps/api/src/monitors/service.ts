@@ -154,10 +154,11 @@ export type WriteContext = {
   actorRole: OrganizationRole;
 };
 
-// Lock order shared with the Worker: organization row (FOR SHARE), Project row
-// (FOR SHARE, so a Project delete waits for the write and writes of one Project
-// do not serialize), the per-Project advisory lock (Create only), monitors row,
-// schedule row, incidents. Membership and the Project role are read again under
+// Lock order: organization row (FOR SHARE), Project row (FOR SHARE, so a
+// Project delete waits for the write and writes of one Project do not
+// serialize; API only, the Worker takes no projects lock), the per-Project
+// advisory lock (Create only), then the rows the Worker also locks in this
+// order: monitors, schedule, incidents. Membership and the Project role are read again under
 // those locks because they may have changed since an earlier check. An Organization
 // nonmember answers like the Project routes, a Project the caller cannot see 404.
 export function withMonitorWriteAccess<T>(
@@ -495,7 +496,7 @@ export async function editMonitor(
          ssl_notified_level = case when $22::boolean then null
                                    else ssl_notified_level end,
          updated_at = now()
-       where id = $1 and tenant_id = $2
+       where id = $1 and tenant_id = $2 and project_id = $23
        returning ${MONITOR_COLUMNS}, check_config_version as "checkConfigVersion"`,
       [
         monitorId,
@@ -503,6 +504,7 @@ export async function editMonitor(
         ...configParameters(next),
         impacted ? 1 : 0,
         !sameOrigin(previous, next),
+        context.projectId,
       ],
     );
     const saved = updated.rows[0];
@@ -603,9 +605,9 @@ async function changeMonitorStatus(
          consecutive_failures = case when $3 = 'active' then 0
                                      else consecutive_failures end,
          updated_at = now()
-       where id = $1 and tenant_id = $2
+       where id = $1 and tenant_id = $2 and project_id = $4
        returning ${MONITOR_COLUMNS}`,
-      [monitorId, input.organizationId, target],
+      [monitorId, input.organizationId, target, context.projectId],
     );
     const saved = updated.rows[0];
     if (!saved) throw new Error("monitor update returned no row");

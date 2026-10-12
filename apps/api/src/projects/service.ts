@@ -116,8 +116,7 @@ async function lockedMemberRole(
 
 // Lock order shared by every Project write: organization row, then the
 // per-Organization advisory lock (create only), then the projects row
-// (update and delete). Not enterOrganization of the monitors, which checks
-// monitor permissions.
+// (update and delete).
 async function enterOrganization(
   client: PoolClient,
   identity: Identity,

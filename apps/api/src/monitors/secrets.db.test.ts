@@ -1024,6 +1024,51 @@ describe("Test in Edit reads (R13-01, R13-02, quota)", () => {
     ).toBe(true);
   });
 
+  it("re-checks Project access before it reads a kept secret: a Project admin removed from the Project gets 404 and nothing is sent", async () => {
+    const projectAdmin = await ctx.createUser("secrets-removed-admin");
+    await ctx.owner.sql.query(
+      `insert into member (id, organization_id, user_id, role, created_at, updated_at)
+       values ($1, $2, $3, 'viewer', now(), now())`,
+      [crypto.randomUUID(), org.id, projectAdmin],
+    );
+    await ctx.owner.sql.query(
+      `insert into project_members (project_id, tenant_id, user_id, role)
+       values ($1, $2, $3, 'admin')`,
+      [org.projectId, org.id, projectAdmin],
+    );
+    const monitor = await created(bearer());
+    const body = editBody(monitor);
+    delete body.expectedVersion;
+
+    // Same barrier as above: removed from the Project when the secret read begins.
+    let transactions = 0;
+    ctx.hooks.before = async (text) => {
+      if (!text.includes("set_config")) return;
+      transactions += 1;
+      if (transactions !== 2) return;
+      await ctx.owner.sql.query(
+        "delete from project_members where project_id = $1 and user_id = $2",
+        [org.projectId, projectAdmin],
+      );
+    };
+    target.seen.length = 0;
+    const response = await api(
+      projectAdmin,
+      "POST",
+      monitorsPath(org.id, `/${monitor.id}/test`),
+      body,
+    );
+    ctx.hooks.before = undefined;
+
+    expect(transactions).toBeGreaterThanOrEqual(2);
+    expect(response.status).toBe(404);
+    expect(response.json).toMatchObject({
+      error: { code: "PROJECT_NOT_FOUND" },
+    });
+    expect(target.seen).toEqual([]);
+    expect(JSON.stringify(response.json)).not.toContain(TOKEN);
+  });
+
   it("spends no rate-limit quota on the origin-change 422", async () => {
     const monitor = await created(bearer());
     const key = `rl:monitor-test:u:${owner()}:o:${org.id}`;
