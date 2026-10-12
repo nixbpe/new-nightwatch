@@ -31,10 +31,10 @@ const FOCUSABLE_DRAWER_SELECTOR = [
 // sit in the initial containing block at their scrolled position and make the document taller than h-dvh.
 // Grain belongs to data-dense views only (monitor list, inbox), never to forms or detail pages.
 const DATA_DENSE_ROUTE =
-  /^\/notifications(\/|$)|^\/organizations\/[^/]+\/monitors\/?$/i;
+  /^\/notifications(\/|$)|^\/organizations\/[^/]+\/monitors\/?$/;
 // Workspace gets a deeper canvas and a hairline texture instead of the dot grain
 // (docs/design-system.md, Layout LAY-08/LAY-09).
-const WORKSPACE_ROUTE = /^\/workspace(\/|$)/i;
+const WORKSPACE_ROUTE = /^\/workspace(\/|$)/;
 
 // Use the router's ranked/end matching for static segments and trailing slashes.
 // In particular, `new` is the create route, not the dynamic Detail exception.
