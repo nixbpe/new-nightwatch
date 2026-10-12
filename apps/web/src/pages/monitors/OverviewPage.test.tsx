@@ -2612,3 +2612,38 @@ describe("Project monitor list", () => {
     expect(document.body.textContent).not.toContain(PROJECT_NAME);
   });
 });
+
+describe("A failed Project lookup", () => {
+  it("shows an error with a retry, not a read-only list, and recovers the write controls", async () => {
+    const user = userEvent.setup();
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    vi.mocked(fetchProjectDetail).mockRejectedValueOnce(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    fetchListMock.mockResolvedValue(list([item()]));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-access-error"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-overview-readonly")).toBeNull();
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "admin" }),
+    );
+    await user.click(screen.getByTestId("monitor-overview-access-retry"));
+    expect(
+      await screen.findByTestId("monitor-overview-add"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps an Organization Owner writable, who does not depend on it", async () => {
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    fetchListMock.mockResolvedValue(list([item()]));
+    renderPage();
+    expect(
+      await screen.findByTestId("monitor-overview-add"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-overview-access-error")).toBeNull();
+  });
+});

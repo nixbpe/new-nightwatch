@@ -30,9 +30,11 @@ import {
   fetchMonitorDetail,
   fetchMonitorList,
   monitorQueryKeys,
+  OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import {
   fetchProjectDetail,
+  fetchLastProject,
   fetchProjectList,
   fetchProjectMembers,
   projectQueryKeys,
@@ -150,6 +152,7 @@ vi.mock("../api/projects", async (importOriginal) => {
   return {
     ...original,
     fetchProjectList: vi.fn(),
+    fetchLastProject: vi.fn(),
     fetchProjectDetail: vi.fn(),
     fetchProjectMembers: vi.fn(),
   };
@@ -157,6 +160,7 @@ vi.mock("../api/projects", async (importOriginal) => {
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
 const fetchProjectListMock = vi.mocked(fetchProjectList);
+const fetchLastProjectMock = vi.mocked(fetchLastProject);
 const fetchProjectDetailMock = vi.mocked(fetchProjectDetail);
 const fetchProjectMembersMock = vi.mocked(fetchProjectMembers);
 const fetchInvitationMock = vi.mocked(fetchInvitation);
@@ -463,19 +467,97 @@ describe("workspaceLoader", () => {
     resetQueryClientRegistry();
     fetchMeContextMock.mockReset();
     fetchMonitorListMock.mockReset();
+    fetchProjectListMock.mockReset();
+    fetchLastProjectMock.mockReset();
   });
 
-  it("loads the membership context and requests no list: the list belongs to a Project the loader does not know", async () => {
+  const summary = (id: string, name: string) => ({
+    id,
+    name,
+    slug: name.toLowerCase(),
+    description: null,
+    memberCount: 1,
+    myRole: "admin" as const,
+    updatedAt: "2026-10-01T00:00:00.000Z",
+  });
+  const PROJECT_FIRST = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const PROJECT_LAST = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const overviewList: MonitorListResponse = {
+    summary: { up: 0, down: 0, unknown: 0, paused: 0, total: 0, limit: 20 },
+    monitors: [],
+    page: { limit: 20, offset: 0, total: 0 },
+    dataAsOf: "2026-09-30T07:32:05.000Z",
+  };
+
+  function signedInMember() {
     sessionState.data = { user: VERIFIED };
     fetchMeContextMock.mockResolvedValue({
       ...meContext,
       organizations: orgs,
       lastActiveTenantId: organizationId,
     });
+  }
+
+  it("seeds the Project list, the last Project and the remembered Project's monitors", async () => {
+    signedInMember();
+    fetchProjectListMock.mockResolvedValue({
+      projects: [
+        summary(PROJECT_FIRST, "Alpha"),
+        summary(PROJECT_LAST, "Bravo"),
+      ],
+    });
+    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
+    fetchMonitorListMock.mockResolvedValue(overviewList);
     renderAt([protectedWorkspace], "/workspace");
 
     expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
-    expect(fetchMeContextMock).toHaveBeenCalled();
+    expect(fetchMonitorListMock).toHaveBeenCalledExactlyOnceWith(
+      organizationId,
+      PROJECT_LAST,
+      OVERVIEW_LIST_PARAMS,
+    );
+    const client = peekStagedQueryClient()?.client;
+    expect(
+      client?.getQueryData(projectQueryKeys.list(organizationId)),
+    ).toBeDefined();
+    expect(client?.getQueryData(projectQueryKeys.last(organizationId))).toEqual(
+      { projectId: PROJECT_LAST },
+    );
+    expect(
+      client?.getQueryData(
+        monitorQueryKeys.list(
+          organizationId,
+          PROJECT_LAST,
+          OVERVIEW_LIST_PARAMS,
+        ),
+      ),
+    ).toEqual(overviewList);
+  });
+
+  it("falls to the first Project when the remembered one is no longer readable", async () => {
+    signedInMember();
+    fetchProjectListMock.mockResolvedValue({
+      projects: [summary(PROJECT_FIRST, "Alpha")],
+    });
+    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
+    fetchMonitorListMock.mockResolvedValue(overviewList);
+    renderAt([protectedWorkspace], "/workspace");
+
+    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
+    expect(fetchMonitorListMock).toHaveBeenCalledExactlyOnceWith(
+      organizationId,
+      PROJECT_FIRST,
+      OVERVIEW_LIST_PARAMS,
+    );
+  });
+
+  it("requests no monitors when the caller has no readable Project", async () => {
+    signedInMember();
+    fetchProjectListMock.mockResolvedValue({ projects: [] });
+    fetchLastProjectMock.mockResolvedValue({ projectId: null });
+    renderAt([protectedWorkspace], "/workspace");
+
+    expect(await screen.findByTestId("protected-area")).toBeInTheDocument();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
 

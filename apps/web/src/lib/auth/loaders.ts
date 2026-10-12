@@ -30,9 +30,11 @@ import {
   fetchMonitorList,
   monitorQueryKeys,
   MONITOR_LIST_PAGE_SIZE,
+  OVERVIEW_LIST_PARAMS,
 } from "../api/monitors";
 import { fetchOrganizationMembers, memberListQueryKey } from "../api/members";
 import {
+  fetchLastProject,
   fetchProjectDetail,
   fetchProjectList,
   fetchProjectMembers,
@@ -144,7 +146,53 @@ export async function workspaceLoader({
   if (sessionOrRedirect instanceof Response) {
     return sessionOrRedirect;
   }
-  await prefetchMeContext(sessionOrRedirect.user.id);
+  const context = await prefetchMeContext(sessionOrRedirect.user.id);
+  const organization = context?.organizations.find(
+    (item) => item.id === context.lastActiveTenantId,
+  );
+  if (organization === undefined) {
+    return null;
+  }
+  // The overview shows the current Project's monitors, resolved as useCurrentProject does (the
+  // remembered Project while readable, else the first one), so the page needs no round after this.
+  const queryClient = resolveQueryClientForIdentity(sessionOrRedirect.user.id);
+  const [list, last] = await Promise.all([
+    queryClient
+      .query({
+        queryKey: projectQueryKeys.list(organization.id),
+        queryFn: () => fetchProjectList(organization.id),
+        staleTime: "static",
+      })
+      .catch(() => undefined),
+    queryClient
+      .query({
+        queryKey: projectQueryKeys.last(organization.id),
+        queryFn: () => fetchLastProject(organization.id),
+        staleTime: "static",
+      })
+      .catch(() => undefined),
+  ]);
+  if (list === undefined || last === undefined) {
+    return null;
+  }
+  const current =
+    list.projects.find((item) => item.id === last.projectId) ??
+    list.projects[0];
+  if (current === undefined) {
+    return null;
+  }
+  await queryClient
+    .query({
+      queryKey: monitorQueryKeys.list(
+        organization.id,
+        current.id,
+        OVERVIEW_LIST_PARAMS,
+      ),
+      queryFn: () =>
+        fetchMonitorList(organization.id, current.id, OVERVIEW_LIST_PARAMS),
+      staleTime: "static",
+    })
+    .catch(() => undefined);
   return null;
 }
 

@@ -526,3 +526,23 @@ describe("A Project that is gone after the form opened", () => {
     expect(screen.queryByTestId("monitor-form-name")).toBeNull();
   });
 });
+
+describe("A failed Project lookup", () => {
+  it("shows an error with a retry, not a permission denial, and opens the form once it recovers", async () => {
+    const user = userEvent.setup();
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    vi.mocked(fetchProjectDetail).mockRejectedValueOnce(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    renderForm(newPath());
+    expect(
+      await screen.findByTestId("monitor-form-access-error"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-form-denied")).toBeNull();
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "admin" }),
+    );
+    await user.click(screen.getByTestId("monitor-form-access-retry"));
+    expect(await screen.findByTestId("monitor-form-name")).toBeInTheDocument();
+  });
+});

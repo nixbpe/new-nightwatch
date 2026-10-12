@@ -409,6 +409,21 @@ function DetailForMonitor({
       </Page>
     );
   }
+  if (access.failed) {
+    return (
+      <Page>
+        {header()}
+        <PageState
+          kind="error"
+          data-testid="monitor-detail-access-error"
+          retryTestId="monitor-detail-access-retry"
+          message="ตรวจสอบสิทธิ์ในโปรเจกต์นี้ไม่สำเร็จ"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={access.retry}
+        />
+      </Page>
+    );
+  }
   if (monitor === undefined) {
     return (
       <Page>

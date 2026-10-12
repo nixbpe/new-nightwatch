@@ -515,6 +515,7 @@ describe("ProjectSwitcher", () => {
         });
         clock.mockReturnValue(Date.parse("2026-10-12T10:00:05.000Z"));
         await view.router.navigate(membersPath(P_BRAVO));
+        await routeCommitted(P_BRAVO);
         await waitFor(() => {
           expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
             "Bravo",

@@ -3604,3 +3604,36 @@ describe("A Project that is gone after Detail loaded", () => {
     expect(document.body.textContent).not.toContain("Payments API");
   });
 });
+
+describe("A failed Project lookup", () => {
+  it("shows an error with a retry, not a read-only detail, and recovers the write controls", async () => {
+    const user = userEvent.setup();
+    fetchMeContextMock.mockResolvedValue(context("viewer"));
+    vi.mocked(fetchProjectDetail).mockRejectedValueOnce(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    showDetail(detail());
+    renderDetail();
+    expect(
+      await screen.findByTestId("monitor-detail-access-error"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-detail-read-only")).toBeNull();
+    vi.mocked(fetchProjectDetail).mockResolvedValue(
+      projectDetail({ myRole: "admin" }),
+    );
+    await user.click(screen.getByTestId("monitor-detail-access-retry"));
+    expect(
+      await screen.findByTestId("monitor-detail-edit"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps an Organization Owner writable", async () => {
+    vi.mocked(fetchProjectDetail).mockRejectedValue(
+      new ApiError("INTERNAL", "boom", 500),
+    );
+    showDetail(detail());
+    renderDetail();
+    await readyDetail();
+    expect(screen.getByTestId("monitor-detail-edit")).toBeInTheDocument();
+  });
+});

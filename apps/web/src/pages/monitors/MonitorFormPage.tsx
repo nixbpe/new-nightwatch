@@ -226,6 +226,21 @@ function MonitorFormForOrganization({
       </Page>
     );
   }
+  if (access.failed) {
+    return (
+      <Page width="form">
+        {header}
+        <PageState
+          kind="error"
+          data-testid="monitor-form-access-error"
+          retryTestId="monitor-form-access-retry"
+          message="ตรวจสอบสิทธิ์ในโปรเจกต์นี้ไม่สำเร็จ"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={access.retry}
+        />
+      </Page>
+    );
+  }
   if (!canWrite) return denied;
   if (isMonitorNotFound(detail.error)) {
     return (

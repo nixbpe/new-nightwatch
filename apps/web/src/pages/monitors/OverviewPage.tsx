@@ -288,6 +288,22 @@ function OverviewForProject({
       </Page>
     );
   }
+  if (access.failed) {
+    // The caller's Project role is unknown: an error to retry, not a read-only list.
+    return (
+      <Page>
+        {header()}
+        <PageState
+          data-testid="monitor-overview-access-error"
+          retryTestId="monitor-overview-access-retry"
+          kind="error"
+          message="ตรวจสอบสิทธิ์ในโปรเจกต์นี้ไม่สำเร็จ"
+          retryLabel="ลองอีกครั้ง"
+          onRetry={access.retry}
+        />
+      </Page>
+    );
+  }
   if (organization === undefined || denied) {
     // No scope row, name or count: a non-member learns nothing about this Project.
     return (

@@ -22,6 +22,12 @@ export type MonitorAccess = {
   projectGone: boolean;
   /** Write, test and read-the-last-response: Project admin, or Organization Owner or Admin. */
   canWrite: boolean;
+  /**
+   * The Project lookup failed (not a 404) for a caller whose write access depends on it. It is unknown,
+   * not denied: pages show their error state with `retry`, never read-only or a permission denial.
+   */
+  failed: boolean;
+  retry: () => void;
   /** The caller's Project role is still unknown, and without it write access is undecided. */
   pending: boolean;
   /** Header chip: the Project role, or the Organization role for an Owner or Admin who is not a member. */
@@ -60,13 +66,19 @@ export function useMonitorAccess(
   } else if (organization !== undefined && project !== undefined) {
     roleTag = `องค์กร · ${ROLE_LABELS[organization.role] ?? organization.role}`;
   }
+  const projectGone =
+    query.error instanceof ApiError && query.error.code === "PROJECT_NOT_FOUND";
   return {
     organization,
     project,
-    projectGone:
-      query.error instanceof ApiError &&
-      query.error.code === "PROJECT_NOT_FOUND",
+    projectGone,
     canWrite,
+    failed:
+      !organizationWriter &&
+      project === undefined &&
+      query.isError &&
+      !projectGone,
+    retry: () => void query.refetch(),
     pending:
       organization !== undefined &&
       !organizationWriter &&
