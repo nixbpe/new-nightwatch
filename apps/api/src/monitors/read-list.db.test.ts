@@ -522,6 +522,38 @@ describe("List: sort", () => {
     expect(namesOf(body)).toEqual(SORT_ORDERS.uptime);
   });
 
+  it("orders response_time by the 24 h p95 the list shows, across a page boundary, not by the latest check", async () => {
+    const org = await ctx.createOrganization("read-sort-p95");
+    const make = async (name: string, samples: [number, number][]) => {
+      const id = await seedMonitor(ctx, org.id, { name });
+      for (const [ago, ms] of samples) {
+        await seedResults(ctx, org.id, id, [ago], { responseTimeMs: ms });
+      }
+    };
+    // latest check / p95: m1 100 / 800, m2 300 / 300, m3 200 / 600, m4 900 / 900.
+    await make("m1", [
+      [10, 100],
+      [600, 800],
+      [700, 800],
+    ]);
+    await make("m2", [
+      [10, 300],
+      [600, 300],
+    ]);
+    await make("m3", [
+      [10, 200],
+      [600, 600],
+    ]);
+    await make("m4", [[10, 900]]);
+    const first = await list(org, "?sort=response_time&limit=2&offset=0");
+    const second = await list(org, "?sort=response_time&limit=2&offset=2");
+    expect(namesOf(first)).toEqual(["m4", "m1"]);
+    expect(namesOf(second)).toEqual(["m3", "m2"]);
+    expect(
+      [...first.monitors, ...second.monitors].map((m) => m.responseP95Ms24h),
+    ).toEqual([900, 800, 600, 300]);
+  });
+
   it("moves page 2 to the new order when a key changes between the two requests", async () => {
     const race = await seedSortOrganization("read-sort-race");
     const first = await list(race.org, "?sort=response_time&limit=2&offset=0");

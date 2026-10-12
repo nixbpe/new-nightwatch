@@ -565,6 +565,7 @@ type Scored = {
 function compareBy(
   sort: MonitorListSort,
   uptime: Map<string, UptimeWindows> | null,
+  p95s: Map<string, number | null> | null,
 ): ((left: Scored, right: Scored) => number) | null {
   switch (sort) {
     case "problems":
@@ -581,9 +582,10 @@ function compareBy(
         );
     case "response_time":
       return (left, right) =>
+        // The column the list shows: the 24 h p95, not the latest check.
         nullsLast(
-          left.row.latestResponseTimeMs,
-          right.row.latestResponseTimeMs,
+          p95s?.get(left.row.id) ?? null,
+          p95s?.get(right.row.id) ?? null,
           -1,
         );
     case "newest":
@@ -645,7 +647,18 @@ export async function listMonitors(
               now,
             )
           : null;
-      const compare = compareBy(query.sort, uptime);
+      // The p95 is needed for every row only to sort by it; otherwise just
+      // for the page.
+      let p95s: Map<string, number | null> | null =
+        query.sort === "response_time"
+          ? await loadResponseP95s24h(
+              client,
+              identity.organizationId,
+              filtered.map(({ row }) => row.id),
+              now,
+            )
+          : null;
+      const compare = compareBy(query.sort, uptime, p95s);
       if (compare) filtered.sort(compare);
       const pageRows = filtered.slice(query.offset, query.offset + query.limit);
       uptime ??= await loadUptime(
@@ -660,7 +673,7 @@ export async function listMonitors(
         pageRows.map(({ row }) => row.id),
         now,
       );
-      const p95s = await loadResponseP95s24h(
+      p95s ??= await loadResponseP95s24h(
         client,
         identity.organizationId,
         pageRows.map(({ row }) => row.id),
