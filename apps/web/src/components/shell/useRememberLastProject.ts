@@ -23,6 +23,8 @@ export function useRememberLastProject(): void {
     sent.current = key;
     void rememberLastProject(organizationId, projectId).then(
       () => {
+        // A newer Project change owns the cache; a slower earlier reply must not overwrite it.
+        if (sent.current !== key) return;
         queryClient.setQueryData(projectQueryKeys.last(organizationId), {
           projectId,
         });

@@ -183,13 +183,21 @@ function ProjectsForOrganization({
   // dropping it does not remount this page.
   const wantsCreate =
     new URLSearchParams(location.search).get(CREATE_PROJECT_PARAM) === "1";
+  const { pathname, search, hash } = location;
   useEffect(() => {
     if (!wantsCreate || projects === undefined) return;
     if (canManage && projects.length < PROJECT_LIMIT_PER_ORGANIZATION) {
       setDialog({ kind: "create", opener: null });
     }
-    void navigate(location.pathname, { replace: true });
-  }, [wantsCreate, projects, canManage, navigate, location.pathname]);
+    // Only `create` goes; other parameters and the hash stay.
+    const rest = new URLSearchParams(search);
+    rest.delete(CREATE_PROJECT_PARAM);
+    const restSearch = rest.toString();
+    void navigate(
+      { pathname, search: restSearch === "" ? "" : `?${restSearch}`, hash },
+      { replace: true },
+    );
+  }, [wantsCreate, projects, canManage, navigate, pathname, search, hash]);
   const joined = projects?.filter((project) => project.myRole !== null) ?? [];
   const needle = q.toLowerCase();
   const visible = (projects ?? []).filter(

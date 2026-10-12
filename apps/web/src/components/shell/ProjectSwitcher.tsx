@@ -31,8 +31,8 @@ export function ProjectSwitcher({
     if (!popover.open) setQuery("");
   }, [popover.open]);
 
-  // A route change re-admits the organization, which replaces this button; focus follows the switch back to it.
-  // Dropped on the first other path, so a redirect cannot leave it to steal focus on a later visit.
+  // A route change re-admits the organization, which replaces this button, so focus follows the switch back to
+  // it. The request is dropped on the first other path, so a redirect cannot leave it to steal focus later.
   const refocus = useRef<{ from: string; to: string } | null>(null);
   useEffect(() => {
     const pending = refocus.current;

@@ -96,7 +96,12 @@ beforeEach(() => {
 });
 
 let lastRouter: ReturnType<typeof createMemoryRouter>;
-function renderPage(organizationId = A, state?: unknown, search = "") {
+function renderPage(
+  organizationId = A,
+  state?: unknown,
+  search = "",
+  hash = "",
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -114,6 +119,7 @@ function renderPage(organizationId = A, state?: unknown, search = "") {
         {
           pathname: `/organizations/${organizationId}/projects`,
           search,
+          hash,
           state,
         },
       ],
@@ -165,6 +171,16 @@ describe("create link from the sidebar (F-010 AC-05)", () => {
       expect(lastRouter.state.location.search).toBe("");
     });
     expect(screen.getAllByTestId("project-create-dialog")).toHaveLength(1);
+  });
+
+  it("drops only the create parameter and keeps the other parameters and the hash", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, undefined, "?create=1&view=mine", "#top");
+    await screen.findByTestId("project-create-dialog");
+    await waitFor(() => {
+      expect(lastRouter.state.location.search).toBe("?view=mine");
+    });
+    expect(lastRouter.state.location.hash).toBe("#top");
   });
 
   it("opens nothing for a role below Admin, still dropping the parameter", async () => {
