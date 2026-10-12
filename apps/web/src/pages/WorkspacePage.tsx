@@ -116,6 +116,7 @@ export function WorkspacePage() {
             tag: ROLE_LABELS[activeOrg.role] ?? activeOrg.role,
           }}
           title="ภาพรวม"
+          status={<OrganizationIdentity organization={activeOrg} />}
         />
         <EmptyState
           data-testid="workspace-no-project"
@@ -157,6 +158,26 @@ type ContextRefresh = "idle" | "refreshing" | "done";
 type ActiveOrganization = NonNullable<
   ReturnType<typeof useTenant>["activeOrg"]
 >;
+
+// Names are not unique across organizations, so the slug stays visible.
+function OrganizationIdentity({
+  organization,
+}: {
+  organization: ActiveOrganization;
+}) {
+  return (
+    <span
+      data-testid="workspace-identity"
+      data-organization-id={organization.id}
+      data-member-role={organization.role}
+    >
+      slug{" "}
+      <span data-testid="workspace-slug" className="font-mono">
+        {organization.slug}
+      </span>
+    </span>
+  );
+}
 
 function OrganizationOverview({
   organization,
@@ -271,19 +292,9 @@ function OrganizationOverview({
         }}
         title="ภาพรวม"
         actions={actions}
-        // Names are not unique across organizations, so the slug stays visible.
         status={
           <>
-            <span
-              data-testid="workspace-identity"
-              data-organization-id={organization.id}
-              data-member-role={organization.role}
-            >
-              slug{" "}
-              <span data-testid="workspace-slug" className="font-mono">
-                {organization.slug}
-              </span>
-            </span>
+            <OrganizationIdentity organization={organization} />
             <span>
               โปรเจกต์{" "}
               <span data-testid="workspace-project" className="font-medium">

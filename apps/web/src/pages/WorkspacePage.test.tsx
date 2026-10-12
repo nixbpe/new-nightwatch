@@ -46,8 +46,9 @@ async function findScope(name: string, role: string) {
 }
 
 const { projectState, sessionState, signOutMock } = vi.hoisted(() => {
-  const projectState: { myRole: "admin" | "member" | null } = {
+  const projectState: { myRole: "admin" | "member" | null; none: boolean } = {
     myRole: "member",
+    none: false,
   };
   const sessionState: {
     data: { user: Record<string, unknown> } | null;
@@ -95,20 +96,26 @@ vi.mock("../lib/api/projects", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchProjectList: () =>
     Promise.resolve({
-      projects: [
-        {
-          id: "55555555-5555-4555-8555-555555555555",
-          name: "Payments Platform",
-          slug: "payments",
-          description: null,
-          memberCount: 2,
-          myRole: projectState.myRole,
-          updatedAt: "2026-10-01T00:00:00.000Z",
-        },
-      ],
+      projects: projectState.none
+        ? []
+        : [
+            {
+              id: "55555555-5555-4555-8555-555555555555",
+              name: "Payments Platform",
+              slug: "payments",
+              description: null,
+              memberCount: 2,
+              myRole: projectState.myRole,
+              updatedAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
     }),
   fetchLastProject: () =>
-    Promise.resolve({ projectId: "55555555-5555-4555-8555-555555555555" }),
+    Promise.resolve({
+      projectId: projectState.none
+        ? null
+        : "55555555-5555-4555-8555-555555555555",
+    }),
 }));
 vi.mock("../lib/api/monitors", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -118,6 +125,7 @@ vi.mock("../lib/api/monitors", async (importOriginal) => ({
 
 afterEach(() => {
   projectState.myRole = "member";
+  projectState.none = false;
 });
 
 const fetchMeContextMock = vi.mocked(fetchMeContext);
@@ -564,6 +572,20 @@ describe("WorkspacePage overview content", () => {
       "href",
       `/organizations/${ORG_B}/projects/${P}/monitors`,
     );
+  });
+
+  it("without a Project, names the organization and points to the Projects page", async () => {
+    projectState.none = true;
+    fetchMeContextMock.mockResolvedValue(meContext([ownerOrg], ORG_A));
+    renderPage();
+
+    await findScope("Org A", "owner");
+    expect(await screen.findByTestId("workspace-no-project")).toBeVisible();
+    expect(screen.getByTestId("workspace-projects-link")).toHaveAttribute(
+      "href",
+      `/organizations/${ORG_A}/projects`,
+    );
+    expect(fetchMonitorListMock).not.toHaveBeenCalled();
   });
 
   it("gives a Project admin who is only an Organization viewer the add button, and names the Project", async () => {
