@@ -47,8 +47,9 @@ const settingsChangedNotificationItemSchema = z.object({
   category: z.literal("notification-settings"),
 });
 
-/** The monitor is identified by id and the name it had at event time; it may be deleted since. */
+/** The monitor is identified by its Project, id and the name it had at event time; it may be deleted since. */
 const monitorSubjectSchema = z.object({
+  projectId: z.uuid(),
   monitorId: z.uuid(),
   monitorName: z.string().min(1),
 });
