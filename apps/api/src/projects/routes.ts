@@ -55,7 +55,7 @@ export function registerProjectRoutes(
   });
 
   app.openapi(lastProjectRoutes.put, async (c) => {
-    const { organizationId, projectId } = c.req.valid("json");
+    const { organizationId, projectId, selectedAt } = c.req.valid("json");
     const session = await requireVerifiedSession(auth, c.req.raw.headers);
     const body = await auditDenials(
       logger,
@@ -66,6 +66,7 @@ export function registerProjectRoutes(
           organizationId,
           actorUserId: session.user.id,
           projectId,
+          selectedAt,
         }),
     );
     return c.json(body, 200);

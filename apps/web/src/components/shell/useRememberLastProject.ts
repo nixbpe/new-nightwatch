@@ -10,6 +10,10 @@ import { useCurrentProject } from "./useCurrentProject";
  * coming back is a new landing and saves again, so a failed save is retried. It waits
  * for the Project to appear in the user's list, so a URL the server would refuse is
  * never sent. Failure is silent: the choice is a convenience.
+ * Each save carries the time of its landing, taken when the user landed and not when the
+ * queued save is finally sent. The server keeps the newest landing per user, so a delayed
+ * save from another tab or browser cannot restore an older Project; the cache follows the
+ * Project the server reports as stored.
  * One save is in flight at a time, so the server commits them in the order they were
  * made; while one is in flight only the latest target waits (A, B, C sends A, then C).
  * Unmounting retires the hook (the shell remounts when the signed-in identity changes):
@@ -19,6 +23,12 @@ import { useCurrentProject } from "./useCurrentProject";
  * still in flight, writes the Project to the cache and marks it stale, so a read that
  * began before the save committed cannot leave the previous Project in the switcher.
  */
+type Target = {
+  organizationId: string;
+  projectId: string;
+  selectedAt: string;
+};
+
 export function useRememberLastProject(): void {
   const { organizationId, routeProjectId, project } = useCurrentProject();
   const queryClient = useQueryClient();
@@ -28,9 +38,10 @@ export function useRememberLastProject(): void {
   const sent = useRef<string | null>(null);
   const inFlight = useRef(false);
   const retired = useRef(false);
-  const waiting = useRef<{ organizationId: string; projectId: string } | null>(
-    null,
-  );
+  // Last landing time handed out; the next is at least 1 ms later, so two landings in
+  // this tab never share a time (the server keeps a write only if it is strictly newer).
+  const lastLandedAt = useRef(0);
+  const waiting = useRef<Target | null>(null);
   const isRetired = () => retired.current;
   const projectId =
     project !== null && project.id === routeProjectId ? project.id : null;
@@ -54,14 +65,19 @@ export function useRememberLastProject(): void {
     if (landed.current === key) return;
     landed.current = key;
     sent.current = key;
+    lastLandedAt.current = Math.max(Date.now(), lastLandedAt.current + 1);
 
-    function send(target: { organizationId: string; projectId: string }): void {
+    function send(target: Target): void {
       inFlight.current = true;
       const targetKey = `${target.organizationId}:${target.projectId}`;
       const lastKey = projectQueryKeys.last(target.organizationId);
-      rememberLastProject(target.organizationId, target.projectId)
+      rememberLastProject(
+        target.organizationId,
+        target.projectId,
+        target.selectedAt,
+      )
         .then(
-          async () => {
+          async (stored) => {
             if (retired.current) return;
             // A newer Project change owns the cache; an earlier reply must not overwrite it.
             if (sent.current !== targetKey) return;
@@ -70,9 +86,7 @@ export function useRememberLastProject(): void {
             await queryClient.cancelQueries({ queryKey: lastKey });
             // Re-read through the ref: either may have changed while cancelling.
             if (isRetired() || sent.current !== targetKey) return;
-            queryClient.setQueryData(lastKey, {
-              projectId: target.projectId,
-            });
+            queryClient.setQueryData(lastKey, { projectId: stored.projectId });
             // Reads issued while the save was pending are gone; one issued from here on sees
             // the committed Project. Active readers refetch, inactive ones read it on mount.
             void queryClient.invalidateQueries({ queryKey: lastKey });
@@ -88,7 +102,11 @@ export function useRememberLastProject(): void {
         });
     }
 
-    const target = { organizationId, projectId };
+    const target = {
+      organizationId,
+      projectId,
+      selectedAt: new Date(lastLandedAt.current).toISOString(),
+    };
     if (inFlight.current) waiting.current = target;
     else send(target);
   }, [organizationId, projectId, queryClient]);

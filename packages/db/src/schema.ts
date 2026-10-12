@@ -931,6 +931,10 @@ export const memberLastProject = pgTable(
     updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
       .notNull()
       .defaultNow(),
+    selectedAt: timestamp("selected_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.tenantId, table.userId] }),

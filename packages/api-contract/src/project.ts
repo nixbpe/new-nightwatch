@@ -68,6 +68,11 @@ export type ProjectDetail = z.infer<typeof projectDetailSchema>;
 export const lastProjectInputSchema = z.strictObject({
   organizationId: z.uuid(),
   projectId: z.string().min(1).max(100),
+  /**
+   * When the user landed on the Project, from the client. The server clamps it
+   * to its own clock and keeps the newest landing per user and Organization.
+   */
+  selectedAt: z.iso.datetime({ offset: true }),
 });
 export type LastProjectInput = z.infer<typeof lastProjectInputSchema>;
 
@@ -85,7 +90,10 @@ export const lastProjectResponseSchema = z.object({
 });
 export type LastProjectResponse = z.infer<typeof lastProjectResponseSchema>;
 
-/** The Project the PUT stored; never null. */
+/**
+ * The Project stored for the user after the PUT: the one just sent, or the
+ * newer one already stored when this request arrived late. Never null.
+ */
 export const rememberedProjectResponseSchema = z.object({
   projectId: z.uuid(),
 });

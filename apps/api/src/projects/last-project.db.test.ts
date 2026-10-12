@@ -54,10 +54,12 @@ const put = (
   userId: string | null,
   organizationId: string,
   projectId: string,
+  selectedAt: string = new Date().toISOString(),
 ) =>
   ctx.call(userId, "PUT", "/api/me/last-project", {
     organizationId,
     projectId,
+    selectedAt,
   });
 
 async function resolved(userId: string | null, organizationId: string) {
@@ -105,6 +107,62 @@ describe("PUT /api/me/last-project", () => {
     expect(response.status).toBe(200);
     expect(response.json).toEqual({ projectId: second });
     expect(await stored(org, user)).toBe(second);
+  });
+
+  it("keeps the newer Project when an older save arrives late, and answers with the stored one", async () => {
+    const org = await ctx.createOrganization("lp-put-order");
+    const user = org.users.viewer;
+    const first = await projectNamed(org, "Alpha", [[user, "member"]]);
+    const second = await projectNamed(org, "Beta", [[user, "member"]]);
+    const base = Date.now() - 60_000;
+    const at = (offsetMs: number) => new Date(base + offsetMs).toISOString();
+
+    // Another tab landed on Beta later, but its request reached the server first.
+    const newer = await put(user, org.id, second, at(5_000));
+    expect(newer.json).toEqual({ projectId: second });
+    const late = await put(user, org.id, first, at(0));
+    expect(late.status).toBe(200);
+    expect(late.json).toEqual({ projectId: second });
+    expect(await stored(org, user)).toBe(second);
+    expect(await resolved(user, org.id)).toBe(second);
+
+    // A save made after the stored landing still wins.
+    const after = await put(user, org.id, first, at(10_000));
+    expect(after.json).toEqual({ projectId: first });
+    expect(await stored(org, user)).toBe(first);
+  });
+
+  it("clamps a landing time in the future to the server clock, so later saves still win", async () => {
+    const org = await ctx.createOrganization("lp-put-clamp");
+    const user = org.users.viewer;
+    const first = await projectNamed(org, "Alpha", [[user, "member"]]);
+    const second = await projectNamed(org, "Beta", [[user, "member"]]);
+    const future = new Date(Date.now() + 24 * 3_600_000).toISOString();
+
+    expect((await put(user, org.id, first, future)).json).toEqual({
+      projectId: first,
+    });
+    const row = await ctx.owner.sql.query<{ ahead: boolean }>(
+      "select selected_at <= now() as ahead from member_last_project where tenant_id = $1 and user_id = $2",
+      [org.id, user],
+    );
+    expect(row.rows[0]?.ahead).toBe(true);
+    const next = await put(user, org.id, second);
+    expect(next.json).toEqual({ projectId: second });
+    expect(await stored(org, user)).toBe(second);
+  });
+
+  it("rejects a missing or malformed landing time with 400", async () => {
+    const org = await ctx.createOrganization("lp-put-badtime");
+    const project = await projectNamed(org, "Alpha");
+    const owner = org.users.owner;
+    expect((await put(owner, org.id, project, "yesterday")).status).toBe(400);
+    const missing = await ctx.call(owner, "PUT", "/api/me/last-project", {
+      organizationId: org.id,
+      projectId: project,
+    });
+    expect(missing.status).toBe(400);
+    expect(await stored(org, owner)).toBeNull();
   });
 
   it("lets an Owner remember a Project they are not a member of", async () => {

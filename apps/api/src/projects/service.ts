@@ -466,9 +466,13 @@ export async function getProject(
 // caller passed the same read check as GET /{projectId}, and every read checks
 // access again. The user context is set on the connection that already holds
 // the Organization and Project locks, so a revocation cannot interleave.
+// Writes are ordered by `selectedAt`, the client's landing time clamped to the
+// server clock (a fast client clock cannot block later saves): an older save
+// that arrives late leaves the row alone, and the response is the Project the
+// row holds afterwards, whichever request wrote it.
 export async function rememberLastProject(
   database: Database,
-  input: Identity & { projectId: string },
+  input: Identity & { projectId: string; selectedAt: string },
 ): Promise<RememberedProjectResponse> {
   return withProjectAccess(
     database,
@@ -480,13 +484,24 @@ export async function rememberLastProject(
         input.actorUserId,
       ]);
       await client.query(
-        `insert into member_last_project (tenant_id, user_id, project_id)
-         values ($1, $2, $3)
+        `insert into member_last_project
+           (tenant_id, user_id, project_id, selected_at)
+         values ($1, $2, $3, least($4::timestamptz, now()))
          on conflict (tenant_id, user_id)
-         do update set project_id = excluded.project_id, updated_at = now()`,
-        [input.organizationId, input.actorUserId, projectId],
+         do update set project_id = excluded.project_id,
+                       selected_at = excluded.selected_at,
+                       updated_at = now()
+         where member_last_project.selected_at < excluded.selected_at`,
+        [input.organizationId, input.actorUserId, projectId, input.selectedAt],
       );
-      return { projectId };
+      const winner = await client.query<{ project_id: string }>(
+        `select project_id from member_last_project
+         where tenant_id = $1 and user_id = $2`,
+        [input.organizationId, input.actorUserId],
+      );
+      const stored = winner.rows[0]?.project_id;
+      if (stored === undefined) throw new Error("last Project row missing");
+      return { projectId: stored };
     },
   );
 }

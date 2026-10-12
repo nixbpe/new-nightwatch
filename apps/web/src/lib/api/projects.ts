@@ -190,9 +190,10 @@ export function fetchLastProject(
 export function rememberLastProject(
   organizationId: string,
   projectId: string,
+  selectedAt: string,
 ): Promise<RememberedProjectResponse> {
   return request("/api/me/last-project", rememberedProjectResponseSchema, {
     method: "PUT",
-    body: { organizationId, projectId },
+    body: { organizationId, projectId, selectedAt },
   });
 }

@@ -6153,11 +6153,13 @@ export interface paths {
                         /** Format: uuid */
                         organizationId: string;
                         projectId: string;
+                        /** Format: date-time */
+                        selectedAt: string;
                     };
                 };
             };
             responses: {
-                /** @description The remembered Project */
+                /** @description The Project stored after the request: the one sent, or the newer one already stored when the request is older */
                 200: {
                     headers: {
                         [name: string]: unknown;

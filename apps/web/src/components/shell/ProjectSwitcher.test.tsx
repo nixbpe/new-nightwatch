@@ -344,7 +344,11 @@ describe("ProjectSwitcher", () => {
         membersPath(P_BRAVO),
       );
     });
-    expect(rememberLastProjectMock).toHaveBeenCalledWith(ORG_A, P_BRAVO);
+    expect(rememberLastProjectMock).toHaveBeenCalledWith(
+      ORG_A,
+      P_BRAVO,
+      expect.any(String),
+    );
   });
 
   it("AC-04: switching on a Project page opens the same page of the new Project and remembers it", async () => {
@@ -360,8 +364,8 @@ describe("ProjectSwitcher", () => {
     // Landing on Alpha's page saved Alpha; landing on Bravo's saves Bravo.
     await waitFor(() => {
       expect(rememberLastProjectMock.mock.calls).toEqual([
-        [ORG_A, P_ALPHA],
-        [ORG_A, P_BRAVO],
+        [ORG_A, P_ALPHA, expect.any(String)],
+        [ORG_A, P_BRAVO, expect.any(String)],
       ]);
     });
     await waitFor(() => {
@@ -390,7 +394,9 @@ describe("ProjectSwitcher", () => {
     await openMenu(user);
     await user.click(screen.getByTestId(`shell-project-option-${P_ALPHA}`));
     expect(screen.getByTestId("probe")).toHaveTextContent(membersPath(P_ALPHA));
-    expect(rememberLastProjectMock.mock.calls).toEqual([[ORG_A, P_ALPHA]]);
+    expect(rememberLastProjectMock.mock.calls).toEqual([
+      [ORG_A, P_ALPHA, expect.any(String)],
+    ]);
     expect(screen.queryByTestId("shell-project-menu")).toBeNull();
   });
 
@@ -401,6 +407,7 @@ describe("ProjectSwitcher", () => {
       expect(rememberLastProjectMock).toHaveBeenCalledExactlyOnceWith(
         ORG_A,
         P_ALPHA,
+        expect.any(String),
       );
     });
     // Opening and closing the menu re-renders the shell; nothing is sent again.
@@ -413,19 +420,21 @@ describe("ProjectSwitcher", () => {
     type Save = {
       organizationId: string;
       projectId: string;
-      settle: (outcome: "ok" | "fail") => void;
+      selectedAt: string;
+      settle: (outcome: "ok" | "fail", storedId?: string) => void;
     };
     // Every save waits until the test settles it.
     function deferSaves(): Save[] {
       const saves: Save[] = [];
       rememberLastProjectMock.mockImplementation(
-        (organizationId, projectId) =>
+        (organizationId, projectId, selectedAt) =>
           new Promise((resolve, reject) => {
             saves.push({
               organizationId,
               projectId,
-              settle: (outcome) => {
-                if (outcome === "ok") resolve({ projectId });
+              selectedAt,
+              settle: (outcome, storedId = projectId) => {
+                if (outcome === "ok") resolve({ projectId: storedId });
                 else reject(new Error("down"));
               },
             });
@@ -460,6 +469,73 @@ describe("ProjectSwitcher", () => {
       await waitFor(() => {
         expect(cached(view)).toEqual({ projectId: P_BRAVO });
       });
+    });
+
+    it("a queued save keeps the time of its landing, and the cache follows the stored Project in the reply", async () => {
+      const clock = vi.spyOn(Date, "now");
+      try {
+        const view = renderShell({ path: "/workspace", last: null });
+        const saves = deferSaves();
+        clock.mockReturnValue(Date.parse("2026-10-12T10:00:00.000Z"));
+        await view.router.navigate(membersPath(P_ALPHA));
+        await waitFor(() => {
+          expect(sentIds(saves)).toEqual([P_ALPHA]);
+        });
+        clock.mockReturnValue(Date.parse("2026-10-12T10:00:05.000Z"));
+        await view.router.navigate(membersPath(P_BRAVO));
+        await waitFor(() => {
+          expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+            "Bravo",
+          );
+        });
+        // The save of Bravo is sent a minute after the landing on it.
+        clock.mockReturnValue(Date.parse("2026-10-12T10:01:00.000Z"));
+        saves[0]?.settle("ok");
+        await waitFor(() => {
+          expect(sentIds(saves)).toEqual([P_ALPHA, P_BRAVO]);
+        });
+        expect(saves.map((save) => save.selectedAt)).toEqual([
+          "2026-10-12T10:00:00.000Z",
+          "2026-10-12T10:00:05.000Z",
+        ]);
+        // Another tab stored Charlie after this landing; the reply says so.
+        saves[1]?.settle("ok", P_CHARLIE);
+        await waitFor(() => {
+          expect(cached(view)).toEqual({ projectId: P_CHARLIE });
+        });
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it("two landings in the same millisecond get increasing times", async () => {
+      const clock = vi
+        .spyOn(Date, "now")
+        .mockReturnValue(Date.parse("2026-10-12T10:00:00.000Z"));
+      try {
+        const view = renderShell({ path: "/workspace", last: null });
+        const saves = deferSaves();
+        await view.router.navigate(membersPath(P_ALPHA));
+        await waitFor(() => {
+          expect(sentIds(saves)).toEqual([P_ALPHA]);
+        });
+        await view.router.navigate(membersPath(P_BRAVO));
+        await waitFor(() => {
+          expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+            "Bravo",
+          );
+        });
+        saves[0]?.settle("ok");
+        await waitFor(() => {
+          expect(sentIds(saves)).toEqual([P_ALPHA, P_BRAVO]);
+        });
+        const [first, second] = saves.map((save) =>
+          Date.parse(save.selectedAt),
+        );
+        expect(second).toBeGreaterThan(first ?? Infinity);
+      } finally {
+        clock.mockRestore();
+      }
     });
 
     it("sends only the latest target after the one in flight", async () => {
@@ -595,7 +671,11 @@ describe("ProjectSwitcher", () => {
       await waitFor(() => {
         expect(rememberLastProjectMock).toHaveBeenCalledTimes(2);
       });
-      expect(rememberLastProjectMock).toHaveBeenLastCalledWith(ORG_A, P_BRAVO);
+      expect(rememberLastProjectMock).toHaveBeenLastCalledWith(
+        ORG_A,
+        P_BRAVO,
+        expect.any(String),
+      );
       await waitFor(() => {
         expect(
           view.queryClient.getQueryData(projectQueryKeys.last(ORG_A)),
@@ -644,7 +724,11 @@ describe("ProjectSwitcher", () => {
       expect(screen.getByTestId("probe")).toHaveTextContent(
         membersPath(P_ALPHA),
       );
-      expect(rememberLastProjectMock).toHaveBeenCalledWith(ORG_A, P_ALPHA);
+      expect(rememberLastProjectMock).toHaveBeenCalledWith(
+        ORG_A,
+        P_ALPHA,
+        expect.any(String),
+      );
     });
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -719,7 +803,11 @@ describe("ProjectSwitcher", () => {
     await waitFor(() => {
       expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
     });
-    expect(rememberLastProjectMock).toHaveBeenCalledWith(ORG_A, P_ALPHA);
+    expect(rememberLastProjectMock).toHaveBeenCalledWith(
+      ORG_A,
+      P_ALPHA,
+      expect.any(String),
+    );
   });
 
   it("upper-case static segments name the same Project: current, in the nav and breadcrumb, and saved once in lower case", async () => {
@@ -743,7 +831,11 @@ describe("ProjectSwitcher", () => {
     await waitFor(() => {
       expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
     });
-    expect(rememberLastProjectMock).toHaveBeenCalledWith(ORG_A, P_ALPHA);
+    expect(rememberLastProjectMock).toHaveBeenCalledWith(
+      ORG_A,
+      P_ALPHA,
+      expect.any(String),
+    );
   });
 
   describe("a bookmarked Project of another Organization the user belongs to", () => {
@@ -759,6 +851,7 @@ describe("ProjectSwitcher", () => {
         expect(rememberLastProjectMock).toHaveBeenCalledExactlyOnceWith(
           ORG_B,
           P_OTHER,
+          expect.any(String),
         );
       });
       expect(

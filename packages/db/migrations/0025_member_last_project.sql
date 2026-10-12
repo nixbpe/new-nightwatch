@@ -13,6 +13,10 @@ create table member_last_project (
   user_id text not null,
   project_id uuid not null,
   updated_at timestamptz not null default now(),
+  -- When the user landed on the Project, as the client reported it and the
+  -- server clamped it. A write only replaces a row with an older value, so a
+  -- delayed request from another tab or browser cannot restore a stale Project.
+  selected_at timestamptz not null,
   primary key (tenant_id, user_id),
   foreign key (project_id, tenant_id)
     references projects (id, tenant_id) on delete cascade,
@@ -45,6 +49,6 @@ create policy member_last_project_access on member_last_project
   );
 
 -- Upsert needs select (conflict target) and insert; only the Project and its
--- timestamp ever change (DB-12).
+-- timestamps ever change (DB-12).
 grant select, insert on member_last_project to nightwatch;
-grant update (project_id, updated_at) on member_last_project to nightwatch;
+grant update (project_id, updated_at, selected_at) on member_last_project to nightwatch;

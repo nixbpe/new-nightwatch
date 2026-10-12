@@ -94,7 +94,8 @@ export const lastProjectRouteDeclarations = {
     },
     responses: {
       200: {
-        description: "The remembered Project",
+        description:
+          "The Project stored after the request: the one sent, or the newer one already stored when the request is older",
         content: {
           "application/json": { schema: rememberedProjectResponseSchema },
         },

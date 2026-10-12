@@ -105,8 +105,8 @@ const asUser = <T>(
 const remember = (tenant: string, user: string, project: string) =>
   asUser(tenant, user, (client) =>
     client.query(
-      `insert into member_last_project (tenant_id, user_id, project_id)
-       values ($1, $2, $3)
+      `insert into member_last_project (tenant_id, user_id, project_id, selected_at)
+       values ($1, $2, $3, now())
        on conflict (tenant_id, user_id) do update set project_id = excluded.project_id`,
       [tenant, user, project],
     ),
@@ -134,7 +134,7 @@ describe("member_last_project isolation (DB-10)", () => {
     await expect(
       asUser(tenantA, userA2, (client) =>
         client.query(
-          "insert into member_last_project (tenant_id, user_id, project_id) values ($1, $2, $3)",
+          "insert into member_last_project (tenant_id, user_id, project_id, selected_at) values ($1, $2, $3, now())",
           [tenantA, userA, projectA2],
         ),
       ),
@@ -168,7 +168,7 @@ describe("member_last_project isolation (DB-10)", () => {
     await expect(
       asUser(tenantA, userA, (client) =>
         client.query(
-          "insert into member_last_project (tenant_id, user_id, project_id) values ($1, $2, $3)",
+          "insert into member_last_project (tenant_id, user_id, project_id, selected_at) values ($1, $2, $3, now())",
           [tenantB, userB, projectB],
         ),
       ),
@@ -193,7 +193,7 @@ describe("member_last_project isolation (DB-10)", () => {
     await expect(
       withTenantContextRaw(database, tenantA, (client) =>
         client.query(
-          "insert into member_last_project (tenant_id, user_id, project_id) values ($1, $2, $3)",
+          "insert into member_last_project (tenant_id, user_id, project_id, selected_at) values ($1, $2, $3, now())",
           [tenantA, userA2, projectA],
         ),
       ),
@@ -204,7 +204,7 @@ describe("member_last_project isolation (DB-10)", () => {
 });
 
 describe("member_last_project grants and cascades", () => {
-  it("grants select and insert, update on project_id and updated_at only, no delete", async () => {
+  it("grants select and insert, update on project_id, updated_at and selected_at only, no delete", async () => {
     const result = await owner.query<{ privilege: string; ok: boolean }>(
       `select p as privilege, has_table_privilege('nightwatch', 'member_last_project'::regclass, p) as ok
        from unnest(array['select','insert','update','delete','truncate']) as p`,
@@ -220,6 +220,7 @@ describe("member_last_project grants and cascades", () => {
     );
     expect(columns.rows.map((row) => row.column_name)).toEqual([
       "project_id",
+      "selected_at",
       "updated_at",
     ]);
   });
