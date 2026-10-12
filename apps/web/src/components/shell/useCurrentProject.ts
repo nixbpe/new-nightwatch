@@ -60,9 +60,12 @@ export function useCurrentProject(): CurrentProject {
     queryFn: () => fetchLastProject(organizationId ?? ""),
     enabled: organizationId !== null && !denied && routeProjectId === null,
   });
-  const projects = denied ? [] : list.data?.projects;
+  // A failed latest fetch outranks cached data: stale options could keep a revoked Project selectable (CMP-01), so
+  // the list reads as unknown, as on a failed first load, until a refetch succeeds.
+  const projects = denied ? [] : list.isError ? undefined : list.data?.projects;
 
-  const candidate = routeProjectId ?? last.data?.projectId ?? null;
+  const lastKnown = last.isError ? undefined : last.data;
+  const candidate = routeProjectId ?? lastKnown?.projectId ?? null;
   const project =
     candidate === null
       ? null

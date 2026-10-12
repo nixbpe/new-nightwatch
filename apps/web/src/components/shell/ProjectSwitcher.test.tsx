@@ -804,6 +804,51 @@ describe("ProjectSwitcher", () => {
     });
   });
 
+  it("AC-06: a failed Project list refetch replaces cached options with the retry state until a retry succeeds", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderShell({ path: membersPath(P_ALPHA) });
+    await openMenu(user);
+    expect(screen.getByTestId(`shell-project-option-${P_BRAVO}`)).toBeVisible();
+    fetchProjectListMock.mockRejectedValue(new Error("down"));
+    await queryClient.refetchQueries({
+      queryKey: projectQueryKeys.list(ORG_A),
+    });
+    const retry = await screen.findByTestId("shell-project-retry");
+    expect(screen.queryByTestId("shell-project-switch")).toBeNull();
+    expect(screen.queryByTestId(`shell-project-option-${P_BRAVO}`)).toBeNull();
+    fetchProjectListMock.mockResolvedValue({ projects: [ALPHA, BRAVO] });
+    await user.click(retry);
+    await user.click(await screen.findByTestId("shell-project-switch"));
+    expect(screen.getByTestId(`shell-project-option-${P_BRAVO}`)).toBeVisible();
+    expect(
+      screen.queryByTestId(`shell-project-option-${P_CHARLIE}`),
+    ).toBeNull();
+  });
+
+  it("AC-06: a failed last-Project refetch with a cached value shows the retry state and recovers", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderShell({ path: "/workspace" });
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+        "Bravo",
+      );
+    });
+    fetchLastProjectMock.mockRejectedValue(new Error("down"));
+    await queryClient.refetchQueries({
+      queryKey: projectQueryKeys.last(ORG_A),
+    });
+    const retry = await screen.findByTestId("shell-project-retry");
+    expect(screen.queryByText("Bravo")).toBeNull();
+    expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
+    fetchLastProjectMock.mockResolvedValue({ projectId: P_ALPHA });
+    await user.click(retry);
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+        "Alpha",
+      );
+    });
+  });
+
   it("AC-04: focus is not pulled back after a redirect, even when the destination is visited later", async () => {
     const user = userEvent.setup();
     const view = renderShell({ path: "/workspace" });
