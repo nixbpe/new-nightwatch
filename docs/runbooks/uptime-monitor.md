@@ -137,3 +137,11 @@ before `bun run db:migrate`; the deletion cannot be undone from the migration.
   Organization Owners and Admins, once each. A BullMQ materialize job queued for
   a deleted `MONITOR_*` dispatch fails with `notification dispatch claim is
   unavailable`; it needs no action.
+
+### Rollout order
+
+Deploy the API, the Worker and migration `0026` together, or stop the old API
+and Worker before the migration. After `0026`, an old API or Worker fails every
+monitor insert (`monitors.project_id` is `not null`) and every `MONITOR_*`
+notification intent insert (`subject_project_id` is required), so old and new
+versions must not run side by side.
