@@ -469,6 +469,15 @@ describe("ProjectSwitcher", () => {
     const cached = (view: ReturnType<typeof renderShell>) =>
       view.queryClient.getQueryData(projectQueryKeys.last(ORG_A));
 
+    // The landing time is taken in the effect of the render that commits the route; under load that render
+    // can be late, so a test that moves the clock or counts saves waits for it, not for a fixed delay.
+    const routeCommitted = (projectId: string) =>
+      waitFor(() => {
+        expect(screen.getByTestId("probe")).toHaveTextContent(
+          membersPath(projectId),
+        );
+      });
+
     it("holds the next save until the one in flight settles, and the cache ends on the newest", async () => {
       // Nothing remembered yet, so only a save can put a Project in the cache.
       const view = renderShell({ path: "/workspace", last: null });
@@ -478,6 +487,7 @@ describe("ProjectSwitcher", () => {
         expect(sentIds(saves)).toEqual([P_ALPHA]);
       });
       await view.router.navigate(membersPath(P_BRAVO));
+      await routeCommitted(P_BRAVO);
       await settled();
       expect(sentIds(saves)).toEqual([P_ALPHA]);
 
@@ -542,6 +552,7 @@ describe("ProjectSwitcher", () => {
         const saves = deferSaves();
         clock.mockReturnValue(Date.parse("2026-10-12T10:00:05.000Z"));
         await view.router.navigate(membersPath(P_BRAVO));
+        await routeCommitted(P_BRAVO);
         await settled();
         expect(saves).toEqual([]);
         // The list is slow; another tab could land and save in the meantime.

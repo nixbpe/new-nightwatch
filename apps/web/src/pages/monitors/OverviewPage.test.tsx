@@ -20,7 +20,6 @@ import {
   RouterProvider,
   Outlet,
   useLocation,
-  useNavigate,
 } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -166,18 +165,12 @@ const noEvents = { events: [] as MonitorRecentEvent[] };
 
 function Harness({ children }: { children?: React.ReactNode }) {
   const { switchOrg } = useTenant();
-  const navigate = useNavigate();
   return (
     <>
       <button
         data-testid="overview-switch-organization"
         type="button"
-        onClick={() =>
-          void switchOrg(B).then((switched) => {
-            if (switched)
-              void navigate(`/organizations/${B}/projects/${P}/monitors`);
-          })
-        }
+        onClick={() => void switchOrg(B)}
       >
         switch to B
       </button>
@@ -215,6 +208,10 @@ function renderPage(organizationId = A, state?: unknown) {
           {
             path: "/organizations/:organizationId/projects/:projectId/monitors",
             element: <OverviewPage />,
+          },
+          {
+            path: "/organizations/:organizationId/projects",
+            element: <p data-testid="projects-page">projects</p>,
           },
         ],
       },
@@ -2265,21 +2262,12 @@ describe("Overview refetch and announcements", () => {
 });
 
 describe("Overview Organization switch", () => {
+  // A Project belongs to one Organization, so a switch made on the list leaves it for the new
+  // Organization's Projects (useLeaveOnOrganizationSwitch); nothing of the origin stays on screen.
   it("shows no data of the previous Organization while its request is pending or after it resolves late", async () => {
     const user = userEvent.setup();
     const late = Promise.withResolvers<MonitorListResponse>();
-    fetchListMock.mockImplementation((organizationId) =>
-      organizationId === A
-        ? late.promise
-        : Promise.resolve(
-            list([
-              item({
-                id: "127ba746-07b5-46c1-b7bc-9fe0588f66a3",
-                name: "BetaMonitor",
-              }),
-            ]),
-          ),
-    );
+    fetchListMock.mockImplementation(() => late.promise);
     updateActiveOrganizationMock.mockResolvedValue({
       ...context(),
       lastActiveTenantId: B,
@@ -2288,21 +2276,9 @@ describe("Overview Organization switch", () => {
     await screen.findByTestId("monitor-overview-loading");
 
     await user.click(screen.getByTestId("overview-switch-organization"));
-    expect(
-      await screen.findByTestId(
-        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
-      ),
-    ).toHaveTextContent(/^BetaMonitor$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${B}/projects/${P}/monitors/127ba746-07b5-46c1-b7bc-9fe0588f66a3`,
-    );
+    expect(await screen.findByTestId("projects-page")).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/organizations/${B}/projects/${P}/monitors`,
+      `/organizations/${B}/projects`,
     );
 
     await act(async () => {
@@ -2322,35 +2298,23 @@ describe("Overview Organization switch", () => {
       ),
     ).toBeNull();
     expect(document.body.textContent).not.toContain("AlphaMonitor");
+    // The new Organization's list is never requested for the old Project.
     expect(
-      screen.getByTestId(
-        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
+      fetchListMock.mock.calls.every(
+        ([organizationId]) => organizationId === A,
       ),
-    ).toHaveTextContent(/^BetaMonitor$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-127ba746-07b5-46c1-b7bc-9fe0588f66a3",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${B}/projects/${P}/monitors/127ba746-07b5-46c1-b7bc-9fe0588f66a3`,
-    );
+    ).toBe(true);
   });
 
-  it("hides origin organization rows while the destination organization loads", async () => {
+  it("hides origin organization rows once the switch is confirmed", async () => {
     const user = userEvent.setup();
-    const pendingB = Promise.withResolvers<MonitorListResponse>();
-    fetchListMock.mockImplementation((organizationId) =>
-      organizationId === A
-        ? Promise.resolve(
-            list([
-              item({
-                id: "5446de89-f053-45c5-a4e1-c13b82620c60",
-                name: "AlphaMonitor",
-              }),
-            ]),
-          )
-        : pendingB.promise,
+    fetchListMock.mockResolvedValue(
+      list([
+        item({
+          id: "5446de89-f053-45c5-a4e1-c13b82620c60",
+          name: "AlphaMonitor",
+        }),
+      ]),
     );
     updateActiveOrganizationMock.mockResolvedValue({
       ...context(),
@@ -2362,19 +2326,9 @@ describe("Overview Organization switch", () => {
         "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
       ),
     ).toHaveTextContent(/^AlphaMonitor$/);
-    expect(
-      screen.getByTestId(
-        "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
-      ),
-    ).toHaveAttribute(
-      "href",
-      `/organizations/${A}/projects/${P}/monitors/5446de89-f053-45c5-a4e1-c13b82620c60`,
-    );
 
     await user.click(screen.getByTestId("overview-switch-organization"));
-    expect(
-      await screen.findByTestId("monitor-overview-loading"),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("projects-page")).toBeInTheDocument();
     expect(
       screen.queryByTestId(
         "monitor-list-name-5446de89-f053-45c5-a4e1-c13b82620c60",
