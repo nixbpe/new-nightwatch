@@ -507,6 +507,50 @@ describe("ProjectSwitcher", () => {
     });
   });
 
+  describe("AC-06: each landing on a Project is saved", () => {
+    async function leaveAndReturn(
+      view: ReturnType<typeof renderShell>,
+      projectId: string,
+    ) {
+      await view.router.navigate("/workspace");
+      await waitFor(() => {
+        expect(screen.getByTestId("probe")).toHaveTextContent("/workspace");
+      });
+      await view.router.navigate(membersPath(projectId));
+    }
+
+    it("sends a Project again on return after its save failed", async () => {
+      const view = renderShell({ path: "/workspace", last: null });
+      rememberLastProjectMock.mockRejectedValueOnce(new Error("down"));
+      await view.router.navigate(membersPath(P_BRAVO));
+      await waitFor(() => {
+        expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
+      });
+      await leaveAndReturn(view, P_BRAVO);
+      await waitFor(() => {
+        expect(rememberLastProjectMock).toHaveBeenCalledTimes(2);
+      });
+      expect(rememberLastProjectMock).toHaveBeenLastCalledWith(ORG_A, P_BRAVO);
+      await waitFor(() => {
+        expect(
+          view.queryClient.getQueryData(projectQueryKeys.last(ORG_A)),
+        ).toEqual({ projectId: P_BRAVO });
+      });
+    });
+
+    it("sends a Project again on return after its save succeeded", async () => {
+      const view = renderShell({ path: "/workspace", last: null });
+      await view.router.navigate(membersPath(P_BRAVO));
+      await waitFor(() => {
+        expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
+      });
+      await leaveAndReturn(view, P_BRAVO);
+      await waitFor(() => {
+        expect(rememberLastProjectMock).toHaveBeenCalledTimes(2);
+      });
+    });
+  });
+
   it("AC-06: nothing is saved outside a Project route, or for a Project missing from the list", async () => {
     renderShell({ path: "/workspace" });
     await waitFor(() => {

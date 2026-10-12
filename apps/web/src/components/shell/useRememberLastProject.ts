@@ -6,14 +6,19 @@ import { useCurrentProject } from "./useCurrentProject";
 
 /**
  * Saves the Project of the Project route the user is on as their last one, once per
- * Project change. It waits for the Project to appear in the user's list, so a URL the
- * server would refuse is never sent. Failure is silent: the choice is a convenience.
+ * landing. Re-renders on the same Project send nothing; leaving Project routes and
+ * coming back is a new landing and saves again, so a failed save is retried. It waits
+ * for the Project to appear in the user's list, so a URL the server would refuse is
+ * never sent. Failure is silent: the choice is a convenience.
  * One save is in flight at a time, so the server commits them in the order they were
  * made; while one is in flight only the latest target waits (A, B, C sends A, then C).
  */
 export function useRememberLastProject(): void {
   const { organizationId, routeProjectId, project } = useCurrentProject();
   const queryClient = useQueryClient();
+  // Project of the current landing; cleared when the user leaves Project routes.
+  const landed = useRef<string | null>(null);
+  // Newest Project a save was requested for; only it may update the cache.
   const sent = useRef<string | null>(null);
   const inFlight = useRef(false);
   const waiting = useRef<{ organizationId: string; projectId: string } | null>(
@@ -23,9 +28,13 @@ export function useRememberLastProject(): void {
     project !== null && project.id === routeProjectId ? project.id : null;
 
   useEffect(() => {
-    if (organizationId === null || projectId === null) return;
+    if (organizationId === null || projectId === null) {
+      landed.current = null;
+      return;
+    }
     const key = `${organizationId}:${projectId}`;
-    if (sent.current === key) return;
+    if (landed.current === key) return;
+    landed.current = key;
     sent.current = key;
 
     function send(target: { organizationId: string; projectId: string }): void {
