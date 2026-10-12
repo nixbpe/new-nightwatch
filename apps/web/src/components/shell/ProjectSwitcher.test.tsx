@@ -491,6 +491,28 @@ describe("ProjectSwitcher", () => {
       expect(sentIds(saves)).toEqual([P_ALPHA, P_CHARLIE]);
     });
 
+    it("a shell retired by an identity change sends nothing more and writes no cache", async () => {
+      const view = renderShell({ path: "/workspace", last: null });
+      const saves = deferSaves();
+      await view.router.navigate(membersPath(P_ALPHA));
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA]);
+      });
+      await view.router.navigate(membersPath(P_BRAVO));
+      await waitFor(() => {
+        expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+          "Bravo",
+        );
+      });
+      // SessionQueryProvider remounts its subtree (key = epoch) when the identity changes.
+      view.unmount();
+      saves[0]?.settle("ok");
+      await settled();
+      expect(sentIds(saves)).toEqual([P_ALPHA]);
+      // Still the fetched "nothing remembered"; the retired instance wrote nothing.
+      expect(cached(view)).toEqual({ projectId: null });
+    });
+
     it("sends the waiting save after a failed one, without an error", async () => {
       const view = renderShell({ path: "/workspace", last: null });
       const saves = deferSaves();

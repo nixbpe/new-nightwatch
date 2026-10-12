@@ -12,6 +12,10 @@ import { useCurrentProject } from "./useCurrentProject";
  * never sent. Failure is silent: the choice is a convenience.
  * One save is in flight at a time, so the server commits them in the order they were
  * made; while one is in flight only the latest target waits (A, B, C sends A, then C).
+ * Unmounting retires the hook (the shell remounts when the signed-in identity changes):
+ * a waiting save is dropped and no later continuation sends or writes the cache, so one
+ * user's queued navigation never reaches the next user's session. A save already in
+ * flight cannot be recalled.
  */
 export function useRememberLastProject(): void {
   const { organizationId, routeProjectId, project } = useCurrentProject();
@@ -21,11 +25,22 @@ export function useRememberLastProject(): void {
   // Newest Project a save was requested for; only it may update the cache.
   const sent = useRef<string | null>(null);
   const inFlight = useRef(false);
+  const retired = useRef(false);
   const waiting = useRef<{ organizationId: string; projectId: string } | null>(
     null,
   );
   const projectId =
     project !== null && project.id === routeProjectId ? project.id : null;
+
+  useEffect(() => {
+    // Reset on mount too, so a Strict Mode mount-unmount-mount probe does not leave it retired.
+    retired.current = false;
+    const waitingRef = waiting;
+    return () => {
+      retired.current = true;
+      waitingRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (organizationId === null || projectId === null) {
@@ -42,6 +57,7 @@ export function useRememberLastProject(): void {
       rememberLastProject(target.organizationId, target.projectId)
         .then(
           () => {
+            if (retired.current) return;
             // A newer Project change owns the cache; an earlier reply must not overwrite it.
             if (sent.current !== `${target.organizationId}:${target.projectId}`)
               return;
@@ -54,6 +70,7 @@ export function useRememberLastProject(): void {
         )
         .finally(() => {
           inFlight.current = false;
+          if (retired.current) return;
           const next = waiting.current;
           waiting.current = null;
           if (next !== null) send(next);
