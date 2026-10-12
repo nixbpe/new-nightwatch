@@ -477,6 +477,9 @@ export async function getProject(
 // Under READ COMMITTED a removal committing after the read-back is a valid
 // order: the stored Project was readable when answered. No lock on the stored
 // Project is taken, so no order against the removal path's locks arises.
+// Accepted limit: `selectedAt` comes from the clients' clocks, so a device that
+// runs behind can lose to an earlier landing from another device by up to that
+// skew; equal stamps keep the first stored.
 export async function rememberLastProject(
   database: Database,
   input: Identity & { projectId: string; selectedAt: string },

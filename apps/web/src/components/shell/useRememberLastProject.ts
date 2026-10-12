@@ -14,6 +14,9 @@ import { useCurrentProject } from "./useCurrentProject";
  * (before the list validates it) and not when the save is finally sent. The server keeps the newest landing per user, so a delayed
  * save from another tab or browser cannot restore an older Project; the cache follows the
  * Project the server reports as stored.
+ * Accepted limits: a failed save is not retried until the next landing; ordering across
+ * devices follows their clocks, so a device that runs behind can lose to an earlier landing
+ * elsewhere by up to the skew, and two landings with the same stamp keep the first stored.
  * One save is in flight at a time, so the server commits them in the order they were
  * made; while one is in flight only the latest target waits (A, B, C sends A, then C).
  * Unmounting retires the hook (the shell remounts when the signed-in identity changes):

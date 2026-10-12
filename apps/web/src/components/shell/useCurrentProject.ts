@@ -66,10 +66,18 @@ export function useCurrentProject(): CurrentProject {
 
   const lastKnown = last.isError ? undefined : last.data;
   const candidate = routeProjectId ?? lastKnown?.projectId ?? null;
-  const project =
+  // Outside a Project route the server's answer is a hint read apart from the list: the hinted Project may
+  // have been deleted or revoked by the time the list arrives. Then the list's first entry stands in, as the
+  // server's own fallback (last, else first readable by name and id, else none). It is shown, never saved.
+  const hinted =
     candidate === null
       ? null
       : (projects?.find((item) => item.id === candidate) ?? null);
+  const project =
+    hinted ??
+    (routeProjectId === null && lastKnown !== undefined
+      ? (projects?.[0] ?? null)
+      : null);
   // While the list loads a Project route keeps its own id, so nav links do not flicker away.
   const projectId =
     project?.id ??

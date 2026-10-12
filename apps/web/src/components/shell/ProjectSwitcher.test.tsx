@@ -816,6 +816,33 @@ describe("ProjectSwitcher", () => {
     );
   });
 
+  it("AC-06: a hinted Project missing from the list that arrives later gives way to the list's first Project, and is not saved", async () => {
+    const settled = () => new Promise((resolve) => setTimeout(resolve, 20));
+    let openList: () => void = () => undefined;
+    const listGate = new Promise<void>((resolve) => {
+      openList = resolve;
+    });
+    // The server hinted Bravo, which is gone by the time the list is read.
+    renderShell({
+      path: "/workspace",
+      last: P_BRAVO,
+      projects: [ALPHA, CHARLIE],
+      listGate,
+    });
+    await waitFor(() => {
+      expect(fetchLastProjectMock).toHaveBeenCalledWith(ORG_A);
+    });
+    await settled();
+    openList();
+    const button = await screen.findByTestId("shell-project-switch");
+    await waitFor(() => {
+      expect(button).toHaveTextContent("Alpha");
+    });
+    // Only route landings save; a fallback shown outside a Project route is not one.
+    await settled();
+    expect(rememberLastProjectMock).not.toHaveBeenCalled();
+  });
+
   it("AC-06: with no Project the switcher links to the projects page and the Project leaves stay out", async () => {
     renderShell({ projects: [], last: null });
     const empty = await screen.findByTestId("shell-project-empty");
