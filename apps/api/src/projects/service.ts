@@ -472,7 +472,8 @@ export async function getProject(
 // row holds afterwards, whichever request wrote it. The reply is read back in a
 // fresh statement and only names a Project the caller can still read (a member
 // of it, or Owner/Admin; the rule of resolveLastProject). When the stored one is
-// not readable (removed from it, demoted), the requested Project replaces it.
+// not readable (removed from it, demoted, deleted with its row), the requested
+// Project replaces it, inserting the row if the deletion removed it.
 // Under READ COMMITTED a removal committing after the read-back is a valid
 // order: the stored Project was readable when answered. No lock on the stored
 // Project is taken, so no order against the removal path's locks arises.
@@ -517,9 +518,13 @@ export async function rememberLastProject(
         // The stored Project is no longer readable by the caller: the requested one, which the
         // locks held here keep readable, replaces it whatever its time.
         const replaced = await client.query<{ project_id: string }>(
-          `update member_last_project
-           set project_id = $3, selected_at = least($4::timestamptz, now()), updated_at = now()
-           where tenant_id = $1 and user_id = $2
+          `insert into member_last_project
+             (tenant_id, user_id, project_id, selected_at)
+           values ($1, $2, $3, least($4::timestamptz, now()))
+           on conflict (tenant_id, user_id)
+           do update set project_id = excluded.project_id,
+                         selected_at = excluded.selected_at,
+                         updated_at = now()
            returning project_id`,
           [
             input.organizationId,
