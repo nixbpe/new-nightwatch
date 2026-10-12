@@ -128,6 +128,14 @@ export const auditTargetSchema = z.discriminatedUnion("type", [
     monitorId: z.uuid(),
     displayName: z.string().nullable(),
     deleted: z.boolean(),
+    /** The monitor's Project; absent on events recorded before monitors belonged to Projects. */
+    project: z
+      .object({
+        projectId: z.uuid(),
+        displayName: z.string().nullable(),
+        deleted: z.boolean(),
+      })
+      .optional(),
   }),
   z.object({
     type: z.literal("project"),
