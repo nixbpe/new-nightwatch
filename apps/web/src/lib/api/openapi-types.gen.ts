@@ -6165,7 +6165,7 @@ export interface paths {
                     content: {
                         "application/json": {
                             /** Format: uuid */
-                            projectId: string | null;
+                            projectId: string;
                         };
                     };
                 };

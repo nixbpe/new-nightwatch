@@ -85,6 +85,14 @@ export const lastProjectResponseSchema = z.object({
 });
 export type LastProjectResponse = z.infer<typeof lastProjectResponseSchema>;
 
+/** The Project the PUT stored; never null. */
+export const rememberedProjectResponseSchema = z.object({
+  projectId: z.uuid(),
+});
+export type RememberedProjectResponse = z.infer<
+  typeof rememberedProjectResponseSchema
+>;
+
 // ---- Members -----------------------------------------------------------------
 
 export const PROJECT_MEMBER_ADD_MAX = 100;

@@ -4,6 +4,7 @@ import {
   PROJECT_LIMIT_PER_ORGANIZATION,
   type CreateProjectRequest,
   type LastProjectResponse,
+  type RememberedProjectResponse,
   type OrganizationRole,
   type ProjectDetail,
   type ProjectListResponse,
@@ -468,7 +469,7 @@ export async function getProject(
 export async function rememberLastProject(
   database: Database,
   input: Identity & { projectId: string },
-): Promise<LastProjectResponse> {
+): Promise<RememberedProjectResponse> {
   return withProjectAccess(
     database,
     input,

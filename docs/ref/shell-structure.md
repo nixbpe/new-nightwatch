@@ -55,9 +55,9 @@ The breadcrumb root is the organization the page acts on: on an organization-sco
 
 ## Overlays
 
-Shared menu-button behavior: focus moves in on open; ↑↓ move between items; Escape, an outside click or selecting an item returns focus to the trigger.
+Shared menu-button behavior: focus moves in on open; ↑↓ move between items; Escape, an outside click or selecting an item returns focus to the trigger. Inside the mobile drawer the first Escape closes an open menu and refocuses its button; the next one closes the drawer.
 
-- Project menu: see Sidebar. Inside the mobile drawer the first Escape closes an open menu and refocuses its button; the next one closes the drawer.
+- Project menu: see Sidebar.
 - Command palette: modal search-all over the navigation definition, resolved for the active organization, the current Project and the user's role, so every result navigates. ↑↓ select, ↵ opens, Escape closes, Tab stays inside. The footer names the organization being searched.
 - Notifications popover: title row, the five most recent inbox rows (two lines each), footer links to the inbox page and, for owners and admins, the organization's notification settings. Loading is a skeleton, no data an honest empty line; the unread badge is the server's count as a Text-filled counter (Text fill, Canvas numerals in monospace).
 - Inbox rows (popover and inbox page): an unread row carries a Primary dot and a semibold title; a read row a hollow strong-edge dot and a regular title.

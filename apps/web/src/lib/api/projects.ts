@@ -1,6 +1,7 @@
 import {
   addProjectMembersResponseSchema,
   lastProjectResponseSchema,
+  rememberedProjectResponseSchema,
   projectDetailSchema,
   projectListResponseSchema,
   projectMemberCandidatesResponseSchema,
@@ -11,6 +12,7 @@ import {
   type addProjectMembersRequestSchema,
   type createProjectRequestSchema,
   type LastProjectResponse,
+  type RememberedProjectResponse,
   type ProjectDetail,
   type ProjectListResponse,
   type ProjectMember,
@@ -188,8 +190,8 @@ export function fetchLastProject(
 export function rememberLastProject(
   organizationId: string,
   projectId: string,
-): Promise<LastProjectResponse> {
-  return request("/api/me/last-project", lastProjectResponseSchema, {
+): Promise<RememberedProjectResponse> {
+  return request("/api/me/last-project", rememberedProjectResponseSchema, {
     method: "PUT",
     body: { organizationId, projectId },
   });

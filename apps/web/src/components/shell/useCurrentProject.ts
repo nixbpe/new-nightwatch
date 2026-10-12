@@ -62,9 +62,11 @@ export function useCurrentProject(): CurrentProject {
       ? list.isError
         ? "error"
         : "loading"
-      : routeProjectId === null && last.isPending
-        ? "loading"
-        : "ready";
+      : routeProjectId === null && last.isError
+        ? "error"
+        : routeProjectId === null && last.isPending
+          ? "loading"
+          : "ready";
 
   return {
     organizationId,
@@ -75,7 +77,7 @@ export function useCurrentProject(): CurrentProject {
     project,
     refetch: () => {
       void list.refetch();
-      void last.refetch();
+      if (routeProjectId === null) void last.refetch();
     },
   };
 }

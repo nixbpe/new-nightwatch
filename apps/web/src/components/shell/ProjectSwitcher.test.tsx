@@ -11,7 +11,12 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
+import {
+  createMemoryRouter,
+  redirect,
+  RouterProvider,
+  useLocation,
+} from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchMeContext } from "../../lib/api/me";
@@ -112,6 +117,9 @@ function meContext(role: "owner" | "viewer"): MeContextResponse {
   };
 }
 
+// When set, the Project members route redirects there, as a route guard would.
+let membersRedirect: string | null = null;
+
 function Probe() {
   const location = useLocation();
   return <p data-testid="probe">{`${location.pathname}${location.search}`}</p>;
@@ -122,15 +130,18 @@ function renderShell({
   role = "owner",
   projects = [ALPHA, BRAVO, CHARLIE],
   last = P_BRAVO,
+  lastFails = false,
 }: {
   path?: string;
   role?: "owner" | "viewer";
   projects?: ProjectSummary[];
   last?: string | null;
+  lastFails?: boolean;
 } = {}) {
   fetchMeContextMock.mockResolvedValue(meContext(role));
   fetchProjectListMock.mockResolvedValue({ projects });
-  fetchLastProjectMock.mockResolvedValue({ projectId: last });
+  if (lastFails) fetchLastProjectMock.mockRejectedValue(new Error("down"));
+  else fetchLastProjectMock.mockResolvedValue({ projectId: last });
   rememberLastProjectMock.mockImplementation((_org, projectId) =>
     Promise.resolve({ projectId }),
   );
@@ -156,6 +167,8 @@ function renderShell({
           },
           {
             path: "/organizations/:organizationId/projects/:projectId/members",
+            loader: () =>
+              membersRedirect === null ? null : redirect(membersRedirect),
             element: <Probe />,
           },
         ],
@@ -192,6 +205,7 @@ async function openMenu(user: ReturnType<typeof userEvent.setup>) {
 
 describe("ProjectSwitcher", () => {
   afterEach(() => {
+    membersRedirect = null;
     fetchMeContextMock.mockReset();
     fetchProjectListMock.mockReset();
     fetchLastProjectMock.mockReset();
@@ -438,6 +452,42 @@ describe("ProjectSwitcher", () => {
     expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
   });
 
+  it("AC-06: a failed last-Project lookup shows the retry state, not an empty selection", async () => {
+    const user = userEvent.setup();
+    renderShell({ path: "/workspace", lastFails: true });
+    const retry = await screen.findByTestId("shell-project-retry");
+    expect(screen.queryByText("เลือกโปรเจกต์")).toBeNull();
+    fetchLastProjectMock.mockResolvedValue({ projectId: P_BRAVO });
+    await user.click(retry);
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+        "Bravo",
+      );
+    });
+  });
+
+  it("AC-04: focus is not pulled back after a redirect, even when the destination is visited later", async () => {
+    const user = userEvent.setup();
+    const view = renderShell({ path: "/workspace" });
+    membersRedirect = `/organizations/${ORG_A}/projects`;
+    await openMenu(user);
+    await user.click(screen.getByTestId(`shell-project-option-${P_ALPHA}`));
+    await waitFor(() => {
+      expect(screen.getByTestId("probe")).toHaveTextContent(
+        `/organizations/${ORG_A}/projects`,
+      );
+    });
+    membersRedirect = null;
+    screen.getByTestId("shell-search-open").focus();
+    await view.router.navigate(membersPath(P_ALPHA));
+    await waitFor(() => {
+      expect(screen.getByTestId("probe")).toHaveTextContent(
+        membersPath(P_ALPHA),
+      );
+    });
+    expect(screen.getByTestId("shell-search-open")).toHaveFocus();
+  });
+
   it("AC-06: a URL naming a Project the user cannot see selects nothing", async () => {
     renderShell({ path: membersPath(crypto.randomUUID()) });
     const button = await screen.findByTestId("shell-project-switch");
@@ -449,7 +499,7 @@ describe("ProjectSwitcher", () => {
 
   it("AC-07: the breadcrumb reads Organization, Project, page on a Project route", async () => {
     renderShell({ path: membersPath(P_ALPHA) });
-    const breadcrumb = screen.getByTestId("shell-breadcrumb");
+    const breadcrumb = await screen.findByTestId("shell-breadcrumb");
     await waitFor(() => {
       expect(within(breadcrumb).getAllByRole("listitem")).toHaveLength(3);
       expect(breadcrumb).toHaveTextContent("Alpha");

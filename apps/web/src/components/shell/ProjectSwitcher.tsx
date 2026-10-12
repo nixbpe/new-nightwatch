@@ -32,15 +32,17 @@ export function ProjectSwitcher({
   }, [popover.open]);
 
   // A route change re-admits the organization, which replaces this button; focus follows the switch back to it.
-  const refocusAt = useRef<string | null>(null);
+  // Dropped on the first other path, so a redirect cannot leave it to steal focus on a later visit.
+  const refocus = useRef<{ from: string; to: string } | null>(null);
   useEffect(() => {
-    if (
-      refocusAt.current !== null &&
-      refocusAt.current === location.pathname &&
-      popover.triggerRef.current !== null
-    ) {
-      refocusAt.current = null;
+    const pending = refocus.current;
+    if (pending === null) return;
+    if (location.pathname === pending.to) {
+      if (popover.triggerRef.current === null) return;
+      refocus.current = null;
       popover.triggerRef.current.focus();
+    } else if (location.pathname !== pending.from) {
+      refocus.current = null;
     }
   });
 
@@ -136,7 +138,7 @@ export function ProjectSwitcher({
       project.id,
     );
     if (destination !== null) {
-      refocusAt.current = destination;
+      refocus.current = { from: location.pathname, to: destination };
       void navigate(destination);
     }
   };

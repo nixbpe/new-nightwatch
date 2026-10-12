@@ -27,6 +27,7 @@ import {
   projectSlugTakenErrorResponseSchema,
   projectSummarySchema,
   projectValidationErrorResponseSchema,
+  rememberedProjectResponseSchema,
   unauthenticatedErrorResponseSchema,
   unsupportedMediaTypeErrorResponseSchema,
   updateProjectRequestSchema,
@@ -94,7 +95,9 @@ export const lastProjectRouteDeclarations = {
     responses: {
       200: {
         description: "The remembered Project",
-        content: { "application/json": { schema: lastProjectResponseSchema } },
+        content: {
+          "application/json": { schema: rememberedProjectResponseSchema },
+        },
       },
       400: invalidResponse,
       415: mediaTypeResponse,
