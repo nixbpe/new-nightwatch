@@ -315,6 +315,23 @@ it("explains LAST_OWNER, refreshes the list, shows no success and returns focus 
   await waitFor(() => expect(revokeButton("member-boss")).toHaveFocus());
 });
 
+it("shows the server message naming the Projects on LAST_PROJECT_ADMIN, with no success", async () => {
+  const message =
+    "ถอนสมาชิกไม่ได้ ต้องตั้งผู้ดูแลคนอื่นก่อนในโปรเจกต์: Alpha, Beta";
+  vi.mocked(revokeOrganizationMember).mockRejectedValue(
+    new ApiError("LAST_PROJECT_ADMIN", message, 409),
+  );
+  const user = await renderAs("owner");
+  await user.click(revokeButton("member-ann"));
+  await user.click(confirmButton());
+  expect(await screen.findByTestId("member-revoke-error")).toHaveTextContent(
+    message,
+  );
+  expect(screen.queryByTestId("member-revoke-success")).toBeNull();
+  expect(screen.getByTestId("member-row-member-ann")).toBeInTheDocument();
+  await waitFor(() => expect(revokeButton("member-ann")).toHaveFocus());
+});
+
 it("shows a generic failure without success and refreshes the list without replaying the DELETE", async () => {
   vi.mocked(revokeOrganizationMember).mockRejectedValue(
     new ApiError("INTERNAL_ERROR", "boom", 500),

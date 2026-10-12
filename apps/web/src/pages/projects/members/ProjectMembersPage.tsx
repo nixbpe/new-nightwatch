@@ -1,7 +1,12 @@
 import type { ProjectMember, ProjectRole } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router";
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Link,
+  UNSAFE_DataRouterContext,
+  useNavigate,
+  useParams,
+} from "react-router";
 
 import { SearchIcon } from "../../../components/shell/icons";
 import { initialsOf } from "../../../components/shell/initials";
@@ -33,6 +38,9 @@ import { isDenied } from "../../workspace/rows";
 import { AddMemberDialog, type AddStaleReason } from "./AddMemberDialog";
 import { PROJECT_ROLE_DESCRIPTIONS, PROJECT_ROLE_LABELS } from "./roles";
 
+// The same notice for a missing Project and one the user cannot see (AC-08).
+export const PROJECT_GONE_NOTICE =
+  "ไม่พบโปรเจกต์นี้ หรือคุณไม่มีสิทธิ์เข้าถึงโปรเจกต์นี้แล้ว";
 export const LAST_ADMIN_CHANGE_MESSAGE =
   "ต้องมีผู้ดูแลอย่างน้อย 1 คน เปลี่ยนบทบาทผู้ดูแลคนสุดท้ายไม่ได้";
 export const LAST_ADMIN_REMOVE_MESSAGE =
@@ -77,6 +85,7 @@ function ProjectMembers({
 }) {
   const { me, mePending, meError, refreshMembershipContext } = useTenant();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { preferences } = usePreferences();
   const organization = me?.organizations.find(
     (item) => item.id === organizationId,
@@ -108,7 +117,7 @@ function ProjectMembers({
   >("idle");
   const heading = useRef<HTMLHeadingElement>(null);
   const refocusUserId = useRef<string | null>(null);
-  // Set when the user removes themself and loses access: says so instead of a bare not-found.
+  // Set when the user removes themself and loses access: the list notice says so.
   const [leftProject, setLeftProject] = useState<string | null>(null);
 
   const detail = useQuery({
@@ -126,6 +135,50 @@ function ProjectMembers({
 
   const notFound = isNotFound(detail.error) || isNotFound(membersQuery.error);
   const denied = isDenied(detail.error) || isDenied(membersQuery.error);
+  // A 404 means the Project is gone or no longer visible to this user. The
+  // context reloads first (the role may have changed), then every cached
+  // Project query of the Organization goes, the list included, so the list
+  // page fetches fresh and cannot offer the lost Project; it announces why.
+  const redirected = useRef(false);
+  // The router object outlives this page, so the live navigation state can be
+  // read when the reload settles, even after a remount or before a re-render.
+  const router = useContext(UNSAFE_DataRouterContext)?.router;
+  useEffect(() => {
+    if (!notFound || denied || redirected.current) return;
+    redirected.current = true;
+    const projectNotice =
+      leftProject === null
+        ? PROJECT_GONE_NOTICE
+        : `คุณออกจากโปรเจกต์ ${leftProject} แล้ว`;
+    // The context reload may remount this page, so the redirect does not
+    // depend on this instance. It yields to a navigation the user started
+    // meanwhile: finished (the pathname moved) or still loading (the data
+    // router moves the location only after the destination's loader).
+    const here = window.location.pathname;
+    void refreshMembershipContext().finally(() => {
+      queryClient.removeQueries({
+        queryKey: projectQueryKeys.all(organizationId),
+      });
+      if (
+        window.location.pathname !== here ||
+        (router !== undefined && router.state.navigation.state !== "idle")
+      )
+        return;
+      void navigate(`/organizations/${organizationId}/projects`, {
+        replace: true,
+        state: { projectNotice },
+      });
+    });
+  }, [
+    notFound,
+    denied,
+    leftProject,
+    queryClient,
+    navigate,
+    router,
+    organizationId,
+    refreshMembershipContext,
+  ]);
   useEffect(() => {
     if (!denied || contextRefresh !== "idle") return;
     setContextRefresh("refreshing");
@@ -144,10 +197,6 @@ function ProjectMembers({
     (target ?? heading.current)?.focus();
     refocusUserId.current = null;
   }, [pendingRole]);
-
-  useEffect(() => {
-    if (leftProject !== null) heading.current?.focus();
-  }, [leftProject]);
 
   const orgRole = organization?.role;
   const canManage =
@@ -343,7 +392,7 @@ function ProjectMembers({
       </Page>
     );
   }
-  if (mePending || contextRefresh === "refreshing") {
+  if (mePending || contextRefresh === "refreshing" || (notFound && !denied)) {
     return (
       <Page>
         {header()}
@@ -387,45 +436,6 @@ function ProjectMembers({
           alertTestId="project-members-denied-alert"
           kind="denied"
           message="คุณไม่มีสิทธิ์ดูโปรเจกต์ขององค์กรนี้"
-        />
-      </Page>
-    );
-  }
-  if (leftProject !== null) {
-    return (
-      <Page>
-        <PageHeader
-          eyebrow="// MEMBERS"
-          title="สมาชิกโปรเจกต์"
-          titleRef={heading}
-          titleTabIndex={-1}
-        />
-        <PageState
-          data-testid="project-members-left"
-          kind="denied"
-          tone="info"
-          message={`คุณออกจากโปรเจกต์ ${leftProject} แล้ว`}
-          action={backLink}
-        />
-      </Page>
-    );
-  }
-  if (notFound) {
-    // Same state for a missing Project and one the user cannot see (AC-08).
-    return (
-      <Page>
-        <PageHeader
-          eyebrow="// MEMBERS"
-          title="สมาชิกโปรเจกต์"
-          titleRef={heading}
-          titleTabIndex={-1}
-        />
-        <PageState
-          data-testid="project-members-not-found"
-          kind="denied"
-          tone="info"
-          message="ไม่พบโปรเจกต์นี้"
-          action={backLink}
         />
       </Page>
     );

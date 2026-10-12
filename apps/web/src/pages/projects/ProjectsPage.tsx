@@ -4,7 +4,7 @@ import {
 } from "@nightwatch/api-contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { EmptyState } from "../../components/shell/EmptyState";
 import { GridIcon, SearchIcon } from "../../components/shell/icons";
@@ -72,6 +72,12 @@ export function ProjectsPage() {
   );
 }
 
+function projectNoticeOf(state: unknown): string | null {
+  if (typeof state !== "object" || state === null) return null;
+  const notice = (state as { projectNotice?: unknown }).projectNotice;
+  return typeof notice === "string" && notice !== "" ? notice : null;
+}
+
 function RolePill({ role }: { role: ProjectSummary["myRole"] }) {
   const hooks = {
     "data-testid": "project-role",
@@ -110,6 +116,10 @@ function ProjectsForOrganization({
     (item) => item.id === organizationId,
   );
   const isMember = organization !== undefined;
+  // Set by the Project pages when they send the user back after a 404.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const arrivalNotice = projectNoticeOf(location.state);
 
   const [view, setView] = useState<View>("all");
   const [searchText, setSearchText] = useState("");
@@ -120,12 +130,24 @@ function ProjectsForOrganization({
   const [notice, setNotice] = useState<{
     text: string;
     kind: "saved" | "role-changed";
-  } | null>(null);
+  } | null>(
+    arrivalNotice === null
+      ? null
+      : { text: arrivalNotice, kind: "role-changed" },
+  );
   const [contextRefresh, setContextRefresh] = useState<
     "idle" | "refreshing" | "done"
   >("idle");
   const heading = useRef<HTMLHeadingElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  // Arriving with a notice moves focus to the heading, so it is read first.
+  // The notice is read once into state, then dropped from history so a reload
+  // or back/forward does not replay it.
+  useEffect(() => {
+    if (arrivalNotice === null) return;
+    heading.current?.focus();
+    void navigate(location.pathname, { replace: true, state: null });
+  }, [arrivalNotice, navigate, location.pathname]);
 
   const list = useQuery({
     queryKey: projectQueryKeys.list(organizationId),
@@ -216,6 +238,28 @@ function ProjectsForOrganization({
     setNotice(reloaded ? { text, kind: "saved" } : null);
   };
 
+  // The Project answered 404: drop what is cached for it, not only the list.
+  const forgetProject = async (projectId: string) => {
+    queryClient.removeQueries({
+      queryKey: projectQueryKeys.project(organizationId, projectId),
+    });
+    // A list fetch still in flight would be cancelled by the context refresh
+    // that follows, and cancelling restores the data it started from, the row
+    // included. Cancel it first so the filter below is what stays.
+    await queryClient.cancelQueries({
+      queryKey: projectQueryKeys.list(organizationId),
+    });
+    // The list reload may fail; the row must not outlive the 404 either way.
+    queryClient.setQueryData<{ projects: ProjectSummary[] }>(
+      projectQueryKeys.list(organizationId),
+      (list) =>
+        list && {
+          ...list,
+          projects: list.projects.filter((item) => item.id !== projectId),
+        },
+    );
+  };
+
   const roleChanged = () => {
     setNotice({ text: ROLE_CHANGED, kind: "role-changed" });
     reload();
@@ -239,7 +283,7 @@ function ProjectsForOrganization({
         }
         if (error.code === "PROJECT_NOT_FOUND") {
           setDeletion(null);
-          reload();
+          void forgetProject(project.id).then(reload);
           return;
         }
       }
@@ -274,9 +318,13 @@ function ProjectsForOrganization({
         actions={actions}
         titleRef={heading}
         titleTabIndex={-1}
+        titleDescribedBy={
+          notice?.kind === "role-changed" ? "projects-notice" : undefined
+        }
       />
       {notice === null ? null : notice.kind === "role-changed" ? (
         <Alert
+          id="projects-notice"
           data-testid="projects-notice-role-changed"
           tone="info"
           role="status"
@@ -643,7 +691,9 @@ function ProjectsForOrganization({
           onStale={(reason: StaleReason) => {
             setDialog(null);
             if (reason === "denied") roleChanged();
-            else reload();
+            else if (dialog.kind === "edit") {
+              void forgetProject(dialog.project.id).then(reload);
+            } else reload();
           }}
         />
       )}

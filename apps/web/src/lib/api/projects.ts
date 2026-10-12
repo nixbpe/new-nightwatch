@@ -36,6 +36,9 @@ export const projectQueryKeys = {
     [...TENANT_QUERY_PREFIX, "projects", organizationId] as const,
   list: (organizationId: string) =>
     [...projectQueryKeys.all(organizationId), "list"] as const,
+  // Detail, members and candidates of one Project; removing it forgets them all.
+  project: (organizationId: string, projectId: string) =>
+    [...projectQueryKeys.all(organizationId), projectId] as const,
   // Every key below shares `all`, so one invalidation of it also refreshes the list.
   detail: (organizationId: string, projectId: string) =>
     [...projectQueryKeys.all(organizationId), projectId, "detail"] as const,

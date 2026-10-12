@@ -266,6 +266,40 @@ async function assertOwnerMayChangeOwner(
   }
 }
 
+// Organization Owners and Admins who are not Project members do not count as
+// Project administrators, same as `assertAnotherAdmin` in the Projects module.
+// Runs under the Organization row lock, so a concurrent Project role change
+// (which takes the row FOR SHARE first) cannot interleave (AC-06).
+async function assertNotLastProjectAdmin(
+  client: PoolClient,
+  organizationId: string,
+  userId: string,
+  subject: "revoke" | "leave",
+): Promise<void> {
+  const result = await client.query<{ name: string }>(
+    `select p.name
+     from project_members pm
+     join projects p on p.id = pm.project_id and p.tenant_id = pm.tenant_id
+     where pm.tenant_id = $1 and pm.user_id = $2 and pm.role = 'admin'
+       and not exists (
+         select 1 from project_members other
+         where other.project_id = pm.project_id and other.tenant_id = pm.tenant_id
+           and other.role = 'admin' and other.user_id <> pm.user_id
+       )
+     order by p.name, p.id`,
+    [organizationId, userId],
+  );
+  if (result.rows.length === 0) return;
+  const names = result.rows.map((row) => row.name).join(", ");
+  throw new AppError(
+    409,
+    "LAST_PROJECT_ADMIN",
+    subject === "revoke"
+      ? `ถอนสมาชิกไม่ได้ ต้องตั้งผู้ดูแลคนอื่นก่อนในโปรเจกต์: ${names}`
+      : `ออกจากองค์กรไม่ได้ ต้องตั้งผู้ดูแลคนอื่นก่อนในโปรเจกต์: ${names}`,
+  );
+}
+
 export async function updateOrganizationMemberRole(
   database: Database,
   input: {
@@ -366,6 +400,12 @@ export async function revokeOrganizationMember(
         target,
         false,
       );
+      await assertNotLastProjectAdmin(
+        client,
+        input.organizationId,
+        target.userId,
+        "revoke",
+      );
       const removed = await client.query<MemberRow>(
         `delete from member where organization_id = $1 and id = $2
        returning id, user_id as "userId", organization_id as "organizationId", role`,
@@ -419,6 +459,12 @@ export async function leaveOrganization(
         member,
         member,
         false,
+      );
+      await assertNotLastProjectAdmin(
+        client,
+        input.organizationId,
+        member.userId,
+        "leave",
       );
       const removed = await client.query<MemberRow>(
         `delete from member where organization_id = $1 and id = $2

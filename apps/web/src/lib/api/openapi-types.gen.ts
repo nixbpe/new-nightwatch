@@ -1533,6 +1533,21 @@ export interface paths {
                         };
                     };
                 };
+                /** @description The member is the last administrator of a Project; the message names it */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "LAST_PROJECT_ADMIN";
+                                message: string;
+                            };
+                        };
+                    };
+                };
             };
         };
         options?: never;
@@ -1576,6 +1591,21 @@ export interface paths {
                                 organizationId: string;
                                 /** @enum {string} */
                                 role: "owner" | "admin" | "viewer" | "auditor";
+                            };
+                        };
+                    };
+                };
+                /** @description The member is the last administrator of a Project; the message names it */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "LAST_PROJECT_ADMIN";
+                                message: string;
                             };
                         };
                     };

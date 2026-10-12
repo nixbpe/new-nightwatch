@@ -17,7 +17,7 @@ import {
 
 // Web side of F-002: an owner adds Organization members to a Project, changes
 // roles, meets the last-admin rule and removes a member; a Project member sees
-// no controls; an Organization member outside the Project gets not-found.
+// no controls; an Organization member outside the Project is sent back to the Project list with a notice.
 const run = randomUUID().slice(0, 8);
 const database = createDatabase(databaseOwnerUrl);
 const pool = database.sql;
@@ -241,14 +241,53 @@ test.describe("other viewers", () => {
     expect((await projectRoles())[people.viewer.userId]).toBe("member");
   });
 
-  test("an Organization member outside the Project gets the not-found state", async ({
+  test("an Organization member outside the Project is sent back to the list with a notice", async ({
     page,
   }) => {
     await signIn(page, people.outsider);
     await page.goto(membersUrl());
-    await expect(page.getByTestId("project-members-not-found")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/organizations/${org}/projects$`));
+    await expect(
+      page.getByTestId("projects-notice-role-changed"),
+    ).toBeVisible();
     await expect(page.getByTestId("project-members-table")).toHaveCount(0);
+    // The lost Project is neither in the list nor anywhere on the page.
+    await expect(page.getByTestId(`project-row-${projectId}`)).toHaveCount(0);
     await expect(page.getByText(`Payments ${run}`)).toHaveCount(0);
+  });
+
+  test("a Project administrator removed from the Project is sent back to a list without it", async ({
+    page,
+  }) => {
+    const promote = await ownerSession.request(
+      "PATCH",
+      `${membersApi()}/${people.viewer.userId}`,
+      { role: "admin" },
+    );
+    expect(promote.status).toBe(200);
+    await signIn(page, people.viewer);
+    // The list and the members page are both cached before access is lost.
+    await page.goto(`/organizations/${org}/projects`);
+    await expect(page.getByTestId(`project-row-${projectId}`)).toBeVisible();
+    await page.getByTestId("project-members-link").click();
+    await expect(page.getByTestId("project-members-table")).toBeVisible();
+
+    const removed = await ownerSession.request(
+      "DELETE",
+      `${membersApi()}/${people.viewer.userId}`,
+    );
+    expect(removed.status).toBe(204);
+    // The next write answers 404, which reloads the Project and redirects.
+    await page
+      .getByTestId(`project-member-row-${people.viewer.userId}`)
+      .getByTestId("project-member-role-select")
+      .selectOption("member");
+
+    await expect(page).toHaveURL(new RegExp(`/organizations/${org}/projects$`));
+    await expect(
+      page.getByTestId("projects-notice-role-changed"),
+    ).toBeVisible();
+    await expect(page.getByTestId(`project-row-${projectId}`)).toHaveCount(0);
   });
 });
 

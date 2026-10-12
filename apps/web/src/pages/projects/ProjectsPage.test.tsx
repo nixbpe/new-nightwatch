@@ -22,6 +22,7 @@ import {
   createProject,
   deleteProject,
   fetchProjectList,
+  projectQueryKeys,
   updateProject,
 } from "../../lib/api/projects";
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
@@ -94,7 +95,8 @@ beforeEach(() => {
   fetchMeContextMock.mockResolvedValue(context("owner"));
 });
 
-function renderPage(organizationId = A) {
+let lastRouter: ReturnType<typeof createMemoryRouter>;
+function renderPage(organizationId = A, state?: unknown) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -107,8 +109,13 @@ function renderPage(organizationId = A) {
         element: <ProjectsPage />,
       },
     ],
-    { initialEntries: [`/organizations/${organizationId}/projects`] },
+    {
+      initialEntries: [
+        { pathname: `/organizations/${organizationId}/projects`, state },
+      ],
+    },
   );
+  lastRouter = router;
   return render(
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
@@ -667,6 +674,89 @@ describe("delete (AC-08)", () => {
   });
 });
 
+describe("a 404 on edit or delete removes the row even if the reload fails (AC-05)", () => {
+  it.each(["edit", "delete"] as const)(
+    "drops the Project from the cached list on %s when the refetch fails",
+    async (action) => {
+      const user = userEvent.setup();
+      const gone = project({ name: "Payments", myRole: "admin" });
+      const other = project({ name: "Other", myRole: "admin" });
+      fetchListMock.mockResolvedValueOnce({ projects: [gone, other] });
+      renderPage();
+      const opener = within(
+        await screen.findByTestId(`project-row-${gone.id}`),
+      ).getByTestId(`project-${action}`);
+      fetchListMock.mockRejectedValue(new ApiError("INTERNAL_ERROR", "x", 500));
+      const notFound = new ApiError("PROJECT_NOT_FOUND", "gone", 404);
+      updateMock.mockRejectedValue(notFound);
+      deleteMock.mockRejectedValue(notFound);
+      await user.click(opener);
+      const dialog = await screen.findByTestId(
+        action === "edit" ? "project-edit-dialog" : "project-delete-dialog",
+      );
+      await user.click(
+        within(dialog).getByTestId(
+          action === "edit" ? "project-form-submit" : "project-delete-confirm",
+        ),
+      );
+      await waitFor(() => {
+        expect(screen.queryByTestId(`project-row-${gone.id}`)).toBeNull();
+      });
+      expect(screen.getByTestId(`project-row-${other.id}`)).toBeVisible();
+      await waitFor(() => {
+        expect(fetchListMock.mock.calls.length).toBeGreaterThan(1);
+      });
+      expect(screen.queryByTestId(`project-row-${gone.id}`)).toBeNull();
+    },
+  );
+});
+
+describe("a 404 while a list refetch is in flight (AC-05)", () => {
+  it.each(["edit", "delete"] as const)(
+    "keeps the Project out of the list on %s although the context refresh cancels that refetch and the next one fails",
+    async (action) => {
+      const user = userEvent.setup();
+      const gone = project({ name: "Payments", myRole: "admin" });
+      const other = project({ name: "Other", myRole: "admin" });
+      fetchListMock.mockResolvedValueOnce({ projects: [gone, other] });
+      renderPage();
+      const opener = within(
+        await screen.findByTestId(`project-row-${gone.id}`),
+      ).getByTestId(`project-${action}`);
+      const queryClient = queryClients[0];
+      if (queryClient === undefined) throw new Error("no query client");
+      // A refetch that never settles by itself: only a cancellation ends it.
+      fetchListMock.mockImplementationOnce(() => new Promise(() => undefined));
+      void queryClient.refetchQueries({
+        queryKey: projectQueryKeys.list(A),
+      });
+      await waitFor(() => {
+        expect(fetchListMock).toHaveBeenCalledTimes(2);
+      });
+      fetchListMock.mockRejectedValue(new ApiError("INTERNAL_ERROR", "x", 500));
+      const notFound = new ApiError("PROJECT_NOT_FOUND", "gone", 404);
+      updateMock.mockRejectedValue(notFound);
+      deleteMock.mockRejectedValue(notFound);
+      await user.click(opener);
+      const dialog = await screen.findByTestId(
+        action === "edit" ? "project-edit-dialog" : "project-delete-dialog",
+      );
+      await user.click(
+        within(dialog).getByTestId(
+          action === "edit" ? "project-form-submit" : "project-delete-confirm",
+        ),
+      );
+      await waitFor(() => {
+        expect(fetchListMock.mock.calls.length).toBeGreaterThan(2);
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId(`project-row-${gone.id}`)).toBeNull();
+      });
+      expect(screen.getByTestId(`project-row-${other.id}`)).toBeVisible();
+    },
+  );
+});
+
 describe("role changed under the user", () => {
   it.each(["edit", "delete"] as const)(
     "reloads the list and the role after a denied %s",
@@ -848,5 +938,85 @@ describe("stale list", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("projects-stale-warning")).toBeNull();
     expect(screen.queryByTestId("projects-notice-saved")).toBeNull();
+  });
+});
+
+describe("a Project that answers 404 (AC-05)", () => {
+  it.each(["edit", "delete"] as const)(
+    "drops the Project's cached detail, members and candidates after a 404 on %s",
+    async (action) => {
+      const user = userEvent.setup();
+      const gone = project({ name: "Payments", myRole: "admin" });
+      const other = project({ name: "Other", myRole: "admin" });
+      fetchListMock.mockResolvedValue({ projects: [gone, other] });
+      renderPage();
+      const queryClient = queryClients[0];
+      if (queryClient === undefined) throw new Error("no query client");
+      for (const id of [gone.id, other.id]) {
+        for (const kind of ["detail", "members", "candidates"] as const) {
+          queryClient.setQueryData([...projectQueryKeys.all(A), id, kind], {
+            cached: id,
+          });
+        }
+      }
+      const denied = new ApiError("PROJECT_NOT_FOUND", "gone", 404);
+      updateMock.mockRejectedValue(denied);
+      deleteMock.mockRejectedValue(denied);
+      await user.click(
+        within(await screen.findByTestId(`project-row-${gone.id}`)).getByTestId(
+          `project-${action}`,
+        ),
+      );
+      const dialog = await screen.findByTestId(
+        action === "edit" ? "project-edit-dialog" : "project-delete-dialog",
+      );
+      await user.click(
+        within(dialog).getByTestId(
+          action === "edit" ? "project-form-submit" : "project-delete-confirm",
+        ),
+      );
+      await waitFor(() => {
+        expect(
+          queryClient
+            .getQueryCache()
+            .findAll({ queryKey: projectQueryKeys.project(A, gone.id) }),
+        ).toEqual([]);
+      });
+      expect(
+        queryClient
+          .getQueryCache()
+          .findAll({ queryKey: projectQueryKeys.project(A, other.id) }),
+      ).toHaveLength(3);
+    },
+  );
+
+  it("announces the notice carried from a Project page and focuses the heading", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, { projectNotice: "ไม่พบโปรเจกต์นี้" });
+    expect(
+      await screen.findByTestId("projects-notice-role-changed"),
+    ).toHaveTextContent("ไม่พบโปรเจกต์นี้");
+    await waitFor(() => {
+      expect(screen.getByTestId("page-title")).toHaveFocus();
+    });
+    // The heading reads the notice after its name, so focus announces it.
+    expect(screen.getByTestId("page-title")).toHaveAccessibleDescription(
+      "ไม่พบโปรเจกต์นี้",
+    );
+  });
+
+  it("drops the carried notice from history after reading it, so reload or back does not replay it", async () => {
+    fetchListMock.mockResolvedValue({ projects: [project()] });
+    renderPage(A, { projectNotice: "ไม่พบโปรเจกต์นี้" });
+    expect(
+      await screen.findByTestId("projects-notice-role-changed"),
+    ).toBeVisible();
+    await waitFor(() => {
+      expect(lastRouter.state.location.state).toBeNull();
+    });
+    expect(lastRouter.state.location.pathname).toBe(
+      `/organizations/${A}/projects`,
+    );
+    expect(screen.getByTestId("projects-notice-role-changed")).toBeVisible();
   });
 });

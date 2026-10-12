@@ -135,7 +135,10 @@ export function useMemberRevoke({
         text:
           failure instanceof ApiError && failure.code === "LAST_OWNER"
             ? "องค์กรต้องมีเจ้าของอย่างน้อยหนึ่งคน ไม่ได้ถอนสมาชิก และโหลดรายการล่าสุดแล้ว"
-            : "ถอนสมาชิกไม่สำเร็จ โหลดรายการล่าสุดแล้ว",
+            : failure instanceof ApiError &&
+                failure.code === "LAST_PROJECT_ADMIN"
+              ? failure.message
+              : "ถอนสมาชิกไม่สำเร็จ โหลดรายการล่าสุดแล้ว",
       });
     } else if (!removed) {
       setNotice({
