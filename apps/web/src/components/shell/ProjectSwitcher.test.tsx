@@ -770,6 +770,27 @@ describe("ProjectSwitcher", () => {
     expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
   });
 
+  it("AC-06: a Project URL of an Organization the user is not in selects nothing and asks for no Project data", async () => {
+    const ORG_C = "33333333-3333-4333-8333-333333333333";
+    renderShell({
+      path: `/organizations/${ORG_C}/projects/${P_ALPHA}/members`,
+    });
+    // The active Organization stays reachable through the empty state, which links to its projects page.
+    const empty = await screen.findByTestId("shell-project-empty");
+    expect(empty).toHaveAttribute("href", `/organizations/${ORG_A}/projects`);
+    expect(screen.queryByTestId("shell-project-switch")).toBeNull();
+    expect(screen.queryByTestId("shell-project-name")).toBeNull();
+    expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
+    expect(
+      within(screen.getByTestId("shell-breadcrumb")).queryByText("Alpha"),
+    ).toBeNull();
+    // Let any query or save that would be wrongly started settle before asserting it was not.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fetchProjectListMock).not.toHaveBeenCalled();
+    expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    expect(rememberLastProjectMock).not.toHaveBeenCalled();
+  });
+
   it("AC-07: the breadcrumb reads Organization, Project, page on a Project route", async () => {
     renderShell({ path: membersPath(P_ALPHA) });
     const breadcrumb = await screen.findByTestId("shell-breadcrumb");

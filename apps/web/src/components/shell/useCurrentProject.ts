@@ -42,6 +42,9 @@ export function useCurrentProject(): CurrentProject {
     projectRoute === null
       ? undefined
       : me?.organizations.find((org) => org.id === projectRoute.organizationId);
+  // A Project URL naming an Organization the user is not in selects nothing: no Project, list or last-Project
+  // request for any Organization. The switcher keeps the active one so its link to the projects page stays.
+  const denied = projectRoute !== null && routeOrg === undefined;
   const scopeOrg = routeOrg ?? activeOrg;
   const organizationId = scopeOrg?.id ?? null;
   const routeProjectId =
@@ -50,14 +53,14 @@ export function useCurrentProject(): CurrentProject {
   const list = useQuery({
     queryKey: projectQueryKeys.list(organizationId ?? ""),
     queryFn: () => fetchProjectList(organizationId ?? ""),
-    enabled: organizationId !== null,
+    enabled: organizationId !== null && !denied,
   });
   const last = useQuery({
     queryKey: projectQueryKeys.last(organizationId ?? ""),
     queryFn: () => fetchLastProject(organizationId ?? ""),
-    enabled: organizationId !== null && routeProjectId === null,
+    enabled: organizationId !== null && !denied && routeProjectId === null,
   });
-  const projects = list.data?.projects;
+  const projects = denied ? [] : list.data?.projects;
 
   const candidate = routeProjectId ?? last.data?.projectId ?? null;
   const project =
@@ -69,8 +72,9 @@ export function useCurrentProject(): CurrentProject {
     project?.id ??
     (routeProjectId !== null && projects === undefined ? routeProjectId : null);
 
-  const resolving =
-    projects === undefined
+  const resolving = denied
+    ? "ready"
+    : projects === undefined
       ? list.isError
         ? "error"
         : "loading"
