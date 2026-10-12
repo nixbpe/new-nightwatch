@@ -31,6 +31,7 @@ const SSL_EVENT_TYPE: Record<SslLevel, MonitorNotificationEventType> = {
 export const writeMonitorNotification: MonitorEventHook = async (tx, event) => {
   const base = {
     tenantId: event.tenantId,
+    projectId: event.projectId,
     monitorId: event.monitorId,
     monitorName: event.monitorName,
     occurredAt: event.occurredAt,

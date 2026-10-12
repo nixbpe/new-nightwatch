@@ -30,6 +30,7 @@ const logger = createLogger(
 );
 const run = randomUUID().slice(0, 8);
 const org = randomUUID();
+const project = randomUUID();
 const otherOrg = randomUUID();
 const requester = `req-${run}`;
 const colleague = `col-${run}`;
@@ -237,6 +238,10 @@ beforeAll(async () => {
     "insert into organization (id, name, slug, audit_recording_started_at) values ($1, 'A', $2, now() - interval '400 days'), ($3, 'B', $4, now() - interval '400 days')",
     [org, `a-${run}`, otherOrg, `b-${run}`],
   );
+  await sql(
+    "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'P', $3)",
+    [project, org, `p-${run}`],
+  );
   await addUser(requester, "Requester", "admin");
   await addUser(colleague, "Colleague", "owner");
   await addUser(outsider, "Outsider");
@@ -256,9 +261,9 @@ describe("the file (AC-15, AC-24, AC-26)", () => {
   it("writes a CSV with one row per event, in order, with real field values, guards formulas, and keeps secrets out", async () => {
     const monitorId = randomUUID();
     await sql(
-      `insert into monitors (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-       values ($1, $2, $3, 'https://x.example.test/', 60, 10, $4)`,
-      [monitorId, org, MONITOR_NAME, randomUUID()],
+      `insert into monitors (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds, client_request_id)
+       values ($1, $2, $5, $3, 'https://x.example.test/', 60, 10, $4)`,
+      [monitorId, org, MONITOR_NAME, randomUUID(), project],
     );
     const changes: AuditChange[] = [
       {
@@ -489,9 +494,9 @@ describe("the file (AC-15, AC-24, AC-26)", () => {
   it("applies category, actor, time and search filters like the list", async () => {
     const monitorId = randomUUID();
     await sql(
-      `insert into monitors (id, tenant_id, name, url, interval_seconds, timeout_seconds, client_request_id)
-       values ($1, $2, 'Checkout API', 'https://x.example.test/', 60, 10, $3)`,
-      [monitorId, org, randomUUID()],
+      `insert into monitors (id, tenant_id, project_id, name, url, interval_seconds, timeout_seconds, client_request_id)
+       values ($1, $2, $4, 'Checkout API', 'https://x.example.test/', 60, 10, $3)`,
+      [monitorId, org, randomUUID(), project],
     );
     const monitorEvent = await seedEvent({
       actor: colleague,

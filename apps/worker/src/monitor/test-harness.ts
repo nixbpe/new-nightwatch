@@ -150,6 +150,9 @@ export type SeedOptions = {
 
 export type SeededMonitor = {
   tenantId: string;
+  projectId: string;
+  /** An unused id for a second Project of the Organization. */
+  otherProjectId: string;
   monitorId: string;
   claimToken: string;
   job(overrides?: Partial<MonitorCheckJob>): MonitorCheckJob;
@@ -161,6 +164,7 @@ export async function seedMonitor(
   options: SeedOptions = {},
 ): Promise<SeededMonitor> {
   const tenantId = randomUUID();
+  const projectId = randomUUID();
   const monitorId = randomUUID();
   const claimToken = options.claimToken ?? randomUUID();
   const interval = options.intervalSeconds ?? 60;
@@ -170,14 +174,18 @@ export async function seedMonitor(
     "insert into organization (id, name, slug) values ($1, 'Checker', $2)",
     [tenantId, `checker-${randomUUID()}`],
   );
+  await db.owner.sql.query(
+    "insert into projects (id, tenant_id, name, slug) values ($1, $2, 'Checker', $3)",
+    [projectId, tenantId, `checker-${projectId.slice(0, 8)}`],
+  );
   await withTenantContextRaw(db.runtime, tenantId, async (client) => {
     await client.query(
       `insert into monitors
-         (id, tenant_id, name, url, method, headers, query_params, auth_type,
-          api_key_header_name, expected_status_ranges, assertions,
+         (id, tenant_id, project_id, name, url, method, headers, query_params,
+          auth_type, api_key_header_name, expected_status_ranges, assertions,
           interval_seconds, timeout_seconds, status, check_config_version,
           client_request_id)
-       values ($1, $2, 'Checked monitor', $3, $4, $5::jsonb, $6::jsonb, $7, $8,
+       values ($1, $2, $16, 'Checked monitor', $3, $4, $5::jsonb, $6::jsonb, $7, $8,
                $9::jsonb, $10::jsonb, $11, $12, $13, $14, $15)`,
       [
         monitorId,
@@ -197,6 +205,7 @@ export async function seedMonitor(
         options.status ?? "active",
         version,
         randomUUID(),
+        projectId,
       ],
     );
     await client.query(
@@ -210,6 +219,8 @@ export async function seedMonitor(
   });
   return {
     tenantId,
+    projectId,
+    otherProjectId: randomUUID(),
     monitorId,
     claimToken,
     job: (overrides = {}) => ({

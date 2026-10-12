@@ -114,15 +114,15 @@ export function createMaterializationDependencies(
           `insert into notification_inbox_items
           (id, intent_id, origin, recipient_user_id, scope_kind, tenant_id,
            event_type, occurred_at, actor_user_id, actor_display_name,
-           subject_monitor_id, subject_monitor_name, monitor_reason, ssl_not_after,
-           subject_audit_export_id)
+           subject_project_id, subject_monitor_id, subject_monitor_name,
+           monitor_reason, ssl_not_after, subject_audit_export_id)
          select gen_random_uuid()::text,
                 intent.id, intent.origin, recipient.recipient_user_id, intent.scope_kind,
                 intent.tenant_id, intent.event_type, intent.occurred_at,
                 intent.actor_user_id, intent.actor_display_name,
-                intent.subject_monitor_id, intent.subject_monitor_name,
-                intent.monitor_reason, intent.ssl_not_after,
-                intent.subject_audit_export_id
+                intent.subject_project_id, intent.subject_monitor_id,
+                intent.subject_monitor_name, intent.monitor_reason,
+                intent.ssl_not_after, intent.subject_audit_export_id
          from notification_intents as intent
          join notification_intent_recipients as recipient
            on recipient.intent_id = intent.id
@@ -136,6 +136,17 @@ export function createMaterializationDependencies(
               select 1
               from unnest(string_to_array(current_member.role, ',')) as role_token(value)
               where btrim(role_token.value) in ('owner', 'admin')
+            )
+            -- A monitor event also reaches the members of its Project.
+            or (
+              intent.event_type like 'MONITOR\\_%'
+              and exists (
+                select 1
+                from project_members as project_member
+                where project_member.tenant_id = intent.tenant_id
+                  and project_member.project_id = intent.subject_project_id
+                  and project_member.user_id = recipient.recipient_user_id
+              )
             )
           )
          where intent.id = $1
