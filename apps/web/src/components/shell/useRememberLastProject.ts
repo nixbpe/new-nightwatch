@@ -15,7 +15,9 @@ import { useCurrentProject } from "./useCurrentProject";
  * Unmounting retires the hook (the shell remounts when the signed-in identity changes):
  * a waiting save is dropped and no later continuation sends or writes the cache, so one
  * user's queued navigation never reaches the next user's session. A save already in
- * flight cannot be recalled.
+ * flight cannot be recalled. A successful save cancels any read of the last Project
+ * still in flight, writes the Project to the cache and marks it stale, so a read that
+ * began before the save committed cannot leave the previous Project in the switcher.
  */
 export function useRememberLastProject(): void {
   const { organizationId, routeProjectId, project } = useCurrentProject();
@@ -29,6 +31,7 @@ export function useRememberLastProject(): void {
   const waiting = useRef<{ organizationId: string; projectId: string } | null>(
     null,
   );
+  const isRetired = () => retired.current;
   const projectId =
     project !== null && project.id === routeProjectId ? project.id : null;
 
@@ -54,17 +57,25 @@ export function useRememberLastProject(): void {
 
     function send(target: { organizationId: string; projectId: string }): void {
       inFlight.current = true;
+      const targetKey = `${target.organizationId}:${target.projectId}`;
+      const lastKey = projectQueryKeys.last(target.organizationId);
       rememberLastProject(target.organizationId, target.projectId)
         .then(
-          () => {
+          async () => {
             if (retired.current) return;
             // A newer Project change owns the cache; an earlier reply must not overwrite it.
-            if (sent.current !== `${target.organizationId}:${target.projectId}`)
-              return;
-            queryClient.setQueryData(
-              projectQueryKeys.last(target.organizationId),
-              { projectId: target.projectId },
-            );
+            if (sent.current !== targetKey) return;
+            // A read of the last Project that started before this save committed may still
+            // answer with the previous Project. Cancel it so it cannot land after the write.
+            await queryClient.cancelQueries({ queryKey: lastKey });
+            // Re-read through the ref: either may have changed while cancelling.
+            if (isRetired() || sent.current !== targetKey) return;
+            queryClient.setQueryData(lastKey, {
+              projectId: target.projectId,
+            });
+            // Reads issued while the save was pending are gone; one issued from here on sees
+            // the committed Project. Active readers refetch, inactive ones read it on mount.
+            void queryClient.invalidateQueries({ queryKey: lastKey });
           },
           () => undefined,
         )

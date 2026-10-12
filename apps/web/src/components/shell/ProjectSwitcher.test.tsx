@@ -513,6 +513,49 @@ describe("ProjectSwitcher", () => {
       expect(cached(view)).toEqual({ projectId: null });
     });
 
+    it("a last-Project read started while the save is pending cannot bring the previous Project back", async () => {
+      const view = renderShell({ path: "/workspace", last: P_ALPHA });
+      await waitFor(() => {
+        expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+          "Alpha",
+        );
+      });
+      const saves = deferSaves();
+      // The first read keeps its fixture; the next one (on leaving Project scope) is held
+      // and reads the previous Project; later reads see what the server stored.
+      let reads = 0;
+      let answerStale: (() => void) | undefined;
+      fetchLastProjectMock.mockImplementation(() => {
+        reads += 1;
+        if (reads === 1)
+          return new Promise((resolve) => {
+            answerStale = () => {
+              resolve({ projectId: P_ALPHA });
+            };
+          });
+        return Promise.resolve({ projectId: P_BRAVO });
+      });
+      await view.router.navigate(membersPath(P_BRAVO));
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_BRAVO]);
+      });
+      await view.router.navigate("/workspace");
+      await waitFor(() => {
+        expect(reads).toBe(1);
+      });
+
+      saves[0]?.settle("ok");
+      await waitFor(() => {
+        expect(cached(view)).toEqual({ projectId: P_BRAVO });
+      });
+      answerStale?.();
+      await settled();
+      expect(cached(view)).toEqual({ projectId: P_BRAVO });
+      expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+        "Bravo",
+      );
+    });
+
     it("sends the waiting save after a failed one, without an error", async () => {
       const view = renderShell({ path: "/workspace", last: null });
       const saves = deferSaves();
