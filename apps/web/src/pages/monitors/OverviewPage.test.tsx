@@ -327,7 +327,7 @@ describe("Overview view toggle", () => {
     expect(screen.getByTestId("monitor-overview-table")).toBeInTheDocument();
   });
 
-  it("names the status chip group and keeps counts out of the chip names", async () => {
+  it("names the status chip group and puts each count in its chip name", async () => {
     fetchListMock.mockResolvedValue(
       list([item({ id: "cc2c1bb9-982f-4928-b022-8f808a7a1926", name: "Web" })]),
     );
@@ -352,8 +352,38 @@ describe("Overview view toggle", () => {
     expect(all).toHaveAccessibleName();
     expect(all).toHaveAttribute("aria-pressed", "true");
     const count = within(all).getByTestId("monitor-overview-health-count");
-    expect(count).toHaveAttribute("aria-hidden", "true");
+    expect(count).not.toHaveAttribute("aria-hidden");
     expect(count).toHaveTextContent(/^1$/);
+    expect(all).toHaveAccessibleName("ทั้งหมด 1");
+  });
+
+  it("reads every status chip's count in its accessible name", async () => {
+    fetchListMock.mockResolvedValue(
+      list([
+        item({ id: "a2000000-0000-4000-8000-000000000001", health: "down" }),
+        item({ id: "a2000000-0000-4000-8000-000000000002", health: "up" }),
+        item({ id: "a2000000-0000-4000-8000-000000000003", health: "up" }),
+        item({
+          id: "a2000000-0000-4000-8000-000000000004",
+          health: "paused",
+          status: "paused",
+        }),
+      ]),
+    );
+    renderPage();
+    const group = await screen.findByTestId("monitor-overview-health-filter");
+    const expected: [string, string][] = [
+      ["all", "ทั้งหมด 4"],
+      ["down", "ล่ม 1"],
+      ["up", "ใช้งานได้ 2"],
+      ["paused", "หยุดชั่วคราว 1"],
+      ["unknown", "ไม่ทราบสถานะ 0"],
+    ];
+    for (const [key, name] of expected) {
+      expect(
+        within(group).getByTestId(`monitor-overview-health-${key}`),
+      ).toHaveAccessibleName(name);
+    }
   });
 
   it("shows no-data text without a time zone note and the full URL in cards", async () => {
@@ -2485,11 +2515,11 @@ describe("Project monitor list", () => {
       .getAllByRole("button")
       .map((button) => button.textContent);
     expect(labels).toEqual([
-      "ทั้งหมด3",
-      "ล่ม1",
-      "ใช้งานได้1",
-      "หยุดชั่วคราว1",
-      expect.stringMatching(/^ไม่ทราบ?สถานะ0$|0$/),
+      "ทั้งหมด 3",
+      "ล่ม 1",
+      "ใช้งานได้ 1",
+      "หยุดชั่วคราว 1",
+      "ไม่ทราบสถานะ 0",
     ]);
     expect(screen.getByTestId("monitor-overview-health-all")).toHaveAttribute(
       "aria-pressed",

@@ -468,10 +468,11 @@ function OverviewForProject({
                 )}
               >
                 {chip.label}
+                {/* The count is part of the name ("ใช้งานได้ 10"): no other element carries it. */}
+                {chip.count === undefined ? null : " "}
                 {chip.count === undefined ? null : (
                   <span
                     data-testid="monitor-overview-health-count"
-                    aria-hidden="true"
                     className="font-mono text-xs"
                   >
                     {chip.count}
