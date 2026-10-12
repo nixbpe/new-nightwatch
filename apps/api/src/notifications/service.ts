@@ -257,6 +257,31 @@ const itemFields = `
   subject_monitor_id as "subjectMonitorId", subject_monitor_name as "subjectMonitorName",
   monitor_reason as "monitorReason", ssl_not_after as "sslNotAfter"`;
 
+// A monitor item is served only while the reader can still see its Project:
+// an Organization Owner/Admin, or a current member of the item's Project. A
+// reader removed from the Project keeps the Organization but not the item, and
+// regains it when added back. Other categories are not touched. `organization`
+// and `user` are SQL parameter references such as "$1".
+function monitorProjectAccess(organization: string, user: string): string {
+  return `
+  and (
+    event_type not like 'MONITOR\\_%'
+    or exists (
+      select 1
+      from member as reader,
+           unnest(string_to_array(reader.role, ',')) as role_token(value)
+      where reader.organization_id = ${organization} and reader.user_id = ${user}
+        and btrim(role_token.value) in ('owner', 'admin')
+    )
+    or exists (
+      select 1 from project_members as pm
+      where pm.tenant_id = ${organization}
+        and pm.project_id = notification_inbox_items.subject_project_id
+        and pm.user_id = ${user}
+    )
+  )`;
+}
+
 const completedDispatch = `
   and exists (
     select 1 from notification_dispatch_ledger as d
@@ -301,6 +326,7 @@ async function tenantRows(
     `select ${itemFields} from notification_inbox_items
      where scope_kind = 'tenant' and tenant_id = $1 and recipient_user_id = $2
        and exists (select 1 from member where organization_id = $1 and user_id = $2)
+       ${monitorProjectAccess("$1", "$2")}
        and expires_at > now() ${completedDispatch} ${keyset}
      order by occurred_at desc, id desc limit ${limitParameter}`,
     values,
@@ -387,7 +413,7 @@ async function countUnreadInScope(
       .query<{ count: string }>(
         `select count(*)::text as count from notification_inbox_items
          where recipient_user_id = $1 and expires_at > now() ${completedDispatch}
-           and read_at is null ${values.length === 2 ? "and scope_kind = 'tenant' and tenant_id = $2 and exists (select 1 from member where organization_id = $2 and user_id = $1)" : "and scope_kind = 'account' and user_id = $1"}`,
+           and read_at is null ${values.length === 2 ? `and scope_kind = 'tenant' and tenant_id = $2 and exists (select 1 from member where organization_id = $2 and user_id = $1) ${monitorProjectAccess("$2", "$1")}` : "and scope_kind = 'account' and user_id = $1"}`,
         values,
       )
       .then((result) => Number(result.rows[0]?.count ?? 0));
@@ -422,7 +448,7 @@ async function updateVisibleItem(
       .query<InboxRow>(
         `update notification_inbox_items set read_at = coalesce(read_at, now())
          where id = $1 and recipient_user_id = $2
-           and expires_at > now() ${completedDispatch} ${values.length === 3 ? "and scope_kind = 'tenant' and tenant_id = $3 and exists (select 1 from member where organization_id = $3 and user_id = $2)" : "and scope_kind = 'account' and user_id = $2"}
+           and expires_at > now() ${completedDispatch} ${values.length === 3 ? `and scope_kind = 'tenant' and tenant_id = $3 and exists (select 1 from member where organization_id = $3 and user_id = $2) ${monitorProjectAccess("$3", "$2")}` : "and scope_kind = 'account' and user_id = $2"}
          returning ${itemFields}`,
         values,
       )
@@ -488,6 +514,7 @@ export async function markAllInboxRead(
                select 1 from member
                where organization_id = $2 and user_id = $1
              )
+             ${monitorProjectAccess("$2", "$1")}
            )
          )`,
         [scope.userId, scope.organizationId],
