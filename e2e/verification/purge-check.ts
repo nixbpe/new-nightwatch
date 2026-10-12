@@ -18,6 +18,7 @@ import {
   basicConfig,
   createOrganization,
   createPerson,
+  createProject,
   monitorPath,
   signInApi,
   targetHostname,
@@ -50,9 +51,10 @@ const org = await createOrganization(
 );
 const person = await createPerson(pool, "purge", org);
 await addMember(pool, org, person.userId, "owner");
+const project = await createProject(pool, org, "verify");
 try {
   const session = await signInApi(person);
-  const created = await session.request("POST", monitorPath(org), {
+  const created = await session.request("POST", monitorPath(org, project), {
     ...basicConfig("purge", `http://${host}:${String(target.port)}/health`),
     intervalSeconds: 900,
     clientRequestId: randomUUID(),

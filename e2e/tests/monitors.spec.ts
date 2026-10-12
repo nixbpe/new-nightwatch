@@ -11,12 +11,15 @@ import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
   addMember,
+  addProjectMember,
   basicConfig,
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   monitorPath,
+  monitorUrl,
   signInApi,
   targetHostname,
   type Person,
@@ -34,6 +37,8 @@ let flapTarget: Target;
 let host: string;
 let orgA: string;
 let orgB: string;
+let projA: string;
+let projB: string;
 let owner: Person;
 let viewer: Person;
 let flapId: string;
@@ -78,16 +83,20 @@ test.beforeAll(async () => {
   await addMember(pool, orgA, owner.userId, "owner");
   await addMember(pool, orgB, owner.userId, "owner");
   await addMember(pool, orgA, viewer.userId, "viewer");
+  // Monitors live in a Project; the viewer reads one as a Project member.
+  projA = await createProject(pool, orgA, `E2E Monitors A ${run}`);
+  projB = await createProject(pool, orgB, `E2E Monitors B ${run}`);
+  await addProjectMember(pool, orgA, projA, viewer.userId, "member");
 
   const session = await signInApi(owner);
   // Started first so its two failures and the recovery fit the suite's runtime.
-  const flap = await session.request("POST", monitorPath(orgA), {
+  const flap = await session.request("POST", monitorPath(orgA, projA), {
     ...basicConfig(flapName, urlOf(flapTarget, "/health")),
     clientRequestId: randomUUID(),
   });
   expect(flap.status).toBe(201);
   flapId = monitorWriteResponseSchema.parse(flap.body).monitor.id;
-  const other = await session.request("POST", monitorPath(orgB), {
+  const other = await session.request("POST", monitorPath(orgB, projB), {
     ...basicConfig(otherOrgMonitor, urlOf(target, "/health")),
     clientRequestId: randomUUID(),
   });
@@ -112,7 +121,7 @@ test("owner tests a config before saving, sees pass and a failing target, then s
 }) => {
   const before = await monitorCount(orgA);
   await signIn(page, owner);
-  await page.goto(`/organizations/${orgA}/monitors/new`);
+  await page.goto(`/organizations/${orgA}/projects/${projA}/monitors/new`);
   await page.getByTestId("monitor-form-name").fill(crudName);
   await page
     .getByTestId("monitor-form-url")
@@ -166,7 +175,7 @@ test("owner tests a config before saving, sees pass and a failing target, then s
   target.setDelay(4000);
   const createdResponse = page.waitForResponse(
     (response) =>
-      new URL(response.url()).pathname === monitorPath(orgA) &&
+      new URL(response.url()).pathname === monitorPath(orgA, projA) &&
       response.request().method() === "POST",
   );
   await page.getByTestId("monitor-form-save").click();
@@ -188,7 +197,9 @@ test("owner tests a config before saving, sees pass and a failing target, then s
     status: "active",
     version: 1,
   });
-  await expect(page).toHaveURL(`/organizations/${orgA}/monitors/${crudId}`);
+  await expect(page).toHaveURL(
+    `/organizations/${orgA}/projects/${projA}/monitors/${crudId}`,
+  );
   await expect(page.getByTestId("monitor-detail-url")).toHaveText(
     urlOf(target, "/health?probe=1"),
   );
@@ -217,7 +228,7 @@ test("owner sees the first result within a scheduler poll", async ({
 }) => {
   test.setTimeout(120_000);
   await signIn(page, owner);
-  await page.goto(`/organizations/${orgA}/monitors`);
+  await page.goto(`/organizations/${orgA}/projects/${projA}/monitors`);
   const row = page.getByTestId(`monitor-list-row-${crudId}`);
   await expect(row).toBeVisible();
   // The scheduler polls every 10 s; the list refetches on its own.
@@ -238,7 +249,7 @@ test("owner sees the first result within a scheduler poll", async ({
 test("owner pauses, resumes and deletes the monitor", async ({ page }) => {
   test.setTimeout(120_000);
   await signIn(page, owner);
-  await page.goto(`/organizations/${orgA}/monitors`);
+  await page.goto(`/organizations/${orgA}/projects/${projA}/monitors`);
   await page
     .getByTestId(`monitor-list-row-${crudId}`)
     .getByTestId(`monitor-list-name-${crudId}`)
@@ -274,7 +285,9 @@ test("owner pauses, resumes and deletes the monitor", async ({ page }) => {
   const dialog = page.getByTestId("monitor-detail-delete-dialog");
   await expect(dialog.getByTestId("confirmation-cancel")).toBeFocused();
   await dialog.getByTestId("monitor-detail-delete-confirm").click();
-  await expect(page).toHaveURL(new RegExp(`/organizations/${orgA}/monitors$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/organizations/${orgA}/projects/${projA}/monitors$`),
+  );
   await expect(page.getByTestId("monitor-overview-notice")).toBeVisible();
   await expect(page.getByTestId("monitor-overview-notice")).toHaveText(/\S/);
   await expect(page.getByTestId(`monitor-list-name-${crudId}`)).toHaveCount(0);
@@ -288,7 +301,7 @@ test("viewer reads Overview and Detail and sees no action", async ({
   page,
 }) => {
   await signIn(page, viewer);
-  await page.goto(`/organizations/${orgA}/monitors`);
+  await page.goto(`/organizations/${orgA}/projects/${projA}/monitors`);
   const link = page.getByTestId(`monitor-list-name-${flapId}`);
   await expect(link).toBeVisible();
   await expect(page.getByTestId("monitor-overview-readonly")).toBeVisible();
@@ -305,28 +318,28 @@ test("viewer reads Overview and Detail and sees no action", async ({
   }
   await expect(page.getByTestId("monitor-detail-read-only")).toHaveAttribute(
     "data-role",
-    "viewer",
+    "member",
   );
 
   // Direct routes and requests are refused, and nothing reaches the target.
   const hits = flapTarget.hits.length;
-  await page.goto(`/organizations/${orgA}/monitors/new`);
+  await page.goto(`/organizations/${orgA}/projects/${projA}/monitors/new`);
   await expect(page.getByTestId("monitor-form-save")).toHaveCount(0);
   const session = await signInApi(viewer);
-  const created = await session.request("POST", monitorPath(orgA), {
+  const created = await session.request("POST", monitorPath(orgA, projA), {
     ...basicConfig(`viewer-${run}`, urlOf(target, "/health")),
     clientRequestId: randomUUID(),
   });
   const tested = await session.request(
     "POST",
-    monitorPath(orgA, "/test"),
+    monitorPath(orgA, projA, "/test"),
     basicConfig(`viewer-${run}`, urlOf(flapTarget, "/health")),
   );
   expect([created.status, tested.status]).toEqual([403, 403]);
   expect(flapTarget.hits.length).toBe(hits);
 });
 
-test("Organization switch leaves Overview, Detail and the form for the new Organization", async ({
+test("Organization switch leaves Overview, Detail and the form for the new Organization's Projects", async ({
   page,
 }) => {
   await signIn(page, owner);
@@ -338,22 +351,28 @@ test("Organization switch leaves Overview, Detail and the form for the new Organ
       .click();
   };
 
-  await page.goto(`/organizations/${orgA}/monitors`);
+  await page.goto(monitorUrl(orgA, projA));
   await expect(page.getByTestId(`monitor-list-name-${flapId}`)).toBeVisible();
   await switchTo(orgB);
-  await expect(page).toHaveURL(new RegExp(`/organizations/${orgB}/monitors$`));
+  // A Project belongs to one Organization, so the page leaves for the new one's Projects.
+  await expect(page).toHaveURL(new RegExp(`/organizations/${orgB}/projects$`));
+  await expect(page.getByTestId("shell-main")).not.toContainText(flapName);
+
+  await page.goto(monitorUrl(orgB, projB));
   await expect(page.getByTestId(`monitor-list-name-${otherId}`)).toBeVisible();
   await expect(page.getByTestId(`monitor-list-name-${flapId}`)).toHaveCount(0);
 
-  await page.goto(`/organizations/${orgB}/monitors/new`);
+  await page.goto(monitorUrl(orgB, projB, "/new"));
   await page.getByTestId("monitor-form-name").fill("typed in B");
   await switchTo(orgA);
-  await expect(page).toHaveURL(new RegExp(`/organizations/${orgA}/monitors$`));
+  await expect(page).toHaveURL(new RegExp(`/organizations/${orgA}/projects$`));
+  await expect(page.getByTestId("monitor-form-name")).toHaveCount(0);
 
+  await page.goto(monitorUrl(orgA, projA));
   await page.getByTestId(`monitor-list-name-${flapId}`).click();
   await expect(page.getByTestId("monitor-detail-title")).toHaveText(flapName);
   await switchTo(orgB);
-  await expect(page).toHaveURL(new RegExp(`/organizations/${orgB}/monitors$`));
+  await expect(page).toHaveURL(new RegExp(`/organizations/${orgB}/projects$`));
   await expect(page.getByTestId("shell-main")).not.toContainText(flapName);
 });
 
@@ -402,7 +421,10 @@ async function waitForInboxItem(
       );
       await expect(
         row.getByTestId("notification-monitor-link"),
-      ).toHaveAttribute("href", `/organizations/${orgA}/monitors/${flapId}`);
+      ).toHaveAttribute(
+        "href",
+        `/organizations/${orgA}/projects/${projA}/monitors/${flapId}`,
+      );
       return notification.id;
     } catch {
       const response = await page.request.get("/api/notifications");
@@ -457,15 +479,31 @@ test("a target that goes down and comes back reaches the inbox once each", async
       .getByTestId("notification-title"),
   ).not.toHaveText(downTitle);
 
-  const counts = await pool.query<{ event_type: string; n: number }>(
-    `select event_type, count(*)::int as n from notification_inbox_items
+  // AC-05: the Organization's Owner and the Project's member each get one item per event, never two.
+  const counts = await pool.query<{
+    recipient_user_id: string;
+    event_type: string;
+    n: number;
+  }>(
+    `select recipient_user_id, event_type, count(*)::int as n from notification_inbox_items
       where tenant_id = $1 and event_type in ('MONITOR_DOWN', 'MONITOR_RECOVERED')
-      group by event_type`,
+      group by recipient_user_id, event_type`,
     [orgA],
   );
-  expect(
-    Object.fromEntries(counts.rows.map((r) => [r.event_type, r.n])),
-  ).toEqual({ MONITOR_DOWN: 1, MONITOR_RECOVERED: 1 });
+  const perPerson = (userId: string) =>
+    Object.fromEntries(
+      counts.rows
+        .filter((r) => r.recipient_user_id === userId)
+        .map((r) => [r.event_type, r.n]),
+    );
+  expect(perPerson(owner.userId)).toEqual({
+    MONITOR_DOWN: 1,
+    MONITOR_RECOVERED: 1,
+  });
+  expect(perPerson(viewer.userId)).toEqual({
+    MONITOR_DOWN: 1,
+    MONITOR_RECOVERED: 1,
+  });
 });
 
 test("a notification of a deleted monitor stays and its link reads as not found", async ({
@@ -478,7 +516,7 @@ test("a notification of a deleted monitor stays and its link reads as not found"
   const session = await signInApi(owner);
   const removed = await session.request(
     "DELETE",
-    monitorPath(orgA, `/${flap.rows[0]!.id}`),
+    monitorPath(orgA, projA, `/${flap.rows[0]!.id}`),
   );
   expect(removed.status).toBeLessThan(300);
   await pool.query(
@@ -492,7 +530,9 @@ test("a notification of a deleted monitor stays and its link reads as not found"
     .getByTestId(`notification-row-${downId}`)
     .getByTestId("notification-monitor-link")
     .click();
-  await expect(page).toHaveURL(`/organizations/${orgA}/monitors/${flapId}`);
+  await expect(page).toHaveURL(
+    `/organizations/${orgA}/projects/${projA}/monitors/${flapId}`,
+  );
   await expect(page.getByTestId("monitor-detail-not-found")).toBeVisible();
   await expect(page.getByTestId("monitor-detail-not-found")).toHaveText(/\S/);
 });
@@ -500,13 +540,13 @@ test("a notification of a deleted monitor stays and its link reads as not found"
 test("Resume shows unknown until a new result arrives", async ({ page }) => {
   test.setTimeout(3 * 60_000);
   const session = await signInApi(owner);
-  const created = await session.request("POST", monitorPath(orgA), {
+  const created = await session.request("POST", monitorPath(orgA, projA), {
     ...basicConfig(`resume-${run}`, urlOf(target, "/health")),
     clientRequestId: randomUUID(),
   });
   expect(created.status).toBe(201);
   const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
-  const detail = `/organizations/${orgA}/monitors/${id}`;
+  const detail = `/organizations/${orgA}/projects/${projA}/monitors/${id}`;
   await signIn(page, owner);
   await page.goto(detail);
   await expect(page.getByTestId("monitor-detail-health")).toHaveAttribute(

@@ -9,12 +9,15 @@ import { createDatabase } from "../../packages/db/src/index.ts";
 import { startMonitorTarget } from "../support/monitor-target.mjs";
 import {
   addMember,
+  addProjectMember,
   basicConfig,
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   monitorPath,
+  monitorUrl,
   shot,
   signInApi,
   targetHostname,
@@ -35,6 +38,9 @@ let host: string;
 let orgA: string;
 let orgEmpty: string;
 let orgOther: string;
+let projA: string;
+let projEmpty: string;
+let projOther: string;
 let owner: Person;
 let ownerSession: ApiSession;
 let monitorId: string;
@@ -46,7 +52,7 @@ const extraOrgs: string[] = [];
 const monitorName = `states-${run}`;
 
 const urlOf = (path: string) => `http://${host}:${String(target.port)}${path}`;
-const overview = () => `/organizations/${orgA}/monitors`;
+const overview = () => monitorUrl(orgA, projA);
 
 async function signIn(page: Page, person: Person) {
   await page.goto("/login");
@@ -70,16 +76,27 @@ test.beforeAll(async () => {
   owner = people.owner;
   await addMember(pool, orgEmpty, owner.userId, "owner");
   await addMember(pool, orgOther, owner.userId, "owner");
+  // Monitors live in a Project; the viewer and the auditor read it as Project members.
+  projA = await createProject(pool, orgA, `E2E States A ${run}`);
+  projEmpty = await createProject(pool, orgEmpty, `E2E States Empty ${run}`);
+  projOther = await createProject(pool, orgOther, `E2E States Other ${run}`);
+  for (const role of ["viewer", "auditor"] as const) {
+    await addProjectMember(pool, orgA, projA, people[role].userId, "member");
+  }
   ownerSession = await signInApi(owner);
-  const created = await ownerSession.request("POST", monitorPath(orgA), {
+  const created = await ownerSession.request("POST", monitorPath(orgA, projA), {
     ...basicConfig(monitorName, urlOf("/health")),
     clientRequestId: randomUUID(),
   });
   monitorId = monitorWriteResponseSchema.parse(created.body).monitor.id;
-  const other = await ownerSession.request("POST", monitorPath(orgOther), {
-    ...basicConfig(`foreign-${run}`, urlOf("/health")),
-    clientRequestId: randomUUID(),
-  });
+  const other = await ownerSession.request(
+    "POST",
+    monitorPath(orgOther, projOther),
+    {
+      ...basicConfig(`foreign-${run}`, urlOf("/health")),
+      clientRequestId: randomUUID(),
+    },
+  );
   otherMonitorId = monitorWriteResponseSchema.parse(other.body).monitor.id;
 });
 
@@ -128,7 +145,7 @@ test.describe("leaf in the sidebar and the command palette", () => {
       for (const path of ["", "/new", `/${monitorId}`, `/${monitorId}/edit`]) {
         await page.goto(`${overview()}${path}`);
         const leaf = nav.getByTestId(
-          "shell-nav-/organizations/:organizationId/monitors",
+          "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
         );
         await expect(leaf).toBeVisible();
         await expect(leaf).toHaveAttribute("aria-current", "page");
@@ -151,9 +168,7 @@ test.describe("leaf in the sidebar and the command palette", () => {
       await expect(palette).toBeVisible();
       await palette.getByTestId("shell-command-query").fill(searchTerm);
       await expect(
-        palette.getByTestId(
-          `shell-command-option-/organizations/${orgA}/monitors`,
-        ),
+        palette.getByTestId(`shell-command-option-${overview()}`),
       ).toBeVisible();
     });
   }
@@ -165,12 +180,13 @@ test.describe("Overview states", () => {
   }) => {
     await signIn(page, owner);
 
-    await page.goto(`/organizations/${orgEmpty}/monitors`);
+    await page.goto(monitorUrl(orgEmpty, projEmpty));
     await expect(page.getByTestId("monitor-overview-empty")).toBeVisible();
     await expect(page.getByTestId("monitor-overview-empty")).toHaveText(/\S/);
     await expect(page.getByTestId("monitor-overview-empty-add")).toBeVisible();
 
-    const listUrl = /\/api\/organizations\/[^/]+\/monitors(\?.*)?$/;
+    const listUrl =
+      /\/api\/organizations\/[^/]+\/projects\/[^/]+\/monitors(\?.*)?$/;
     let failList = true;
     let delayMs = 1500;
     await page.route(listUrl, async (route) => {
@@ -443,10 +459,14 @@ test.describe("edit, change and races", () => {
     page,
   }) => {
     test.setTimeout(3 * 60_000);
-    const created = await ownerSession.request("POST", monitorPath(orgA), {
-      ...basicConfig(`change-${run}`, urlOf("/health")),
-      clientRequestId: randomUUID(),
-    });
+    const created = await ownerSession.request(
+      "POST",
+      monitorPath(orgA, projA),
+      {
+        ...basicConfig(`change-${run}`, urlOf("/health")),
+        clientRequestId: randomUUID(),
+      },
+    );
     const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
     await page.goto(`${overview()}/${id}`);
@@ -484,10 +504,14 @@ test.describe("edit, change and races", () => {
   test("deleting a monitor that another session deleted goes to Overview with the notice", async ({
     page,
   }) => {
-    const created = await ownerSession.request("POST", monitorPath(orgA), {
-      ...basicConfig(`raced-${run}`, urlOf("/health")),
-      clientRequestId: randomUUID(),
-    });
+    const created = await ownerSession.request(
+      "POST",
+      monitorPath(orgA, projA),
+      {
+        ...basicConfig(`raced-${run}`, urlOf("/health")),
+        clientRequestId: randomUUID(),
+      },
+    );
     const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
     await page.goto(`${overview()}/${id}`);
@@ -496,7 +520,7 @@ test.describe("edit, change and races", () => {
     await expect(dialog).toBeVisible();
     const other = await ownerSession.request(
       "DELETE",
-      monitorPath(orgA, `/${id}`),
+      monitorPath(orgA, projA, `/${id}`),
     );
     expect(other.status).toBeLessThan(300);
     await dialog.getByTestId("monitor-detail-delete-confirm").click();
@@ -508,17 +532,21 @@ test.describe("edit, change and races", () => {
   test("a Detail left open shows not found after the monitor is deleted elsewhere", async ({
     page,
   }) => {
-    const created = await ownerSession.request("POST", monitorPath(orgA), {
-      ...basicConfig(`vanish-${run}`, urlOf("/health")),
-      clientRequestId: randomUUID(),
-    });
+    const created = await ownerSession.request(
+      "POST",
+      monitorPath(orgA, projA),
+      {
+        ...basicConfig(`vanish-${run}`, urlOf("/health")),
+        clientRequestId: randomUUID(),
+      },
+    );
     const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
     await page.goto(`${overview()}/${id}`);
     await expect(page.getByTestId("monitor-detail-title")).toHaveText(
       `vanish-${run}`,
     );
-    await ownerSession.request("DELETE", monitorPath(orgA, `/${id}`));
+    await ownerSession.request("DELETE", monitorPath(orgA, projA, `/${id}`));
     await page.getByTestId("monitor-detail-toggle").click();
     await expect(page.getByTestId("monitor-detail-not-found")).toBeVisible({
       timeout: 15_000,
@@ -535,18 +563,19 @@ test("the Test limit shows the wait from the server and disables the button", as
   const person = await createPerson(pool, "rate", org);
   userIds.push(person.userId);
   await addMember(pool, org, person.userId, "owner");
+  const project = await createProject(pool, org, `E2E Rate ${run}`);
   const session = await signInApi(person);
   const config = basicConfig("rate", urlOf("/status/200"));
   for (let i = 0; i < 10; i++) {
     const reply = await session.request(
       "POST",
-      monitorPath(org, "/test"),
+      monitorPath(org, project, "/test"),
       config,
     );
     expect(reply.status).toBe(200);
   }
   await signIn(page, person);
-  await page.goto(`/organizations/${org}/monitors/new`);
+  await page.goto(monitorUrl(org, project, "/new"));
   await page.getByTestId("monitor-form-name").fill("rate");
   await page.getByTestId("monitor-form-url").fill(urlOf("/status/200"));
   const before = target.hits.length;
@@ -576,12 +605,16 @@ test.describe("secrets in the browser", () => {
     page,
   }) => {
     const token = `ui-token-${randomUUID()}`;
-    const created = await ownerSession.request("POST", monitorPath(orgA), {
-      ...basicConfig(`secret-ui-${run}`, urlOf("/health")),
-      auth: { type: "bearer" },
-      secrets: [{ slot: "auth.token", value: token }],
-      clientRequestId: randomUUID(),
-    });
+    const created = await ownerSession.request(
+      "POST",
+      monitorPath(orgA, projA),
+      {
+        ...basicConfig(`secret-ui-${run}`, urlOf("/health")),
+        auth: { type: "bearer" },
+        secrets: [{ slot: "auth.token", value: token }],
+        clientRequestId: randomUUID(),
+      },
+    );
     const id = monitorWriteResponseSchema.parse(created.body).monitor.id;
     await signIn(page, owner);
 
@@ -679,7 +712,7 @@ test("a first failing result reads as one failure, not as down", async ({
   page,
 }) => {
   test.setTimeout(90_000);
-  const created = await ownerSession.request("POST", monitorPath(orgA), {
+  const created = await ownerSession.request("POST", monitorPath(orgA, projA), {
     ...basicConfig(`first-fail-${run}`, urlOf("/status/503")),
     clientRequestId: randomUUID(),
   });
@@ -697,7 +730,7 @@ test("a first failing result reads as one failure, not as down", async ({
   await expect(page.getByTestId("monitor-detail-down-banner")).toHaveCount(0);
 });
 
-test("an Organization at 50 monitors shows the reason and the API refuses a 51st", async ({
+test("a Project at 20 monitors shows the reason and the API refuses a 21st", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -706,16 +739,18 @@ test("an Organization at 50 monitors shows the reason and the API refuses a 51st
   const person = await createPerson(pool, "limit", org);
   userIds.push(person.userId);
   await addMember(pool, org, person.userId, "owner");
+  const project = await createProject(pool, org, `E2E Limit ${run}`);
+  const otherProject = await createProject(pool, org, `E2E Limit other ${run}`);
   const session = await signInApi(person);
-  // Same name and URL for all: duplicates are allowed inside an Organization.
-  for (let i = 0; i < 50; i++) {
-    const reply = await session.request("POST", monitorPath(org), {
+  // Same name and URL for all: duplicates are allowed inside a Project.
+  for (let i = 0; i < 20; i++) {
+    const reply = await session.request("POST", monitorPath(org, project), {
       ...basicConfig("same name", urlOf("/health")),
       clientRequestId: randomUUID(),
     });
     expect(reply.status).toBe(201);
   }
-  const over = await session.request("POST", monitorPath(org), {
+  const over = await session.request("POST", monitorPath(org, project), {
     ...basicConfig("same name", urlOf("/health")),
     clientRequestId: randomUUID(),
   });
@@ -724,7 +759,7 @@ test("an Organization at 50 monitors shows the reason and the API refuses a 51st
     "MONITOR_LIMIT_REACHED",
   );
   await signIn(page, person);
-  await page.goto(`/organizations/${org}/monitors`);
+  await page.goto(monitorUrl(org, project));
   await expect(page.getByTestId("monitor-overview-limit-reason")).toBeVisible();
   await expect(page.getByTestId("monitor-overview-limit-reason")).toHaveText(
     /\S/,
@@ -736,7 +771,17 @@ test("an Organization at 50 monitors shows the reason and the API refuses a 51st
     "select count(*)::int n, count(*) filter (where status = 'active')::int active from monitors where tenant_id = $1",
     [org],
   );
-  expect(kept.rows[0]).toEqual({ n: 50, active: 50 });
+  expect(kept.rows[0]).toEqual({ n: 20, active: 20 });
+  // The cap is per Project: another Project of the same Organization still accepts one.
+  const elsewhere = await session.request(
+    "POST",
+    monitorPath(org, otherProject),
+    {
+      ...basicConfig("same name", urlOf("/health")),
+      clientRequestId: randomUUID(),
+    },
+  );
+  expect(elsewhere.status).toBe(201);
   await pool.query("delete from organization where id = $1", [org]);
 });
 
@@ -756,10 +801,10 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
   const id = randomUUID();
   await pool.query(
     `insert into monitors
-      (id, tenant_id, name, url, client_request_id, interval_seconds, created_at)
-     values ($1, $2, 'issue57-known', 'https://fixture.example', $3, 60,
+      (id, tenant_id, project_id, name, url, client_request_id, interval_seconds, created_at)
+     values ($1, $2, $4, 'issue57-known', 'https://fixture.example', $3, 60,
        now() - interval '31 days')`,
-    [id, orgA, randomUUID()],
+    [id, orgA, randomUUID(), projA],
   );
   const path = `${overview()}/${id}`;
   const card = page.getByTestId("monitor-response-times");
@@ -838,7 +883,7 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
     for (const range of ["24h", "7d", "30d"]) {
       const reply = await session.request(
         "GET",
-        monitorPath(orgA, `/${id}/response-times?range=${range}`),
+        monitorPath(orgA, projA, `/${id}/response-times?range=${range}`),
       );
       expect(reply.status).toBe(200);
       const response = monitorResponseTimesResponseSchema.parse(reply.body);
@@ -889,7 +934,7 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
   await expectKpis(card, "0 ms", "0 ms", "0", "0");
   await stateShots("check-error");
   const responseUrl = new RegExp(
-    `/api/organizations/${orgA}/monitors/${id}/response-times`,
+    `/api/organizations/${orgA}/projects/${projA}/monitors/${id}/response-times`,
   );
   await page.route(responseUrl, (route) => route.abort());
   await page.reload();
@@ -955,7 +1000,7 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
     release = resolve;
   });
   const delayedUrl = new RegExp(
-    `/api/organizations/${orgA}/monitors/${id}/response-times.*range=30d`,
+    `/api/organizations/${orgA}/projects/${projA}/monitors/${id}/response-times.*range=30d`,
   );
   await page.route(delayedUrl, async (route) => {
     const actual = await route.fetch();
@@ -1009,9 +1054,15 @@ test("pending real tenant A response cannot enter tenant B after confirmed switc
   const ids = [randomUUID(), randomUUID()];
   for (const [index, org] of [orgA, orgOther].entries()) {
     await pool.query(
-      `insert into monitors (id, tenant_id, name, url, client_request_id, interval_seconds)
-       values ($1, $2, $3, 'https://fixture.example', $4, 60)`,
-      [ids[index], org, `tenant-known-${index}`, randomUUID()],
+      `insert into monitors (id, tenant_id, project_id, name, url, client_request_id, interval_seconds)
+       values ($1, $2, $5, $3, 'https://fixture.example', $4, 60)`,
+      [
+        ids[index],
+        org,
+        `tenant-known-${index}`,
+        randomUUID(),
+        index === 0 ? projA : projOther,
+      ],
     );
     await pool.query(
       `insert into monitor_check_results (monitor_id, tenant_id, scheduled_for, checked_at,
@@ -1034,7 +1085,7 @@ test("pending real tenant A response cannot enter tenant B after confirmed switc
     observed = resolve;
   });
   const responseUrl = new RegExp(
-    `/api/organizations/${orgA}/monitors/${ids[0]}/response-times.*range=7d`,
+    `/api/organizations/${orgA}/projects/${projA}/monitors/${ids[0]}/response-times.*range=7d`,
   );
   await page.route(responseUrl, async (route) => {
     const actual = await route.fetch();
@@ -1049,9 +1100,17 @@ test("pending real tenant A response cannot enter tenant B after confirmed switc
     .getByTestId("shell-organization-menu")
     .getByTestId(`shell-organization-${orgOther}`)
     .click();
+  // A Project belongs to one Organization: the detail page leaves for the new one's Projects.
   await expect(page).toHaveURL(
-    new RegExp(`/organizations/${orgOther}/monitors$`),
+    new RegExp(`/organizations/${orgOther}/projects$`),
   );
+  // Client navigation keeps the pending response of tenant A in flight: the sidebar's Project group opens the new Organization's Project.
+  await page
+    .getByTestId(
+      "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
+    )
+    .click();
+  await expect(page).toHaveURL(monitorUrl(orgOther, projOther));
   await page.getByTestId(`monitor-list-name-${ids[1]}`).click();
   await expectKpis(card, "999 ms", "999 ms", "1", "0");
   const completed = page.waitForResponse((response) =>
@@ -1074,9 +1133,9 @@ test("Detail links to the checks history and back by client navigation (AC-79)",
 }) => {
   const id = randomUUID();
   await pool.query(
-    `insert into monitors (id, tenant_id, name, url, client_request_id, interval_seconds)
-     values ($1, $2, 'issue85-history', 'https://fixture.example', $3, 60)`,
-    [id, orgA, randomUUID()],
+    `insert into monitors (id, tenant_id, project_id, name, url, client_request_id, interval_seconds)
+     values ($1, $2, $4, 'issue85-history', 'https://fixture.example', $3, 60)`,
+    [id, orgA, randomUUID(), projA],
   );
   await pool.query(
     `insert into monitor_check_results
@@ -1106,9 +1165,7 @@ test("Detail links to the checks history and back by client navigation (AC-79)",
   });
 
   await page.getByTestId("monitor-detail-checks-link").click();
-  await expect(page).toHaveURL(
-    new RegExp(`/organizations/${orgA}/monitors/${id}/checks$`),
-  );
+  await expect(page).toHaveURL(new RegExp(`${overview()}/${id}/checks$`));
   await expect(page.getByTestId("monitor-checks-table")).toBeVisible();
   await expect(
     page.getByTestId("monitor-checks-table").getByTestId("monitor-check-row"),
@@ -1124,7 +1181,9 @@ test("Detail links to the checks history and back by client navigation (AC-79)",
   await expect(
     page
       .getByTestId("shell-navigation")
-      .getByTestId("shell-nav-/organizations/:organizationId/monitors"),
+      .getByTestId(
+        "shell-nav-/organizations/:organizationId/projects/:projectId/monitors",
+      ),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("shell-breadcrumb-current")).toHaveAttribute(
     "aria-current",
@@ -1133,9 +1192,7 @@ test("Detail links to the checks history and back by client navigation (AC-79)",
   await shot(page, "85-checks-history");
 
   await page.getByTestId("monitor-checks-back").click();
-  await expect(page).toHaveURL(
-    new RegExp(`/organizations/${orgA}/monitors/${id}$`),
-  );
+  await expect(page).toHaveURL(new RegExp(`${overview()}/${id}$`));
   await expect(page.getByTestId("monitor-detail-title")).toHaveText(
     "issue85-history",
   );

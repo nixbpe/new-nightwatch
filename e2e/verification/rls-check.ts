@@ -15,6 +15,7 @@ import {
   basicConfig,
   createOrganization,
   createPerson,
+  createProject,
   monitorPath,
   signInApi,
   targetHostname,
@@ -142,15 +143,23 @@ const pa = await createPerson(poolDb.sql, "rls-a", orgA);
 const pb = await createPerson(poolDb.sql, "rls-b", orgB);
 await addMember(poolDb.sql, orgA, pa.userId, "owner");
 await addMember(poolDb.sql, orgB, pb.userId, "owner");
+const projects = {
+  [orgA]: await createProject(poolDb.sql, orgA, "rls"),
+  [orgB]: await createProject(poolDb.sql, orgB, "rls"),
+};
 try {
   const make = async (person: typeof pa, org: string, name: string) => {
     const session = await signInApi(person);
-    const reply = await session.request("POST", monitorPath(org), {
-      ...basicConfig(name, `http://${host}:${String(target.port)}/health`),
-      auth: { type: "bearer" },
-      secrets: [{ slot: "auth.token", value: rememberSecret() }],
-      clientRequestId: randomUUID(),
-    });
+    const reply = await session.request(
+      "POST",
+      monitorPath(org, projects[org]!),
+      {
+        ...basicConfig(name, `http://${host}:${String(target.port)}/health`),
+        auth: { type: "bearer" },
+        secrets: [{ slot: "auth.token", value: rememberSecret() }],
+        clientRequestId: randomUUID(),
+      },
+    );
     return (reply.body as { monitor: { id: string } }).monitor.id;
   };
   const idA = await make(pa, orgA, "rls-a");

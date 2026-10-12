@@ -12,10 +12,12 @@ import { createDatabase } from "../../packages/db/src/index.ts";
 import { startResponseTarget } from "../support/response-target.mjs";
 import {
   addMember,
+  addProjectMember,
   basicConfig,
   cleanUp,
   createOrganization,
   createPerson,
+  createProject,
   databaseOwnerUrl,
   monitorPath,
   shot,
@@ -36,6 +38,7 @@ type Target = Awaited<ReturnType<typeof startResponseTarget>>;
 const targets: Target[] = [];
 let host: string;
 let orgId: string;
+let projectId: string;
 let owner: Person;
 let admin: Person;
 let viewer: Person;
@@ -67,7 +70,7 @@ const targetOf = {} as Record<Key, Target>;
 const ROUND_MS = 60_000;
 
 const detailPath = (key: Key) =>
-  `/organizations/${orgId}/monitors/${monitorIds[key]}`;
+  `/organizations/${orgId}/projects/${projectId}/monitors/${monitorIds[key]}`;
 const urlOf = (key: Key, path: string) =>
   `http://${host}:${String(targetOf[key].port)}${path}`;
 
@@ -89,10 +92,14 @@ async function startTarget(
 }
 
 async function createMonitor(key: Key, config: Record<string, unknown>) {
-  const created = await ownerSession.request("POST", monitorPath(orgId), {
-    ...config,
-    clientRequestId: randomUUID(),
-  });
+  const created = await ownerSession.request(
+    "POST",
+    monitorPath(orgId, projectId),
+    {
+      ...config,
+      clientRequestId: randomUUID(),
+    },
+  );
   expect(created.status).toBe(201);
   monitorIds[key] = monitorWriteResponseSchema.parse(created.body).monitor.id;
 }
@@ -107,6 +114,9 @@ test.beforeAll(async () => {
   await addMember(pool, orgId, owner.userId, "owner");
   await addMember(pool, orgId, admin.userId, "admin");
   await addMember(pool, orgId, viewer.userId, "viewer");
+  // Monitors live in a Project; the viewer reads them as a Project member.
+  projectId = await createProject(pool, orgId, `E2E Feed ${run}`);
+  await addProjectMember(pool, orgId, projectId, viewer.userId, "member");
   ownerSession = await signInApi(owner);
 
   // Pass, fail, fail, pass: the second failure opens the incident, the next pass closes it.
@@ -175,7 +185,7 @@ test.describe.configure({ mode: "serial" });
 async function lastResponseApi(key: Key, session = ownerSession) {
   const reply = await session.request(
     "GET",
-    monitorPath(orgId, `/${monitorIds[key]}/last-response`),
+    monitorPath(orgId, projectId, `/${monitorIds[key]}/last-response`),
   );
   return reply;
 }
@@ -447,10 +457,10 @@ test("P58-05: nothing secret reaches the stored response, API replies and tables
     const reply = await ownerSession.request("GET", path);
     haystacks.set(label, JSON.stringify(reply.body));
   };
-  await get("monitor list", monitorPath(orgId));
-  await get("recent events", monitorPath(orgId, "/recent-events"));
+  await get("monitor list", monitorPath(orgId, projectId));
+  await get("recent events", monitorPath(orgId, projectId, "/recent-events"));
   for (const key of Object.keys(names) as Key[]) {
-    const base = monitorPath(orgId, `/${monitorIds[key]}`);
+    const base = monitorPath(orgId, projectId, `/${monitorIds[key]}`);
     await get(`${key} detail`, base);
     await get(`${key} events`, `${base}/events`);
     await get(`${key} last-response`, `${base}/last-response`);
@@ -527,7 +537,7 @@ test("P58-01, P58-03: pass, fail, fail, pass gives three feed rows and recent ev
       async () => {
         const reply = await ownerSession.request(
           "GET",
-          monitorPath(orgId, `/${monitorIds.feed}/events`),
+          monitorPath(orgId, projectId, `/${monitorIds.feed}/events`),
         );
         return monitorEventsResponseSchema
           .parse(reply.body)
@@ -541,7 +551,7 @@ test("P58-01, P58-03: pass, fail, fail, pass gives three feed rows and recent ev
     (
       await ownerSession.request(
         "GET",
-        monitorPath(orgId, `/${monitorIds.feed}/events`),
+        monitorPath(orgId, projectId, `/${monitorIds.feed}/events`),
       )
     ).body,
   ).events;
@@ -581,10 +591,14 @@ test("P58-01, P58-03: pass, fail, fail, pass gives three feed rows and recent ev
   expect(new Set(titles).size).toBe(3);
   await shot(page, "p58-01-feed");
 
-  await page.goto(`/organizations/${orgId}/monitors`);
+  await page.goto(`/organizations/${orgId}/projects/${projectId}/monitors`);
   const recent = monitorRecentEventsResponseSchema.parse(
-    (await ownerSession.request("GET", monitorPath(orgId, "/recent-events")))
-      .body,
+    (
+      await ownerSession.request(
+        "GET",
+        monitorPath(orgId, projectId, "/recent-events"),
+      )
+    ).body,
   ).events;
   const written = [];
   const recentRows = page
@@ -603,7 +617,8 @@ test("P58-01, P58-03: pass, fail, fail, pass gives three feed rows and recent ev
     const matching = recent.find(
       (event) =>
         event.kind === kind &&
-        href === `/organizations/${orgId}/monitors/${event.monitorId}` &&
+        href ===
+          `/organizations/${orgId}/projects/${projectId}/monitors/${event.monitorId}` &&
         event.at === at,
     );
     expect(matching).toBeDefined();
@@ -617,7 +632,7 @@ test("P58-01, P58-03: pass, fail, fail, pass gives three feed rows and recent ev
   expect(written).toEqual(
     recent.map((event) => ({
       kind: event.kind,
-      href: `/organizations/${orgId}/monitors/${event.monitorId}`,
+      href: `/organizations/${orgId}/projects/${projectId}/monitors/${event.monitorId}`,
       at: event.at,
       name: event.monitorName,
     })),
