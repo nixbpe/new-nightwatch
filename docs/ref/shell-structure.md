@@ -6,11 +6,12 @@ The shell is the chrome around every signed-in page: a sidebar, a header and a s
 
 ```
 ┌──────────┬──────────────────────────────────────────────┐
-│ Org      │ ⊟  Org › Page            [ค้นหาทั้งหมด… ⌘K] 🔔 │  header
+│ Org      │ ⊟  Org › Project › Page  [ค้นหาทั้งหมด… ⌘K] 🔔 │  header
 │ switcher ├──────────────────────────────────────────────┤
-│          │                                              │
-│ nav      │  main: scrollable, full width, 32 px padding │
-│ sections │      routed page inside an error boundary    │
+│ Project  │                                              │
+│ switcher │  main: scrollable, full width, 32 px padding │
+│ nav      │      routed page inside an error boundary    │
+│ groups   │                                              │
 │          │                                              │
 │ account  │  footer at the bottom of the scroll          │
 └──────────┴──────────────────────────────────────────────┘
@@ -31,28 +32,33 @@ The header toggle overrides the breakpoint default until the breakpoint itself c
 One navigation definition feeds the sidebar, the command palette and the settings tab strip; nothing is defined twice.
 
 - Leaf: label, icon, path, optional roles (hidden from other roles), optional palette entries, optional count. The count is a server value in monospace Secondary text, `aria-hidden` so the link name stays the label, hidden in the rail and whenever the value is unknown or failed (never a stale or guessed number, CMP-01). Sources: the inbox shows the unread count shared with the notifications badge (hidden at zero); the monitor list shows `summary.total` of the active organization's monitor list.
-- Group: label and leaves, rendered as a labelled section, never an accordion; the rail shows a divider in its place; a group with nothing visible disappears.
-- A path may carry an organization parameter resolved against the active organization; a leaf that needs one is hidden when there is none.
+- Group: label, scope and leaves, rendered as a labelled section, never an accordion; the rail shows a divider in its place; a group with nothing visible disappears. The scope says what the pages belong to: `project` (the current Project), `organization` (the active organization) or `personal` (the signed-in user). Order: Project, organization, personal. The Project group has no heading of its own: the Project switcher above the nav is its heading.
+- A path may carry an organization parameter (`:organizationId`, the active organization) and a Project parameter (`:projectId`, the current Project); a leaf that needs one is hidden when it is unknown.
+- One row is current at a time: of the rows whose path matches the URL, the one with the longest path. A Project page is therefore current, and the organization's Project list above it is not. Rows are links with an explicit `aria-current="page"`, not `NavLink`, which marks every path prefix.
 - Palette entries are searchable in ⌘K under the leaf's label and form the leaf's tab strip, but are never sidebar rows. The leaf is active on every one of its tabs.
 - Only real destinations are listed; no placeholder routes.
 - Active row: Primary tint (design-system Tokens) as fill with Primary text, a 3 px Primary bar on the left edge (also on the rail button), medium weight, `aria-current="page"`. The sidebar width changes over 150 ms; hover fills over 100 ms.
 
-Example (NightWatch): ภาพรวม; ตรวจสถานะบริการ; การแจ้งเตือน; การตั้งค่าส่วนตัว with tabs โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล; group องค์กร with โปรเจกต์ทั้งหมด, สมาชิก and ตั้งค่าการแจ้งเตือน (owner, admin).
+Example (NightWatch): group โปรเจกต์ with สมาชิกโปรเจกต์; group องค์กร with ภาพรวม, ตรวจสถานะบริการ, โปรเจกต์ทั้งหมด, สมาชิก, ตั้งค่าการแจ้งเตือน (owner, admin) and บันทึกกิจกรรม (owner, admin, auditor); group ส่วนตัว with การแจ้งเตือน and การตั้งค่าส่วนตัว with tabs โปรไฟล์, ความปลอดภัย, เซสชันและอุปกรณ์, การแสดงผล. Project pages that do not exist yet (overview, monitors, AWS connections) are not listed.
 
 ## Sidebar
 
 - Organization switcher on top, in a 56 px row that matches the header: organization mark (solid Primary with On primary initials, monospace when Latin per TYP-04, 4 px corner), name, `องค์กร · <role>`. With more than one membership it is a button opening a `menuitemradio` list. Skeleton while the context loads.
+- Project switcher under it, above the nav, so its menu is not clipped by the nav's scroll: small "โปรเจกต์" label, Project mark (same shape as the organization mark), name, slug and the user's Project role. A button with `aria-haspopup="menu"`; the menu opens over the nav with a search field (focus lands there), a group "โปรเจกต์ที่เข้าร่วม" (name, slug, role) and, for an Owner or Admin only, a group "ไม่ได้เข้าร่วม"; the current Project is a `menuitemradio` with `aria-checked="true"`, Primary tint and a check mark. Below a divider: "โปรเจกต์ทั้งหมด" and, for an Owner or Admin, "สร้างโปรเจกต์" (links to the Projects page with `?create=1`, which opens its create dialog). In the rail the button is the Project's initials. Skeleton while the Project list loads; a retry button when it fails; with no Project at all a link to the Projects page ("ยังไม่มีโปรเจกต์").
+- Current Project: the Project in the URL (a Project route, `/organizations/:organizationId/projects/:projectId/…`), else the one the server resolves (`GET /api/me/last-project`: the remembered Project while the user can still read it, else the first readable one by name, else none). A URL that names a Project missing from the user's list selects nothing.
+- Switching: the same page of the new Project; a detail page of one item goes to the Project page above it (the list), found by matching the URL against the Project leaves; a page outside any Project goes to the first Project leaf. The choice is saved with `PUT /api/me/last-project` (best effort: a failure reloads the Project list and does not block the switch). Focus returns to the switcher button after the route change.
 - Account menu at the bottom: avatar (circle, inset fill with strong edge, Text initials, monospace when Latin per TYP-04), name, e-mail. Opens upward: role pill and organization, one link to personal settings, the theme control, sign-out.
 
 ## Header
 
-The breadcrumb root is the organization the page acts on: on an organization-scoped route the one named in the URL (a bookmark may name an organization other than the active one), elsewhere the active organization. The page crumb comes from the navigation definition, so an id never shows; section labels are not crumbs. Below 1024 px the breadcrumb shows only the current page and search is icon-only.
+The breadcrumb root is the organization the page acts on: on an organization-scoped route the one named in the URL (a bookmark may name an organization other than the active one), elsewhere the active organization. On a Project route a second crumb names the Project (not a link until a Project page exists; "โปรเจกต์" while its name is unknown). The page crumb comes from the navigation definition, so an id never shows; section labels are not crumbs. Below 1024 px the breadcrumb shows only the current page and search is icon-only.
 
 ## Overlays
 
 Shared menu-button behavior: focus moves in on open; ↑↓ move between items; Escape, an outside click or selecting an item returns focus to the trigger.
 
-- Command palette: modal search-all over the navigation definition, resolved for the active organization and the user's role, so every result navigates. ↑↓ select, ↵ opens, Escape closes, Tab stays inside. The footer names the organization being searched.
+- Project menu: see Sidebar. Inside the mobile drawer the first Escape closes an open menu and refocuses its button; the next one closes the drawer.
+- Command palette: modal search-all over the navigation definition, resolved for the active organization, the current Project and the user's role, so every result navigates. ↑↓ select, ↵ opens, Escape closes, Tab stays inside. The footer names the organization being searched.
 - Notifications popover: title row, the five most recent inbox rows (two lines each), footer links to the inbox page and, for owners and admins, the organization's notification settings. Loading is a skeleton, no data an honest empty line; the unread badge is the server's count as a Text-filled counter (Text fill, Canvas numerals in monospace).
 - Inbox rows (popover and inbox page): an unread row carries a Primary dot and a semibold title; a read row a hollow strong-edge dot and a regular title.
 
@@ -80,6 +86,7 @@ Three states: system, light, dark. An explicit choice overrides the system prefe
 
 - Tenant context is provided at shell level, not per page, because the switcher, the account menu and the breadcrumb all read the active organization.
 - Which routes get chrome is decided by route nesting and the route loaders, not by a client-side redirect guard, so one place decides who may see what.
+- The Project switcher sits outside the scrolling nav and the last Project is stored on the server per user and Organization, so it follows the user across browsers. The server checks access again on every read, so a removed or demoted user never lands on a Project they can no longer read.
 - The breadcrumb roots at the organization in the URL so a bookmark to another organization's page names that organization.
 - A skip link targets the main region, and the error boundary around the routed page keeps the chrome usable when a page crashes.
 - Skeleton and empty-state primitives use Text at low opacity so they read on both themes.
