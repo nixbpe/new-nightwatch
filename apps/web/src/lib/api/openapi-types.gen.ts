@@ -6042,6 +6042,233 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/last-project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve the Project to open in an Organization
+         * @description Read-only. Access is checked on every call: the remembered Project, else the first readable one, else null.
+         */
+        get: {
+            parameters: {
+                query: {
+                    organizationId: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The resolved Project id, or null when none is readable */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            projectId: string | null;
+                        };
+                    };
+                };
+                /** @description Invalid project input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "VALIDATION_ERROR";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or permission is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        /** Remember the last Project the user opened in an Organization */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        organizationId: string;
+                        projectId: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The remembered Project */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            projectId: string | null;
+                        };
+                    };
+                };
+                /** @description Invalid project input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "VALIDATION_ERROR";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description No valid session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNAUTHENTICATED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description Email is unverified, membership is denied, or permission is denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "EMAIL_NOT_VERIFIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "MEMBERSHIP_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        } | {
+                            error: {
+                                /** @enum {string} */
+                                code: "PERMISSION_DENIED";
+                                message: string;
+                                details?: unknown;
+                            };
+                        };
+                    };
+                };
+                /** @description The Project does not exist, is in another Organization, or is not visible to the user */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "PROJECT_NOT_FOUND";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+                /** @description The request body is not JSON */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: {
+                                /** @enum {string} */
+                                code: "UNSUPPORTED_MEDIA_TYPE";
+                                message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{organizationId}/projects": {
         parameters: {
             query?: never;

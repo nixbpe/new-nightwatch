@@ -5,7 +5,10 @@ import type { Logger } from "@nightwatch/shared";
 import { auditDenials } from "../audit/denials";
 import type { Auth } from "../auth";
 import { requireVerifiedSession } from "../me/service";
-import { projectRouteDeclarations as routes } from "./contract";
+import {
+  lastProjectRouteDeclarations as lastProjectRoutes,
+  projectRouteDeclarations as routes,
+} from "./contract";
 import {
   addProjectMembers,
   listMemberCandidates,
@@ -18,6 +21,8 @@ import {
   deleteProject,
   getProject,
   listProjects,
+  rememberLastProject,
+  resolveLastProject,
   updateProject,
 } from "./service";
 
@@ -32,6 +37,39 @@ export function registerProjectRoutes(
   deps: ProjectRouteDeps,
 ): void {
   const { auth, database, logger } = deps;
+
+  app.openapi(lastProjectRoutes.get, async (c) => {
+    const { organizationId } = c.req.valid("query");
+    const session = await requireVerifiedSession(auth, c.req.raw.headers);
+    const body = await auditDenials(
+      logger,
+      session.user.id,
+      "organization.project.last.resolve",
+      () =>
+        resolveLastProject(database, {
+          organizationId,
+          actorUserId: session.user.id,
+        }),
+    );
+    return c.json(body, 200);
+  });
+
+  app.openapi(lastProjectRoutes.put, async (c) => {
+    const { organizationId, projectId } = c.req.valid("json");
+    const session = await requireVerifiedSession(auth, c.req.raw.headers);
+    const body = await auditDenials(
+      logger,
+      session.user.id,
+      "organization.project.last.remember",
+      () =>
+        rememberLastProject(database, {
+          organizationId,
+          actorUserId: session.user.id,
+          projectId,
+        }),
+    );
+    return c.json(body, 200);
+  });
 
   app.openapi(routes.list, async (c) => {
     const { organizationId } = c.req.valid("param");

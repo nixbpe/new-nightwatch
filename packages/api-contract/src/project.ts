@@ -62,6 +62,29 @@ export const projectDetailSchema = projectSummarySchema.extend({
 });
 export type ProjectDetail = z.infer<typeof projectDetailSchema>;
 
+// ---- Last Project (F-010) ----------------------------------------------------
+
+/** `projectId` is parsed in the service: a malformed id answers 404 like a missing one. */
+export const lastProjectInputSchema = z.strictObject({
+  organizationId: z.uuid(),
+  projectId: z.string().min(1).max(100),
+});
+export type LastProjectInput = z.infer<typeof lastProjectInputSchema>;
+
+export const lastProjectQuerySchema = z.object({
+  organizationId: z.uuid(),
+});
+
+/**
+ * The Project to open in an Organization: the remembered one while the user
+ * can still read it, else the first Project they can read (by name, then id),
+ * else `null`. Never a Project the user cannot see.
+ */
+export const lastProjectResponseSchema = z.object({
+  projectId: z.uuid().nullable(),
+});
+export type LastProjectResponse = z.infer<typeof lastProjectResponseSchema>;
+
 // ---- Members -----------------------------------------------------------------
 
 export const PROJECT_MEMBER_ADD_MAX = 100;

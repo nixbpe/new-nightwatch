@@ -920,6 +920,35 @@ export const projectMembers = pgTable(
   ],
 );
 
+export const memberLastProject = pgTable(
+  "member_last_project",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    projectId: uuid("project_id").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.userId] }),
+    foreignKey({
+      columns: [table.projectId, table.tenantId],
+      foreignColumns: [projects.id, projects.tenantId],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.tenantId, table.userId],
+      foreignColumns: [member.organizationId, member.userId],
+    }).onDelete("cascade"),
+    index("member_last_project_project_idx").on(
+      table.tenantId,
+      table.projectId,
+    ),
+  ],
+);
+
 export const schema = {
   user,
   session,
@@ -948,4 +977,5 @@ export const schema = {
   auditExportJobs,
   projects,
   projectMembers,
+  memberLastProject,
 };

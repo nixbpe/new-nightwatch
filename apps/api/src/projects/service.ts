@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   PROJECT_LIMIT_PER_ORGANIZATION,
   type CreateProjectRequest,
+  type LastProjectResponse,
   type OrganizationRole,
   type ProjectDetail,
   type ProjectListResponse,
@@ -10,7 +11,11 @@ import {
   type ProjectSummary,
   type UpdateProjectRequest,
 } from "@nightwatch/api-contract";
-import { withTenantContextRaw, type Database } from "@nightwatch/db";
+import {
+  withTenantContextRaw,
+  withTenantUserContextRaw,
+  type Database,
+} from "@nightwatch/db";
 import { AppError } from "@nightwatch/shared";
 import type { PoolClient } from "pg";
 
@@ -452,6 +457,70 @@ export async function getProject(
         [input.organizationId, projectId],
       );
       return { ...summary, adminCount: admins.rows[0]?.total ?? 0 };
+    },
+  );
+}
+
+// The remembered Project is a hint, not a grant: it is written only after the
+// caller passed the same read check as GET /{projectId}, and every read checks
+// access again. The user context is set on the connection that already holds
+// the Organization and Project locks, so a revocation cannot interleave.
+export async function rememberLastProject(
+  database: Database,
+  input: Identity & { projectId: string },
+): Promise<LastProjectResponse> {
+  return withProjectAccess(
+    database,
+    input,
+    "project.read",
+    false,
+    async (client, { projectId }) => {
+      await client.query("select set_config('app.user_id', $1, true)", [
+        input.actorUserId,
+      ]);
+      await client.query(
+        `insert into member_last_project (tenant_id, user_id, project_id)
+         values ($1, $2, $3)
+         on conflict (tenant_id, user_id)
+         do update set project_id = excluded.project_id, updated_at = now()`,
+        [input.organizationId, input.actorUserId, projectId],
+      );
+      return { projectId };
+    },
+  );
+}
+
+// Remembered Project while still readable, else the first readable one in the
+// list's order (name, id), else null. Reads only; nothing is written back.
+export async function resolveLastProject(
+  database: Database,
+  identity: Identity,
+): Promise<LastProjectResponse> {
+  await assertMemberBeforeTenantContext(
+    database,
+    identity.organizationId,
+    identity.actorUserId,
+  );
+  return withTenantUserContextRaw(
+    database,
+    identity.organizationId,
+    identity.actorUserId,
+    async (client) => {
+      const role = await lockedMemberRole(client, identity);
+      if (role === null) membershipDenied();
+      const result = await client.query<{ id: string }>(
+        `select p.id
+         from projects p
+         left join project_members me
+           on me.tenant_id = p.tenant_id and me.project_id = p.id and me.user_id = $2
+         left join member_last_project last
+           on last.tenant_id = p.tenant_id and last.project_id = p.id and last.user_id = $2
+         where p.tenant_id = $1${isOrganizationAdmin(role) ? "" : " and me.user_id is not null"}
+         order by (last.project_id is not null) desc, p.name, p.id
+         limit 1`,
+        [identity.organizationId, identity.actorUserId],
+      );
+      return { projectId: result.rows[0]?.id ?? null };
     },
   );
 }
