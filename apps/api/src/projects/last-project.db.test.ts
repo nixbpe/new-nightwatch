@@ -132,6 +132,43 @@ describe("PUT /api/me/last-project", () => {
     expect(await stored(org, user)).toBe(first);
   });
 
+  it("replaces a stored Project the user can no longer read, even with an older landing time", async () => {
+    const org = await ctx.createOrganization("lp-put-unreadable");
+    const user = org.users.viewer;
+    const alpha = await projectNamed(org, "Alpha", [[user, "member"]]);
+    const beta = await projectNamed(org, "Beta", [[user, "member"]]);
+    const base = Date.now() - 60_000;
+    const at = (offsetMs: number) => new Date(base + offsetMs).toISOString();
+
+    expect((await put(user, org.id, beta, at(5_000))).status).toBe(200);
+    await ctx.owner.sql.query(
+      "delete from project_members where project_id = $1 and user_id = $2",
+      [beta, user],
+    );
+    const late = await put(user, org.id, alpha, at(0));
+    expect(late.json).toEqual({ projectId: alpha });
+    expect(await stored(org, user)).toBe(alpha);
+    expect(await resolved(user, org.id)).toBe(alpha);
+  });
+
+  it("replaces a stored Project an Owner lost access to by demotion", async () => {
+    const org = await ctx.createOrganization("lp-put-demoted");
+    const owner = org.users.owner;
+    const alpha = await projectNamed(org, "Alpha", [[owner, "member"]]);
+    const beta = await projectNamed(org, "Beta");
+    const base = Date.now() - 60_000;
+    const at = (offsetMs: number) => new Date(base + offsetMs).toISOString();
+
+    expect((await put(owner, org.id, beta, at(5_000))).status).toBe(200);
+    await ctx.owner.sql.query(
+      "update member set role = 'viewer' where organization_id = $1 and user_id = $2",
+      [org.id, owner],
+    );
+    const late = await put(owner, org.id, alpha, at(0));
+    expect(late.json).toEqual({ projectId: alpha });
+    expect(await stored(org, owner)).toBe(alpha);
+  });
+
   it("clamps a landing time in the future to the server clock, so later saves still win", async () => {
     const org = await ctx.createOrganization("lp-put-clamp");
     const user = org.users.viewer;
@@ -147,7 +184,7 @@ describe("PUT /api/me/last-project", () => {
       [org.id, user],
     );
     expect(row.rows[0]?.ahead).toBe(true);
-    const next = await put(user, org.id, second);
+    const next = await put(user, org.id, second, future);
     expect(next.json).toEqual({ projectId: second });
     expect(await stored(org, user)).toBe(second);
   });

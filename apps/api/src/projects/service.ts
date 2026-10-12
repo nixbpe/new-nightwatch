@@ -469,7 +469,10 @@ export async function getProject(
 // Writes are ordered by `selectedAt`, the client's landing time clamped to the
 // server clock (a fast client clock cannot block later saves): an older save
 // that arrives late leaves the row alone, and the response is the Project the
-// row holds afterwards, whichever request wrote it.
+// row holds afterwards, whichever request wrote it. A stored Project the caller
+// can no longer read (removed from it, or demoted from Owner/Admin) is replaced
+// whatever its time, so the reply never names a Project the caller cannot see
+// (the same readability rule as resolveLastProject).
 export async function rememberLastProject(
   database: Database,
   input: Identity & { projectId: string; selectedAt: string },
@@ -479,7 +482,7 @@ export async function rememberLastProject(
     input,
     "project.read",
     false,
-    async (client, { projectId }) => {
+    async (client, { projectId, actorRole }) => {
       await client.query("select set_config('app.user_id', $1, true)", [
         input.actorUserId,
       ]);
@@ -491,8 +494,19 @@ export async function rememberLastProject(
          do update set project_id = excluded.project_id,
                        selected_at = excluded.selected_at,
                        updated_at = now()
-         where member_last_project.selected_at < excluded.selected_at`,
-        [input.organizationId, input.actorUserId, projectId, input.selectedAt],
+         where member_last_project.selected_at < excluded.selected_at
+            or (not $5::boolean and not exists (
+              select 1 from project_members pm
+              where pm.tenant_id = member_last_project.tenant_id
+                and pm.project_id = member_last_project.project_id
+                and pm.user_id = member_last_project.user_id))`,
+        [
+          input.organizationId,
+          input.actorUserId,
+          projectId,
+          input.selectedAt,
+          isOrganizationAdmin(actorRole),
+        ],
       );
       const winner = await client.query<{ project_id: string }>(
         `select project_id from member_last_project
