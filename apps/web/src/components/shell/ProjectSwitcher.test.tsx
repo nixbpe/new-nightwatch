@@ -409,37 +409,102 @@ describe("ProjectSwitcher", () => {
     expect(rememberLastProjectMock).toHaveBeenCalledTimes(1);
   });
 
-  it("AC-06: the cache keeps the newer Project when saves resolve in reverse order", async () => {
-    const replies: Record<string, () => void> = {};
-    // Nothing remembered yet, so only a save can put a Project in the cache.
-    const view = renderShell({ path: "/workspace", last: null });
-    rememberLastProjectMock.mockImplementation(
-      (_org, projectId) =>
-        new Promise((resolve) => {
-          replies[projectId] = () => {
-            resolve({ projectId });
-          };
-        }),
-    );
-    await view.router.navigate(membersPath(P_ALPHA));
-    await waitFor(() => {
-      expect(replies[P_ALPHA]).toBeDefined();
+  describe("AC-06: saves are serialized", () => {
+    type Save = {
+      organizationId: string;
+      projectId: string;
+      settle: (outcome: "ok" | "fail") => void;
+    };
+    // Every save waits until the test settles it.
+    function deferSaves(): Save[] {
+      const saves: Save[] = [];
+      rememberLastProjectMock.mockImplementation(
+        (organizationId, projectId) =>
+          new Promise((resolve, reject) => {
+            saves.push({
+              organizationId,
+              projectId,
+              settle: (outcome) => {
+                if (outcome === "ok") resolve({ projectId });
+                else reject(new Error("down"));
+              },
+            });
+          }),
+      );
+      return saves;
+    }
+    const sentIds = (saves: Save[]) => saves.map((save) => save.projectId);
+    const settled = () => new Promise((resolve) => setTimeout(resolve, 20));
+    const cached = (view: ReturnType<typeof renderShell>) =>
+      view.queryClient.getQueryData(projectQueryKeys.last(ORG_A));
+
+    it("holds the next save until the one in flight settles, and the cache ends on the newest", async () => {
+      // Nothing remembered yet, so only a save can put a Project in the cache.
+      const view = renderShell({ path: "/workspace", last: null });
+      const saves = deferSaves();
+      await view.router.navigate(membersPath(P_ALPHA));
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA]);
+      });
+      await view.router.navigate(membersPath(P_BRAVO));
+      await settled();
+      expect(sentIds(saves)).toEqual([P_ALPHA]);
+
+      saves[0]?.settle("ok");
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA, P_BRAVO]);
+      });
+      // The earlier reply does not take the cache from the newer Project.
+      expect(cached(view)).not.toEqual({ projectId: P_ALPHA });
+      saves[1]?.settle("ok");
+      await waitFor(() => {
+        expect(cached(view)).toEqual({ projectId: P_BRAVO });
+      });
     });
-    await view.router.navigate(membersPath(P_BRAVO));
-    await waitFor(() => {
-      expect(replies[P_BRAVO]).toBeDefined();
+
+    it("sends only the latest target after the one in flight", async () => {
+      const view = renderShell({ path: "/workspace", last: null });
+      const saves = deferSaves();
+      await view.router.navigate(membersPath(P_ALPHA));
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA]);
+      });
+      for (const [path, name] of [
+        [membersPath(P_BRAVO), "Bravo"],
+        [membersPath(P_CHARLIE), "Charlie"],
+      ] as const) {
+        await view.router.navigate(path);
+        // The shell has rendered this Project, so its target was seen before the next one.
+        await waitFor(() => {
+          expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+            name,
+          );
+        });
+      }
+      await settled();
+      expect(sentIds(saves)).toEqual([P_ALPHA]);
+      saves[0]?.settle("ok");
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA, P_CHARLIE]);
+      });
+      await settled();
+      expect(sentIds(saves)).toEqual([P_ALPHA, P_CHARLIE]);
     });
-    replies[P_BRAVO]?.();
-    await waitFor(() => {
-      expect(
-        view.queryClient.getQueryData(projectQueryKeys.last(ORG_A)),
-      ).toEqual({ projectId: P_BRAVO });
+
+    it("sends the waiting save after a failed one, without an error", async () => {
+      const view = renderShell({ path: "/workspace", last: null });
+      const saves = deferSaves();
+      await view.router.navigate(membersPath(P_ALPHA));
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA]);
+      });
+      await view.router.navigate(membersPath(P_BRAVO));
+      saves[0]?.settle("fail");
+      await waitFor(() => {
+        expect(sentIds(saves)).toEqual([P_ALPHA, P_BRAVO]);
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
     });
-    replies[P_ALPHA]?.();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(view.queryClient.getQueryData(projectQueryKeys.last(ORG_A))).toEqual(
-      { projectId: P_BRAVO },
-    );
   });
 
   it("AC-06: nothing is saved outside a Project route, or for a Project missing from the list", async () => {
