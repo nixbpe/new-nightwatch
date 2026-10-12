@@ -104,7 +104,14 @@ const ALPHA = project(P_ALPHA, "Alpha", "admin");
 const BRAVO = project(P_BRAVO, "Bravo", "member");
 const CHARLIE = project(P_CHARLIE, "Charlie", null);
 
-function meContext(role: "owner" | "viewer"): MeContextResponse {
+const ORG_B = "22222222-2222-4222-8222-222222222222";
+const P_OTHER = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const OTHER = project(P_OTHER, "Delta", "member");
+
+function meContext(
+  role: "owner" | "viewer",
+  secondOrgRole?: "owner" | "viewer",
+): MeContextResponse {
   return {
     user: {
       id: "user-1",
@@ -113,7 +120,12 @@ function meContext(role: "owner" | "viewer"): MeContextResponse {
       emailVerified: true,
       twoFactorEnabled: true,
     },
-    organizations: [{ id: ORG_A, name: "Org A", slug: "org-a", role }],
+    organizations: [
+      { id: ORG_A, name: "Org A", slug: "org-a", role },
+      ...(secondOrgRole === undefined
+        ? []
+        : [{ id: ORG_B, name: "Org B", slug: "org-b", role: secondOrgRole }]),
+    ],
     lastActiveTenantId: ORG_A,
   };
 }
@@ -132,15 +144,22 @@ function renderShell({
   projects = [ALPHA, BRAVO, CHARLIE],
   last = P_BRAVO,
   lastFails = false,
+  secondOrgRole,
 }: {
   path?: string;
   role?: "owner" | "viewer";
   projects?: ProjectSummary[];
   last?: string | null;
   lastFails?: boolean;
+  /** Adds Org B, whose only Project is Delta; Org A stays the active one. */
+  secondOrgRole?: "owner" | "viewer";
 } = {}) {
-  fetchMeContextMock.mockResolvedValue(meContext(role));
-  fetchProjectListMock.mockResolvedValue({ projects });
+  fetchMeContextMock.mockResolvedValue(meContext(role, secondOrgRole));
+  fetchProjectListMock.mockImplementation((organizationId) =>
+    Promise.resolve({
+      projects: organizationId === ORG_B ? [OTHER] : projects,
+    }),
+  );
   if (lastFails) fetchLastProjectMock.mockRejectedValue(new Error("down"));
   else fetchLastProjectMock.mockResolvedValue({ projectId: last });
   rememberLastProjectMock.mockImplementation((_org, projectId) =>
@@ -237,6 +256,27 @@ describe("ProjectSwitcher", () => {
     expect(within(other).getByRole("menuitemradio")).toHaveTextContent(
       "Charlie",
     );
+  });
+
+  it("AC-01: bounds the menu to the viewport; only the Project list scrolls, the search field and the links stay", async () => {
+    const user = userEvent.setup();
+    renderShell();
+    await openMenu(user);
+    const panel = screen.getByTestId("shell-project-menu-panel");
+    const list = screen.getByTestId("shell-project-list");
+    expect(panel).toHaveClass("max-h-[calc(100dvh-9rem)]", "flex-col");
+    expect(list).toHaveClass("overflow-y-auto");
+    expect(list).toContainElement(
+      screen.getByTestId(`shell-project-option-${P_ALPHA}`),
+    );
+    for (const outside of [
+      "shell-project-search",
+      "shell-project-all",
+      "shell-project-create",
+    ]) {
+      expect(list).not.toContainElement(screen.getByTestId(outside));
+      expect(panel).toContainElement(screen.getByTestId(outside));
+    }
   });
 
   it("AC-01: hides the not-joined group and the create link from a role below Admin", async () => {
@@ -484,6 +524,74 @@ describe("ProjectSwitcher", () => {
     expect(empty).toHaveTextContent("ยังไม่มีโปรเจกต์");
     expect(screen.queryByTestId("shell-project-switch")).toBeNull();
     expect(screen.queryByTestId("shell-project-navigation")).toBeNull();
+  });
+
+  describe("a bookmarked Project of another Organization the user belongs to", () => {
+    const otherPath = `/organizations/${ORG_B}/projects/${P_OTHER}/members`;
+
+    it("is the current Project, saved under its own Organization, with the breadcrumb and nav of that Organization", async () => {
+      renderShell({ path: otherPath, secondOrgRole: "viewer" });
+      const button = await screen.findByTestId("shell-project-switch");
+      await waitFor(() => {
+        expect(button).toHaveTextContent("Delta");
+      });
+      await waitFor(() => {
+        expect(rememberLastProjectMock).toHaveBeenCalledExactlyOnceWith(
+          ORG_B,
+          P_OTHER,
+        );
+      });
+      expect(
+        within(screen.getByTestId("shell-breadcrumb"))
+          .getAllByRole("listitem")
+          .map((item) => item.textContent),
+      ).toEqual(["Org B", "Delta", "สมาชิกโปรเจกต์"]);
+      expect(
+        screen.getByTestId(
+          "shell-nav-/organizations/:organizationId/projects/:projectId/members",
+        ),
+      ).toHaveAttribute("href", otherPath);
+      expect(
+        screen.getByTestId(
+          "shell-nav-/organizations/:organizationId/projects/:projectId/members",
+        ),
+      ).toHaveAttribute("aria-current", "page");
+      // No request pairs Org A with Org B's Project, and the active Organization's last Project is not asked for.
+      expect(rememberLastProjectMock).not.toHaveBeenCalledWith(ORG_A, P_OTHER);
+      expect(fetchLastProjectMock).not.toHaveBeenCalled();
+      expect(fetchProjectListMock).not.toHaveBeenCalledWith(ORG_A);
+    });
+
+    it("judges create rights by the role in that Organization, not the active one", async () => {
+      const user = userEvent.setup();
+      renderShell({ path: otherPath, role: "owner", secondOrgRole: "viewer" });
+      await waitFor(() => {
+        expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+          "Delta",
+        );
+      });
+      await openMenu(user);
+      expect(screen.queryByTestId("shell-project-create")).toBeNull();
+      expect(screen.getByTestId("shell-project-all")).toHaveAttribute(
+        "href",
+        `/organizations/${ORG_B}/projects`,
+      );
+    });
+
+    it("switches within that Organization", async () => {
+      const user = userEvent.setup();
+      renderShell({ path: otherPath, secondOrgRole: "owner" });
+      await waitFor(() => {
+        expect(screen.getByTestId("shell-project-switch")).toHaveTextContent(
+          "Delta",
+        );
+      });
+      await openMenu(user);
+      expect(screen.getByTestId("shell-project-create")).toHaveAttribute(
+        "href",
+        `/organizations/${ORG_B}/projects?create=1`,
+      );
+    });
   });
 
   it("AC-06: a failed last-Project lookup shows the retry state, not an empty selection", async () => {

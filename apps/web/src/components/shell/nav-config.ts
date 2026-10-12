@@ -190,16 +190,15 @@ export function projectSwitchDestination(
     : resolveNavPath(target.path, organizationId, projectId);
 }
 
-/** The project a URL names, when the route is a Project route of `organizationId`. */
-export function getRouteProjectId(
+/** The Organization and Project a Project route names. */
+export function getProjectRoute(
   pathname: string,
-  organizationId: string | null,
-): string | null {
+): { organizationId: string; projectId: string } | null {
   const match = /^\/organizations\/([^/]+)\/projects\/([^/]+)(?:\/|$)/.exec(
     pathname,
   );
-  return match !== null && match[1] === organizationId
-    ? (match[2] ?? null)
+  return match?.[1] !== undefined && match[2] !== undefined
+    ? { organizationId: match[1], projectId: match[2] }
     : null;
 }
 
@@ -212,6 +211,8 @@ export function canSeeLeaf(leaf: NavLeaf, role: string | null): boolean {
 export type NavContext = {
   organizationId: string | null;
   projectId: string | null;
+  /** The Organization that owns `projectId`; the active one when omitted. */
+  projectOrganizationId?: string | null;
   role: string | null;
 };
 
@@ -229,7 +230,9 @@ export function getNavDestinations(context: NavContext): NavDestination[] {
   return leaves.flatMap(({ leaf, group }) => {
     const path = resolveNavPath(
       leaf.path,
-      context.organizationId,
+      leaf.path.includes(PROJECT_PARAM)
+        ? (context.projectOrganizationId ?? context.organizationId)
+        : context.organizationId,
       context.projectId,
     );
     if (path === null || !canSeeLeaf(leaf, context.role)) {

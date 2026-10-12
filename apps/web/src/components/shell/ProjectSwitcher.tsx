@@ -2,7 +2,6 @@ import type { ProjectSummary } from "@nightwatch/api-contract";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
-import { useTenant } from "../../lib/tenant/TenantProvider";
 import { PROJECT_ROLE_LABELS } from "../../pages/projects/members/roles";
 import { CheckIcon, ChevronsUpDownIcon, SearchIcon } from "./icons";
 import { initialsFontClass, initialsOf } from "./initials";
@@ -19,7 +18,6 @@ export function ProjectSwitcher({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const { activeOrg } = useTenant();
   const current = useCurrentProject();
   const location = useLocation();
   const navigate = useNavigate();
@@ -46,9 +44,9 @@ export function ProjectSwitcher({
     }
   });
 
-  if (activeOrg === null) return null;
-  const organizationId = activeOrg.id;
-  const canManage = activeOrg.role === "owner" || activeOrg.role === "admin";
+  if (current.organizationId === null) return null;
+  const organizationId = current.organizationId;
+  const canManage = current.role === "owner" || current.role === "admin";
   const projectsPath = `/organizations/${organizationId}/projects`;
   const blockClass = `flex h-10 w-full items-center gap-2.5 rounded-md ${
     collapsed ? "justify-center" : "px-2"
@@ -196,7 +194,7 @@ export function ProjectSwitcher({
     );
 
   const linkClass =
-    "flex w-full items-center rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-foreground/5";
+    "flex w-full flex-shrink-0 items-center rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-foreground/5";
   const label = current.project?.name ?? "เลือกโปรเจกต์";
 
   return frame(
@@ -250,9 +248,9 @@ export function ProjectSwitcher({
           ref={popover.panelRef}
           data-testid="shell-project-menu-panel"
           tabIndex={-1}
-          className="overlay-enter absolute top-full left-2 z-50 mt-1 w-64 rounded-md border border-foreground/10 bg-surface p-1 shadow-lg focus:outline-none"
+          className="overlay-enter absolute top-full left-2 z-50 mt-1 flex max-h-[calc(100dvh-9rem)] w-64 flex-col rounded-md border border-foreground/10 bg-surface p-1 shadow-lg focus:outline-none"
         >
-          <div className="relative p-1">
+          <div className="relative flex-shrink-0 p-1">
             <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-foreground-secondary">
               <SearchIcon size={14} />
             </span>
@@ -275,18 +273,29 @@ export function ProjectSwitcher({
             data-testid="shell-project-menu"
             role="menu"
             aria-label="สลับโปรเจกต์"
+            className="flex min-h-0 flex-col"
           >
-            {group("joined", "โปรเจกต์ที่เข้าร่วม", joined)}
-            {group("other", "ไม่ได้เข้าร่วม", notJoined)}
-            {joined.length === 0 && notJoined.length === 0 ? (
-              <p
-                role="none"
-                className="px-2.5 py-3 text-sm text-foreground-secondary"
-              >
-                ไม่พบโปรเจกต์
-              </p>
-            ) : null}
-            <div role="separator" className="my-1 h-px bg-foreground/10" />
+            {/* Only the Project list scrolls; the search field and the links below stay in view. */}
+            <div
+              role="none"
+              data-testid="shell-project-list"
+              className="min-h-0 overflow-y-auto overscroll-contain"
+            >
+              {group("joined", "โปรเจกต์ที่เข้าร่วม", joined)}
+              {group("other", "ไม่ได้เข้าร่วม", notJoined)}
+              {joined.length === 0 && notJoined.length === 0 ? (
+                <p
+                  role="none"
+                  className="px-2.5 py-3 text-sm text-foreground-secondary"
+                >
+                  ไม่พบโปรเจกต์
+                </p>
+              ) : null}
+            </div>
+            <div
+              role="separator"
+              className="my-1 h-px flex-shrink-0 bg-foreground/10"
+            />
             <Link
               data-testid="shell-project-all"
               role="menuitem"

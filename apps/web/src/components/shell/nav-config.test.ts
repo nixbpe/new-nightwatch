@@ -4,7 +4,7 @@ import { getBreadcrumbTrail } from "./breadcrumb";
 import {
   getNavDestinations,
   getRouteOrganizationId,
-  getRouteProjectId,
+  getProjectRoute,
   mostSpecificLeaf,
   projectSwitchDestination,
   resolveNavPath,
@@ -27,13 +27,13 @@ describe("resolveNavPath", () => {
   });
 });
 
-describe("getRouteProjectId", () => {
-  it("names the Project of a Project route in the given organization only", () => {
-    const pathname = `/organizations/${ORG}/projects/${P1}/members`;
-    expect(getRouteProjectId(pathname, ORG)).toBe(P1);
-    expect(getRouteProjectId(pathname, "other")).toBeNull();
-    expect(getRouteProjectId(`/organizations/${ORG}/projects`, ORG)).toBeNull();
-    expect(getRouteProjectId("/workspace", ORG)).toBeNull();
+describe("getProjectRoute", () => {
+  it("names the Organization and Project of a Project route, and nothing for other routes", () => {
+    expect(
+      getProjectRoute(`/organizations/${ORG}/projects/${P1}/members`),
+    ).toEqual({ organizationId: ORG, projectId: P1 });
+    expect(getProjectRoute(`/organizations/${ORG}/projects`)).toBeNull();
+    expect(getProjectRoute("/workspace")).toBeNull();
   });
 
   it("keeps the organization readable from a Project route", () => {
@@ -115,6 +115,22 @@ describe("projectSwitchDestination (AC-04)", () => {
 
 describe("Project scope in the navigation definition", () => {
   const context = { organizationId: ORG, role: "owner" } as const;
+
+  it("resolves Project pages in the Project's own Organization, other pages in the active one", () => {
+    const other = "99999999-9999-4999-8999-999999999999";
+    const destinations = getNavDestinations({
+      ...context,
+      projectId: P1,
+      projectOrganizationId: other,
+    });
+    expect(
+      destinations.find((destination) => destination.group === "โปรเจกต์")
+        ?.path,
+    ).toBe(`/organizations/${other}/projects/${P1}/members`);
+    expect(
+      destinations.find((destination) => destination.label === "สมาชิก")?.path,
+    ).toBe(`/organizations/${ORG}/members`);
+  });
 
   it("lists Project pages in the palette only for the current Project", () => {
     expect(

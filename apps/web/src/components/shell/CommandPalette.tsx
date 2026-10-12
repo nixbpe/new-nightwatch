@@ -24,10 +24,12 @@ function matches(destinations: NavDestination[], query: string) {
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { activeOrg } = useTenant();
-  const { projectId } = useCurrentProject();
+  const { projectId, organizationId: projectOrganizationId } =
+    useCurrentProject();
   const destinations = getNavDestinations({
     organizationId: activeOrg?.id ?? null,
     projectId,
+    projectOrganizationId,
     role: activeOrg?.role ?? null,
   });
   const [query, setQuery] = useState("");

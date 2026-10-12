@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { createDatabase } from "../../packages/db/src/index.ts";
 import {
@@ -28,6 +28,7 @@ let alpha: string;
 let bravo: string;
 const people = {} as Record<Role, Person>;
 const userIds: string[] = [];
+const extraOrganizations: string[] = [];
 
 const membersUrl = (projectId: string) =>
   `/organizations/${org}/projects/${projectId}/members`;
@@ -75,7 +76,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   try {
     // Projects and remembered Projects go with their organization (ON DELETE CASCADE).
-    await cleanUp(pool, userIds, [org]);
+    await cleanUp(pool, userIds, [org, ...extraOrganizations]);
   } finally {
     await database.close();
   }
@@ -200,4 +201,88 @@ test("opening a Project page by its link saves it as the last Project", async ({
   await expect(page.getByTestId("shell-project-switch")).toContainText(
     `Alpha ${run}`,
   );
+});
+
+test("a bookmarked Project of another Organization, with many Projects, keeps the menu inside the viewport", async ({
+  page,
+}) => {
+  // A second Organization the owner belongs to but is not active in.
+  const other = await createOrganization(pool, `E2E Switcher many ${run}`);
+  extraOrganizations.push(other);
+  await addMember(pool, other, people.owner.userId, "owner");
+  const ids: string[] = [];
+  for (let index = 1; index <= 30; index += 1) {
+    const label = String(index).padStart(2, "0");
+    const created = await ownerSession.request(
+      "POST",
+      `/api/organizations/${other}/projects`,
+      { name: `Many ${label} ${run}`, slug: `many-${label}-${run}` },
+    );
+    expect(created.status).toBe(201);
+    ids.push((created.body as { id: string }).id);
+  }
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await signIn(page, people.owner);
+  await page.goto(`/organizations/${other}/projects/${ids[0]}/members`);
+
+  // The Project in the URL is current, in its own Organization, and saved there.
+  const button = page.getByTestId("shell-project-switch");
+  await expect(button).toContainText(`Many 01 ${run}`);
+  await expect(page.getByTestId("shell-breadcrumb")).toContainText(
+    `E2E Switcher many ${run}`,
+  );
+  await expect
+    .poll(async () => {
+      const resolved = await ownerSession.request(
+        "GET",
+        `/api/me/last-project?organizationId=${other}`,
+      );
+      return (resolved.body as { projectId: string }).projectId;
+    })
+    .toBe(ids[0]);
+
+  await button.click();
+  const panel = page.getByTestId("shell-project-menu-panel");
+  await expect(panel).toBeVisible();
+  await page.waitForTimeout(500);
+  const box = await panel.boundingBox();
+  expect(box).not.toBeNull();
+  expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(560);
+  const list = page.getByTestId("shell-project-list");
+  expect(
+    await list.evaluate((node) => node.scrollHeight > node.clientHeight),
+  ).toBe(true);
+  await expect(page.getByTestId("shell-project-search")).toBeInViewport();
+  await expect(page.getByTestId("shell-project-create")).toBeInViewport();
+  await expect(page.getByTestId("shell-project-all")).toBeInViewport();
+
+  // From the search field, Up wraps through both links to the last Project, which scrolls into view.
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByTestId("shell-project-create")).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByTestId("shell-project-all")).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  const last = page.getByTestId(`shell-project-option-${ids[29]}`);
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport();
+  await expect(page.getByTestId("shell-project-create")).toBeInViewport();
+  await page.keyboard.press("Escape");
+
+  // The rail (below 1024 px) and the drawer (below 640 px) bound the menu the same way.
+  const assertBounded = async (scope: Locator, height: number) => {
+    await scope.getByTestId("shell-project-switch").click();
+    const bounded = scope.getByTestId("shell-project-menu-panel");
+    await expect(bounded).toBeVisible();
+    await page.waitForTimeout(500);
+    const rect = await bounded.boundingBox();
+    expect((rect?.y ?? 0) + (rect?.height ?? 0)).toBeLessThanOrEqual(height);
+    await expect(scope.getByTestId("shell-project-create")).toBeInViewport();
+    await expect(scope.getByTestId("shell-project-search")).toBeInViewport();
+    await page.keyboard.press("Escape");
+  };
+  await page.setViewportSize({ width: 800, height: 560 });
+  await assertBounded(page.getByTestId("shell-sidebar"), 560);
+  await page.setViewportSize({ width: 500, height: 560 });
+  await page.getByTestId("shell-mobile-open").click();
+  await assertBounded(page.getByTestId("shell-mobile-menu"), 560);
 });

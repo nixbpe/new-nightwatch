@@ -28,7 +28,8 @@ export function Sidebar({
   const { activeOrg } = useTenant();
   const organizationId = activeOrg?.id ?? null;
   const role = activeOrg?.role ?? null;
-  const { projectId } = useCurrentProject();
+  const { projectId, organizationId: projectOrganizationId } =
+    useCurrentProject();
   const unread = useUnreadCount();
   const monitorTotal = useMonitorTotal(organizationId);
   // Unknown or failed counts render nothing, never a guessed number (CMP-01).
@@ -42,7 +43,14 @@ export function Sidebar({
 
   const visibleRows = (leaves: NavLeaf[]) =>
     leaves.flatMap((leaf) => {
-      const href = resolveNavPath(leaf.path, organizationId, projectId);
+      // A Project page belongs to the Project's Organization, which a bookmarked URL may make other than the active one.
+      const href = resolveNavPath(
+        leaf.path,
+        leaf.path.includes(":projectId")
+          ? projectOrganizationId
+          : organizationId,
+        projectId,
+      );
       return href !== null && canSeeLeaf(leaf, role) ? [{ leaf, href }] : [];
     });
 

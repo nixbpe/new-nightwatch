@@ -8,10 +8,13 @@ import {
   projectQueryKeys,
 } from "../../lib/api/projects";
 import { useTenant } from "../../lib/tenant/TenantProvider";
-import { getRouteProjectId } from "./nav-config";
+import { getProjectRoute } from "./nav-config";
 
 export type CurrentProject = {
+  /** The Organization the Project scope belongs to: the URL's on a Project route, else the active one. */
   organizationId: string | null;
+  /** The user's role in `organizationId`. */
+  role: string | null;
   /** Every Project the user can read, in the list's order; undefined until loaded. */
   projects: ProjectSummary[] | undefined;
   status: "loading" | "error" | "ready";
@@ -31,9 +34,18 @@ export type CurrentProject = {
  */
 export function useCurrentProject(): CurrentProject {
   const { pathname } = useLocation();
-  const { activeOrg } = useTenant();
-  const organizationId = activeOrg?.id ?? null;
-  const routeProjectId = getRouteProjectId(pathname, organizationId);
+  const { activeOrg, me } = useTenant();
+  // A bookmarked Project of another Organization the user belongs to is acted on in that Organization, as the
+  // breadcrumb roots at the URL's. Outside Project routes, and for an Organization the user is not in, the active one.
+  const projectRoute = getProjectRoute(pathname);
+  const routeOrg =
+    projectRoute === null
+      ? undefined
+      : me?.organizations.find((org) => org.id === projectRoute.organizationId);
+  const scopeOrg = routeOrg ?? activeOrg;
+  const organizationId = scopeOrg?.id ?? null;
+  const routeProjectId =
+    routeOrg === undefined ? null : (projectRoute?.projectId ?? null);
 
   const list = useQuery({
     queryKey: projectQueryKeys.list(organizationId ?? ""),
@@ -70,6 +82,7 @@ export function useCurrentProject(): CurrentProject {
 
   return {
     organizationId,
+    role: scopeOrg?.role ?? null,
     projects,
     routeProjectId,
     status: resolving,

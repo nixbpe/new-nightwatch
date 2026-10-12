@@ -5,7 +5,7 @@ import { useTenant } from "../../lib/tenant/TenantProvider";
 import { getBreadcrumbTrail, type BreadcrumbCrumb } from "./breadcrumb";
 import { ChevronRightIcon, MenuIcon, PanelLeftIcon, SearchIcon } from "./icons";
 import { Kbd } from "./Kbd";
-import { getRouteOrganizationId, getRouteProjectId } from "./nav-config";
+import { getProjectRoute, getRouteOrganizationId } from "./nav-config";
 import { NotificationsPopover } from "./NotificationsPopover";
 import { useCurrentProject } from "./useCurrentProject";
 
@@ -44,7 +44,7 @@ export function Header({
         };
   // A Project route reads Organization › Project › page. The Project has no page of its own yet, so its crumb is
   // not a link; the name is known only while the Project is in the active organization's list.
-  const routeProjectId = getRouteProjectId(pathname, routeOrgId);
+  const routeProjectId = getProjectRoute(pathname)?.projectId ?? null;
   const projectCrumb: BreadcrumbCrumb | null =
     routeProjectId === null
       ? null
