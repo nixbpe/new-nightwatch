@@ -457,13 +457,12 @@ describe("states", () => {
     await waitFor(() => {
       expect(meMock).toHaveBeenCalledTimes(2);
     });
-    // The user picks another page; its loader has not finished yet.
+    // The user picks another page and the reload settles before React renders
+    // the new navigation state: only the router itself knows it is loading.
     void router.navigate("/elsewhere");
-    await waitFor(() => {
-      expect(router.state.navigation.state).toBe("loading");
-    });
+    expect(router.state.navigation.state).toBe("loading");
+    finishReload(context("owner"));
     await act(async () => {
-      finishReload(context("owner"));
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     act(() => {

@@ -243,6 +243,15 @@ function ProjectsForOrganization({
     queryClient.removeQueries({
       queryKey: projectQueryKeys.project(organizationId, projectId),
     });
+    // The list reload may fail; the row must not outlive the 404 either way.
+    queryClient.setQueryData<{ projects: ProjectSummary[] }>(
+      projectQueryKeys.list(organizationId),
+      (list) =>
+        list && {
+          ...list,
+          projects: list.projects.filter((item) => item.id !== projectId),
+        },
+    );
   };
 
   const roleChanged = () => {

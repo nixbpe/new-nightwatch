@@ -674,6 +674,43 @@ describe("delete (AC-08)", () => {
   });
 });
 
+describe("a 404 on edit or delete removes the row even if the reload fails (AC-05)", () => {
+  it.each(["edit", "delete"] as const)(
+    "drops the Project from the cached list on %s when the refetch fails",
+    async (action) => {
+      const user = userEvent.setup();
+      const gone = project({ name: "Payments", myRole: "admin" });
+      const other = project({ name: "Other", myRole: "admin" });
+      fetchListMock.mockResolvedValueOnce({ projects: [gone, other] });
+      renderPage();
+      const opener = within(
+        await screen.findByTestId(`project-row-${gone.id}`),
+      ).getByTestId(`project-${action}`);
+      fetchListMock.mockRejectedValue(new ApiError("INTERNAL_ERROR", "x", 500));
+      const notFound = new ApiError("PROJECT_NOT_FOUND", "gone", 404);
+      updateMock.mockRejectedValue(notFound);
+      deleteMock.mockRejectedValue(notFound);
+      await user.click(opener);
+      const dialog = await screen.findByTestId(
+        action === "edit" ? "project-edit-dialog" : "project-delete-dialog",
+      );
+      await user.click(
+        within(dialog).getByTestId(
+          action === "edit" ? "project-form-submit" : "project-delete-confirm",
+        ),
+      );
+      await waitFor(() => {
+        expect(screen.queryByTestId(`project-row-${gone.id}`)).toBeNull();
+      });
+      expect(screen.getByTestId(`project-row-${other.id}`)).toBeVisible();
+      await waitFor(() => {
+        expect(fetchListMock.mock.calls.length).toBeGreaterThan(1);
+      });
+      expect(screen.queryByTestId(`project-row-${gone.id}`)).toBeNull();
+    },
+  );
+});
+
 describe("role changed under the user", () => {
   it.each(["edit", "delete"] as const)(
     "reloads the list and the role after a denied %s",
