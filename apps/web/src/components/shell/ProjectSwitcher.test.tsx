@@ -33,6 +33,7 @@ import {
 import { TenantProvider } from "../../lib/tenant/TenantProvider";
 import { guardUnassignedNetwork } from "../../test/guard-network";
 import { AppShell } from "./AppShell";
+import { waitForLastProjectSaves } from "../../lib/lastProjectSave";
 
 vi.mock("better-auth/react", () => ({
   createAuthClient: () => ({
@@ -477,6 +478,29 @@ describe("ProjectSwitcher", () => {
           membersPath(projectId),
         );
       });
+
+    it("keeps the workspace barrier pending until the latest queued landing is saved", async () => {
+      const view = renderShell({ path: "/workspace", last: null });
+      const saves = deferSaves();
+      await view.router.navigate(membersPath(P_ALPHA));
+      await waitFor(() => expect(sentIds(saves)).toEqual([P_ALPHA]));
+      await view.router.navigate(membersPath(P_BRAVO));
+      await view.router.navigate(membersPath(P_CHARLIE));
+      await routeCommitted(P_CHARLIE);
+      const done = vi.fn();
+      const waiting = waitForLastProjectSaves(
+        view.queryClient,
+        ORG_A,
+        new AbortController().signal,
+      ).then(done);
+      saves[0]?.settle("ok");
+      await waitFor(() => expect(sentIds(saves)).toEqual([P_ALPHA, P_CHARLIE]));
+      expect(done).not.toHaveBeenCalled();
+      saves[1]?.settle("ok");
+      await waiting;
+      expect(cached(view)).toEqual({ projectId: P_CHARLIE });
+      expect(done).toHaveBeenCalledTimes(1);
+    });
 
     it("holds the next save until the one in flight settles, and the cache ends on the newest", async () => {
       // Nothing remembered yet, so only a save can put a Project in the cache.

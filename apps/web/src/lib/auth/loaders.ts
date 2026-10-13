@@ -41,6 +41,7 @@ import {
 } from "../api/projects";
 import { projectSwitchDestination } from "../../components/shell/nav-config";
 import { authClient } from "../auth-client";
+import { waitForLastProjectSaves } from "../lastProjectSave";
 import { formatAuditDate, readPreferences } from "../preferences";
 import {
   fetchNotifications,
@@ -164,6 +165,15 @@ export async function workspaceLoader({
     (item) => item.id === context.lastActiveTenantId,
   );
   if (organization === undefined) return null;
+  await waitForLastProjectSaves(queryClient, organization.id, request.signal);
+  if (!isCurrent()) return null;
+  await queryClient.cancelQueries({
+    queryKey: projectQueryKeys.last(organization.id),
+    exact: true,
+  });
+  if (!isCurrent()) return null;
+  await waitForLastProjectSaves(queryClient, organization.id, request.signal);
+  if (!isCurrent()) return null;
   const last = await queryClient
     .query({
       queryKey: projectQueryKeys.last(organization.id),

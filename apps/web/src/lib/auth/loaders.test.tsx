@@ -55,6 +55,7 @@ import {
 import { AuditLogPage } from "../../pages/audit-log/AuditLogPage";
 import { detail } from "../../pages/monitors/detail-test-support";
 import { TenantProvider } from "../tenant/TenantProvider";
+import { trackLastProjectSave } from "../lastProjectSave";
 import { rememberInvitation, rememberReturnTo } from "./continuation";
 import {
   auditLogEventLoader,
@@ -558,6 +559,118 @@ describe("workspaceLoader", () => {
     );
     expect(fetchProjectListMock).not.toHaveBeenCalled();
     expect(fetchMonitorListMock).not.toHaveBeenCalled();
+  });
+
+  it("waits for a pending landing save before sending the fresh workspace GET", async () => {
+    signedInMember();
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const save = Promise.withResolvers<void>();
+    trackLastProjectSave(client, organizationId, save.promise);
+    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_LAST });
+    const loading = workspaceLoader({
+      request: new Request("http://localhost/workspace"),
+      url: new URL("http://localhost/workspace"),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+    await vi.waitFor(() => {
+      expect(fetchMeContextMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_FIRST });
+    save.resolve();
+    const response = await loading;
+    expect((response as Response).headers.get("Location")).toBe(
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+    );
+  });
+
+  it("aborts while a landing save is pending without sending a GET", async () => {
+    signedInMember();
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const save = Promise.withResolvers<void>();
+    trackLastProjectSave(client, organizationId, save.promise);
+    const controller = new AbortController();
+    const loading = workspaceLoader({
+      request: new Request("http://localhost/workspace", {
+        signal: controller.signal,
+      }),
+      url: new URL("http://localhost/workspace"),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+    await vi.waitFor(() => expect(fetchMeContextMock).toHaveBeenCalledTimes(1));
+    controller.abort();
+    expect(await loading).toBeNull();
+    expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    save.resolve();
+  });
+
+  it.each(["retire", "identity"] as const)(
+    "does not send the workspace GET after %s during a landing save",
+    async (change) => {
+      signedInMember();
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      const save = Promise.withResolvers<void>();
+      trackLastProjectSave(client, organizationId, save.promise);
+      const loading = workspaceLoader({
+        request: new Request("http://localhost/workspace"),
+        url: new URL("http://localhost/workspace"),
+        pattern: "/workspace",
+        params: {},
+        context: {},
+      });
+      await vi.waitFor(() =>
+        expect(fetchMeContextMock).toHaveBeenCalledTimes(1),
+      );
+      if (change === "retire") retireContextPublication(client);
+      else
+        publishActiveQueryClient(
+          "other-user",
+          resolveQueryClientForIdentity("other-user"),
+        );
+      save.resolve();
+      expect(await loading).toBeNull();
+      expect(fetchLastProjectMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reads fresh server selection after a failed save instead of joining an older GET", async () => {
+    signedInMember();
+    const client = resolveQueryClientForIdentity(VERIFIED.id);
+    const older = Promise.withResolvers<{ projectId: string }>();
+    fetchLastProjectMock.mockReturnValueOnce(older.promise);
+    const previousRead = client
+      .query({
+        queryKey: projectQueryKeys.last(organizationId),
+        queryFn: () => fetchLastProjectMock(organizationId),
+      })
+      .catch(() => undefined);
+    const save = Promise.withResolvers<void>();
+    trackLastProjectSave(client, organizationId, save.promise);
+    fetchLastProjectMock.mockResolvedValue({ projectId: PROJECT_FIRST });
+    const loading = workspaceLoader({
+      request: new Request("http://localhost/workspace"),
+      url: new URL("http://localhost/workspace"),
+      pattern: "/workspace",
+      params: {},
+      context: {},
+    });
+    await vi.waitFor(() => expect(fetchMeContextMock).toHaveBeenCalledTimes(1));
+    expect(fetchLastProjectMock).toHaveBeenCalledTimes(1);
+    save.reject(new Error("save failed"));
+    const response = await loading;
+    expect((response as Response).headers.get("Location")).toBe(
+      "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+    );
+    expect(fetchLastProjectMock).toHaveBeenCalledTimes(2);
+    older.resolve({ projectId: PROJECT_LAST });
+    await previousRead;
+    expect(client.getQueryData(projectQueryKeys.last(organizationId))).toEqual({
+      projectId: PROJECT_FIRST,
+    });
   });
 
   it("does not redirect to an older Project after a landing save cancels its read", async () => {

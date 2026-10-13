@@ -1037,7 +1037,7 @@ test("known raw samples reach all ranges, keyboard table and both themes", async
       response.status() === 403,
     { timeout: 45_000 },
   );
-  await card.getByTestId("monitor-response-range-30d").click();
+  await card.getByTestId("monitor-response-range-24h").click();
   await denial;
   await expect
     .poll(

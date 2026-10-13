@@ -129,12 +129,11 @@ test.describe("signed-in settings", () => {
     await expect(page).toHaveURL(/\/settings\/sessions$/);
   });
 
-  test("settings tabs reflow without horizontal or vertical overflow and retain labels, underline, and keyboard focus", async ({
-    page,
-  }, testInfo) => {
-    await signIn(page, PASSWORD!);
-
-    for (const theme of ["light", "dark"] as const) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`settings tabs reflow without overflow and retain labels, underline, and keyboard focus (${theme})`, async ({
+      page,
+    }, testInfo) => {
+      await signIn(page, PASSWORD!);
       await page.evaluate((value) => {
         localStorage.setItem("nightwatch-theme", value);
       }, theme);
@@ -195,8 +194,8 @@ test.describe("signed-in settings", () => {
             path: testInfo.outputPath(`${theme}-keyboard-focus-375-200.png`),
           });
       }
-    }
-  });
+    });
+  }
 
   test("MFA can be enabled with a real TOTP and disabled again", async ({
     page,

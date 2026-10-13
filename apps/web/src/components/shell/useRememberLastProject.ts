@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 
 import { projectQueryKeys, rememberLastProject } from "../../lib/api/projects";
 import { useCurrentProject } from "./useCurrentProject";
+import { trackLastProjectSave } from "../../lib/lastProjectSave";
 
 /**
  * Saves the Project of the Project route the user is on as their last one, once per
@@ -94,7 +95,7 @@ export function useRememberLastProject(): void {
       inFlight.current = true;
       const targetKey = `${target.organizationId}:${target.projectId}`;
       const lastKey = projectQueryKeys.last(target.organizationId);
-      rememberLastProject(
+      const completion = rememberLastProject(
         target.organizationId,
         target.projectId,
         target.selectedAt,
@@ -123,6 +124,7 @@ export function useRememberLastProject(): void {
           waiting.current = null;
           if (next !== null) send(next);
         });
+      trackLastProjectSave(queryClient, target.organizationId, completion);
     }
 
     const target = {
