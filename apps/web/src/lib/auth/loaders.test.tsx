@@ -498,6 +498,55 @@ describe("workspaceLoader", () => {
     });
   }
 
+  it.each([
+    {
+      selection: "latest Project",
+      cachedProjectId: PROJECT_FIRST,
+      serverProjectId: PROJECT_LAST,
+      destination:
+        "/organizations/11111111-1111-4111-8111-111111111111/projects/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/monitors",
+    },
+    {
+      selection: "first server fallback",
+      cachedProjectId: PROJECT_LAST,
+      serverProjectId: PROJECT_FIRST,
+      destination:
+        "/organizations/11111111-1111-4111-8111-111111111111/projects/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/monitors",
+    },
+    {
+      selection: "no readable Project",
+      cachedProjectId: PROJECT_LAST,
+      serverProjectId: null,
+      destination:
+        "/organizations/11111111-1111-4111-8111-111111111111/projects",
+    },
+  ])(
+    "regression redirects workspace to $selection from fresh last-project instead of a cached hint",
+    async ({ cachedProjectId, serverProjectId, destination }) => {
+      signedInMember();
+      const client = resolveQueryClientForIdentity(VERIFIED.id);
+      client.setQueryData(projectQueryKeys.last(organizationId), {
+        projectId: cachedProjectId,
+      });
+      client.setQueryData(projectQueryKeys.list(organizationId), {
+        projects: [summary(cachedProjectId, "Cached")],
+      });
+      fetchLastProjectMock.mockResolvedValue({ projectId: serverProjectId });
+      fetchProjectListMock.mockResolvedValue({ projects: [] });
+      fetchMonitorListMock.mockResolvedValue(overviewList);
+      renderAt([protectedWorkspace], "/workspace");
+
+      expect(await screen.findByTestId("location")).toHaveTextContent(
+        destination,
+      );
+      expect(screen.getByTestId("location").textContent).toBe(destination);
+      expect(screen.queryByTestId("protected-area")).toBeNull();
+      expect(fetchLastProjectMock).toHaveBeenCalledExactlyOnceWith(
+        organizationId,
+      );
+    },
+  );
+
   it("seeds the Project list, the last Project and the remembered Project's monitors", async () => {
     signedInMember();
     fetchProjectListMock.mockResolvedValue({
